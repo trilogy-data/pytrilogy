@@ -1,11 +1,10 @@
 from lark import Lark, Transformer, v_args
 from lark.tree import Meta
-from typing import Dict, Tuple, List
-from ttl.core.models import Comment, Datasource, Concept, ColumnAssignment, Select, Address, Grain, SelectItem, SelectTransform, Function, Environment
-from ttl.core.enums import Purpose, DataType
+from typing import Dict, Tuple, List, Optional
+from ttl.core.models import Comment, Datasource, Concept, ColumnAssignment, Select, Address, Grain, SelectItem, ConceptTransform, Function, OrderItem, Environment, Limit, OrderBy
+from ttl.core.enums import Purpose, DataType, Modifier, Ordering
 from ttl.parsing.exceptions import ParseError
 
-RESOURCES_MAP: Dict = {}
 
 grammar = r"""
     !start: ((statement ";") | comment )*
@@ -16,15 +15,20 @@ grammar = r"""
     
     concept : "concept" IDENTIFIER TYPE ":" PURPOSE metadata?
     
-    datasource : "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? "address" IDENTIFIER
+    datasource : "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? "address" address 
     
     grain_clause: "grain" "(" column_list ")"
     
-    select : "select" select_list
+    address: IDENTIFIER
+    
+    select : "select"i select_list comment* order_by? comment* limit? comment*
     
     comment :   /#.*(\n|$)/ |  /\/\/.*\n/  
     
-    column_assignment : (IDENTIFIER ":" IDENTIFIER) 
+    concept_declaration: IDENTIFIER | (MODIFIER "[" concept_declaration "]" )
+    
+    column_assignment : (IDENTIFIER ":" concept_declaration) 
+    
     column_assignment_list : (column_assignment "," )* column_assignment ","?
     
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
@@ -37,6 +41,14 @@ grammar = r"""
     select_transform : expr "-" ">" IDENTIFIER metadata?
     
     metadata : "metadata" "(" IDENTIFIER "=" _string_lit ")"
+    
+    limit: "LIMIT"i /[0-9]+/
+    
+    order_list : (IDENTIFIER ORDERING "," )* IDENTIFIER ORDERING ","?
+    
+    ORDERING: ("ASC"i | "DESC"i)
+    
+    order_by: "ORDER"i "BY"i order_list
     
     expr: count | IDENTIFIER
     
@@ -51,7 +63,9 @@ grammar = r"""
     
     _string_lit: "\"" ( STRING_CHARS )* "\""
 
-    TYPE : "string" | "number" | "bool" | "map" | "list" | "any" | "int"
+    MODIFIER: "Optional"i | "Partial"i
+    
+    TYPE : "string" | "number" | "bool" | "map" | "list" | "any" | "int" 
     
     PURPOSE: "property" | "key" | "metric"
 
@@ -85,8 +99,18 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def column_assignment(self, meta: Meta, args):
+        #TODO -> deal with conceptual modifiers
         return ColumnAssignment(alias=args[0],
-                                concept =self.concepts[args[1]])
+                                concept =self.concepts[args[1][0]])
+
+    def MODIFIER(self, args)->Modifier:
+        return Modifier(args.value)
+
+    def concept_declaration(self, args):
+        # TODO implement
+        return args
+
+
     @v_args(meta=True)
     def concept(self, meta: Meta, args)->Concept:
         if len(args) >3:
@@ -114,17 +138,15 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def grain_clause(self, args)->Grain:
-        return Grain(args)
+        return Grain([self.concepts[a] for a in args])
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
 
         name = args[0]
         columns=args[1]
-        grain = None
-        address = None
-        for arg in args:
-            print(arg)
+        grain:Optional[Grain] = None
+        address:Optional[Address] = None
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
@@ -141,7 +163,7 @@ class ParseToObjects(Transformer):
         return Comment(text=args[0].value)
 
     @v_args(meta=True)
-    def select_transform(self, meta,  args)->SelectTransform:
+    def select_transform(self, meta,  args)->ConceptTransform:
         function:Function = args[0]
         output:str = args[1]
         existing = self.concepts.get(output)
@@ -149,9 +171,10 @@ class ParseToObjects(Transformer):
             raise ParseError(f'Assignment {output} on line {meta.line} is a duplicate concept declaration' )
         concept = Concept(name = output,
                 datatype = function.output_datatype,
-                purpose = function.output_purpose)
+                purpose = function.output_purpose,
+                          lineage = function)
         self.concepts[output] = concept
-        return SelectTransform(function=function, output=concept)
+        return ConceptTransform(function=function, output=concept)
 
     @v_args(meta=True)
     def select_item(self, meta: Meta, args)->SelectItem:
@@ -159,7 +182,7 @@ class ParseToObjects(Transformer):
         if len(args) != 1:
             raise ParseError(f"Malformed select statement {args}")
         content = args[0]
-        if isinstance(args[0], SelectTransform):
+        if isinstance(args[0], ConceptTransform):
             return SelectItem(content=content)
         return SelectItem(content=self.concepts[content])
 
@@ -167,16 +190,37 @@ class ParseToObjects(Transformer):
     def select_list(self, args):
         return args
 
+    def limit (self, args):
+        return Limit(value=args[0].value)
+
+    def ORDERING(self, args):
+        return Ordering(args)
+
+    def order_list(self, args):
+        return [OrderItem(x, y) for x, y in zip(args[::2], args[1::2])]
+
+    def order_by(self, args):
+        return OrderBy(items=args[0])
+
     @v_args(meta=True)
     def select(self, meta: Meta, args):
-        select_items = args[0]
-        # TODO:
-        # add to datasources if marked with identifier
-        return Select(selection = select_items)
+
+        select_items = None
+        limit =None
+        order_by = None
+        for arg in args:
+            if isinstance(arg, List):
+                select_items = arg
+            elif isinstance(arg, Limit):
+                limit = arg.value
+            elif isinstance(arg, OrderBy):
+                order_by = arg
+        print(order_by)
+        return Select(selection = select_items, limit=limit, order_by = order_by)
 
     @v_args(meta=True)
     def address(self, meta:Meta, args):
-        return Address(location=args)
+        return Address(location=args[0])
 
 
     #BEGIN FUNCTIONS
