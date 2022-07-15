@@ -1,6 +1,6 @@
-from ttl.core.models import Concept, Environment, Select, Datasource, SelectItem, ConceptTransform, CTE, Join, JoinKey, \
+from preql.core.models import Concept, Environment, Select, Datasource, SelectItem, ConceptTransform, CTE, Join, JoinKey, \
     ProcessedQuery
-from ttl.core.enums import Purpose, JoinType
+from preql.core.enums import Purpose, JoinType
 from typing import Dict, List, Optional
 import networkx as nx
 from jinja2 import Template
@@ -14,34 +14,31 @@ def datasource_to_node(input: Datasource) -> str:
     return f'ds~{input.identifier}'
 
 
-def add_concept_node(g, concept):
+def add_concept_node(g, concept:Concept):
     g.add_node(concept_to_node(concept), type=concept.purpose.value, concept=concept)
 
 
 def generate_graph(environment: Environment, inputs: List[Concept], outputs: List[Concept]) -> nx.DiGraph:
     g = nx.DiGraph()
     for name, concept in environment.concepts.items():
-        node_name = concept_to_node(concept)
-        print('-----')
-        print(concept.name)
+
         if concept not in inputs and concept not in outputs:
-            print('skipping irrelevant concept')
             continue
-        print('included in query')
         add_concept_node(g, concept)
+
+        # if we have sources, recursively add them
         if concept.sources:
+            node_name = concept_to_node(concept)
             for source in concept.sources:
                 add_concept_node(g, source)
                 g.add_edge(concept_to_node(source), node_name)
+
     for key, dataset in environment.datasources.items():
         if not any([t2 in dataset.concepts for t2 in inputs]):
-            print(f'None of {inputs} found in dataset with {dataset.concepts}')
             continue
         node = datasource_to_node(dataset)
         g.add_node(node, type='datasource', datasource=dataset)
         for concept in dataset.concepts:
-            if concept not in inputs:
-                continue
             g.add_edge(node, concept_to_node(concept))
     return g
 
@@ -83,13 +80,20 @@ def dataset_to_grain(g: nx.Graph, datasources: List[Datasource], grain: List[Con
     ''' for each subgraph that needs to get the target grain
     create a subquery'''
     output = []
+    found = []
     for datasource in datasources:
         related = get_relevant_dataset_concepts(g, datasource, grain, output_concepts)
+        found += related
         new = CTE(source=datasource, output_columns=related, name=datasource.identifier, grain=grain,
                   # TODO: support CTEs with different grain/aggregation
                   base=datasource.grain.components == grain,
                   group_to_grain = datasource.grain.components != grain)
         output.append(new)
+    found_set = set([c.name for c in found])
+    all_set = set([c.name for c in output_concepts])
+    if not found_set == all_set:
+
+        raise ValueError(f'Not all concepts could be queried: missing {all_set.difference(found_set)}')
     return output
 
 

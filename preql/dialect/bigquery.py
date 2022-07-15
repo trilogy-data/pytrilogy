@@ -1,9 +1,21 @@
-from ttl.dialect.base import BaseDialect
-from ttl.core.models import Concept, Environment, Select, Datasource, SelectItem, ConceptTransform, CTE, Join, JoinKey, ProcessedQuery, CompiledCTE
-from ttl.core.enums import Purpose
+from preql.dialect.base import BaseDialect
+from preql.core.models import Concept, Environment, Select, Datasource, SelectItem, ConceptTransform, CTE, Join, \
+    JoinKey, ProcessedQuery, CompiledCTE
+from preql.core.enums import Purpose
 from typing import Dict, List, Optional
 import networkx as nx
 from jinja2 import Template
+
+from preql.core.enums import FunctionType
+
+OPERATOR_MAP = {
+    FunctionType.COUNT: "count",
+    FunctionType.SUM: "sum",
+    FunctionType.LENGTH: "length",
+    FunctionType.AVG: "avg"
+}
+
+
 
 BQ_SQL_TEMPLATE = Template('''{%- if ctes %}
 WITH {% for cte in ctes %}
@@ -28,16 +40,20 @@ ORDER BY {% for order in order_by.items %}
 LIMIT {{limit }}{% endif %}
 ''')
 
-def concept_to_node(input:Concept)->str:
+
+def concept_to_node(input: Concept) -> str:
     return f'c~{input.name}'
 
-def datasource_to_node(input:Datasource)->str:
+
+def datasource_to_node(input: Datasource) -> str:
     return f'ds~{input.identifier}'
 
-def add_concept_node(g, concept ):
+
+def add_concept_node(g, concept):
     g.add_node(concept_to_node(concept), type=concept.purpose.value, concept=concept)
 
-def generate_graph(environment:Environment, inputs:List[Concept], outputs:List[Concept])->nx.DiGraph:
+
+def generate_graph(environment: Environment, inputs: List[Concept], outputs: List[Concept]) -> nx.DiGraph:
     g = nx.DiGraph()
     for name, concept in environment.concepts.items():
         node_name = concept_to_node(concept)
@@ -64,30 +80,32 @@ def generate_graph(environment:Environment, inputs:List[Concept], outputs:List[C
             g.add_edge(node, concept_to_node(concept))
     return g
 
-def select_base(datasets:List[Datasource])->Datasource:
-    datasets.sort(key= lambda x: len(x.grain.components))
+
+def select_base(datasets: List[Datasource]) -> Datasource:
+    datasets.sort(key=lambda x: len(x.grain.components))
     return datasets[0]
+
 
 def graph_to_dataset_graph(G):
     g = G.copy()
 
-    while any(degree==2 for _, degree in g.degree):
+    while any(degree == 2 for _, degree in g.degree):
         g0 = g.copy()
         for node, degree in g.degree():
-            if degree==2:
+            if degree == 2:
 
-                if g.is_directed(): #<-for directed graphs
-                    a0,b0 = list(g0.in_edges(node))[0]
-                    a1,b1 = list(g0.out_edges(node))[0]
+                if g.is_directed():  # <-for directed graphs
+                    a0, b0 = list(g0.in_edges(node))[0]
+                    a1, b1 = list(g0.out_edges(node))[0]
 
                 else:
                     edges = g0.edges(node)
                     edges = list(edges.__iter__())
-                    a0,b0 = edges[0]
-                    a1,b1 = edges[1]
+                    a0, b0 = edges[0]
+                    a1, b1 = edges[1]
 
-                e0 = a0 if a0!=node else b0
-                e1 = a1 if a1!=node else b1
+                e0 = a0 if a0 != node else b0
+                e1 = a1 if a1 != node else b1
 
                 g0.remove_node(node)
                 g0.add_edge(e0, e1)
@@ -95,34 +113,37 @@ def graph_to_dataset_graph(G):
     return g
 
 
-def get_relevant_dataset_concepts(g, datasource:Datasource, grain:List[Concept], output_concepts:List[Concept])->List[Concept]:
+def get_relevant_dataset_concepts(g, datasource: Datasource, grain: List[Concept], output_concepts: List[Concept]) -> \
+List[Concept]:
     relevant = []
     # TODO: handle joins to get to appropriate grain
     relevant += grain
     for concept in output_concepts:
         try:
-            path = nx.shortest_path(g, source = datasource_to_node(datasource), target=concept_to_node(concept))
+            path = nx.shortest_path(g, source=datasource_to_node(datasource), target=concept_to_node(concept))
             if len([p for p in path if g.nodes[p]['type'] == 'datasource']) == 1:
                 if concept not in relevant:
                     relevant.append(concept)
         except nx.exception.NetworkXNoPath:
-                continue
+            continue
     return relevant
 
-def render_concept_sql(c:Concept, cte:CTE, alias:bool = True)->str:
+
+def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     if not c.lineage:
         rval = f'{cte.name}.{cte.source.get_alias(c)}'
     else:
         args = ','.join([render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments])
-        rval = f'{c.lineage.operator}({args})'
+        rval = f'{OPERATOR_MAP[c.lineage.operator]}({args})'
     if alias:
         return f'{rval} as {c.name}'
     return rval
 
-def dataset_to_grain(g:nx.Graph, datasources:List[Datasource], grain:List[Concept], output_concepts:List[Concept]):
+
+def dataset_to_grain(g: nx.Graph, datasources: List[Datasource], grain: List[Concept], output_concepts: List[Concept]):
     ''' for each subgraph that needs to get the target grain
     create a subquery'''
-    output:Dict[str, Optional[str]] = {}
+    output: Dict[str, Optional[str]] = {}
 
     for datasource in datasources:
         related = get_relevant_dataset_concepts(g, datasource, grain, output_concepts)
@@ -132,25 +153,27 @@ def dataset_to_grain(g:nx.Graph, datasources:List[Datasource], grain:List[Concep
         # related = list(g.neighbors(datasource_to_node(datasource)))
         if datasource.grain.components != grain:
             metrics = [render_concept_sql(n, datasource) for n in related if n.purpose in [Purpose.METRIC]]
-            dimensions = [render_concept_sql(n, datasource) for n in related if n.purpose in [Purpose.KEY, Purpose.PROPERTY]]
+            dimensions = [render_concept_sql(n, datasource) for n in related if
+                          n.purpose in [Purpose.KEY, Purpose.PROPERTY]]
             select_columns = metrics + dimensions
             group_by = [v.name for v in grain]
 
         else:
-            select_columns = [render_concept_sql(n, datasource) for n in related if n.purpose in [Purpose.KEY, Purpose.PROPERTY]]
+            select_columns = [render_concept_sql(n, datasource) for n in related if
+                              n.purpose in [Purpose.KEY, Purpose.PROPERTY]]
 
-        sub_command =  BQ_SQL_TEMPLATE.render(select_columns =select_columns, base = datasource.address.location, joins = [], group_by=group_by )
+        sub_command = BQ_SQL_TEMPLATE.render(select_columns=select_columns, base=datasource.address.location, joins=[],
+                                             group_by=group_by)
         output[datasource.identifier] = sub_command
     return output
 
 
-
-def graph_to_query(environment:Environment, g:nx.Graph,  statement:Select)->str:
+def graph_to_query(environment: Environment, g: nx.Graph, statement: Select) -> str:
     # select base table
     # populate joins
     # populate columns
     datasets = [v for key, v in environment.datasources.items() if datasource_to_node(v) in g.nodes()]
-    select_items:List[SelectItem] = statement.selection
+    select_items: List[SelectItem] = statement.selection
     output_items = statement.output_components
 
     select_columns = []
@@ -169,18 +192,20 @@ def graph_to_query(environment:Environment, g:nx.Graph,  statement:Select)->str:
     inputs = dataset_to_grain(g, datasets, statement.grain, statement.output_components)
     select_columns = [v.name for v in output_items]
 
-    #TODO: pick based upon which has the
+    # TODO: pick based upon which has the
     input_keys = list(inputs.keys())
     base = input_keys[0]
 
-    joins = [Join(identifier = k, joinkeys = [JoinKey(inner = f'{base}.{g.name}', outer = f'{k}.{g.name}') for g in grain]) for k in input_keys[1:]]
+    joins = [Join(identifier=k, joinkeys=[JoinKey(inner=f'{base}.{g.name}', outer=f'{k}.{g.name}') for g in grain]) for
+             k in input_keys[1:]]
 
-    return BQ_SQL_TEMPLATE.render(select_columns = select_columns, base = base, joins = joins, grain=grain,
-                                  ctes = [CTE(name=key, statement=value) for key, value in inputs.items()])
+    return BQ_SQL_TEMPLATE.render(select_columns=select_columns, base=base, joins=joins, grain=grain,
+                                  ctes=[CTE(name=key, statement=value) for key, value in inputs.items()])
+
 
 class BigqueryDialect(BaseDialect):
 
-    def compile_sql(self, environment:Environment, statements)->List[str]:
+    def compile_sql(self, environment: Environment, statements) -> List[str]:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
@@ -188,7 +213,7 @@ class BigqueryDialect(BaseDialect):
                 output.append(graph_to_query(environment, graph, statement))
         return output
 
-    def compile_statement(self, query:ProcessedQuery)->str:
+    def compile_statement(self, query: ProcessedQuery) -> str:
         select_columns = []
         output_concepts = []
         for cte in query.ctes:
@@ -196,13 +221,14 @@ class BigqueryDialect(BaseDialect):
                 if c not in output_concepts:
                     select_columns.append(f'{cte.name}.{c.name}')
                     output_concepts.append(c)
-        compiled_ctes = [CompiledCTE(name=cte.name, statement = BQ_SQL_TEMPLATE.render(select_columns = [render_concept_sql(c, cte ) for c in cte.output_columns],
-                                                                                       base = f'{cte.source.address.location} as {cte.source.identifier}',
-                                                                                       grain=cte.grain,
-                                                                                       group_by = [c.name for c in cte.grain] if cte.group_to_grain else None
-                                                                                       )) for cte in query.ctes]
+        compiled_ctes = [CompiledCTE(name=cte.name, statement=BQ_SQL_TEMPLATE.render(
+            select_columns=[render_concept_sql(c, cte) for c in cte.output_columns],
+            base=f'{cte.source.address.location} as {cte.source.identifier}',
+            grain=cte.grain,
+            group_by=[c.name for c in cte.grain] if cte.group_to_grain else None
+            )) for cte in query.ctes]
 
-        return BQ_SQL_TEMPLATE.render(select_columns = select_columns, base = query.base.name, joins = query.joins, grain=query.joins,
-                                      ctes = compiled_ctes, limit=query.limit,
-                                      order_by = query.order_by)
-
+        return BQ_SQL_TEMPLATE.render(select_columns=select_columns, base=query.base.name, joins=query.joins,
+                                      grain=query.joins,
+                                      ctes=compiled_ctes, limit=query.limit,
+                                      order_by=query.order_by)

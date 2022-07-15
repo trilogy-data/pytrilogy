@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union, Dict, Any
-from ttl.core.enums import DataType, Purpose, JoinType, Ordering
+from preql.core.enums import DataType, Purpose, JoinType, Ordering, Modifier, FunctionType
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Metadata:
     pass
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Concept:
     name:str
     datatype: DataType
@@ -18,16 +18,25 @@ class Concept:
     @property
     def sources(self)->List["Concept"]:
         if self.lineage:
-            return self.lineage.arguments
+            output = []
+            output += self.lineage.arguments
+            #recursively get further lineage
+            for item in self.lineage.arguments:
+                output += item.sources
+            return output
         return []
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class ColumnAssignment:
     alias:str
     concept:Concept
+    modifiers: Optional[List[Modifier]] = None
+
+    def is_complete(self):
+        return Modifier.PARTIAL not in self.modifiers
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Statement:
     pass
 
@@ -39,22 +48,22 @@ select
 ;
 
 '''
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Function:
-    operator: str
+    operator: FunctionType
     arguments:List[Concept]
     output_datatype:DataType
     output_purpose: Purpose
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class ConceptTransform:
     function:Function
     output:Concept
 
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class SelectItem:
     content:Union[Concept, ConceptTransform]
 
@@ -70,17 +79,17 @@ class SelectItem:
             return self.content.function.arguments
         return [self.content]
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class OrderItem:
     identifier:str
     order: Ordering
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class OrderBy:
     items: List[OrderItem]
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Select:
     selection:List[SelectItem]
     order_by:Optional[OrderBy] = None
@@ -120,11 +129,11 @@ class Select:
 '''
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Address:
     location:str
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class Grain:
     components:List[Concept]
 

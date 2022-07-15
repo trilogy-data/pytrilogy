@@ -31,3 +31,10 @@ class JoinType(Enum):
 class Ordering(Enum):
     ASCENDING = 'asc'
     DESCENDING = 'desc'
+
+
+class FunctionType(Enum):
+    COUNT = "count"
+    SUM = "sum"
+    AVG = "avg"
+    LENGTH = "len"

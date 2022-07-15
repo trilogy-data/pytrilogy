@@ -1,6 +1,6 @@
-from ttl.core.models import Concept, Environment, Select, ProcessedQuery
+from preql.core.models import Concept, Environment, Select, ProcessedQuery
 from typing import Dict, List, Any
-from ttl.core.processor import generate_graph, graph_to_query
+from preql.core.processor import generate_graph, graph_to_query
 
 
 class BaseDialect():

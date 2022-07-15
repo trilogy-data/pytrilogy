@@ -1,5 +1,4 @@
-from ttl.core.models import Concept, Select, Environment
-
+from preql.core.models import Concept, Select, Environment
 
 
 def test_select_output():
