@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional, Union, Dict, Any
-from preql.core.enums import DataType, Purpose, JoinType, Ordering, Modifier, FunctionType
+from preql.core.enums import DataType, Purpose, JoinType, Ordering, Modifier, FunctionType, Boolean, ComparisonOperator
 
 
 @dataclass(eq=True, frozen=True)
@@ -25,6 +25,10 @@ class Concept:
                 output += item.sources
             return output
         return []
+
+    @property
+    def input(self):
+        return [self,]+ self.sources
 
 @dataclass(eq=True, frozen=True)
 class ColumnAssignment:
@@ -92,6 +96,7 @@ class OrderBy:
 @dataclass(eq=True, frozen=True)
 class Select:
     selection:List[SelectItem]
+    where_clause: Optional["WhereClause"] = None
     order_by:Optional[OrderBy] = None
     limit: Optional [int] = None
 
@@ -105,6 +110,13 @@ class Select:
                     continue
                 output.add(concept.name)
                 output_list.append(concept)
+        if self.where_clause:
+            for concept in self.where_clause.input:
+                if concept.name in output:
+                    continue
+                output.add(concept.name)
+                output_list.append(concept)
+
         return output_list
 
     @property
@@ -113,6 +125,10 @@ class Select:
         for item in self.selection:
             output.append(item.output)
         return output
+
+    @property
+    def all_components(self)->List[Concept]:
+        return self.input_components + self.output_components
 
     @property
     def grain(self)->List[Concept]:
@@ -198,23 +214,58 @@ class Environment:
     concepts:Dict[str, Concept]
     datasources: Dict[str, Datasource]
 
+@dataclass
+class Expr:
+    pass
+
+@dataclass
+class Comparison:
+    left: Union[Concept, Expr, "Conditional"]
+    right: Union[Concept, Expr, "Conditional"]
+    operator: ComparisonOperator
+
+    @property
+    def input(self)->List[Concept]:
+        output = []
+        if isinstance(self.left, (Concept, Expr, Conditional)):
+            output += self.left.input
+        if isinstance(self.right, (Concept, Expr, Conditional)):
+            output += self.right.input
+        return output
+
+@dataclass
+class Conditional:
+    left: Union[Concept, Expr, "Conditional"]
+    right: Union[Concept, Expr, "Conditional"]
+    operator: Boolean
+
+    @property
+    def input(self)->List[Concept]:
+        return self.left.input + self.right.input
+
+
+@dataclass
+class WhereClause:
+    conditional:Conditional
+
+    @property
+    def input(self)->List[Concept]:
+        return self.conditional.input
+
 #TODO: combine with CTEs
 # CTE contains procesed query?
 # or CTE references CTE?
 @dataclass
 class ProcessedQuery:
+    output_columns:List[Concept]
     ctes:List[CTE]
     joins: List[Join]
     grain: List[Concept]
     limit:Optional[int] = None
+    where_clause: Optional[WhereClause] = None
     order_by: Optional[OrderBy] = None
     # base:Dataset
-    @property
-    def output_columns(self)->List[Concept]:
-        output = []
-        for cte in self.ctes:
-            output+= cte.output_columns
-        return output
+
 
     @property
     def base(self):

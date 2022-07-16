@@ -19,6 +19,9 @@ class DataType(Enum):
     LIST = "list"
     NUMBER = "number"
     INTEGER = "int"
+    DATE = "date"
+    DATETIME = "datetime"
+    TIMESTAMP = "timestamp"
 
 class JoinType(Enum):
     INNER = "inner"
@@ -38,3 +41,19 @@ class FunctionType(Enum):
     SUM = "sum"
     AVG = "avg"
     LENGTH = "len"
+
+class Boolean(Enum):
+    AND = "and"
+    OR = "or"
+
+class ComparisonOperator(Enum):
+    LT = "<"
+    GT = ">"
+    EQ = "="
+    GTE = ">="
+    LTE = "<="
+    NE = "!="
+
+class LogicalOperator(Enum):
+    AND = "and"
+    OR = "or"

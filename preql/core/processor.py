@@ -1,9 +1,11 @@
-from preql.core.models import Concept, Environment, Select, Datasource, SelectItem, ConceptTransform, CTE, Join, JoinKey, \
-    ProcessedQuery
-from preql.core.enums import Purpose, JoinType
-from typing import Dict, List, Optional
+from typing import List
+
 import networkx as nx
-from jinja2 import Template
+
+from preql.core.enums import Purpose, JoinType
+from preql.core.models import Concept, Environment, Select, Datasource, CTE, Join, \
+    JoinKey, \
+    ProcessedQuery
 
 
 def concept_to_node(input: Concept) -> str:
@@ -14,7 +16,7 @@ def datasource_to_node(input: Datasource) -> str:
     return f'ds~{input.identifier}'
 
 
-def add_concept_node(g, concept:Concept):
+def add_concept_node(g, concept: Concept):
     g.add_node(concept_to_node(concept), type=concept.purpose.value, concept=concept)
 
 
@@ -49,7 +51,7 @@ def select_base(datasets: List[Datasource]) -> Datasource:
 
 
 def get_relevant_dataset_concepts(g, datasource: Datasource, grain: List[Concept], output_concepts: List[Concept]) -> \
-List[Concept]:
+        List[Concept]:
     relevant = []
     # TODO: handle joins to get to appropriate grain
     relevant += grain
@@ -75,24 +77,23 @@ def render_concept_sql(c: Concept, datasource: Datasource, alias: bool = True) -
     return rval
 
 
-def dataset_to_grain(g: nx.Graph, datasources: List[Datasource], grain: List[Concept],
+def dataset_to_grain(g: nx.Graph, datasources: List[Datasource], grain: List[Concept], all_concepts:List[Concept],
                      output_concepts: List[Concept]) -> List[CTE]:
     ''' for each subgraph that needs to get the target grain
     create a subquery'''
     output = []
     found = []
     for datasource in datasources:
-        related = get_relevant_dataset_concepts(g, datasource, grain, output_concepts)
+        related = get_relevant_dataset_concepts(g, datasource, grain, all_concepts)
         found += related
         new = CTE(source=datasource, output_columns=related, name=datasource.identifier, grain=grain,
                   # TODO: support CTEs with different grain/aggregation
                   base=datasource.grain.components == grain,
-                  group_to_grain = datasource.grain.components != grain)
+                  group_to_grain=datasource.grain.components != grain)
         output.append(new)
     found_set = set([c.name for c in found])
-    all_set = set([c.name for c in output_concepts])
+    all_set = set([c.name for c in all_concepts])
     if not found_set == all_set:
-
         raise ValueError(f'Not all concepts could be queried: missing {all_set.difference(found_set)}')
     return output
 
@@ -104,8 +105,11 @@ def graph_to_query(environment: Environment, g: nx.Graph, statement: Select) -> 
     datasets = [v for key, v in environment.datasources.items() if datasource_to_node(v) in g.nodes()]
     output_items = statement.output_components
     grain = [v for v in output_items if v.purpose == Purpose.KEY]
-    inputs = dataset_to_grain(g, datasets, statement.grain, statement.output_components)
+    inputs = dataset_to_grain(g, datasets, statement.grain, statement.all_components, statement.output_components)
 
+    possible_bases = [d for d in inputs if d.base == True]
+    if not possible_bases:
+        raise ValueError(f'No valid base source found for desired grain {statement.grain}')
     base = [d for d in inputs if d.base == True][0]
     other = [d for d in inputs if d != base]
 
@@ -115,4 +119,5 @@ def graph_to_query(environment: Environment, g: nx.Graph, statement: Select) -> 
 
              ]
 
-    return ProcessedQuery(ctes=inputs, joins=joins, grain=statement.grain, limit=statement.limit, order_by = statement.order_by)
+    return ProcessedQuery(output_columns=statement.output_components,ctes=inputs, joins=joins, grain=statement.grain, where_clause=statement.where_clause,
+                          limit=statement.limit, order_by=statement.order_by)

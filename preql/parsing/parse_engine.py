@@ -1,8 +1,8 @@
 from lark import Lark, Transformer, v_args
 from lark.tree import Meta
 from typing import Dict, Tuple, List, Optional
-from preql.core.models import Comment, Datasource, Concept, ColumnAssignment, Select, Address, Grain, SelectItem, ConceptTransform, Function, OrderItem, Environment, Limit, OrderBy
-from preql.core.enums import Purpose, DataType, Modifier, Ordering, FunctionType
+from preql.core.models import WhereClause, Comparison, Conditional, Comment, Datasource, Concept, ColumnAssignment, Select, Address, Grain, SelectItem, ConceptTransform, Function, OrderItem, Environment, Limit, OrderBy
+from preql.core.enums import Purpose, DataType, Modifier, Ordering, FunctionType, Boolean, ComparisonOperator, LogicalOperator
 from preql.parsing.exceptions import ParseError
 
 
@@ -11,6 +11,7 @@ grammar = r"""
     ?statement: concept
     | datasource
     | select
+    | import_statement
     
     comment :   /#.*(\n|$)/ |  /\/\/.*\n/  
     
@@ -35,9 +36,10 @@ grammar = r"""
     
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
     
+    import_statement : "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
     
     // select statement
-    select : "select"i select_list comment* order_by? comment* limit? comment*
+    select : "select"i select_list comment* where? order_by? comment* limit? comment*
     
     select_item : (IDENTIFIER | select_transform | comment )
     
@@ -56,7 +58,21 @@ grammar = r"""
     
     order_by: "ORDER"i "BY"i order_list
     
-    expr: count | avg | sum | len | IDENTIFIER
+    //WHERE STATEMENT
+    
+    LOGICAL_OPERATOR: "AND"i | "OR"i
+    
+    conditional: expr LOGICAL_OPERATOR (conditional | expr)
+    
+    where: "WHERE" conditional+ 
+    
+    expr_reference: IDENTIFIER
+    
+    expr: count | avg | sum | len | comparison | literal | expr_reference
+    
+    
+    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
+    comparison: expr COMPARISON_OPERATOR expr
     
     // functions
     
@@ -70,11 +86,17 @@ grammar = r"""
     
     STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except '"" 
     
-    _string_lit: "\"" ( STRING_CHARS )* "\""
+    _string_lit: "\"" ( STRING_CHARS )* "\"" 
+    
+    _int_lit: /[0-9]+/
+    
+    _float_lit: /[0-9]+\.[0-9]+/
+    
+    literal: _string_lit | _int_lit | _float_lit
 
     MODIFIER: "Optional"i | "Partial"i
     
-    TYPE : "string" | "number" | "bool" | "map" | "list" | "any" | "int" 
+    TYPE : "string" | "number" | "bool" | "map" | "list" | "any" | "int" | "date" | "datetime" | "timestamp"
     
     PURPOSE: "property" | "key" | "metric"
 
@@ -104,6 +126,12 @@ class ParseToObjects(Transformer):
 
     def TYPE(self, args)->DataType:
         return DataType(args)
+
+    def COMPARISON_OPERATOR(self, args) -> ComparisonOperator:
+        return ComparisonOperator(args)
+
+    def LOGICAL_OPERATOR(self, args) -> LogicalOperator:
+        return LogicalOperator(args.lower())
 
     def concept_assignment(self, args):
         return args
@@ -243,6 +271,25 @@ class ParseToObjects(Transformer):
     def order_by(self, args):
         return OrderBy(items=args[0])
 
+    def import_statement(self, args):
+        alias = args[-1]
+        path = args[0].split('.')
+        from os.path import join, dirname
+        from os import getcwd
+        target = join(getcwd(), *path) +'.preql'
+        with open(target, 'r', encoding='utf-8') as f:
+            text = f.read()
+            nparser = ParseToObjects(visit_tokens=True, text=text, environment=Environment({}, {}))
+            nparser.transform(
+                PARSER.parse(text)
+            )
+
+            for key, concept in nparser.environment.concepts.items():
+                self.environment.concepts[f'{alias}.{key}'] = concept
+            for key, datasource in nparser.environment.datasources.items():
+                self.environment.datasources[f'{alias}.{key}'] = datasource
+        return None
+
 
     @v_args(meta=True)
     def select(self, meta: Meta, args):
@@ -250,6 +297,7 @@ class ParseToObjects(Transformer):
         select_items = None
         limit =None
         order_by = None
+        where = None
         for arg in args:
             if isinstance(arg, List):
                 select_items = arg
@@ -257,14 +305,33 @@ class ParseToObjects(Transformer):
                 limit = arg.value
             elif isinstance(arg, OrderBy):
                 order_by = arg
-        return Select(selection = select_items, limit=limit, order_by = order_by)
+            elif isinstance(arg, WhereClause):
+                where = arg
+        return Select(selection = select_items, where_clause=where, limit=limit, order_by = order_by)
 
     @v_args(meta=True)
     def address(self, meta:Meta, args):
         return Address(location=args[0])
 
+    def where(self, args):
+        return WhereClause(conditional=args[0])
+
+    def literal(self, args):
+        return args[0]
+
+    def comparison(self, args):
+        return Comparison(args[0], args[2], args[1])
+
+    def conditional(self, args):
+        return Conditional(args[0], args[2], args[1])
+
+
 
     #BEGIN FUNCTIONS
+    def expr_reference(self, args)->Concept:
+        return self.environment.concepts[args[0]]
+
+
     def expr(self, args):
         if len(args)>1:
             raise ParseError('Expression should have one child only.')
