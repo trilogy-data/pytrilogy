@@ -18,10 +18,12 @@ class DataType(Enum):
     MAP = "map"
     LIST = "list"
     NUMBER = "number"
+    FLOAT = "float"
     INTEGER = "int"
     DATE = "date"
     DATETIME = "datetime"
     TIMESTAMP = "timestamp"
+    ARRAY = "array"
 
 class JoinType(Enum):
     INNER = "inner"
@@ -41,8 +43,14 @@ class FunctionType(Enum):
     SUM = "sum"
     AVG = "avg"
     LENGTH = "len"
+    LIKE = "like"
+    NOT_LIKE = "not_like"
 
 class Boolean(Enum):
+    TRUE = "true"
+    FALSE = "false"
+
+class BooleanOperator(Enum):
     AND = "and"
     OR = "or"
 

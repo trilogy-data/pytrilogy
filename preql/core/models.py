@@ -1,7 +1,7 @@
-from dataclasses import dataclass
-from typing import List, Optional, Union, Dict, Any
-from preql.core.enums import DataType, Purpose, JoinType, Ordering, Modifier, FunctionType, Boolean, ComparisonOperator
-
+from dataclasses import dataclass, field
+from typing import List, Optional, Union, Dict, Any, Set
+from preql.core.enums import DataType, Purpose, JoinType, Ordering, Modifier, FunctionType, BooleanOperator, ComparisonOperator
+import os
 
 @dataclass(eq=True, frozen=True)
 class Metadata:
@@ -14,6 +14,8 @@ class Concept:
     purpose:Purpose
     metadata: Optional[Metadata] = None
     lineage: Optional["Function"] = None
+    grain: Optional[List["Concept"]] = None
+    namespace: Optional[str] = 'default'
 
     @property
     def sources(self)->List["Concept"]:
@@ -58,6 +60,7 @@ class Function:
     arguments:List[Concept]
     output_datatype:DataType
     output_purpose: Purpose
+    valid_inputs:Optional[Set[DataType]] = None
 
 
 @dataclass(eq=True, frozen=True)
@@ -65,7 +68,9 @@ class ConceptTransform:
     function:Function
     output:Concept
 
-
+    @property
+    def input(self)->List[Concept]:
+        return self.function.arguments
 
 @dataclass(eq=True, frozen=True)
 class SelectItem:
@@ -79,13 +84,11 @@ class SelectItem:
 
     @property
     def input(self)->List[Concept]:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.function.arguments
-        return [self.content]
+        return self.content.input
 
 @dataclass(eq=True, frozen=True)
 class OrderItem:
-    identifier:str
+    expr:"Expr"
     order: Ordering
 
 @dataclass(eq=True, frozen=True)
@@ -128,11 +131,17 @@ class Select:
 
     @property
     def all_components(self)->List[Concept]:
-        return self.input_components + self.output_components
+        return self.input_components + self.output_components + self.grain.components
 
     @property
-    def grain(self)->List[Concept]:
-        return [item for item in self.output_components if item.purpose == Purpose.KEY]
+    def grain(self)->"Grain":
+        output = []
+        for item in self.output_components:
+            if item.purpose == Purpose.KEY:
+                output.append(item)
+            elif item.purpose == Purpose.PROPERTY:
+                output+=item.grain
+        return Grain(components=list(set(output)))
 
 
 '''datasource posts (
@@ -149,11 +158,15 @@ class Select:
 class Address:
     location:str
 
-@dataclass(eq=True, frozen=True)
+@dataclass(frozen=True)
 class Grain:
     components:List[Concept]
 
+    def __repr__(self):
+        return 'Grain<'+','.join([c.name for c in self.components])+'>'
 
+    def __eq__(self, other):
+        return set([c.name for c in self.components]) == set([c.name for c in other.components])
 
 @dataclass
 class Datasource:
@@ -186,10 +199,15 @@ class Comment:
 class CTE:
     name:str
     source:Union[Datasource, "CTE"]
+    # output columns are what are selected/grouped by
     output_columns: List[Concept]
-    grain: List[Concept]
+    # related columns include all referenced columns, such as filtering
+    related_columns:List[Concept]
+    grain: Grain
     base:bool = False
     group_to_grain:bool = False
+
+
 
 @dataclass
 class CompiledCTE:
@@ -198,8 +216,8 @@ class CompiledCTE:
 
 @dataclass
 class JoinKey:
-    inner:str
-    outer:str
+    inner:Concept
+    outer:Concept
 
 @dataclass
 class Join:
@@ -213,6 +231,8 @@ class Join:
 class Environment:
     concepts:Dict[str, Concept]
     datasources: Dict[str, Datasource]
+    namespace:Optional[str] = None
+    working_path:str = field(default_factory= lambda: os.getcwd())
 
 @dataclass
 class Expr:
@@ -237,7 +257,7 @@ class Comparison:
 class Conditional:
     left: Union[Concept, Expr, "Conditional"]
     right: Union[Concept, Expr, "Conditional"]
-    operator: Boolean
+    operator: BooleanOperator
 
     @property
     def input(self)->List[Concept]:
@@ -252,6 +272,16 @@ class WhereClause:
     def input(self)->List[Concept]:
         return self.conditional.input
 
+    @property
+    def grain(self)->Grain:
+        output = []
+        for item in self.input:
+            if item.purpose == Purpose.KEY:
+                output.append(item)
+            elif item.purpose == Purpose.PROPERTY:
+                output+=item.grain
+        return Grain(list(set(output)))
+
 #TODO: combine with CTEs
 # CTE contains procesed query?
 # or CTE references CTE?
@@ -260,7 +290,7 @@ class ProcessedQuery:
     output_columns:List[Concept]
     ctes:List[CTE]
     joins: List[Join]
-    grain: List[Concept]
+    grain: Grain
     limit:Optional[int] = None
     where_clause: Optional[WhereClause] = None
     order_by: Optional[OrderBy] = None
@@ -269,6 +299,8 @@ class ProcessedQuery:
 
     @property
     def base(self):
+        if not self.grain.components:
+            return self.ctes[0]
         return [c for c in self.ctes if c.base == True][0]
 
 @dataclass

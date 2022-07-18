@@ -8,7 +8,7 @@ class BaseDialect():
         output = []
         for statement in statements:
             if isinstance(statement, Select):
-                graph = generate_graph(environment, statement.input_components, statement.output_components)
+                graph = generate_graph(environment, statement)
                 output.append(graph_to_query(environment, graph, statement))
         return output
 
