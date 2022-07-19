@@ -66,3 +66,17 @@ SELECT
     total_sales
 order by territory_name desc
 ```
+
+
+## What's wrong with existing semantic tooling?
+
+Existing semantic models - such as SSAS/OLAP, looker, and data catalogs - fall into the trap of tightly coupling
+conceptual declarations [profit = revenue-cost] to the _instantiated_ instances of those in a specific
+model or database. This inevitably leads to redeclaration and duplication and large migration costs.
+
+By declaring those in a loosely coupled format, you avoid much of the ongoing maitenance cost these tools 
+can incur. It's much more compelling to define a concept "once" and then have that definition follow each
+defined table/datasource that implements it. 
+
+That said, a preql model could easily be compiled into a format that could be ingested by these tools,
+enablin users to still get full value (in an easier to mantain way) and supporting incremental adoption. 

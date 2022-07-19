@@ -257,7 +257,8 @@ class ParseToObjects(Transformer):
             elif isinstance(val, Grain):
                 grain = val
         datasource = Datasource(identifier=name, columns=columns,
-                                grain=grain, address=address)
+                                grain=grain, address=address,
+                                namespace = self.environment.namespace)
         self.environment.datasources[datasource.identifier] = datasource
         return datasource
 

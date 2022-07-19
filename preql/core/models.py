@@ -165,8 +165,20 @@ class Grain:
     def __repr__(self):
         return 'Grain<'+','.join([c.name for c in self.components])+'>'
 
-    def __eq__(self, other):
-        return set([c.name for c in self.components]) == set([c.name for c in other.components])
+    @property
+    def set(self):
+        return set([c.name for c in self.components])
+
+    def __eq__(self, other:"Grain"):
+        return self.set == other.set
+
+    def issubset(self, other:"Grain"):
+        return self.set.issubset(other.set)
+
+    def intersection(self, other:"Grain")->"Grain":
+        intersection = self.set.intersection(other.set)
+        components = [i for i in self.components if i.name in intersection]
+        return Grain(components=components)
 
 @dataclass
 class Datasource:
@@ -174,11 +186,14 @@ class Datasource:
     columns: List[ColumnAssignment]
     address: Address
     grain: Optional[Grain] = None
+    namespace: Optional[str]= ""
 
     def __post_init__(self):
         # if a user skips defining a grain, use the defined keys
         if not self.grain:
             self.grain = Grain([v for v in self.concepts if v.purpose == Purpose.KEY])
+
+
     @property
     def concepts(self)->List[Concept]:
         return [c.concept for c in self.columns]
@@ -187,7 +202,8 @@ class Datasource:
         for x in self.columns:
             if x.concept == concept:
                 return x.alias
-        raise ValueError(f'Concept {concept.name} not found on {self.identifier}.')
+        existing = [c.concept.name for c in self.columns]
+        raise ValueError(f'Concept {concept.name} not found on {self.identifier}; have {existing}.')
 
 
 @dataclass
