@@ -1,0 +1,34 @@
+
+
+
+key order_key int;
+key ship_key int;
+key due_key int;
+property order_key.order_date date;
+property ship_key.ship_date date;
+property due_key.due_date date;
+
+datasource order_dates (
+    DateKey: order_key,
+    FullDateAlternateKey: order_date,
+    )
+    grain (order_key)
+    address AdventureWorksDW2019.dbo.DimDate
+;
+
+
+datasource ship_dates (
+    DateKey: ship_key,
+    FullDateAlternateKey: ship_date,
+    )
+    grain (ship_key)
+    address AdventureWorksDW2019.dbo.DimDate
+;
+
+datasource due_dates (
+    DateKey: due_key,
+    FullDateAlternateKey: due_date,
+    )
+    grain (due_key)
+    address AdventureWorksDW2019.dbo.DimDate
+;

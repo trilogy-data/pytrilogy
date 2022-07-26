@@ -1,0 +1,14 @@
+
+
+
+key key int;
+property key.region string;
+
+datasource sales_territories (
+    SalesTerritoryKey:key,
+    SalesTerritoryRegion:region
+    )
+
+    address AdventureWorksDW2019.dbo.DimSalesTerritory
+;
+

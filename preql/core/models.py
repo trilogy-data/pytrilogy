@@ -14,8 +14,24 @@ class Concept:
     purpose:Purpose
     metadata: Optional[Metadata] = None
     lineage: Optional["Function"] = None
-    grain: Optional[List["Concept"]] = None
+    _grain: Optional["Grain"] = None
     namespace: Optional[str] = 'default'
+
+    def with_grain(self, grain:"Grain")->"Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose, metadata=self.metadata,
+            lineage=self.lineage,
+            _grain = grain,
+            namespace=self.namespace
+        )
+
+    @property
+    def grain(self):
+        if self.purpose == Purpose.KEY:
+            return Grain(components=[self])
+        return self._grain
 
     @property
     def sources(self)->List["Concept"]:
@@ -46,24 +62,17 @@ class ColumnAssignment:
 class Statement:
     pass
 
-'''
-select
-    user_id,
-    about_me,
-    count(post_id)->post_count
-;
-
-'''
 @dataclass(eq=True, frozen=True)
 class Function:
     operator: FunctionType
     arguments:List[Concept]
     output_datatype:DataType
     output_purpose: Purpose
+    output_grain: "Grain"
     valid_inputs:Optional[Set[DataType]] = None
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True,)
 class ConceptTransform:
     function:Function
     output:Concept
@@ -140,7 +149,7 @@ class Select:
             if item.purpose == Purpose.KEY:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY:
-                output+=item.grain
+                output+=item.grain.components
         return Grain(components=list(set(output)))
 
 
@@ -170,14 +179,26 @@ class Grain:
         return set([c.name for c in self.components])
 
     def __eq__(self, other:"Grain"):
+        if not other:
+            return False
         return self.set == other.set
 
     def issubset(self, other:"Grain"):
         return self.set.issubset(other.set)
-
+    def isdisjoint(self, other:"Grain"):
+        return self.set.isdisjoint(other.set)
     def intersection(self, other:"Grain")->"Grain":
         intersection = self.set.intersection(other.set)
         components = [i for i in self.components if i.name in intersection]
+        return Grain(components=components)
+
+    def __add__(self, other:"Grain"):
+        components = []
+        for clist in [self.components, other.components]:
+            for component in clist:
+                if component in components:
+                    continue
+                components.append(component)
         return Grain(components=components)
 
 @dataclass

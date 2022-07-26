@@ -9,11 +9,13 @@ from preql.core.models import WhereClause, Comparison, Conditional, Comment, Dat
 from preql.parsing.exceptions import ParseError
 
 grammar = r"""
-    !start: ((statement ";") | comment )*
+    !start: ((statement _TERMINATOR) | comment )*
     ?statement: concept
     | datasource
     | select
     | import_statement
+    
+    _TERMINATOR :  ";"i /\s*/
     
     comment :   /#.*(\n|$)/ |  /\/\/.*\n/  
     
@@ -43,9 +45,9 @@ grammar = r"""
     import_statement : "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
     
     // select statement
-    select : "select"i select_list comment* where? order_by? comment* limit? comment*
+    select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
-    select_item : (IDENTIFIER | select_transform | comment )
+    select_item : (IDENTIFIER | select_transform | comment+ )
     
     select_list :  ( select_item "," )* select_item ","?
     
@@ -160,6 +162,9 @@ class ParseToObjects(Transformer):
                                 modifiers=modifiers,
                                 concept=self.environment.concepts[concept[0]])
 
+    def _TERMINATOR(self, args):
+        return None
+
     def MODIFIER(self, args) -> Modifier:
         return Modifier(args.value)
 
@@ -184,7 +189,7 @@ class ParseToObjects(Transformer):
                           datatype=args[2],
                           purpose=args[0],
                           metadata=metadata,
-                          grain=[self.environment.concepts[grain]],
+                          _grain=Grain(components=[self.environment.concepts[grain]]),
                           namespace = self.environment.namespace
                           )
         self.environment.concepts[name] = concept
@@ -226,6 +231,7 @@ class ParseToObjects(Transformer):
                           purpose=args[0],
                           metadata=metadata,
                           lineage=function,
+                          _grain = function.output_grain,
                           namespace = self.environment.namespace
                           )
         self.environment.concepts[name] = concept
@@ -279,14 +285,16 @@ class ParseToObjects(Transformer):
                           purpose=function.output_purpose,
                           lineage=function,
                           namespace = self.environment.namespace)
+        # We don't assign it here because we'll do this later when we know the grain
         self.environment.concepts[output] = concept
         return ConceptTransform(function=function, output=concept)
 
     @v_args(meta=True)
     def select_item(self, meta: Meta, args) -> SelectItem:
         # basic select
+        args = [arg for arg in args if not isinstance(arg, Comment)]
         if len(args) != 1:
-            raise ParseError(f"Malformed select statement {args}")
+            raise ParseError(f"Malformed select statement {args} {self.text[meta.start_pos:meta.end_pos]}")
         content = args[0]
         if isinstance(args[0], ConceptTransform):
             return SelectItem(content=content)
@@ -343,7 +351,16 @@ class ParseToObjects(Transformer):
                 order_by = arg
             elif isinstance(arg, WhereClause):
                 where = arg
-        return Select(selection=select_items, where_clause=where, limit=limit, order_by=order_by)
+        output = Select(selection=select_items, where_clause=where, limit=limit, order_by=order_by)
+        for item in select_items:
+            # we don't know the grain of an aggregate at assignment time
+            # so rebuild at this point in the tree
+            # TODO: simplify
+            if isinstance(item.content, ConceptTransform):
+                new_concept = item.content.output.with_grain(output.grain)
+                item.content.output = new_concept
+                self.environment.concepts[item.content.output.name] = new_concept
+        return output
 
     @v_args(meta=True)
     def address(self, meta: Meta, args):
@@ -375,38 +392,38 @@ class ParseToObjects(Transformer):
     arguments:List[Concept]
     output:Concept'''
         return Function(operator=FunctionType.COUNT, arguments=args, output_datatype=DataType.INTEGER,
-                        output_purpose=Purpose.METRIC)
+                        output_purpose=Purpose.METRIC, output_grain=Grain(components=args))
 
     def sum(self, arguments):
         if not len(arguments) == 1:
             raise ParseError("Too many arguments to sum")
         return Function(operator=FunctionType.SUM, arguments=arguments, output_datatype=arguments[0].datatype,
-                        output_purpose=Purpose.METRIC)
+                        output_purpose=Purpose.METRIC, output_grain=Grain(components=arguments))
 
     def avg(self, arguments):
         if not len(arguments) == 1:
             raise ParseError("Too many arguments to avg")
         return Function(operator=FunctionType.AVG, arguments=arguments, output_datatype=arguments[0].datatype,
-                        output_purpose=Purpose.METRIC)
+                        output_purpose=Purpose.METRIC, output_grain=Grain(components=arguments))
 
     def len(self, args):
         if not len(args) == 1:
             raise ParseError("Too many arguments to len")
         return Function(operator=FunctionType.LENGTH, arguments=args, output_datatype=args[0].datatype,
-                        output_purpose=Purpose.METRIC, valid_inputs={DataType.STRING, DataType.ARRAY})
+                        output_purpose=Purpose.METRIC, valid_inputs={DataType.STRING, DataType.ARRAY}, output_grain=args[0].grain)
 
     def like(self, args):
         if not len(args) == 2:
             raise ParseError("The Like function expects two arguments")
         return Function(operator=FunctionType.LIKE, arguments=args, output_datatype=DataType.BOOL,
-                        output_purpose=Purpose.PROPERTY, valid_inputs={DataType.STRING})
+                        output_purpose=Purpose.PROPERTY, valid_inputs={DataType.STRING}, output_grain=Grain(components=args))
 
 
 def parse_text(text: str, environment: Optional[Environment] = None, print_flag: bool = False) -> Tuple[
     Environment, List]:
     environment = environment or Environment(concepts={}, datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
-    output = parser.transform(
+    output = [v for v in parser.transform(
         PARSER.parse(text)
-    )
+    ) if v]
     return environment, output

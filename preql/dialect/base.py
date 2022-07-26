@@ -1,15 +1,16 @@
 from preql.core.models import Concept, Environment, Select, ProcessedQuery
 from typing import Dict, List, Any
 from preql.core.processor import generate_graph, graph_to_query
-
+from preql.core.processor_backup import process_query
 
 class BaseDialect():
     def generate_queries(self, environment:Environment, statements)->List[ProcessedQuery]:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
-                graph = generate_graph(environment, statement)
-                output.append(graph_to_query(environment, graph, statement))
+                output.append(process_query(environment,statement))
+                # graph = generate_graph(environment, statement)
+                # output.append(graph_to_query(environment, graph, statement))
         return output
 
 

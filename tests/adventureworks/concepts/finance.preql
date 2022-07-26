@@ -1,0 +1,14 @@
+import organization as organization;
+
+key key int;
+property key.amount int;
+metric total_amount <-sum(amount);
+
+datasource fact_finance (
+    financeKey:key,
+    organizationKey: organization.key,
+    amount:amount
+    )
+    grain (key)
+    address AdventureWorksDW2019.dbo.factFinance
+;

@@ -111,7 +111,7 @@ def dataset_to_grain(g: ReferenceGraph, datasources: List[Datasource], grain: Gr
                   # TODO: support CTEs with different grain/aggregation
                   base=Grain(components=grain_additions) == grain,
                   group_to_grain=(
-                      (not (datasource.grain.issubset(grain) or datasource.grain == grain)) or any([c.purpose == Purpose.METRIC for c in output_columns])))
+                          (not (datasource.grain.issubset(grain) or datasource.grain == grain)) or any([c.purpose == Purpose.METRIC for c in output_columns])))
         output.append(new)
     found_set = set([c.name for c in found])
     all_set = set([c.name for c in all_concepts])
@@ -137,9 +137,9 @@ def graph_to_query(environment: Environment, g: ReferenceGraph, statement: Selec
     for cte in other:
         joins.append( Join(left_cte=base, right_cte=cte, joinkeys=
         [JoinKey(inner=g, outer=g) for g in cte.grain.intersection(grain).components],
-                            jointype=JoinType.INNER)
+                           jointype=JoinType.INNER)
 
-                       )
+                      )
 
 
 

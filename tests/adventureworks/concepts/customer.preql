@@ -1,0 +1,23 @@
+
+
+
+key customer_id int;
+property customer_id.first_name string;
+property customer_id.last_name string;
+property customer_id.birth_date date;
+property customer_id.gender string;
+property customer_id.phone string;
+property customer_id.email_address string;
+
+datasource customers (
+    CustomerKey: customer_id,
+    FirstName: first_name,
+    LastName: last_name,
+    BirthDate: birth_date,
+    Gender: gender,
+    EmailAddress: email_address
+    )
+    grain (customer_id)
+    address AdventureWorksDW2019.dbo.DimCustomer
+;
+
