@@ -1,16 +1,20 @@
 from enum import Enum
 
+
 class StatementType(Enum):
     QUERY = "query"
+
 
 class Purpose(Enum):
     KEY = "key"
     PROPERTY = "property"
     METRIC = "metric"
 
+
 class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"
+
 
 class DataType(Enum):
     STRING = "string"
@@ -25,17 +29,18 @@ class DataType(Enum):
     TIMESTAMP = "timestamp"
     ARRAY = "array"
 
+
 class JoinType(Enum):
     INNER = "inner"
     OUTER = "outer"
     FULL = "full"
-    LEFT= "left"
+    LEFT = "left"
     RIGHT = "right"
 
 
 class Ordering(Enum):
-    ASCENDING = 'asc'
-    DESCENDING = 'desc'
+    ASCENDING = "asc"
+    DESCENDING = "desc"
 
 
 class FunctionType(Enum):
@@ -46,13 +51,16 @@ class FunctionType(Enum):
     LIKE = "like"
     NOT_LIKE = "not_like"
 
+
 class Boolean(Enum):
     TRUE = "true"
     FALSE = "false"
 
+
 class BooleanOperator(Enum):
     AND = "and"
     OR = "or"
+
 
 class ComparisonOperator(Enum):
     LT = "<"
@@ -61,6 +69,7 @@ class ComparisonOperator(Enum):
     GTE = ">="
     LTE = "<="
     NE = "!="
+
 
 class LogicalOperator(Enum):
     AND = "and"

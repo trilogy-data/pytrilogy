@@ -1,11 +1,7 @@
-
-from preql.parser import parse
 # from preql.compiler import compile
-from os.path import dirname, join
-from preql.parsing.exceptions import ParseError
-from preql.core.models import Select, Grain
-
-
+from preql.core.models import Select, Grain, Environment
+from preql.parser import parse
+from os.path import dirname
 
 QUERY = '''import concepts.core as core;
 
@@ -38,11 +34,8 @@ order by
  limit 10;'''
 
 
-
 def test_select():
-
-    env, parsed = parse(QUERY)
-    select:Select = parsed[-1]
-
+    env, parsed = parse(QUERY, environment=Environment({}, {}, working_path=dirname(__file__)))
+    select: Select = parsed[-1]
 
     assert select.grain == Grain(components=[env.concepts['core.badge_id']])

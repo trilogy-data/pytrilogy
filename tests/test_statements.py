@@ -6,20 +6,20 @@ from preql.parsing.exceptions import ParseError
 
 
 def test_declarations():
-    declarations = '''concept user_id int:key metadata(description="the description");
-concept display_name string:property metadata(description="The display name ");
-concept about_me string:property metadata(description="User provided description");
-concept post_id int:key;
+    declarations = '''key user_id int metadata(description="the description");
+property user_id.display_name string metadata(description="The display name ");
+property user_id.about_me string metadata(description="User provided description");
+key post_id int;
     '''
     parsed = parse(declarations)
 
 
 def test_duplicate_declarations():
-    declarations = '''concept user_id int:key metadata(description="the description");
-concept display_name string:property metadata(description="The display name ");
-concept about_me string:property metadata(description="User provided description");
-concept post_id int:key;
-concept post_id int:key;
+    declarations = '''key user_id int metadata(description="the description");
+property user_id.display_name string metadata(description="The display name ");
+property user_id.about_me string metadata(description="User provided description");
+key post_id int;
+key post_id int;
     '''
     try:
         parsed = parse(declarations)
@@ -28,17 +28,17 @@ concept post_id int:key;
 
 
 def test_datasource():
-    text = '''concept user_id int:key metadata(description="the description");
-concept display_name string:property metadata(description="The display name ");
-concept about_me string:property metadata(description="User provided description");
-concept post_id int:key;
+    text = '''key user_id int metadata(description="the description");
+property user_id.display_name string metadata(description="The display name ");
+property user_id.about_me string metadata(description="User provided description");
+key post_id int;
 
 
 datasource posts (
     user_id: user_id,
     id: post_id
     )
-    grain (id)
+    grain (post_id)
     address bigquery-public-data.stackoverflow.post_history
 ;
 '''

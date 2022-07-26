@@ -1,11 +1,37 @@
+from os.path import join, dirname
 from typing import Tuple, List, Optional
 
 from lark import Lark, Transformer, v_args
 from lark.tree import Meta
-from os.path import join, dirname
-from preql.core.enums import Purpose, DataType, Modifier, Ordering, FunctionType, ComparisonOperator, LogicalOperator
-from preql.core.models import WhereClause, Comparison, Conditional, Comment, Datasource, Concept, ColumnAssignment, \
-    Select, Address, Grain, SelectItem, ConceptTransform, Function, OrderItem, Environment, Limit, OrderBy
+
+from preql.core.enums import (
+    Purpose,
+    DataType,
+    Modifier,
+    Ordering,
+    FunctionType,
+    ComparisonOperator,
+    LogicalOperator,
+)
+from preql.core.models import (
+    WhereClause,
+    Comparison,
+    Conditional,
+    Comment,
+    Datasource,
+    Concept,
+    ColumnAssignment,
+    Select,
+    Address,
+    Grain,
+    SelectItem,
+    ConceptTransform,
+    Function,
+    OrderItem,
+    Environment,
+    Limit,
+    OrderBy,
+)
 from preql.parsing.exceptions import ParseError
 
 grammar = r"""
@@ -158,9 +184,11 @@ class ParseToObjects(Transformer):
         while len(concept) > 1:
             modifiers.append(concept[0])
             concept = concept[1]
-        return ColumnAssignment(alias=args[0],
-                                modifiers=modifiers,
-                                concept=self.environment.concepts[concept[0]])
+        return ColumnAssignment(
+            alias=args[0],
+            modifiers=modifiers,
+            concept=self.environment.concepts[concept[0]],
+        )
 
     def _TERMINATOR(self, args):
         return None
@@ -181,17 +209,20 @@ class ParseToObjects(Transformer):
             metadata = args[3]
         else:
             metadata = None
-        grain, name = args[1].rsplit('.', 1)
+        grain, name = args[1].rsplit(".", 1)
         existing = self.environment.concepts.get(name)
         if existing:
-            raise ParseError(f'Concept {name} on line {meta.line} is a duplicate declaration')
-        concept = Concept(name=name,
-                          datatype=args[2],
-                          purpose=args[0],
-                          metadata=metadata,
-                          _grain=Grain(components=[self.environment.concepts[grain]]),
-                          namespace = self.environment.namespace
-                          )
+            raise ParseError(
+                f"Concept {name} on line {meta.line} is a duplicate declaration"
+            )
+        concept = Concept(
+            name=name,
+            datatype=args[2],
+            purpose=args[0],
+            metadata=metadata,
+            _grain=Grain(components=[self.environment.concepts[grain]]),
+            namespace=self.environment.namespace,
+        )
         self.environment.concepts[name] = concept
         return args
 
@@ -205,13 +236,16 @@ class ParseToObjects(Transformer):
         name = args[1]
         existing = self.environment.concepts.get(name)
         if existing:
-            raise ParseError(f'Concept {name} on line {meta.line} is a duplicate declaration')
-        concept = Concept(name=name,
-                          datatype=args[2],
-                          purpose=args[0],
-                          metadata=metadata,
-                          namespace = self.environment.namespace
-                          )
+            raise ParseError(
+                f"Concept {name} on line {meta.line} is a duplicate declaration"
+            )
+        concept = Concept(
+            name=name,
+            datatype=args[2],
+            purpose=args[0],
+            metadata=metadata,
+            namespace=self.environment.namespace,
+        )
         self.environment.concepts[name] = concept
         return args
 
@@ -225,15 +259,18 @@ class ParseToObjects(Transformer):
         existing = self.environment.concepts.get(name)
         function = args[2]
         if existing:
-            raise ParseError(f'Concept {name} on line {meta.line} is a duplicate declaration')
-        concept = Concept(name=name,
-                          datatype=function.output_datatype,
-                          purpose=args[0],
-                          metadata=metadata,
-                          lineage=function,
-                          _grain = function.output_grain,
-                          namespace = self.environment.namespace
-                          )
+            raise ParseError(
+                f"Concept {name} on line {meta.line} is a duplicate declaration"
+            )
+        concept = Concept(
+            name=name,
+            datatype=function.output_datatype,
+            purpose=args[0],
+            metadata=metadata,
+            lineage=function,
+            _grain=function.output_grain,
+            namespace=self.environment.namespace,
+        )
         self.environment.concepts[name] = concept
         return args
 
@@ -243,7 +280,6 @@ class ParseToObjects(Transformer):
 
     def column_assignment_list(self, args):
         return args
-
 
     def column_list(self, args):
         return args[0]
@@ -262,9 +298,15 @@ class ParseToObjects(Transformer):
                 address = val
             elif isinstance(val, Grain):
                 grain = val
-        datasource = Datasource(identifier=name, columns=columns,
-                                grain=grain, address=address,
-                                namespace = self.environment.namespace)
+        if not address:
+            raise ValueError("Malformed datasource, missing address declaration")
+        datasource = Datasource(
+            identifier=name,
+            columns=columns,
+            grain=grain,
+            address=address,
+            namespace=self.environment.namespace,
+        )
         self.environment.datasources[datasource.identifier] = datasource
         return datasource
 
@@ -279,29 +321,37 @@ class ParseToObjects(Transformer):
         output: str = args[1]
         existing = self.environment.concepts.get(output)
         if existing:
-            raise ParseError(f'Assignment {output} on line {meta.line} is a duplicate concept declaration')
-        concept = Concept(name=output,
-                          datatype=function.output_datatype,
-                          purpose=function.output_purpose,
-                          lineage=function,
-                          namespace = self.environment.namespace)
+            raise ParseError(
+                f"Assignment {output} on line {meta.line} is a duplicate concept declaration"
+            )
+        concept = Concept(
+            name=output,
+            datatype=function.output_datatype,
+            purpose=function.output_purpose,
+            lineage=function,
+            namespace=self.environment.namespace,
+        )
         # We don't assign it here because we'll do this later when we know the grain
         self.environment.concepts[output] = concept
         return ConceptTransform(function=function, output=concept)
 
     @v_args(meta=True)
-    def select_item(self, meta: Meta, args) -> SelectItem:
-        # basic select
+    def select_item(self, meta: Meta, args) -> Optional[SelectItem]:
+
         args = [arg for arg in args if not isinstance(arg, Comment)]
+        if not args:
+            return None
         if len(args) != 1:
-            raise ParseError(f"Malformed select statement {args} {self.text[meta.start_pos:meta.end_pos]}")
+            raise ParseError(
+                f"Malformed select statement {args} {self.text[meta.start_pos:meta.end_pos]}"
+            )
         content = args[0]
         if isinstance(args[0], ConceptTransform):
             return SelectItem(content=content)
         return SelectItem(content=self.environment.concepts[content])
 
     def select_list(self, args):
-        return args
+        return [arg for arg in args if arg]
 
     def limit(self, args):
         return Limit(value=args[0].value)
@@ -317,22 +367,24 @@ class ParseToObjects(Transformer):
 
     def import_statement(self, args):
         alias = args[-1]
-        path = args[0].split('.')
+        path = args[0].split(".")
 
-        target = join(self.environment.working_path, *path) + '.preql'
-        with open(target, 'r', encoding='utf-8') as f:
+        target = join(self.environment.working_path, *path) + ".preql"
+        with open(target, "r", encoding="utf-8") as f:
             text = f.read()
-            nparser = ParseToObjects(visit_tokens=True, text=text,
-                                     environment=Environment({}, {}, working_path=dirname(target),
-                                                             namespace=alias))
-            nparser.transform(
-                PARSER.parse(text)
+            nparser = ParseToObjects(
+                visit_tokens=True,
+                text=text,
+                environment=Environment(
+                    {}, {}, working_path=dirname(target), namespace=alias
+                ),
             )
+            nparser.transform(PARSER.parse(text))
 
             for key, concept in nparser.environment.concepts.items():
-                self.environment.concepts[f'{alias}.{key}'] = concept
+                self.environment.concepts[f"{alias}.{key}"] = concept
             for key, datasource in nparser.environment.datasources.items():
-                self.environment.datasources[f'{alias}.{key}'] = datasource
+                self.environment.datasources[f"{alias}.{key}"] = datasource
         return None
 
     @v_args(meta=True)
@@ -351,7 +403,11 @@ class ParseToObjects(Transformer):
                 order_by = arg
             elif isinstance(arg, WhereClause):
                 where = arg
-        output = Select(selection=select_items, where_clause=where, limit=limit, order_by=order_by)
+        if not select_items:
+            raise ValueError("Malformed select, missing select items")
+        output = Select(
+            selection=select_items, where_clause=where, limit=limit, order_by=order_by
+        )
         for item in select_items:
             # we don't know the grain of an aggregate at assignment time
             # so rebuild at this point in the tree
@@ -360,6 +416,16 @@ class ParseToObjects(Transformer):
                 new_concept = item.content.output.with_grain(output.grain)
                 item.content.output = new_concept
                 self.environment.concepts[item.content.output.name] = new_concept
+            elif isinstance(item.content, Concept):
+                if item.content.purpose == Purpose.METRIC:
+                    item.content = item.content.with_grain(output.grain)
+        if order_by:
+            for item in order_by.items:
+                if (
+                    isinstance(item.expr, Concept)
+                    and item.expr.purpose == Purpose.METRIC
+                ):
+                    item.expr = item.expr.with_grain(output.grain)
         return output
 
     @v_args(meta=True)
@@ -384,46 +450,72 @@ class ParseToObjects(Transformer):
 
     def expr(self, args):
         if len(args) > 1:
-            raise ParseError('Expression should have one child only.')
+            raise ParseError("Expression should have one child only.")
         return args[0]
 
     def count(self, args):
-        '''    operator: str
+        """    operator: str
     arguments:List[Concept]
-    output:Concept'''
-        return Function(operator=FunctionType.COUNT, arguments=args, output_datatype=DataType.INTEGER,
-                        output_purpose=Purpose.METRIC, output_grain=Grain(components=args))
+    output:Concept"""
+        return Function(
+            operator=FunctionType.COUNT,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            output_grain=Grain(components=args),
+        )
 
     def sum(self, arguments):
         if not len(arguments) == 1:
             raise ParseError("Too many arguments to sum")
-        return Function(operator=FunctionType.SUM, arguments=arguments, output_datatype=arguments[0].datatype,
-                        output_purpose=Purpose.METRIC, output_grain=Grain(components=arguments))
+        return Function(
+            operator=FunctionType.SUM,
+            arguments=arguments,
+            output_datatype=arguments[0].datatype,
+            output_purpose=Purpose.METRIC,
+            output_grain=Grain(components=arguments),
+        )
 
     def avg(self, arguments):
         if not len(arguments) == 1:
             raise ParseError("Too many arguments to avg")
-        return Function(operator=FunctionType.AVG, arguments=arguments, output_datatype=arguments[0].datatype,
-                        output_purpose=Purpose.METRIC, output_grain=Grain(components=arguments))
+        return Function(
+            operator=FunctionType.AVG,
+            arguments=arguments,
+            output_datatype=arguments[0].datatype,
+            output_purpose=Purpose.METRIC,
+            output_grain=Grain(components=arguments),
+        )
 
     def len(self, args):
         if not len(args) == 1:
             raise ParseError("Too many arguments to len")
-        return Function(operator=FunctionType.LENGTH, arguments=args, output_datatype=args[0].datatype,
-                        output_purpose=Purpose.METRIC, valid_inputs={DataType.STRING, DataType.ARRAY}, output_grain=args[0].grain)
+        return Function(
+            operator=FunctionType.LENGTH,
+            arguments=args,
+            output_datatype=args[0].datatype,
+            output_purpose=Purpose.METRIC,
+            valid_inputs={DataType.STRING, DataType.ARRAY},
+            output_grain=args[0].grain,
+        )
 
     def like(self, args):
         if not len(args) == 2:
             raise ParseError("The Like function expects two arguments")
-        return Function(operator=FunctionType.LIKE, arguments=args, output_datatype=DataType.BOOL,
-                        output_purpose=Purpose.PROPERTY, valid_inputs={DataType.STRING}, output_grain=Grain(components=args))
+        return Function(
+            operator=FunctionType.LIKE,
+            arguments=args,
+            output_datatype=DataType.BOOL,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.STRING},
+            output_grain=Grain(components=args),
+        )
 
 
-def parse_text(text: str, environment: Optional[Environment] = None, print_flag: bool = False) -> Tuple[
-    Environment, List]:
+def parse_text(
+    text: str, environment: Optional[Environment] = None, print_flag: bool = False
+) -> Tuple[Environment, List]:
     environment = environment or Environment(concepts={}, datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
-    output = [v for v in parser.transform(
-        PARSER.parse(text)
-    ) if v]
+    output = [v for v in parser.transform(PARSER.parse(text)) if v]
     return environment, output

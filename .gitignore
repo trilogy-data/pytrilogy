@@ -1,0 +1,9 @@
+examples/
+
+*.egg-info
+
+dist/
+build/
+venv/
+
+.pytest_cache/
