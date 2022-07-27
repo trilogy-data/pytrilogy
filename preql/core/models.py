@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, Dict, Set
-
+from preql.utility import unique
 from preql.core.enums import (
     DataType,
     Purpose,
@@ -171,14 +171,6 @@ class Select:
         return Grain(components=list(set(output)))
 
 
-"""datasource posts (
-    user_id: user_id,
-    id: post_id
-    )
-    grain (id)
-    address bigquery-public-data.stackoverflow.post_history
-;
-"""
 
 
 @dataclass(eq=True, frozen=True)
@@ -248,6 +240,37 @@ class Datasource:
         raise ValueError(
             f"Concept {concept.name} not found on {self.identifier}; have {existing}."
         )
+
+
+@dataclass(eq=True)
+class JoinedDataSource:
+    concepts:List[Concept]
+    source_map: Dict[str, Datasource]
+    grain: Grain
+    join_paths:Dict
+
+    @property
+    def datasources(self)->List[Datasource]:
+        return unique(list(self.source_map.values()), 'identifier')
+
+    @property
+    def identifier(self)->str:
+        return '_join_'.join([d.identifier for d in self.datasources])
+
+    def get_alias(self, concept: Concept):
+        for x in self.datasources:
+            try:
+                return x.get_alias(concept)
+            except ValueError:
+                continue
+        existing = [c.concept.name for c in self.columns]
+        raise ValueError(
+            f"Concept {concept.name} not found on {self.identifier}; have {existing}."
+        )
+
+    @property
+    def address(self):
+        return Address('TURN THIS INTO ANOTHER CTE')
 
 
 @dataclass
@@ -376,3 +399,5 @@ class ProcessedQuery:
 @dataclass
 class Limit:
     value: int
+
+
