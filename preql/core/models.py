@@ -247,7 +247,8 @@ class JoinedDataSource:
     concepts:List[Concept]
     source_map: Dict[str, Datasource]
     grain: Grain
-    join_paths:Dict
+    base: Datasource
+    joins:List["Join"]
 
     @property
     def datasources(self)->List[Datasource]:
@@ -263,14 +264,14 @@ class JoinedDataSource:
                 return x.get_alias(concept)
             except ValueError:
                 continue
-        existing = [c.concept.name for c in self.columns]
+        existing = [c.name for c in self.concepts]
         raise ValueError(
             f"Concept {concept.name} not found on {self.identifier}; have {existing}."
         )
 
     @property
     def address(self):
-        return Address('TURN THIS INTO ANOTHER CTE')
+        return self.base.address
 
 
 @dataclass
@@ -281,7 +282,7 @@ class Comment:
 @dataclass
 class CTE:
     name: str
-    source: Datasource  # TODO: make recursive
+    source:Union[Datasource, JoinedDataSource]  # TODO: make recursive
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
     # related columns include all referenced columns, such as filtering
@@ -290,6 +291,11 @@ class CTE:
     base: bool = False
     group_to_grain: bool = False
 
+    @property
+    def joins(self)->List["Join"]:
+        if not isinstance(self.source, JoinedDataSource):
+            return []
+        return self.source.joins
 
 @dataclass
 class CompiledCTE:
@@ -299,8 +305,7 @@ class CompiledCTE:
 
 @dataclass
 class JoinKey:
-    inner: Concept
-    outer: Concept
+    concept: Concept
 
 
 @dataclass

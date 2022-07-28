@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from jinja2 import Template
 
@@ -105,7 +105,8 @@ class SqlServerDialect(BaseDialect):
                 if c not in output_concepts and c in query.output_columns:
                     select_columns.append(f'{cte.name}."{c.name}"')
                     output_concepts.append(c)
-        # where assignemnt
+
+        # where assignement
         where_assignment = {}
 
         if query.where_clause:
@@ -122,13 +123,15 @@ class SqlServerDialect(BaseDialect):
                 raise NotImplementedError(
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
-        compiled_ctes = [
+        compiled_ctes:List[CompiledCTE] = []
+        compiled_ctes+=[
             CompiledCTE(
                 name=cte.name,
                 statement=TSQL_TEMPLATE.render(
                     select_columns=[
                         render_concept_sql(c, cte) for c in cte.output_columns
                     ],
+                    joins=[render_join(join) for join in cte.joins],
                     base=f"{cte.source.address.location} as {cte.name}",
                     grain=cte.grain,
                     where=render_expr(where_assignment[cte.name].conditional, cte)

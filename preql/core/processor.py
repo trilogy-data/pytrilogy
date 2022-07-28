@@ -16,7 +16,9 @@ from preql.core.models import (
     JoinKey,
     ProcessedQuery,
     Grain,
-    JoinedDataSource
+    JoinedDataSource,
+    JoinType,
+
 )
 from preql.utility import string_to_hash
 
@@ -118,6 +120,29 @@ def get_datasource_from_direct_select(
     raise ValueError
 
 
+def path_to_joins(input:List[str], graph:ReferenceGraph)->List[Join]:
+    left_value = None
+    concept = None
+    output = []
+    while input:
+        ds = None
+        next = input.pop(0)
+        if next.startswith('ds~'):
+            ds =graph.nodes[next]['datasource']
+        elif next.startswith('c~'):
+            concept = graph.nodes[next]['concept']
+        if ds and not left_value:
+            left_value = ds
+            continue
+        elif ds:
+            right_value = ds
+            output.append(Join(left_cte=left_value, right_cte = right_value, jointype = JoinType.LEFT,
+                               joinkeys=[JoinKey(concept)]))
+            left_value = None
+            concept=None
+    return output
+
+
 def get_datasource_by_joins(
         concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> JoinedDataSource:
@@ -138,18 +163,21 @@ def get_datasource_by_joins(
                 all_found = False
                 continue
         if all_found:
-            join_candidates.append(paths)
-    join_candidates.sort(key=lambda x: sum([len(v) for v in x.values()]))
+            join_candidates.append({'paths':paths, 'datasource': datasource})
+    join_candidates.sort(key=lambda x: sum([len(v) for v in x['paths'].values()]))
     if not join_candidates:
         raise ValueError
     shortest = join_candidates[0]
     source_map = {}
-    for key, value in shortest.items():
-        datasource = [v for v in value if v.startswith('ds~')]
-        source_map[g.nodes[value[-1]]['concept'].name] = node_to_datasource(datasource[-1], environment=environment)
+    join_paths = []
+    for key, value in shortest['paths'].items():
+        datasource_nodes = [v for v in value if v.startswith('ds~')]
+        source_map[g.nodes[value[-1]]['concept'].name] = node_to_datasource(datasource_nodes[-1], environment=environment)
+        join_paths+= path_to_joins(value, graph=g)
     return JoinedDataSource(concepts=all_requirements, source_map=source_map,
                             grain=grain,
-                            join_paths = shortest)
+                            base = shortest['datasource'],
+                            joins = join_paths )
 
 
 def get_datasource_by_concept_and_grain(
@@ -397,7 +425,7 @@ def process_query(environment: Environment, statement: Select,
                 left_cte=base,
                 right_cte=cte,
                 joinkeys=[
-                    JoinKey(c, c)
+                    JoinKey(c)
                     for c in statement.grain.components
                     if c in cte.output_columns
                 ],
