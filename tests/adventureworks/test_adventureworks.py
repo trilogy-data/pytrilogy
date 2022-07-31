@@ -5,7 +5,6 @@ from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 
 
-
 def test_finance_queries(adventureworks_engine, environment):
     with open(join(dirname(__file__), 'finance_queries.preql'), 'r', encoding='utf-8') as f:
         file = f.read()
