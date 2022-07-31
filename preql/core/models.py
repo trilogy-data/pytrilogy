@@ -29,6 +29,10 @@ class Concept:
     _grain: Optional["Grain"] = None
     namespace: Optional[str] = "default"
 
+    @property
+    def address(self)->str:
+        return f'{self.namespace}.{self.name}'
+
     def with_grain(self, grain: "Grain") -> "Concept":
         return self.__class__(
             name=self.name,
@@ -241,13 +245,17 @@ class Datasource:
             f"Concept {concept.name} not found on {self.identifier}; have {existing}."
         )
 
+    @property
+    def name(self):
+        return self.identifier
 
 @dataclass(eq=True)
 class JoinedDataSource:
     concepts:List[Concept]
     source_map: Dict[str, Datasource]
     grain: Grain
-    base: Datasource
+    address: Address
+    # base: Datasource
     joins:List["Join"]
 
     @property
@@ -269,9 +277,6 @@ class JoinedDataSource:
             f"Concept {concept.name} not found on {self.identifier}; have {existing}."
         )
 
-    @property
-    def address(self):
-        return self.base.address
 
 
 @dataclass
@@ -282,7 +287,7 @@ class Comment:
 @dataclass
 class CTE:
     name: str
-    source:Union[Datasource, JoinedDataSource]  # TODO: make recursive
+    source:Union[Datasource, JoinedDataSource, "CTE"]  # TODO: make recursive
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
     # related columns include all referenced columns, such as filtering
@@ -290,12 +295,30 @@ class CTE:
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
+    parent_ctes:List["CTE"] = field(default_factory=list)
 
     @property
     def joins(self)->List["Join"]:
         if not isinstance(self.source, JoinedDataSource):
             return []
         return self.source.joins
+
+
+    def get_alias(self, concept: Concept):
+        try:
+            return self.source.get_alias(concept)
+        except ValueError:
+            if not self.joins:
+                raise ValueError(f'concept {concept.name} not found on cte {self.name} source {self.source}')
+            pass
+        #
+        # for x in self.columns:
+        #     if x.concept == concept:
+        #         return x.alias
+        # existing = [c.concept.name for c in self.columns]
+        # raise ValueError(
+        #     f"Concept {concept.name} not found on {self.identifier}; have {existing}."
+        # )
 
 @dataclass
 class CompiledCTE:

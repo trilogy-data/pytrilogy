@@ -9,9 +9,12 @@ class BaseProcessingHook(object):
 class GraphHook(BaseProcessingHook):
 
     def query_graph_built(self, graph:DiGraph):
-        from networkx import draw_spring
+        from networkx import draw_planar, draw_kamada_kawai
         from matplotlib import pyplot as plt
-        draw_spring(graph, with_labels=True)
+        for node in graph.nodes:
+            print(node)
+        draw_kamada_kawai(graph, with_labels=True, connectionstyle='arc3, rad = 0.1')
+        # draw_spring(graph, with_labels=True, connectionstyle='arc3, rad = 0.1')
         plt.show()
 
 

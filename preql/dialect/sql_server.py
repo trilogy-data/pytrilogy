@@ -67,7 +67,7 @@ ORDER BY {% for order in order_by %}
 
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     if not c.lineage:
-        rval = f"{cte.name}.{cte.source.get_alias(c)}"
+        rval = f"{cte.name}.{cte.get_alias(c)}"
     else:
         args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
         rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
@@ -124,6 +124,11 @@ class SqlServerDialect(BaseDialect):
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
         compiled_ctes:List[CompiledCTE] = []
+        for cte in query.ctes:
+            print('-------')
+            print(cte.name)
+            print([c.name for c in cte.output_columns])
+            print(cte.joins)
         compiled_ctes+=[
             CompiledCTE(
                 name=cte.name,

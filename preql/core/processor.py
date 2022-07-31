@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 import networkx as nx
 from preql.constants import logger
@@ -18,18 +18,21 @@ from preql.core.models import (
     Grain,
     JoinedDataSource,
     JoinType,
+    Address
 
 )
 from preql.utility import string_to_hash
 
 
 def concept_to_node(input: Concept) -> str:
-    return f"c~{input.namespace}.{input.name}"
+    # if input.purpose == Purpose.METRIC:
+    #     return f"c~{input.namespace}.{input.name}@{input.grain}"
+    return f"c~{input.namespace}.{input.name}@{input.grain}"
 
 
 def datasource_to_node(input: Union[Datasource, JoinedDataSource]) -> str:
     if isinstance(input, JoinedDataSource):
-        return ','.join([datasource_to_node(sub) for sub in input.datasources])
+        return 'ds~join~'+','.join([datasource_to_node(sub) for sub in input.datasources])
     return f"ds~{input.namespace}.{input.identifier}"
 
 def node_to_datasource(input:str, environment:Environment)->Datasource:
@@ -120,23 +123,28 @@ def get_datasource_from_direct_select(
     raise ValueError
 
 
-def path_to_joins(input:List[str], graph:ReferenceGraph)->List[Join]:
+def path_to_joins(input:List[str], g:ReferenceGraph, environment:Environment, query_graph:ReferenceGraph)->List[Join]:
     left_value = None
+    left_cte = None
     concept = None
     output = []
     while input:
         ds = None
         next = input.pop(0)
         if next.startswith('ds~'):
-            ds =graph.nodes[next]['datasource']
+            ds =g.nodes[next]['datasource']
         elif next.startswith('c~'):
-            concept = graph.nodes[next]['concept']
+            concept = g.nodes[next]['concept']
         if ds and not left_value:
             left_value = ds
+            build_select_upstream(concept, output_grain=concept.grain, environment=environment, g=g, query_graph=query_graph, datasource=left_value)
+            left_cte = node_to_cte(next, query_graph)
             continue
         elif ds:
             right_value = ds
-            output.append(Join(left_cte=left_value, right_cte = right_value, jointype = JoinType.LEFT,
+            build_select_upstream(concept, output_grain=concept.grain, environment=environment, g=g, query_graph=query_graph, datasource=right_value)
+            right_cte = node_to_cte(next, query_graph)
+            output.append(Join(left_cte=left_cte, right_cte = right_cte, jointype = JoinType.LEFT_OUTER,
                                joinkeys=[JoinKey(concept)]))
             left_value = None
             concept=None
@@ -144,7 +152,7 @@ def path_to_joins(input:List[str], graph:ReferenceGraph)->List[Join]:
 
 
 def get_datasource_by_joins(
-        concept, grain: Grain, environment: Environment, g: ReferenceGraph
+        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph:ReferenceGraph
 ) -> JoinedDataSource:
     join_candidates = []
     all_requirements = [concept] + grain.components
@@ -170,25 +178,38 @@ def get_datasource_by_joins(
     shortest = join_candidates[0]
     source_map = {}
     join_paths = []
+    # ctes = {}
+    parents = []
     for key, value in shortest['paths'].items():
         datasource_nodes = [v for v in value if v.startswith('ds~')]
-        source_map[g.nodes[value[-1]]['concept'].name] = node_to_datasource(datasource_nodes[-1], environment=environment)
-        join_paths+= path_to_joins(value, graph=g)
-    return JoinedDataSource(concepts=all_requirements, source_map=source_map,
-                            grain=grain,
-                            base = shortest['datasource'],
-                            joins = join_paths )
+        # ctes = {**ctes, **{n:node_to_datasource(n, environment=environment) for n in datasource_nodes} }
+        source_concept = g.nodes[value[-1]]['concept']
+        source_map[source_concept.address] = node_to_datasource(datasource_nodes[-1], environment=environment)
+        build_select_upstream(concept, output_grain=source_concept.grain, environment=environment, g=g, query_graph=query_graph)
+        join_paths+= path_to_joins(value, environment=environment, g=g, query_graph=query_graph)
+        parents.append(source_concept)
+    # for key, value in datasource.source_map.items():
+    #     source_concept = environment.concepts[key]
 
+
+    output = JoinedDataSource(concepts=all_requirements,
+                            source_map=source_map,
+                            grain=grain,
+                            address = Address(location='test'),
+                            joins = join_paths,)
+    for parent in parents:
+        query_graph.add_edge(parent, f'select_join_group_{output.identifier}')
+    return output
 
 def get_datasource_by_concept_and_grain(
-        concept, grain: Grain, environment: Environment, g: ReferenceGraph
+        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph:ReferenceGraph
 ) -> Union[Datasource, JoinedDataSource]:
     try:
         return get_datasource_from_direct_select(concept, grain, environment, g)
     except ValueError:
         pass
     try:
-        return get_datasource_by_joins(concept, grain, environment, g)
+        return get_datasource_by_joins(concept, grain, environment, g, query_graph)
     except ValueError:
         pass
 
@@ -198,19 +219,34 @@ def get_datasource_by_concept_and_grain(
     )
 
 
+
 def get_operation_node(op_type: str) -> str:
     return f"{op_type}_{uuid.uuid4()}"
 
 def build_derivation_upstream(concept:Concept, query_graph:ReferenceGraph, virtual:bool):
     for source in concept.sources:
+        with_grain = source.with_grain(concept.grain)
+        query_graph.add_node(
+            with_grain, virtual=virtual
+        )
+        query_graph.add_edge(with_grain, concept)
+
+"""    group_node = f'group_to_grain_{concept.grain}'
+    query_graph.add_node(group_node)
+    query_graph.add_edge(group_node, concept)
+    for source in concept.sources:
         query_graph.add_node(
             source, virtual=virtual
         )
-        query_graph.add_edge(source, concept)
-
-def build_select_upstream(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph):
-    datasource = get_datasource_by_concept_and_grain(
-        concept, output_grain, environment, g
+        query_graph.add_edge(source, group_node)
+    for source in concept.grain.components:
+        query_graph.add_node(
+            source, virtual=virtual
+        )
+        query_graph.add_edge(source, group_node)"""
+def build_select_upstream(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph, datasource:Optional[Datasource]=None)->str:
+    datasource = datasource or get_datasource_by_concept_and_grain(
+        concept, output_grain, environment, g, query_graph
     )
     if concept.grain == datasource.grain:
         operator = f"select_{datasource.identifier}"
@@ -226,13 +262,14 @@ def build_select_upstream(concept:Concept, output_grain:Grain, environment, g, q
         if dsconcept in output_grain.components:
             query_graph.add_node(dsconcept, concept=dsconcept)
             query_graph.add_edge(operator, dsconcept)
+    return operator
 
 def build_component_upstream(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph):
     print(
         f"select node {concept.grain} to {concept.grain} as subset of {output_grain}"
     )
     datasource = get_datasource_by_concept_and_grain(
-        concept, concept.grain, environment, g
+        concept, concept.grain, environment, g, query_graph
     )
     print(f"can fetch from {datasource.identifier}")
     if concept.purpose == Purpose.METRIC:
@@ -250,7 +287,7 @@ def build_component_upstream(concept:Concept, output_grain:Grain, environment, g
 
 def build_superset_upstream(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph):
     datasource = get_datasource_by_concept_and_grain(
-        concept, concept.grain, environment, g
+        concept, concept.grain, environment, g, query_graph
     )
 
     operator = f"group_{datasource.identifier}"
@@ -265,16 +302,17 @@ def build_superset_upstream(concept:Concept, output_grain:Grain, environment, g,
             query_graph.add_edge(operator, dsconcept)
 
 def build_upstream_join_required(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph):
-    print(f"group node {concept.grain} to {output_grain}")
+    logger.debug(f"group node {concept.grain} to {output_grain}")
     datasource = get_datasource_by_concept_and_grain(
-        concept, concept.grain + output_grain, environment, g
+        concept, concept.grain + output_grain, environment, g, query_graph
     )
     if isinstance(datasource, JoinedDataSource):
         operator = f'select_join_group_{datasource.identifier}'
+
     else:
         operator = f"select_group_{datasource.identifier}"
     query_graph.add_node(operator, grain=output_grain)
-    query_graph.add_edge(operator, concept)
+    query_graph.add_edge(operator, concept.with_grain(output_grain))
     for item in output_grain.components:
         query_graph.add_node(item)
         query_graph.add_edge(operator, item)
@@ -320,6 +358,7 @@ def build_upstream(
             f"There is no way to build this query. Concept {concept.name} grain {concept.grain} cannot be joined/aggreggated to target_grain {output_grain}"
         )
 
+
     for item in concept.sources:
         build_upstream(
             item,
@@ -330,20 +369,69 @@ def build_upstream(
             virtual=True,
         )
 
+def node_to_cte(input_node:str, G):
+    if input_node.startswith('ds~'):
+        input_node = [n for n in G.successors(input_node) if n.startswith('select_')][0]
+    grain = G.nodes[input_node]['grain']
+    _source = [node for node in G.predecessors(input_node) if node.startswith("ds~")][0]
+    datasource: Datasource = G.nodes[_source]["ds"]
+    outputs = [
+        G.nodes[node]["concept"]
+        for node in nx.descendants(G, input_node)
+        if node.startswith("c~") and not G.nodes[node].get("virtual", False)
+           # downstream is only not divided
+           and not any([node.startswith('select_') for node in nx.shortest_path(G, input_node, node)[1:]])
+    ]
+    grain = Grain(
+        components=[
+            component
+            for component in outputs
+            if component in grain.components
+        ]
+    )
+    # use a unique identifier for each CTE/grain
+    if input_node.startswith("select_group"):
+        group_to_grain = True
+        int_id = string_to_hash(datasource.identifier + "group")
+    elif any([c.purpose == Purpose.METRIC for c in outputs]):
+        group_to_grain = True
+        int_id = string_to_hash(datasource.identifier)
+    else:
+        group_to_grain = False
+        int_id = string_to_hash(datasource.identifier)
 
-def walk_query_graph(input: str, G, query_grain: Grain, index: int = 1) -> List[CTE]:
+    return CTE(
+        name=f"{input_node}_{int_id}",
+        source=datasource,
+        # output columns are what are selected/grouped by
+        output_columns=outputs,
+        # related columns include all referenced columns, such as filtering
+        related_columns=datasource.concepts,
+        grain=grain,
+        base=True
+        if all([component in outputs for component in grain.components])
+        else False,
+        group_to_grain=group_to_grain,)
+
+
+def walk_query_graph(input: str, G, query_grain: Grain, seen, index: int = 1) -> List[CTE]:
     '''Traverse the graph and turn every select node into a CTE.
     '''
     output = []
-
+    if input in seen:
+        return output
+    seen.add(input)
+    for node in G.predecessors(input):
+        output += walk_query_graph(node, G, query_grain, index=index, seen=seen)
     if input.startswith("select_"):
-        info = G.nodes[input]
-        source = [node for node in G.predecessors(input) if node.startswith("ds~")][0]
-        datasource: Datasource = G.nodes[source]["ds"]
+        _source = [node for node in G.predecessors(input) if node.startswith("ds~")][0]
+        datasource: Datasource = G.nodes[_source]["ds"]
         outputs = [
             G.nodes[node]["concept"]
-            for node in nx.descendants(G, source)
+            for node in nx.descendants(G, input)
             if node.startswith("c~") and not G.nodes[node].get("virtual", False)
+                # downstream is only not divided
+               and not any([node.startswith('select_') for node in nx.shortest_path(G, input, node)[1:]])
         ]
         grain = Grain(
             components=[
@@ -380,12 +468,12 @@ def walk_query_graph(input: str, G, query_grain: Grain, index: int = 1) -> List[
         )
 
     for node in G.successors(input):
-        output += walk_query_graph(node, G, query_grain, index)
+        output += walk_query_graph(node, G, query_grain, index=index, seen=seen)
     return output
 
 
 def build_execution_graph(statement: Select, environment: Environment,
-                          relation_graph: nx.DiGraph) -> nx.DiGraph:
+                          relation_graph: ReferenceGraph) -> ReferenceGraph:
     query_graph = ReferenceGraph()
     root = get_operation_node("output")
     query_graph.add_node(root)
@@ -403,7 +491,6 @@ def process_query(environment: Environment, statement: Select,
     graph = generate_graph(environment)
 
     query_graph = build_execution_graph(statement, environment=environment, relation_graph=graph)
-    # graph of query operations
 
     # run lifecycle hooks
     # typically for logging
@@ -414,24 +501,34 @@ def process_query(environment: Environment, statement: Select,
         n for n in query_graph.nodes if query_graph.in_degree(n) == 0
     ]  # type: ignore
     ctes = []
+    seen = set()
     for node in starts:
-        ctes += walk_query_graph(node, query_graph, statement.grain)
+        ctes += walk_query_graph(node, query_graph, statement.grain, seen=seen)
     joins = []
+    for cte in ctes:
+        print(cte.name)
+        print(cte.grain)
     base = [cte for cte in ctes if cte.base][0]
     others = [cte for cte in ctes if cte != base]
+    print(seen)
+    print('----------')
+    for value in ctes:
+        print(value.name)
     for cte in others:
-        joins.append(
-            Join(
-                left_cte=base,
-                right_cte=cte,
-                joinkeys=[
-                    JoinKey(c)
-                    for c in statement.grain.components
-                    if c in cte.output_columns
-                ],
-                jointype=JoinType.INNER,
+        joinkeys=[
+                     JoinKey(c)
+                     for c in statement.grain.components
+                     if c in cte.output_columns
+                 ]
+        if joinkeys:
+            joins.append(
+                Join(
+                    left_cte=base,
+                    right_cte=cte,
+                    joinkeys=joinkeys,
+                    jointype=JoinType.LEFT_OUTER,
+                )
             )
-        )
     return ProcessedQuery(
         order_by=statement.order_by,
         grain=statement.grain,
