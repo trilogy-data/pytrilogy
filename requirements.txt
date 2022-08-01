@@ -1,2 +1,5 @@
 lark
 jinja2
+sqlalchemy
+networkx
+pyodbc
