@@ -106,7 +106,7 @@ class SqlServerDialect(BaseDialect):
                     select_columns.append(f'{cte.name}."{c.name}"')
                     output_concepts.append(c)
 
-        # where assignement
+        # where assignment
         where_assignment = {}
 
         if query.where_clause:
@@ -127,17 +127,19 @@ class SqlServerDialect(BaseDialect):
         for cte in query.ctes:
             print('-------')
             print(cte.name)
+            print(cte.grain)
+            print(cte.group_to_grain)
             print([c.name for c in cte.output_columns])
-            print(cte.joins)
+            print([str(j) for j in cte.joins])
         compiled_ctes+=[
             CompiledCTE(
                 name=cte.name,
                 statement=TSQL_TEMPLATE.render(
                     select_columns=[
-                        render_concept_sql(c, cte) for c in cte.output_columns
+                        render_concept_sql(c, cte) for c in output_concepts
                     ],
                     joins=[render_join(join) for join in cte.joins],
-                    base=f"{cte.source.address.location} as {cte.name}",
+                    base=f"{cte.source.address.location} as {cte.source.address.location}",
                     grain=cte.grain,
                     where=render_expr(where_assignment[cte.name].conditional, cte)
                     if cte.name in where_assignment

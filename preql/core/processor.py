@@ -1,10 +1,10 @@
 import uuid
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Union
 
 import networkx as nx
-from preql.constants import logger
 
-from preql.core.enums import Purpose, JoinType
+from preql.constants import logger
+from preql.core.enums import Purpose
 from preql.core.hooks import BaseProcessingHook
 from preql.core.models import (
     Concept,
@@ -32,15 +32,17 @@ def concept_to_node(input: Concept) -> str:
 
 def datasource_to_node(input: Union[Datasource, JoinedDataSource]) -> str:
     if isinstance(input, JoinedDataSource):
-        return 'ds~join~'+','.join([datasource_to_node(sub) for sub in input.datasources])
+        return 'ds~join~' + ','.join([datasource_to_node(sub) for sub in input.datasources])
     return f"ds~{input.namespace}.{input.identifier}"
 
-def node_to_datasource(input:str, environment:Environment)->Datasource:
+
+def node_to_datasource(input: str, environment: Environment) -> Datasource:
     stripped = input.lstrip('ds~')
     namespace, title = stripped.split('.')
     if namespace == 'None':
         return environment.datasources[title]
     return environment.datasources[stripped]
+
 
 def add_concept_node(g, concept: Concept):
     g.add_node(concept_to_node(concept), type=concept.purpose.value, concept=concept)
@@ -51,31 +53,44 @@ class ReferenceGraph(nx.DiGraph):
         super().__init__(*args, **kwargs)
 
     def add_node(self, node_for_adding, **attr):
+
         if isinstance(node_for_adding, Concept):
             node_name = concept_to_node(node_for_adding)
             attr['type'] = 'concept'
             attr['concept'] = node_for_adding
+            attr['grain'] = node_for_adding.grain
         elif isinstance(node_for_adding, Datasource):
             node_name = datasource_to_node(node_for_adding)
             attr['type'] = 'datasource'
             attr['ds'] = node_for_adding
+            attr['grain'] = node_for_adding.grain
         elif isinstance(node_for_adding, JoinedDataSource):
             node_name = datasource_to_node(node_for_adding)
             attr['type'] = 'joineddatasource'
             attr['ds'] = node_for_adding
+            attr['grain'] = node_for_adding.grain
         else:
             node_name = node_for_adding
+
+        if node_name.startswith('c~') and not 'concept' in attr.keys():
+            raise ValueError
         super().add_node(node_name, **attr)
 
     def add_edge(self, u_of_edge, v_of_edge, **attr):
         if isinstance(u_of_edge, Concept):
+            orig = u_of_edge
             u_of_edge = concept_to_node(u_of_edge)
+            if u_of_edge not in self.nodes:
+                self.add_node(orig)
         elif isinstance(u_of_edge, Datasource):
             u_of_edge = datasource_to_node(u_of_edge)
         elif isinstance(u_of_edge, JoinedDataSource):
             u_of_edge = datasource_to_node(u_of_edge)
         if isinstance(v_of_edge, Concept):
+            orig = v_of_edge
             v_of_edge = concept_to_node(v_of_edge)
+            if v_of_edge not in self.nodes:
+                self.add_node(orig)
         elif isinstance(v_of_edge, Datasource):
             v_of_edge = datasource_to_node(v_of_edge)
         elif isinstance(v_of_edge, JoinedDataSource):
@@ -87,25 +102,27 @@ def generate_graph(environment: Environment, ) -> ReferenceGraph:
     g = ReferenceGraph()
     # statement.input_components, statement.output_components
     for name, concept in environment.concepts.items():
-        add_concept_node(g, concept)
+        g.add_node(concept)
 
         # if we have sources, recursively add them
         if concept.sources:
             node_name = concept_to_node(concept)
             for source in concept.sources:
-                add_concept_node(g, source)
-                g.add_edge(concept_to_node(source), node_name)
+                g.add_node(source)
+                g.add_edge(source, node_name)
     for key, dataset in environment.datasources.items():
         node = datasource_to_node(dataset)
-        g.add_node(node, type="datasource", datasource=dataset)
+        g.add_node(dataset, type="datasource", datasource=dataset)
         for concept in dataset.concepts:
-            g.add_edge(node, concept_to_node(concept))
-            g.add_edge(concept_to_node(concept), node)
+            g.add_edge(node, concept)
+            g.add_edge(concept, node)
+            if concept.purpose == Purpose.KEY:
+                g.add_edge( concept, concept.with_grain(Grain(components=[concept])))
     return g
 
 
 def get_datasource_from_direct_select(
-        concept, grain: Grain, environment: Environment, g: ReferenceGraph
+        concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> Datasource:
     for datasource in environment.datasources.values():
         if not datasource.grain == grain:
@@ -120,42 +137,78 @@ def get_datasource_from_direct_select(
             continue
         if len([p for p in path if g.nodes[p]["type"] == "datasource"]) == 1:
             return datasource
-    raise ValueError
+    raise ValueError(f'No direct select for {concept}')
 
+def get_datasource_from_group_select(
+        concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
+) -> Datasource:
+    for datasource in environment.datasources.values():
+        if not grain.issubset(datasource.grain):
+            continue
+        try:
+            path = nx.shortest_path(
+                g,
+                source=datasource_to_node(datasource),
+                target=concept_to_node(concept),
+            )
+        except nx.exception.NetworkXNoPath as e:
+            continue
+        if len([p for p in path if g.nodes[p]["type"] == "datasource"]) == 1:
+            return datasource
+    raise ValueError(f'No grouped select for {concept}')
 
-def path_to_joins(input:List[str], g:ReferenceGraph, environment:Environment, query_graph:ReferenceGraph)->List[Join]:
-    left_value = None
-    left_cte = None
+from typing import Tuple
+
+def parse_path_to_matches(input: List[str])->List[Tuple[str, str, List[str]]]:
+    left_ds = None
     concept = None
     output = []
     while input:
         ds = None
         next = input.pop(0)
         if next.startswith('ds~'):
-            ds =g.nodes[next]['datasource']
+            ds = next
         elif next.startswith('c~'):
-            concept = g.nodes[next]['concept']
-        if ds and not left_value:
-            left_value = ds
-            build_select_upstream(concept, output_grain=concept.grain, environment=environment, g=g, query_graph=query_graph, datasource=left_value)
-            left_cte = node_to_cte(next, query_graph)
+            concept = next
+        if ds and not left_ds:
+            left_ds = ds
             continue
         elif ds:
-            right_value = ds
-            build_select_upstream(concept, output_grain=concept.grain, environment=environment, g=g, query_graph=query_graph, datasource=right_value)
-            right_cte = node_to_cte(next, query_graph)
-            output.append(Join(left_cte=left_cte, right_cte = right_cte, jointype = JoinType.LEFT_OUTER,
-                               joinkeys=[JoinKey(concept)]))
-            left_value = None
-            concept=None
+            right_ds = ds
+            output.append((left_ds, right_ds, [concept]))
+            left_ds = right_ds
+            concept = None
     return output
+
+def path_to_joins(input: List[str], g: ReferenceGraph, environment: Environment, query_graph: ReferenceGraph) ->List[
+    Join]:
+    ''' Build joins and ensure any required CTEs are also created/tracked'''
+    out = []
+    zipped = parse_path_to_matches(input)
+    for row in zipped:
+        left_ds, right_ds, concepts = row
+        concepts = [g.nodes[concept]['concept'] for concept in concepts]
+        left_value = g.nodes[left_ds]['datasource']
+        for concept in concepts:
+            build_select_upstream(concept.with_grain(left_value.grain), output_grain=left_value.grain, environment=environment, g=g,
+                                  query_graph=query_graph, datasource=left_value)
+        left_cte = node_to_cte(left_ds, query_graph)
+        right_value = g.nodes[right_ds]['datasource']
+        for concept in concepts:
+            build_select_upstream(concept.with_grain(right_value.grain), output_grain=right_value.grain, environment=environment, g=g,
+                                  query_graph=query_graph, datasource=right_value)
+        right_cte = node_to_cte(right_value, query_graph)
+        out.append(Join(left_cte=left_cte, right_cte=right_cte, jointype=JoinType.LEFT_OUTER,
+                           joinkeys=[JoinKey(concept) for concept in concepts]))
+    return out
 
 
 def get_datasource_by_joins(
-        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph:ReferenceGraph
+        concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 ) -> JoinedDataSource:
     join_candidates = []
     all_requirements = [concept] + grain.components
+
     for datasource in environment.datasources.values():
         all_found = True
         paths = {}
@@ -167,69 +220,93 @@ def get_datasource_by_joins(
                     target=concept_to_node(item),
                 )
                 paths[concept_to_node(item)] = path
+                print(f'found path to {item}')
             except nx.exception.NetworkXNoPath as e:
                 all_found = False
+                print(f'not found path to {item}')
                 continue
         if all_found:
-            join_candidates.append({'paths':paths, 'datasource': datasource})
+            join_candidates.append({'paths': paths, 'datasource': datasource})
     join_candidates.sort(key=lambda x: sum([len(v) for v in x['paths'].values()]))
     if not join_candidates:
-        raise ValueError
+        raise ValueError(f'No joins to get to {concept}')
     shortest = join_candidates[0]
     source_map = {}
     join_paths = []
-    # ctes = {}
+    ctes = []
     parents = []
     for key, value in shortest['paths'].items():
+        record = [*value]
         datasource_nodes = [v for v in value if v.startswith('ds~')]
-        # ctes = {**ctes, **{n:node_to_datasource(n, environment=environment) for n in datasource_nodes} }
+        root = datasource_nodes[-1]
         source_concept = g.nodes[value[-1]]['concept']
-        source_map[source_concept.address] = node_to_datasource(datasource_nodes[-1], environment=environment)
-        build_select_upstream(concept, output_grain=source_concept.grain, environment=environment, g=g, query_graph=query_graph)
-        join_paths+= path_to_joins(value, environment=environment, g=g, query_graph=query_graph)
         parents.append(source_concept)
+
+        new_joins = path_to_joins(value, environment=environment, g=g, query_graph=query_graph)
+        print('LE NEW JOINS')
+        print(record)
+        print([str(j) for j in new_joins])
+        print('----')
+        join_paths += new_joins
+
+        root_cte = node_to_cte(root, query_graph)
+        # ctes = {**ctes, **{n:node_to_datasource(n, environment=environment) for n in datasource_nodes} }
+
+
+        source_map[source_concept.address] = root_cte
+        ctes.append(root_cte)
+        # build_select_upstream(concept, output_grain=source_concept.grain, environment=environment, g=g,
+        #                       query_graph=query_graph)
+
     # for key, value in datasource.source_map.items():
     #     source_concept = environment.concepts[key]
 
-
+    raise ValueError
     output = JoinedDataSource(concepts=all_requirements,
-                            source_map=source_map,
-                            grain=grain,
-                            address = Address(location='test'),
-                            joins = join_paths,)
+                              source_map=source_map,
+                              grain=grain,
+                              address=Address(location=ctes[0].name),
+                              joins=join_paths, )
     for parent in parents:
         query_graph.add_edge(parent, f'select_join_group_{output.identifier}')
     return output
 
+
 def get_datasource_by_concept_and_grain(
-        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph:ReferenceGraph
+        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 ) -> Union[Datasource, JoinedDataSource]:
     try:
         return get_datasource_from_direct_select(concept, grain, environment, g)
-    except ValueError:
-        pass
+    except ValueError as e:
+        logger.error(e)
+    try:
+        return get_datasource_from_group_select(concept, grain, environment, g)
+    except ValueError as e:
+        logger.error(e)
     try:
         return get_datasource_by_joins(concept, grain, environment, g, query_graph)
-    except ValueError:
-        pass
+    except ValueError as e:
+        raise e
+        logger.error(e)
 
     neighbors = list(g.predecessors(concept_to_node(concept)))
     raise ValueError(
-        f"No source for {concept_to_node(concept)} grain {grain} found, neighbors {neighbors}"
+        f"No source for {concept} found, neighbors {neighbors}"
     )
-
 
 
 def get_operation_node(op_type: str) -> str:
     return f"{op_type}_{uuid.uuid4()}"
 
-def build_derivation_upstream(concept:Concept, query_graph:ReferenceGraph, virtual:bool):
+
+def build_derivation_upstream(concept: Concept, query_graph: ReferenceGraph, virtual: bool):
     for source in concept.sources:
         with_grain = source.with_grain(concept.grain)
         query_graph.add_node(
             with_grain, virtual=virtual
         )
         query_graph.add_edge(with_grain, concept)
+
 
 """    group_node = f'group_to_grain_{concept.grain}'
     query_graph.add_node(group_node)
@@ -244,7 +321,12 @@ def build_derivation_upstream(concept:Concept, query_graph:ReferenceGraph, virtu
             source, virtual=virtual
         )
         query_graph.add_edge(source, group_node)"""
-def build_select_upstream(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph, datasource:Optional[Datasource]=None)->str:
+
+
+def build_select_upstream(concept: Concept, output_grain: Grain, environment, g, query_graph: ReferenceGraph,
+                          datasource: Optional[Datasource] = None) -> str:
+    # if we are providing a datasource
+    # assume a direct selection is possible
     datasource = datasource or get_datasource_by_concept_and_grain(
         concept, output_grain, environment, g, query_graph
     )
@@ -253,18 +335,21 @@ def build_select_upstream(concept:Concept, output_grain:Grain, environment, g, q
     elif concept.grain.issubset(datasource.grain):
         operator = f"select_group_{datasource.identifier}"
     else:
-        raise ValueError("No way to get to node")
+        raise ValueError(f"No way to get to node {concept} versus {datasource.grain}")
+
     query_graph.add_node(operator, grain=output_grain)
+    query_graph.add_node(concept)
     query_graph.add_edge(operator, concept)
     query_graph.add_node(datasource)
     query_graph.add_edge(datasource, operator)
     for dsconcept in datasource.concepts:
         if dsconcept in output_grain.components:
-            query_graph.add_node(dsconcept, concept=dsconcept)
+            query_graph.add_node(dsconcept)
             query_graph.add_edge(operator, dsconcept)
     return operator
 
-def build_component_upstream(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph):
+
+def build_component_upstream(concept: Concept, output_grain: Grain, environment, g, query_graph: ReferenceGraph):
     print(
         f"select node {concept.grain} to {concept.grain} as subset of {output_grain}"
     )
@@ -282,10 +367,11 @@ def build_component_upstream(concept:Concept, output_grain:Grain, environment, g
     query_graph.add_edge(datasource, operator)
     for dsconcept in datasource.concepts:
         if dsconcept in output_grain.components:
-            query_graph.add_node(dsconcept,)
+            query_graph.add_node(dsconcept, )
             query_graph.add_edge(operator, dsconcept)
 
-def build_superset_upstream(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph):
+
+def build_superset_upstream(concept: Concept, output_grain: Grain, environment, g, query_graph: ReferenceGraph):
     datasource = get_datasource_by_concept_and_grain(
         concept, concept.grain, environment, g, query_graph
     )
@@ -298,10 +384,11 @@ def build_superset_upstream(concept:Concept, output_grain:Grain, environment, g,
     query_graph.add_edge(ds_label, operator)
     for dsconcept in datasource.concepts:
         if dsconcept in output_grain.components:
-            query_graph.add_node(dsconcept,)
+            query_graph.add_node(dsconcept )
             query_graph.add_edge(operator, dsconcept)
 
-def build_upstream_join_required(concept:Concept, output_grain:Grain, environment, g, query_graph:ReferenceGraph):
+
+def build_upstream_join_required(concept: Concept, output_grain: Grain, environment, g: ReferenceGraph, query_graph: ReferenceGraph):
     logger.debug(f"group node {concept.grain} to {output_grain}")
     datasource = get_datasource_by_concept_and_grain(
         concept, concept.grain + output_grain, environment, g, query_graph
@@ -319,6 +406,7 @@ def build_upstream_join_required(concept:Concept, output_grain:Grain, environmen
     query_graph.add_node(datasource)
     query_graph.add_edge(datasource, operator)
 
+
 def build_upstream(
         concept: Concept,  # input_grain:Grain,
         output_grain: Grain,
@@ -332,8 +420,8 @@ def build_upstream(
     )
     query_graph.add_node(concept, virtual=virtual)
     if concept.sources:
-         # the concept is derived from other measures; don't try to look for a direct source
-         # TODO: look at materialized sources
+        # the concept is derived from other measures; don't try to look for a direct source
+        # TODO: look at materialized sources
         build_derivation_upstream(concept, query_graph, virtual)
     elif concept.grain == output_grain:
         # the concept is at the same grain as the output
@@ -358,7 +446,6 @@ def build_upstream(
             f"There is no way to build this query. Concept {concept.name} grain {concept.grain} cannot be joined/aggreggated to target_grain {output_grain}"
         )
 
-
     for item in concept.sources:
         build_upstream(
             item,
@@ -369,12 +456,22 @@ def build_upstream(
             virtual=True,
         )
 
-def node_to_cte(input_node:str, G):
+
+def node_to_cte(input_node: str, G):
     if input_node.startswith('ds~'):
         input_node = [n for n in G.successors(input_node) if n.startswith('select_')][0]
+    print(G.nodes[input_node])
     grain = G.nodes[input_node]['grain']
     _source = [node for node in G.predecessors(input_node) if node.startswith("ds~")][0]
     datasource: Datasource = G.nodes[_source]["ds"]
+    outputs = [
+        node
+        for node in nx.descendants(G, input_node)
+        if node.startswith("c~") and not G.nodes[node].get("virtual", False)
+           # downstream is only not divided
+           and not any([node.startswith('select_') for node in nx.shortest_path(G, input_node, node)[1:]])
+    ]
+    print(outputs)
     outputs = [
         G.nodes[node]["concept"]
         for node in nx.descendants(G, input_node)
@@ -411,7 +508,7 @@ def node_to_cte(input_node:str, G):
         base=True
         if all([component in outputs for component in grain.components])
         else False,
-        group_to_grain=group_to_grain,)
+        group_to_grain=group_to_grain, )
 
 
 def walk_query_graph(input: str, G, query_grain: Grain, seen, index: int = 1) -> List[CTE]:
@@ -430,7 +527,7 @@ def walk_query_graph(input: str, G, query_grain: Grain, seen, index: int = 1) ->
             G.nodes[node]["concept"]
             for node in nx.descendants(G, input)
             if node.startswith("c~") and not G.nodes[node].get("virtual", False)
-                # downstream is only not divided
+               # downstream is only not divided
                and not any([node.startswith('select_') for node in nx.shortest_path(G, input, node)[1:]])
         ]
         grain = Grain(
@@ -478,9 +575,8 @@ def build_execution_graph(statement: Select, environment: Environment,
     root = get_operation_node("output")
     query_graph.add_node(root)
     for concept in statement.output_components + statement.grain.components:
-        cname = concept_to_node(concept)
-        query_graph.add_node(cname, concept=concept, virtual=False)
-        query_graph.add_edge(cname, root)
+        query_graph.add_node(concept, virtual=False)
+        query_graph.add_edge(concept, root)
         build_upstream(concept, statement.grain, environment, relation_graph, query_graph)
     return query_graph
 
@@ -515,11 +611,11 @@ def process_query(environment: Environment, statement: Select,
     for value in ctes:
         print(value.name)
     for cte in others:
-        joinkeys=[
-                     JoinKey(c)
-                     for c in statement.grain.components
-                     if c in cte.output_columns
-                 ]
+        joinkeys = [
+            JoinKey(c)
+            for c in statement.grain.components
+            if c in cte.output_columns
+        ]
         if joinkeys:
             joins.append(
                 Join(

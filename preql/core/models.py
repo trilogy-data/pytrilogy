@@ -19,7 +19,7 @@ class Metadata:
     pass
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass( frozen=True)
 class Concept:
     name: str
     datatype: DataType
@@ -28,6 +28,15 @@ class Concept:
     lineage: Optional["Function"] = None
     _grain: Optional["Grain"] = None
     namespace: Optional[str] = "default"
+
+    def __eq__(self, other: object):
+        if not isinstance(other, Concept):
+            return False
+        return self.name == other.name and self.datatype == other.datatype and self.purpose == other.purpose and self.namespace==other.namespace and self.grain == other.grain
+
+    def __str__(self):
+        grain = ','.join([str(c.name) for c in self.grain.components])
+        return f'{self.namespace}.{self.name}<{grain}>'
 
     @property
     def address(self)->str:
@@ -46,7 +55,7 @@ class Concept:
 
     @property
     def grain(self):
-        if self.purpose == Purpose.KEY:
+        if self.purpose == Purpose.KEY and not self._grain:
             return Grain(components=[self])
         return self._grain
 
@@ -66,7 +75,7 @@ class Concept:
         return [self] + self.sources
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True, )
 class ColumnAssignment:
     alias: str
     concept: Concept
@@ -191,7 +200,7 @@ class Grain:
 
     @property
     def set(self):
-        return set([c.name for c in self.components])
+        return set([c.name+c.namespace for c in self.components])
 
     def __eq__(self, other: object):
         if not isinstance(other, Grain):
@@ -240,9 +249,9 @@ class Datasource:
         for x in self.columns:
             if x.concept == concept:
                 return x.alias
-        existing = [c.concept.name for c in self.columns]
+        existing = [str(c.concept) for c in self.columns]
         raise ValueError(
-            f"Concept {concept.name} not found on {self.identifier}; have {existing}."
+            f"Concept {concept} not found on {self.identifier}; have {existing}."
         )
 
     @property
@@ -252,7 +261,7 @@ class Datasource:
 @dataclass(eq=True)
 class JoinedDataSource:
     concepts:List[Concept]
-    source_map: Dict[str, Datasource]
+    source_map: Dict[str, "CTE"]
     grain: Grain
     address: Address
     # base: Datasource
@@ -260,21 +269,27 @@ class JoinedDataSource:
 
     @property
     def datasources(self)->List[Datasource]:
-        return unique(list(self.source_map.values()), 'identifier')
+        datasources = []
+        for item in self.source_map.values():
+            datasources.append(item.source)
+
+        return unique(datasources, 'identifier')
 
     @property
     def identifier(self)->str:
-        return '_join_'.join([d.identifier for d in self.datasources])
+        return '_join_'.join([d.name for d in self.datasources])
 
     def get_alias(self, concept: Concept):
         for x in self.datasources:
             try:
-                return x.get_alias(concept)
-            except ValueError:
+                return x.get_alias(concept.with_grain(x.grain))
+            except ValueError as e:
+                from preql.constants import logger
+                logger.error(e)
                 continue
-        existing = [c.name for c in self.concepts]
+        existing = [str(c) for c in self.concepts]
         raise ValueError(
-            f"Concept {concept.name} not found on {self.identifier}; have {existing}."
+            f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
         )
 
 
@@ -307,10 +322,12 @@ class CTE:
     def get_alias(self, concept: Concept):
         try:
             return self.source.get_alias(concept)
-        except ValueError:
+        except ValueError as e:
             if not self.joins:
-                raise ValueError(f'concept {concept.name} not found on cte {self.name} source {self.source}')
+                raise e
+                raise ValueError(f'concept {concept} not found on cte {self.name}, available {[str(c) for c in self.output_columns]}')
             pass
+        return 'not implemented join lookup'
         #
         # for x in self.columns:
         #     if x.concept == concept:
@@ -330,6 +347,9 @@ class CompiledCTE:
 class JoinKey:
     concept: Concept
 
+    def __str__(self):
+        return str(self.concept)
+
 
 @dataclass
 class Join:
@@ -337,6 +357,9 @@ class Join:
     right_cte: CTE
     jointype: JoinType
     joinkeys: List[JoinKey]
+
+    def __str__(self):
+        return f'{self.jointype.value} JOIN {self.left_cte.name} and {self.right_cte.name} on {",".join([str(k) for k in self.joinkeys])}'
 
 
 @dataclass

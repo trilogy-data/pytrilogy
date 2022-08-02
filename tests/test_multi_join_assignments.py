@@ -71,3 +71,11 @@ def test_select():
     assert select.grain == Grain(components=[env.concepts['category_key']])
 
     process_query(statement=select, environment=env, hooks = [GraphHook()])
+
+
+def test_joins_to_ctes():
+    from preql.core.processor import parse_path_to_matches
+
+    TEST = ['ds~internet_sales.fact_internet_sales', 'c~product.key@Grain<order_line_number>', 'c~product.key@Grain<key>', 'ds~product.product_info', 'c~product.sub_category_key@Grain<key>', 'c~product.sub_category_key@Grain<sub_category_key>', 'ds~product.product_sub_category', 'c~product.category_key@Grain<sub_category_key>', 'c~product.category_key@Grain<category_key>']
+
+    assert len(parse_path_to_matches(TEST)) == 2

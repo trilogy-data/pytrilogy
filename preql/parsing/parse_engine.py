@@ -290,7 +290,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
-        columns = args[1]
+        columns:List[ColumnAssignment] = args[1]
         grain: Optional[Grain] = None
         address: Optional[Address] = None
         for val in args[1:]:
@@ -300,6 +300,7 @@ class ParseToObjects(Transformer):
                 grain = val
         if not address:
             raise ValueError("Malformed datasource, missing address declaration")
+
         datasource = Datasource(
             identifier=name,
             columns=columns,
@@ -307,6 +308,8 @@ class ParseToObjects(Transformer):
             address=address,
             namespace=self.environment.namespace,
         )
+        for column in columns:
+            column.concept = column.concept.with_grain(datasource.grain)
         self.environment.datasources[datasource.identifier] = datasource
         return datasource
 
@@ -417,8 +420,7 @@ class ParseToObjects(Transformer):
                 item.content.output = new_concept
                 self.environment.concepts[item.content.output.name] = new_concept
             elif isinstance(item.content, Concept):
-                if item.content.purpose == Purpose.METRIC:
-                    item.content = item.content.with_grain(output.grain)
+                item.content = item.content.with_grain(output.grain)
         if order_by:
             for item in order_by.items:
                 if (
