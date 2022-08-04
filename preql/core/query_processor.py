@@ -22,103 +22,17 @@ from preql.core.models import (
 
 )
 from preql.utility import string_to_hash
+from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 
 
-def concept_to_node(input: Concept) -> str:
-    # if input.purpose == Purpose.METRIC:
-    #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.namespace}.{input.name}@{input.grain}"
+#
+#
+# def add_concept_node(g, concept: Concept):
+#     g.add_node(concept_to_node(concept), type=concept.purpose.value, concept=concept)
+#
+#
 
 
-def datasource_to_node(input: Union[Datasource, JoinedDataSource]) -> str:
-    if isinstance(input, JoinedDataSource):
-        return 'ds~join~' + ','.join([datasource_to_node(sub) for sub in input.datasources])
-    return f"ds~{input.namespace}.{input.identifier}"
-
-
-def node_to_datasource(input: str, environment: Environment) -> Datasource:
-    stripped = input.lstrip('ds~')
-    namespace, title = stripped.split('.')
-    if namespace == 'None':
-        return environment.datasources[title]
-    return environment.datasources[stripped]
-
-
-def add_concept_node(g, concept: Concept):
-    g.add_node(concept_to_node(concept), type=concept.purpose.value, concept=concept)
-
-
-class ReferenceGraph(nx.DiGraph):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def add_node(self, node_for_adding, **attr):
-
-        if isinstance(node_for_adding, Concept):
-            node_name = concept_to_node(node_for_adding)
-            attr['type'] = 'concept'
-            attr['concept'] = node_for_adding
-            attr['grain'] = node_for_adding.grain
-        elif isinstance(node_for_adding, Datasource):
-            node_name = datasource_to_node(node_for_adding)
-            attr['type'] = 'datasource'
-            attr['ds'] = node_for_adding
-            attr['grain'] = node_for_adding.grain
-        elif isinstance(node_for_adding, JoinedDataSource):
-            node_name = datasource_to_node(node_for_adding)
-            attr['type'] = 'joineddatasource'
-            attr['ds'] = node_for_adding
-            attr['grain'] = node_for_adding.grain
-        else:
-            node_name = node_for_adding
-
-        if node_name.startswith('c~') and not 'concept' in attr.keys():
-            raise ValueError
-        super().add_node(node_name, **attr)
-
-    def add_edge(self, u_of_edge, v_of_edge, **attr):
-        if isinstance(u_of_edge, Concept):
-            orig = u_of_edge
-            u_of_edge = concept_to_node(u_of_edge)
-            if u_of_edge not in self.nodes:
-                self.add_node(orig)
-        elif isinstance(u_of_edge, Datasource):
-            u_of_edge = datasource_to_node(u_of_edge)
-        elif isinstance(u_of_edge, JoinedDataSource):
-            u_of_edge = datasource_to_node(u_of_edge)
-        if isinstance(v_of_edge, Concept):
-            orig = v_of_edge
-            v_of_edge = concept_to_node(v_of_edge)
-            if v_of_edge not in self.nodes:
-                self.add_node(orig)
-        elif isinstance(v_of_edge, Datasource):
-            v_of_edge = datasource_to_node(v_of_edge)
-        elif isinstance(v_of_edge, JoinedDataSource):
-            v_of_edge = datasource_to_node(v_of_edge)
-        super().add_edge(u_of_edge, v_of_edge, **attr)
-
-
-def generate_graph(environment: Environment, ) -> ReferenceGraph:
-    g = ReferenceGraph()
-    # statement.input_components, statement.output_components
-    for name, concept in environment.concepts.items():
-        g.add_node(concept)
-
-        # if we have sources, recursively add them
-        if concept.sources:
-            node_name = concept_to_node(concept)
-            for source in concept.sources:
-                g.add_node(source)
-                g.add_edge(source, node_name)
-    for key, dataset in environment.datasources.items():
-        node = datasource_to_node(dataset)
-        g.add_node(dataset, type="datasource", datasource=dataset)
-        for concept in dataset.concepts:
-            g.add_edge(node, concept)
-            g.add_edge(concept, node)
-            if concept.purpose == Purpose.KEY:
-                g.add_edge( concept, concept.with_grain(Grain(components=[concept])))
-    return g
 
 
 def get_datasource_from_direct_select(
@@ -161,6 +75,7 @@ from typing import Tuple
 
 def parse_path_to_matches(input: List[str])->List[Tuple[str, str, List[str]]]:
     left_ds = None
+    right_ds = None
     concept = None
     output = []
     while input:
@@ -178,6 +93,8 @@ def parse_path_to_matches(input: List[str])->List[Tuple[str, str, List[str]]]:
             output.append((left_ds, right_ds, [concept]))
             left_ds = right_ds
             concept = None
+    if left_ds and not right_ds:
+        output.append([left_ds, None, [concept]])
     return output
 
 def path_to_joins(input: List[str], g: ReferenceGraph, environment: Environment, query_graph: ReferenceGraph) ->List[
@@ -193,11 +110,13 @@ def path_to_joins(input: List[str], g: ReferenceGraph, environment: Environment,
             build_select_upstream(concept.with_grain(left_value.grain), output_grain=left_value.grain, environment=environment, g=g,
                                   query_graph=query_graph, datasource=left_value)
         left_cte = node_to_cte(left_ds, query_graph)
+        if not right_ds:
+            continue
         right_value = g.nodes[right_ds]['datasource']
         for concept in concepts:
             build_select_upstream(concept.with_grain(right_value.grain), output_grain=right_value.grain, environment=environment, g=g,
                                   query_graph=query_graph, datasource=right_value)
-        right_cte = node_to_cte(right_value, query_graph)
+        right_cte = node_to_cte(right_ds, query_graph)
         out.append(Join(left_cte=left_cte, right_cte=right_cte, jointype=JoinType.LEFT_OUTER,
                            joinkeys=[JoinKey(concept) for concept in concepts]))
     return out
@@ -243,10 +162,7 @@ def get_datasource_by_joins(
         parents.append(source_concept)
 
         new_joins = path_to_joins(value, environment=environment, g=g, query_graph=query_graph)
-        print('LE NEW JOINS')
-        print(record)
-        print([str(j) for j in new_joins])
-        print('----')
+
         join_paths += new_joins
 
         root_cte = node_to_cte(root, query_graph)
@@ -261,7 +177,6 @@ def get_datasource_by_joins(
     # for key, value in datasource.source_map.items():
     #     source_concept = environment.concepts[key]
 
-    raise ValueError
     output = JoinedDataSource(concepts=all_requirements,
                               source_map=source_map,
                               grain=grain,
@@ -460,7 +375,6 @@ def build_upstream(
 def node_to_cte(input_node: str, G):
     if input_node.startswith('ds~'):
         input_node = [n for n in G.successors(input_node) if n.startswith('select_')][0]
-    print(G.nodes[input_node])
     grain = G.nodes[input_node]['grain']
     _source = [node for node in G.predecessors(input_node) if node.startswith("ds~")][0]
     datasource: Datasource = G.nodes[_source]["ds"]

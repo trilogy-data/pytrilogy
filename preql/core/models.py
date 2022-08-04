@@ -19,15 +19,22 @@ class Metadata:
     pass
 
 
-@dataclass( frozen=True)
+@dataclass()
 class Concept:
     name: str
     datatype: DataType
     purpose: Purpose
+    grain: Optional[Union["Grain", "Concept"]] = None
     metadata: Optional[Metadata] = None
     lineage: Optional["Function"] = None
-    _grain: Optional["Grain"] = None
     namespace: Optional[str] = "default"
+
+    def __post_init__(self):
+        if not self.grain and self.purpose == Purpose.KEY:
+            self.grain = Grain(components = [self])
+        elif isinstance(self.grain, Concept):
+            self.grain = Grain(components = [self.grain])
+
 
     def __eq__(self, other: object):
         if not isinstance(other, Concept):
@@ -49,15 +56,9 @@ class Concept:
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            _grain=grain,
+            grain=grain,
             namespace=self.namespace,
         )
-
-    @property
-    def grain(self):
-        if self.purpose == Purpose.KEY and not self._grain:
-            return Grain(components=[self])
-        return self._grain
 
     @property
     def sources(self) -> List["Concept"]:
@@ -96,7 +97,6 @@ class Function:
     arguments: List[Concept]
     output_datatype: DataType
     output_purpose: Purpose
-    output_grain: "Grain"
     valid_inputs: Optional[Set[DataType]] = None
 
 
@@ -232,7 +232,7 @@ class Grain:
 class Datasource:
     identifier: str
     columns: List[ColumnAssignment]
-    address: Address
+    address: Union[Address, str]
     grain: Optional[Grain] = None
     namespace: Optional[str] = ""
 
@@ -240,6 +240,8 @@ class Datasource:
         # if a user skips defining a grain, use the defined keys
         if not self.grain:
             self.grain = Grain([v for v in self.concepts if v.purpose == Purpose.KEY])
+        if isinstance(self.address, str):
+            self.address = Address(location = self.address)
 
     @property
     def concepts(self) -> List[Concept]:
@@ -364,8 +366,8 @@ class Join:
 
 @dataclass
 class Environment:
-    concepts: Dict[str, Concept]
-    datasources: Dict[str, Datasource]
+    concepts: Dict[str, Concept] = field(default_factory = dict)
+    datasources: Dict[str, Datasource] = field(default_factory = dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 

@@ -3,7 +3,7 @@ from preql.parser import parse
 from os.path import dirname, join
 from preql.parsing.exceptions import ParseError
 from preql.core.models import Select, Grain
-from preql.core.processor import process_query
+from preql.core.query_processor import process_query
 from preql.core.hooks import GraphHook
 
 TEST_SETUP = r'''
@@ -74,7 +74,7 @@ def test_select():
 
 
 def test_joins_to_ctes():
-    from preql.core.processor import parse_path_to_matches
+    from preql.core.query_processor import parse_path_to_matches
 
     TEST = ['ds~internet_sales.fact_internet_sales', 'c~product.key@Grain<order_line_number>', 'c~product.key@Grain<key>', 'ds~product.product_info', 'c~product.sub_category_key@Grain<key>', 'c~product.sub_category_key@Grain<sub_category_key>', 'ds~product.product_sub_category', 'c~product.category_key@Grain<sub_category_key>', 'c~product.category_key@Grain<category_key>']
 

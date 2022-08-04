@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from preql.core.models import Environment, Select, ProcessedQuery
-from preql.core.processor import process_query
+from preql.core.query_processor import process_query
 from preql.core.hooks import BaseProcessingHook
 
 class BaseDialect:

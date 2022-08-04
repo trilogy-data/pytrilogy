@@ -220,7 +220,7 @@ class ParseToObjects(Transformer):
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
-            _grain=Grain(components=[self.environment.concepts[grain]]),
+            grain=Grain(components=[self.environment.concepts[grain]]),
             namespace=self.environment.namespace,
         )
         self.environment.concepts[name] = concept
@@ -268,7 +268,7 @@ class ParseToObjects(Transformer):
             purpose=args[0],
             metadata=metadata,
             lineage=function,
-            _grain=function.output_grain,
+            grain=function.output_grain,
             namespace=self.environment.namespace,
         )
         self.environment.concepts[name] = concept
