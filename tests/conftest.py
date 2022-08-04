@@ -67,7 +67,7 @@ def test_environment():
     for item in [test_product, test_category, test_revenue]:
         env.datasources[item.identifier] = item
 
-    for item in [category_id, category_name, revenue, product_id]:
+    for item in [category_id, category_name, total_revenue, revenue, product_id]:
         env.concepts[item.name] = item
     yield env
 
