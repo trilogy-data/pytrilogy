@@ -6,6 +6,7 @@ import networkx as nx
 from preql.constants import logger
 from preql.core.enums import Purpose
 from preql.core.hooks import BaseProcessingHook
+from preql.core.env_processor import generate_graph
 from preql.core.models import (
     Concept,
     Environment,
@@ -16,8 +17,10 @@ from preql.core.models import (
     JoinKey,
     ProcessedQuery,
     Grain,
+    QueryDatasource,
     JoinedDataSource,
     JoinType,
+    BaseJoin,
     Address
 
 )
@@ -25,19 +28,10 @@ from preql.utility import string_to_hash
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 
 
-#
-#
-# def add_concept_node(g, concept: Concept):
-#     g.add_node(concept_to_node(concept), type=concept.purpose.value, concept=concept)
-#
-#
-
-
-
 
 def get_datasource_from_direct_select(
         concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
-) -> Datasource:
+) -> QueryDatasource:
     for datasource in environment.datasources.values():
         if not datasource.grain == grain:
             continue
@@ -50,25 +44,32 @@ def get_datasource_from_direct_select(
         except nx.exception.NetworkXNoPath as e:
             continue
         if len([p for p in path if g.nodes[p]["type"] == "datasource"]) == 1:
-            return datasource
+            return QueryDatasource(concepts = [concept], source_map = {concept.name:datasource},
+                                   grain = datasource.grain, joins = [])
     raise ValueError(f'No direct select for {concept}')
 
 def get_datasource_from_group_select(
         concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
-) -> Datasource:
+) -> QueryDatasource:
+    all_concepts = [concept] + grain.components
     for datasource in environment.datasources.values():
-        if not grain.issubset(datasource.grain):
-            continue
-        try:
-            path = nx.shortest_path(
-                g,
-                source=datasource_to_node(datasource),
-                target=concept_to_node(concept),
-            )
-        except nx.exception.NetworkXNoPath as e:
-            continue
-        if len([p for p in path if g.nodes[p]["type"] == "datasource"]) == 1:
-            return datasource
+        all_found = True
+        for concept in all_concepts:
+            try:
+                path = nx.shortest_path(
+                    g,
+                    source=datasource_to_node(datasource),
+                    target=concept_to_node(concept),
+                )
+            except nx.exception.NetworkXNoPath as e:
+                all_found = False
+                break
+            if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
+                all_found = False
+                break
+        if all_found:
+            return QueryDatasource(concepts = [concept], source_map = {concept.name:datasource for concept in all_concepts},
+                                   grain = grain, joins = [])
     raise ValueError(f'No grouped select for {concept}')
 
 from typing import Tuple
@@ -97,8 +98,8 @@ def parse_path_to_matches(input: List[str])->List[Tuple[str, str, List[str]]]:
         output.append([left_ds, None, [concept]])
     return output
 
-def path_to_joins(input: List[str], g: ReferenceGraph, environment: Environment, query_graph: ReferenceGraph) ->List[
-    Join]:
+def path_to_joins(input: List[str], g: ReferenceGraph) ->List[
+    BaseJoin]:
     ''' Build joins and ensure any required CTEs are also created/tracked'''
     out = []
     zipped = parse_path_to_matches(input)
@@ -106,25 +107,17 @@ def path_to_joins(input: List[str], g: ReferenceGraph, environment: Environment,
         left_ds, right_ds, concepts = row
         concepts = [g.nodes[concept]['concept'] for concept in concepts]
         left_value = g.nodes[left_ds]['datasource']
-        for concept in concepts:
-            build_select_upstream(concept.with_grain(left_value.grain), output_grain=left_value.grain, environment=environment, g=g,
-                                  query_graph=query_graph, datasource=left_value)
-        left_cte = node_to_cte(left_ds, query_graph)
         if not right_ds:
             continue
         right_value = g.nodes[right_ds]['datasource']
-        for concept in concepts:
-            build_select_upstream(concept.with_grain(right_value.grain), output_grain=right_value.grain, environment=environment, g=g,
-                                  query_graph=query_graph, datasource=right_value)
-        right_cte = node_to_cte(right_ds, query_graph)
-        out.append(Join(left_cte=left_cte, right_cte=right_cte, jointype=JoinType.LEFT_OUTER,
-                           joinkeys=[JoinKey(concept) for concept in concepts]))
+        out.append(BaseJoin(left_datasource = left_value, right_datasource=right_value, join_type=JoinType.LEFT_OUTER,
+                           concepts = concepts ))
     return out
 
 
 def get_datasource_by_joins(
-        concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
-) -> JoinedDataSource:
+        concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph, #query_graph: ReferenceGraph
+) -> QueryDatasource:
     join_candidates = []
     all_requirements = [concept] + grain.components
 
@@ -152,44 +145,30 @@ def get_datasource_by_joins(
     shortest = join_candidates[0]
     source_map = {}
     join_paths = []
-    ctes = []
     parents = []
     for key, value in shortest['paths'].items():
-        record = [*value]
         datasource_nodes = [v for v in value if v.startswith('ds~')]
         root = datasource_nodes[-1]
         source_concept = g.nodes[value[-1]]['concept']
         parents.append(source_concept)
 
-        new_joins = path_to_joins(value, environment=environment, g=g, query_graph=query_graph)
+        new_joins = path_to_joins(value, g=g)
 
         join_paths += new_joins
+        source_map[source_concept.address] = root
 
-        root_cte = node_to_cte(root, query_graph)
-        # ctes = {**ctes, **{n:node_to_datasource(n, environment=environment) for n in datasource_nodes} }
-
-
-        source_map[source_concept.address] = root_cte
-        ctes.append(root_cte)
-        # build_select_upstream(concept, output_grain=source_concept.grain, environment=environment, g=g,
-        #                       query_graph=query_graph)
-
-    # for key, value in datasource.source_map.items():
-    #     source_concept = environment.concepts[key]
-
-    output = JoinedDataSource(concepts=all_requirements,
-                              source_map=source_map,
-                              grain=grain,
-                              address=Address(location=ctes[0].name),
-                              joins=join_paths, )
-    for parent in parents:
-        query_graph.add_edge(parent, f'select_join_group_{output.identifier}')
+    output = QueryDatasource(concepts=all_requirements,
+                             source_map=source_map,
+                             grain=grain,
+                             joins = join_paths)
     return output
 
 
 def get_datasource_by_concept_and_grain(
-        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
-) -> Union[Datasource, JoinedDataSource]:
+        concept, grain: Grain, environment: Environment, g: ReferenceGraph
+) -> Union[Datasource, QueryDatasource]:
+    '''Determine if it's possible to get a certain concept at a certain grain.
+    '''
     try:
         return get_datasource_from_direct_select(concept, grain, environment, g)
     except ValueError as e:
@@ -199,7 +178,7 @@ def get_datasource_by_concept_and_grain(
     except ValueError as e:
         logger.error(e)
     try:
-        return get_datasource_by_joins(concept, grain, environment, g, query_graph)
+        return get_datasource_by_joins(concept, grain, environment, g)
     except ValueError as e:
         raise e
         logger.error(e)
@@ -243,7 +222,7 @@ def build_select_upstream(concept: Concept, output_grain: Grain, environment, g,
     # if we are providing a datasource
     # assume a direct selection is possible
     datasource = datasource or get_datasource_by_concept_and_grain(
-        concept, output_grain, environment, g, query_graph
+        concept, output_grain, environment, g
     )
     if concept.grain == datasource.grain:
         operator = f"select_{datasource.identifier}"
@@ -269,7 +248,7 @@ def build_component_upstream(concept: Concept, output_grain: Grain, environment,
         f"select node {concept.grain} to {concept.grain} as subset of {output_grain}"
     )
     datasource = get_datasource_by_concept_and_grain(
-        concept, concept.grain, environment, g, query_graph
+        concept, concept.grain, environment, g,
     )
     print(f"can fetch from {datasource.identifier}")
     if concept.purpose == Purpose.METRIC:
@@ -288,7 +267,7 @@ def build_component_upstream(concept: Concept, output_grain: Grain, environment,
 
 def build_superset_upstream(concept: Concept, output_grain: Grain, environment, g, query_graph: ReferenceGraph):
     datasource = get_datasource_by_concept_and_grain(
-        concept, concept.grain, environment, g, query_graph
+        concept, concept.grain, environment, g,
     )
 
     operator = f"group_{datasource.identifier}"
@@ -306,11 +285,10 @@ def build_superset_upstream(concept: Concept, output_grain: Grain, environment, 
 def build_upstream_join_required(concept: Concept, output_grain: Grain, environment, g: ReferenceGraph, query_graph: ReferenceGraph):
     logger.debug(f"group node {concept.grain} to {output_grain}")
     datasource = get_datasource_by_concept_and_grain(
-        concept, concept.grain + output_grain, environment, g, query_graph
+        concept, concept.grain + output_grain, environment, g,
     )
     if isinstance(datasource, JoinedDataSource):
         operator = f'select_join_group_{datasource.identifier}'
-
     else:
         operator = f"select_group_{datasource.identifier}"
     query_graph.add_node(operator, grain=output_grain)
@@ -371,6 +349,18 @@ def build_upstream(
             virtual=True,
         )
 
+def datasource_to_cte(datasource:QueryDatasource):
+    int_id = string_to_hash(datasource.identifier+str(datasource.grain))
+    group_to_grain = False if sum([ds.grain for ds in datasource.datasources]) == datasource.grain else True
+    return CTE(
+        name=f"cte_{int_id}",
+        source=datasource,
+        # output columns are what are selected/grouped by
+        output_columns=datasource.concepts,
+        # related columns include all referenced columns, such as filtering
+        related_columns=datasource.concepts,
+        grain=datasource.grain,
+        group_to_grain=group_to_grain, )
 
 def node_to_cte(input_node: str, G):
     if input_node.startswith('ds~'):
@@ -385,7 +375,6 @@ def node_to_cte(input_node: str, G):
            # downstream is only not divided
            and not any([node.startswith('select_') for node in nx.shortest_path(G, input_node, node)[1:]])
     ]
-    print(outputs)
     outputs = [
         G.nodes[node]["concept"]
         for node in nx.descendants(G, input_node)
@@ -495,11 +484,81 @@ def build_execution_graph(statement: Select, environment: Environment,
     return query_graph
 
 
+# def process_query(environment: Environment, statement: Select,
+#                   hooks: Optional[List[BaseProcessingHook]] = None) -> ProcessedQuery:
+#     '''Turn the raw query input into an instantiated execution tree.'''
+#     graph = generate_graph(environment)
+#
+#
+#     query_graph = build_execution_graph(statement, environment=environment, relation_graph=graph)
+#
+#     # run lifecycle hooks
+#     # typically for logging
+#     hooks = hooks or []
+#     for hook in hooks:
+#         hook.query_graph_built(query_graph)
+#     starts = [
+#         n for n in query_graph.nodes if query_graph.in_degree(n) == 0
+#     ]  # type: ignore
+#     ctes = []
+#     seen = set()
+#     for node in starts:
+#         ctes += walk_query_graph(node, query_graph, statement.grain, seen=seen)
+#     joins = []
+#     for cte in ctes:
+#         print(cte.name)
+#         print(cte.grain)
+#     base = [cte for cte in ctes if cte.base][0]
+#     others = [cte for cte in ctes if cte != base]
+#     print(seen)
+#     print('----------')
+#     for value in ctes:
+#         print(value.name)
+#     for cte in others:
+#         joinkeys = [
+#             JoinKey(c)
+#             for c in statement.grain.components
+#             if c in cte.output_columns
+#         ]
+#         if joinkeys:
+#             joins.append(
+#                 Join(
+#                     left_cte=base,
+#                     right_cte=cte,
+#                     joinkeys=joinkeys,
+#                     jointype=JoinType.LEFT_OUTER,
+#                 )
+#             )
+#     return ProcessedQuery(
+#         order_by=statement.order_by,
+#         grain=statement.grain,
+#         limit=statement.limit,
+#         where_clause=statement.where_clause,
+#         output_columns=statement.output_components,
+#         ctes=ctes,
+#         joins=joins,
+#     )
+from collections import defaultdict
+def get_query_datasources(environment: Environment, statement: Select,graph:ReferenceGraph):
+    concept_map = defaultdict(list)
+    datasource_map = {}
+    for concept in statement.output_components + statement.grain.components:
+        datasource = get_datasource_by_concept_and_grain(
+            concept, statement.grain, environment, graph
+        )
+        concept_map[datasource.identifier].append(concept)
+        datasource_map[datasource.identifier] = datasource
+    return concept_map, datasource_map
+
 def process_query(environment: Environment, statement: Select,
                   hooks: Optional[List[BaseProcessingHook]] = None) -> ProcessedQuery:
     '''Turn the raw query input into an instantiated execution tree.'''
     graph = generate_graph(environment)
 
+    for concept in statement.output_components + statement.grain.components:
+        datasource = get_datasource_by_concept_and_grain(
+            concept, statement.grain, environment, graph
+        )
     query_graph = build_execution_graph(statement, environment=environment, relation_graph=graph)
 
     # run lifecycle hooks

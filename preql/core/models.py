@@ -32,8 +32,11 @@ class Concept:
     def __post_init__(self):
         if not self.grain and self.purpose == Purpose.KEY:
             self.grain = Grain(components = [self])
+        elif not self.grain:
+            self.grain = Grain(components = [])
         elif isinstance(self.grain, Concept):
             self.grain = Grain(components = [self.grain])
+
 
 
     def __eq__(self, other: object):
@@ -294,17 +297,67 @@ class JoinedDataSource:
             f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
         )
 
+@dataclass(
+)
+class BaseJoin:
+    left_datasource:Datasource
+    right_datasource:Datasource
+    concepts: List[Concept]
+    join_type: JoinType
+
+@dataclass(eq=True)
+class QueryDatasource:
+    concepts:List[Concept]
+    source_map: Dict[str, Datasource]
+    grain: Grain
+    joins: List[BaseJoin]
+
+    @property
+    def datasources(self)->List[Datasource]:
+        datasources = []
+        for item in self.source_map.values():
+            datasources.append(item)
+        return unique(datasources, 'identifier')
+
+    @property
+    def identifier(self)->str:
+        return '_join_'.join([d.name for d in self.datasources])
+
+    def get_alias(self, concept: Concept):
+        for x in self.datasources:
+            try:
+                return x.get_alias(concept.with_grain(x.grain))
+            except ValueError as e:
+                from preql.constants import logger
+                logger.error(e)
+                continue
+        existing = [str(c) for c in self.concepts]
+        raise ValueError(
+            f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
+        )
+
 
 
 @dataclass
 class Comment:
     text: str
 
+@dataclass
+class QueryCTE:
+    name: str
+    root:Union[Datasource, JoinedDataSource, "CTE"]  # TODO: make recursive
+    inputs: Dict[str, Union[Datasource, JoinedDataSource, "CTE"]]
+    # output columns are what are selected/grouped by
+    output_columns: List[Concept]
+    # related columns include all referenced columns, such as filtering
+    related_columns: List[Concept]
+    grain: Grain
+    base: bool = False
 
 @dataclass
 class CTE:
     name: str
-    source:Union[Datasource, JoinedDataSource, "CTE"]  # TODO: make recursive
+    source:"QueryDatasource"  # TODO: make recursive
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
     # related columns include all referenced columns, such as filtering

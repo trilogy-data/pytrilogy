@@ -58,10 +58,10 @@ def test_environment():
     )
 
     test_category = Datasource(
-        identifier = 'class',
+        identifier = 'category',
         columns = [ColumnAssignment(alias = 'category_id', concept = category_id),
                    ColumnAssignment(alias = 'category_name', concept=category_name)],
-        address = 'tblClass'
+        address = 'tblCategory'
     )
 
     for item in [test_product, test_category, test_revenue]:
