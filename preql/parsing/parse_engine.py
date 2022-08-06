@@ -268,7 +268,7 @@ class ParseToObjects(Transformer):
             purpose=args[0],
             metadata=metadata,
             lineage=function,
-            grain=function.output_grain,
+            # grain=function.output_grain,
             namespace=self.environment.namespace,
         )
         self.environment.concepts[name] = concept
@@ -415,12 +415,16 @@ class ParseToObjects(Transformer):
             # we don't know the grain of an aggregate at assignment time
             # so rebuild at this point in the tree
             # TODO: simplify
+            print(item)
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_grain(output.grain)
                 item.content.output = new_concept
-                self.environment.concepts[item.content.output.name] = new_concept
             elif isinstance(item.content, Concept):
-                item.content = item.content.with_grain(output.grain)
+                new_concept = item.content.with_grain(output.grain)
+                item.content = new_concept
+            else:
+                raise ValueError
+            self.environment.concepts[new_concept.name] = new_concept
         if order_by:
             for item in order_by.items:
                 if (
@@ -464,7 +468,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
-            output_grain=Grain(components=args),
+            #output_grain=Grain(components=args),
         )
 
     def sum(self, arguments):
@@ -475,7 +479,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            output_grain=Grain(components=arguments),
+            #output_grain=Grain(components=arguments),
         )
 
     def avg(self, arguments):
@@ -486,7 +490,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            output_grain=Grain(components=arguments),
+            #output_grain=Grain(components=arguments),
         )
 
     def len(self, args):
@@ -498,7 +502,7 @@ class ParseToObjects(Transformer):
             output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={DataType.STRING, DataType.ARRAY},
-            output_grain=args[0].grain,
+            #output_grain=args[0].grain,
         )
 
     def like(self, args):
@@ -510,7 +514,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.BOOL,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            output_grain=Grain(components=args),
+            #output_grain=Grain(components=args),
         )
 
 

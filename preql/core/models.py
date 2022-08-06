@@ -19,7 +19,7 @@ class Metadata:
     pass
 
 
-@dataclass()
+@dataclass(unsafe_hash=True)
 class Concept:
     name: str
     datatype: DataType
@@ -139,12 +139,21 @@ class OrderBy:
     items: List[OrderItem]
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class Select:
-    selection: List[SelectItem]
+    selection: Union[List[SelectItem], List[Union[Concept, ConceptTransform]]]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+
+    def __post_init__(self):
+        final = []
+        for item in self.selection:
+            if isinstance(item, (Concept, ConceptTransform)):
+                final.append(SelectItem(item))
+            else:
+                final.append(item)
+        self.selection = final
 
     @property
     def input_components(self) -> List[Concept]:
@@ -184,7 +193,7 @@ class Select:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY:
                 output += item.grain.components
-        return Grain(components=list(set(output)))
+        return Grain(components=unique(output, 'identifier'))
 
 
 
@@ -230,7 +239,11 @@ class Grain:
                 components.append(component)
         return Grain(components=components)
 
-
+    def __radd__(self, other):
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 @dataclass
 class Datasource:
     identifier: str
@@ -305,9 +318,14 @@ class BaseJoin:
     concepts: List[Concept]
     join_type: JoinType
 
+    def __str__(self):
+        return f'{self.join_type.value} JOIN {self.left_datasource.identifier} and {self.right_datasource.identifier} on {",".join([str(k) for k in self.concepts])}'
+
+
 @dataclass(eq=True)
 class QueryDatasource:
-    concepts:List[Concept]
+    input_concepts:List[Concept]
+    output_concepts:List[Concept]
     source_map: Dict[str, Datasource]
     grain: Grain
     joins: List[BaseJoin]
@@ -320,8 +338,21 @@ class QueryDatasource:
         return unique(datasources, 'identifier')
 
     @property
+    def base(self)->str:
+        if len(self.datasources) == 1:
+            return self.datasources[0].address.location
+        return 'TBD MULTIJOIN'
+
+    @property
+    def base_alias(self)->str:
+        if len(self.datasources) == 1:
+            return self.datasources[0].identifier
+        return 'TBD MULTIJOIN'
+
+    @property
     def identifier(self)->str:
-        return '_join_'.join([d.name for d in self.datasources])
+        grain = ','.join([str(c.name) for c in self.grain.components])
+        return '_join_'.join([d.name for d in self.datasources])+f"<{grain}>"
 
     def get_alias(self, concept: Concept):
         for x in self.datasources:
@@ -331,7 +362,7 @@ class QueryDatasource:
                 from preql.constants import logger
                 logger.error(e)
                 continue
-        existing = [str(c) for c in self.concepts]
+        existing = [str(c) for c in self.output_concepts]
         raise ValueError(
             f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
         )
@@ -360,18 +391,20 @@ class CTE:
     source:"QueryDatasource"  # TODO: make recursive
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
+    source_map:Dict[str, str]
     # related columns include all referenced columns, such as filtering
     related_columns: List[Concept]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
     parent_ctes:List["CTE"] = field(default_factory=list)
+    joins: Optional[List["Join"]] = field(default_factory=list)
 
-    @property
-    def joins(self)->List["Join"]:
-        if not isinstance(self.source, JoinedDataSource):
-            return []
-        return self.source.joins
+    # @property
+    # def joins(self)->List["Join"]:
+    #     if not isinstance(self.source, JoinedDataSource):
+    #         return []
+    #     return self.source.joins
 
 
     def get_alias(self, concept: Concept):
@@ -499,7 +532,7 @@ class ProcessedQuery:
     def base(self):
         if not self.grain.components:
             return self.ctes[0]
-        return [c for c in self.ctes if c.base == True][0]
+        return [c for c in self.ctes if c.grain == self.grain][0]
 
 
 @dataclass

@@ -66,8 +66,10 @@ ORDER BY {% for order in order_by %}
 
 
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
+    print(c.address)
+    print(cte.name)
     if not c.lineage:
-        rval = f"{cte.name}.{cte.get_alias(c)}"
+        rval = f"{cte.source_map[c.address]}.{cte.get_alias(c)}"
     else:
         args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
         rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
@@ -130,16 +132,18 @@ class SqlServerDialect(BaseDialect):
             print(cte.grain)
             print(cte.group_to_grain)
             print([c.name for c in cte.output_columns])
+            print([render_concept_sql(c, cte) for c in cte.output_columns])
             print([str(j) for j in cte.joins])
+            print(cte.source)
         compiled_ctes+=[
             CompiledCTE(
                 name=cte.name,
                 statement=TSQL_TEMPLATE.render(
                     select_columns=[
-                        render_concept_sql(c, cte) for c in output_concepts
+                        render_concept_sql(c, cte) for c in cte.output_columns
                     ],
                     joins=[render_join(join) for join in cte.joins],
-                    base=f"{cte.source.address.location} as {cte.source.address.location}",
+                    base=f"{cte.source.base} as {cte.source.base_alias}",
                     grain=cte.grain,
                     where=render_expr(where_assignment[cte.name].conditional, cte)
                     if cte.name in where_assignment
