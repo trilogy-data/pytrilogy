@@ -159,10 +159,8 @@ def get_datasource_by_joins(
                     target=concept_to_node(item),
                 )
                 paths[concept_to_node(item)] = path
-                print(f'found path to {item}')
             except nx.exception.NetworkXNoPath as e:
                 all_found = False
-                print(f'not found path to {item}')
                 continue
         if all_found:
             join_candidates.append({'paths': paths, 'datasource': datasource})
@@ -239,10 +237,8 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     group_to_grain = False if sum([ds.grain for ds in query_datasource.datasources]) == query_datasource.grain else True
     output = []
     if len(query_datasource.datasources) > 1:
-        print('SUB LOOP DEBUG')
         source_map = {}
         for datasource in query_datasource.datasources:
-            print('AFTER')
             sub_select = {key: item for key, item in query_datasource.source_map.items() if datasource in item}
             concepts = [c for c in datasource.concepts if c.address in sub_select.keys()]
             concepts = unique(concepts, 'address')
@@ -259,10 +255,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
             for cte in sub_cte:
                 for value in cte.output_columns:
                     source_map[value.address] = cte.name
-
-            print(datasource.name)
-            print([str(c) for c in concepts])
-            print(source_map)
     else:
         source = query_datasource.datasources[0]
         source_map = {concept.address: source.identifier for concept in query_datasource.output_concepts}
@@ -290,7 +282,10 @@ def get_query_datasources(environment: Environment, statement: Select, graph: Re
             concept, statement.grain, environment, graph
         )
         concept_map[datasource.identifier].append(concept)
-        datasource_map[datasource.identifier] = datasource
+        if datasource.identifier in datasource_map:
+            datasource_map[datasource.identifier] = datasource_map[datasource.identifier]+datasource
+        else:
+            datasource_map[datasource.identifier] = datasource
     return concept_map, datasource_map
 
 
@@ -305,8 +300,6 @@ def process_query(environment: Environment, statement: Select,
     joins = []
     for datasource in datasources.values():
         ctes += datasource_to_ctes(datasource)
-    for cte in ctes:
-        print(str(cte)[:100])
     base = [cte for cte in ctes if cte.grain == statement.grain][0]
     others = [cte for cte in ctes if cte != base]
     for cte in others:

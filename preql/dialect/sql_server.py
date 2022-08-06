@@ -66,10 +66,6 @@ ORDER BY {% for order in order_by %}
 
 
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
-    print('************')
-    print(c.address)
-    print(cte.name)
-    print(cte.source_map)
     if not c.lineage:
         rval = f"{cte.source_map[c.address]}.{cte.get_alias(c)}"
     else:
@@ -109,7 +105,9 @@ class SqlServerDialect(BaseDialect):
                 if c not in output_concepts and c in query.output_columns:
                     select_columns.append(f'{cte.name}."{c.name}"')
                     output_concepts.append(c)
-
+        if not all([c in output_concepts for c in query.output_columns]):
+            missing = [c for c in query.output_columns if c not in output_concepts]
+            raise ValueError(f'MISSING REQUESTED COLUMNs {missing} ')
         # where assignment
         where_assignment = {}
 
@@ -128,17 +126,6 @@ class SqlServerDialect(BaseDialect):
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
         compiled_ctes:List[CompiledCTE] = []
-        for cte in query.ctes:
-            print('-------')
-            print(cte.name)
-            print(cte.source)
-            print([c.identifier for c in cte.source.datasources])
-            print(cte.grain)
-            print(cte.group_to_grain)
-            print([c.name for c in cte.output_columns])
-            print([render_concept_sql(c, cte) for c in cte.output_columns])
-            print([str(j) for j in cte.joins])
-            print(cte.source)
         compiled_ctes+=[
             CompiledCTE(
                 name=cte.name,

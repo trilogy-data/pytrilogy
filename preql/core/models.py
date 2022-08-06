@@ -266,7 +266,8 @@ class Datasource:
             self.grain = Grain([v for v in self.concepts if v.purpose == Purpose.KEY])
         if isinstance(self.address, str):
             self.address = Address(location = self.address)
-
+        if not self.namespace:
+            self.namespace = ""
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
@@ -294,6 +295,7 @@ class JoinedDataSource:
     address: Address
     # base: Datasource
     joins:List["Join"]
+
 
     @property
     def datasources(self)->List[Datasource]:
@@ -341,6 +343,18 @@ class QueryDatasource:
     grain: Grain
     joins: List[BaseJoin]
 
+    def __add__(self, other):
+        if not isinstance(other, QueryDatasource):
+            raise ValueError
+        if not other.grain == self.grain:
+            raise ValueError
+
+        return QueryDatasource(input_concepts = self.input_concepts + other.input_concepts,
+                               output_concepts= self.output_concepts + other.output_concepts,
+                               source_map = {**self.source_map, **other.source_map},
+                               datasources = self.datasources,
+                               grain = self.grain,
+                               joins = self.joins + other.joins)
 
 
     @property

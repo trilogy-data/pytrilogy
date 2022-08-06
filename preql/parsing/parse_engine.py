@@ -415,7 +415,6 @@ class ParseToObjects(Transformer):
             # we don't know the grain of an aggregate at assignment time
             # so rebuild at this point in the tree
             # TODO: simplify
-            print(item)
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_grain(output.grain)
                 item.content.output = new_concept
