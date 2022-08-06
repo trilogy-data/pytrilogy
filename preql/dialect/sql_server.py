@@ -66,8 +66,10 @@ ORDER BY {% for order in order_by %}
 
 
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
+    print('************')
     print(c.address)
     print(cte.name)
+    print(cte.source_map)
     if not c.lineage:
         rval = f"{cte.source_map[c.address]}.{cte.get_alias(c)}"
     else:
@@ -89,7 +91,7 @@ def render_expr(
         return FUNCTION_MAP[e.operator]([render_expr(z, cte=cte) for z in e.arguments])
     elif isinstance(e, Concept):
         if cte:
-            return f"{cte.name}.{cte.source.get_alias(e)}"
+            return f"{cte.source_map[e.address]}.{cte.get_alias(e)}"
         return f"{e.name}"
     elif isinstance(e, bool):
         return f"{1 if e else 0 }"
@@ -129,6 +131,8 @@ class SqlServerDialect(BaseDialect):
         for cte in query.ctes:
             print('-------')
             print(cte.name)
+            print(cte.source)
+            print([c.identifier for c in cte.source.datasources])
             print(cte.grain)
             print(cte.group_to_grain)
             print([c.name for c in cte.output_columns])
@@ -143,7 +147,7 @@ class SqlServerDialect(BaseDialect):
                         render_concept_sql(c, cte) for c in cte.output_columns
                     ],
                     joins=[render_join(join) for join in cte.joins],
-                    base=f"{cte.source.base} as {cte.source.base_alias}",
+                    base=f"{cte.base_name} as {cte.base_alias}",
                     grain=cte.grain,
                     where=render_expr(where_assignment[cte.name].conditional, cte)
                     if cte.name in where_assignment

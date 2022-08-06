@@ -18,10 +18,6 @@ def render_join(join: Join) -> str:
 
 def render_order_item(order_item: OrderItem, ctes: List[CTE]) -> str:
     output = [cte for cte in ctes if order_item.expr in cte.output_columns]
-    for cte in ctes:
-        for oc in cte.output_columns:
-            print(oc.name)
-            print(oc.grain)
     if not output:
         raise ValueError(f"No source found for concept {order_item.expr}")
 

@@ -42,7 +42,11 @@ class Concept:
     def __eq__(self, other: object):
         if not isinstance(other, Concept):
             return False
-        return self.name == other.name and self.datatype == other.datatype and self.purpose == other.purpose and self.namespace==other.namespace and self.grain == other.grain
+        return self.name == other.name \
+               and self.datatype == other.datatype \
+               and self.purpose == other.purpose \
+               and self.namespace==other.namespace \
+               and self.grain == other.grain
 
     def __str__(self):
         grain = ','.join([str(c.name) for c in self.grain.components])
@@ -203,16 +207,17 @@ class Address:
     location: str
 
 
-@dataclass(frozen=True)
+@dataclass()
 class Grain:
     components: List[Concept]
 
     def __repr__(self):
         return "Grain<" + ",".join([c.name for c in self.components]) + ">"
 
+
     @property
     def set(self):
-        return set([c.name+c.namespace for c in self.components])
+        return set([c.address for c in self.components])
 
     def __eq__(self, other: object):
         if not isinstance(other, Grain):
@@ -252,6 +257,9 @@ class Datasource:
     grain: Optional[Grain] = None
     namespace: Optional[str] = ""
 
+    def __hash__(self):
+        return (self.namespace + self.identifier).__hash__()
+
     def __post_init__(self):
         # if a user skips defining a grain, use the defined keys
         if not self.grain:
@@ -263,11 +271,13 @@ class Datasource:
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
 
-    def get_alias(self, concept: Concept):
+    def get_alias(self, concept: Concept, use_raw_name:bool = True):
         for x in self.columns:
-            if x.concept == concept:
-                return x.alias
-        existing = [str(c.concept) for c in self.columns]
+            if x.concept.with_grain(concept.grain) == concept:
+                if use_raw_name:
+                    return x.alias
+                return concept.name
+        existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
         raise ValueError(
             f"Concept {concept} not found on {self.identifier}; have {existing}."
         )
@@ -326,28 +336,12 @@ class BaseJoin:
 class QueryDatasource:
     input_concepts:List[Concept]
     output_concepts:List[Concept]
-    source_map: Dict[str, Datasource]
+    source_map: Dict[str, Set[Datasource]]
+    datasources: List[Datasource]
     grain: Grain
     joins: List[BaseJoin]
 
-    @property
-    def datasources(self)->List[Datasource]:
-        datasources = []
-        for item in self.source_map.values():
-            datasources.append(item)
-        return unique(datasources, 'identifier')
 
-    @property
-    def base(self)->str:
-        if len(self.datasources) == 1:
-            return self.datasources[0].address.location
-        return 'TBD MULTIJOIN'
-
-    @property
-    def base_alias(self)->str:
-        if len(self.datasources) == 1:
-            return self.datasources[0].identifier
-        return 'TBD MULTIJOIN'
 
     @property
     def identifier(self)->str:
@@ -355,14 +349,15 @@ class QueryDatasource:
         return '_join_'.join([d.name for d in self.datasources])+f"<{grain}>"
 
     def get_alias(self, concept: Concept):
+        # if we should use the raw datasource name to access
+        use_raw_name = True if len(self.datasources) == 1 else False
         for x in self.datasources:
             try:
-                return x.get_alias(concept.with_grain(x.grain))
+                return x.get_alias(concept.with_grain(self.grain), use_raw_name)
             except ValueError as e:
                 from preql.constants import logger
-                logger.error(e)
                 continue
-        existing = [str(c) for c in self.output_concepts]
+        existing = [str(c.with_grain(self.grain)) for c in self.output_concepts]
         raise ValueError(
             f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
         )
@@ -400,22 +395,23 @@ class CTE:
     parent_ctes:List["CTE"] = field(default_factory=list)
     joins: Optional[List["Join"]] = field(default_factory=list)
 
-    # @property
-    # def joins(self)->List["Join"]:
-    #     if not isinstance(self.source, JoinedDataSource):
-    #         return []
-    #     return self.source.joins
+    @property
+    def base_name(self)->str:
+        if len(self.source.datasources) == 1:
+            return self.source.datasources[0].address.location
+        return self.joins[0].left_cte.name
 
+    @property
+    def base_alias(self)-> str:
+        if len(self.source.datasources) == 1:
+            return self.source.datasources[0].name
+        return self.joins[0].left_cte.name
 
     def get_alias(self, concept: Concept):
         try:
             return self.source.get_alias(concept)
         except ValueError as e:
-            if not self.joins:
-                raise e
-                raise ValueError(f'concept {concept} not found on cte {self.name}, available {[str(c) for c in self.output_columns]}')
-            pass
-        return 'not implemented join lookup'
+            raise e
         #
         # for x in self.columns:
         #     if x.concept == concept:

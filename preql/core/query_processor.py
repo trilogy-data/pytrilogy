@@ -6,6 +6,7 @@ from preql.constants import logger
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 from preql.core.hooks import BaseProcessingHook
+from preql.utility import unique
 from preql.core.models import (
     Concept,
     Environment,
@@ -22,6 +23,9 @@ from preql.core.models import (
 
 )
 from preql.utility import string_to_hash
+
+from collections import defaultdict
+
 
 def concept_to_inputs(concept:Concept)->List[Concept]:
     output = []
@@ -58,7 +62,8 @@ def get_datasource_from_direct_select(
         if all_found:
             return QueryDatasource(output_concepts=[concept],
                                    input_concepts = all_concepts,
-                                   source_map={concept.name: datasource for concept in all_concepts},
+                                   source_map={concept.name: {datasource} for concept in all_concepts},
+                                   datasources=[datasource],
                                    grain=grain, joins=[])
     raise ValueError(f'No direct select for {concept}')
 
@@ -86,7 +91,8 @@ def get_datasource_from_group_select(
             return QueryDatasource(
                 input_concepts = all_concepts,
                 output_concepts=[concept],
-                   source_map={concept.name: datasource for concept in all_concepts},
+                   source_map={concept.name: {datasource} for concept in all_concepts},
+                datasources=[datasource],
                    grain=grain, joins=[])
     raise ValueError(f'No grouped select for {concept}')
 
@@ -164,11 +170,16 @@ def get_datasource_by_joins(
     if not join_candidates:
         raise ValueError(f'No joins to get to {concept}')
     shortest = join_candidates[0]
-    source_map = {}
+    source_map = defaultdict(set)
     join_paths = []
     parents = []
+    all_datasets = set()
+    all_concepts = set()
     for key, value in shortest['paths'].items():
         datasource_nodes = [v for v in value if v.startswith('ds~')]
+        concept_nodes = [v for v in value if v.startswith('c~')]
+        all_datasets = all_datasets.union(set(datasource_nodes))
+        all_concepts = all_concepts.union(set(concept_nodes))
         root = datasource_nodes[-1]
         source_concept = g.nodes[value[-1]]['concept']
         parents.append(source_concept)
@@ -176,12 +187,20 @@ def get_datasource_by_joins(
         new_joins = path_to_joins(value, g=g)
 
         join_paths += new_joins
-        source_map[source_concept.address] = g.nodes[root]['datasource']
-
+        source_map[source_concept.address].add(g.nodes[root]['datasource'])
+        # ensure we add in all keys required for joins as inputs
+        # even if they are not selected out
+        for join in new_joins:
+            for jconcept in join.concepts:
+                source_map[jconcept.address].add(join.left_datasource)
+                source_map[jconcept.address].add(join.right_datasource)
+                all_requirements.append(jconcept)
+    all_requirements = unique(all_requirements, 'address')
     output = QueryDatasource(output_concepts=[concept] + grain.components,
                              input_concepts= all_requirements,
                              source_map=source_map,
                              grain=grain,
+                             datasources = sorted([g.nodes[key]['datasource'] for key in all_datasets], key=lambda x: x.identifier),
                              joins=join_paths)
     return output
 
@@ -210,8 +229,6 @@ def get_datasource_by_concept_and_grain(
     )
 
 def base_join_to_join(base_join:BaseJoin, ctes:List[CTE])-> Join:
-    print(base_join.right_datasource)
-    print([cte.source.datasources[0].identifier for cte in ctes])
     left_cte = [cte for cte in ctes if cte.source.datasources[0]== base_join.left_datasource][0]
     right_cte = [cte for cte in ctes if cte.source.datasources[0] == base_join.right_datasource][0]
 
@@ -222,15 +239,19 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     group_to_grain = False if sum([ds.grain for ds in query_datasource.datasources]) == query_datasource.grain else True
     output = []
     if len(query_datasource.datasources) > 1:
+        print('SUB LOOP DEBUG')
         source_map = {}
         for datasource in query_datasource.datasources:
-            sub_select = {key: item for key, item in query_datasource.source_map.items() if item == datasource}
-            concepts = [c for c in query_datasource.input_concepts if c.address in sub_select.keys()]
+            print('AFTER')
+            sub_select = {key: item for key, item in query_datasource.source_map.items() if datasource in item}
+            concepts = [c for c in datasource.concepts if c.address in sub_select.keys()]
+            concepts = unique(concepts, 'address')
             sub_datasource = QueryDatasource(
                 output_concepts=concepts,
                 input_concepts=concepts,
                 source_map=sub_select,
                 grain=datasource.grain,
+                datasources = [datasource],
                 joins=[]
             )
             sub_cte = datasource_to_ctes(sub_datasource)
@@ -238,16 +259,19 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
             for cte in sub_cte:
                 for value in cte.output_columns:
                     source_map[value.address] = cte.name
+
+            print(datasource.name)
+            print([str(c) for c in concepts])
+            print(source_map)
     else:
         source = query_datasource.datasources[0]
         source_map = {concept.address: source.identifier for concept in query_datasource.output_concepts}
-    print([str(join) for join in query_datasource.joins])
-    print([ds.identifier for ds in query_datasource.datasources])
+    human_id = query_datasource.identifier.replace('<', '').replace('>', '').replace(',', '_')
     output.append(CTE(
-        name=f"cte_{int_id}",
+        name=f"cte_{human_id}_{int_id}",
         source=query_datasource,
         # output columns are what are selected/grouped by
-        output_columns=query_datasource.output_concepts,
+        output_columns=[c.with_grain(query_datasource.grain) for c in query_datasource.output_concepts],
         source_map=source_map,
         # related columns include all referenced columns, such as filtering
         # related_columns=datasource.concepts,
@@ -256,9 +280,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         grain=query_datasource.grain,
         group_to_grain=group_to_grain, ))
     return output
-
-
-from collections import defaultdict
 
 
 def get_query_datasources(environment: Environment, statement: Select, graph: ReferenceGraph):
