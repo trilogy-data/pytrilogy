@@ -290,7 +290,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
-        columns:List[ColumnAssignment] = args[1]
+        columns: List[ColumnAssignment] = args[1]
         grain: Optional[Grain] = None
         address: Optional[Address] = None
         for val in args[1:]:
@@ -467,7 +467,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
-            #output_grain=Grain(components=args),
+            # output_grain=Grain(components=args),
         )
 
     def sum(self, arguments):
@@ -478,7 +478,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            #output_grain=Grain(components=arguments),
+            # output_grain=Grain(components=arguments),
         )
 
     def avg(self, arguments):
@@ -489,7 +489,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            #output_grain=Grain(components=arguments),
+            # output_grain=Grain(components=arguments),
         )
 
     def len(self, args):
@@ -501,7 +501,7 @@ class ParseToObjects(Transformer):
             output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={DataType.STRING, DataType.ARRAY},
-            #output_grain=args[0].grain,
+            # output_grain=args[0].grain,
         )
 
     def like(self, args):
@@ -513,7 +513,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.BOOL,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            #output_grain=Grain(components=args),
+            # output_grain=Grain(components=args),
         )
 
 

@@ -18,15 +18,13 @@ from preql.core.models import (
     Grain,
     JoinedDataSource,
     JoinType,
-    Address
-
+    Address,
 )
 from preql.utility import string_to_hash
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 
 
-
-def generate_graph(environment: Environment, ) -> ReferenceGraph:
+def generate_graph(environment: Environment,) -> ReferenceGraph:
     g = ReferenceGraph()
     # statement.input_components, statement.output_components
     for name, concept in environment.concepts.items():
@@ -45,5 +43,5 @@ def generate_graph(environment: Environment, ) -> ReferenceGraph:
             g.add_edge(node, concept)
             g.add_edge(concept, node)
             if concept.purpose == Purpose.KEY:
-                g.add_edge( concept, concept.with_grain(Grain(components=[concept])))
+                g.add_edge(concept, concept.with_grain(Grain(components=[concept])))
     return g

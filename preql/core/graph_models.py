@@ -19,10 +19,11 @@ from preql.core.models import (
     Grain,
     JoinedDataSource,
     JoinType,
-    Address
-
+    Address,
 )
 from preql.utility import string_to_hash
+
+
 def concept_to_node(input: Concept) -> str:
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
@@ -31,14 +32,16 @@ def concept_to_node(input: Concept) -> str:
 
 def datasource_to_node(input: Union[Datasource, JoinedDataSource]) -> str:
     if isinstance(input, JoinedDataSource):
-        return 'ds~join~' + ','.join([datasource_to_node(sub) for sub in input.datasources])
+        return "ds~join~" + ",".join(
+            [datasource_to_node(sub) for sub in input.datasources]
+        )
     return f"ds~{input.namespace}.{input.identifier}"
 
 
 def node_to_datasource(input: str, environment: Environment) -> Datasource:
-    stripped = input.lstrip('ds~')
-    namespace, title = stripped.split('.')
-    if namespace == 'None':
+    stripped = input.lstrip("ds~")
+    namespace, title = stripped.split(".")
+    if namespace == "None":
         return environment.datasources[title]
     return environment.datasources[stripped]
 
@@ -51,23 +54,23 @@ class ReferenceGraph(nx.DiGraph):
 
         if isinstance(node_for_adding, Concept):
             node_name = concept_to_node(node_for_adding)
-            attr['type'] = 'concept'
-            attr['concept'] = node_for_adding
-            attr['grain'] = node_for_adding.grain
+            attr["type"] = "concept"
+            attr["concept"] = node_for_adding
+            attr["grain"] = node_for_adding.grain
         elif isinstance(node_for_adding, Datasource):
             node_name = datasource_to_node(node_for_adding)
-            attr['type'] = 'datasource'
-            attr['ds'] = node_for_adding
-            attr['grain'] = node_for_adding.grain
+            attr["type"] = "datasource"
+            attr["ds"] = node_for_adding
+            attr["grain"] = node_for_adding.grain
         elif isinstance(node_for_adding, JoinedDataSource):
             node_name = datasource_to_node(node_for_adding)
-            attr['type'] = 'joineddatasource'
-            attr['ds'] = node_for_adding
-            attr['grain'] = node_for_adding.grain
+            attr["type"] = "joineddatasource"
+            attr["ds"] = node_for_adding
+            attr["grain"] = node_for_adding.grain
         else:
             node_name = node_for_adding
 
-        if node_name.startswith('c~') and not 'concept' in attr.keys():
+        if node_name.startswith("c~") and not "concept" in attr.keys():
             raise ValueError
         super().add_node(node_name, **attr)
 

@@ -34,8 +34,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.AVG: lambda x: f"{x[0]}",
 }
 
-#    {{order.identifier}} {{order.order.value}}{% if not loop.last %},{% endif %}
-# {{join.jointype.value | upper }} JOIN {{ join.right_cte.name }} on {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
+
 TSQL_TEMPLATE = Template(
     """{%- if ctes %}
 WITH {% for cte in ctes %}
@@ -100,15 +99,21 @@ class SqlServerDialect(BaseDialect):
     def compile_statement(self, query: ProcessedQuery) -> str:
         select_columns = []
         output_concepts = []
+        selected = set()
+        output_addresses = [c.address for c in query.output_columns]
         for cte in query.ctes:
             for c in cte.output_columns:
-                if c not in output_concepts and c in query.output_columns:
+                if (
+                    c not in output_concepts
+                    and c.address not in selected
+                    and c.address in output_addresses
+                ):
                     select_columns.append(f'{cte.name}."{c.name}"')
                     output_concepts.append(c)
-        if not all([c in output_concepts for c in query.output_columns]):
-            missing = [c for c in query.output_columns if c not in output_concepts]
-            raise ValueError(f'MISSING REQUESTED COLUMNs {missing} ')
-        # where assignment
+                    selected.add(c.address)
+        # TODO: 8-7-2022 - this should never happen
+        # remove once test coverage is complete
+
         where_assignment = {}
 
         if query.where_clause:
@@ -125,8 +130,13 @@ class SqlServerDialect(BaseDialect):
                 raise NotImplementedError(
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
-        compiled_ctes:List[CompiledCTE] = []
-        compiled_ctes+=[
+        compiled_ctes: List[CompiledCTE] = []
+        for cte in query.ctes:
+            print(cte.name)
+            print([str(c) for c in cte.output_columns])
+            print([str(c) for c in cte.related_columns])
+        print("----")
+        compiled_ctes += [
             CompiledCTE(
                 name=cte.name,
                 statement=TSQL_TEMPLATE.render(

@@ -4,9 +4,13 @@ from preql.core.models import Environment, Select, ProcessedQuery
 from preql.core.query_processor import process_query
 from preql.core.hooks import BaseProcessingHook
 
+
 class BaseDialect:
     def generate_queries(
-        self, environment: Environment, statements, hooks:Optional[List[BaseProcessingHook]]=None
+        self,
+        environment: Environment,
+        statements,
+        hooks: Optional[List[BaseProcessingHook]] = None,
     ) -> List[ProcessedQuery]:
         output = []
         for statement in statements:

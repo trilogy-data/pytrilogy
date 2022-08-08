@@ -16,11 +16,15 @@ The POC supports alpha syntax for
 ## Setting Up Your Environment
 
 Recommend that you work in a virtual environment with requirements from both requirements.txt and requirements-test.txt installed. The latter is necessary to run
-tests (surprise). To run all tests you must also have docker installed.
+tests (surprise). 
 
 ## Running Tests
 
-The tests are implemented primarily in pytest. A portion of the tests are dependent on having access to an AdventureWOrks2019DW example database
+The tests are implemented primarily in pytest. To run all tests you are strongly suggested to have docker installed, though you can manually configured the required
+data warehouse in an express edition of SQL server if docker is not possible. Guidance for the non-docker path is not provided. Docker is
+STRONGLY RECOMMENDED.
+
+A portion of the tests are dependent on having access to an AdventureWOrks2019DW example database
 in Microsoft SQL Server that can be downloaded via this [link]https://github.com/Microsoft/sql-server-samples/releases/download/adventureworks/AdventureWorksDW2019.bak.
 
 The tests will treat this as database server a pytest fixture, starting a docker image if the tests detect a sql server is not already running. Before
