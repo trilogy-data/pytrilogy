@@ -66,7 +66,7 @@ ORDER BY {% for order in order_by %}
 
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     if not c.lineage:
-        rval = f"{cte.source_map[c.address]}.{cte.get_alias(c)}"
+        rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
     else:
         args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
         rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
@@ -86,8 +86,8 @@ def render_expr(
         return FUNCTION_MAP[e.operator]([render_expr(z, cte=cte) for z in e.arguments])
     elif isinstance(e, Concept):
         if cte:
-            return f"{cte.source_map[e.address]}.{cte.get_alias(e)}"
-        return f"{e.name}"
+            return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
+        return f'"{e.name}"'
     elif isinstance(e, bool):
         return f"{1 if e else 0 }"
     elif isinstance(e, str):
@@ -111,11 +111,7 @@ class SqlServerDialect(BaseDialect):
                     select_columns.append(f'{cte.name}."{c.name}"')
                     output_concepts.append(c)
                     selected.add(c.address)
-        # TODO: 8-7-2022 - this should never happen
-        # remove once test coverage is complete
-
         where_assignment = {}
-
         if query.where_clause:
             found = False
             for cte in query.ctes:
@@ -131,11 +127,6 @@ class SqlServerDialect(BaseDialect):
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
         compiled_ctes: List[CompiledCTE] = []
-        for cte in query.ctes:
-            print(cte.name)
-            print([str(c) for c in cte.output_columns])
-            print([str(c) for c in cte.related_columns])
-        print("----")
         compiled_ctes += [
             CompiledCTE(
                 name=cte.name,

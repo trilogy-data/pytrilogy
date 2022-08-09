@@ -14,6 +14,7 @@ from preql.core.enums import (
 )
 
 
+
 @dataclass(eq=True, frozen=True)
 class Metadata:
     pass
@@ -57,6 +58,27 @@ class Concept:
         return f"{self.namespace}.{self.name}"
 
     def with_grain(self, grain: "Grain") -> "Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain,
+            namespace=self.namespace,
+        )
+
+    def with_default_grain(self) -> "Concept":
+        if self.purpose == Purpose.KEY:
+            grain = Grain(components = [self], nested=True)
+        elif self.purpose == Purpose.PROPERTY:
+            components = []
+            if self.lineage:
+                for item in self.lineage.arguments:
+                    components += item.sources
+            grain = Grain(components = components)
+        else:
+            grain = self.grain
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -208,6 +230,11 @@ class Address:
 @dataclass()
 class Grain:
     components: List[Concept]
+    nested:bool = False
+
+    def __post_init__(self):
+        if not self.nested:
+            self.components = [c.with_default_grain() for c in self.components]
 
     def __repr__(self):
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"

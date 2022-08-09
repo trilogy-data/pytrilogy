@@ -1,6 +1,7 @@
-from preql.core.models import Concept, Select, Environment, Grain, Datasource, QueryDatasource, SelectItem, CTE
-from preql.core.query_processor import get_datasource_by_concept_and_grain, ReferenceGraph, datasource_to_ctes, get_query_datasources, process_query
-from typing import List
+from preql.core.models import Select, Grain, QueryDatasource, CTE
+from preql.core.query_processor import get_datasource_by_concept_and_grain, datasource_to_ctes, \
+    get_query_datasources, process_query
+
 
 def test_select_output(test_environment, test_environment_graph):
     product = test_environment.concepts['product_id']
@@ -94,8 +95,6 @@ def test_query_datasources(test_environment, test_environment_graph):
     assert set([c.name for c in join_cte.related_columns]) == {'product_id','category_id', 'revenue'}
     assert set([c.name for c in join_cte.output_columns]) == {'total_revenue','category_id'}
 
-
-    from preql.dialect.sql_server import render_concept_sql
     for cte in ctes:
         assert len(cte.output_columns)>0
         print(cte.name)

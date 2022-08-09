@@ -257,7 +257,7 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         existing = self.environment.concepts.get(name)
-        function = args[2]
+        function:Function = args[2]
         if existing:
             raise ParseError(
                 f"Concept {name} on line {meta.line} is a duplicate declaration"
@@ -281,11 +281,11 @@ class ParseToObjects(Transformer):
     def column_assignment_list(self, args):
         return args
 
-    def column_list(self, args):
-        return args[0]
+    def column_list(self, args)->List:
+        return args
 
     def grain_clause(self, args) -> Grain:
-        return Grain([self.environment.concepts[a] for a in args])
+        return Grain([self.environment.concepts[a] for a in args[0]])
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):

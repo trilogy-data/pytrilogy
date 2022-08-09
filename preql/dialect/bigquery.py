@@ -83,11 +83,13 @@ class BigqueryDialect(BaseDialect):
     def compile_statement(self, query: ProcessedQuery) -> str:
         select_columns = []
         output_concepts = []
+        order_by_concepts = []
         for cte in query.ctes:
             for c in cte.output_columns:
                 if c not in output_concepts and c in query.output_columns:
                     select_columns.append(f"{cte.name}.{c.name}")
                     output_concepts.append(c)
+
         # where assignemnt
         where_assignment = {}
 

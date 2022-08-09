@@ -20,6 +20,6 @@ datasource fact_internet_sales (
     shipDateKey:dates.ship_key,
     dueDateKey:dates.due_key
     )
-    grain (order_line_number, order_number)
+    grain (order_line_number, order_number )
     address AdventureWorksDW2019.dbo.factInternetSales
 ;

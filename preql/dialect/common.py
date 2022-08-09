@@ -17,7 +17,7 @@ def render_join(join: Join) -> str:
 
 
 def render_order_item(order_item: OrderItem, ctes: List[CTE]) -> str:
-    output = [cte for cte in ctes if order_item.expr in cte.output_columns]
+    output = [cte for cte in ctes if order_item.expr.address in [a.address for a in cte.output_columns]]
     if not output:
         raise ValueError(f"No source found for concept {order_item.expr}")
 
