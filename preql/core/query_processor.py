@@ -33,7 +33,7 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
     if not concept.lineage:
         return [concept]
     for source in concept.sources:
-        output += concept_to_inputs(source)
+        output += concept_to_inputs(source.with_default_grain())
     return output
 
 
@@ -54,6 +54,9 @@ def get_datasource_from_direct_select(
                     source=datasource_to_node(datasource),
                     target=concept_to_node(req_concept),
                 )
+            except nx.exception.NodeNotFound as e:
+                all_found = False
+                break
             except nx.exception.NetworkXNoPath as e:
                 all_found = False
                 break
@@ -74,7 +77,7 @@ def get_datasource_from_direct_select(
                 grain=final_grain,
                 joins=[],
             )
-    raise ValueError(f"No direct select for {concept}")
+    raise ValueError(f"No direct select for {concept} and grain {grain}")
 
 def get_datasource_from_property_lookup(
         concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
@@ -260,7 +263,7 @@ def get_datasource_by_joins(
             join_candidates.append({"paths": paths, "datasource": datasource})
     join_candidates.sort(key=lambda x: sum([len(v) for v in x["paths"].values()]))
     if not join_candidates:
-        raise ValueError(f"No joins to get to {concept}")
+        raise ValueError(f"No joins to get to {concept} and grain {grain}")
     shortest = join_candidates[0]
     source_map = defaultdict(set)
     join_paths = []
@@ -316,11 +319,11 @@ def get_datasource_by_concept_and_grain(
     except ValueError as e:
         logger.error(e)
 
-    # if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
-    #     try:
-    #         return get_datasource_from_property_lookup(concept, grain, environment, g)
-    #     except ValueError as e:
-    #         logger.error(e)
+    if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
+        try:
+            return get_datasource_from_property_lookup(concept.with_default_grain(), grain, environment, g)
+        except ValueError as e:
+            logger.error(e)
     # the concept is available on a datasource, but at a higher granularity
     try:
         return get_datasource_from_group_select(concept, grain, environment, g)
@@ -468,7 +471,12 @@ def process_query(
     joins = []
     for datasource in datasources.values():
         ctes += datasource_to_ctes(datasource)
-    base = [cte for cte in ctes if cte.grain == statement.grain][0]
+    base = [cte for cte in ctes if cte.grain == statement.grain]
+    if base:
+        base = base[0]
+    else:
+        base = [cte for cte in ctes if cte.grain.issubset(statement.grain)]
+        base = base[0]
     others = [cte for cte in ctes if cte != base]
     for cte in others:
         joinkeys = [
