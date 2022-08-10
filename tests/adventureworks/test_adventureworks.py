@@ -1,16 +1,15 @@
 # from preql.compiler import compile
 from os.path import dirname, join
 
-from preql.dialect.sql_server import SqlServerDialect
-from preql.parser import parse
-from preql.core.models import Select, Grain, QueryDatasource, CTE
+from preql.core.env_processor import generate_graph
+from preql.core.models import Select, QueryDatasource, CTE
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
     get_query_datasources,
-    process_query,
 )
-from preql.core.env_processor import generate_graph
+from preql.dialect.sql_server import SqlServerDialect
+from preql.parser import parse
 
 
 def test_finance_queries(adventureworks_engine, environment):
@@ -32,7 +31,6 @@ def test_query_datasources(adventureworks_engine, environment):
     from logging import StreamHandler
 
     logger.addHandler(StreamHandler())
-    from preql.core.graph_models import concept_to_node, datasource_to_node
 
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"

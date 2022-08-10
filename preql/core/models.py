@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, Dict, Set
-from preql.utility import unique
+
 from preql.core.enums import (
     DataType,
     Purpose,
@@ -12,6 +12,7 @@ from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
 )
+from preql.utility import unique
 
 
 @dataclass(eq=True, frozen=True)

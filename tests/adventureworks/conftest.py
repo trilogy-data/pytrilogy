@@ -3,11 +3,12 @@ import socket
 import time
 from enum import Enum
 from os.path import dirname, abspath
+from socket import gethostname
 from urllib.parse import quote_plus
 
 from pytest import fixture
 from sqlalchemy.engine import create_engine
-from socket import gethostname
+
 from preql import Executor, Dialects, Environment
 
 
@@ -41,7 +42,9 @@ def can_bind(hostname, port):
 @fixture(scope="session")
 def local_express_flag():
     try:
-        return create_engine('mssql://*server_name*\\SQLEXPRESS/*database_name*?trusted_connection=yes')
+        return create_engine(
+            "mssql://*server_name*\\SQLEXPRESS/*database_name*?trusted_connection=yes"
+        )
     except Exception as e:
         return False
 
@@ -54,7 +57,9 @@ def db_must(local_express_flag):
         yield TestConfig.LOCAL
         return
     if not can_bind("localhost", 1433):
-        x = os.system("docker run -p 1433:1433 --name pyreql-test-sqlserver -d  --rm pyreql-test-sqlserver")
+        x = os.system(
+            "docker run -p 1433:1433 --name pyreql-test-sqlserver -d  --rm pyreql-test-sqlserver"
+        )
         if x != 0:
             raise TestDependencyError("Error starting database")
         time.sleep(5)
@@ -64,23 +69,23 @@ def db_must(local_express_flag):
         raise TestDependencyError("Error stopping database")
 
 
-@fixture(scope='session')
+@fixture(scope="session")
 def adventureworks_engine(db_must):
     if db_must == TestConfig.DOCKER:
-        connection_string = f'TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER=localhost;Uid=sa;Pwd=ThisIsAReallyCoolPassword123'
+        connection_string = f"TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER=localhost;Uid=sa;Pwd=ThisIsAReallyCoolPassword123"
     elif db_must == TestConfig.LOCAL:
-        connection_string = f'Trusted_Connection=YES;TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={gethostname()}\SQLEXPRESS'
+        connection_string = f"Trusted_Connection=YES;TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={gethostname()}\SQLEXPRESS"
     else:
         raise TestDependencyError("Unknown DB configuration")
     params = quote_plus(connection_string)
     engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
 
     # validate connection
-    engine.engine.execute('select 1').fetchall()
+    engine.engine.execute("select 1").fetchall()
     executor = Executor(dialect=Dialects.SQL_SERVER, engine=engine)
     yield executor
 
 
-@fixture(scope='session')
+@fixture(scope="session")
 def environment():
     yield Environment({}, {}, dirname(ENV_PATH), dirname(ENV_PATH))

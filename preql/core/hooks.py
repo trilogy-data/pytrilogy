@@ -8,7 +8,7 @@ class BaseProcessingHook(object):
 
 class GraphHook(BaseProcessingHook):
     def query_graph_built(self, graph: DiGraph):
-        from networkx import draw_planar, draw_kamada_kawai
+        from networkx import draw_kamada_kawai
         from matplotlib import pyplot as plt
 
         for node in graph.nodes:

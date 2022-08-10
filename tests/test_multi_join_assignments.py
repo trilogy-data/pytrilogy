@@ -1,12 +1,11 @@
-from preql.parser import parse
-# from preql.compiler import compile
-from os.path import dirname, join
-from preql.parsing.exceptions import ParseError
-from preql.core.models import Select, Grain
-from preql.core.query_processor import process_query
 from preql.core.hooks import GraphHook
 
-TEST_SETUP = r'''
+# from preql.compiler import compile
+from preql.core.models import Select, Grain
+from preql.core.query_processor import process_query
+from preql.parser import parse
+
+TEST_SETUP = r"""
 
 
 key order_key int;
@@ -60,22 +59,31 @@ address AdventureWorksDW2019.dbo.DimProductCategory
 select 
     category_name,
     total_order_amount;
-'''
+"""
 
 
 def test_select():
     env, parsed = parse(TEST_SETUP)
-    select:Select = parsed[-1]
+    select: Select = parsed[-1]
 
+    assert select.grain == Grain(components=[env.concepts["category_key"]])
 
-    assert select.grain == Grain(components=[env.concepts['category_key']])
-
-    process_query(statement=select, environment=env, hooks = [GraphHook()])
+    process_query(statement=select, environment=env, hooks=[GraphHook()])
 
 
 def test_joins_to_ctes():
     from preql.core.query_processor import parse_path_to_matches
 
-    TEST = ['ds~internet_sales.fact_internet_sales', 'c~product.key@Grain<order_line_number>', 'c~product.key@Grain<key>', 'ds~product.product_info', 'c~product.sub_category_key@Grain<key>', 'c~product.sub_category_key@Grain<sub_category_key>', 'ds~product.product_sub_category', 'c~product.category_key@Grain<sub_category_key>', 'c~product.category_key@Grain<category_key>']
+    TEST = [
+        "ds~internet_sales.fact_internet_sales",
+        "c~product.key@Grain<order_line_number>",
+        "c~product.key@Grain<key>",
+        "ds~product.product_info",
+        "c~product.sub_category_key@Grain<key>",
+        "c~product.sub_category_key@Grain<sub_category_key>",
+        "ds~product.product_sub_category",
+        "c~product.category_key@Grain<sub_category_key>",
+        "c~product.category_key@Grain<category_key>",
+    ]
 
     assert len(parse_path_to_matches(TEST)) == 2

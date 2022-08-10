@@ -1,9 +1,10 @@
 # from preql.compiler import compile
-from preql.core.models import Select, Grain, Environment
-from preql.parser import parse
 from os.path import dirname
 
-QUERY = '''import concepts.core as core;
+from preql.core.models import Select, Grain, Environment
+from preql.parser import parse
+
+QUERY = """import concepts.core as core;
 
 select
     core.user_id,
@@ -31,11 +32,13 @@ select
     sum(user_badge_count)-> total_badge_user_award_count
 order by
     user_badge_count desc
- limit 10;'''
+ limit 10;"""
 
 
 def test_select():
-    env, parsed = parse(QUERY, environment=Environment({}, {}, working_path=dirname(__file__)))
+    env, parsed = parse(
+        QUERY, environment=Environment({}, {}, working_path=dirname(__file__))
+    )
     select: Select = parsed[-1]
 
-    assert select.grain == Grain(components=[env.concepts['core.badge_id']])
+    assert select.grain == Grain(components=[env.concepts["core.badge_id"]])
