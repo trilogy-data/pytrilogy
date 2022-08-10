@@ -17,21 +17,21 @@ from preql.dialect.base import BaseDialect
 from preql.dialect.common import render_join, render_order_item
 
 FUNCTION_MAP = {
-    FunctionType.COUNT: lambda x: f"count({x[0]})",
-    FunctionType.SUM: lambda x: f"sum({x[0]})",
-    FunctionType.AVG: lambda x: f"avg({x[0]})",
-    FunctionType.LENGTH: lambda x: f"length({x[0]})",
-    FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
-    FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
+    FunctionType.COUNT: lambda args: f"count({args[0]})",
+    FunctionType.SUM: lambda args: f"sum({args[0]})",
+    FunctionType.AVG: lambda args: f"avg({args[0]})",
+    FunctionType.LENGTH: lambda args: f"length({args[0]})",
+    FunctionType.LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN 1 ELSE 0 END",
+    FunctionType.NOT_LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN 0 ELSE 1 END",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
-# we just take the value
+# we may return a static value
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT: lambda x: f"1",
-    FunctionType.SUM: lambda x: f"{x[0]}",
-    FunctionType.AVG: lambda x: f"{x[0]}",
+    FunctionType.COUNT: lambda args: f"1",
+    FunctionType.SUM: lambda args: f"{args[0]}",
+    FunctionType.AVG: lambda args: f"{args[0]}",
 }
 
 
@@ -65,11 +65,15 @@ ORDER BY {% for order in order_by %}
 
 
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
+    """This should be consolidated with the render expr below."""
     if not c.lineage:
         rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
     else:
         args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
-        rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+        if cte.group_to_grain:
+            rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+        else:
+            rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
     if alias:
         return f'{rval} as "{c.name}"'
     return rval
@@ -83,7 +87,13 @@ def render_expr(
     elif isinstance(e, Conditional):
         return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
     elif isinstance(e, Function):
-        return FUNCTION_MAP[e.operator]([render_expr(z, cte=cte) for z in e.arguments])
+        if cte.group_to_grain:
+            return FUNCTION_MAP[e.operator](
+                [render_expr(z, cte=cte) for z in e.arguments]
+            )
+        return FUNCTION_GRAIN_MATCH_MAP[e.operator](
+            [render_expr(z, cte=cte) for z in e.arguments]
+        )
     elif isinstance(e, Concept):
         if cte:
             return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
@@ -121,8 +131,7 @@ class SqlServerDialect(BaseDialect):
                     where_assignment[cte.name] = query.where_clause
                     found = True
             if not found:
-                for cte in query.ctes:
-                    print(cte.source.grain)
+
                 raise NotImplementedError(
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )

@@ -102,8 +102,7 @@ class BigqueryDialect(BaseDialect):
                     where_assignment[cte.name] = query.where_clause
                     found = True
             if not found:
-                for cte in query.ctes:
-                    print(cte.source.grain)
+
                 raise NotImplementedError(
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )

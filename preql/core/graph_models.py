@@ -2,12 +2,7 @@ from typing import Union
 
 import networkx as nx
 
-from preql.core.models import (
-    Concept,
-    Environment,
-    Datasource,
-    JoinedDataSource,
-)
+from preql.core.models import Concept, Environment, Datasource, JoinedDataSource
 
 
 def concept_to_node(input: Concept) -> str:

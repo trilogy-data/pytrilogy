@@ -14,7 +14,6 @@ from preql.core.enums import (
 )
 
 
-
 @dataclass(eq=True, frozen=True)
 class Metadata:
     pass
@@ -70,13 +69,13 @@ class Concept:
 
     def with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
-            grain = Grain(components = [self], nested=True)
+            grain = Grain(components=[self], nested=True)
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.lineage:
                 for item in self.lineage.arguments:
                     components += item.sources
-            grain = Grain(components = components)
+            grain = Grain(components=components)
         else:
             grain = self.grain
         return self.__class__(
@@ -230,7 +229,7 @@ class Address:
 @dataclass()
 class Grain:
     components: List[Concept]
-    nested:bool = False
+    nested: bool = False
 
     def __post_init__(self):
         if not self.nested:
@@ -553,18 +552,13 @@ class WhereClause:
 class ProcessedQuery:
     output_columns: List[Concept]
     ctes: List[CTE]
+    base: [CTE]
     joins: List[Join]
     grain: Grain
     limit: Optional[int] = None
     where_clause: Optional[WhereClause] = None
     order_by: Optional[OrderBy] = None
     # base:Dataset
-
-    @property
-    def base(self):
-        if not self.grain.components:
-            return self.ctes[0]
-        return [c for c in self.ctes if c.grain == self.grain][0]
 
 
 @dataclass

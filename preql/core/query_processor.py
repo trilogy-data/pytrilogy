@@ -1,13 +1,13 @@
+from collections import defaultdict
 from typing import List, Optional, Union, Tuple
 
 import networkx as nx
 
 from preql.constants import logger
+from preql.core.enums import Purpose
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 from preql.core.hooks import BaseProcessingHook
-from preql.utility import unique
-from preql.core.enums import Purpose
 from preql.core.models import (
     Concept,
     Environment,
@@ -23,12 +23,11 @@ from preql.core.models import (
     BaseJoin,
 )
 from preql.utility import string_to_hash
-
-from collections import defaultdict
+from preql.utility import unique
 
 
 def concept_to_inputs(concept: Concept) -> List[Concept]:
-    '''Given a concept, return all relevant root inputs'''
+    """Given a concept, return all relevant root inputs"""
     output = []
     if not concept.lineage:
         return [concept]
@@ -40,8 +39,8 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
 def get_datasource_from_direct_select(
     concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> QueryDatasource:
-    '''Return a datasource a concept can be directly selected from at
-    appropriate grain. Think select * from table.'''
+    """Return a datasource a concept can be directly selected from at
+    appropriate grain. Think select * from table."""
     all_concepts = concept_to_inputs(concept)
     for datasource in environment.datasources.values():
         if not datasource.grain.issubset(grain):
@@ -68,9 +67,13 @@ def get_datasource_from_direct_select(
                 final_grain = datasource.grain
             else:
                 final_grain = grain
-            print(f'got {datasource.identifier} from direct select')
+            logger.debug(f"got {datasource.identifier} from direct select")
+            base_outputs = [concept] + final_grain.components
+            for item in datasource.concepts:
+                if item.address in [c.address for c in grain.components]:
+                    base_outputs.append(item)
             return QueryDatasource(
-                output_concepts=[concept] + grain.components,
+                output_concepts=unique(base_outputs, "address"),
                 input_concepts=all_concepts,
                 source_map={concept.name: {datasource} for concept in all_concepts},
                 datasources=[datasource],
@@ -79,11 +82,12 @@ def get_datasource_from_direct_select(
             )
     raise ValueError(f"No direct select for {concept} and grain {grain}")
 
+
 def get_datasource_from_property_lookup(
-        concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
+    concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> QueryDatasource:
-    '''Return a datasource that can be grouped to a value and grain.
-    Think unique order ids in order product table.'''
+    """Return a datasource that can be grouped to a value and grain.
+    Think unique order ids in order product table."""
     all_concepts = concept_to_inputs(concept)
     for datasource in environment.datasources.values():
         if datasource.grain.issubset(grain):
@@ -102,10 +106,9 @@ def get_datasource_from_property_lookup(
                     all_found = False
                     break
             if all_found:
-                print(f'got {datasource.identifier} from property lookup')
                 return QueryDatasource(
-                    input_concepts=all_concepts+datasource.grain.components,
-                    output_concepts=[concept]+datasource.grain.components,
+                    input_concepts=all_concepts + datasource.grain.components,
+                    output_concepts=[concept] + datasource.grain.components,
                     source_map={concept.name: {datasource} for concept in all_concepts},
                     datasources=[datasource],
                     grain=datasource.grain,
@@ -113,11 +116,12 @@ def get_datasource_from_property_lookup(
                 )
     raise ValueError(f"No property lookup for {concept}")
 
+
 def get_datasource_from_group_select(
     concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> QueryDatasource:
-    '''Return a datasource that can be grouped to a value and grain.
-    Think unique order ids in order product table.'''
+    """Return a datasource that can be grouped to a value and grain.
+    Think unique order ids in order product table."""
     all_concepts = concept_to_inputs(concept.with_default_grain()) + grain.components
     for datasource in environment.datasources.values():
         all_found = True
@@ -142,8 +146,7 @@ def get_datasource_from_group_select(
                 final_grain = datasource.grain
             else:
                 final_grain = grain
-            print(f'got {datasource.identifier} from grouped select')
-            print(datasource.grain)
+            logger.debug(f"got {datasource.identifier} from grouped select")
             return QueryDatasource(
                 input_concepts=all_concepts,
                 output_concepts=[concept] + grain.components,
@@ -156,7 +159,7 @@ def get_datasource_from_group_select(
 
 
 def parse_path_to_matches(input: List[str]) -> List[Tuple[str, str, List[str]]]:
-    '''Parse a networkx path to a set of join relations'''
+    """Parse a networkx path to a set of join relations"""
     left_ds = None
     right_ds = None
     concept = None
@@ -203,44 +206,14 @@ def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:
     return out
 
 
-def debug_datasource(datasource:Datasource,
-                     concept: Concept,
-                     grain: Grain,
-                     environment: Environment,
-                     g: ReferenceGraph,):
-    all_requirements = unique(concept_to_inputs(concept) + grain.components, 'address')
-    found = []
-    for i in all_requirements:
-        try:
-            print(nx.shortest_path(
-                g,
-                source=datasource_to_node(datasource),
-                target=concept_to_node(i),
-            ))
-            found.append(i)
-        except Exception as e:
-            continue
-    print('DIAGNOSTIC')
-    print(f'FOR input grain {concept.grain} and input grain {grain}')
-    for val in all_requirements:
-        print(val)
-        if val not in found:
-            print('COULD NOT GET TO ')
-            print(val)
-
-
 def get_datasource_by_joins(
-    concept: Concept,
-    grain: Grain,
-    environment: Environment,
-    g: ReferenceGraph,
+    concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> QueryDatasource:
     join_candidates = []
 
-    all_requirements = unique(concept_to_inputs(concept) + grain.components, 'address')
+    all_requirements = unique(concept_to_inputs(concept) + grain.components, "address")
 
     for datasource in environment.datasources.values():
-        log = False
         all_found = True
         paths = {}
         for item in all_requirements:
@@ -255,8 +228,6 @@ def get_datasource_by_joins(
                 all_found = False
                 continue
             except nx.exception.NetworkXNoPath as e:
-                if log:
-                    print(e)
                 all_found = False
                 continue
         if all_found:
@@ -321,7 +292,9 @@ def get_datasource_by_concept_and_grain(
 
     if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
         try:
-            return get_datasource_from_property_lookup(concept.with_default_grain(), grain, environment, g)
+            return get_datasource_from_property_lookup(
+                concept.with_default_grain(), grain, environment, g
+            )
         except ValueError as e:
             logger.error(e)
     # the concept is available on a datasource, but at a higher granularity
@@ -336,7 +309,8 @@ def get_datasource_by_concept_and_grain(
     except ValueError as e:
         logger.error(e)
     from itertools import combinations
-    for x in range(1,len(grain.components)):
+
+    for x in range(1, len(grain.components)):
         for combo in combinations(grain.components, x):
             ngrain = Grain(list(combo))
             try:
@@ -438,8 +412,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
 
 
 def get_query_datasources(
-    environment: Environment, statement: Select, graph: ReferenceGraph,
-
+    environment: Environment, statement: Select, graph: ReferenceGraph
 ):
     concept_map = defaultdict(list)
     datasource_map = {}
@@ -498,5 +471,6 @@ def process_query(
         where_clause=statement.where_clause,
         output_columns=statement.output_components,
         ctes=ctes,
+        base=base,
         joins=joins,
     )
