@@ -83,7 +83,6 @@ class BigqueryDialect(BaseDialect):
     def compile_statement(self, query: ProcessedQuery) -> str:
         select_columns = []
         output_concepts = []
-        order_by_concepts = []
         for cte in query.ctes:
             for c in cte.output_columns:
                 if c not in output_concepts and c in query.output_columns:
@@ -113,7 +112,7 @@ class BigqueryDialect(BaseDialect):
                     select_columns=[
                         render_concept_sql(c, cte) for c in cte.output_columns
                     ],
-                    base=f"{cte.source.address.location} as {cte.name}",
+                    base=f"{cte.base_name} as {cte.base_alias}",
                     grain=cte.grain,
                     where=render_expr(where_assignment[cte.name].conditional, cte)
                     if cte.name in where_assignment

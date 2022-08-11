@@ -12,9 +12,10 @@ from preql.core.models import (
     Expr,
     Comparison,
     Function,
+    Join,
+    OrderItem,
 )
 from preql.dialect.base import BaseDialect
-from preql.dialect.common import render_join, render_order_item
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args: f"count({args[0]})",
@@ -23,6 +24,7 @@ FUNCTION_MAP = {
     FunctionType.LENGTH: lambda args: f"length({args[0]})",
     FunctionType.LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN 1 ELSE 0 END",
     FunctionType.NOT_LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN 0 ELSE 1 END",
+    FunctionType.CONCAT: lambda args: f"CONCAT({','.join([f''' '{a}' '''for a in args])})",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
@@ -75,8 +77,31 @@ def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
         else:
             rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
     if alias:
-        return f'{rval} as "{c.name}"'
+        return f'{rval} as "{c.safe_address}"'
     return rval
+
+
+def render_join(join: Join) -> str:
+    # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
+    joinkeys = " AND ".join(
+        [
+            f'{join.left_cte.name}."{key.concept.safe_address}" =  {join.right_cte.name}."{key.concept.safe_address}"'
+            for key in join.joinkeys
+        ]
+    )
+    return f"{join.jointype.value.upper()} JOIN {join.right_cte.name} on {joinkeys}"
+
+
+def render_order_item(order_item: OrderItem, ctes: List[CTE]) -> str:
+    output = [
+        cte
+        for cte in ctes
+        if order_item.expr.address in [a.address for a in cte.output_columns]
+    ]
+    if not output:
+        raise ValueError(f"No source found for concept {order_item.expr}")
+
+    return f" {output[0].name}.{order_item.expr.safe_address} {order_item.order.value}"
 
 
 def render_expr(
@@ -87,7 +112,7 @@ def render_expr(
     elif isinstance(e, Conditional):
         return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
     elif isinstance(e, Function):
-        if cte.group_to_grain:
+        if cte and cte.group_to_grain:
             return FUNCTION_MAP[e.operator](
                 [render_expr(z, cte=cte) for z in e.arguments]
             )
@@ -97,7 +122,7 @@ def render_expr(
     elif isinstance(e, Concept):
         if cte:
             return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
-        return f'"{e.name}"'
+        return f'"{e.safe_address}"'
     elif isinstance(e, bool):
         return f"{1 if e else 0 }"
     elif isinstance(e, str):
@@ -118,7 +143,7 @@ class SqlServerDialect(BaseDialect):
                     and c.address not in selected
                     and c.address in output_addresses
                 ):
-                    select_columns.append(f'{cte.name}."{c.name}"')
+                    select_columns.append(f'{cte.name}."{c.safe_address}"')
                     output_concepts.append(c)
                     selected.add(c.address)
         where_assignment = {}
@@ -143,7 +168,7 @@ class SqlServerDialect(BaseDialect):
                     select_columns=[
                         render_concept_sql(c, cte) for c in cte.output_columns
                     ],
-                    joins=[render_join(join) for join in cte.joins],
+                    joins=[render_join(join) for join in (cte.joins or [])],
                     base=f"{cte.base_name} as {cte.base_alias}",
                     grain=cte.grain,
                     where=render_expr(where_assignment[cte.name].conditional, cte)

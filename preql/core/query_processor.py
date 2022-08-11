@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Union, Tuple, Set, Dict
 
 import networkx as nx
 
@@ -180,7 +180,7 @@ def parse_path_to_matches(input: List[str]) -> List[Tuple[str, str, List[str]]]:
             left_ds = right_ds
             concept = None
     if left_ds and not right_ds:
-        output.append([left_ds, None, [concept]])
+        output.append((left_ds, None, [concept]))
     return output
 
 
@@ -189,8 +189,8 @@ def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:
     out = []
     zipped = parse_path_to_matches(input)
     for row in zipped:
-        left_ds, right_ds, concepts = row
-        concepts = [g.nodes[concept]["concept"] for concept in concepts]
+        left_ds, right_ds, raw_concepts = row
+        concepts = [g.nodes[concept]["concept"] for concept in raw_concepts]
         left_value = g.nodes[left_ds]["datasource"]
         if not right_ds:
             continue
@@ -239,8 +239,8 @@ def get_datasource_by_joins(
     source_map = defaultdict(set)
     join_paths = []
     parents = []
-    all_datasets = set()
-    all_concepts = set()
+    all_datasets:Set = set()
+    all_concepts:Set = set()
     for key, value in shortest["paths"].items():
         datasource_nodes = [v for v in value if v.startswith("ds~")]
         concept_nodes = [v for v in value if v.startswith("c~")]
@@ -414,8 +414,8 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
 def get_query_datasources(
     environment: Environment, statement: Select, graph: ReferenceGraph
 ):
-    concept_map = defaultdict(list)
-    datasource_map = {}
+    concept_map:Dict = defaultdict(list)
+    datasource_map:Dict = {}
     for concept in statement.output_components + statement.grain.components:
         datasource = get_datasource_by_concept_and_grain(
             concept, statement.grain, environment, graph
@@ -444,12 +444,12 @@ def process_query(
     joins = []
     for datasource in datasources.values():
         ctes += datasource_to_ctes(datasource)
-    base = [cte for cte in ctes if cte.grain == statement.grain]
-    if base:
-        base = base[0]
+    base_list = [cte for cte in ctes if cte.grain == statement.grain]
+    if base_list:
+        base = base_list[0]
     else:
-        base = [cte for cte in ctes if cte.grain.issubset(statement.grain)]
-        base = base[0]
+        base_list = [cte for cte in ctes if cte.grain.issubset(statement.grain)]
+        base = base_list[0]
     others = [cte for cte in ctes if cte != base]
     for cte in others:
         joinkeys = [

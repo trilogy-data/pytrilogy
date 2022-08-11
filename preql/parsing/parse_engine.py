@@ -103,7 +103,7 @@ grammar = r"""
     COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
     comparison: expr COMPARISON_OPERATOR expr
     
-    expr: count | avg | sum | len | like | comparison | literal | expr_reference
+    expr: count | avg | sum | len | like | concat | comparison | literal | expr_reference
     
     // functions
     
@@ -112,6 +112,7 @@ grammar = r"""
     avg: "avg" "(" expr ")"
     len: "len" "(" expr ")"
     like: "like"i "(" expr "," _string_lit ")"
+    concat: "concat"i "(" (expr ",")* expr ")"
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -501,6 +502,16 @@ class ParseToObjects(Transformer):
             output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={DataType.STRING, DataType.ARRAY},
+            # output_grain=args[0].grain,
+        )
+
+    def concat(self, args):
+        return Function(
+            operator=FunctionType.CONCAT,
+            arguments=args,
+            output_datatype=args[0].datatype,
+            output_purpose=Purpose.KEY,
+            valid_inputs={DataType.STRING},
             # output_grain=args[0].grain,
         )
 

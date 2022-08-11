@@ -57,7 +57,15 @@ class Concept:
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 
-    def with_grain(self, grain: "Grain") -> "Concept":
+    @property
+    def output(self) -> "Concept":
+        return self
+
+    @property
+    def safe_address(self) -> str:
+        return f"{self.namespace}_{self.name}"
+
+    def with_grain(self, grain: Optional["Grain"]=None) -> "Concept":
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -78,7 +86,7 @@ class Concept:
                     components += item.sources
             grain = Grain(components=components)
         else:
-            grain = self.grain
+            grain = self.grain #type: ignore
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -280,7 +288,7 @@ class Datasource:
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Optional[Grain] = None
+    grain: Grain = None
     namespace: Optional[str] = ""
 
     def __hash__(self):
@@ -304,7 +312,7 @@ class Datasource:
             if x.concept.with_grain(concept.grain) == concept:
                 if use_raw_name:
                     return x.alias
-                return concept.name
+                return concept.safe_address
         existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
         raise ValueError(
             f"Concept {concept} not found on {self.identifier}; have {existing}."
@@ -428,13 +436,15 @@ class CTE:
     base: bool = False
     group_to_grain: bool = False
     parent_ctes: List["CTE"] = field(default_factory=list)
-    joins: Optional[List["Join"]] = field(default_factory=list)
+    joins: List["Join"] = field(default_factory=list)
 
     @property
     def base_name(self) -> str:
         if len(self.source.datasources) == 1:
             return self.source.datasources[0].address.location
-        return self.joins[0].left_cte.name
+        elif self.joins and len(self.joins)> 0:
+            return self.joins[0].left_cte.name
+        raise ValueError
 
     @property
     def base_alias(self) -> str:
@@ -542,7 +552,7 @@ class WhereClause:
             if item.purpose == Purpose.KEY:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY:
-                output += item.grain
+                output += item.grain.components
         return Grain(list(set(output)))
 
 
@@ -553,7 +563,7 @@ class WhereClause:
 class ProcessedQuery:
     output_columns: List[Concept]
     ctes: List[CTE]
-    base: [CTE]
+    base: CTE
     joins: List[Join]
     grain: Grain
     limit: Optional[int] = None

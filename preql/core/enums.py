@@ -49,6 +49,7 @@ class FunctionType(Enum):
     AVG = "avg"
     LENGTH = "len"
     LIKE = "like"
+    CONCAT = "concat"
     NOT_LIKE = "not_like"
 
 

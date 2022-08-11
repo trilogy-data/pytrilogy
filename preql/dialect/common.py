@@ -9,7 +9,7 @@ def render_join(join: Join) -> str:
     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
     joinkeys = " AND ".join(
         [
-            f'{join.left_cte.name}."{key.concept.name}" = {join.right_cte.name}."{key.concept.name}"'
+            f'{join.left_cte.name}."{key.concept.safe_address}" = {join.right_cte.name}."{key.concept.safe_address}"'
             for key in join.joinkeys
         ]
     )
