@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import List, Optional, Union, Tuple, Set, Dict
 
 import networkx as nx
-
+from typing import TypedDict
 from preql.constants import logger
 from preql.core.enums import Purpose
 from preql.core.env_processor import generate_graph
@@ -158,12 +158,14 @@ def get_datasource_from_group_select(
     raise ValueError(f"No grouped select for {concept}")
 
 
-def parse_path_to_matches(input: List[str]) -> List[Tuple[str, str, List[str]]]:
+def parse_path_to_matches(
+    input: List[str]
+) -> List[Tuple[Optional[str], Optional[str], List[str]]]:
     """Parse a networkx path to a set of join relations"""
     left_ds = None
     right_ds = None
     concept = None
-    output = []
+    output: List[Tuple[Optional[str], Optional[str], List[str]]] = []
     while input:
         ds = None
         next = input.pop(0)
@@ -174,12 +176,12 @@ def parse_path_to_matches(input: List[str]) -> List[Tuple[str, str, List[str]]]:
         if ds and not left_ds:
             left_ds = ds
             continue
-        elif ds:
+        elif ds and concept:
             right_ds = ds
             output.append((left_ds, right_ds, [concept]))
             left_ds = right_ds
             concept = None
-    if left_ds and not right_ds:
+    if left_ds and concept and not right_ds:
         output.append((left_ds, None, [concept]))
     return output
 
@@ -206,10 +208,15 @@ def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:
     return out
 
 
+class PathInfo(TypedDict):
+    paths: Dict[str, List[str]]
+    datasource: Datasource
+
+
 def get_datasource_by_joins(
     concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> QueryDatasource:
-    join_candidates = []
+    join_candidates: List[PathInfo] = []
 
     all_requirements = unique(concept_to_inputs(concept) + grain.components, "address")
 
@@ -235,12 +242,12 @@ def get_datasource_by_joins(
     join_candidates.sort(key=lambda x: sum([len(v) for v in x["paths"].values()]))
     if not join_candidates:
         raise ValueError(f"No joins to get to {concept} and grain {grain}")
-    shortest = join_candidates[0]
+    shortest: PathInfo = join_candidates[0]
     source_map = defaultdict(set)
     join_paths = []
     parents = []
-    all_datasets:Set = set()
-    all_concepts:Set = set()
+    all_datasets: Set = set()
+    all_concepts: Set = set()
     for key, value in shortest["paths"].items():
         datasource_nodes = [v for v in value if v.startswith("ds~")]
         concept_nodes = [v for v in value if v.startswith("c~")]
@@ -312,7 +319,7 @@ def get_datasource_by_concept_and_grain(
 
     for x in range(1, len(grain.components)):
         for combo in combinations(grain.components, x):
-            ngrain = Grain(list(combo))
+            ngrain = Grain(components=list(combo))
             try:
                 return get_datasource_by_joins(
                     concept.with_grain(ngrain), grain, environment, g
@@ -414,8 +421,8 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
 def get_query_datasources(
     environment: Environment, statement: Select, graph: ReferenceGraph
 ):
-    concept_map:Dict = defaultdict(list)
-    datasource_map:Dict = {}
+    concept_map: Dict = defaultdict(list)
+    datasource_map: Dict = {}
     for concept in statement.output_components + statement.grain.components:
         datasource = get_datasource_by_concept_and_grain(
             concept, statement.grain, environment, graph

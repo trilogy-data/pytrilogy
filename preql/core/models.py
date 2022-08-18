@@ -13,30 +13,53 @@ from preql.core.enums import (
     ComparisonOperator,
 )
 from preql.utility import unique
+from pydantic import BaseModel, validator, Field
 
 
-@dataclass(eq=True, frozen=True)
-class Metadata:
+class Metadata(BaseModel):
     pass
 
 
-@dataclass(unsafe_hash=True)
-class Concept:
+class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    grain: Optional[Union["Grain", "Concept"]] = None
+    grain: "Grain" = Field(default=None)
     metadata: Optional[Metadata] = None
     lineage: Optional["Function"] = None
-    namespace: Optional[str] = "default"
+    namespace: str = ""
 
-    def __post_init__(self):
-        if not self.grain and self.purpose == Purpose.KEY:
-            self.grain = Grain(components=[self])
-        elif not self.grain:
-            self.grain = Grain(components=[])
-        elif isinstance(self.grain, Concept):
-            self.grain = Grain(components=[self.grain])
+    @validator("metadata")
+    def metadata_validation(cls, v):
+        v = v or Metadata()
+        return v
+
+    @validator("namespace", pre=True, always=True)
+    def namespace_enforcement(cls, v):
+        if not v:
+            return "default"
+        return v
+
+    @validator("grain", pre=True, always=True)
+    def parse_grain(cls, v, values):
+        # this is silly - rethink how we do grains
+        if not v and values["purpose"] == Purpose.KEY:
+            v = Grain(
+                components=[
+                    Concept(
+                        namespace=values.get("namespace", "default"),
+                        name=values["name"],
+                        datatype=values["datatype"],
+                        purpose=values["purpose"],
+                        grain=Grain(),
+                    )
+                ]
+            )
+        elif not v:
+            v = Grain(components=[])
+        elif isinstance(v, Concept):
+            v = Grain(components=[v])
+        return v
 
     def __eq__(self, other: object):
         if not isinstance(other, Concept):
@@ -65,7 +88,7 @@ class Concept:
     def safe_address(self) -> str:
         return f"{self.namespace}_{self.name}"
 
-    def with_grain(self, grain: Optional["Grain"]=None) -> "Concept":
+    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -86,7 +109,7 @@ class Concept:
                     components += item.sources
             grain = Grain(components=components)
         else:
-            grain = self.grain #type: ignore
+            grain = self.grain  # type: ignore
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -225,7 +248,7 @@ class Select:
         for item in self.output_components:
             if item.purpose == Purpose.KEY:
                 output.append(item)
-            elif item.purpose == Purpose.PROPERTY:
+            elif item.purpose == Purpose.PROPERTY and item.grain:
                 output += item.grain.components
         return Grain(components=unique(output, "address"))
 
@@ -235,17 +258,25 @@ class Address:
     location: str
 
 
-@dataclass()
-class Grain:
-    components: List[Concept]
+class Grain(BaseModel):
+    components: List[Concept] = Field(default_factory=list)
     nested: bool = False
 
-    def __post_init__(self):
-        if not self.nested:
-            self.components = [c.with_default_grain() for c in self.components]
+    def __init__(self, **kwargs):
+        if not kwargs.get("nested", False):
+            kwargs["components"] = [
+                c.with_default_grain() for c in kwargs.get("components", [])
+            ]
+        super().__init__(**kwargs)
 
-    def __repr__(self):
+    def __str__(self):
+        if self.abstract:
+            return "Grain<Abstract>"
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
+
+    @property
+    def abstract(self):
+        return not self.components
 
     @property
     def set(self):
@@ -288,7 +319,7 @@ class Datasource:
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = None
+    grain: Grain = field(default_factory=Grain(components=[]))
     namespace: Optional[str] = ""
 
     def __hash__(self):
@@ -296,8 +327,10 @@ class Datasource:
 
     def __post_init__(self):
         # if a user skips defining a grain, use the defined keys
-        if not self.grain:
-            self.grain = Grain([v for v in self.concepts if v.purpose == Purpose.KEY])
+        if not self.grain.components:
+            self.grain = Grain(
+                components=[v for v in self.concepts if v.purpose == Purpose.KEY]
+            )
         if isinstance(self.address, str):
             self.address = Address(location=self.address)
         if not self.namespace:
@@ -321,6 +354,12 @@ class Datasource:
     @property
     def name(self):
         return self.identifier
+
+    @property
+    def safe_location(self):
+        if isinstance(self.address, Address):
+            return self.address.location
+        return self.address
 
 
 @dataclass(eq=True)
@@ -441,8 +480,8 @@ class CTE:
     @property
     def base_name(self) -> str:
         if len(self.source.datasources) == 1:
-            return self.source.datasources[0].address.location
-        elif self.joins and len(self.joins)> 0:
+            return self.source.datasources[0].safe_location
+        elif self.joins and len(self.joins) > 0:
             return self.joins[0].left_cte.name
         raise ValueError
 
@@ -509,6 +548,14 @@ class Expr:
         output: List[Concept] = []
         return output
 
+    @property
+    def safe_address(self):
+        return ""
+
+    @property
+    def address(self):
+        return ""
+
 
 @dataclass
 class Comparison:
@@ -553,7 +600,7 @@ class WhereClause:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY:
                 output += item.grain.components
-        return Grain(list(set(output)))
+        return Grain(components=list(set(output)))
 
 
 # TODO: combine with CTEs
@@ -575,3 +622,6 @@ class ProcessedQuery:
 @dataclass
 class Limit:
     value: int
+
+
+Concept.update_forward_refs()

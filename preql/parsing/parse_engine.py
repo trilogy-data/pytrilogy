@@ -31,6 +31,7 @@ from preql.core.models import (
     Environment,
     Limit,
     OrderBy,
+    Metadata,
 )
 from preql.parsing.exceptions import ParseError
 
@@ -154,6 +155,9 @@ class ParseToObjects(Transformer):
 
     def start(self, args):
         return args
+
+    def metadata(self, args):
+        return Metadata()
 
     def IDENTIFIER(self, args) -> str:
         return args.value
@@ -286,7 +290,7 @@ class ParseToObjects(Transformer):
         return args
 
     def grain_clause(self, args) -> Grain:
-        return Grain([self.environment.concepts[a] for a in args[0]])
+        return Grain(components=[self.environment.concepts[a] for a in args[0]])
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
@@ -305,7 +309,9 @@ class ParseToObjects(Transformer):
         datasource = Datasource(
             identifier=name,
             columns=columns,
-            grain=grain,
+            # grain will be set by default from args
+            # TODO: move to factory
+            grain=grain,  # type: ignore
             address=address,
             namespace=self.environment.namespace,
         )
