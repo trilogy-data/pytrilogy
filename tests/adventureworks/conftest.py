@@ -6,7 +6,7 @@ from os.path import dirname, abspath
 from socket import gethostname
 from urllib.parse import quote_plus
 
-from pytest import fixture
+from pytest import fixture, mark
 from sqlalchemy.engine import create_engine
 
 from preql import Executor, Dialects, Environment

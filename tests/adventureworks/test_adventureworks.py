@@ -1,6 +1,9 @@
 # from preql.compiler import compile
 from os.path import dirname, join
 
+import networkx as nx
+import pytest
+
 from preql.core.env_processor import generate_graph
 from preql.core.models import Select, QueryDatasource, CTE
 from preql.core.query_processor import (
@@ -12,6 +15,17 @@ from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 
 
+@pytest.mark.adventureworks
+def test_parsing(environment):
+    with open(
+        join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
+    ) as f:
+        file = f.read()
+    generator = SqlServerDialect()
+    environment, statements = parse(file, environment=environment)
+
+
+@pytest.mark.adventureworks_execution
 def test_finance_queries(adventureworks_engine, environment):
     with open(
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
@@ -26,7 +40,8 @@ def test_finance_queries(adventureworks_engine, environment):
         results = adventureworks_engine.execute_query(statement)
 
 
-def test_query_datasources(adventureworks_engine, environment):
+@pytest.mark.adventureworks
+def test_query_datasources(environment):
     from preql.constants import logger
     from logging import StreamHandler
 
@@ -36,7 +51,6 @@ def test_query_datasources(adventureworks_engine, environment):
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    generator = SqlServerDialect()
     environment, statements = parse(file, environment=environment)
     assert (
         str(environment.datasources["internet_sales.fact_internet_sales"].grain)
@@ -52,7 +66,6 @@ def test_query_datasources(adventureworks_engine, environment):
     total_sales = environment.concepts["internet_sales.total_sales_amount"]
     sales = environment.concepts["internet_sales.sales_amount"]
     fact_internet_sales = environment.datasources["internet_sales.fact_internet_sales"]
-    import networkx as nx
 
     path = nx.shortest_path(
         environment_graph,
@@ -64,18 +77,12 @@ def test_query_datasources(adventureworks_engine, environment):
         "ds~internet_sales.fact_internet_sales",
         "c~internet_sales.total_sales_amount@Grain<internet_sales.order_number,internet_sales.order_line_number,sales_territory.key,customer.customer_id>",
     )
-    for p in path:
-        print(p)
-    print("-----")
     # for val in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales))):
     #     print(val)
     # assert concept_to_node(sales.with_grain) in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales)))
     # assert (concept_to_node(sales),concept_to_node(total_sales), ) in environment_graph.edges()
 
     for concept in test.output_components:
-        print("-----")
-        print("looking at concept")
-        print(concept)
         datasource = get_datasource_by_concept_and_grain(
             concept, test.grain, environment, environment_graph
         )
@@ -140,20 +147,8 @@ def test_query_datasources(adventureworks_engine, environment):
     # the CTE has all grain components
     assert base_cte.group_to_grain == False
 
-    #
-    #
-    # from preql.dialect.sql_server import render_concept_sql
-    # for cte in ctes:
-    #     assert len(cte.output_columns)>0
-    #     print(cte.name)
-    #     # if 'default.revenue' in cte.source_map.keys():
-    #     #     assert 'default.total_revenue' not in cte.source_map.keys()
-    #     print(cte.source_map)
-    #     print(cte.output_columns)
-    #     if 'default.revenue' in cte.source_map.keys() and 'revenue' not in cte.name:
-    #         raise ValueError
 
-
+@pytest.mark.adventureworks_execution
 def test_online_sales_queries(adventureworks_engine, environment):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
