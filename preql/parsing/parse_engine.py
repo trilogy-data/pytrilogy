@@ -31,6 +31,7 @@ from preql.core.models import (
     Environment,
     Limit,
     OrderBy,
+    Metadata,
 )
 from preql.parsing.exceptions import ParseError
 
@@ -103,7 +104,7 @@ grammar = r"""
     COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
     comparison: expr COMPARISON_OPERATOR expr
     
-    expr: count | avg | sum | len | like | comparison | literal | expr_reference
+    expr: count | avg | sum | len | like | concat | comparison | literal | expr_reference
     
     // functions
     
@@ -112,6 +113,7 @@ grammar = r"""
     avg: "avg" "(" expr ")"
     len: "len" "(" expr ")"
     like: "like"i "(" expr "," _string_lit ")"
+    concat: "concat"i "(" (expr ",")* expr ")"
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -153,6 +155,9 @@ class ParseToObjects(Transformer):
 
     def start(self, args):
         return args
+
+    def metadata(self, args):
+        return Metadata()
 
     def IDENTIFIER(self, args) -> str:
         return args.value
@@ -220,7 +225,7 @@ class ParseToObjects(Transformer):
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
-            _grain=Grain(components=[self.environment.concepts[grain]]),
+            grain=Grain(components=[self.environment.concepts[grain]]),
             namespace=self.environment.namespace,
         )
         self.environment.concepts[name] = concept
@@ -257,7 +262,7 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         existing = self.environment.concepts.get(name)
-        function = args[2]
+        function: Function = args[2]
         if existing:
             raise ParseError(
                 f"Concept {name} on line {meta.line} is a duplicate declaration"
@@ -268,7 +273,7 @@ class ParseToObjects(Transformer):
             purpose=args[0],
             metadata=metadata,
             lineage=function,
-            _grain=function.output_grain,
+            # grain=function.output_grain,
             namespace=self.environment.namespace,
         )
         self.environment.concepts[name] = concept
@@ -281,16 +286,16 @@ class ParseToObjects(Transformer):
     def column_assignment_list(self, args):
         return args
 
-    def column_list(self, args):
-        return args[0]
+    def column_list(self, args) -> List:
+        return args
 
     def grain_clause(self, args) -> Grain:
-        return Grain([self.environment.concepts[a] for a in args])
+        return Grain(components=[self.environment.concepts[a] for a in args[0]])
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
-        columns = args[1]
+        columns: List[ColumnAssignment] = args[1]
         grain: Optional[Grain] = None
         address: Optional[Address] = None
         for val in args[1:]:
@@ -300,13 +305,18 @@ class ParseToObjects(Transformer):
                 grain = val
         if not address:
             raise ValueError("Malformed datasource, missing address declaration")
+
         datasource = Datasource(
             identifier=name,
             columns=columns,
-            grain=grain,
+            # grain will be set by default from args
+            # TODO: move to factory
+            grain=grain,  # type: ignore
             address=address,
             namespace=self.environment.namespace,
         )
+        for column in columns:
+            column.concept = column.concept.with_grain(datasource.grain)
         self.environment.datasources[datasource.identifier] = datasource
         return datasource
 
@@ -415,10 +425,12 @@ class ParseToObjects(Transformer):
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_grain(output.grain)
                 item.content.output = new_concept
-                self.environment.concepts[item.content.output.name] = new_concept
             elif isinstance(item.content, Concept):
-                if item.content.purpose == Purpose.METRIC:
-                    item.content = item.content.with_grain(output.grain)
+                new_concept = item.content.with_grain(output.grain)
+                item.content = new_concept
+            else:
+                raise ValueError
+            self.environment.concepts[new_concept.name] = new_concept
         if order_by:
             for item in order_by.items:
                 if (
@@ -462,7 +474,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
-            output_grain=Grain(components=args),
+            # output_grain=Grain(components=args),
         )
 
     def sum(self, arguments):
@@ -473,7 +485,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            output_grain=Grain(components=arguments),
+            # output_grain=Grain(components=arguments),
         )
 
     def avg(self, arguments):
@@ -484,7 +496,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            output_grain=Grain(components=arguments),
+            # output_grain=Grain(components=arguments),
         )
 
     def len(self, args):
@@ -496,7 +508,17 @@ class ParseToObjects(Transformer):
             output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={DataType.STRING, DataType.ARRAY},
-            output_grain=args[0].grain,
+            # output_grain=args[0].grain,
+        )
+
+    def concat(self, args):
+        return Function(
+            operator=FunctionType.CONCAT,
+            arguments=args,
+            output_datatype=args[0].datatype,
+            output_purpose=Purpose.KEY,
+            valid_inputs={DataType.STRING},
+            # output_grain=args[0].grain,
         )
 
     def like(self, args):
@@ -508,7 +530,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.BOOL,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            output_grain=Grain(components=args),
+            # output_grain=Grain(components=args),
         )
 
 

@@ -1,0 +1,3 @@
+mkdocs-material
+markdown-urlize
+mkdocs_gen_files

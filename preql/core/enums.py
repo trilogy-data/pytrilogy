@@ -32,10 +32,10 @@ class DataType(Enum):
 
 class JoinType(Enum):
     INNER = "inner"
-    OUTER = "outer"
+    LEFT_OUTER = "left outer"
     FULL = "full"
-    LEFT = "left"
-    RIGHT = "right"
+    RIGHT_OUTER = "right outer"
+    CROSS = "cross"
 
 
 class Ordering(Enum):
@@ -49,6 +49,7 @@ class FunctionType(Enum):
     AVG = "avg"
     LENGTH = "len"
     LIKE = "like"
+    CONCAT = "concat"
     NOT_LIKE = "not_like"
 
 

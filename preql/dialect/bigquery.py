@@ -88,6 +88,7 @@ class BigqueryDialect(BaseDialect):
                 if c not in output_concepts and c in query.output_columns:
                     select_columns.append(f"{cte.name}.{c.name}")
                     output_concepts.append(c)
+
         # where assignemnt
         where_assignment = {}
 
@@ -100,8 +101,7 @@ class BigqueryDialect(BaseDialect):
                     where_assignment[cte.name] = query.where_clause
                     found = True
             if not found:
-                for cte in query.ctes:
-                    print(cte.source.grain)
+
                 raise NotImplementedError(
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
@@ -112,7 +112,7 @@ class BigqueryDialect(BaseDialect):
                     select_columns=[
                         render_concept_sql(c, cte) for c in cte.output_columns
                     ],
-                    base=f"{cte.source.address.location} as {cte.name}",
+                    base=f"{cte.base_name} as {cte.base_alias}",
                     grain=cte.grain,
                     where=render_expr(where_assignment[cte.name].conditional, cte)
                     if cte.name in where_assignment

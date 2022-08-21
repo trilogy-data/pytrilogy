@@ -9,7 +9,7 @@ def render_join(join: Join) -> str:
     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
     joinkeys = " AND ".join(
         [
-            f'{join.left_cte.name}."{key.inner.name}" = {join.right_cte.name}."{key.outer.name}"'
+            f'{join.left_cte.name}."{key.concept.safe_address}" = {join.right_cte.name}."{key.concept.safe_address}"'
             for key in join.joinkeys
         ]
     )
@@ -17,11 +17,11 @@ def render_join(join: Join) -> str:
 
 
 def render_order_item(order_item: OrderItem, ctes: List[CTE]) -> str:
-    output = [cte for cte in ctes if order_item.expr in cte.output_columns]
-    for cte in ctes:
-        for oc in cte.output_columns:
-            print(oc.name)
-            print(oc.grain)
+    output = [
+        cte
+        for cte in ctes
+        if order_item.expr.address in [a.address for a in cte.output_columns]
+    ]
     if not output:
         raise ValueError(f"No source found for concept {order_item.expr}")
 

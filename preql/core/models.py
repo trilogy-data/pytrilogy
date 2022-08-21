@@ -12,39 +12,113 @@ from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
 )
+from preql.utility import unique
+from pydantic import BaseModel, validator, Field
 
 
-@dataclass(eq=True, frozen=True)
-class Metadata:
+class Metadata(BaseModel):
     pass
 
 
-@dataclass(eq=True, frozen=True)
-class Concept:
+class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
+    grain: "Grain" = Field(default=None)
     metadata: Optional[Metadata] = None
     lineage: Optional["Function"] = None
-    _grain: Optional["Grain"] = None
-    namespace: Optional[str] = "default"
+    namespace: str = ""
 
-    def with_grain(self, grain: "Grain") -> "Concept":
+    @validator("metadata")
+    def metadata_validation(cls, v):
+        v = v or Metadata()
+        return v
+
+    @validator("namespace", pre=True, always=True)
+    def namespace_enforcement(cls, v):
+        if not v:
+            return "default"
+        return v
+
+    @validator("grain", pre=True, always=True)
+    def parse_grain(cls, v, values):
+        # this is silly - rethink how we do grains
+        if not v and values["purpose"] == Purpose.KEY:
+            v = Grain(
+                components=[
+                    Concept(
+                        namespace=values.get("namespace", "default"),
+                        name=values["name"],
+                        datatype=values["datatype"],
+                        purpose=values["purpose"],
+                        grain=Grain(),
+                    )
+                ]
+            )
+        elif not v:
+            v = Grain(components=[])
+        elif isinstance(v, Concept):
+            v = Grain(components=[v])
+        return v
+
+    def __eq__(self, other: object):
+        if not isinstance(other, Concept):
+            return False
+        return (
+            self.name == other.name
+            and self.datatype == other.datatype
+            and self.purpose == other.purpose
+            and self.namespace == other.namespace
+            and self.grain == other.grain
+        )
+
+    def __str__(self):
+        grain = ",".join([str(c.address) for c in self.grain.components])
+        return f"{self.namespace}.{self.name}<{grain}>"
+
+    @property
+    def address(self) -> str:
+        return f"{self.namespace}.{self.name}"
+
+    @property
+    def output(self) -> "Concept":
+        return self
+
+    @property
+    def safe_address(self) -> str:
+        return f"{self.namespace}_{self.name}"
+
+    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            _grain=grain,
+            grain=grain,
             namespace=self.namespace,
         )
 
-    @property
-    def grain(self):
+    def with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
-            return Grain(components=[self])
-        return self._grain
+            grain = Grain(components=[self], nested=True)
+        elif self.purpose == Purpose.PROPERTY:
+            components = []
+            if self.lineage:
+                for item in self.lineage.arguments:
+                    components += item.sources
+            grain = Grain(components=components)
+        else:
+            grain = self.grain  # type: ignore
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain,
+            namespace=self.namespace,
+        )
 
     @property
     def sources(self) -> List["Concept"]:
@@ -62,7 +136,7 @@ class Concept:
         return [self] + self.sources
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class ColumnAssignment:
     alias: str
     concept: Concept
@@ -83,7 +157,6 @@ class Function:
     arguments: List[Concept]
     output_datatype: DataType
     output_purpose: Purpose
-    output_grain: "Grain"
     valid_inputs: Optional[Set[DataType]] = None
 
 
@@ -123,12 +196,21 @@ class OrderBy:
     items: List[OrderItem]
 
 
-@dataclass(eq=True, frozen=True)
+@dataclass(eq=True)
 class Select:
-    selection: List[SelectItem]
+    selection: Union[List[SelectItem], List[Union[Concept, ConceptTransform]]]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+
+    def __post_init__(self):
+        final = []
+        for item in self.selection:
+            if isinstance(item, (Concept, ConceptTransform)):
+                final.append(SelectItem(item))
+            else:
+                final.append(item)
+        self.selection = final
 
     @property
     def input_components(self) -> List[Concept]:
@@ -166,19 +248,9 @@ class Select:
         for item in self.output_components:
             if item.purpose == Purpose.KEY:
                 output.append(item)
-            elif item.purpose == Purpose.PROPERTY:
+            elif item.purpose == Purpose.PROPERTY and item.grain:
                 output += item.grain.components
-        return Grain(components=list(set(output)))
-
-
-"""datasource posts (
-    user_id: user_id,
-    id: post_id
-    )
-    grain (id)
-    address bigquery-public-data.stackoverflow.post_history
-;
-"""
+        return Grain(components=unique(output, "address"))
 
 
 @dataclass(eq=True, frozen=True)
@@ -186,16 +258,29 @@ class Address:
     location: str
 
 
-@dataclass(frozen=True)
-class Grain:
-    components: List[Concept]
+class Grain(BaseModel):
+    components: List[Concept] = Field(default_factory=list)
+    nested: bool = False
 
-    def __repr__(self):
-        return "Grain<" + ",".join([c.name for c in self.components]) + ">"
+    def __init__(self, **kwargs):
+        if not kwargs.get("nested", False):
+            kwargs["components"] = [
+                c.with_default_grain() for c in kwargs.get("components", [])
+            ]
+        super().__init__(**kwargs)
+
+    def __str__(self):
+        if self.abstract:
+            return "Grain<Abstract>"
+        return "Grain<" + ",".join([c.address for c in self.components]) + ">"
+
+    @property
+    def abstract(self):
+        return not self.components
 
     @property
     def set(self):
-        return set([c.name for c in self.components])
+        return set([c.address for c in self.components])
 
     def __eq__(self, other: object):
         if not isinstance(other, Grain):
@@ -222,31 +307,153 @@ class Grain:
                 components.append(component)
         return Grain(components=components)
 
+    def __radd__(self, other):
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
+
 
 @dataclass
 class Datasource:
     identifier: str
     columns: List[ColumnAssignment]
-    address: Address
-    grain: Optional[Grain] = None
+    address: Union[Address, str]
+    grain: Grain = field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
+
+    def __hash__(self):
+        return (self.namespace + self.identifier).__hash__()
 
     def __post_init__(self):
         # if a user skips defining a grain, use the defined keys
-        if not self.grain:
-            self.grain = Grain([v for v in self.concepts if v.purpose == Purpose.KEY])
+        if not self.grain or not self.grain.components:
+            self.grain = Grain(
+                components=[v for v in self.concepts if v.purpose == Purpose.KEY]
+            )
+        if isinstance(self.address, str):
+            self.address = Address(location=self.address)
+        if not self.namespace:
+            self.namespace = ""
 
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
 
-    def get_alias(self, concept: Concept):
+    def get_alias(self, concept: Concept, use_raw_name: bool = True):
         for x in self.columns:
-            if x.concept == concept:
-                return x.alias
-        existing = [c.concept.name for c in self.columns]
+            if x.concept.with_grain(concept.grain) == concept:
+                if use_raw_name:
+                    return x.alias
+                return concept.safe_address
+        existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
         raise ValueError(
-            f"Concept {concept.name} not found on {self.identifier}; have {existing}."
+            f"Concept {concept} not found on {self.identifier}; have {existing}."
+        )
+
+    @property
+    def name(self):
+        return self.identifier
+
+    @property
+    def safe_location(self):
+        if isinstance(self.address, Address):
+            return self.address.location
+        return self.address
+
+
+@dataclass(eq=True)
+class JoinedDataSource:
+    concepts: List[Concept]
+    source_map: Dict[str, "CTE"]
+    grain: Grain
+    address: Address
+    # base: Datasource
+    joins: List["Join"]
+
+    @property
+    def datasources(self) -> List[Datasource]:
+        datasources = []
+        for item in self.source_map.values():
+            datasources.append(item.source)
+
+        return unique(datasources, "identifier")
+
+    @property
+    def identifier(self) -> str:
+        return "_join_".join([d.name for d in self.datasources])
+
+    def get_alias(self, concept: Concept):
+        for x in self.datasources:
+            try:
+                return x.get_alias(concept.with_grain(x.grain))
+            except ValueError as e:
+                from preql.constants import logger
+
+                logger.error(e)
+                continue
+        existing = [str(c) for c in self.concepts]
+        raise ValueError(
+            f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
+        )
+
+
+@dataclass()
+class BaseJoin:
+    left_datasource: Datasource
+    right_datasource: Datasource
+    concepts: List[Concept]
+    join_type: JoinType
+
+    def __str__(self):
+        return f'{self.join_type.value} JOIN {self.left_datasource.identifier} and {self.right_datasource.identifier} on {",".join([str(k) for k in self.concepts])}'
+
+
+@dataclass(eq=True)
+class QueryDatasource:
+    input_concepts: List[Concept]
+    output_concepts: List[Concept]
+    source_map: Dict[str, Set[Datasource]]
+    datasources: List[Datasource]
+    grain: Grain
+    joins: List[BaseJoin]
+
+    def __post_init__(self):
+        self.output_concepts = unique(self.output_concepts, "address")
+
+    def __add__(self, other):
+        if not isinstance(other, QueryDatasource):
+            raise ValueError
+        if not other.grain == self.grain:
+            raise ValueError
+
+        return QueryDatasource(
+            input_concepts=self.input_concepts + other.input_concepts,
+            output_concepts=self.output_concepts + other.output_concepts,
+            source_map={**self.source_map, **other.source_map},
+            datasources=self.datasources,
+            grain=self.grain,
+            joins=self.joins + other.joins,
+        )
+
+    @property
+    def identifier(self) -> str:
+        grain = ",".join([str(c.name) for c in self.grain.components])
+        return "_join_".join([d.name for d in self.datasources]) + f"<{grain}>"
+
+    def get_alias(self, concept: Concept):
+        # if we should use the raw datasource name to access
+        use_raw_name = True if len(self.datasources) == 1 else False
+        for x in self.datasources:
+            try:
+                return x.get_alias(concept.with_grain(self.grain), use_raw_name)
+            except ValueError as e:
+                from preql.constants import logger
+
+                continue
+        existing = [str(c.with_grain(self.grain)) for c in self.output_concepts]
+        raise ValueError(
+            f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
         )
 
 
@@ -258,14 +465,45 @@ class Comment:
 @dataclass
 class CTE:
     name: str
-    source: Datasource  # TODO: make recursive
+    source: "QueryDatasource"  # TODO: make recursive
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
+    source_map: Dict[str, str]
     # related columns include all referenced columns, such as filtering
     related_columns: List[Concept]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
+    parent_ctes: List["CTE"] = field(default_factory=list)
+    joins: List["Join"] = field(default_factory=list)
+
+    @property
+    def base_name(self) -> str:
+        if len(self.source.datasources) == 1:
+            return self.source.datasources[0].safe_location
+        elif self.joins and len(self.joins) > 0:
+            return self.joins[0].left_cte.name
+        raise ValueError
+
+    @property
+    def base_alias(self) -> str:
+        if len(self.source.datasources) == 1:
+            return self.source.datasources[0].name
+        return self.joins[0].left_cte.name
+
+    def get_alias(self, concept: Concept):
+        try:
+            return self.source.get_alias(concept)
+        except ValueError as e:
+            raise e
+        #
+        # for x in self.columns:
+        #     if x.concept == concept:
+        #         return x.alias
+        # existing = [c.concept.name for c in self.columns]
+        # raise ValueError(
+        #     f"Concept {concept.name} not found on {self.identifier}; have {existing}."
+        # )
 
 
 @dataclass
@@ -276,8 +514,10 @@ class CompiledCTE:
 
 @dataclass
 class JoinKey:
-    inner: Concept
-    outer: Concept
+    concept: Concept
+
+    def __str__(self):
+        return str(self.concept)
 
 
 @dataclass
@@ -287,11 +527,14 @@ class Join:
     jointype: JoinType
     joinkeys: List[JoinKey]
 
+    def __str__(self):
+        return f'{self.jointype.value} JOIN {self.left_cte.name} and {self.right_cte.name} on {",".join([str(k) for k in self.joinkeys])}'
+
 
 @dataclass
 class Environment:
-    concepts: Dict[str, Concept]
-    datasources: Dict[str, Datasource]
+    concepts: Dict[str, Concept] = field(default_factory=dict)
+    datasources: Dict[str, Datasource] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 
@@ -304,6 +547,14 @@ class Expr:
     def input(self) -> List[Concept]:
         output: List[Concept] = []
         return output
+
+    @property
+    def safe_address(self):
+        return ""
+
+    @property
+    def address(self):
+        return ""
 
 
 @dataclass
@@ -348,8 +599,8 @@ class WhereClause:
             if item.purpose == Purpose.KEY:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY:
-                output += item.grain
-        return Grain(list(set(output)))
+                output += item.grain.components
+        return Grain(components=list(set(output)))
 
 
 # TODO: combine with CTEs
@@ -359,6 +610,7 @@ class WhereClause:
 class ProcessedQuery:
     output_columns: List[Concept]
     ctes: List[CTE]
+    base: CTE
     joins: List[Join]
     grain: Grain
     limit: Optional[int] = None
@@ -366,13 +618,10 @@ class ProcessedQuery:
     order_by: Optional[OrderBy] = None
     # base:Dataset
 
-    @property
-    def base(self):
-        if not self.grain.components:
-            return self.ctes[0]
-        return [c for c in self.ctes if c.base == True][0]
-
 
 @dataclass
 class Limit:
     value: int
+
+
+Concept.update_forward_refs()

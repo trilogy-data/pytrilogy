@@ -1,12 +1,10 @@
-
-from preql.parser import parse
 # from preql.compiler import compile
-from os.path import dirname, join
-from preql.parsing.exceptions import ParseError
 from preql.core.models import Select, Grain
+from preql.parser import parse
+
 
 def test_select():
-    declarations = '''
+    declarations = """
 key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");
 property user_id.about_me string metadata(description="User provided description");
@@ -38,12 +36,8 @@ select
 ;
 
 
-    '''
+    """
     env, parsed = parse(declarations)
-    select:Select = parsed[-1]
+    select: Select = parsed[-1]
 
-
-    assert select.grain == Grain(components=[env.concepts['user_id']])
-
-
-
+    assert select.grain == Grain(components=[env.concepts["user_id"]])
