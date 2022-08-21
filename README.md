@@ -18,6 +18,8 @@ The POC supports alpha syntax for
 Recommend that you work in a virtual environment with requirements from both requirements.txt and requirements-test.txt installed. The latter is necessary to run
 tests (surprise). 
 
+Pypreql is python 3.9+
+
 ## Running Tests
 
 The tests are implemented primarily in pytest. To run all tests you are strongly suggested to have docker installed, though you can manually configured the required
