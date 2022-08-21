@@ -33,3 +33,11 @@ order by
     internet_sales.order_number desc
 limit 5;
 
+
+
+select
+    internet_sales.total_sales_amount,
+    sales_territory.region,
+    customer.first_name,
+    first 5 customer.first_name by total_sales_amount
+limit 5;
