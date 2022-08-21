@@ -319,7 +319,7 @@ class Datasource:
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = field(default_factory=Grain(components=[]))
+    grain: Grain = field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
 
     def __hash__(self):
@@ -327,7 +327,7 @@ class Datasource:
 
     def __post_init__(self):
         # if a user skips defining a grain, use the defined keys
-        if not self.grain.components:
+        if not self.grain or not self.grain.components:
             self.grain = Grain(
                 components=[v for v in self.concepts if v.purpose == Purpose.KEY]
             )
