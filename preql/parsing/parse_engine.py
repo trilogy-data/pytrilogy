@@ -12,6 +12,7 @@ from preql.core.enums import (
     FunctionType,
     ComparisonOperator,
     LogicalOperator,
+    WindowOrder
 )
 from preql.core.models import (
     WhereClause,
@@ -32,6 +33,8 @@ from preql.core.models import (
     Limit,
     OrderBy,
     Metadata,
+Window,
+SelectWindowItem
 )
 from preql.parsing.exceptions import ParseError
 
@@ -74,7 +77,9 @@ grammar = r"""
     // select statement
     select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
-    select_item : (IDENTIFIER | select_transform | comment+ )
+    select_window_item: window (IDENTIFIER | select_transform | comment+ )  window_order_by?
+    
+    select_item : select_window_item| (IDENTIFIER | select_transform | comment+ ) 
     
     select_list :  ( select_item "," )* select_item ","?
     
@@ -84,6 +89,12 @@ grammar = r"""
     metadata : "metadata" "(" IDENTIFIER "=" _string_lit ")"
     
     limit: "LIMIT"i /[0-9]+/
+    
+    !window_order: ("TOP"i | "BOTTOM"i)
+    
+    window: window_order /[0-9]+/
+    
+    window_order_by: "BY"i column_list
     
     order_list : (expr ORDERING "," )* expr ORDERING ","?
     
@@ -356,7 +367,9 @@ class ParseToObjects(Transformer):
                 f"Malformed select statement {args} {self.text[meta.start_pos:meta.end_pos]}"
             )
         content = args[0]
-        if isinstance(args[0], ConceptTransform):
+        if isinstance(content, ConceptTransform):
+            return SelectItem(content=content)
+        elif isinstance(content, SelectWindowItem):
             return SelectItem(content=content)
         return SelectItem(content=self.environment.concepts[content])
 
@@ -428,6 +441,9 @@ class ParseToObjects(Transformer):
             elif isinstance(item.content, Concept):
                 new_concept = item.content.with_grain(output.grain)
                 item.content = new_concept
+            elif isinstance(item.content, SelectWindowItem):
+                new_concept = item.content.output.with_grain(output.grain)
+                item.content.output = new_concept
             else:
                 raise ValueError
             self.environment.concepts[new_concept.name] = new_concept
@@ -456,6 +472,15 @@ class ParseToObjects(Transformer):
     def conditional(self, args):
         return Conditional(args[0], args[2], args[1])
 
+    def window_order(self, args):
+        return WindowOrder(args[0])
+
+    def window(self, args):
+        return Window(args[0], args[1])
+
+    def select_window_item(self, args):
+        return SelectWindowItem(self.environment.concepts[args[1]],args[0], )
+
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:
         return self.environment.concepts[args[0]]
@@ -466,15 +491,11 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def count(self, args):
-        """    operator: str
-    arguments:List[Concept]
-    output:Concept"""
         return Function(
             operator=FunctionType.COUNT,
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
-            # output_grain=Grain(components=args),
         )
 
     def sum(self, arguments):

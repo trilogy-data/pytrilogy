@@ -42,6 +42,10 @@ class Ordering(Enum):
     ASCENDING = "asc"
     DESCENDING = "desc"
 
+class WindowOrder(Enum):
+    ASCENDING = "top"
+    DESCENDING = "bottom"
+
 
 class FunctionType(Enum):
     COUNT = "count"

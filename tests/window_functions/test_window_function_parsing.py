@@ -8,9 +8,10 @@ def test_select():
 key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");
 property user_id.about_me string metadata(description="User provided description");
-metric post_count <-count(post_id);
+
 
 key post_id int;
+metric post_count <-count(post_id);
 
 
 datasource posts (
@@ -32,12 +33,12 @@ datasource users (
 ;
 
 select
-    first 10 user_id,
-    count(post_id)->post_count
+    top 10 user_id,
+    count(post_id)->post_count_2
 ;
 
 select
-    first 10 user_id by post_count
+    top 10 user_id by post_count
 ;
 
 

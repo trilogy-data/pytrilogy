@@ -11,6 +11,7 @@ from preql.core.enums import (
     FunctionType,
     BooleanOperator,
     ComparisonOperator,
+    WindowOrder
 )
 from preql.utility import unique
 from pydantic import BaseModel, validator, Field
@@ -99,6 +100,17 @@ class Concept(BaseModel):
             namespace=self.namespace,
         )
 
+    def with_window(self, window) -> "Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=self.grain.with_window(window),
+            namespace=self.namespace,
+        )
+
     def with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
             grain = Grain(components=[self], nested=True)
@@ -170,13 +182,39 @@ class ConceptTransform:
         return self.function.arguments
 
 
+@dataclass
+class Window:
+    count:int
+    window_order:WindowOrder
+
 @dataclass(eq=True)
-class SelectItem:
+class SelectWindowItem:
     content: Union[Concept, ConceptTransform]
+    window:Optional[Window]
 
     @property
     def output(self) -> Concept:
         if isinstance(self.content, ConceptTransform):
+            return self.content.output
+        return self.content
+
+    @output.setter
+    def output(self, value):
+        if isinstance(self.content, ConceptTransform):
+            self.content.output= value
+        else:
+            self.content=value
+
+
+@dataclass(eq=True)
+class SelectItem:
+    content: Union[Concept, ConceptTransform, SelectWindowItem]
+
+    @property
+    def output(self) -> Concept:
+        if isinstance(self.content, ConceptTransform):
+            return self.content.output
+        elif isinstance(self.content, SelectWindowItem):
             return self.content.output
         return self.content
 
@@ -261,6 +299,7 @@ class Address:
 class Grain(BaseModel):
     components: List[Concept] = Field(default_factory=list)
     nested: bool = False
+    window: Optional[Window] = None
 
     def __init__(self, **kwargs):
         if not kwargs.get("nested", False):
@@ -268,6 +307,9 @@ class Grain(BaseModel):
                 c.with_default_grain() for c in kwargs.get("components", [])
             ]
         super().__init__(**kwargs)
+
+    def with_window(self, window:Window):
+        return Grain(components=self.components, nested = self.nested, window=window)
 
     def __str__(self):
         if self.abstract:
@@ -621,7 +663,9 @@ class ProcessedQuery:
 
 @dataclass
 class Limit:
-    value: int
+    count: int
+
+
 
 
 Concept.update_forward_refs()

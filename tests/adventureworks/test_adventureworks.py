@@ -72,10 +72,12 @@ def test_query_datasources(environment):
         "ds~internet_sales.fact_internet_sales",
         "c~internet_sales.order_quantity@Grain<internet_sales.order_line_number,internet_sales.order_number>",
     )
+    assert  "ds~internet_sales.fact_internet_sales" in environment_graph.nodes
+    assert "c~internet_sales.total_sales_amount@Grain<Abstract>" in environment_graph.nodes
     path = nx.shortest_path(
         environment_graph,
         "ds~internet_sales.fact_internet_sales",
-        "c~internet_sales.total_sales_amount@Grain<internet_sales.order_number,internet_sales.order_line_number,sales_territory.key,customer.customer_id>",
+        "c~internet_sales.total_sales_amount@Grain<Abstract>",
     )
     # for val in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales))):
     #     print(val)
@@ -161,3 +163,4 @@ def test_online_sales_queries(adventureworks_engine, environment):
     for statement in sql:
         sql = generator.compile_statement(statement)
         results = adventureworks_engine.execute_query(statement)
+        print(sql)
