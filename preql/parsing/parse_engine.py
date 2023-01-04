@@ -34,7 +34,7 @@ from preql.core.models import (
     OrderBy,
     Metadata,
 Window,
-SelectWindowItem
+WindowItem
 )
 from preql.parsing.exceptions import ParseError
 
@@ -77,13 +77,14 @@ grammar = r"""
     // select statement
     select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
-    select_window_item: window (IDENTIFIER | select_transform | comment+ )  window_order_by?
+    // top 5 user_id
+    window_item: window (IDENTIFIER | select_transform | comment+ )  window_order_by?
     
-    select_item : select_window_item| (IDENTIFIER | select_transform | comment+ ) 
+    select_item : (IDENTIFIER | select_transform | comment+ ) 
     
     select_list :  ( select_item "," )* select_item ","?
     
-    // 
+    //  count(post_id) -> post_count
     select_transform : expr "-" ">" IDENTIFIER metadata?
     
     metadata : "metadata" "(" IDENTIFIER "=" _string_lit ")"
@@ -115,7 +116,7 @@ grammar = r"""
     COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
     comparison: expr COMPARISON_OPERATOR expr
     
-    expr: count | avg | sum | len | like | concat | comparison | literal | expr_reference
+    expr: count | avg | sum | len | like | concat | comparison | literal | window_item | expr_reference
     
     // functions
     
@@ -273,22 +274,36 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         existing = self.environment.concepts.get(name)
-        function: Function = args[2]
         if existing:
             raise ParseError(
                 f"Concept {name} on line {meta.line} is a duplicate declaration"
             )
-        concept = Concept(
-            name=name,
-            datatype=function.output_datatype,
-            purpose=args[0],
-            metadata=metadata,
-            lineage=function,
-            # grain=function.output_grain,
-            namespace=self.environment.namespace,
-        )
-        self.environment.concepts[name] = concept
-        return args
+        if isinstance(args[2], WindowItem):
+            window_item: WindowItem = args[2]
+            concept = Concept(
+                name=name,
+                datatype=window_item.content.datatype,
+                purpose=args[0],
+                metadata=metadata,
+                lineage=window_item,
+                # grain=function.output_grain,
+                namespace=self.environment.namespace,
+            )
+            self.environment.concepts[name] = concept
+            return args
+        else:
+            function: Function = args[2]
+            concept = Concept(
+                name=name,
+                datatype=function.output_datatype,
+                purpose=args[0],
+                metadata=metadata,
+                lineage=function,
+                # grain=function.output_grain,
+                namespace=self.environment.namespace,
+            )
+            self.environment.concepts[name] = concept
+            return args
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> Concept:
@@ -369,15 +384,13 @@ class ParseToObjects(Transformer):
         content = args[0]
         if isinstance(content, ConceptTransform):
             return SelectItem(content=content)
-        elif isinstance(content, SelectWindowItem):
-            return SelectItem(content=content)
         return SelectItem(content=self.environment.concepts[content])
 
     def select_list(self, args):
         return [arg for arg in args if arg]
 
     def limit(self, args):
-        return Limit(value=args[0].value)
+        return Limit(count=args[0].value)
 
     def ORDERING(self, args):
         return Ordering(args)
@@ -421,7 +434,7 @@ class ParseToObjects(Transformer):
             if isinstance(arg, List):
                 select_items = arg
             elif isinstance(arg, Limit):
-                limit = arg.value
+                limit = arg.count
             elif isinstance(arg, OrderBy):
                 order_by = arg
             elif isinstance(arg, WhereClause):
@@ -475,11 +488,21 @@ class ParseToObjects(Transformer):
     def window_order(self, args):
         return WindowOrder(args[0])
 
-    def window(self, args):
-        return Window(args[0], args[1])
+    def window_order_by(self, args):
+        # flatten tree
+        return args[0]
 
-    def select_window_item(self, args):
-        return SelectWindowItem(self.environment.concepts[args[1]],args[0], )
+    def window(self, args):
+        return Window(count=args[1].value, window_order=args[0])
+
+    def window_item(self, args):
+        if len(args)>2:
+            sort_concepts = args[2]
+        else:
+            sort_concepts = []
+        concept = self.environment.concepts[args[1]]
+        sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
+        return WindowItem(concept,args[0], sort_concepts = sort_concepts_mapped )
 
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:

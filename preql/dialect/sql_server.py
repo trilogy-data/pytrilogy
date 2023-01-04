@@ -2,7 +2,7 @@ from typing import Optional, Union, List
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType
+from preql.core.enums import FunctionType, WindowType
 from preql.core.models import (
     Concept,
     CTE,
@@ -14,8 +14,13 @@ from preql.core.models import (
     Function,
     Join,
     OrderItem,
+WindowItem
 )
 from preql.dialect.base import BaseDialect
+
+WINDOW_FUNCTION_MAP = {
+    WindowType.ROW_NUMBER: lambda args: f"row_number({args[0]})"
+}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args: f"count({args[0]})",
@@ -69,7 +74,12 @@ ORDER BY {% for order in order_by %}
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     """This should be consolidated with the render expr below."""
     if not c.lineage:
-        rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
+        rval = f'{cte.source_map.get(c.address, "this is a bug")}."{cte.get_alias(c)}"'
+        # rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
+
+    elif isinstance(c.lineage, WindowItem):
+        args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
+        rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](args)}"
     else:
         args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
         if cte.group_to_grain:
@@ -131,6 +141,8 @@ def render_expr(
 
 
 class SqlServerDialect(BaseDialect):
+
+
     def compile_statement(self, query: ProcessedQuery) -> str:
         select_columns = []
         output_concepts = []
@@ -146,6 +158,9 @@ class SqlServerDialect(BaseDialect):
                     select_columns.append(f'{cte.name}."{c.safe_address}"')
                     output_concepts.append(c)
                     selected.add(c.address)
+        if not all([x in selected for x in output_addresses]):
+            missing = [x for x in output_addresses if x not in selected]
+            raise ValueError(f'Did not get all output addresses in select - missing: {missing}')
         where_assignment = {}
         if query.where_clause:
             found = False

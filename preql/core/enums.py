@@ -42,6 +42,9 @@ class Ordering(Enum):
     ASCENDING = "asc"
     DESCENDING = "desc"
 
+class WindowType(Enum):
+    ROW_NUMBER= "row_number"
+
 class WindowOrder(Enum):
     ASCENDING = "top"
     DESCENDING = "bottom"

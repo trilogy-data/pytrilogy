@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, Dict, Set
+from copy import deepcopy
 
 from preql.core.enums import (
     DataType,
@@ -11,7 +12,8 @@ from preql.core.enums import (
     FunctionType,
     BooleanOperator,
     ComparisonOperator,
-    WindowOrder
+    WindowOrder,
+
 )
 from preql.utility import unique
 from pydantic import BaseModel, validator, Field
@@ -27,7 +29,7 @@ class Concept(BaseModel):
     purpose: Purpose
     grain: "Grain" = Field(default=None)
     metadata: Optional[Metadata] = None
-    lineage: Optional["Function"] = None
+    lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: str = ""
 
     @validator("metadata")
@@ -100,20 +102,11 @@ class Concept(BaseModel):
             namespace=self.namespace,
         )
 
-    def with_window(self, window) -> "Concept":
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=self.lineage,
-            grain=self.grain.with_window(window),
-            namespace=self.namespace,
-        )
 
     def with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
-            grain = Grain(components=[self], nested=True)
+            # we need to make this abstract
+            grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.lineage:
@@ -187,10 +180,18 @@ class Window:
     count:int
     window_order:WindowOrder
 
+    def __str__(self):
+        return f'Window<{self.window_order}>'
+
 @dataclass(eq=True)
-class SelectWindowItem:
+class WindowItem:
     content: Union[Concept, ConceptTransform]
     window:Optional[Window]
+    sort_concepts: List[Concept]
+
+    @property
+    def arguments(self)->List[Concept]:
+        return [self.content] + self.sort_concepts
 
     @property
     def output(self) -> Concept:
@@ -205,16 +206,20 @@ class SelectWindowItem:
         else:
             self.content=value
 
+    @property
+    def input(self)->List[Concept]:
+        return self.content.input + self.sort_concepts
+
 
 @dataclass(eq=True)
 class SelectItem:
-    content: Union[Concept, ConceptTransform, SelectWindowItem]
+    content: Union[Concept, ConceptTransform]
 
     @property
     def output(self) -> Concept:
         if isinstance(self.content, ConceptTransform):
             return self.content.output
-        elif isinstance(self.content, SelectWindowItem):
+        elif isinstance(self.content, WindowItem):
             return self.content.output
         return self.content
 
@@ -288,7 +293,9 @@ class Select:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY and item.grain:
                 output += item.grain.components
-        return Grain(components=unique(output, "address"))
+            # new if block be design
+        # if self.order_by:
+        return Grain(components=unique(output, "address"),)
 
 
 @dataclass(eq=True, frozen=True)
@@ -299,7 +306,6 @@ class Address:
 class Grain(BaseModel):
     components: List[Concept] = Field(default_factory=list)
     nested: bool = False
-    window: Optional[Window] = None
 
     def __init__(self, **kwargs):
         if not kwargs.get("nested", False):
@@ -307,9 +313,6 @@ class Grain(BaseModel):
                 c.with_default_grain() for c in kwargs.get("components", [])
             ]
         super().__init__(**kwargs)
-
-    def with_window(self, window:Window):
-        return Grain(components=self.components, nested = self.nested, window=window)
 
     def __str__(self):
         if self.abstract:
@@ -355,6 +358,13 @@ class Grain(BaseModel):
         else:
             return self.__add__(other)
 
+@dataclass
+class GrainWindow:
+    window:Window
+    sort_concepts: List[Concept]
+
+    def __str__(self):
+        return "GrainWindow<" + ",".join([c.address for c in self.sort_concepts]) + f":{str(self.window)}>"
 
 @dataclass
 class Datasource:
@@ -371,7 +381,7 @@ class Datasource:
         # if a user skips defining a grain, use the defined keys
         if not self.grain or not self.grain.components:
             self.grain = Grain(
-                components=[v for v in self.concepts if v.purpose == Purpose.KEY]
+                components=[deepcopy(v).with_grain(Grain()) for v in self.concepts if v.purpose == Purpose.KEY]
             )
         if isinstance(self.address, str):
             self.address = Address(location=self.address)
@@ -456,9 +466,20 @@ class QueryDatasource:
     input_concepts: List[Concept]
     output_concepts: List[Concept]
     source_map: Dict[str, Set[Datasource]]
-    datasources: List[Datasource]
+    datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin]
+
+    def __hash__(self):
+        return (self.identifier).__hash__()
+
+    @property
+    def concepts(self):
+        return self.output_concepts
+
+    @property
+    def name(self):
+        return self.identifier
 
     def __post_init__(self):
         self.output_concepts = unique(self.output_concepts, "address")
@@ -481,15 +502,15 @@ class QueryDatasource:
     @property
     def identifier(self) -> str:
         grain = ",".join([str(c.name) for c in self.grain.components])
-        return "_join_".join([d.name for d in self.datasources]) + f"<{grain}>"
+        return "_join_".join([d.name for d in self.datasources]) + f":transform@<{grain}>"
 
-    def get_alias(self, concept: Concept):
+    def get_alias(self, concept: Concept, use_raw_name:bool = False):
         # if we should use the raw datasource name to access
-        use_raw_name = True if len(self.datasources) == 1 else False
+        use_raw_name = True if (len(self.datasources) == 1 or use_raw_name) else False
         for x in self.datasources:
             try:
                 return x.get_alias(concept.with_grain(self.grain), use_raw_name)
-            except ValueError as e:
+            except ValueError:
                 from preql.constants import logger
 
                 continue
@@ -498,6 +519,9 @@ class QueryDatasource:
             f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
         )
 
+    @property
+    def safe_location(self):
+        return self.identifier
 
 @dataclass
 class Comment:
@@ -669,3 +693,4 @@ class Limit:
 
 
 Concept.update_forward_refs()
+Grain.update_forward_refs()

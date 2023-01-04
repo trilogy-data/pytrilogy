@@ -142,11 +142,6 @@ def test_query_datasources(test_environment, test_environment_graph):
 
     for cte in ctes:
         assert len(cte.output_columns) > 0
-        print(cte.name)
-        # if 'default.revenue' in cte.source_map.keys():
-        #     assert 'default.total_revenue' not in cte.source_map.keys()
-        print(cte.source_map)
-        print(cte.output_columns)
         if "default.revenue" in cte.source_map.keys() and "revenue" not in cte.name:
             raise ValueError
 

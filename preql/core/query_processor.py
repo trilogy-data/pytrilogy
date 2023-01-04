@@ -21,6 +21,8 @@ from preql.core.models import (
     QueryDatasource,
     JoinType,
     BaseJoin,
+Function,
+WindowItem
 )
 from preql.utility import string_to_hash
 from preql.utility import unique
@@ -32,8 +34,12 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
     if not concept.lineage:
         return [concept]
     for source in concept.sources:
+        # if something is a transformation of something with a lineage
+        # then we need to persist the original type
+        # ex: avg() of sum() @ grain
         output += concept_to_inputs(source.with_default_grain())
     return output
+
 
 
 def get_datasource_from_direct_select(
@@ -67,7 +73,7 @@ def get_datasource_from_direct_select(
                 final_grain = datasource.grain
             else:
                 final_grain = grain
-            logger.debug(f"got {datasource.identifier} from direct select")
+            logger.debug(f"got {datasource.identifier} for {concept} from direct select")
             base_outputs = [concept] + final_grain.components
             for item in datasource.concepts:
                 if item.address in [c.address for c in grain.components]:
@@ -121,7 +127,7 @@ def get_datasource_from_group_select(
     concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
 ) -> QueryDatasource:
     """Return a datasource that can be grouped to a value and grain.
-    Think unique order ids in order product table."""
+    Unique values in a column, for example"""
     all_concepts = concept_to_inputs(concept.with_default_grain()) + grain.components
     for datasource in environment.datasources.values():
         all_found = True
@@ -146,7 +152,7 @@ def get_datasource_from_group_select(
                 final_grain = datasource.grain
             else:
                 final_grain = grain
-            logger.debug(f"got {datasource.identifier} from grouped select")
+            logger.debug(f"got {datasource.identifier} for {concept} from grouped select")
             return QueryDatasource(
                 input_concepts=all_concepts,
                 output_concepts=[concept] + grain.components,
@@ -285,18 +291,41 @@ def get_datasource_by_joins(
 
 
 def get_datasource_by_concept_and_grain(
-    concept, grain: Grain, environment: Environment, g: ReferenceGraph
+    concept, grain: Grain, environment: Environment, g: Optional[ReferenceGraph] = None
 ) -> Union[Datasource, QueryDatasource]:
     """Determine if it's possible to get a certain concept at a certain grain.
     """
-
-    # ideal
+    g = g or generate_graph(environment)
+    if concept.lineage:
+        complex_lineage_flag = False
+        all_requirements =[]
+        all_datasets = []
+        source_map = {}
+        for sub_concept in concept.lineage.arguments:
+            if sub_concept.lineage:
+                complex_lineage_flag = True
+            sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain, environment=environment, g= g)
+            all_datasets.append(sub_datasource)
+            all_requirements.append(sub_concept)
+            source_map[sub_concept.name] = {sub_datasource}
+            source_map = {**source_map, **sub_datasource.source_map}
+            # for key, value in sub_datasource.source_map.items():
+            #     print(sub_output_concept)
+            #     source_map[sub_output_concept.name] = {sub_datasource}
+        if complex_lineage_flag:
+            qds = QueryDatasource(
+                output_concepts=[concept] + grain.components,
+                input_concepts=all_requirements,
+                source_map=source_map,
+                grain=grain,
+                # here is the bug - datasources need to support query datasources
+                datasources=all_datasets,
+                joins = []
+                # joins=join_paths,
+            )
+            source_map[concept.name] = {qds}
+            return qds
     # the concept is available directly on a datasource at appropriate grain
-    try:
-        return get_datasource_from_direct_select(concept, grain, environment, g)
-    except ValueError as e:
-        logger.error(e)
-
     if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
         try:
             return get_datasource_from_property_lookup(
@@ -356,26 +385,34 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         else True
     )
     output = []
-    if len(query_datasource.datasources) > 1:
+    if len(query_datasource.datasources) > 1 or any([isinstance(x, QueryDatasource) for x in query_datasource.datasources]):
         source_map = {}
         for datasource in query_datasource.datasources:
-            sub_select = {
-                key: item
-                for key, item in query_datasource.source_map.items()
-                if datasource in item
-            }
-            concepts = [
-                c for c in datasource.concepts if c.address in sub_select.keys()
-            ]
-            concepts = unique(concepts, "address")
-            sub_datasource = QueryDatasource(
-                output_concepts=concepts,
-                input_concepts=concepts,
-                source_map=sub_select,
-                grain=datasource.grain,
-                datasources=[datasource],
-                joins=[],
-            )
+            if isinstance(datasource, QueryDatasource):
+                sub_datasource = datasource
+            else:
+                print(datasource)
+                print(query_datasource.source_map.keys())
+                sub_select = {
+                    key: item
+                    for key, item in query_datasource.source_map.items()
+                    if datasource in item
+                }
+                concepts = [
+                    c for c in datasource.concepts if c.address in sub_select.keys()
+                ]
+                if not concepts:
+                    raise ValueError
+                concepts = unique(concepts, "address")
+                sub_datasource = QueryDatasource(
+                    output_concepts=concepts,
+                    input_concepts=concepts,
+                    source_map=sub_select,
+                    grain=datasource.grain,
+                    datasources=[datasource],
+                    joins=[],
+                )
+            print('generating sub cte')
             sub_cte = datasource_to_ctes(sub_datasource)
             output += sub_cte
             for cte in sub_cte:
@@ -419,9 +456,10 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
 
 
 def get_query_datasources(
-    environment: Environment, statement: Select, graph: ReferenceGraph
+    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
 ):
     concept_map: Dict = defaultdict(list)
+    graph = graph or generate_graph(environment)
     datasource_map: Dict = {}
     for concept in statement.output_components + statement.grain.components:
         datasource = get_datasource_by_concept_and_grain(
@@ -429,6 +467,7 @@ def get_query_datasources(
         )
         concept_map[datasource.identifier].append(concept)
         if datasource.identifier in datasource_map:
+            #concatenate to add new fields
             datasource_map[datasource.identifier] = (
                 datasource_map[datasource.identifier] + datasource
             )
