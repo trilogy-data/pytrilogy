@@ -43,6 +43,17 @@ class Concept(BaseModel):
             return "default"
         return v
 
+    def with_namespace(self, namespace:str)->"Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=self.grain.with_namespace(namespace),
+            namespace=namespace,
+        )
+
     @validator("grain", pre=True, always=True)
     def parse_grain(cls, v, values):
         # this is silly - rethink how we do grains
@@ -149,6 +160,9 @@ class ColumnAssignment:
 
     def is_complete(self):
         return Modifier.PARTIAL not in self.modifiers
+
+    def with_namespace(self, namespace:str)->"ColumnAssignment":
+        return self
 
 
 @dataclass(eq=True, frozen=True)
@@ -319,6 +333,9 @@ class Grain(BaseModel):
             return "Grain<Abstract>"
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
 
+    def with_namespace(self, namespace:str)->'Grain':
+        return Grain(components = [c.with_namespace(namespace) for c in self.components], nested = self.nested)
+
     @property
     def abstract(self):
         return not self.components
@@ -388,11 +405,20 @@ class Datasource:
         if not self.namespace:
             self.namespace = ""
 
+    def with_namespace(self, namespace:str):
+
+        return Datasource(
+            identifier = self.identifier,
+            namespace =namespace,
+            grain = self.grain.with_namespace(namespace),
+            address = self.address,
+            columns = [c.with_namespace(namespace) for c in self.columns]
+        )
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
 
-    def get_alias(self, concept: Concept, use_raw_name: bool = True):
+    def get_alias(self, concept: Concept, use_raw_name: bool = True,force_alias:bool= False):
         for x in self.columns:
             if x.concept.with_grain(concept.grain) == concept:
                 if use_raw_name:
@@ -501,18 +527,20 @@ class QueryDatasource:
 
     @property
     def identifier(self) -> str:
-        grain = ",".join([str(c.name) for c in self.grain.components])
-        return "_join_".join([d.name for d in self.datasources]) + f":transform@<{grain}>"
+        grain = "_".join([str(c.name) for c in self.grain.components])
+        return "from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" )
 
-    def get_alias(self, concept: Concept, use_raw_name:bool = False):
+    def get_alias(self, concept: Concept, use_raw_name:bool = False ,force_alias:bool= False):
         # if we should use the raw datasource name to access
-        use_raw_name = True if (len(self.datasources) == 1 or use_raw_name) else False
+        use_raw_name = True if (len(self.datasources) == 1 or use_raw_name) and not force_alias else False
         for x in self.datasources:
+            # query datasources should be referenced by their alias, always
+            force_alias = isinstance(x, QueryDatasource)
             try:
-                return x.get_alias(concept.with_grain(self.grain), use_raw_name)
-            except ValueError:
+                return x.get_alias(concept.with_grain(self.grain), use_raw_name, force_alias=force_alias)
+            except ValueError as e:
                 from preql.constants import logger
-
+                logger.debug(e)
                 continue
         existing = [str(c.with_grain(self.grain)) for c in self.output_concepts]
         raise ValueError(
@@ -546,6 +574,8 @@ class CTE:
     @property
     def base_name(self) -> str:
         if len(self.source.datasources) == 1:
+            if isinstance(self.source.datasources[0], QueryDatasource):
+                return self.parent_ctes[0].name
             return self.source.datasources[0].safe_location
         elif self.joins and len(self.joins) > 0:
             return self.joins[0].left_cte.name
@@ -554,22 +584,22 @@ class CTE:
     @property
     def base_alias(self) -> str:
         if len(self.source.datasources) == 1:
+            if isinstance(self.source.datasources[0], QueryDatasource):
+                return self.parent_ctes[0].name
             return self.source.datasources[0].name
         return self.joins[0].left_cte.name
 
     def get_alias(self, concept: Concept):
-        try:
-            return self.source.get_alias(concept)
-        except ValueError as e:
-            raise e
-        #
-        # for x in self.columns:
-        #     if x.concept == concept:
-        #         return x.alias
-        # existing = [c.concept.name for c in self.columns]
-        # raise ValueError(
-        #     f"Concept {concept.name} not found on {self.identifier}; have {existing}."
-        # )
+        error = None
+        for cte in [self]+ self.parent_ctes:
+            try:
+                return cte.source.get_alias(concept)
+            except ValueError as e:
+                print(str(e))
+                if not error:
+                    error = e
+        if error:
+            raise error
 
 
 @dataclass

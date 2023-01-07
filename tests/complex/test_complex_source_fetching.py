@@ -96,16 +96,25 @@ select
 
 
     ctes = datasource_to_ctes(datasource)
+
+    final_cte = ctes[1]
+    assert len(final_cte.parent_ctes)>0
     assert len(ctes ) == 2
 
     # now validate
     select: Select = Select(selection = [avg_user_post_count])
 
     query = process_query(statement=select, environment=env, hooks=[GraphHook()])
+    parent_cte = query.ctes[0]
     cte = query.ctes[1]
     assert cte.output_columns[0] == avg_user_post_count
+    assert parent_cte.output_columns[0] == user_post_count
     assert len(query.ctes)== 2
+    assert len(cte.parent_ctes)>0
+    assert cte.parent_ctes[0] == query.ctes[0]
 
     generator = SqlServerDialect()
     sql = generator.compile_statement(query)
     print(sql)
+
+

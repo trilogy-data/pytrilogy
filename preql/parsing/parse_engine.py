@@ -418,9 +418,9 @@ class ParseToObjects(Transformer):
             nparser.transform(PARSER.parse(text))
 
             for key, concept in nparser.environment.concepts.items():
-                self.environment.concepts[f"{alias}.{key}"] = concept
+                self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
             for key, datasource in nparser.environment.datasources.items():
-                self.environment.datasources[f"{alias}.{key}"] = datasource
+                self.environment.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
         return None
 
     @v_args(meta=True)
@@ -454,7 +454,7 @@ class ParseToObjects(Transformer):
             elif isinstance(item.content, Concept):
                 new_concept = item.content.with_grain(output.grain)
                 item.content = new_concept
-            elif isinstance(item.content, SelectWindowItem):
+            elif isinstance(item.content, WindowItem):
                 new_concept = item.content.output.with_grain(output.grain)
                 item.content.output = new_concept
             else:

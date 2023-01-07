@@ -304,7 +304,7 @@ def get_datasource_by_concept_and_grain(
         for sub_concept in concept.lineage.arguments:
             if sub_concept.lineage:
                 complex_lineage_flag = True
-            sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain, environment=environment, g= g)
+            sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain+grain, environment=environment, g= g)
             all_datasets.append(sub_datasource)
             all_requirements.append(sub_concept)
             source_map[sub_concept.name] = {sub_datasource}
@@ -318,7 +318,6 @@ def get_datasource_by_concept_and_grain(
                 input_concepts=all_requirements,
                 source_map=source_map,
                 grain=grain,
-                # here is the bug - datasources need to support query datasources
                 datasources=all_datasets,
                 joins = []
                 # joins=join_paths,
@@ -385,14 +384,13 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         else True
     )
     output = []
+    children = []
     if len(query_datasource.datasources) > 1 or any([isinstance(x, QueryDatasource) for x in query_datasource.datasources]):
         source_map = {}
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
                 sub_datasource = datasource
             else:
-                print(datasource)
-                print(query_datasource.source_map.keys())
                 sub_select = {
                     key: item
                     for key, item in query_datasource.source_map.items()
@@ -412,8 +410,8 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     datasources=[datasource],
                     joins=[],
                 )
-            print('generating sub cte')
             sub_cte = datasource_to_ctes(sub_datasource)
+            children+=sub_cte
             output += sub_cte
             for cte in sub_cte:
                 for value in cte.output_columns:
@@ -450,6 +448,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
             related_columns=query_datasource.input_concepts,
             grain=query_datasource.grain,
             group_to_grain=group_to_grain,
+            parent_ctes = children
         )
     )
     return output

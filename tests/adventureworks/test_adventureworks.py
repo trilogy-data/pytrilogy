@@ -5,7 +5,7 @@ import networkx as nx
 import pytest
 
 from preql.core.env_processor import generate_graph
-from preql.core.models import Select, QueryDatasource, CTE
+from preql.core.models import Select, QueryDatasource, CTE, Grain
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
@@ -13,7 +13,7 @@ from preql.core.query_processor import (
 )
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
-
+from preql.core.query_processor import process_query
 
 @pytest.mark.adventureworks
 def test_parsing(environment):
@@ -164,3 +164,58 @@ def test_online_sales_queries(adventureworks_engine, environment):
         sql = generator.compile_statement(statement)
         results = adventureworks_engine.execute_query(statement)
         print(sql)
+
+
+
+
+@pytest.mark.adventureworks_execution
+def test_online_sales_queries(adventureworks_engine, environment):
+
+
+    env = environment
+    test_cases = '''
+    
+import concepts.customer as customer;
+import concepts.internet_sales as internet_sales;
+import concepts.sales_territory as sales_territory;
+
+select
+    customer.customer_id,
+    count(internet_sales.order_number) -> user_order_count
+order by
+    user_order_count desc
+limit 10
+;
+
+metric avg_user_order_count <- avg(user_order_count);
+
+
+select
+avg_user_order_count,
+sales_territory.region
+;
+
+'''
+    env, statements = parse(test_cases, environment=environment)
+    avg_user_order_count = env.concepts['avg_user_order_count']
+
+    expected_parent = get_datasource_by_concept_and_grain(avg_user_order_count,
+                                                          Grain(components=[env.concepts['sales_territory.region']]), env, None)
+    print(expected_parent.identifier)
+    print(expected_parent.output_concepts[0])
+    print([c.name for c in expected_parent.output_concepts])
+    for datasource in expected_parent.datasources:
+        print(datasource.identifier)
+        print([c.name for c in datasource.output_concepts])
+    print('XXXX')
+    query = process_query(statement=statements[-1], environment=env, hooks=[])
+
+    for cte in query.ctes:
+        print('----')
+        print(cte.name)
+        print(cte.grain)
+        print([d.name for d in cte.source.datasources])
+        print([c.name for c in cte.output_columns])
+    generator = SqlServerDialect()
+    sql = generator.compile_statement(query)
+    print(sql)

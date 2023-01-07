@@ -73,19 +73,26 @@ ORDER BY {% for order in order_by %}
 
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     """This should be consolidated with the render expr below."""
-    if not c.lineage:
+
+    # only recurse while it's in sources of the current cte
+    if c.lineage and all([v.address in cte.source_map for v in c.lineage.arguments]):
+        if isinstance(c.lineage, WindowItem):
+            args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
+            rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](args)}"
+        else:
+            args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
+            if cte.group_to_grain:
+                rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+            else:
+                rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
+    # else if it's complex, just reference it from the source
+    elif c.lineage:
+        rval = f'{cte.source_map[c.address]}."{c.safe_address}"'
+    else:
         rval = f'{cte.source_map.get(c.address, "this is a bug")}."{cte.get_alias(c)}"'
         # rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
 
-    elif isinstance(c.lineage, WindowItem):
-        args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
-        rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](args)}"
-    else:
-        args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
-        if cte.group_to_grain:
-            rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
-        else:
-            rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
+
     if alias:
         return f'{rval} as "{c.safe_address}"'
     return rval
@@ -131,7 +138,8 @@ def render_expr(
         )
     elif isinstance(e, Concept):
         if cte:
-            return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
+            return f'{cte.source_map.get(e.address, "this is a bug")}."{cte.get_alias(e)}"'
+            #return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
         return f'"{e.safe_address}"'
     elif isinstance(e, bool):
         return f"{1 if e else 0 }"
