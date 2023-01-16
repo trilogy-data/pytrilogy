@@ -19,7 +19,7 @@ WindowItem
 from preql.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP = {
-    WindowType.ROW_NUMBER: lambda args: f"row_number({args[0]})"
+    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order })"
 }
 
 FUNCTION_MAP = {
@@ -77,8 +77,11 @@ def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     # only recurse while it's in sources of the current cte
     if c.lineage and all([v.address in cte.source_map for v in c.lineage.arguments]):
         if isinstance(c.lineage, WindowItem):
-            args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
-            rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](args)}"
+            # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
+            dimension = render_concept_sql(c.lineage.arguments[0], cte, alias=False)
+            test = [x.expr.name for x in c.lineage.order_by]
+
+            rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(test), order = 'desc')}"
         else:
             args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
             if cte.group_to_grain:
@@ -138,8 +141,8 @@ def render_expr(
         )
     elif isinstance(e, Concept):
         if cte:
-            return f'{cte.source_map.get(e.address, "this is a bug")}."{cte.get_alias(e)}"'
-            #return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
+            #return f'{cte.source_map.get(e.address, "this is a bug")}."{cte.get_alias(e)}"'
+            return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
         return f'"{e.safe_address}"'
     elif isinstance(e, bool):
         return f"{1 if e else 0 }"

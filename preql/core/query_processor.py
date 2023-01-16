@@ -21,6 +21,7 @@ from preql.core.models import (
     QueryDatasource,
     JoinType,
     BaseJoin,
+
 Function,
 WindowItem
 )
@@ -138,7 +139,7 @@ def get_datasource_from_group_select(
                     source=datasource_to_node(datasource),
                     target=concept_to_node(req_concept),
                 )
-            except nx.exception.NetworkXNoPath as e:
+            except (nx.exception.NetworkXNoPath, nx.exception.NodeNotFound) as e:
                 all_found = False
                 break
             if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
@@ -290,6 +291,84 @@ def get_datasource_by_joins(
     return output
 
 
+def get_datasource_from_complex_lineage(concept:Concept, grain:Grain, environment, g):
+    # always true if window item
+    complex_lineage_flag = isinstance(concept.lineage, WindowItem)
+    all_requirements =[]
+    all_datasets = []
+    source_map = {}
+    print(f'lineage for {concept} at {[str(c) for c in grain.components]}')
+    # for anything in function lineage, calculate to urrent grain
+    for sub_concept in concept.lineage.arguments:
+        print('getting source for')
+        print(sub_concept)
+        if sub_concept.lineage:
+            complex_lineage_flag = True
+        sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain+grain, environment=environment, g= g)
+        all_datasets.append(sub_datasource)
+        all_requirements.append(sub_concept)
+        source_map[sub_concept.name] = {sub_datasource}
+        source_map = {**source_map, **sub_datasource.source_map}
+
+    # for grain components, build in CTE if required
+    for sub_concept in grain.components:
+        if sub_concept.lineage:
+            complex_lineage_flag = True
+        sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain, environment=environment, g= g)
+        all_datasets.append(sub_datasource)
+        all_requirements.append(sub_concept)
+        source_map[sub_concept.name] = {sub_datasource}
+        source_map = {**source_map, **sub_datasource.source_map}
+        # for key, value in sub_datasource.source_map.items():
+        #     print(sub_output_concept)
+        #     source_map[sub_output_concept.name] = {sub_datasource}
+    if complex_lineage_flag:
+        logger.debug(f'Complex lineage for {concept}')
+        qds = QueryDatasource(
+            output_concepts=[concept] + grain.components,
+            input_concepts=all_requirements,
+            source_map=source_map,
+            grain=grain,
+            datasources=all_datasets,
+            joins = []
+            # joins=join_paths,
+        )
+        source_map[concept.name] = {qds}
+        return qds
+
+def get_datasource_from_window_function(concept:Concept, grain:Grain, environment, g):
+    # always true if window item
+    window:WindowItem = concept.lineage
+    all_requirements =[]
+    all_datasets = []
+    source_map = {}
+    cte_grain = Grain(concepts = [window.content.output] )
+    print(f'lineage for {concept} at {[str(c) for c in cte_grain.components]}')
+    sub_concepts = [window.content.output] + grain.components
+    for arg in window.order_by:
+        sub_concepts += arg.input
+    for sub_concept in sub_concepts:
+        sub_datasource = get_datasource_by_concept_and_grain(sub_concept,  cte_grain, environment=environment, g= g)
+        all_datasets.append(sub_datasource)
+        all_requirements.append(sub_concept)
+        source_map[sub_concept.name] = {sub_datasource}
+        source_map = {**source_map, **sub_datasource.source_map}
+    qds = QueryDatasource(
+        output_concepts=[concept] + grain.components,
+        input_concepts=all_requirements,
+        source_map=source_map,
+        grain= grain,
+        datasources=all_datasets,
+        joins = [],
+        limit = window.window.count
+        # joins=join_paths,
+    )
+    source_map[concept.name] = {qds}
+    for z in qds.datasources:
+        print([l.name for l in z.output_concepts])
+    qds.get_alias(concept)
+    return qds
+
 def get_datasource_by_concept_and_grain(
     concept, grain: Grain, environment: Environment, g: Optional[ReferenceGraph] = None
 ) -> Union[Datasource, QueryDatasource]:
@@ -297,33 +376,15 @@ def get_datasource_by_concept_and_grain(
     """
     g = g or generate_graph(environment)
     if concept.lineage:
-        complex_lineage_flag = False
-        all_requirements =[]
-        all_datasets = []
-        source_map = {}
-        for sub_concept in concept.lineage.arguments:
-            if sub_concept.lineage:
-                complex_lineage_flag = True
-            sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain+grain, environment=environment, g= g)
-            all_datasets.append(sub_datasource)
-            all_requirements.append(sub_concept)
-            source_map[sub_concept.name] = {sub_datasource}
-            source_map = {**source_map, **sub_datasource.source_map}
-            # for key, value in sub_datasource.source_map.items():
-            #     print(sub_output_concept)
-            #     source_map[sub_output_concept.name] = {sub_datasource}
-        if complex_lineage_flag:
-            qds = QueryDatasource(
-                output_concepts=[concept] + grain.components,
-                input_concepts=all_requirements,
-                source_map=source_map,
-                grain=grain,
-                datasources=all_datasets,
-                joins = []
-                # joins=join_paths,
-            )
-            source_map[concept.name] = {qds}
-            return qds
+        if isinstance(concept.lineage, WindowItem):
+            logger.debug('getting complex window function')
+            complex = get_datasource_from_window_function(concept, grain, environment, g)
+        else:
+            complex = get_datasource_from_complex_lineage(concept, grain, environment, g)
+        if complex:
+            logger.debug(f'Have complex derived lineage for {concept}')
+            return complex
+        logger.debug(f'Can satisfy query with basic lineage for {concept}')
     # the concept is available directly on a datasource at appropriate grain
     if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
         try:
@@ -489,7 +550,20 @@ def process_query(
     joins = []
     for datasource in datasources.values():
         ctes += datasource_to_ctes(datasource)
-    base_list = [cte for cte in ctes if cte.grain == statement.grain]
+
+    final_ctes_dict:Dict[str, CTE] = {}
+    #merge CTEs
+    for cte in ctes:
+        if cte.name not in final_ctes_dict:
+            final_ctes_dict[cte.name] = cte
+        else:
+            print('merging')
+            print(cte.name)
+            print([c.address for c in final_ctes_dict[cte.name].output_columns])
+            final_ctes_dict[cte.name].output_columns = unique(final_ctes_dict[cte.name].output_columns + cte.output_columns, 'address')
+            print([c.address for c in final_ctes_dict[cte.name].output_columns])
+    final_ctes = list(final_ctes_dict.values())
+    base_list = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
         base = base_list[0]
     else:
@@ -515,7 +589,7 @@ def process_query(
         limit=statement.limit,
         where_clause=statement.where_clause,
         output_columns=statement.output_components,
-        ctes=ctes,
+        ctes=final_ctes,
         base=base,
         joins=joins,
     )

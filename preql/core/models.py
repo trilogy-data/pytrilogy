@@ -32,6 +32,12 @@ class Concept(BaseModel):
     lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: str = ""
 
+    @validator("lineage")
+    def lineage_validator(cls, v):
+        if v and not isinstance(v, (Function, WindowItem)):
+            raise ValueError
+        return v
+
     @validator("metadata")
     def metadata_validation(cls, v):
         v = v or Metadata()
@@ -197,15 +203,18 @@ class Window:
     def __str__(self):
         return f'Window<{self.window_order}>'
 
-@dataclass(eq=True)
-class WindowItem:
+
+class WindowItem(BaseModel):
     content: Union[Concept, ConceptTransform]
     window:Optional[Window]
-    sort_concepts: List[Concept]
+    order_by: List["OrderItem"]
 
     @property
     def arguments(self)->List[Concept]:
-        return [self.content] + self.sort_concepts
+        output = [self.content]
+        for order in self.order_by:
+            output += order.input
+        return output
 
     @property
     def output(self) -> Concept:
@@ -222,7 +231,15 @@ class WindowItem:
 
     @property
     def input(self)->List[Concept]:
-        return self.content.input + self.sort_concepts
+        return self.content.input + [v.output for v in self.order_by]
+
+    @property
+    def output_datatype(self):
+        return self.content.datatype
+
+    @property
+    def output_purpose(self):
+        return self.content.purpose
 
 
 @dataclass(eq=True)
@@ -244,9 +261,16 @@ class SelectItem:
 
 @dataclass(eq=True)
 class OrderItem:
-    expr: "Expr"
+    expr: Union[Concept, ConceptTransform]
     order: Ordering
 
+    @property
+    def input(self):
+        return self.expr.input
+
+    @property
+    def output(self):
+        return self.expr.output
 
 @dataclass(eq=True, frozen=True)
 class OrderBy:
@@ -495,6 +519,12 @@ class QueryDatasource:
     datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin]
+    limit: Optional[int] =None
+
+    def validate(self):
+        # validate this was successfully built.
+        for concept in self.output_concepts:
+            self.get_alias(concept.with_grain(self.grain))
 
     def __hash__(self):
         return (self.identifier).__hash__()
@@ -528,11 +558,15 @@ class QueryDatasource:
     @property
     def identifier(self) -> str:
         grain = "_".join([str(c.name) for c in self.grain.components])
-        return "from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" )
+        return "_".join([d.name for d in self.datasources]) + ( f"_at_{grain}" if grain else "" )
+        #return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
 
     def get_alias(self, concept: Concept, use_raw_name:bool = False ,force_alias:bool= False):
         # if we should use the raw datasource name to access
         use_raw_name = True if (len(self.datasources) == 1 or use_raw_name) and not force_alias else False
+        # 2922
+        # if concept.lineage:
+        #     return concept.safe_address
         for x in self.datasources:
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
@@ -579,7 +613,8 @@ class CTE:
             return self.source.datasources[0].safe_location
         elif self.joins and len(self.joins) > 0:
             return self.joins[0].left_cte.name
-        raise ValueError
+        #TODO: actually fix this
+        return self.name
 
     @property
     def base_alias(self) -> str:
@@ -587,7 +622,9 @@ class CTE:
             if isinstance(self.source.datasources[0], QueryDatasource):
                 return self.parent_ctes[0].name
             return self.source.datasources[0].name
-        return self.joins[0].left_cte.name
+        if self.joins:
+            return self.joins[0].left_cte.name
+        return self.name
 
     def get_alias(self, concept: Concept):
         error = None
@@ -724,3 +761,4 @@ class Limit:
 
 Concept.update_forward_refs()
 Grain.update_forward_refs()
+WindowItem.update_forward_refs()

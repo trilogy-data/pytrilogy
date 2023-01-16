@@ -78,7 +78,7 @@ grammar = r"""
     select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
     // top 5 user_id
-    window_item: window (IDENTIFIER | select_transform | comment+ )  window_order_by?
+    window_item: window (IDENTIFIER | select_transform | comment+ )  ("BY"i order_list)?
     
     select_item : (IDENTIFIER | select_transform | comment+ ) 
     
@@ -360,6 +360,7 @@ class ParseToObjects(Transformer):
             raise ParseError(
                 f"Assignment {output} on line {meta.line} is a duplicate concept declaration"
             )
+        print(function)
         concept = Concept(
             name=output,
             datatype=function.output_datatype,
@@ -501,8 +502,10 @@ class ParseToObjects(Transformer):
         else:
             sort_concepts = []
         concept = self.environment.concepts[args[1]]
-        sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
-        return WindowItem(concept,args[0], sort_concepts = sort_concepts_mapped )
+        print(sort_concepts)
+        # sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
+        print(sort_concepts[0])
+        return WindowItem(content=concept,window=args[0], order_by = sort_concepts )
 
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:
