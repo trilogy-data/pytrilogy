@@ -5,9 +5,14 @@ from jinja2 import Template
 
 from preql.core.enums import FunctionType
 from preql.core.models import Concept, CTE, ProcessedQuery, CompiledCTE
-from preql.core.models import Conditional, Expr, Comparison, Function
+from preql.core.models import Conditional, Expr, Comparison, Function, WindowItem
 from preql.dialect.base import BaseDialect
 from preql.dialect.common import render_join, render_order_item
+from preql.core.enums import FunctionType, WindowType
+
+WINDOW_FUNCTION_MAP = {
+    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order })"
+}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -16,6 +21,13 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
     FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
+}
+
+FUNCTION_GRAIN_MATCH_MAP = {
+    **FUNCTION_MAP,
+    FunctionType.COUNT: lambda args: f"1",
+    FunctionType.SUM: lambda args: f"{args[0]}",
+    FunctionType.AVG: lambda args: f"{args[0]}",
 }
 
 BQ_SQL_TEMPLATE = Template(
@@ -47,15 +59,44 @@ LIMIT {{ limit }}{% endif %}
 """
 )
 
-
+#
+# def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
+#     if not c.lineage:
+#         rval = f"{cte.name}.{cte.source.get_alias(c)}"
+#     else:
+#         args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
+#         rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+#     if alias:
+#         return f"{rval} as {c.name}"
+#     return rval
+QUOTE_CHARACTER = '`'
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
-    if not c.lineage:
-        rval = f"{cte.name}.{cte.source.get_alias(c)}"
+    """This should be consolidated with the render expr below."""
+
+    # only recurse while it's in sources of the current cte
+    if c.lineage and all([v.address in cte.source_map for v in c.lineage.arguments]):
+        if isinstance(c.lineage, WindowItem):
+            # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
+            dimension = render_concept_sql(c.lineage.arguments[0], cte, alias=False)
+            test = [x.expr.name for x in c.lineage.order_by]
+
+            rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(test), order = 'desc')}"
+        else:
+            args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
+            if cte.group_to_grain:
+                rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+            else:
+                rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
+    # else if it's complex, just reference it from the source
+    elif c.lineage:
+        rval = f'{cte.source_map[c.address]}.{QUOTE_CHARACTER}{c.safe_address}{QUOTE_CHARACTER}'
     else:
-        args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
-        rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+        rval = f'{cte.source_map.get(c.address, "this is a bug")}.{QUOTE_CHARACTER}{cte.get_alias(c)}{QUOTE_CHARACTER}'
+        # rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
+
+
     if alias:
-        return f"{rval} as {c.name}"
+        return f'{rval} as {QUOTE_CHARACTER}{c.safe_address}{QUOTE_CHARACTER}'
     return rval
 
 
@@ -86,7 +127,7 @@ class BigqueryDialect(BaseDialect):
         for cte in query.ctes:
             for c in cte.output_columns:
                 if c not in output_concepts and c in query.output_columns:
-                    select_columns.append(f"{cte.name}.{c.name}")
+                    select_columns.append(f"{cte.name}.{c.safe_address}")
                     output_concepts.append(c)
 
         # where assignemnt
@@ -114,10 +155,11 @@ class BigqueryDialect(BaseDialect):
                     ],
                     base=f"{cte.base_name} as {cte.base_alias}",
                     grain=cte.grain,
+                    joins=[render_join(join, QUOTE_CHARACTER) for join in (cte.joins or [])],
                     where=render_expr(where_assignment[cte.name].conditional, cte)
                     if cte.name in where_assignment
                     else None,
-                    group_by=[render_expr(c, cte) for c in cte.grain.components]
+                    group_by=[render_concept_sql(c, cte, alias=False) for c in cte.grain.components]
                     if cte.group_to_grain
                     else None,
                 ),
@@ -127,7 +169,7 @@ class BigqueryDialect(BaseDialect):
         return BQ_SQL_TEMPLATE.render(
             select_columns=select_columns,
             base=query.base.name,
-            joins=[render_join(join) for join in query.joins],
+            joins=[render_join(join, QUOTE_CHARACTER) for join in query.joins],
             ctes=compiled_ctes,
             limit=query.limit,
             # move up to CTEs

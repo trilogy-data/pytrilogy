@@ -175,10 +175,16 @@ class SqlServerDialect(BaseDialect):
         where_assignment = {}
         if query.where_clause:
             found = False
+            filter = set([str(x) for x in query.where_clause.input])
             for cte in query.ctes:
-                if set([x.name for x in query.where_clause.input]).issubset(
-                    [z.name for z in cte.related_columns]
+                if filter.issubset(
+                        set([str(z) for z in cte.output_columns])
                 ):
+                # 2023-01-16 - removing related columns to look at output columns
+                # will need to backport pushing where columns into original output search
+                # if set([x.name for x in query.where_clause.input]).issubset(
+                #     [z.name for z in cte.related_columns]
+                # ):
                     where_assignment[cte.name] = query.where_clause
                     found = True
             if not found:

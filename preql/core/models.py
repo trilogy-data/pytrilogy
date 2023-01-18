@@ -206,7 +206,6 @@ class Window:
 
 class WindowItem(BaseModel):
     content: Union[Concept, ConceptTransform]
-    window:Optional[Window]
     order_by: List["OrderItem"]
 
     @property
@@ -442,7 +441,9 @@ class Datasource:
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
 
-    def get_alias(self, concept: Concept, use_raw_name: bool = True,force_alias:bool= False):
+    def get_alias(self, concept: Concept, use_raw_name: bool = True,force_alias:bool= False)->Optional[str]:
+        if concept.lineage:
+            return None
         for x in self.columns:
             if x.concept.with_grain(concept.grain) == concept:
                 if use_raw_name:
@@ -605,16 +606,34 @@ class CTE:
     parent_ctes: List["CTE"] = field(default_factory=list)
     joins: List["Join"] = field(default_factory=list)
 
+
+    def __add__(self, other:"CTE"):
+        if not self.grain == other.grain:
+            raise ValueError
+        self.joins = self.joins + other.joins
+        self.parent_ctes = self.parent_ctes + other.parent_ctes
+
+        self.source_map = {**self.source_map, **other.source_map}
+
+        self.output_columns = unique(self.output_columns + other.output_columns, 'identifier')
+        self.joins = self.joins + other.joins
+        self.related_columns = self.related_columns + other.related_columns
+        return self
+
     @property
     def base_name(self) -> str:
-        if len(self.source.datasources) == 1:
-            if isinstance(self.source.datasources[0], QueryDatasource):
-                return self.parent_ctes[0].name
+        if len(self.source.datasources) == 1 and isinstance(self.source.datasources[0], Datasource):
             return self.source.datasources[0].safe_location
-        elif self.joins and len(self.joins) > 0:
-            return self.joins[0].left_cte.name
-        #TODO: actually fix this
-        return self.name
+        return self.source.name
+        # "_".join(s.name for s in self.sour)
+        # if len(self.source.datasources) == 1:
+        #     if isinstance(self.source.datasources[0], QueryDatasource):
+        #         return self.parent_ctes[0].name
+        #     return self.source.datasources[0].safe_location
+        # elif self.joins and len(self.joins) > 0:
+        #     return self.joins[0].left_cte.name
+        # #TODO: actually fix this
+        # return self.name
 
     @property
     def base_alias(self) -> str:

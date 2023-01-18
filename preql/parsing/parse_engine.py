@@ -78,7 +78,7 @@ grammar = r"""
     select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
     // top 5 user_id
-    window_item: window (IDENTIFIER | select_transform | comment+ )  ("BY"i order_list)?
+    window_item: "rank" (IDENTIFIER | select_transform | comment+ )  ("BY"i order_list)?
     
     select_item : (IDENTIFIER | select_transform | comment+ ) 
     
@@ -497,15 +497,13 @@ class ParseToObjects(Transformer):
         return Window(count=args[1].value, window_order=args[0])
 
     def window_item(self, args):
-        if len(args)>2:
-            sort_concepts = args[2]
+        if len(args)>1:
+            sort_concepts = args[1]
         else:
             sort_concepts = []
-        concept = self.environment.concepts[args[1]]
-        print(sort_concepts)
+        concept = self.environment.concepts[args[0]]
         # sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
-        print(sort_concepts[0])
-        return WindowItem(content=concept,window=args[0], order_by = sort_concepts )
+        return WindowItem(content=concept, order_by = sort_concepts )
 
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:
