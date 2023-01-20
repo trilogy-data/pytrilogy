@@ -25,7 +25,7 @@ FUNCTION_MAP = {
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT: lambda args: f"1",
+    FunctionType.COUNT: lambda args: f"{args[0]}",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
 }
@@ -72,15 +72,14 @@ LIMIT {{ limit }}{% endif %}
 QUOTE_CHARACTER = '`'
 def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     """This should be consolidated with the render expr below."""
-
     # only recurse while it's in sources of the current cte
-    if c.lineage and all([v.address in cte.source_map for v in c.lineage.arguments]):
+    # and don't recalculate if we already have it from a cte
+    if (c.lineage  and all([v.address in cte.source_map for v in c.lineage.arguments])) and not cte.source_map.get(c.address, '').startswith('cte'):
         if isinstance(c.lineage, WindowItem):
             # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
             dimension = render_concept_sql(c.lineage.arguments[0], cte, alias=False)
-            test = [x.expr.name for x in c.lineage.order_by]
-
-            rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(test), order = 'desc')}"
+            rendered_components = [render_concept_sql(x.expr, cte, alias=False) for x in c.lineage.order_by]
+            rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(rendered_components), order = 'desc')}"
         else:
             args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
             if cte.group_to_grain:
@@ -89,7 +88,7 @@ def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
                 rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
     # else if it's complex, just reference it from the source
     elif c.lineage:
-        rval = f'{cte.source_map[c.address]}.{QUOTE_CHARACTER}{c.safe_address}{QUOTE_CHARACTER}'
+        rval = f'{cte.source_map.get(c.address, "this is a bug")}.{QUOTE_CHARACTER}{c.safe_address}{QUOTE_CHARACTER}'
     else:
         rval = f'{cte.source_map.get(c.address, "this is a bug")}.{QUOTE_CHARACTER}{cte.get_alias(c)}{QUOTE_CHARACTER}'
         # rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
@@ -130,15 +129,22 @@ class BigqueryDialect(BaseDialect):
                     select_columns.append(f"{cte.name}.{c.safe_address}")
                     output_concepts.append(c)
 
-        # where assignemnt
+        # where assignment
         where_assignment = {}
 
         if query.where_clause:
             found = False
+            filter = set([str(x) for x in query.where_clause.input])
+            print(filter)
             for cte in query.ctes:
-                if set([x.name for x in query.where_clause.input]).issubset(
-                    [z.name for z in cte.related_columns]
+                if filter.issubset(
+                        set([str(z) for z in cte.output_columns])
                 ):
+                    # 2023-01-16 - removing related columns to look at output columns
+                    # will need to backport pushing where columns into original output search
+                    # if set([x.name for x in query.where_clause.input]).issubset(
+                    #     [z.name for z in cte.related_columns]
+                    # ):
                     where_assignment[cte.name] = query.where_clause
                     found = True
             if not found:

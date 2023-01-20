@@ -50,6 +50,7 @@ select
     user_id,
     user_rank,
     post_count
+where user_rank<10
 ;
 
 
@@ -78,12 +79,31 @@ select
     expected_base = query.ctes[0]
 
     for cte in query.ctes:
-       if cte.name.startswith('cte_posts_at_user_id'):
-           cte.output_columns = cte.output_columns + [env.concepts['user_id'].with_grain(Grain(components=[env.concepts['user_id']]))]
-           for x in cte.output_columns:
-               print(x)
+
+        if cte.name.startswith('cte_users_at_user_id_posts_at_user'):
+            print(cte.base_name)
+            print(cte.base_alias)
+            print(len(cte.parent_ctes))
+            print(len(cte.joins))
+            print('datasources')
+            print(len(cte.source.datasources))
+            for ds in cte.source.datasources:
+                print(ds.name)
+            print('source info')
+            for key, item in cte.source.source_map.items():
+                print(key)
+                print(item)
+            print(cte.source.joins)
+            for x in cte.parent_ctes:
+                print(x)
+            for key, item in cte.source_map.items():
+                print(key)
+                print(item)
 
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
+
+    for join in query.joins:
+        print(join)
     print(sql)

@@ -343,7 +343,7 @@ def get_datasource_from_window_function(concept:Concept, grain:Grain, environmen
     cte_grain = Grain(components = [window.content.output] )
     sub_concepts = unique([window.content.output] + grain.components, 'identifier')
     for arg in window.order_by:
-        sub_concepts += arg.input
+        sub_concepts += [arg.output,]
     for sub_concept in sub_concepts:
         sub_concept = sub_concept.with_grain(cte_grain)
         sub_datasource = get_datasource_by_concept_and_grain(sub_concept,  cte_grain, environment=environment, g= g)
@@ -358,7 +358,7 @@ def get_datasource_from_window_function(concept:Concept, grain:Grain, environmen
     base = dataset_list[0]
 
     joins = []
-    for right_value in dataset_list[2:]:
+    for right_value in dataset_list[1:]:
         joins.append(   BaseJoin(
             left_datasource=base,
             right_datasource=right_value,
@@ -372,7 +372,6 @@ def get_datasource_from_window_function(concept:Concept, grain:Grain, environmen
         grain= grain,
         datasources=list(all_datasets.values()),
         joins = joins,
-        # joins=join_paths,
     )
     source_map[concept.name] = {qds}
     return qds
@@ -436,7 +435,7 @@ def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
     ][0]
     right_cte = [
         cte for cte in ctes if (cte.source.datasources[0].identifier  == base_join.right_datasource.identifier
-                                or cte.source.identifier == base_join.left_datasource.identifier)
+                                or cte.source.identifier == base_join.right_datasource.identifier)
     ][0]
 
     return Join(
@@ -471,8 +470,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 concepts = [
                     c for c in datasource.concepts if c.address in sub_select.keys()
                 ]
-                if not concepts:
-                    raise ValueError
                 concepts = unique(concepts, "address")
                 sub_datasource = QueryDatasource(
                     output_concepts=concepts,
@@ -482,8 +479,13 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     datasources=[datasource],
                     joins=[],
                 )
+                print('xxxxxxxx')
+                print(sub_datasource.name)
+                print(sub_datasource.grain)
+                print([c.address for c in sub_datasource.output_concepts])
+
             sub_cte = datasource_to_ctes(sub_datasource)
-            children+=sub_cte
+            children += sub_cte
             output += sub_cte
             for cte in sub_cte:
                 for value in cte.output_columns:
@@ -504,6 +506,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     human_id = (
         query_datasource.identifier.replace("<", "").replace(">", "").replace(",", "_")
     )
+
     output.append(
         CTE(
             name=f"cte_{human_id}_{int_id}",
@@ -533,9 +536,15 @@ def get_query_datasources(
     graph = graph or generate_graph(environment)
     datasource_map: Dict = {}
     for concept in statement.output_components + statement.grain.components:
+        print('----')
         datasource = get_datasource_by_concept_and_grain(
             concept, statement.grain, environment, graph
         )
+
+        print(datasource.name)
+        print(datasource.grain)
+        print([c.address for c in datasource.output_concepts])
+        print(concept)
         if concept not in concept_map[datasource.identifier]:
             concept_map[datasource.identifier].append(concept)
         if datasource.identifier in datasource_map:
@@ -566,10 +575,15 @@ def process_query(
     final_ctes_dict:Dict[str, CTE] = {}
     #merge CTEs
     for cte in ctes:
+
         if cte.name not in final_ctes_dict:
             final_ctes_dict[cte.name] = cte
         else:
             final_ctes_dict[cte.name] = final_ctes_dict[cte.name] + cte
+        if cte.name.startswith('cte_posts_at_user_id'):
+            print('GOT THIS CTE')
+            print([x.name for x in cte.output_columns])
+            print([x.name for x in final_ctes_dict[cte.name].output_columns])
     final_ctes = list(final_ctes_dict.values())
     base_list = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
@@ -577,7 +591,7 @@ def process_query(
     else:
         base_list = [cte for cte in ctes if cte.grain.issubset(statement.grain)]
         base = base_list[0]
-    others = [cte for cte in ctes if cte != base]
+    others = [cte for cte in final_ctes if cte != base]
     for cte in others:
         joinkeys = [
             JoinKey(c) for c in statement.grain.components if c in cte.output_columns

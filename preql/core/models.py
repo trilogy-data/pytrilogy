@@ -212,7 +212,7 @@ class WindowItem(BaseModel):
     def arguments(self)->List[Concept]:
         output = [self.content]
         for order in self.order_by:
-            output += order.input
+            output += [order.output,]
         return output
 
     @property
@@ -230,7 +230,7 @@ class WindowItem(BaseModel):
 
     @property
     def input(self)->List[Concept]:
-        return self.content.input + [v.output for v in self.order_by]
+        return self.content.input + [v.input for v in self.order_by]
 
     @property
     def output_datatype(self):
@@ -607,6 +607,7 @@ class CTE:
     joins: List["Join"] = field(default_factory=list)
 
 
+
     def __add__(self, other:"CTE"):
         if not self.grain == other.grain:
             raise ValueError
@@ -615,15 +616,21 @@ class CTE:
 
         self.source_map = {**self.source_map, **other.source_map}
 
-        self.output_columns = unique(self.output_columns + other.output_columns, 'identifier')
+        self.output_columns = unique(self.output_columns + other.output_columns, 'address')
         self.joins = self.joins + other.joins
         self.related_columns = self.related_columns + other.related_columns
         return self
 
     @property
     def base_name(self) -> str:
+        # if this cte selects from a single datasource, select right from it
         if len(self.source.datasources) == 1 and isinstance(self.source.datasources[0], Datasource):
             return self.source.datasources[0].safe_location
+        # if we have ctes, we should reference those
+        elif self.joins and len(self.joins) > 0:
+            return self.joins[0].left_cte.name
+        elif self.parent_ctes and len(self.parent_ctes) == 1:
+            return self.parent_ctes[0].base_alias
         return self.source.name
         # "_".join(s.name for s in self.sour)
         # if len(self.source.datasources) == 1:
