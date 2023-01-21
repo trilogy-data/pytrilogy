@@ -21,9 +21,8 @@ from preql.core.models import (
     QueryDatasource,
     JoinType,
     BaseJoin,
-
-Function,
-WindowItem
+    Function,
+    WindowItem,
 )
 from preql.utility import string_to_hash
 from preql.utility import unique
@@ -40,7 +39,6 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
         # ex: avg() of sum() @ grain
         output += concept_to_inputs(source.with_default_grain())
     return output
-
 
 
 def get_datasource_from_direct_select(
@@ -74,7 +72,9 @@ def get_datasource_from_direct_select(
                 final_grain = datasource.grain
             else:
                 final_grain = grain
-            logger.debug(f"got {datasource.identifier} for {concept} from direct select")
+            logger.debug(
+                f"got {datasource.identifier} for {concept} from direct select"
+            )
             base_outputs = [concept] + final_grain.components
             for item in datasource.concepts:
                 if item.address in [c.address for c in grain.components]:
@@ -153,7 +153,9 @@ def get_datasource_from_group_select(
                 final_grain = datasource.grain
             else:
                 final_grain = grain
-            logger.debug(f"got {datasource.identifier} for {concept} from grouped select")
+            logger.debug(
+                f"got {datasource.identifier} for {concept} from grouped select"
+            )
             return QueryDatasource(
                 input_concepts=all_concepts,
                 output_concepts=[concept] + grain.components,
@@ -291,10 +293,10 @@ def get_datasource_by_joins(
     return output
 
 
-def get_datasource_from_complex_lineage(concept:Concept, grain:Grain, environment, g):
+def get_datasource_from_complex_lineage(concept: Concept, grain: Grain, environment, g):
     # always true if window item
     complex_lineage_flag = isinstance(concept.lineage, WindowItem)
-    all_requirements =[]
+    all_requirements = []
     all_datasets = []
     source_map = {}
     # for anything in function lineage, calculate to urrent grain
@@ -302,7 +304,9 @@ def get_datasource_from_complex_lineage(concept:Concept, grain:Grain, environmen
 
         if sub_concept.lineage:
             complex_lineage_flag = True
-        sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain+grain, environment=environment, g= g)
+        sub_datasource = get_datasource_by_concept_and_grain(
+            sub_concept, sub_concept.grain + grain, environment=environment, g=g
+        )
         all_datasets.append(sub_datasource)
         all_requirements.append(sub_concept)
         source_map[sub_concept.name] = {sub_datasource}
@@ -312,7 +316,9 @@ def get_datasource_from_complex_lineage(concept:Concept, grain:Grain, environmen
     for sub_concept in grain.components:
         if sub_concept.lineage:
             complex_lineage_flag = True
-        sub_datasource = get_datasource_by_concept_and_grain(sub_concept, sub_concept.grain, environment=environment, g= g)
+        sub_datasource = get_datasource_by_concept_and_grain(
+            sub_concept, sub_concept.grain, environment=environment, g=g
+        )
         all_datasets.append(sub_datasource)
         all_requirements.append(sub_concept)
         source_map[sub_concept.name] = {sub_datasource}
@@ -321,34 +327,39 @@ def get_datasource_from_complex_lineage(concept:Concept, grain:Grain, environmen
         #     print(sub_output_concept)
         #     source_map[sub_output_concept.name] = {sub_datasource}
     if complex_lineage_flag:
-        logger.debug(f'Complex lineage for {concept}')
+        logger.debug(f"Complex lineage for {concept}")
         qds = QueryDatasource(
             output_concepts=[concept] + grain.components,
             input_concepts=all_requirements,
             source_map=source_map,
             grain=grain,
             datasources=all_datasets,
-            joins = []
+            joins=[]
             # joins=join_paths,
         )
         source_map[concept.name] = {qds}
         return qds
 
-def get_datasource_from_window_function(concept:Concept, grain:Grain, environment, g):
+
+def get_datasource_from_window_function(concept: Concept, grain: Grain, environment, g):
     # always true if window item
-    window:WindowItem = concept.lineage
-    all_requirements =[]
-    all_datasets:Dict = {}
+    window: WindowItem = concept.lineage
+    all_requirements = []
+    all_datasets: Dict = {}
     source_map = {}
-    cte_grain = Grain(components = [window.content.output] )
-    sub_concepts = unique([window.content.output] + grain.components, 'identifier')
+    cte_grain = Grain(components=[window.content.output])
+    sub_concepts = unique([window.content.output] + grain.components, "identifier")
     for arg in window.order_by:
-        sub_concepts += [arg.output,]
+        sub_concepts += [arg.output]
     for sub_concept in sub_concepts:
         sub_concept = sub_concept.with_grain(cte_grain)
-        sub_datasource = get_datasource_by_concept_and_grain(sub_concept,  cte_grain, environment=environment, g= g)
+        sub_datasource = get_datasource_by_concept_and_grain(
+            sub_concept, cte_grain, environment=environment, g=g
+        )
         if sub_datasource.identifier in all_datasets:
-            all_datasets[sub_datasource.identifier] = all_datasets[sub_datasource.identifier] + sub_datasource
+            all_datasets[sub_datasource.identifier] = (
+                all_datasets[sub_datasource.identifier] + sub_datasource
+            )
         else:
             all_datasets[sub_datasource.identifier] = sub_datasource
         all_requirements.append(sub_concept)
@@ -359,22 +370,25 @@ def get_datasource_from_window_function(concept:Concept, grain:Grain, environmen
 
     joins = []
     for right_value in dataset_list[1:]:
-        joins.append(   BaseJoin(
-            left_datasource=base,
-            right_datasource=right_value,
-            join_type=JoinType.LEFT_OUTER,
-            concepts=cte_grain.components,
-        ))
+        joins.append(
+            BaseJoin(
+                left_datasource=base,
+                right_datasource=right_value,
+                join_type=JoinType.LEFT_OUTER,
+                concepts=cte_grain.components,
+            )
+        )
     qds = QueryDatasource(
         output_concepts=[concept] + grain.components,
         input_concepts=all_requirements,
         source_map=source_map,
-        grain= grain,
+        grain=grain,
         datasources=list(all_datasets.values()),
-        joins = joins,
+        joins=joins,
     )
     source_map[concept.name] = {qds}
     return qds
+
 
 def get_datasource_by_concept_and_grain(
     concept, grain: Grain, environment: Environment, g: Optional[ReferenceGraph] = None
@@ -384,14 +398,18 @@ def get_datasource_by_concept_and_grain(
     g = g or generate_graph(environment)
     if concept.lineage:
         if isinstance(concept.lineage, WindowItem):
-            logger.debug('getting complex window function')
-            complex = get_datasource_from_window_function(concept, grain, environment, g)
+            logger.debug("getting complex window function")
+            complex = get_datasource_from_window_function(
+                concept, grain, environment, g
+            )
         else:
-            complex = get_datasource_from_complex_lineage(concept, grain, environment, g)
+            complex = get_datasource_from_complex_lineage(
+                concept, grain, environment, g
+            )
         if complex:
-            logger.debug(f'Have complex derived lineage for {concept}')
+            logger.debug(f"Have complex derived lineage for {concept}")
             return complex
-        logger.debug(f'Can satisfy query with basic lineage for {concept}')
+        logger.debug(f"Can satisfy query with basic lineage for {concept}")
     # the concept is available directly on a datasource at appropriate grain
     if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
         try:
@@ -430,12 +448,21 @@ def get_datasource_by_concept_and_grain(
 def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
 
     left_cte = [
-        cte for cte in ctes if (cte.source.datasources[0].identifier == base_join.left_datasource.identifier
-                               or cte.source.identifier == base_join.left_datasource.identifier)
+        cte
+        for cte in ctes
+        if (
+            cte.source.datasources[0].identifier == base_join.left_datasource.identifier
+            or cte.source.identifier == base_join.left_datasource.identifier
+        )
     ][0]
     right_cte = [
-        cte for cte in ctes if (cte.source.datasources[0].identifier  == base_join.right_datasource.identifier
-                                or cte.source.identifier == base_join.right_datasource.identifier)
+        cte
+        for cte in ctes
+        if (
+            cte.source.datasources[0].identifier
+            == base_join.right_datasource.identifier
+            or cte.source.identifier == base_join.right_datasource.identifier
+        )
     ][0]
 
     return Join(
@@ -456,7 +483,9 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     )
     output = []
     children = []
-    if len(query_datasource.datasources) > 1 or any([isinstance(x, QueryDatasource) for x in query_datasource.datasources]):
+    if len(query_datasource.datasources) > 1 or any(
+        [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
+    ):
         source_map = {}
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
@@ -479,7 +508,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     datasources=[datasource],
                     joins=[],
                 )
-                print('xxxxxxxx')
+                print("xxxxxxxx")
                 print(sub_datasource.name)
                 print(sub_datasource.grain)
                 print([c.address for c in sub_datasource.output_concepts])
@@ -523,7 +552,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
             related_columns=query_datasource.input_concepts,
             grain=query_datasource.grain,
             group_to_grain=group_to_grain,
-            parent_ctes = children
+            parent_ctes=children,
         )
     )
     return output
@@ -536,19 +565,14 @@ def get_query_datasources(
     graph = graph or generate_graph(environment)
     datasource_map: Dict = {}
     for concept in statement.output_components + statement.grain.components:
-        print('----')
         datasource = get_datasource_by_concept_and_grain(
             concept, statement.grain, environment, graph
         )
 
-        print(datasource.name)
-        print(datasource.grain)
-        print([c.address for c in datasource.output_concepts])
-        print(concept)
         if concept not in concept_map[datasource.identifier]:
             concept_map[datasource.identifier].append(concept)
         if datasource.identifier in datasource_map:
-            #concatenate to add new fields
+            # concatenate to add new fields
             datasource_map[datasource.identifier] = (
                 datasource_map[datasource.identifier] + datasource
             )
@@ -572,18 +596,14 @@ def process_query(
     for datasource in datasources.values():
         ctes += datasource_to_ctes(datasource)
 
-    final_ctes_dict:Dict[str, CTE] = {}
-    #merge CTEs
+    final_ctes_dict: Dict[str, CTE] = {}
+    # merge CTEs
     for cte in ctes:
 
         if cte.name not in final_ctes_dict:
             final_ctes_dict[cte.name] = cte
         else:
             final_ctes_dict[cte.name] = final_ctes_dict[cte.name] + cte
-        if cte.name.startswith('cte_posts_at_user_id'):
-            print('GOT THIS CTE')
-            print([x.name for x in cte.output_columns])
-            print([x.name for x in final_ctes_dict[cte.name].output_columns])
     final_ctes = list(final_ctes_dict.values())
     base_list = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:

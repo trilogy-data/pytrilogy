@@ -12,7 +12,7 @@ from preql.core.enums import (
     FunctionType,
     ComparisonOperator,
     LogicalOperator,
-    WindowOrder
+    WindowOrder,
 )
 from preql.core.models import (
     WhereClause,
@@ -33,8 +33,8 @@ from preql.core.models import (
     Limit,
     OrderBy,
     Metadata,
-Window,
-WindowItem
+    Window,
+    WindowItem,
 )
 from preql.parsing.exceptions import ParseError
 
@@ -134,13 +134,13 @@ grammar = r"""
     
     _string_lit: "\"" ( STRING_CHARS )* "\"" 
     
-    _int_lit: /[0-9]+/
+    int_lit: /[0-9]+/
     
-    _float_lit: /[0-9]+\.[0-9]+/
+    float_lit: /[0-9]+\.[0-9]+/
     
-    BOOLEAN_LIT: "True" | "False"
+    bool_lit: "True" | "False"
     
-    literal: _string_lit | _int_lit | _float_lit | BOOLEAN_LIT
+    literal: _string_lit | int_lit | float_lit | bool_lit
 
     MODIFIER: "Optional"i | "Partial"i
     
@@ -360,7 +360,6 @@ class ParseToObjects(Transformer):
             raise ParseError(
                 f"Assignment {output} on line {meta.line} is a duplicate concept declaration"
             )
-        print(function)
         concept = Concept(
             name=output,
             datatype=function.output_datatype,
@@ -419,9 +418,13 @@ class ParseToObjects(Transformer):
             nparser.transform(PARSER.parse(text))
 
             for key, concept in nparser.environment.concepts.items():
-                self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
+                self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(
+                    alias
+                )
             for key, datasource in nparser.environment.datasources.items():
-                self.environment.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
+                self.environment.datasources[
+                    f"{alias}.{key}"
+                ] = datasource.with_namespace(alias)
         return None
 
     @v_args(meta=True)
@@ -477,6 +480,15 @@ class ParseToObjects(Transformer):
     def where(self, args):
         return WhereClause(conditional=args[0])
 
+    def int_lit(self, args):
+        return int(args[0])
+
+    def bool_lit(self, args):
+        return bool(args[0])
+
+    def float_lit(self, args):
+        return float(args[0])
+
     def literal(self, args):
         return args[0]
 
@@ -497,13 +509,13 @@ class ParseToObjects(Transformer):
         return Window(count=args[1].value, window_order=args[0])
 
     def window_item(self, args):
-        if len(args)>1:
+        if len(args) > 1:
             sort_concepts = args[1]
         else:
             sort_concepts = []
         concept = self.environment.concepts[args[0]]
         # sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
-        return WindowItem(content=concept, order_by = sort_concepts )
+        return WindowItem(content=concept, order_by=sort_concepts)
 
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:

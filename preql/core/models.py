@@ -13,7 +13,7 @@ from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
     WindowOrder,
-
+    PurposeLineage,
 )
 from preql.utility import unique
 from pydantic import BaseModel, validator, Field
@@ -49,7 +49,7 @@ class Concept(BaseModel):
             return "default"
         return v
 
-    def with_namespace(self, namespace:str)->"Concept":
+    def with_namespace(self, namespace: str) -> "Concept":
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -119,7 +119,6 @@ class Concept(BaseModel):
             namespace=self.namespace,
         )
 
-
     def with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
@@ -157,6 +156,13 @@ class Concept(BaseModel):
     def input(self):
         return [self] + self.sources
 
+    @property
+    def derivation(self)->PurposeLineage:
+        if self.lineage and isinstance(self.lineage, WindowItem):
+            return PurposeLineage.WINDOW
+        elif self.lineage:
+            return PurposeLineage.AGGREGATE
+        return PurposeLineage.BASIC
 
 @dataclass(eq=True)
 class ColumnAssignment:
@@ -167,7 +173,7 @@ class ColumnAssignment:
     def is_complete(self):
         return Modifier.PARTIAL not in self.modifiers
 
-    def with_namespace(self, namespace:str)->"ColumnAssignment":
+    def with_namespace(self, namespace: str) -> "ColumnAssignment":
         return self
 
 
@@ -197,11 +203,11 @@ class ConceptTransform:
 
 @dataclass
 class Window:
-    count:int
-    window_order:WindowOrder
+    count: int
+    window_order: WindowOrder
 
     def __str__(self):
-        return f'Window<{self.window_order}>'
+        return f"Window<{self.window_order}>"
 
 
 class WindowItem(BaseModel):
@@ -209,10 +215,10 @@ class WindowItem(BaseModel):
     order_by: List["OrderItem"]
 
     @property
-    def arguments(self)->List[Concept]:
+    def arguments(self) -> List[Concept]:
         output = [self.content]
         for order in self.order_by:
-            output += [order.output,]
+            output += [order.output]
         return output
 
     @property
@@ -224,12 +230,12 @@ class WindowItem(BaseModel):
     @output.setter
     def output(self, value):
         if isinstance(self.content, ConceptTransform):
-            self.content.output= value
+            self.content.output = value
         else:
-            self.content=value
+            self.content = value
 
     @property
-    def input(self)->List[Concept]:
+    def input(self) -> List[Concept]:
         return self.content.input + [v.input for v in self.order_by]
 
     @property
@@ -270,6 +276,7 @@ class OrderItem:
     @property
     def output(self):
         return self.expr.output
+
 
 @dataclass(eq=True, frozen=True)
 class OrderBy:
@@ -332,7 +339,7 @@ class Select:
                 output += item.grain.components
             # new if block be design
         # if self.order_by:
-        return Grain(components=unique(output, "address"),)
+        return Grain(components=unique(output, "address"))
 
 
 @dataclass(eq=True, frozen=True)
@@ -356,8 +363,11 @@ class Grain(BaseModel):
             return "Grain<Abstract>"
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
 
-    def with_namespace(self, namespace:str)->'Grain':
-        return Grain(components = [c.with_namespace(namespace) for c in self.components], nested = self.nested)
+    def with_namespace(self, namespace: str) -> "Grain":
+        return Grain(
+            components=[c.with_namespace(namespace) for c in self.components],
+            nested=self.nested,
+        )
 
     @property
     def abstract(self):
@@ -398,13 +408,19 @@ class Grain(BaseModel):
         else:
             return self.__add__(other)
 
+
 @dataclass
 class GrainWindow:
-    window:Window
+    window: Window
     sort_concepts: List[Concept]
 
     def __str__(self):
-        return "GrainWindow<" + ",".join([c.address for c in self.sort_concepts]) + f":{str(self.window)}>"
+        return (
+            "GrainWindow<"
+            + ",".join([c.address for c in self.sort_concepts])
+            + f":{str(self.window)}>"
+        )
+
 
 @dataclass
 class Datasource:
@@ -421,27 +437,34 @@ class Datasource:
         # if a user skips defining a grain, use the defined keys
         if not self.grain or not self.grain.components:
             self.grain = Grain(
-                components=[deepcopy(v).with_grain(Grain()) for v in self.concepts if v.purpose == Purpose.KEY]
+                components=[
+                    deepcopy(v).with_grain(Grain())
+                    for v in self.concepts
+                    if v.purpose == Purpose.KEY
+                ]
             )
         if isinstance(self.address, str):
             self.address = Address(location=self.address)
         if not self.namespace:
             self.namespace = ""
 
-    def with_namespace(self, namespace:str):
+    def with_namespace(self, namespace: str):
 
         return Datasource(
-            identifier = self.identifier,
-            namespace =namespace,
-            grain = self.grain.with_namespace(namespace),
-            address = self.address,
-            columns = [c.with_namespace(namespace) for c in self.columns]
+            identifier=self.identifier,
+            namespace=namespace,
+            grain=self.grain.with_namespace(namespace),
+            address=self.address,
+            columns=[c.with_namespace(namespace) for c in self.columns],
         )
+
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
 
-    def get_alias(self, concept: Concept, use_raw_name: bool = True,force_alias:bool= False)->Optional[str]:
+    def get_alias(
+        self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
+    ) -> Optional[str]:
         if concept.lineage:
             return None
         for x in self.columns:
@@ -520,7 +543,7 @@ class QueryDatasource:
     datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin]
-    limit: Optional[int] =None
+    limit: Optional[int] = None
 
     def validate(self):
         # validate this was successfully built.
@@ -559,12 +582,20 @@ class QueryDatasource:
     @property
     def identifier(self) -> str:
         grain = "_".join([str(c.name) for c in self.grain.components])
-        return "_".join([d.name for d in self.datasources]) + ( f"_at_{grain}" if grain else "" )
-        #return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
+        return "_".join([d.name for d in self.datasources]) + (
+            f"_at_{grain}" if grain else ""
+        )
+        # return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
 
-    def get_alias(self, concept: Concept, use_raw_name:bool = False ,force_alias:bool= False):
+    def get_alias(
+        self, concept: Concept, use_raw_name: bool = False, force_alias: bool = False
+    ):
         # if we should use the raw datasource name to access
-        use_raw_name = True if (len(self.datasources) == 1 or use_raw_name) and not force_alias else False
+        use_raw_name = (
+            True
+            if (len(self.datasources) == 1 or use_raw_name) and not force_alias
+            else False
+        )
         # 2922
         # if concept.lineage:
         #     return concept.safe_address
@@ -572,9 +603,14 @@ class QueryDatasource:
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
             try:
-                return x.get_alias(concept.with_grain(self.grain), use_raw_name, force_alias=force_alias)
+                return x.get_alias(
+                    concept.with_grain(self.grain),
+                    use_raw_name,
+                    force_alias=force_alias,
+                )
             except ValueError as e:
                 from preql.constants import logger
+
                 logger.debug(e)
                 continue
         existing = [str(c.with_grain(self.grain)) for c in self.output_concepts]
@@ -585,6 +621,7 @@ class QueryDatasource:
     @property
     def safe_location(self):
         return self.identifier
+
 
 @dataclass
 class Comment:
@@ -606,9 +643,7 @@ class CTE:
     parent_ctes: List["CTE"] = field(default_factory=list)
     joins: List["Join"] = field(default_factory=list)
 
-
-
-    def __add__(self, other:"CTE"):
+    def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
             raise ValueError
         self.joins = self.joins + other.joins
@@ -616,7 +651,9 @@ class CTE:
 
         self.source_map = {**self.source_map, **other.source_map}
 
-        self.output_columns = unique(self.output_columns + other.output_columns, 'address')
+        self.output_columns = unique(
+            self.output_columns + other.output_columns, "address"
+        )
         self.joins = self.joins + other.joins
         self.related_columns = self.related_columns + other.related_columns
         return self
@@ -624,7 +661,9 @@ class CTE:
     @property
     def base_name(self) -> str:
         # if this cte selects from a single datasource, select right from it
-        if len(self.source.datasources) == 1 and isinstance(self.source.datasources[0], Datasource):
+        if len(self.source.datasources) == 1 and isinstance(
+            self.source.datasources[0], Datasource
+        ):
             return self.source.datasources[0].safe_location
         # if we have ctes, we should reference those
         elif self.joins and len(self.joins) > 0:
@@ -654,7 +693,7 @@ class CTE:
 
     def get_alias(self, concept: Concept):
         error = None
-        for cte in [self]+ self.parent_ctes:
+        for cte in [self] + self.parent_ctes:
             try:
                 return cte.source.get_alias(concept)
             except ValueError as e:
@@ -725,8 +764,12 @@ class Comparison:
     @property
     def input(self) -> List[Concept]:
         output: List[Concept] = []
-        if isinstance(self.left, (Concept, Expr, Conditional)):
+        if isinstance(self.left, (Concept,)):
+            output += [self.left]
+        elif isinstance(self.left, (Concept, Expr, Conditional)):
             output += self.left.input
+        if isinstance(self.right, (Concept,)):
+            output += [self.right]
         if isinstance(self.right, (Concept, Expr, Conditional)):
             output += self.right.input
         return output
@@ -740,7 +783,17 @@ class Conditional:
 
     @property
     def input(self) -> List[Concept]:
-        return self.left.input + self.right.input
+        """Return concepts directly referenced in where clause"""
+        output = []
+        if isinstance(self.left, Concept):
+            output.append(self.left)
+        else:
+            output += self.left.input
+        if isinstance(self.right, Concept):
+            output.append(self.right)
+        else:
+            output += self.right.input
+        return output
 
 
 @dataclass
@@ -781,8 +834,6 @@ class ProcessedQuery:
 @dataclass
 class Limit:
     count: int
-
-
 
 
 Concept.update_forward_refs()

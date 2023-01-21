@@ -11,6 +11,12 @@ class Purpose(Enum):
     METRIC = "metric"
 
 
+class PurposeLineage(Enum):
+    BASIC = "basic"
+    WINDOW = "window"
+    AGGREGATE = "aggregate"
+
+
 class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"
@@ -42,8 +48,10 @@ class Ordering(Enum):
     ASCENDING = "asc"
     DESCENDING = "desc"
 
+
 class WindowType(Enum):
-    ROW_NUMBER= "row_number"
+    ROW_NUMBER = "row_number"
+
 
 class WindowOrder(Enum):
     ASCENDING = "top"

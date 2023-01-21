@@ -14,7 +14,7 @@ from preql.core.models import (
     Function,
     Join,
     OrderItem,
-WindowItem
+    WindowItem,
 )
 from preql.dialect.base import BaseDialect
 
@@ -83,7 +83,9 @@ def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
 
             rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(test), order = 'desc')}"
         else:
-            args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
+            args = [
+                render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments
+            ]
             if cte.group_to_grain:
                 rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
             else:
@@ -94,7 +96,6 @@ def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
     else:
         rval = f'{cte.source_map.get(c.address, "this is a bug")}."{cte.get_alias(c)}"'
         # rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
-
 
     if alias:
         return f'{rval} as "{c.safe_address}"'
@@ -141,7 +142,7 @@ def render_expr(
         )
     elif isinstance(e, Concept):
         if cte:
-            #return f'{cte.source_map.get(e.address, "this is a bug")}."{cte.get_alias(e)}"'
+            # return f'{cte.source_map.get(e.address, "this is a bug")}."{cte.get_alias(e)}"'
             return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
         return f'"{e.safe_address}"'
     elif isinstance(e, bool):
@@ -152,8 +153,6 @@ def render_expr(
 
 
 class SqlServerDialect(BaseDialect):
-
-
     def compile_statement(self, query: ProcessedQuery) -> str:
         select_columns = []
         output_concepts = []
@@ -171,20 +170,20 @@ class SqlServerDialect(BaseDialect):
                     selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
             missing = [x for x in output_addresses if x not in selected]
-            raise ValueError(f'Did not get all output addresses in select - missing: {missing}')
+            raise ValueError(
+                f"Did not get all output addresses in select - missing: {missing}"
+            )
         where_assignment = {}
         if query.where_clause:
             found = False
             filter = set([str(x) for x in query.where_clause.input])
             for cte in query.ctes:
-                if filter.issubset(
-                        set([str(z) for z in cte.output_columns])
-                ):
-                # 2023-01-16 - removing related columns to look at output columns
-                # will need to backport pushing where columns into original output search
-                # if set([x.name for x in query.where_clause.input]).issubset(
-                #     [z.name for z in cte.related_columns]
-                # ):
+                if filter.issubset(set([str(z) for z in cte.output_columns])):
+                    # 2023-01-16 - removing related columns to look at output columns
+                    # will need to backport pushing where columns into original output search
+                    # if set([x.name for x in query.where_clause.input]).issubset(
+                    #     [z.name for z in cte.related_columns]
+                    # ):
                     where_assignment[cte.name] = query.where_clause
                     found = True
             if not found:
