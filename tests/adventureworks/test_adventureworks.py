@@ -5,7 +5,7 @@ import networkx as nx
 import pytest
 
 from preql.core.env_processor import generate_graph
-from preql.core.models import Select, QueryDatasource, CTE
+from preql.core.models import Select, QueryDatasource, CTE, Grain
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
@@ -13,6 +13,7 @@ from preql.core.query_processor import (
 )
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
+from preql.core.query_processor import process_query
 
 
 @pytest.mark.adventureworks
@@ -72,10 +73,14 @@ def test_query_datasources(environment):
         "ds~internet_sales.fact_internet_sales",
         "c~internet_sales.order_quantity@Grain<internet_sales.order_line_number,internet_sales.order_number>",
     )
+    assert "ds~internet_sales.fact_internet_sales" in environment_graph.nodes
+    assert (
+        "c~internet_sales.total_sales_amount@Grain<Abstract>" in environment_graph.nodes
+    )
     path = nx.shortest_path(
         environment_graph,
         "ds~internet_sales.fact_internet_sales",
-        "c~internet_sales.total_sales_amount@Grain<internet_sales.order_number,internet_sales.order_line_number,sales_territory.key,customer.customer_id>",
+        "c~internet_sales.total_sales_amount@Grain<Abstract>",
     )
     # for val in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales))):
     #     print(val)
@@ -94,32 +99,32 @@ def test_query_datasources(environment):
         elif concept.name == "order_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales<order_line_number,order_number>"
+                == "fact_internet_sales_at_order_line_number_order_number"
             )
         elif concept.name == "order_line_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales<order_line_number,order_number>"
+                == "fact_internet_sales_at_order_line_number_order_number"
             )
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "fact_internet_sales<order_line_number,order_number>"
+                == "fact_internet_sales_at_order_line_number_order_number"
             )
         elif concept.name == "region":
-            assert datasource.identifier == "sales_territories<key>"
+            assert datasource.identifier == "sales_territories_at_key"
         elif concept.name == "first_name":
-            assert datasource.identifier == "customers<customer_id>"
+            assert datasource.identifier == "customers_at_customer_id"
         else:
             raise ValueError(concept)
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "customers<customer_id>",
-        "fact_internet_sales<order_line_number,order_number>",
-        "sales_territories<key>",
+        "customers_at_customer_id",
+        "fact_internet_sales_at_order_line_number_order_number",
+        "sales_territories_at_key",
     }
 
     joined_datasource: QueryDatasource = [
-        ds for ds in datasources.values() if ds.identifier == "customers<customer_id>"
+        ds for ds in datasources.values() if ds.identifier == "customers_at_customer_id"
     ][0]
     assert set([c.name for c in joined_datasource.input_concepts]) == {
         "customer_id",
@@ -136,11 +141,14 @@ def test_query_datasources(environment):
 
     assert len(ctes) == 3
     #
+    for cte in ctes:
+        print(cte.name)
     base_cte: CTE = [
         cte
         for cte in ctes
-        if cte.name
-        == "cte_fact_internet_salesorder_line_number_order_number_5214932119619809"
+        if cte.name.startswith(
+            "cte_fact_internet_sales_at_order_line_number_order_number_"
+        )
     ][0]
     assert len(base_cte.output_columns) == 5
 
@@ -160,4 +168,5 @@ def test_online_sales_queries(adventureworks_engine, environment):
 
     for statement in sql:
         sql = generator.compile_statement(statement)
+        print(sql)
         results = adventureworks_engine.execute_query(statement)

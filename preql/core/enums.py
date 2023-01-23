@@ -11,6 +11,12 @@ class Purpose(Enum):
     METRIC = "metric"
 
 
+class PurposeLineage(Enum):
+    BASIC = "basic"
+    WINDOW = "window"
+    AGGREGATE = "aggregate"
+
+
 class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"
@@ -43,6 +49,15 @@ class Ordering(Enum):
     DESCENDING = "desc"
 
 
+class WindowType(Enum):
+    ROW_NUMBER = "row_number"
+
+
+class WindowOrder(Enum):
+    ASCENDING = "top"
+    DESCENDING = "bottom"
+
+
 class FunctionType(Enum):
     COUNT = "count"
     SUM = "sum"
@@ -51,6 +66,10 @@ class FunctionType(Enum):
     LIKE = "like"
     CONCAT = "concat"
     NOT_LIKE = "not_like"
+
+
+class FunctionClass(Enum):
+    AGGREGATE_FUNCTIONS = [FunctionType.SUM, FunctionType.AVG, FunctionType.COUNT]
 
 
 class Boolean(Enum):

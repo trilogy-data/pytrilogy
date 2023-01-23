@@ -66,7 +66,7 @@ def test_query_aggregation(test_environment, test_environment_graph):
     )
 
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "revenue<>"
+        "revenue_at_abstract"
     }
     check = list(datasources.values())[0]
     assert len(check.input_concepts) == 1
@@ -97,14 +97,14 @@ def test_query_datasources(test_environment, test_environment_graph):
         environment=test_environment, graph=test_environment_graph, statement=select
     )
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "products_join_revenue<category_id>",
-        "category<category_id>",
+        "products_revenue_at_category_id",
+        "category_at_category_id",
     }
 
     joined_datasource: QueryDatasource = [
         ds
         for ds in datasources.values()
-        if ds.identifier == "products_join_revenue<category_id>"
+        if ds.identifier == "products_revenue_at_category_id"
     ][0]
     assert set([c.name for c in joined_datasource.input_concepts]) == {
         "product_id",
@@ -121,11 +121,10 @@ def test_query_datasources(test_environment, test_environment_graph):
         ctes += datasource_to_ctes(datasource)
 
     assert len(ctes) == 4
-
     join_ctes = [
         cte
         for cte in ctes
-        if cte.name == "cte_products_join_revenuecategory_id_4899990339111153"
+        if cte.name == "cte_products_revenue_at_category_id_8908257907118235"
     ]
     assert join_ctes
     join_cte: CTE = join_ctes[0]
@@ -142,11 +141,6 @@ def test_query_datasources(test_environment, test_environment_graph):
 
     for cte in ctes:
         assert len(cte.output_columns) > 0
-        print(cte.name)
-        # if 'default.revenue' in cte.source_map.keys():
-        #     assert 'default.total_revenue' not in cte.source_map.keys()
-        print(cte.source_map)
-        print(cte.output_columns)
         if "default.revenue" in cte.source_map.keys() and "revenue" not in cte.name:
             raise ValueError
 

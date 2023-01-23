@@ -12,6 +12,7 @@ from preql.core.enums import (
     FunctionType,
     ComparisonOperator,
     LogicalOperator,
+    WindowOrder,
 )
 from preql.core.models import (
     WhereClause,
@@ -32,6 +33,8 @@ from preql.core.models import (
     Limit,
     OrderBy,
     Metadata,
+    Window,
+    WindowItem,
 )
 from preql.parsing.exceptions import ParseError
 
@@ -74,16 +77,25 @@ grammar = r"""
     // select statement
     select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
-    select_item : (IDENTIFIER | select_transform | comment+ )
+    // top 5 user_id
+    window_item: "rank" (IDENTIFIER | select_transform | comment+ )  ("BY"i order_list)?
+    
+    select_item : (IDENTIFIER | select_transform | comment+ ) 
     
     select_list :  ( select_item "," )* select_item ","?
     
-    // 
+    //  count(post_id) -> post_count
     select_transform : expr "-" ">" IDENTIFIER metadata?
     
     metadata : "metadata" "(" IDENTIFIER "=" _string_lit ")"
     
     limit: "LIMIT"i /[0-9]+/
+    
+    !window_order: ("TOP"i | "BOTTOM"i)
+    
+    window: window_order /[0-9]+/
+    
+    window_order_by: "BY"i column_list
     
     order_list : (expr ORDERING "," )* expr ORDERING ","?
     
@@ -104,7 +116,7 @@ grammar = r"""
     COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
     comparison: expr COMPARISON_OPERATOR expr
     
-    expr: count | avg | sum | len | like | concat | comparison | literal | expr_reference
+    expr: count | avg | sum | len | like | concat | comparison | literal | window_item | expr_reference
     
     // functions
     
@@ -122,13 +134,13 @@ grammar = r"""
     
     _string_lit: "\"" ( STRING_CHARS )* "\"" 
     
-    _int_lit: /[0-9]+/
+    int_lit: /[0-9]+/
     
-    _float_lit: /[0-9]+\.[0-9]+/
+    float_lit: /[0-9]+\.[0-9]+/
     
-    BOOLEAN_LIT: "True" | "False"
+    bool_lit: "True" | "False"
     
-    literal: _string_lit | _int_lit | _float_lit | BOOLEAN_LIT
+    literal: _string_lit | int_lit | float_lit | bool_lit
 
     MODIFIER: "Optional"i | "Partial"i
     
@@ -262,22 +274,36 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         existing = self.environment.concepts.get(name)
-        function: Function = args[2]
         if existing:
             raise ParseError(
                 f"Concept {name} on line {meta.line} is a duplicate declaration"
             )
-        concept = Concept(
-            name=name,
-            datatype=function.output_datatype,
-            purpose=args[0],
-            metadata=metadata,
-            lineage=function,
-            # grain=function.output_grain,
-            namespace=self.environment.namespace,
-        )
-        self.environment.concepts[name] = concept
-        return args
+        if isinstance(args[2], WindowItem):
+            window_item: WindowItem = args[2]
+            concept = Concept(
+                name=name,
+                datatype=window_item.content.datatype,
+                purpose=args[0],
+                metadata=metadata,
+                lineage=window_item,
+                # grain=function.output_grain,
+                namespace=self.environment.namespace,
+            )
+            self.environment.concepts[name] = concept
+            return args
+        else:
+            function: Function = args[2]
+            concept = Concept(
+                name=name,
+                datatype=function.output_datatype,
+                purpose=args[0],
+                metadata=metadata,
+                lineage=function,
+                # grain=function.output_grain,
+                namespace=self.environment.namespace,
+            )
+            self.environment.concepts[name] = concept
+            return args
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> Concept:
@@ -332,7 +358,7 @@ class ParseToObjects(Transformer):
         existing = self.environment.concepts.get(output)
         if existing:
             raise ParseError(
-                f"Assignment {output} on line {meta.line} is a duplicate concept declaration"
+                f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept"
             )
         concept = Concept(
             name=output,
@@ -356,7 +382,7 @@ class ParseToObjects(Transformer):
                 f"Malformed select statement {args} {self.text[meta.start_pos:meta.end_pos]}"
             )
         content = args[0]
-        if isinstance(args[0], ConceptTransform):
+        if isinstance(content, ConceptTransform):
             return SelectItem(content=content)
         return SelectItem(content=self.environment.concepts[content])
 
@@ -364,7 +390,7 @@ class ParseToObjects(Transformer):
         return [arg for arg in args if arg]
 
     def limit(self, args):
-        return Limit(value=args[0].value)
+        return Limit(count=args[0].value)
 
     def ORDERING(self, args):
         return Ordering(args)
@@ -392,9 +418,13 @@ class ParseToObjects(Transformer):
             nparser.transform(PARSER.parse(text))
 
             for key, concept in nparser.environment.concepts.items():
-                self.environment.concepts[f"{alias}.{key}"] = concept
+                self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(
+                    alias
+                )
             for key, datasource in nparser.environment.datasources.items():
-                self.environment.datasources[f"{alias}.{key}"] = datasource
+                self.environment.datasources[
+                    f"{alias}.{key}"
+                ] = datasource.with_namespace(alias)
         return None
 
     @v_args(meta=True)
@@ -408,7 +438,7 @@ class ParseToObjects(Transformer):
             if isinstance(arg, List):
                 select_items = arg
             elif isinstance(arg, Limit):
-                limit = arg.value
+                limit = arg.count
             elif isinstance(arg, OrderBy):
                 order_by = arg
             elif isinstance(arg, WhereClause):
@@ -428,6 +458,9 @@ class ParseToObjects(Transformer):
             elif isinstance(item.content, Concept):
                 new_concept = item.content.with_grain(output.grain)
                 item.content = new_concept
+            elif isinstance(item.content, WindowItem):
+                new_concept = item.content.output.with_grain(output.grain)
+                item.content.output = new_concept
             else:
                 raise ValueError
             self.environment.concepts[new_concept.name] = new_concept
@@ -447,6 +480,15 @@ class ParseToObjects(Transformer):
     def where(self, args):
         return WhereClause(conditional=args[0])
 
+    def int_lit(self, args):
+        return int(args[0])
+
+    def bool_lit(self, args):
+        return bool(args[0])
+
+    def float_lit(self, args):
+        return float(args[0])
+
     def literal(self, args):
         return args[0]
 
@@ -455,6 +497,25 @@ class ParseToObjects(Transformer):
 
     def conditional(self, args):
         return Conditional(args[0], args[2], args[1])
+
+    def window_order(self, args):
+        return WindowOrder(args[0])
+
+    def window_order_by(self, args):
+        # flatten tree
+        return args[0]
+
+    def window(self, args):
+        return Window(count=args[1].value, window_order=args[0])
+
+    def window_item(self, args):
+        if len(args) > 1:
+            sort_concepts = args[1]
+        else:
+            sort_concepts = []
+        concept = self.environment.concepts[args[0]]
+        # sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
+        return WindowItem(content=concept, order_by=sort_concepts)
 
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:
@@ -466,15 +527,11 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def count(self, args):
-        """    operator: str
-    arguments:List[Concept]
-    output:Concept"""
         return Function(
             operator=FunctionType.COUNT,
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
-            # output_grain=Grain(components=args),
         )
 
     def sum(self, arguments):

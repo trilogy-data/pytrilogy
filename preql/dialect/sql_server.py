@@ -2,7 +2,7 @@ from typing import Optional, Union, List
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType
+from preql.core.enums import FunctionType, WindowType
 from preql.core.models import (
     Concept,
     CTE,
@@ -14,8 +14,13 @@ from preql.core.models import (
     Function,
     Join,
     OrderItem,
+    WindowItem,
 )
 from preql.dialect.base import BaseDialect
+
+WINDOW_FUNCTION_MAP = {
+    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order })"
+}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda args: f"count({args[0]})",
@@ -65,131 +70,92 @@ ORDER BY {% for order in order_by %}
 """
 )
 
-
-def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
-    """This should be consolidated with the render expr below."""
-    if not c.lineage:
-        rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
-    else:
-        args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
-        if cte.group_to_grain:
-            rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
-        else:
-            rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
-    if alias:
-        return f'{rval} as "{c.safe_address}"'
-    return rval
-
-
-def render_join(join: Join) -> str:
-    # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
-    joinkeys = " AND ".join(
-        [
-            f'{join.left_cte.name}."{key.concept.safe_address}" =  {join.right_cte.name}."{key.concept.safe_address}"'
-            for key in join.joinkeys
-        ]
-    )
-    return f"{join.jointype.value.upper()} JOIN {join.right_cte.name} on {joinkeys}"
-
-
-def render_order_item(order_item: OrderItem, ctes: List[CTE]) -> str:
-    output = [
-        cte
-        for cte in ctes
-        if order_item.expr.address in [a.address for a in cte.output_columns]
-    ]
-    if not output:
-        raise ValueError(f"No source found for concept {order_item.expr}")
-
-    return f" {output[0].name}.{order_item.expr.safe_address} {order_item.order.value}"
-
-
-def render_expr(
-    e: Union[Expr, Conditional, Concept, str, int, bool], cte: Optional[CTE] = None
-) -> str:
-    if isinstance(e, Comparison):
-        return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
-    elif isinstance(e, Conditional):
-        return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
-    elif isinstance(e, Function):
-        if cte and cte.group_to_grain:
-            return FUNCTION_MAP[e.operator](
-                [render_expr(z, cte=cte) for z in e.arguments]
-            )
-        return FUNCTION_GRAIN_MATCH_MAP[e.operator](
-            [render_expr(z, cte=cte) for z in e.arguments]
-        )
-    elif isinstance(e, Concept):
-        if cte:
-            return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
-        return f'"{e.safe_address}"'
-    elif isinstance(e, bool):
-        return f"{1 if e else 0 }"
-    elif isinstance(e, str):
-        return f"'{e}'"
-    return str(e)
+#
+# def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
+#     """This should be consolidated with the render expr below."""
+#
+#     # only recurse while it's in sources of the current cte
+#     if c.lineage and all([v.address in cte.source_map for v in c.lineage.arguments]):
+#         if isinstance(c.lineage, WindowItem):
+#             # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
+#             dimension = render_concept_sql(c.lineage.arguments[0], cte, alias=False)
+#             test = [x.expr.name for x in c.lineage.order_by]
+#
+#             rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(test), order = 'desc')}"
+#         else:
+#             args = [
+#                 render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments
+#             ]
+#             if cte.group_to_grain:
+#                 rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+#             else:
+#                 rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
+#     # else if it's complex, just reference it from the source
+#     elif c.lineage:
+#         rval = f'{cte.source_map[c.address]}."{c.safe_address}"'
+#     else:
+#         rval = f'{cte.source_map.get(c.address, "this is a bug")}."{cte.get_alias(c)}"'
+#         # rval = f'{cte.source_map[c.address]}."{cte.get_alias(c)}"'
+#
+#     if alias:
+#         return f'{rval} as "{c.safe_address}"'
+#     return rval
+#
+#
+# def render_join(join: Join) -> str:
+#     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
+#     joinkeys = " AND ".join(
+#         [
+#             f'{join.left_cte.name}."{key.concept.safe_address}" =  {join.right_cte.name}."{key.concept.safe_address}"'
+#             for key in join.joinkeys
+#         ]
+#     )
+#     return f"{join.jointype.value.upper()} JOIN {join.right_cte.name} on {joinkeys}"
+#
+#
+# def render_order_item(order_item: OrderItem, ctes: List[CTE]) -> str:
+#     output = [
+#         cte
+#         for cte in ctes
+#         if order_item.expr.address in [a.address for a in cte.output_columns]
+#     ]
+#     if not output:
+#         raise ValueError(f"No source found for concept {order_item.expr}")
+#
+#     return f" {output[0].name}.{order_item.expr.safe_address} {order_item.order.value}"
+#
+#
+# def render_expr(
+#     e: Union[Expr, Conditional, Concept, str, int, bool], cte: Optional[CTE] = None
+# ) -> str:
+#     if isinstance(e, Comparison):
+#         return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
+#     elif isinstance(e, Conditional):
+#         return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
+#     elif isinstance(e, Function):
+#         if cte and cte.group_to_grain:
+#             return FUNCTION_MAP[e.operator](
+#                 [render_expr(z, cte=cte) for z in e.arguments]
+#             )
+#         return FUNCTION_GRAIN_MATCH_MAP[e.operator](
+#             [render_expr(z, cte=cte) for z in e.arguments]
+#         )
+#     elif isinstance(e, Concept):
+#         if cte:
+#             # return f'{cte.source_map.get(e.address, "this is a bug")}."{cte.get_alias(e)}"'
+#             return f'{cte.source_map[e.address]}."{cte.get_alias(e)}"'
+#         return f'"{e.safe_address}"'
+#     elif isinstance(e, bool):
+#         return f"{1 if e else 0 }"
+#     elif isinstance(e, str):
+#         return f"'{e}'"
+#     return str(e)
 
 
 class SqlServerDialect(BaseDialect):
-    def compile_statement(self, query: ProcessedQuery) -> str:
-        select_columns = []
-        output_concepts = []
-        selected = set()
-        output_addresses = [c.address for c in query.output_columns]
-        for cte in query.ctes:
-            for c in cte.output_columns:
-                if (
-                    c not in output_concepts
-                    and c.address not in selected
-                    and c.address in output_addresses
-                ):
-                    select_columns.append(f'{cte.name}."{c.safe_address}"')
-                    output_concepts.append(c)
-                    selected.add(c.address)
-        where_assignment = {}
-        if query.where_clause:
-            found = False
-            for cte in query.ctes:
-                if set([x.name for x in query.where_clause.input]).issubset(
-                    [z.name for z in cte.related_columns]
-                ):
-                    where_assignment[cte.name] = query.where_clause
-                    found = True
-            if not found:
 
-                raise NotImplementedError(
-                    "Cannot generate complex query with filtering on grain that does not match any source."
-                )
-        compiled_ctes: List[CompiledCTE] = []
-        compiled_ctes += [
-            CompiledCTE(
-                name=cte.name,
-                statement=TSQL_TEMPLATE.render(
-                    select_columns=[
-                        render_concept_sql(c, cte) for c in cte.output_columns
-                    ],
-                    joins=[render_join(join) for join in (cte.joins or [])],
-                    base=f"{cte.base_name} as {cte.base_alias}",
-                    grain=cte.grain,
-                    where=render_expr(where_assignment[cte.name].conditional, cte)
-                    if cte.name in where_assignment
-                    else None,
-                    group_by=[render_expr(c, cte) for c in cte.grain.components]
-                    if cte.group_to_grain
-                    else None,
-                ),
-            )
-            for cte in query.ctes
-        ]
-        return TSQL_TEMPLATE.render(
-            select_columns=select_columns,
-            base=query.base.name,
-            joins=[render_join(join) for join in query.joins],
-            ctes=compiled_ctes,
-            limit=query.limit,
-            # this has been moved up to CTEs
-            # where = render_expr(query.where_clause.conditional) if query.where_clause else None,
-            order_by=[render_order_item(i, query.ctes) for i in query.order_by.items]
-            if query.order_by
-            else None,
-        )
+    WINDOW_FUNCTION_MAP = WINDOW_FUNCTION_MAP
+    FUNCTION_MAP = FUNCTION_MAP
+    FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
+    QUOTE_CHARACTER = '"'
+    SQL_TEMPLATE = TSQL_TEMPLATE

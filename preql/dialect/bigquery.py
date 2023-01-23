@@ -1,13 +1,11 @@
-from preql.core.models import Conditional, Expr, Comparison, Function
-from typing import Optional, Union
-
 from jinja2 import Template
 
-from preql.core.enums import FunctionType
-from preql.core.models import Concept, CTE, ProcessedQuery, CompiledCTE
-from preql.core.models import Conditional, Expr, Comparison, Function
+from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
-from preql.dialect.common import render_join, render_order_item
+
+WINDOW_FUNCTION_MAP = {
+    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order})"
+}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -16,6 +14,13 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
     FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
+}
+
+FUNCTION_GRAIN_MATCH_MAP = {
+    **FUNCTION_MAP,
+    FunctionType.COUNT: lambda args: f"{args[0]}",
+    FunctionType.SUM: lambda args: f"{args[0]}",
+    FunctionType.AVG: lambda args: f"{args[0]}",
 }
 
 BQ_SQL_TEMPLATE = Template(
@@ -48,91 +53,9 @@ LIMIT {{ limit }}{% endif %}
 )
 
 
-def render_concept_sql(c: Concept, cte: CTE, alias: bool = True) -> str:
-    if not c.lineage:
-        rval = f"{cte.name}.{cte.source.get_alias(c)}"
-    else:
-        args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments]
-        rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
-    if alias:
-        return f"{rval} as {c.name}"
-    return rval
-
-
-def render_expr(
-    e: Union[Expr, Conditional, Concept, str, int, bool], cte: Optional[CTE] = None
-) -> str:
-    if isinstance(e, Comparison):
-        return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
-    elif isinstance(e, Conditional):
-        return f"{render_expr(e.left, cte=cte)} {e.operator.value} {render_expr(e.right, cte=cte)}"
-    elif isinstance(e, Function):
-        return FUNCTION_MAP[e.operator]([render_expr(z, cte=cte) for z in e.arguments])
-    elif isinstance(e, Concept):
-        if cte:
-            return f"{cte.name}.{cte.source.get_alias(e)}"
-        return f"{e.name}"
-    elif isinstance(e, bool):
-        return f"{1 if e else 0 }"
-    elif isinstance(e, str):
-        return f"'{e}'"
-    return str(e)
-
-
 class BigqueryDialect(BaseDialect):
-    def compile_statement(self, query: ProcessedQuery) -> str:
-        select_columns = []
-        output_concepts = []
-        for cte in query.ctes:
-            for c in cte.output_columns:
-                if c not in output_concepts and c in query.output_columns:
-                    select_columns.append(f"{cte.name}.{c.name}")
-                    output_concepts.append(c)
-
-        # where assignemnt
-        where_assignment = {}
-
-        if query.where_clause:
-            found = False
-            for cte in query.ctes:
-                if set([x.name for x in query.where_clause.input]).issubset(
-                    [z.name for z in cte.related_columns]
-                ):
-                    where_assignment[cte.name] = query.where_clause
-                    found = True
-            if not found:
-
-                raise NotImplementedError(
-                    "Cannot generate complex query with filtering on grain that does not match any source."
-                )
-        compiled_ctes = [
-            CompiledCTE(
-                name=cte.name,
-                statement=BQ_SQL_TEMPLATE.render(
-                    select_columns=[
-                        render_concept_sql(c, cte) for c in cte.output_columns
-                    ],
-                    base=f"{cte.base_name} as {cte.base_alias}",
-                    grain=cte.grain,
-                    where=render_expr(where_assignment[cte.name].conditional, cte)
-                    if cte.name in where_assignment
-                    else None,
-                    group_by=[render_expr(c, cte) for c in cte.grain.components]
-                    if cte.group_to_grain
-                    else None,
-                ),
-            )
-            for cte in query.ctes
-        ]
-        return BQ_SQL_TEMPLATE.render(
-            select_columns=select_columns,
-            base=query.base.name,
-            joins=[render_join(join) for join in query.joins],
-            ctes=compiled_ctes,
-            limit=query.limit,
-            # move up to CTEs
-            # where = render_expr(query.where_clause.conditional) if query.where_clause else None,
-            order_by=[render_order_item(i, query.ctes) for i in query.order_by.items]
-            if query.order_by
-            else None,
-        )
+    WINDOW_FUNCTION_MAP = WINDOW_FUNCTION_MAP
+    FUNCTION_MAP = FUNCTION_MAP
+    FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
+    QUOTE_CHARACTER = "`"
+    SQL_TEMPLATE = BQ_SQL_TEMPLATE
