@@ -299,7 +299,11 @@ def get_datasource_from_complex_lineage(concept: Concept, grain: Grain, environm
     all_requirements = []
     all_datasets = []
     source_map = {}
-    # for anything in function lineage, calculate to urrent grain
+    # for anything in function lineage, calculate to current grain
+    if not isinstance(concept.lineage, Function):
+        raise ValueError(
+            "Attempting to get complex lineage from non-function declaration"
+        )
     for sub_concept in concept.lineage.arguments:
         # if aggregate of aggregate
         if sub_concept.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.WINDOW):
@@ -310,7 +314,8 @@ def get_datasource_from_complex_lineage(concept: Concept, grain: Grain, environm
         all_datasets.append(sub_datasource)
         all_requirements.append(sub_concept)
         source_map[sub_concept.name] = {sub_datasource}
-        source_map = {**source_map, **sub_datasource.source_map}
+        if isinstance(sub_datasource, QueryDatasource):
+            source_map = {**source_map, **sub_datasource.source_map}
 
     # for grain components, build in CTE if required
     for sub_concept in grain.components:
@@ -322,10 +327,8 @@ def get_datasource_from_complex_lineage(concept: Concept, grain: Grain, environm
         all_datasets.append(sub_datasource)
         all_requirements.append(sub_concept)
         source_map[sub_concept.name] = {sub_datasource}
-        source_map = {**source_map, **sub_datasource.source_map}
-        # for key, value in sub_datasource.source_map.items():
-        #     print(sub_output_concept)
-        #     source_map[sub_output_concept.name] = {sub_datasource}
+        if isinstance(sub_datasource, QueryDatasource):
+            source_map = {**source_map, **sub_datasource.source_map}
     if complex_lineage_flag:
         logger.debug(f"Complex lineage found for {concept}")
         logger.debug(f"Grain {grain}")
@@ -343,7 +346,10 @@ def get_datasource_from_complex_lineage(concept: Concept, grain: Grain, environm
 
 
 def get_datasource_from_window_function(concept: Concept, grain: Grain, environment, g):
-    # always true if window item
+    if not isinstance(concept.lineage, WindowItem):
+        raise ValueError(
+            "Attempting to use windowed derivation for non window function"
+        )
     window: WindowItem = concept.lineage
     all_requirements = []
     all_datasets: Dict = {}
@@ -365,7 +371,8 @@ def get_datasource_from_window_function(concept: Concept, grain: Grain, environm
             all_datasets[sub_datasource.identifier] = sub_datasource
         all_requirements.append(sub_concept)
         source_map[sub_concept.name] = {all_datasets[sub_datasource.identifier]}
-        source_map = {**source_map, **sub_datasource.source_map}
+        if isinstance(sub_datasource, QueryDatasource):
+            source_map = {**source_map, **sub_datasource.source_map}
     dataset_list = list(all_datasets.values())
     base = dataset_list[0]
 

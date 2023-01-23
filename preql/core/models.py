@@ -217,7 +217,7 @@ class Window:
 
 
 class WindowItem(BaseModel):
-    content: Union[Concept, ConceptTransform]
+    content: Union[Concept]
     order_by: List["OrderItem"]
 
     @property
@@ -272,7 +272,7 @@ class SelectItem:
 
 @dataclass(eq=True)
 class OrderItem:
-    expr: Union[Concept, ConceptTransform]
+    expr: Concept
     order: Ordering
 
     @property
@@ -552,7 +552,7 @@ class BaseJoin:
 class QueryDatasource:
     input_concepts: List[Concept]
     output_concepts: List[Concept]
-    source_map: Dict[str, Set[Datasource]]
+    source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]]
     datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin]
@@ -703,15 +703,14 @@ class CTE:
         return self.name
 
     def get_alias(self, concept: Concept) -> str:
-        error = None
+        error = ValueError
         for cte in [self] + self.parent_ctes:
             try:
                 return cte.source.get_alias(concept)
             except ValueError as e:
                 if not error:
                     error = e
-        if error:
-            raise error
+        raise error
 
 
 @dataclass

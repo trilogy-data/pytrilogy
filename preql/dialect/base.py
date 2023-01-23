@@ -74,6 +74,8 @@ ORDER BY {% for order in order_by %}
 
 def check_lineage(c: Concept, cte: CTE) -> bool:
     checks = []
+    if not c.lineage:
+        return True
     for sub_c in c.lineage.arguments:
         if sub_c.address in cte.source_map or (
             sub_c.lineage and check_lineage(sub_c, cte)
@@ -213,14 +215,20 @@ class BaseDialect:
 
     def compile_statement(self, query: ProcessedQuery) -> str:
         select_columns = []
-        output_concepts = []
         cte_output_map = {}
+        selected = set()
+        output_addresses = [c.address for c in query.output_columns]
         for cte in query.ctes:
             for c in cte.output_columns:
-                if c not in output_concepts and c in query.output_columns:
-                    select_columns.append(f"{cte.name}.{c.safe_address}")
+                if c.address not in selected and c.address in output_addresses:
+                    select_columns.append(f'{cte.name}."{c.safe_address}"')
                     cte_output_map[c.address] = cte
-                    output_concepts.append(c)
+                    selected.add(c.address)
+        if not all([x in selected for x in output_addresses]):
+            missing = [x for x in output_addresses if x not in selected]
+            raise ValueError(
+                f"Did not get all output addresses in select - missing: {missing}, have {selected}"
+            )
 
         # where assignment
         where_assignment = {}
@@ -270,7 +278,7 @@ class BaseDialect:
             where=self.render_expr(
                 query.where_clause.conditional
             )  # source_map=cte_output_map)
-            if output_where
+            if query.where_clause and output_where
             else None,
             order_by=[
                 self.render_order_item(i, query.ctes) for i in query.order_by.items
