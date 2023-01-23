@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+markers = [
+    "adventureworks",
+    "adventureworks_execution",
+]

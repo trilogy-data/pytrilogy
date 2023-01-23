@@ -41,11 +41,11 @@ def can_bind(hostname, port):
 
 @fixture(scope="session")
 def local_express_flag():
-    try:
+    if os.environ.get("PYPREQL_INTEGRATION_SQLSERVER_EXPRESS", None) == "true":
         return create_engine(
             "mssql://*server_name*\\SQLEXPRESS/*database_name*?trusted_connection=yes"
         )
-    except Exception as e:
+    else:
         return False
 
 
