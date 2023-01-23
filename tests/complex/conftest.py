@@ -1,28 +1,32 @@
-from preql.core.hooks import GraphHook
-from preql.core.models import Select
-from preql.core.query_processor import process_query
-from preql.dialect.bigquery import BigqueryDialect
-from preql.parser import parse
+from pytest import fixture
+from preql import parse
 
+from logging import DEBUG
+from preql.constants import logger
 
-def test_select():
-    declarations = """
+logger.setLevel(DEBUG)
+
+DECLARATIONS = r"""
 key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");
 property user_id.about_me string metadata(description="User provided description");
 
 
 key post_id int;
+property post_id.post_text string;
 metric post_count <-count(post_id);
 
 
 datasource posts (
     user_id: user_id,
-    id: post_id
+    id: post_id,
+    text: post_text
     )
     grain (post_id)
     address bigquery-public-data.stackoverflow.post_history
 ;
+
+property post_length <- len(post_text);
 
 select
     user_id,
@@ -43,17 +47,19 @@ datasource users (
 
 
 select
+    user_id,
+    avg(post_length)-> user_avg_post_length
+;
+    
+select
     avg_user_post_count
 ;
 
 
     """
-    env, parsed = parse(declarations)
-    select: Select = parsed[-1]
 
-    query = process_query(statement=select, environment=env, hooks=[GraphHook()])
 
-    generator = BigqueryDialect()
-    sql = generator.compile_statement(query)
-    assert "count(posts.`id`) as `default_user_post_count`," in sql
-    assert "avg(cte_posts_at_user_id_" in sql
+@fixture(scope="session")
+def stackoverflow_environment():
+    env, parsed = parse(DECLARATIONS)
+    yield env

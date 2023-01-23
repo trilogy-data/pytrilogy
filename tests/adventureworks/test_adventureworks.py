@@ -15,6 +15,7 @@ from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 from preql.core.query_processor import process_query
 
+
 @pytest.mark.adventureworks
 def test_parsing(environment):
     with open(
@@ -72,8 +73,10 @@ def test_query_datasources(environment):
         "ds~internet_sales.fact_internet_sales",
         "c~internet_sales.order_quantity@Grain<internet_sales.order_line_number,internet_sales.order_number>",
     )
-    assert  "ds~internet_sales.fact_internet_sales" in environment_graph.nodes
-    assert "c~internet_sales.total_sales_amount@Grain<Abstract>" in environment_graph.nodes
+    assert "ds~internet_sales.fact_internet_sales" in environment_graph.nodes
+    assert (
+        "c~internet_sales.total_sales_amount@Grain<Abstract>" in environment_graph.nodes
+    )
     path = nx.shortest_path(
         environment_graph,
         "ds~internet_sales.fact_internet_sales",
@@ -96,32 +99,32 @@ def test_query_datasources(environment):
         elif concept.name == "order_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales<order_line_number,order_number>"
+                == "fact_internet_sales_at_order_line_number_order_number"
             )
         elif concept.name == "order_line_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales<order_line_number,order_number>"
+                == "fact_internet_sales_at_order_line_number_order_number"
             )
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "fact_internet_sales<order_line_number,order_number>"
+                == "fact_internet_sales_at_order_line_number_order_number"
             )
         elif concept.name == "region":
-            assert datasource.identifier == "sales_territories<key>"
+            assert datasource.identifier == "sales_territories_at_key"
         elif concept.name == "first_name":
-            assert datasource.identifier == "customers<customer_id>"
+            assert datasource.identifier == "customers_at_customer_id"
         else:
             raise ValueError(concept)
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "customers<customer_id>",
-        "fact_internet_sales<order_line_number,order_number>",
-        "sales_territories<key>",
+        "customers_at_customer_id",
+        "fact_internet_sales_at_order_line_number_order_number",
+        "sales_territories_at_key",
     }
 
     joined_datasource: QueryDatasource = [
-        ds for ds in datasources.values() if ds.identifier == "customers<customer_id>"
+        ds for ds in datasources.values() if ds.identifier == "customers_at_customer_id"
     ][0]
     assert set([c.name for c in joined_datasource.input_concepts]) == {
         "customer_id",
@@ -138,11 +141,14 @@ def test_query_datasources(environment):
 
     assert len(ctes) == 3
     #
+    for cte in ctes:
+        print(cte.name)
     base_cte: CTE = [
         cte
         for cte in ctes
-        if cte.name
-        == "cte_fact_internet_salesorder_line_number_order_number_5214932119619809"
+        if cte.name.startswith(
+            "cte_fact_internet_sales_at_order_line_number_order_number_"
+        )
     ][0]
     assert len(base_cte.output_columns) == 5
 
@@ -166,14 +172,11 @@ def test_online_sales_queries(adventureworks_engine, environment):
         print(sql)
 
 
-
-
 @pytest.mark.adventureworks_execution
 def test_online_sales_queries(adventureworks_engine, environment):
 
-
     env = environment
-    test_cases = '''
+    test_cases = """
     
 import concepts.customer as customer;
 import concepts.internet_sales as internet_sales;
@@ -195,23 +198,27 @@ avg_user_order_count,
 sales_territory.region
 ;
 
-'''
+"""
     env, statements = parse(test_cases, environment=environment)
-    avg_user_order_count = env.concepts['avg_user_order_count']
+    avg_user_order_count = env.concepts["avg_user_order_count"]
 
-    expected_parent = get_datasource_by_concept_and_grain(avg_user_order_count,
-                                                          Grain(components=[env.concepts['sales_territory.region']]), env, None)
+    expected_parent = get_datasource_by_concept_and_grain(
+        avg_user_order_count,
+        Grain(components=[env.concepts["sales_territory.region"]]),
+        env,
+        None,
+    )
     print(expected_parent.identifier)
     print(expected_parent.output_concepts[0])
     print([c.name for c in expected_parent.output_concepts])
     for datasource in expected_parent.datasources:
         print(datasource.identifier)
         print([c.name for c in datasource.output_concepts])
-    print('XXXX')
+    print("XXXX")
     query = process_query(statement=statements[-1], environment=env, hooks=[])
 
     for cte in query.ctes:
-        print('----')
+        print("----")
         print(cte.name)
         print(cte.grain)
         print([d.name for d in cte.source.datasources])

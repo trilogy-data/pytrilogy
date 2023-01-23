@@ -66,7 +66,7 @@ def test_query_aggregation(test_environment, test_environment_graph):
     )
 
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "revenue"
+        "revenue_at_abstract"
     }
     check = list(datasources.values())[0]
     assert len(check.input_concepts) == 1

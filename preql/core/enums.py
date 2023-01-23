@@ -68,6 +68,10 @@ class FunctionType(Enum):
     NOT_LIKE = "not_like"
 
 
+class FunctionClass(Enum):
+    AGGREGATE_FUNCTIONS = [FunctionType.SUM, FunctionType.AVG, FunctionType.COUNT]
+
+
 class Boolean(Enum):
     TRUE = "true"
     FALSE = "false"

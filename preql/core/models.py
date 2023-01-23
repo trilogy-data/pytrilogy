@@ -10,6 +10,7 @@ from preql.core.enums import (
     Ordering,
     Modifier,
     FunctionType,
+    FunctionClass,
     BooleanOperator,
     ComparisonOperator,
     WindowOrder,
@@ -157,12 +158,17 @@ class Concept(BaseModel):
         return [self] + self.sources
 
     @property
-    def derivation(self)->PurposeLineage:
+    def derivation(self) -> PurposeLineage:
         if self.lineage and isinstance(self.lineage, WindowItem):
             return PurposeLineage.WINDOW
-        elif self.lineage:
+        elif (
+            self.lineage
+            and isinstance(self.lineage, Function)
+            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
             return PurposeLineage.AGGREGATE
         return PurposeLineage.BASIC
+
 
 @dataclass(eq=True)
 class ColumnAssignment:
@@ -430,6 +436,9 @@ class Datasource:
     grain: Grain = field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
 
+    def __str__(self):
+        return f"{self.namespace}.{self.identifier}@<{self.grain}>"
+
     def __hash__(self):
         return (self.namespace + self.identifier).__hash__()
 
@@ -465,8 +474,10 @@ class Datasource:
     def get_alias(
         self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
     ) -> Optional[str]:
-        if concept.lineage:
-            return None
+        # 2022-01-22
+        # this logic needs to be refined.
+        # if concept.lineage:
+        # #     return None
         for x in self.columns:
             if x.concept.with_grain(concept.grain) == concept:
                 if use_raw_name:
@@ -478,11 +489,13 @@ class Datasource:
         )
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.identifier
+        # TODO: namespace all references
+        # return f'{self.namespace}_{self.identifier}'
 
     @property
-    def safe_location(self):
+    def safe_location(self) -> str:
         if isinstance(self.address, Address):
             return self.address.location
         return self.address
@@ -545,6 +558,9 @@ class QueryDatasource:
     joins: List[BaseJoin]
     limit: Optional[int] = None
 
+    def __str__(self):
+        return f"{self.identifier}@<{self.grain}>"
+
     def validate(self):
         # validate this was successfully built.
         for concept in self.output_concepts:
@@ -583,7 +599,7 @@ class QueryDatasource:
     def identifier(self) -> str:
         grain = "_".join([str(c.name) for c in self.grain.components])
         return "_".join([d.name for d in self.datasources]) + (
-            f"_at_{grain}" if grain else ""
+            f"_at_{grain}" if grain else "_at_abstract"
         )
         # return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
 
@@ -596,9 +612,6 @@ class QueryDatasource:
             if (len(self.datasources) == 1 or use_raw_name) and not force_alias
             else False
         )
-        # 2922
-        # if concept.lineage:
-        #     return concept.safe_address
         for x in self.datasources:
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
@@ -613,9 +626,14 @@ class QueryDatasource:
 
                 logger.debug(e)
                 continue
-        existing = [str(c.with_grain(self.grain)) for c in self.output_concepts]
+        existing = [c.with_grain(self.grain) for c in self.output_concepts]
+        if concept in existing:
+            return concept.name
+
+        existing_str = [str(c) for c in existing]
+        datasources = [ds.identifier for ds in self.datasources]
         raise ValueError(
-            f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
+            f"Concept {str(concept)} not found on {self.identifier}; have {existing_str} from {datasources}."
         )
 
     @property
@@ -645,7 +663,8 @@ class CTE:
 
     def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
-            raise ValueError
+            error = f"Attempting to merge two ctes of different grains {self.name} {other.name} grains {self.grain} {other.grain}"
+            raise ValueError(error)
         self.joins = self.joins + other.joins
         self.parent_ctes = self.parent_ctes + other.parent_ctes
 
@@ -668,18 +687,10 @@ class CTE:
         # if we have ctes, we should reference those
         elif self.joins and len(self.joins) > 0:
             return self.joins[0].left_cte.name
-        elif self.parent_ctes and len(self.parent_ctes) == 1:
-            return self.parent_ctes[0].base_alias
+        elif self.parent_ctes:  # and len(self.parent_ctes) == 1:
+            return self.parent_ctes[0].name
+        # return self.source_map.values()[0]
         return self.source.name
-        # "_".join(s.name for s in self.sour)
-        # if len(self.source.datasources) == 1:
-        #     if isinstance(self.source.datasources[0], QueryDatasource):
-        #         return self.parent_ctes[0].name
-        #     return self.source.datasources[0].safe_location
-        # elif self.joins and len(self.joins) > 0:
-        #     return self.joins[0].left_cte.name
-        # #TODO: actually fix this
-        # return self.name
 
     @property
     def base_alias(self) -> str:
@@ -691,13 +702,12 @@ class CTE:
             return self.joins[0].left_cte.name
         return self.name
 
-    def get_alias(self, concept: Concept):
+    def get_alias(self, concept: Concept) -> str:
         error = None
         for cte in [self] + self.parent_ctes:
             try:
                 return cte.source.get_alias(concept)
             except ValueError as e:
-                print(str(e))
                 if not error:
                     error = e
         if error:

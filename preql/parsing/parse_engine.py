@@ -358,7 +358,7 @@ class ParseToObjects(Transformer):
         existing = self.environment.concepts.get(output)
         if existing:
             raise ParseError(
-                f"Assignment {output} on line {meta.line} is a duplicate concept declaration"
+                f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept"
             )
         concept = Concept(
             name=output,
