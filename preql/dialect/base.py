@@ -214,14 +214,16 @@ class BaseDialect:
         return output
 
     def compile_statement(self, query: ProcessedQuery) -> str:
-        select_columns = []
+        select_columns: list[str] = []
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
         for cte in query.ctes:
             for c in cte.output_columns:
                 if c.address not in selected and c.address in output_addresses:
-                    select_columns.append(f'{cte.name}."{c.safe_address}"')
+                    select_columns.append(
+                        f"{cte.name}.{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+                    )
                     cte_output_map[c.address] = cte
                     selected.add(c.address)
         if not all([x in selected for x in output_addresses]):

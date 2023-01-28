@@ -1,0 +1,2 @@
+class UndefinedConceptException(Exception):
+    pass
