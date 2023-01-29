@@ -168,5 +168,4 @@ def test_online_sales_queries(adventureworks_engine, environment):
 
     for statement in sql:
         sql = generator.compile_statement(statement)
-        print(sql)
-        results = adventureworks_engine.execute_query(statement)
+        results = adventureworks_engine.execute_query(statement).fetchall()

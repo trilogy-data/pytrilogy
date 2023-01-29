@@ -594,7 +594,7 @@ class ParseToObjects(Transformer):
 def parse_text(
     text: str, environment: Optional[Environment] = None, print_flag: bool = False
 ) -> Tuple[Environment, List]:
-    environment = environment or Environment(concepts={}, datasources={})
+    environment = environment or Environment(datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
     output = [v for v in parser.transform(PARSER.parse(text)) if v]
     return environment, output

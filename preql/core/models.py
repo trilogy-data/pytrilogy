@@ -1,7 +1,10 @@
 import os
-from dataclasses import dataclass, field
-from typing import List, Optional, Union, Dict, Set
 from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Dict, MutableMapping, TypeVar
+from typing import List, Optional, Union, Set
+
+from pydantic import BaseModel, validator, Field
 
 from preql.core.enums import (
     DataType,
@@ -16,8 +19,11 @@ from preql.core.enums import (
     WindowOrder,
     PurposeLineage,
 )
+from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
-from pydantic import BaseModel, validator, Field
+
+KT = TypeVar("KT")
+VT = TypeVar("VT")
 
 
 class Metadata(BaseModel):
@@ -738,9 +744,19 @@ class Join:
         return f'{self.jointype.value} JOIN {self.left_cte.name} and {self.right_cte.name} on {",".join([str(k) for k in self.joinkeys])}'
 
 
+class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
+    def __getitem__(self, key):
+        try:
+            return super(EnvironmentConceptDict, self).__getitem__(key)
+        except KeyError as e:
+            raise UndefinedConceptException(e.message)
+
+
 @dataclass
 class Environment:
-    concepts: Dict[str, Concept] = field(default_factory=dict)
+    concepts: EnvironmentConceptDict[str, Concept] = field(
+        default_factory=EnvironmentConceptDict
+    )
     datasources: Dict[str, Datasource] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
