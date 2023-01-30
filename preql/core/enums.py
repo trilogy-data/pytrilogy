@@ -60,12 +60,16 @@ class WindowOrder(Enum):
 
 class FunctionType(Enum):
     COUNT = "count"
+    COUNT_DISTINCT = "count_distinct"
     SUM = "sum"
+    MAX = "max"
+    MIN = "min"
     AVG = "avg"
     LENGTH = "len"
     LIKE = "like"
     CONCAT = "concat"
     NOT_LIKE = "not_like"
+
 
 
 class FunctionClass(Enum):

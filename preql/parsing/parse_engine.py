@@ -128,8 +128,11 @@ grammar = r"""
     // functions
     
     count: "count" "(" expr ")"
+    count_distinct: "count_distinct" "(" expr ")"
     sum: "sum" "(" expr ")"
     avg: "avg" "(" expr ")"
+    max: "max" "(" expr ")"
+    min: "min" "(" expr ")"
     len: "len" "(" expr ")"
     like: "like"i "(" expr "," _string_lit ")"
     concat: "concat"i "(" (expr ",")* expr ")"
@@ -568,6 +571,31 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
+            valid_inputs = {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            # output_grain=Grain(components=arguments),
+        )
+
+    def max(self, arguments):
+        if not len(arguments) == 1:
+            raise ParseError("Too many arguments to max")
+        return Function(
+            operator=FunctionType.MIN,
+            arguments=arguments,
+            output_datatype=arguments[0].datatype,
+            output_purpose=Purpose.METRIC,
+            valid_inputs = {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            # output_grain=Grain(components=arguments),
+        )
+
+    def min(self, arguments):
+        if not len(arguments) == 1:
+            raise ParseError("Too many arguments to min")
+        return Function(
+            operator=FunctionType.MAX,
+            arguments=arguments,
+            output_datatype=arguments[0].datatype,
+            output_purpose=Purpose.METRIC,
+            valid_inputs = {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
             # output_grain=Grain(components=arguments),
         )
 
@@ -579,7 +607,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs={DataType.STRING, DataType.ARRAY},
+            valid_inputs={DataType.STRING, DataType.ARRAY, DataType.MAP},
             # output_grain=args[0].grain,
         )
 
