@@ -745,11 +745,15 @@ class Join:
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-    def __getitem__(self, key):
+    def __getitem__(self, key, line_no=None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError as e:
-            raise UndefinedConceptException(e.message)
+            if line_no:
+                raise UndefinedConceptException(
+                    f"line: {line_no} undefined concept: {str(e)}"
+                )
+            raise UndefinedConceptException(str(e))
 
 
 @dataclass

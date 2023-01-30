@@ -3,6 +3,13 @@ from typing import Tuple, List, Optional
 
 from lark import Lark, Transformer, v_args
 from lark.tree import Meta
+from lark.exceptions import (
+    VisitError,
+    UnexpectedCharacters,
+    UnexpectedEOF,
+    UnexpectedInput,
+    UnexpectedToken,
+)
 
 from preql.core.enums import (
     Purpose,
@@ -355,6 +362,14 @@ class ParseToObjects(Transformer):
     def select_transform(self, meta, args) -> ConceptTransform:
         function: Function = args[0]
         output: str = args[1]
+
+        if "." in output:
+            namespace, output = output.split(".", 1)
+            lookup = f"{namespace}.{output}"
+        else:
+            namespace = self.environment.namespace or "default"
+            lookup = output
+
         existing = self.environment.concepts.get(output)
         if existing:
             raise ParseError(
@@ -365,10 +380,10 @@ class ParseToObjects(Transformer):
             datatype=function.output_datatype,
             purpose=function.output_purpose,
             lineage=function,
-            namespace=self.environment.namespace,
+            namespace=namespace,
         )
         # We don't assign it here because we'll do this later when we know the grain
-        self.environment.concepts[output] = concept
+        self.environment.concepts[lookup] = concept
         return ConceptTransform(function=function, output=concept)
 
     @v_args(meta=True)
@@ -384,7 +399,9 @@ class ParseToObjects(Transformer):
         content = args[0]
         if isinstance(content, ConceptTransform):
             return SelectItem(content=content)
-        return SelectItem(content=self.environment.concepts[content])
+        return SelectItem(
+            content=self.environment.concepts.__getitem__(content, meta.line)
+        )
 
     def select_list(self, args):
         return [arg for arg in args if arg]
@@ -411,9 +428,7 @@ class ParseToObjects(Transformer):
             nparser = ParseToObjects(
                 visit_tokens=True,
                 text=text,
-                environment=Environment(
-                    {}, {}, working_path=dirname(target), namespace=alias
-                ),
+                environment=Environment(working_path=dirname(target), namespace=alias),
             )
             nparser.transform(PARSER.parse(text))
 
@@ -591,10 +606,22 @@ class ParseToObjects(Transformer):
         )
 
 
+from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
+
+
 def parse_text(
     text: str, environment: Optional[Environment] = None, print_flag: bool = False
 ) -> Tuple[Environment, List]:
     environment = environment or Environment(datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
-    output = [v for v in parser.transform(PARSER.parse(text)) if v]
+    try:
+        output = [v for v in parser.transform(PARSER.parse(text)) if v]
+    except VisitError as e:
+        if isinstance(e.orig_exc, UndefinedConceptException):
+            raise e.orig_exc
+        else:
+            raise e
+    except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken) as e:
+        raise InvalidSyntaxException(str(e))
+
     return environment, output
