@@ -62,7 +62,7 @@ class Concept(BaseModel):
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
-            lineage=self.lineage,
+            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
             grain=self.grain.with_namespace(namespace),
             namespace=namespace,
         )
@@ -202,6 +202,15 @@ class Function:
     output_purpose: Purpose
     valid_inputs: Optional[Set[DataType]] = None
 
+    def with_namespace(self, namespace: str) -> "Function":
+        return Function(
+            operator=self.operator,
+            arguments=[c.with_namespace(namespace) for c in self.arguments],
+            output_datatype=self.output_datatype,
+            output_purpose=self.output_purpose,
+            valid_inputs=self.valid_inputs,
+        )
+
 
 @dataclass(eq=True)
 class ConceptTransform:
@@ -223,8 +232,14 @@ class Window:
 
 
 class WindowItem(BaseModel):
-    content: Union[Concept]
+    content: Concept
     order_by: List["OrderItem"]
+
+    def with_namespace(self, namespace: str) -> "WindowItem":
+        return WindowItem(
+            content=self.content.with_namespace(namespace),
+            order_by=[x.with_namespace(self.namespace) for x in self.order_by],
+        )
 
     @property
     def arguments(self) -> List[Concept]:
@@ -280,6 +295,9 @@ class SelectItem:
 class OrderItem:
     expr: Concept
     order: Ordering
+
+    def with_namespace(self, namespace: str) -> "OrderItem":
+        return OrderItem(expr=self.expr.with_namespace(namespace), order=self.order)
 
     @property
     def input(self):
@@ -550,6 +568,15 @@ class BaseJoin:
     concepts: List[Concept]
     join_type: JoinType
 
+    @property
+    def unique_id(self) -> str:
+        # TODO: include join type?
+        return (
+            self.left_datasource.name
+            + self.right_datasource.name
+            + self.join_type.value
+        )
+
     def __str__(self):
         return f'{self.join_type.value} JOIN {self.left_datasource.identifier} and {self.right_datasource.identifier} on {",".join([str(k) for k in self.concepts])}'
 
@@ -598,7 +625,7 @@ class QueryDatasource:
             source_map={**self.source_map, **other.source_map},
             datasources=self.datasources,
             grain=self.grain,
-            joins=self.joins + other.joins,
+            joins=unique(self.joins + other.joins, "unique_id"),
         )
 
     @property
@@ -671,15 +698,15 @@ class CTE:
         if not self.grain == other.grain:
             error = f"Attempting to merge two ctes of different grains {self.name} {other.name} grains {self.grain} {other.grain}"
             raise ValueError(error)
-        self.joins = self.joins + other.joins
-        self.parent_ctes = self.parent_ctes + other.parent_ctes
+
+        self.parent_ctes = merge_ctes(self.parent_ctes + other.parent_ctes)
 
         self.source_map = {**self.source_map, **other.source_map}
 
         self.output_columns = unique(
             self.output_columns + other.output_columns, "address"
         )
-        self.joins = self.joins + other.joins
+        self.joins = unique(self.joins + other.joins, "unique_id")
         self.related_columns = self.related_columns + other.related_columns
         return self
 
@@ -719,6 +746,18 @@ class CTE:
         raise error
 
 
+def merge_ctes(ctes: List[CTE]) -> List[CTE]:
+    final_ctes_dict: Dict[str, CTE] = {}
+    # merge CTEs
+    for cte in ctes:
+        if cte.name not in final_ctes_dict:
+            final_ctes_dict[cte.name] = cte
+        else:
+            final_ctes_dict[cte.name] = final_ctes_dict[cte.name] + cte
+    final_ctes = list(final_ctes_dict.values())
+    return final_ctes
+
+
 @dataclass
 class CompiledCTE:
     name: str
@@ -740,16 +779,24 @@ class Join:
     jointype: JoinType
     joinkeys: List[JoinKey]
 
+    @property
+    def unique_id(self) -> str:
+        return self.left_cte.name + self.right_cte.name + self.jointype.value
+
     def __str__(self):
         return f'{self.jointype.value} JOIN {self.left_cte.name} and {self.right_cte.name} on {",".join([str(k) for k in self.joinkeys])}'
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-    def __getitem__(self, key):
+    def __getitem__(self, key, line_no=None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError as e:
-            raise UndefinedConceptException(e.message)
+            if line_no:
+                raise UndefinedConceptException(
+                    f"line: {line_no} undefined concept: {str(e)}"
+                )
+            raise UndefinedConceptException(str(e))
 
 
 @dataclass

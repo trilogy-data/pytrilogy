@@ -5,7 +5,7 @@ import networkx as nx
 import pytest
 
 from preql.core.env_processor import generate_graph
-from preql.core.models import Select, QueryDatasource, CTE, Grain
+from preql.core.models import Select, QueryDatasource, CTE
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
@@ -13,7 +13,6 @@ from preql.core.query_processor import (
 )
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
-from preql.core.query_processor import process_query
 
 
 @pytest.mark.adventureworks

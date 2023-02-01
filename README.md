@@ -4,7 +4,7 @@ pypreql is a experimental implementation of the preql language [https://github.c
 
 The preql language spec itself will be linked from the above repo. 
 
-Pypreql can be run locally to parse and execute preql [.preql] models. 
+Pypreql can be run locally to parse and execute preql [.preql] models.  
 
 ## Dialects
 
@@ -131,3 +131,7 @@ limit 5;
 
 
 ## Contributing
+
+
+## Similar in space
+singleorigin

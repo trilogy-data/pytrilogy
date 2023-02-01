@@ -23,6 +23,7 @@ from preql.core.models import (
     BaseJoin,
     Function,
     WindowItem,
+    merge_ctes,
 )
 from preql.utility import string_to_hash
 from preql.utility import unique
@@ -113,6 +114,7 @@ def get_datasource_from_property_lookup(
                     all_found = False
                     break
             if all_found:
+                logger.debug(f"Can satisfy query from property lookup for {concept}")
                 return QueryDatasource(
                     input_concepts=all_concepts + datasource.grain.components,
                     output_concepts=[concept] + datasource.grain.components,
@@ -253,7 +255,7 @@ def get_datasource_by_joins(
         raise ValueError(f"No joins to get to {concept} and grain {grain}")
     shortest: PathInfo = join_candidates[0]
     source_map = defaultdict(set)
-    join_paths = []
+    join_paths: List[BaseJoin] = []
     parents = []
     all_datasets: Set = set()
     all_concepts: Set = set()
@@ -278,7 +280,6 @@ def get_datasource_by_joins(
                 source_map[jconcept.address].add(join.right_datasource)
                 all_requirements.append(jconcept)
     all_requirements = unique(all_requirements, "address")
-
     output = QueryDatasource(
         output_concepts=[concept] + grain.components,
         input_concepts=all_requirements,
@@ -290,6 +291,7 @@ def get_datasource_by_joins(
         ),
         joins=join_paths,
     )
+    logger.debug(f"got {concept} from joins")
     return output
 
 
@@ -602,14 +604,8 @@ def process_query(
     for datasource in datasources.values():
         ctes += datasource_to_ctes(datasource)
 
-    final_ctes_dict: Dict[str, CTE] = {}
-    # merge CTEs
-    for cte in ctes:
-        if cte.name not in final_ctes_dict:
-            final_ctes_dict[cte.name] = cte
-        else:
-            final_ctes_dict[cte.name] = final_ctes_dict[cte.name] + cte
-    final_ctes = list(final_ctes_dict.values())
+    final_ctes = merge_ctes(ctes)
+
     base_list = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
         base = base_list[0]
