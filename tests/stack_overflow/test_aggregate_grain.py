@@ -36,9 +36,7 @@ order by
 
 
 def test_select():
-    env, parsed = parse(
-        QUERY, environment=Environment({}, {}, working_path=dirname(__file__))
-    )
+    env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     select: Select = parsed[-1]
 
     assert select.grain == Grain(components=[env.concepts["core.badge_id"]])
