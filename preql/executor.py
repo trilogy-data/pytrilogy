@@ -6,8 +6,8 @@ from preql.core.models import Environment, ProcessedQuery
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
-from pydantic import BaseModel
 from typing import List
+from preql.constants import logger
 
 
 class Executor(object):
@@ -21,6 +21,7 @@ class Executor(object):
         self.engine = engine
         self.environment = environment or Environment()
         self.generator: BaseDialect
+        self.logger = logger
         if self.dialect == Dialects.BIGQUERY:
             from preql.dialect.bigquery import BigqueryDialect
 
@@ -47,5 +48,6 @@ class Executor(object):
         output = []
         for statement in sql:
             compiled_sql = self.generator.compile_statement(statement)
+            logger.debug(compiled_sql)
             output.append(self.engine.execute(compiled_sql))
         return output

@@ -571,7 +571,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs = {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
             # output_grain=Grain(components=arguments),
         )
 
@@ -583,7 +583,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs = {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
             # output_grain=Grain(components=arguments),
         )
 
@@ -595,7 +595,7 @@ class ParseToObjects(Transformer):
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs = {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
             # output_grain=Grain(components=arguments),
         )
 
