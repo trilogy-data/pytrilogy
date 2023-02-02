@@ -237,9 +237,11 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             found = False
-            filter = set([str(x) for x in query.where_clause.input])
+            filter = set([str(x.with_grain()) for x in query.where_clause.input])
             for cte in query.ctes:
-                if filter.issubset(set([str(z) for z in cte.output_columns])):
+                if filter.issubset(
+                    set([str(z.with_grain()) for z in cte.output_columns])
+                ):
                     # 2023-01-16 - removing related columns to look at output columns
                     # will need to backport pushing where columns into original output search
                     # if set([x.name for x in query.where_clause.input]).issubset(

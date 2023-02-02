@@ -140,9 +140,11 @@ grammar = r"""
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
     
-    STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except '"" 
-    
-    _string_lit: "\"" ( STRING_CHARS )* "\"" 
+    DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
+    SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '
+    _single_quote: "'" ( SINGLE_STRING_CHARS )* "'" 
+    _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
+    _string_lit: _single_quote | _double_quote
     
     int_lit: /[0-9]+/
     

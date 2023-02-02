@@ -630,7 +630,9 @@ class QueryDatasource:
 
     @property
     def identifier(self) -> str:
-        grain = "_".join([str(c.name) for c in self.grain.components])
+        grain = "_".join(
+            [str(c.address).replace(".", "_") for c in self.grain.components]
+        )
         return "_".join([d.name for d in self.datasources]) + (
             f"_at_{grain}" if grain else "_at_abstract"
         )
