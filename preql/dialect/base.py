@@ -2,7 +2,7 @@ from typing import List, Union, Optional, Dict
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType, WindowType, PurposeLineage
+from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
 from preql.core.hooks import BaseProcessingHook
 from preql.core.models import (
     Concept,
@@ -270,7 +270,11 @@ class BaseDialect:
                 raise NotImplementedError(
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
+        for join in query.joins:
 
+            if join.right_cte.name in where_assignment:
+                # force filtering if the CTE has a where clause
+                join.jointype = JoinType.INNER
         compiled_ctes = self.generate_ctes(query, where_assignment)
         return self.SQL_TEMPLATE.render(
             select_columns=select_columns,

@@ -13,3 +13,17 @@ Or import and execute this locally.
 
 ```
 
+## Example queries
+
+```sql
+SELECT
+    user.display_name,
+    user.location,
+    post.avg_post_length,
+    post.post_count
+where 
+    user.location = 'Germany'
+order by
+    post.post_count desc
+limit 10
+```
