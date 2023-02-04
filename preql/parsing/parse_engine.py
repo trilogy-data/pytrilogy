@@ -42,6 +42,7 @@ from preql.core.models import (
     Metadata,
     Window,
     WindowItem,
+    Query,
 )
 from preql.parsing.exceptions import ParseError
 
@@ -65,11 +66,13 @@ grammar = r"""
     concept :  concept_declaration | concept_derivation | concept_property_declaration
     
     // datasource concepts
-    datasource : "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? "address" address 
+    datasource : "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
     
     grain_clause: "grain" "(" column_list ")"
     
-    address: IDENTIFIER
+    address: "address" IDENTIFIER
+    
+    query: "query" MULTILINE_STRING
     
     concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" )
     
@@ -123,7 +126,7 @@ grammar = r"""
     COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
     comparison: expr COMPARISON_OPERATOR expr
     
-    expr: count | avg | sum | len | like | concat | comparison | literal | window_item | expr_reference
+    expr: count | count_distinct | max | min | avg | sum | len | like | concat | comparison | literal | window_item | expr_reference
     
     // functions
     
@@ -139,6 +142,8 @@ grammar = r"""
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
+    
+    MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
     
     DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '
@@ -341,9 +346,12 @@ class ParseToObjects(Transformer):
                 address = val
             elif isinstance(val, Grain):
                 grain = val
+            elif isinstance(val, Query):
+                address = Address(location=f"({val.text})")
         if not address:
-            raise ValueError("Malformed datasource, missing address declaration")
-
+            raise ValueError(
+                "Malformed datasource, missing address or query declaration"
+            )
         datasource = Datasource(
             identifier=name,
             columns=columns,
@@ -497,6 +505,10 @@ class ParseToObjects(Transformer):
     def address(self, meta: Meta, args):
         return Address(location=args[0])
 
+    @v_args(meta=True)
+    def query(self, meta: Meta, args):
+        return Query(text=args[0][3:-3])
+
     def where(self, args):
         return WhereClause(conditional=args[0])
 
@@ -549,6 +561,14 @@ class ParseToObjects(Transformer):
     def count(self, args):
         return Function(
             operator=FunctionType.COUNT,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+        )
+
+    def count_distinct(self, args):
+        return Function(
+            operator=FunctionType.COUNT_DISTINCT,
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,

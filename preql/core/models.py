@@ -377,6 +377,11 @@ class Address:
     location: str
 
 
+@dataclass(eq=True, frozen=True)
+class Query:
+    text: str
+
+
 class Grain(BaseModel):
     components: List[Concept] = Field(default_factory=list)
     nested: bool = False

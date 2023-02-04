@@ -27,6 +27,7 @@ WINDOW_FUNCTION_MAP = {
 }
 
 FUNCTION_MAP = {
+    FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
     FunctionType.SUM: lambda x: f"sum({x[0]})",
     FunctionType.LENGTH: lambda x: f"length({x[0]})",
@@ -37,6 +38,7 @@ FUNCTION_MAP = {
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
+    FunctionType.COUNT_DISTINCT: lambda args: f"{args[0]}",
     FunctionType.COUNT: lambda args: f"{args[0]}",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
@@ -218,7 +220,9 @@ class BaseDialect:
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
-        for cte in query.ctes:
+
+        output_ctes = [cte for cte in query.ctes if cte.grain == query.grain]
+        for cte in output_ctes:
             for c in cte.output_columns:
                 if c.address not in selected and c.address in output_addresses:
                     select_columns.append(
@@ -238,7 +242,7 @@ class BaseDialect:
         if query.where_clause:
             found = False
             filter = set([str(x.with_grain()) for x in query.where_clause.input])
-            for cte in query.ctes:
+            for cte in output_ctes:
                 if filter.issubset(
                     set([str(z.with_grain()) for z in cte.output_columns])
                 ):
