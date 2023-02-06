@@ -1,0 +1,14 @@
+
+
+key name string;
+property name.id int;
+property name.count int;
+property name.class int;
+property name.tag_based bool;
+
+datasource tags (
+    id: id,
+    tag_name: name,
+    count: count,
+    )
+address bigquery-public-data.stackoverflow.tags;

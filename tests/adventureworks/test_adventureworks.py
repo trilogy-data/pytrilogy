@@ -98,7 +98,7 @@ def test_query_datasources(environment):
         elif concept.name == "order_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales_at_order_line_number_order_number"
+                == "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
             )
         elif concept.name == "order_line_number":
             assert (

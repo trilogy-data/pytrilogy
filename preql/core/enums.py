@@ -92,6 +92,7 @@ class ComparisonOperator(Enum):
     GTE = ">="
     LTE = "<="
     NE = "!="
+    IN = "in"
 
 
 class LogicalOperator(Enum):

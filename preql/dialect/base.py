@@ -162,6 +162,7 @@ class BaseDialect:
             )
         elif isinstance(e, Concept):
             if cte:
+                print(cte.source_map.keys())
                 return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):

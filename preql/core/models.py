@@ -367,6 +367,11 @@ class Select:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY and item.grain:
                 output += item.grain.components
+        if self.where_clause:
+            for item in self.where_clause.input:
+                if item.purpose == Purpose.KEY:
+                    output.append(item)
+            # TODO: handle other grain cases
             # new if block be design
         # if self.order_by:
         return Grain(components=unique(output, "address"))
@@ -595,6 +600,7 @@ class QueryDatasource:
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
+    filter_concepts: List[Concept] = field(default_factory=list)
 
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -617,6 +623,8 @@ class QueryDatasource:
 
     def __post_init__(self):
         self.output_concepts = unique(self.output_concepts, "address")
+        self.input_concepts = unique(self.input_concepts, "address")
+        self.filter_concepts = unique(self.filter_concepts, "address")
 
     def __add__(self, other):
         if not isinstance(other, QueryDatasource):
@@ -625,12 +633,19 @@ class QueryDatasource:
             raise ValueError
 
         return QueryDatasource(
-            input_concepts=self.input_concepts + other.input_concepts,
-            output_concepts=self.output_concepts + other.output_concepts,
+            input_concepts=unique(
+                self.input_concepts + other.input_concepts, "address"
+            ),
+            output_concepts=unique(
+                self.output_concepts + other.output_concepts, "address"
+            ),
             source_map={**self.source_map, **other.source_map},
             datasources=self.datasources,
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
+            filter_concepts=unique(
+                self.filter_concepts + other.filter_concepts, "address"
+            ),
         )
 
     @property
@@ -693,8 +708,11 @@ class CTE:
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
     source_map: Dict[str, str]
-    # related columns include all referenced columns, such as filtering
+    # related columns include all referenced columns
     related_columns: List[Concept]
+    # filter columns are specific output columns for filtering
+    # to support filtering before aggregation to grain
+    filter_columns: List[Concept]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
@@ -714,7 +732,12 @@ class CTE:
             self.output_columns + other.output_columns, "address"
         )
         self.joins = unique(self.joins + other.joins, "unique_id")
-        self.related_columns = self.related_columns + other.related_columns
+        self.related_columns = unique(
+            self.related_columns + other.related_columns, "address"
+        )
+        self.filter_columns = unique(
+            self.filter_columns + other.filter_columns, "address"
+        )
         return self
 
     @property

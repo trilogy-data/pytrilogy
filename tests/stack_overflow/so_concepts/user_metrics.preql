@@ -1,0 +1,25 @@
+import user as user;
+import question as question;
+import badge as badge;
+import answer as answer;
+
+# question metrics
+select
+    user.id,
+    count(question.id)-> question_count,
+    avg(question.length)-> avg_question_length
+;
+
+# badge calculations
+select
+    user.id,
+    count(badge.id)-> badge_count
+;
+
+# answer calculations
+select
+    user.id,
+    sum(question.comment_count)->total_answer_comments,
+   # max(question_answer.score) top_answer_score,
+
+;

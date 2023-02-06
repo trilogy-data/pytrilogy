@@ -123,10 +123,14 @@ grammar = r"""
     
     expr_reference: IDENTIFIER
     
-    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
+    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!="  )
     comparison: expr COMPARISON_OPERATOR expr
     
-    expr: count | count_distinct | max | min | avg | sum | len | like | concat | comparison | literal | window_item | expr_reference
+    expr_tuple: "("  (expr ",")* expr ","?  ")"
+    
+    in_comparison: expr "in" expr_tuple
+    
+    expr: count | count_distinct | max | min | avg | sum | len | like | concat | in_comparison | comparison | literal | window_item | expr_reference
     
     // functions
     
@@ -192,6 +196,12 @@ class ParseToObjects(Transformer):
         return args.value
 
     def STRING_CHARS(self, args) -> str:
+        return args.value
+
+    def SINGLE_STRING_CHARS(self, args) -> str:
+        return args.value
+
+    def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
 
     def BOOLEAN_LIT(self, args) -> bool:
@@ -526,6 +536,13 @@ class ParseToObjects(Transformer):
 
     def comparison(self, args):
         return Comparison(args[0], args[2], args[1])
+
+    def expr_tuple(self, args):
+        return tuple(args)
+
+    def in_comparison(self, args):
+        # x in (a,b,c)
+        return Comparison(args[0], args[1], ComparisonOperator.IN)
 
     def conditional(self, args):
         return Conditional(args[0], args[2], args[1])

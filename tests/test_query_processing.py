@@ -97,8 +97,8 @@ def test_query_datasources(test_environment, test_environment_graph):
         environment=test_environment, graph=test_environment_graph, statement=select
     )
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "products_revenue_at_category_id",
-        "category_at_category_id",
+        "products_revenue_at_default_category_id",
+        "category_at_default_category_id",
     }
 
     joined_datasource: QueryDatasource = [

@@ -1,0 +1,38 @@
+import user as user;
+
+key id int;
+
+property id.title	string	;			
+property id.body	string	;			
+property id.accepted_answer_id	string	;			
+property id.answer_count	string	;			
+property id.comment_count	int	;
+property id.favorite_count	string	;
+
+property id.last_editor_display_name	string	;			
+
+property id.owner_display_name	string	;			
+
+property id.parent_id	int	;			
+property id.post_type_id	int	;			
+property id.score	int	;			
+property id.tags	string	;			
+property id.view_count	string	;
+
+datasource post_answer_edits (
+    id:id,
+    last_editor_user_id: Partial[user.id],
+    last_editor_display_name: last_editor_display_name
+)
+    grain (id)
+    address bigquery-public-data.stackoverflow.post_answers;
+
+datasource post_answers (
+    id:id,
+    comment_count:comment_count,
+    owner_user_id: Partial[user.id],
+    owner_display_name: owner_display_name,
+    )
+    grain (id)
+    address bigquery-public-data.stackoverflow.posts_answers
+;
