@@ -42,6 +42,7 @@ from preql.core.models import (
     Metadata,
     Window,
     WindowItem,
+    Query,
 )
 from preql.parsing.exceptions import ParseError
 
@@ -65,11 +66,13 @@ grammar = r"""
     concept :  concept_declaration | concept_derivation | concept_property_declaration
     
     // datasource concepts
-    datasource : "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? "address" address 
+    datasource : "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
     
     grain_clause: "grain" "(" column_list ")"
     
-    address: IDENTIFIER
+    address: "address" IDENTIFIER
+    
+    query: "query" MULTILINE_STRING
     
     concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" )
     
@@ -120,10 +123,14 @@ grammar = r"""
     
     expr_reference: IDENTIFIER
     
-    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" )
+    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!="  )
     comparison: expr COMPARISON_OPERATOR expr
     
-    expr: count | avg | sum | len | like | concat | comparison | literal | window_item | expr_reference
+    expr_tuple: "("  (expr ",")* expr ","?  ")"
+    
+    in_comparison: expr "in" expr_tuple
+    
+    expr: count | count_distinct | max | min | avg | sum | len | like | concat | in_comparison | comparison | literal | window_item | expr_reference
     
     // functions
     
@@ -140,9 +147,13 @@ grammar = r"""
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
     
-    STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except '"" 
+    MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
     
-    _string_lit: "\"" ( STRING_CHARS )* "\"" 
+    DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
+    SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '
+    _single_quote: "'" ( SINGLE_STRING_CHARS )* "'" 
+    _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
+    _string_lit: _single_quote | _double_quote
     
     int_lit: /[0-9]+/
     
@@ -185,6 +196,12 @@ class ParseToObjects(Transformer):
         return args.value
 
     def STRING_CHARS(self, args) -> str:
+        return args.value
+
+    def SINGLE_STRING_CHARS(self, args) -> str:
+        return args.value
+
+    def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
 
     def BOOLEAN_LIT(self, args) -> bool:
@@ -339,9 +356,12 @@ class ParseToObjects(Transformer):
                 address = val
             elif isinstance(val, Grain):
                 grain = val
+            elif isinstance(val, Query):
+                address = Address(location=f"({val.text})")
         if not address:
-            raise ValueError("Malformed datasource, missing address declaration")
-
+            raise ValueError(
+                "Malformed datasource, missing address or query declaration"
+            )
         datasource = Datasource(
             identifier=name,
             columns=columns,
@@ -495,6 +515,10 @@ class ParseToObjects(Transformer):
     def address(self, meta: Meta, args):
         return Address(location=args[0])
 
+    @v_args(meta=True)
+    def query(self, meta: Meta, args):
+        return Query(text=args[0][3:-3])
+
     def where(self, args):
         return WhereClause(conditional=args[0])
 
@@ -512,6 +536,13 @@ class ParseToObjects(Transformer):
 
     def comparison(self, args):
         return Comparison(args[0], args[2], args[1])
+
+    def expr_tuple(self, args):
+        return tuple(args)
+
+    def in_comparison(self, args):
+        # x in (a,b,c)
+        return Comparison(args[0], args[1], ComparisonOperator.IN)
 
     def conditional(self, args):
         return Conditional(args[0], args[2], args[1])
@@ -547,6 +578,14 @@ class ParseToObjects(Transformer):
     def count(self, args):
         return Function(
             operator=FunctionType.COUNT,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+        )
+
+    def count_distinct(self, args):
+        return Function(
+            operator=FunctionType.COUNT_DISTINCT,
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,

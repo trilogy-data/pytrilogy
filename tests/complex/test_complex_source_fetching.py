@@ -2,12 +2,10 @@
 from preql.core.hooks import GraphHook
 
 # from preql.compiler import compile
-from preql.core.models import Select, Grain
+from preql.core.models import Select, Grain, Datasource, QueryDatasource
 from preql.core.query_processor import (
     process_query,
     get_datasource_by_concept_and_grain,
-    QueryDatasource,
-    Datasource,
     datasource_to_ctes,
 )
 from preql.dialect.sql_server import SqlServerDialect
@@ -67,7 +65,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert isinstance(datasource, QueryDatasource)
     assert datasource.grain == Grain()
     # ensure we identify aggregates of aggregates properly
-    assert datasource.identifier == "posts_at_user_id_at_abstract"
+    assert datasource.identifier == "posts_at_default_user_id_at_abstract"
     assert datasource.output_concepts[0] == avg_user_post_count
     assert len(datasource.datasources) == 1
     parent = datasource.datasources[0]

@@ -6,8 +6,8 @@ property id.text string;
 
 property length <- len(text);
 
-metric post_count <- count(id);
-metric avg_post_length <- avg(length);
+metric count <- count(id);
+metric avg_length <- avg(length);
 
 datasource posts (
     user_id: Partial[user.id],

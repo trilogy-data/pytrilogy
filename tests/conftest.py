@@ -10,14 +10,57 @@ from preql.core.models import Concept, Datasource, ColumnAssignment, Function, G
 def test_environment():
     env = Environment()
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+
+    order_count = Concept(
+        name="order_count",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.METRIC,
+        lineage=Function(
+            arguments=[order_id],
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            operator=FunctionType.COUNT,
+        ),
+    )
+
+    distinct_order_count = Concept(
+        name="distinct_order_count",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.METRIC,
+        lineage=Function(
+            arguments=[order_id],
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            operator=FunctionType.COUNT_DISTINCT,
+        ),
+    )
+
+    max_order_id = Concept(
+        name="max_order_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.METRIC,
+        lineage=Function(
+            arguments=[order_id],
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            operator=FunctionType.MAX,
+        ),
+    )
+
+    min_order_id = Concept(
+        name="min_order_id",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.METRIC,
+        lineage=Function(
+            arguments=[order_id],
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            operator=FunctionType.MIN,
+        ),
+    )
+
     revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
 
-    """    operator: FunctionType
-    arguments: List[Concept]
-    output_datatype: DataType
-    output_purpose: Purpose
-    output_grain: "Grain"
-    valid_inputs: Optional[Set[DataType]] = None"""
     total_revenue = Concept(
         name="total_revenue",
         datatype=DataType.FLOAT,
@@ -79,7 +122,18 @@ def test_environment():
     for item in [test_product, test_category, test_revenue]:
         env.datasources[item.identifier] = item
 
-    for item in [category_id, category_name, total_revenue, revenue, product_id]:
+    for item in [
+        category_id,
+        category_name,
+        total_revenue,
+        revenue,
+        product_id,
+        order_id,
+        order_count,
+        distinct_order_count,
+        min_order_id,
+        max_order_id,
+    ]:
         env.concepts[item.name] = item
     yield env
 

@@ -1,0 +1,41 @@
+## posts
+import user as user;
+import tag as tag;
+key id int;
+property id.text string;
+property id.creation_date timestamp;
+property length <- len(text);
+property id.comment_count int;
+
+metric count <- count( id);
+metric avg_length <- avg(length);
+metric total_comment_count <- sum(comment_count);
+
+datasource posts (
+    owner_user_id: Partial[user.id],
+    id: id,
+    body: text,
+    creation_date: creation_date
+    )
+    grain (id)
+    address bigquery-public-data.stackoverflow.posts_questions
+;
+
+
+datasource post_tags (
+    id: id,
+    owner_user_id: Partial[user.id],
+    tag: tag.name,
+    creation_date: creation_date
+    )
+    grain (id, tag.name)
+    query '''
+select
+    id,
+    owner_user_id,
+    tag
+FROM `bigquery-public-data.stackoverflow.posts_questions`
+CROSS JOIN UNNEST(split(tags, '|')) AS tag
+where length(tags)>1
+'''
+;

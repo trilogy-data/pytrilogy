@@ -2,7 +2,7 @@ from typing import List, Union, Optional, Dict
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType, WindowType, PurposeLineage
+from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
 from preql.core.hooks import BaseProcessingHook
 from preql.core.models import (
     Concept,
@@ -27,19 +27,25 @@ WINDOW_FUNCTION_MAP = {
 }
 
 FUNCTION_MAP = {
+    FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
     FunctionType.SUM: lambda x: f"sum({x[0]})",
     FunctionType.LENGTH: lambda x: f"length({x[0]})",
     FunctionType.AVG: lambda x: f"avg({x[0]})",
+    FunctionType.MAX: lambda x: f"max({x[0]})",
+    FunctionType.MIN: lambda x: f"min({x[0]})",
     FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
     FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
+    FunctionType.COUNT_DISTINCT: lambda args: f"{args[0]}",
     FunctionType.COUNT: lambda args: f"{args[0]}",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
+    FunctionType.MAX: lambda args: f"{args[0]}",
+    FunctionType.MIN: lambda args: f"{args[0]}",
 }
 
 
@@ -160,7 +166,8 @@ class BaseDialect:
             )
         elif isinstance(e, Concept):
             if cte:
-                return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
+                return self.render_concept_sql(e, cte, False)
+                # return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
             return f"{1 if e else 0}"
@@ -218,7 +225,10 @@ class BaseDialect:
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
-        for cte in query.ctes:
+
+        # valid joins are anything that is a subset of the final grain
+        output_ctes = [cte for cte in query.ctes if cte.grain.issubset(query.grain)]
+        for cte in output_ctes:
             for c in cte.output_columns:
                 if c.address not in selected and c.address in output_addresses:
                     select_columns.append(
@@ -237,19 +247,11 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             found = False
-            filter = set([str(x) for x in query.where_clause.input])
-            for cte in query.ctes:
-                if filter.issubset(set([str(z) for z in cte.output_columns])):
-                    # 2023-01-16 - removing related columns to look at output columns
-                    # will need to backport pushing where columns into original output search
-                    # if set([x.name for x in query.where_clause.input]).issubset(
-                    #     [z.name for z in cte.related_columns]
-                    # ):
-                    where_assignment[cte.name] = query.where_clause.conditional
-                    found = True
-                    break
+            filter = set([str(x.with_grain()) for x in query.where_clause.input])
             # if all the where clause items are lineage derivation
             # check if they match at output grain
+            # TODO: handle if they don't all match
+            # we need to force the filtering to happen after the initial CTE
             if all(
                 [
                     x.derivation in (PurposeLineage.WINDOW, PurposeLineage.AGGREGATE)
@@ -263,12 +265,28 @@ class BaseDialect:
                 if filter_at_output_grain.issubset(query_output):
                     output_where = True
                     found = True
+            if not found:
+                for cte in output_ctes:
+                    cte_filter = set([str(z.with_grain()) for z in cte.output_columns])
+                    if filter.issubset(cte_filter):
+                        # 2023-01-16 - removing related columns to look at output columns
+                        # will need to backport pushing where columns into original output search
+                        # if set([x.name for x in query.where_clause.input]).issubset(
+                        #     [z.name for z in cte.related_columns]
+                        # ):
+                        where_assignment[cte.name] = query.where_clause.conditional
+                        found = True
+                        break
 
             if not found:
                 raise NotImplementedError(
                     "Cannot generate complex query with filtering on grain that does not match any source."
                 )
+        for join in query.joins:
 
+            if join.right_cte.name in where_assignment:
+                # force filtering if the CTE has a where clause
+                join.jointype = JoinType.INNER
         compiled_ctes = self.generate_ctes(query, where_assignment)
         return self.SQL_TEMPLATE.render(
             select_columns=select_columns,

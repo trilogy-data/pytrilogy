@@ -98,32 +98,34 @@ def test_query_datasources(environment):
         elif concept.name == "order_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales_at_order_line_number_order_number"
+                == "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
             )
         elif concept.name == "order_line_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales_at_order_line_number_order_number"
+                == "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
             )
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "fact_internet_sales_at_order_line_number_order_number"
+                == "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
             )
         elif concept.name == "region":
-            assert datasource.identifier == "sales_territories_at_key"
+            assert datasource.identifier == "sales_territories_at_sales_territory_key"
         elif concept.name == "first_name":
-            assert datasource.identifier == "customers_at_customer_id"
+            assert datasource.identifier == "customers_at_customer_customer_id"
         else:
             raise ValueError(concept)
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "customers_at_customer_id",
-        "fact_internet_sales_at_order_line_number_order_number",
-        "sales_territories_at_key",
+        "customers_at_customer_customer_id",
+        "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number",
+        "sales_territories_at_sales_territory_key",
     }
 
     joined_datasource: QueryDatasource = [
-        ds for ds in datasources.values() if ds.identifier == "customers_at_customer_id"
+        ds
+        for ds in datasources.values()
+        if ds.identifier == "customers_at_customer_customer_id"
     ][0]
     assert set([c.name for c in joined_datasource.input_concepts]) == {
         "customer_id",
@@ -139,14 +141,11 @@ def test_query_datasources(environment):
         ctes += datasource_to_ctes(datasource)
 
     assert len(ctes) == 3
-    #
-    for cte in ctes:
-        print(cte.name)
     base_cte: CTE = [
         cte
         for cte in ctes
         if cte.name.startswith(
-            "cte_fact_internet_sales_at_order_line_number_order_number_"
+            "cte_fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
         )
     ][0]
     assert len(base_cte.output_columns) == 5
