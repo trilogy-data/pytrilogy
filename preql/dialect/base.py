@@ -249,10 +249,10 @@ class BaseDialect:
             # TODO: handle if they don't all match
             # we need to force the filtering to happen after the initial CTE
             if all(
-                    [
-                        x.derivation in (PurposeLineage.WINDOW, PurposeLineage.AGGREGATE)
-                        for x in query.where_clause.input
-                    ]
+                [
+                    x.derivation in (PurposeLineage.WINDOW, PurposeLineage.AGGREGATE)
+                    for x in query.where_clause.input
+                ]
             ):
                 query_output = set([str(z) for z in query.output_columns])
                 filter_at_output_grain = set(
@@ -264,9 +264,7 @@ class BaseDialect:
             if not found:
                 for cte in output_ctes:
                     cte_filter = set([str(z.with_grain()) for z in cte.output_columns])
-                    if filter.issubset(cte_filter
-
-                    ):
+                    if filter.issubset(cte_filter):
                         # 2023-01-16 - removing related columns to look at output columns
                         # will need to backport pushing where columns into original output search
                         # if set([x.name for x in query.where_clause.input]).issubset(
@@ -275,7 +273,6 @@ class BaseDialect:
                         where_assignment[cte.name] = query.where_clause.conditional
                         found = True
                         break
-
 
             if not found:
                 raise NotImplementedError(
