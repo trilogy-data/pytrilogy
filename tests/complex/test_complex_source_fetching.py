@@ -2,12 +2,10 @@
 from preql.core.hooks import GraphHook
 
 # from preql.compiler import compile
-from preql.core.models import Select, Grain
+from preql.core.models import Select, Grain, Datasource, QueryDatasource
 from preql.core.query_processor import (
     process_query,
     get_datasource_by_concept_and_grain,
-    QueryDatasource,
-    Datasource,
     datasource_to_ctes,
 )
 from preql.dialect.sql_server import SqlServerDialect

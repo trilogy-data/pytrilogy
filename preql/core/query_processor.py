@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple, Union
 
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
@@ -12,6 +12,8 @@ from preql.core.models import (
     JoinKey,
     ProcessedQuery,
     QueryDatasource,
+Datasource,
+    Concept,
     JoinType,
     BaseJoin,
     merge_ctes,
@@ -130,7 +132,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
 
 def get_query_datasources(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
-):
+)->Tuple[Dict[str, List[Concept]], Dict[str, List[Union[Datasource,QueryDatasource]]]]:
     concept_map: Dict = defaultdict(list)
     graph = graph or generate_graph(environment)
     datasource_map: Dict = {}

@@ -162,8 +162,8 @@ class BaseDialect:
             )
         elif isinstance(e, Concept):
             if cte:
-                print(cte.source_map.keys())
-                return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
+                return self.render_concept_sql(e, cte, False)
+                # return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
             return f"{1 if e else 0}"
@@ -222,7 +222,8 @@ class BaseDialect:
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
 
-        output_ctes = [cte for cte in query.ctes if cte.grain == query.grain]
+        # valid joins are anything that is a subset of the final grain
+        output_ctes = [cte for cte in query.ctes if cte.grain.issubset(query.grain)]
         for cte in output_ctes:
             for c in cte.output_columns:
                 if c.address not in selected and c.address in output_addresses:
@@ -243,25 +244,15 @@ class BaseDialect:
         if query.where_clause:
             found = False
             filter = set([str(x.with_grain()) for x in query.where_clause.input])
-            for cte in output_ctes:
-                if filter.issubset(
-                    set([str(z.with_grain()) for z in cte.output_columns])
-                ):
-                    # 2023-01-16 - removing related columns to look at output columns
-                    # will need to backport pushing where columns into original output search
-                    # if set([x.name for x in query.where_clause.input]).issubset(
-                    #     [z.name for z in cte.related_columns]
-                    # ):
-                    where_assignment[cte.name] = query.where_clause.conditional
-                    found = True
-                    break
             # if all the where clause items are lineage derivation
             # check if they match at output grain
+            # TODO: handle if they don't all match
+            # we need to force the filtering to happen after the initial CTE
             if all(
-                [
-                    x.derivation in (PurposeLineage.WINDOW, PurposeLineage.AGGREGATE)
-                    for x in query.where_clause.input
-                ]
+                    [
+                        x.derivation in (PurposeLineage.WINDOW, PurposeLineage.AGGREGATE)
+                        for x in query.where_clause.input
+                    ]
             ):
                 query_output = set([str(z) for z in query.output_columns])
                 filter_at_output_grain = set(
@@ -270,6 +261,21 @@ class BaseDialect:
                 if filter_at_output_grain.issubset(query_output):
                     output_where = True
                     found = True
+            if not found:
+                for cte in output_ctes:
+                    cte_filter = set([str(z.with_grain()) for z in cte.output_columns])
+                    if filter.issubset(cte_filter
+
+                    ):
+                        # 2023-01-16 - removing related columns to look at output columns
+                        # will need to backport pushing where columns into original output search
+                        # if set([x.name for x in query.where_clause.input]).issubset(
+                        #     [z.name for z in cte.related_columns]
+                        # ):
+                        where_assignment[cte.name] = query.where_clause.conditional
+                        found = True
+                        break
+
 
             if not found:
                 raise NotImplementedError(

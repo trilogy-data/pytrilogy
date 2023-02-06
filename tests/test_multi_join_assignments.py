@@ -72,7 +72,7 @@ def test_select():
 
 
 def test_joins_to_ctes():
-    from preql.core.query_processor import parse_path_to_matches
+    from preql.core.processing.utility import parse_path_to_matches
 
     TEST = [
         "ds~internet_sales.fact_internet_sales",

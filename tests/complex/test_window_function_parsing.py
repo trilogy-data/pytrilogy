@@ -62,7 +62,8 @@ select
     user_id,
     user_rank,
     post_count
-where user_rank<10
+where 
+    user_rank<10
 limit 100
 ;
 
@@ -89,6 +90,10 @@ limit 100
 
     concepts, datasources = get_query_datasources(environment=env, statement=select)
     # raise ValueError
+
+    for key, value in concepts.items():
+        print(key)
+        print(value)
 
     query = process_query(statement=select, environment=env, hooks=[GraphHook()])
     expected_base = query.ctes[0]

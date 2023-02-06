@@ -104,7 +104,7 @@ def test_query_datasources(test_environment, test_environment_graph):
     joined_datasource: QueryDatasource = [
         ds
         for ds in datasources.values()
-        if ds.identifier == "products_revenue_at_category_id"
+        if ds.identifier == "products_revenue_at_default_category_id"
     ][0]
     assert set([c.name for c in joined_datasource.input_concepts]) == {
         "product_id",
@@ -121,10 +121,12 @@ def test_query_datasources(test_environment, test_environment_graph):
         ctes += datasource_to_ctes(datasource)
 
     assert len(ctes) == 4
+    for cte in ctes:
+        print(cte.name)
     join_ctes = [
         cte
         for cte in ctes
-        if cte.name == "cte_products_revenue_at_category_id_8908257907118235"
+        if cte.name.startswith("cte_products_revenue_at_default_category_i")
     ]
     assert join_ctes
     join_cte: CTE = join_ctes[0]

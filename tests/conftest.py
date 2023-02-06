@@ -12,12 +12,6 @@ def test_environment():
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
     revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
 
-    """    operator: FunctionType
-    arguments: List[Concept]
-    output_datatype: DataType
-    output_purpose: Purpose
-    output_grain: "Grain"
-    valid_inputs: Optional[Set[DataType]] = None"""
     total_revenue = Concept(
         name="total_revenue",
         datatype=DataType.FLOAT,
@@ -79,7 +73,14 @@ def test_environment():
     for item in [test_product, test_category, test_revenue]:
         env.datasources[item.identifier] = item
 
-    for item in [category_id, category_name, total_revenue, revenue, product_id]:
+    for item in [
+        category_id,
+        category_name,
+        total_revenue,
+        revenue,
+        product_id,
+        order_id,
+    ]:
         env.concepts[item.name] = item
     yield env
 
