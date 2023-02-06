@@ -32,6 +32,8 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda x: f"sum({x[0]})",
     FunctionType.LENGTH: lambda x: f"length({x[0]})",
     FunctionType.AVG: lambda x: f"avg({x[0]})",
+    FunctionType.MAX: lambda x: f"max({x[0]})",
+    FunctionType.MIN: lambda x: f"min({x[0]})",
     FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
     FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
 }
@@ -42,6 +44,8 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.COUNT: lambda args: f"{args[0]}",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
+    FunctionType.MAX: lambda args: f"{args[0]}",
+    FunctionType.MIN: lambda args: f"{args[0]}",
 }
 
 
