@@ -146,10 +146,12 @@ def get_datasource_from_group_select(
             # if the dataset that can reach every concept
             # is in fact a subset of the concept
             # assume property lookup
-            if datasource.grain.issubset(grain):
-                final_grain = datasource.grain
-            else:
-                final_grain = grain
+            # 2023-02-01 - cannot assume this
+            # if datasource.grain.issubset(grain):
+            #     final_grain = datasource.grain
+            # else:
+            #     final_grain = grain
+            final_grain = grain
             logger.debug(
                 f"got {datasource.identifier} for {concept} from grouped select"
             )

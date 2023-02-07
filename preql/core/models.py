@@ -1,9 +1,7 @@
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, MutableMapping, TypeVar
-from typing import List, Optional, Union, Set
-
+from typing import Dict, MutableMapping, TypeVar, List, Optional, Union, Set
 from pydantic import BaseModel, validator, Field
 
 from preql.core.enums import (
@@ -504,6 +502,14 @@ class Datasource:
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
+
+    @property
+    def full_concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
+
+    @property
+    def partial_concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
 
     def get_alias(
         self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False

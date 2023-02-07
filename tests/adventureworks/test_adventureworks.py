@@ -86,6 +86,7 @@ def test_query_datasources(environment):
     # assert concept_to_node(sales.with_grain) in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales)))
     # assert (concept_to_node(sales),concept_to_node(total_sales), ) in environment_graph.edges()
 
+    default_fact = 'fact_internet_sales_at_internet_sales_order_number_internet_sales_order_line_number_sales_territory_key_customer_customer_id'
     for concept in test.output_components:
         datasource = get_datasource_by_concept_and_grain(
             concept, test.grain, environment, environment_graph
@@ -98,17 +99,17 @@ def test_query_datasources(environment):
         elif concept.name == "order_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
+                == default_fact
             )
         elif concept.name == "order_line_number":
             assert (
                 datasource.identifier
-                == "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
+                == default_fact
             )
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
+                == default_fact
             )
         elif concept.name == "region":
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
