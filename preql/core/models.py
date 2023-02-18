@@ -36,6 +36,8 @@ class Concept(BaseModel):
     metadata: Optional[Metadata] = None
     lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: str = ""
+    keys: Optional[List["Concept"]] = None
+
 
     @validator("lineage")
     def lineage_validator(cls, v):
@@ -63,12 +65,13 @@ class Concept(BaseModel):
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
             grain=self.grain.with_namespace(namespace),
             namespace=namespace,
+            keys = self.keys
         )
 
     @validator("grain", pre=True, always=True)
     def parse_grain(cls, v, values):
         # this is silly - rethink how we do grains
-        if not v and values["purpose"] == Purpose.KEY:
+        if not v and values.get("purpose", None) == Purpose.KEY:
             v = Grain(
                 components=[
                     Concept(
@@ -77,6 +80,7 @@ class Concept(BaseModel):
                         datatype=values["datatype"],
                         purpose=values["purpose"],
                         grain=Grain(),
+
                     )
                 ]
             )
@@ -122,6 +126,7 @@ class Concept(BaseModel):
             lineage=self.lineage,
             grain=grain,
             namespace=self.namespace,
+            keys = self.keys
         )
 
     def with_default_grain(self) -> "Concept":
@@ -130,6 +135,8 @@ class Concept(BaseModel):
             grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
         elif self.purpose == Purpose.PROPERTY:
             components = []
+            if self.keys:
+                components = self.keys
             if self.lineage:
                 for item in self.lineage.arguments:
                     components += item.sources
@@ -143,6 +150,7 @@ class Concept(BaseModel):
             metadata=self.metadata,
             lineage=self.lineage,
             grain=grain,
+            keys = self.keys,
             namespace=self.namespace,
         )
 
@@ -199,6 +207,21 @@ class Function:
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Set[DataType]] = None
+    arg_count: int = field(default=1)
+
+    def __post_init__(self):
+        from preql.parsing.exceptions import ParseError
+
+        arg_count = len(self.arguments)
+        if not arg_count <= self.arg_count:
+            raise ParseError(
+                f"Incorrect argument count to {self.operator.name} function, expects {self.arg_count}, got {arg_count}"
+            )
+        for arg in self.arguments:
+            if isinstance(arg, Function):
+                raise ParseError(
+                    f"Anonymous function calls not allowed; map function to a concept, then pass in. {arg.operator.name} being passed into {self.operator.name}"
+                )
 
     def with_namespace(self, namespace: str) -> "Function":
         return Function(
@@ -363,15 +386,24 @@ class Select:
         for item in self.output_components:
             if item.purpose == Purpose.KEY:
                 output.append(item)
-            elif item.purpose == Purpose.PROPERTY and item.grain:
-                output += item.grain.components
         if self.where_clause:
             for item in self.where_clause.input:
                 if item.purpose == Purpose.KEY:
                     output.append(item)
+                # elif item.purpose == Purpose.PROPERTY and item.grain:
+                #     output += item.grain.components
             # TODO: handle other grain cases
             # new if block be design
-        # if self.order_by:
+        # add back any purpose that is not at the grain
+        # if a query already has the key of the property in the grain
+        # we want to group to that grain and ignore the property, which is a derivation
+        # otherwise, we need to include property as the group by
+        for item in self.output_components:
+
+            if item.purpose == Purpose.PROPERTY and not item.grain.issubset(
+                Grain(components=unique(output, "address"))
+            ):
+                output.append(item)
         return Grain(components=unique(output, "address"))
 
 
@@ -772,13 +804,14 @@ class CTE:
         return self.name
 
     def get_alias(self, concept: Concept) -> str:
-        error = ValueError
+        error = ValueError(f'Error: alias not found looking for alias for concept {concept}')
         for cte in [self] + self.parent_ctes:
             try:
                 return cte.source.get_alias(concept)
             except ValueError as e:
                 if not error:
                     error = e
+        return 'INVALID_ALIAS'
         raise error
 
 

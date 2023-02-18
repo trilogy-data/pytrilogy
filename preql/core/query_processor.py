@@ -178,16 +178,22 @@ def process_query(
 
     final_ctes = merge_ctes(ctes)
 
-    base_list = [cte for cte in final_ctes if cte.grain == statement.grain]
+
+    base_list:List[CTE] = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
         base = base_list[0]
     else:
         base_list = [cte for cte in ctes if cte.grain.issubset(statement.grain)]
         base = base_list[0]
-    others = [cte for cte in final_ctes if cte != base]
+    others:List[CTE] = [cte for cte in final_ctes if cte != base]
+
     for cte in others:
+        # we do the with_grain here to fix an issue
+        # where a query with a grain of properties has the components of the grain
+        # with the default key grain rather than the grain of the select
+        # TODO - evaluate if we can fix this in select definition
         joinkeys = [
-            JoinKey(c) for c in statement.grain.components if c in cte.output_columns
+            JoinKey(c) for c in statement.grain.components if c.with_grain(statement.grain) in cte.output_columns
         ]
         if joinkeys:
             joins.append(

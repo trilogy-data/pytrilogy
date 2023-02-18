@@ -80,7 +80,7 @@ def get_datasource_from_property_lookup(
 ) -> QueryDatasource:
     """Return a datasource that can be grouped to a value and grain.
     Think unique order ids in order product table."""
-    all_concepts = concept_to_inputs(concept)
+    all_concepts = concept_to_inputs(concept)+ grain.components
     for datasource in environment.datasources.values():
         if datasource.grain.issubset(grain):
             all_found = True
@@ -115,6 +115,7 @@ def get_datasource_from_property_lookup(
                     filter_concepts=filters,
                 )
     raise ValueError(f"No property lookup for {concept}")
+
 
 
 def get_datasource_from_group_select(
@@ -309,6 +310,63 @@ def get_datasource_from_complex_lineage(
         return qds
 
 
+
+
+def get_property_group_by_without_key(
+        concept: Concept, grain: Grain, environment, g, is_filter: bool = False
+):
+    '''If a query requires things at a property grain, but does not include the property
+    key - first search for a query at target grain with all keys, then group up to the property level'''
+    all_requirements = []
+    all_datasets = []
+    source_map = {}
+    joins:List[BaseJoin] = []
+    # early exit if no propties
+    if not any([x.purpose == Purpose.PROPERTY for x in grain.components]):
+        raise ValueError('Cannot find property lookup')
+    pgrain = Grain(components = [z if z.purpose != Purpose.PROPERTY else z.with_default_grain().grain.components[0] for z in grain.components ])
+    # this is our base datasource
+    sub_datasource = get_datasource_by_concept_and_grain(    concept,
+                                                   grain = pgrain,
+                                                   environment= environment,
+                                                   g=g, is_filter=is_filter)
+    all_datasets.append(sub_datasource)
+    all_requirements.append(concept)
+    source_map[concept.name] = {sub_datasource}
+    if isinstance(sub_datasource, QueryDatasource):
+        source_map = {**source_map, **sub_datasource.source_map}
+    remapped = [z for z in grain.components if z.purpose == Purpose.PROPERTY]
+    for remapped_property in remapped:
+        keys = remapped_property.with_default_grain().grain.components
+        for key in keys:
+            all_requirements.append(key)
+        remapped_datasource = get_datasource_by_concept_and_grain(    remapped_property,
+                                                grain = remapped_property.with_default_grain().grain,
+                                                environment= environment,
+                                                g=g, is_filter=is_filter)
+        all_datasets.append(remapped_datasource)
+        all_requirements.append(remapped_property)
+        source_map[remapped_property.name] = {remapped_datasource}
+        if isinstance(remapped_datasource, QueryDatasource):
+            source_map = {**source_map, **remapped_datasource.source_map}
+        joins.append(BaseJoin(
+            left_datasource=sub_datasource,
+            right_datasource=remapped_datasource,
+            join_type=JoinType.LEFT_OUTER,
+            concepts=remapped_property.with_default_grain().grain.components,
+        ))
+    qds = QueryDatasource(
+        output_concepts=[concept] + grain.components,
+        input_concepts=all_requirements,
+        source_map=source_map,
+        grain=grain,
+        datasources=all_datasets,
+        joins=joins
+        # joins=join_paths,
+    )
+    source_map[concept.name] = {qds}
+    return qds
+
 def get_datasource_from_window_function(
     concept: Concept, grain: Grain, environment, g, is_filter: bool = False
 ):
@@ -394,41 +452,60 @@ def get_datasource_by_concept_and_grain(
     # the concept is available directly on a datasource at appropriate grain
     if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
         try:
-            return get_datasource_from_property_lookup(
+
+            out = get_datasource_from_property_lookup(
                 concept.with_default_grain(), grain, environment, g, is_filter=is_filter
             )
+            logger.debug(f"Got {concept} from property lookup")
+            return out
         except ValueError as e:
-            logger.error(e)
+            logger.debug(e)
     # the concept is available on a datasource, but at a higher granularity
     try:
-        return get_datasource_from_group_select(
+        out = get_datasource_from_group_select(
             concept, grain, environment, g, is_filter=is_filter
         )
+        logger.debug(f"Got {concept} from grouped select")
+        return out
     except ValueError as e:
         logger.error(e)
     # the concept and grain together can be gotten via
     # a join from a root dataset to enrichment datasets
     try:
-        return get_datasource_by_joins(
+        out = get_datasource_by_joins(
             concept, grain, environment, g, is_filter=is_filter
         )
+        logger.debug(f"Got {concept} from joins")
+        return out
     except ValueError as e:
-        logger.error(e)
+        logger.debug(e)
     from itertools import combinations
 
     for x in range(1, len(grain.components)):
         for combo in combinations(grain.components, x):
             ngrain = Grain(components=list(combo))
             try:
-                return get_datasource_by_joins(
+                out = get_datasource_by_joins(
                     concept.with_grain(ngrain),
                     grain,
                     environment,
                     g,
                     is_filter=is_filter,
                 )
+                logger.debug(f"Got {concept} from join to a sub portion of grain")
+                return out
             except ValueError as e:
-                logger.error(e)
+                logger.debug(e)
+
+
+    # if there is a property in the grain, see if we can find a datasource
+    # with all the keys of the property, which we can then join to
+    try:
+        out = get_property_group_by_without_key(  concept, grain, environment, g, is_filter=is_filter)
+        logger.debug(f"Got {concept} from property lookup via transversing key based grain")
+        return out
+    except ValueError as e:
+        logger.debug(e)
 
     neighbors = list(g.predecessors(concept_to_node(concept)))
     raise ValueError(f"No source for {concept} found, neighbors {neighbors}")

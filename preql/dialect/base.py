@@ -4,6 +4,7 @@ from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
 from preql.core.hooks import BaseProcessingHook
+from preql.core.enums import Purpose
 from preql.core.models import (
     Concept,
     CTE,
@@ -59,17 +60,13 @@ TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 FROM
-    {{ base }}{% if joins %}
-{% for join in joins %}
-{{ join }}
-{% endfor %}{% endif %}
+    {{ base }}{% if joins %}{% for join in joins %}
+{{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
 {% endif %}
-{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
+{%- if group_by %}GROUP BY {% for group in group_by %}
+    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}
@@ -197,7 +194,7 @@ class BaseDialect:
                     else None,
                     group_by=[
                         self.render_concept_sql(c, cte, alias=False)
-                        for c in cte.grain.components
+                        for c in cte.grain.components + [c for c in cte.output_columns if c.purpose == Purpose.PROPERTY and c not in cte.grain.components]
                     ]
                     if cte.group_to_grain
                     else None,

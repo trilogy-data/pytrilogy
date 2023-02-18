@@ -88,6 +88,19 @@ def test_environment():
         grain=category_id,
     )
 
+    category_name_length = Concept(
+        name="category_name_length",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.PROPERTY,
+        grain=category_id,
+        lineage = Function(
+            arguments=[category_name],
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            operator=FunctionType.LENGTH,
+        ),
+    )
+
     # total_revenue =
 
     test_revenue = Datasource(
@@ -125,6 +138,7 @@ def test_environment():
     for item in [
         category_id,
         category_name,
+        category_name_length,
         total_revenue,
         revenue,
         product_id,

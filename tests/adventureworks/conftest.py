@@ -8,7 +8,10 @@ from urllib.parse import quote_plus
 
 from pytest import fixture
 from sqlalchemy.engine import create_engine
+from preql.constants import logger
+from logging import DEBUG
 
+logger.setLevel(DEBUG)
 from preql import Executor, Dialects, Environment
 
 
