@@ -10,6 +10,7 @@ from lark.exceptions import (
     UnexpectedInput,
     UnexpectedToken,
 )
+from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 
 from preql.core.enums import (
     Purpose,
@@ -266,6 +267,7 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             grain=Grain(components=[self.environment.concepts[grain]]),
             namespace=self.environment.namespace,
+            keys=[self.environment.concepts[grain]],
         )
         self.environment.concepts[name] = concept
         return args
@@ -398,12 +400,20 @@ class ParseToObjects(Transformer):
             raise ParseError(
                 f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept"
             )
+        if function.output_purpose == Purpose.PROPERTY:
+            grain = Grain(components=function.arguments)
+            keys = function.arguments
+        else:
+            grain = None
+            keys = None
         concept = Concept(
             name=output,
             datatype=function.output_datatype,
             purpose=function.output_purpose,
             lineage=function,
             namespace=namespace,
+            grain=grain,
+            keys=keys,
         )
         # We don't assign it here because we'll do this later when we know the grain
         self.environment.concepts[lookup] = concept
@@ -430,7 +440,7 @@ class ParseToObjects(Transformer):
         return [arg for arg in args if arg]
 
     def limit(self, args):
-        return Limit(count=args[0].value)
+        return Limit(count=int(args[0].value))
 
     def ORDERING(self, args):
         return Ordering(args)
@@ -581,6 +591,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
+            arg_count=1,
         )
 
     def count_distinct(self, args):
@@ -589,63 +600,61 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
+            arg_count=1,
         )
 
     def sum(self, arguments):
-        if not len(arguments) == 1:
-            raise ParseError("Too many arguments to sum")
         return Function(
             operator=FunctionType.SUM,
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
+            arg_count=1
             # output_grain=Grain(components=arguments),
         )
 
     def avg(self, arguments):
-        if not len(arguments) == 1:
-            raise ParseError("Too many arguments to avg")
+
+        arg = arguments[0]
+
         return Function(
             operator=FunctionType.AVG,
             arguments=arguments,
-            output_datatype=arguments[0].datatype,
+            output_datatype=arg.datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            arg_count=1
             # output_grain=Grain(components=arguments),
         )
 
     def max(self, arguments):
-        if not len(arguments) == 1:
-            raise ParseError("Too many arguments to max")
         return Function(
             operator=FunctionType.MIN,
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            arg_count=1
             # output_grain=Grain(components=arguments),
         )
 
     def min(self, arguments):
-        if not len(arguments) == 1:
-            raise ParseError("Too many arguments to min")
         return Function(
             operator=FunctionType.MAX,
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            arg_count=1
             # output_grain=Grain(components=arguments),
         )
 
     def len(self, args):
-        if not len(args) == 1:
-            raise ParseError("Too many arguments to len")
         return Function(
             operator=FunctionType.LENGTH,
             arguments=args,
-            output_datatype=args[0].datatype,
-            output_purpose=Purpose.METRIC,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING, DataType.ARRAY, DataType.MAP},
             # output_grain=args[0].grain,
         )
@@ -655,25 +664,22 @@ class ParseToObjects(Transformer):
             operator=FunctionType.CONCAT,
             arguments=args,
             output_datatype=args[0].datatype,
-            output_purpose=Purpose.KEY,
+            output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
+            arg_count=99
             # output_grain=args[0].grain,
         )
 
     def like(self, args):
-        if not len(args) == 2:
-            raise ParseError("The Like function expects two arguments")
         return Function(
             operator=FunctionType.LIKE,
             arguments=args,
             output_datatype=DataType.BOOL,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
+            arg_count=2
             # output_grain=Grain(components=args),
         )
-
-
-from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 
 
 def parse_text(

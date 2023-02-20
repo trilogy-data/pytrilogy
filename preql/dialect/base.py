@@ -4,6 +4,7 @@ from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
 from preql.core.hooks import BaseProcessingHook
+from preql.core.enums import Purpose
 from preql.core.models import (
     Concept,
     CTE,
@@ -19,6 +20,7 @@ from preql.core.models import (
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query
 from preql.dialect.common import render_join
+from preql.utility import unique
 
 INVALID_REFERENCE_STRING = "INVALID_REFERENCE_BUG"
 
@@ -59,17 +61,13 @@ TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 FROM
-    {{ base }}{% if joins %}
-{% for join in joins %}
-{{ join }}
-{% endfor %}{% endif %}
+    {{ base }}{% if joins %}{% for join in joins %}
+{{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
 {% endif %}
-{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
+{%- if group_by %}GROUP BY {% for group in group_by %}
+    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}
@@ -197,7 +195,16 @@ class BaseDialect:
                     else None,
                     group_by=[
                         self.render_concept_sql(c, cte, alias=False)
-                        for c in cte.grain.components
+                        for c in unique(
+                            cte.grain.components
+                            + [
+                                c
+                                for c in cte.output_columns
+                                if c.purpose == Purpose.PROPERTY
+                                and c not in cte.grain.components
+                            ],
+                            "address",
+                        )
                     ]
                     if cte.group_to_grain
                     else None,
@@ -301,7 +308,7 @@ class BaseDialect:
             if query.where_clause and output_where
             else None,
             order_by=[
-                self.render_order_item(i, query.ctes) for i in query.order_by.items
+                self.render_order_item(i, output_ctes) for i in query.order_by.items
             ]
             if query.order_by
             else None,

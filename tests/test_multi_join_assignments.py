@@ -66,7 +66,7 @@ def test_select():
     env, parsed = parse(TEST_SETUP)
     select: Select = parsed[-1]
 
-    assert select.grain == Grain(components=[env.concepts["category_key"]])
+    assert select.grain == Grain(components=[env.concepts["category_name"]])
 
     process_query(statement=select, environment=env, hooks=[GraphHook()])
 

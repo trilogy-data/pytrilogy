@@ -3,14 +3,6 @@ import concepts.customer as customer;
 import concepts.dates as dates;
 import concepts.sales_territory as sales_territory;
 
-select
-    customer.first_name,
-    customer.last_name,
-    internet_sales.total_order_quantity,
-    internet_sales.total_sales_amount
-order by
-    internet_sales.total_sales_amount desc
-limit 100;
 
 
 select
@@ -24,11 +16,22 @@ limit 100;
 
 
 select
+    customer.first_name,
+    customer.last_name,
+    internet_sales.total_order_quantity,
+    internet_sales.total_sales_amount
+order by
+    internet_sales.total_sales_amount desc
+limit 100;
+
+
+select
+    customer.first_name,
     internet_sales.order_number,
     internet_sales.order_line_number,
     internet_sales.total_sales_amount,
-    sales_territory.region,
-    customer.first_name
+#    sales_territory.region,
+
 order by
     internet_sales.order_number desc
 limit 5;

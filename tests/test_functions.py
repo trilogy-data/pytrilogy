@@ -22,3 +22,20 @@ select
     select: Select = parsed[-1]
 
     BaseDialect().compile_statement(process_query(test_environment, select))
+
+
+def test_wrapped_property_functions(test_environment):
+    declarations = """
+
+select
+    product_id,
+    avg(category_name_length) ->average_category_name_length
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    x = BaseDialect().compile_statement(process_query(test_environment, select))
+    print(x)

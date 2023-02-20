@@ -29,15 +29,25 @@ datasource users (
     address bigquery-public-data.stackoverflow.users
 ;
 
-select
-    user_id,
-    about_me,
-    count(post_id)->post_count
-;
-
 
     """
     env, parsed = parse(declarations)
-    select: Select = parsed[-1]
 
+    q1 = """select
+    user_id,
+    about_me,
+    count(post_id)->post_count
+;"""
+    env, parse_one = parse(q1, environment=env)
+
+    select: Select = parse_one[-1]
     assert select.grain == Grain(components=[env.concepts["user_id"]])
+
+    q2 = """select
+    about_me,
+    post_count
+;"""
+    env, parse_two = parse(q2, environment=env)
+
+    select: Select = parse_two[-1]
+    assert select.grain == Grain(components=[env.concepts["about_me"]])

@@ -139,14 +139,14 @@ def get_query_datasources(
         # TODO: figure out right place to group to do predicate pushdown
         statement.grain.components += statement.where_clause.input
 
-    # we don't actually use is_filter latest filter design
+    # we don't actually use whole_grain latest filter design
     # but retain this to enable improved predicate pushdown in the future
     components = {False: statement.output_components + statement.grain.components}
 
     for key, concept_list in components.items():
         for concept in concept_list:
             datasource = get_datasource_by_concept_and_grain(
-                concept, statement.grain, environment, graph, is_filter=key
+                concept, statement.grain, environment, graph, whole_grain=key
             )
 
             if concept not in concept_map[datasource.identifier]:
@@ -178,16 +178,23 @@ def process_query(
 
     final_ctes = merge_ctes(ctes)
 
-    base_list = [cte for cte in final_ctes if cte.grain == statement.grain]
+    base_list: List[CTE] = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
         base = base_list[0]
     else:
         base_list = [cte for cte in ctes if cte.grain.issubset(statement.grain)]
         base = base_list[0]
-    others = [cte for cte in final_ctes if cte != base]
+    others: List[CTE] = [cte for cte in final_ctes if cte != base]
+
     for cte in others:
+        # we do the with_grain here to fix an issue
+        # where a query with a grain of properties has the components of the grain
+        # with the default key grain rather than the grain of the select
+        # TODO - evaluate if we can fix this in select definition
         joinkeys = [
-            JoinKey(c) for c in statement.grain.components if c in cte.output_columns
+            JoinKey(c)
+            for c in statement.grain.components
+            if c.with_grain(statement.grain) in cte.output_columns
         ]
         if joinkeys:
             joins.append(
