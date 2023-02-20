@@ -190,11 +190,14 @@ class ColumnAssignment:
         return Modifier.PARTIAL not in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        return ColumnAssignment(
-            alias=self.alias,
-            concept=self.concept.with_namespace(namespace),
-            modifiers=self.modifiers,
-        )
+        # this breaks assignments
+        # TODO: figure out why
+        return self
+        # return ColumnAssignment(
+        #     alias=self.alias,
+        #     concept=self.concept.with_namespace(namespace),
+        #     modifiers=self.modifiers,
+        # )
 
 
 @dataclass(eq=True, frozen=True)
