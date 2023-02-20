@@ -37,5 +37,5 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    x= BaseDialect().compile_statement(process_query(test_environment, select))
+    x = BaseDialect().compile_statement(process_query(test_environment, select))
     print(x)

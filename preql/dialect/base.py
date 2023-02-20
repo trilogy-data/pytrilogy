@@ -20,6 +20,7 @@ from preql.core.models import (
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query
 from preql.dialect.common import render_join
+from preql.utility import unique
 
 INVALID_REFERENCE_STRING = "INVALID_REFERENCE_BUG"
 
@@ -194,7 +195,16 @@ class BaseDialect:
                     else None,
                     group_by=[
                         self.render_concept_sql(c, cte, alias=False)
-                        for c in cte.grain.components + [c for c in cte.output_columns if c.purpose == Purpose.PROPERTY and c not in cte.grain.components]
+                        for c in unique(
+                            cte.grain.components
+                            + [
+                                c
+                                for c in cte.output_columns
+                                if c.purpose == Purpose.PROPERTY
+                                and c not in cte.grain.components
+                            ],
+                            "address",
+                        )
                     ]
                     if cte.group_to_grain
                     else None,
@@ -298,7 +308,7 @@ class BaseDialect:
             if query.where_clause and output_where
             else None,
             order_by=[
-                self.render_order_item(i, query.ctes) for i in query.order_by.items
+                self.render_order_item(i, output_ctes) for i in query.order_by.items
             ]
             if query.order_by
             else None,

@@ -267,7 +267,7 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             grain=Grain(components=[self.environment.concepts[grain]]),
             namespace=self.environment.namespace,
-            keys = [self.environment.concepts[grain]]
+            keys=[self.environment.concepts[grain]],
         )
         self.environment.concepts[name] = concept
         return args
@@ -413,7 +413,7 @@ class ParseToObjects(Transformer):
             lineage=function,
             namespace=namespace,
             grain=grain,
-            keys = keys
+            keys=keys,
         )
         # We don't assign it here because we'll do this later when we know the grain
         self.environment.concepts[lookup] = concept

@@ -29,6 +29,7 @@ order by
 
 select
     core.badge_name,
+    core.badge_id,
     sum(user_badge_count)-> total_badge_user_award_count
 order by
     user_badge_count desc

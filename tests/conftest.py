@@ -93,7 +93,7 @@ def test_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         grain=category_id,
-        lineage = Function(
+        lineage=Function(
             arguments=[category_name],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.PROPERTY,

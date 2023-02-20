@@ -38,7 +38,6 @@ class Concept(BaseModel):
     namespace: str = ""
     keys: Optional[List["Concept"]] = None
 
-
     @validator("lineage")
     def lineage_validator(cls, v):
         if v and not isinstance(v, (Function, WindowItem)):
@@ -65,7 +64,7 @@ class Concept(BaseModel):
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
             grain=self.grain.with_namespace(namespace),
             namespace=namespace,
-            keys = self.keys
+            keys=self.keys,
         )
 
     @validator("grain", pre=True, always=True)
@@ -80,7 +79,6 @@ class Concept(BaseModel):
                         datatype=values["datatype"],
                         purpose=values["purpose"],
                         grain=Grain(),
-
                     )
                 ]
             )
@@ -126,7 +124,7 @@ class Concept(BaseModel):
             lineage=self.lineage,
             grain=grain,
             namespace=self.namespace,
-            keys = self.keys
+            keys=self.keys,
         )
 
     def with_default_grain(self) -> "Concept":
@@ -150,7 +148,7 @@ class Concept(BaseModel):
             metadata=self.metadata,
             lineage=self.lineage,
             grain=grain,
-            keys = self.keys,
+            keys=self.keys,
             namespace=self.namespace,
         )
 
@@ -186,13 +184,17 @@ class Concept(BaseModel):
 class ColumnAssignment:
     alias: str
     concept: Concept
-    modifiers: Optional[List[Modifier]] = None
+    modifiers: List[Modifier] = field(default_factory=list)
 
     def is_complete(self):
         return Modifier.PARTIAL not in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        return self
+        return ColumnAssignment(
+            alias=self.alias,
+            concept=self.concept.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
 
 
 @dataclass(eq=True, frozen=True)
@@ -540,6 +542,10 @@ class Datasource:
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
     @property
+    def output_concepts(self) -> List[Concept]:
+        return self.concepts
+
+    @property
     def partial_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
 
@@ -609,12 +615,18 @@ class JoinedDataSource:
         )
 
 
-@dataclass()
+@dataclass
 class BaseJoin:
-    left_datasource: Datasource
-    right_datasource: Datasource
+    left_datasource: Union[Datasource, "QueryDatasource"]
+    right_datasource: Union[Datasource, "QueryDatasource"]
     concepts: List[Concept]
     join_type: JoinType
+
+    def __post_init__(self):
+        for concept in self.concepts:
+            for ds in [self.left_datasource, self.right_datasource]:
+                if concept.address not in [c.address for c in ds.output_concepts]:
+                    raise SyntaxError(f"Invalid join, missing {concept} on {ds.name}")
 
     @property
     def unique_id(self) -> str:
@@ -804,14 +816,16 @@ class CTE:
         return self.name
 
     def get_alias(self, concept: Concept) -> str:
-        error = ValueError(f'Error: alias not found looking for alias for concept {concept}')
+        error = ValueError(
+            f"Error: alias not found looking for alias for concept {concept}"
+        )
         for cte in [self] + self.parent_ctes:
             try:
                 return cte.source.get_alias(concept)
             except ValueError as e:
                 if not error:
                     error = e
-        return 'INVALID_ALIAS'
+        return "INVALID_ALIAS"
         raise error
 
 

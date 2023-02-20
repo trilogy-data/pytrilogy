@@ -7,9 +7,7 @@ import concepts.sales_territory as sales_territory;
 
 select
     dates.order_date,
-    dates.order_key,
     customer.first_name,
-    customer.customer_id,
     internet_sales.total_order_quantity,
     internet_sales.total_sales_amount
 order by
