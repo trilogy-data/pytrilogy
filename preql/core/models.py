@@ -32,11 +32,11 @@ class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    grain: "Grain" = Field(default=None)
     metadata: Optional[Metadata] = None
     lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: str = ""
     keys: Optional[List["Concept"]] = None
+    grain: "Grain" = Field(default=None)
 
     @validator("lineage")
     def lineage_validator(cls, v):
