@@ -52,7 +52,7 @@ TSQL_TEMPLATE = Template(
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 SELECT
-{%- if limit %}
+{%- if limit is not none %}
 TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
@@ -91,9 +91,6 @@ class SqlServerDialect(BaseDialect):
         base = super().compile_statement(query)
         for cte in query.ctes:
             if len(cte.name) > MAX_IDENTIFIER_LENGTH:
-                print("replacing")
-                print(cte.name)
                 new_name = f"rhash_{string_to_hash(cte.name)}"
-                print(new_name)
                 base = base.replace(cte.name, new_name)
         return base

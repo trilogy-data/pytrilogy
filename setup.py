@@ -22,7 +22,7 @@ setuptools.setup(
     url="",
     author="",
     author_email="preql-community@gmail.com",
-    description="Declarative, typed query lanuage.",
+    description="Declarative, typed query language that compiles to SQL.",
     long_description=open("README.md").read(),
     long_description_content_type='text/markdown',
     packages=setuptools.find_packages(exclude=["dist", "build", "*.tests", "*.tests.*", "tests.*", "tests", "docs", ".github", "", "examples"]),

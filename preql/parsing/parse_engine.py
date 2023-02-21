@@ -345,6 +345,7 @@ class ParseToObjects(Transformer):
         return args
 
     def grain_clause(self, args) -> Grain:
+        #            namespace=self.environment.namespace,
         return Grain(components=[self.environment.concepts[a] for a in args[0]])
 
     @v_args(meta=True)
@@ -457,22 +458,19 @@ class ParseToObjects(Transformer):
 
         target = join(self.environment.working_path, *path) + ".preql"
         with open(target, "r", encoding="utf-8") as f:
-            text = f.read()
-            nparser = ParseToObjects(
-                visit_tokens=True,
-                text=text,
-                environment=Environment(working_path=dirname(target), namespace=alias),
-            )
-            nparser.transform(PARSER.parse(text))
 
-            for key, concept in nparser.environment.concepts.items():
-                self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(
-                    alias
-                )
-            for key, datasource in nparser.environment.datasources.items():
-                self.environment.datasources[
-                    f"{alias}.{key}"
-                ] = datasource.with_namespace(alias)
+            text = f.read()
+        nparser = ParseToObjects(
+            visit_tokens=True,
+            text=text,
+            environment=Environment(working_path=dirname(target), namespace=alias),
+        )
+        nparser.transform(PARSER.parse(text))
+
+        for key, concept in nparser.environment.concepts.items():
+            self.environment.concepts[f"{alias}.{key}"] = concept
+        for key, datasource in nparser.environment.datasources.items():
+            self.environment.datasources[f"{alias}.{key}"] = datasource
         return None
 
     @v_args(meta=True)

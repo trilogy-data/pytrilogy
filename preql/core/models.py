@@ -439,6 +439,7 @@ class Grain(BaseModel):
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
 
     def with_namespace(self, namespace: str) -> "Grain":
+
         return Grain(
             components=[c.with_namespace(namespace) for c in self.components],
             nested=self.nested,
@@ -527,7 +528,6 @@ class Datasource:
             self.namespace = ""
 
     def with_namespace(self, namespace: str):
-
         return Datasource(
             identifier=self.identifier,
             namespace=namespace,

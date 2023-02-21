@@ -56,7 +56,7 @@ GENERIC_SQL_TEMPLATE = Template(
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 SELECT
-{%- if limit %}
+{%- if limit is not none %}
 TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
@@ -186,6 +186,7 @@ class BaseDialect:
                     ],
                     base=f"{cte.base_name} as {cte.base_alias}",
                     grain=cte.grain,
+                    limit=None,
                     joins=[
                         render_join(join, self.QUOTE_CHARACTER)
                         for join in (cte.joins or [])
@@ -228,6 +229,7 @@ class BaseDialect:
         return output
 
     def compile_statement(self, query: ProcessedQuery) -> str:
+
         select_columns: list[str] = []
         cte_output_map = {}
         selected = set()
@@ -294,6 +296,12 @@ class BaseDialect:
             if join.right_cte.name in where_assignment:
                 # force filtering if the CTE has a where clause
                 join.jointype = JoinType.INNER
+                # if the left source is partial, make it a full join
+            elif (
+                join.left_cte.grain.issubset(query.grain)
+                and join.left_cte.grain != query.grain
+            ):
+                join.jointype = JoinType.FULL
         compiled_ctes = self.generate_ctes(query, where_assignment)
         return self.SQL_TEMPLATE.render(
             select_columns=select_columns,
