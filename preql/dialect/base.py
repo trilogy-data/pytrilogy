@@ -100,6 +100,13 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
     return all(checks)
 
 
+def safe_quote(string: str, quote_char: str):
+    # split dotted identifiers
+    # TODO: evaluate if we need smarter parsing for strings that could actually include .
+    components = string.split(".")
+    return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
+
+
 class BaseDialect:
     WINDOW_FUNCTION_MAP = WINDOW_FUNCTION_MAP
     FUNCTION_MAP = FUNCTION_MAP
@@ -147,9 +154,9 @@ class BaseDialect:
                     rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
         else:
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{self.QUOTE_CHARACTER}{cte.get_alias(c)}{self.QUOTE_CHARACTER}"
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
 
         if alias:
             return f"{rval} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
