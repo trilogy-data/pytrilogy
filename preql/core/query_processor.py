@@ -182,7 +182,16 @@ def process_query(
     if base_list:
         base = base_list[0]
     else:
-        base_list = [cte for cte in ctes if cte.grain.issubset(statement.grain)]
+        base_list = sorted(
+            [cte for cte in ctes if cte.grain.issubset(statement.grain)],
+            key=lambda cte: -len(
+                [
+                    x
+                    for x in cte.output_columns
+                    if x.address in [g.address for g in statement.grain.components]
+                ]
+            ),
+        )
         base = base_list[0]
     others: List[CTE] = [cte for cte in final_ctes if cte != base]
 

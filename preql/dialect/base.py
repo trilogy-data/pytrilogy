@@ -258,7 +258,7 @@ class BaseDialect:
             for c in cte.output_columns:
                 if c.address not in selected and c.address in output_addresses:
                     select_columns.append(
-                        f"{cte.name}.{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+                        f"{cte.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                     )
                     cte_output_map[c.address] = cte
                     selected.add(c.address)
