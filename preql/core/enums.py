@@ -59,6 +59,7 @@ class WindowOrder(Enum):
 
 
 class FunctionType(Enum):
+    # Aggregates
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
     SUM = "sum"
@@ -66,9 +67,27 @@ class FunctionType(Enum):
     MIN = "min"
     AVG = "avg"
     LENGTH = "len"
+
+    # String Like
     LIKE = "like"
     CONCAT = "concat"
     NOT_LIKE = "not_like"
+
+    # Dates
+    DATE = "date"
+    DATETIME = "datetime"
+    TIMESTAMP = "timestamp"
+
+    SECOND = "second"
+    MINUTE = "minute"
+    HOUR = "hour"
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    QUARTER = "quarter"
+    YEAR = "year"
+
+    DATE_PART = "date_part"
 
 
 class FunctionClass(Enum):

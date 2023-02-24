@@ -11,6 +11,10 @@ def test_environment():
     env = Environment()
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
+    order_timestamp = Concept(
+        name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
+    )
+
     order_count = Concept(
         name="order_count",
         datatype=DataType.INTEGER,
@@ -109,6 +113,7 @@ def test_environment():
             ColumnAssignment(alias="revenue", concept=revenue),
             ColumnAssignment(alias="order_id", concept=order_id),
             ColumnAssignment(alias="product_id", concept=product_id),
+            ColumnAssignment(alias="order_timestamp", concept=order_timestamp),
         ],
         address="tblRevenue",
         grain=Grain(components=[order_id]),
@@ -144,6 +149,7 @@ def test_environment():
         product_id,
         order_id,
         order_count,
+        order_timestamp,
         distinct_order_count,
         min_order_id,
         max_order_id,

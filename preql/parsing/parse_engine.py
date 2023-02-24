@@ -131,10 +131,9 @@ grammar = r"""
     
     in_comparison: expr "in" expr_tuple
     
-    expr: count | count_distinct | max | min | avg | sum | len | like | concat | in_comparison | comparison | literal | window_item | expr_reference
+    expr: count | count_distinct | max | min | avg | sum | len | like | concat | _date_functions | in_comparison | comparison | literal | window_item | expr_reference
     
     // functions
-    
     count: "count" "(" expr ")"
     count_distinct: "count_distinct" "(" expr ")"
     sum: "sum" "(" expr ")"
@@ -144,6 +143,21 @@ grammar = r"""
     len: "len" "(" expr ")"
     like: "like"i "(" expr "," _string_lit ")"
     concat: "concat"i "(" (expr ",")* expr ")"
+    
+    // date functions
+    fdate: "date" "(" expr ")"
+    fdatetime: "datetime" "(" expr ")"
+    ftimestamp: "timestamp" "(" expr ")"
+    
+    fsecond: "second" "(" expr ")"
+    fminute: "minute" "(" expr ")"
+    fhour: "hour" "(" expr ")"
+    fday: "day" "(" expr ")"
+    fweek: "week" "(" expr ")"
+    fmonth: "month" "(" expr ")"
+    fyear: "year" "(" expr ")"
+    
+    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fyear
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -679,6 +693,117 @@ class ParseToObjects(Transformer):
             # output_grain=Grain(components=args),
         )
 
+    # date functions
+    def fdate(self, args):
+        return Function(
+            operator=FunctionType.DATE,
+            arguments=args,
+            output_datatype=DataType.DATE,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            arg_count=1,
+        )
+
+    def fdatetime(self, args):
+        return Function(
+            operator=FunctionType.DATETIME,
+            arguments=args,
+            output_datatype=DataType.DATETIME,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            arg_count=1,
+        )
+
+    def ftimestamp(self, args):
+        return Function(
+            operator=FunctionType.TIMESTAMP,
+            arguments=args,
+            output_datatype=DataType.TIMESTAMP,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs=[{DataType.TIMESTAMP, DataType.STRING}],
+            arg_count=1,
+        )
+
+    def fsecond(self, args):
+        return Function(
+            operator=FunctionType.SECOND,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
+    def fminute(self, args):
+        return Function(
+            operator=FunctionType.MINUTE,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
+    def fhour(self, args):
+        return Function(
+            operator=FunctionType.HOUR,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
+    def fday(self, args):
+        return Function(
+            operator=FunctionType.DAY,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
+    def fweek(self, args):
+        return Function(
+            operator=FunctionType.WEEK,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
+    def fmonth(self, args):
+        return Function(
+            operator=FunctionType.MONTH,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
+    def fyear(self, args):
+        return Function(
+            operator=FunctionType.YEAR,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
 
 def parse_text(
     text: str, environment: Optional[Environment] = None, print_flag: bool = False
@@ -688,7 +813,7 @@ def parse_text(
     try:
         output = [v for v in parser.transform(PARSER.parse(text)) if v]
     except VisitError as e:
-        if isinstance(e.orig_exc, UndefinedConceptException):
+        if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
             raise e.orig_exc
         else:
             raise e

@@ -38,6 +38,16 @@ FUNCTION_MAP = {
     FunctionType.MIN: lambda x: f"min({x[0]})",
     FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
     FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
+    # date types
+    FunctionType.DATE: lambda x: f"date({x[0]})",
+    FunctionType.DATETIME: lambda x: f"datetime({x[0]})",
+    FunctionType.TIMESTAMP: lambda x: f"timestamp({x[0]})",
+    FunctionType.SECOND: lambda x: f"second({x[0]})",
+    FunctionType.MINUTE: lambda x: f"minute({x[0]})",
+    FunctionType.HOUR: lambda x: f"hour({x[0]})",
+    FunctionType.DAY: lambda x: f"day({x[0]})",
+    FunctionType.MONTH: lambda x: f"month({x[0]})",
+    FunctionType.YEAR: lambda x: f"year({x[0]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
