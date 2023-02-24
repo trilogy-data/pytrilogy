@@ -31,7 +31,7 @@ DUCKDB_TEMPLATE = Template(
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 SELECT
-{%- if limit %}
+{%- if limit is not none %}
 TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}

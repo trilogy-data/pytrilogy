@@ -1,7 +1,4 @@
-from typing import List
-
-from preql.core.models import CTE
-from preql.core.models import Join, OrderItem
+from preql.core.models import Join
 
 
 def render_join(join: Join, quote_character: str = '"') -> str:

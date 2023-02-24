@@ -32,11 +32,11 @@ class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    grain: "Grain" = Field(default=None)
     metadata: Optional[Metadata] = None
     lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: str = ""
     keys: Optional[List["Concept"]] = None
+    grain: "Grain" = Field(default=None)
 
     @validator("lineage")
     def lineage_validator(cls, v):
@@ -439,6 +439,7 @@ class Grain(BaseModel):
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
 
     def with_namespace(self, namespace: str) -> "Grain":
+
         return Grain(
             components=[c.with_namespace(namespace) for c in self.components],
             nested=self.nested,
@@ -527,7 +528,6 @@ class Datasource:
             self.namespace = ""
 
     def with_namespace(self, namespace: str):
-
         return Datasource(
             identifier=self.identifier,
             namespace=namespace,

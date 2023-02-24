@@ -194,7 +194,8 @@ def process_query(
         joinkeys = [
             JoinKey(c)
             for c in statement.grain.components
-            if c.with_grain(statement.grain) in cte.output_columns
+            if c.with_grain(cte.grain) in cte.output_columns
+            and cte.grain.issubset(statement.grain)
         ]
         if joinkeys:
             joins.append(

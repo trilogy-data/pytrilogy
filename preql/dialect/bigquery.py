@@ -47,7 +47,7 @@ GROUP BY {% for group in group_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}
 {% endfor %}{% endif %}
-{%- if limit %}
+{%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}
 """
 )

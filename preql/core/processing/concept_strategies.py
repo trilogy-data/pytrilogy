@@ -82,15 +82,26 @@ def get_datasource_from_property_lookup(
     If the datasource is a component of the grain, assume we can
     join it in the final query to the grain level"""
     all_concepts = concept_to_inputs(concept)
-    for datasource in environment.datasources.values():
-        # whole grain determins
-        # if we can get a partial grain match
-        # such as joining through a table with a PK to get properties
-        # sometimes we need a source with all grain keys, in which case we
-        # force this not to match
-        if datasource.grain.issubset(grain) and (
-            datasource.grain == grain or not whole_grain
-        ):
+    if whole_grain:
+        valid_matches = ["all"]
+    else:
+        valid_matches = ["all", "partial"]
+    for strategy in valid_matches:
+        for datasource in environment.datasources.values():
+            # whole grain determines
+            # if we can get a partial grain match
+            # such as joining through a table with a PK to get properties
+            # sometimes we need a source with all grain keys, in which case we
+            # force this not to match
+
+            if strategy == "partial":
+                if not datasource.grain.issubset(grain):
+                    continue
+            else:
+                # either an exact match
+                # or it's a key on the table
+                if not datasource.grain == grain:
+                    continue
             all_found = True
             for req_concept in all_concepts:
                 try:
@@ -106,17 +117,25 @@ def get_datasource_from_property_lookup(
                     all_found = False
                     break
             if all_found:
-                logger.debug(f"Can satisfy query from property lookup for {concept}")
-                if whole_grain:
-                    outputs = datasource.grain.components
-                    filters = [concept]
-                else:
-                    outputs = [concept] + datasource.grain.components
-                    filters = []
+                logger.debug(
+                    f"Can satisfy query from property lookup for {concept} using {datasource.identifier}"
+                )
+                outputs = [concept] + datasource.grain.components
+
+                # also pull through any grain component that might exist
+                # to facilitate future joins
+                for concept in grain.components:
+                    if (
+                        concept.with_grain(datasource.grain)
+                        in datasource.output_concepts
+                    ):
+                        outputs.append(concept)
+                outputs = unique(outputs, "address")
+                filters: List[Concept] = []
                 return QueryDatasource(
                     input_concepts=all_concepts + datasource.grain.components,
                     output_concepts=outputs,
-                    source_map={concept.name: {datasource} for concept in all_concepts},
+                    source_map={concept.name: {datasource} for concept in outputs},
                     datasources=[datasource],
                     grain=datasource.grain,
                     joins=[],
@@ -163,12 +182,8 @@ def get_datasource_from_group_select(
             logger.debug(
                 f"got {datasource.identifier} for {concept} from grouped select"
             )
-            if whole_grain:
-                outputs = grain.components
-                filters = [concept]
-            else:
-                outputs = [concept] + grain.components
-                filters = []
+            outputs = [concept] + grain.components
+            filters: List[Concept] = []
             return QueryDatasource(
                 input_concepts=all_concepts,
                 output_concepts=outputs,
