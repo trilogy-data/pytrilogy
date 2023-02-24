@@ -3,6 +3,7 @@ from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
+from pytest import raises
 
 
 def test_functions(test_environment):
@@ -38,4 +39,37 @@ select
     select: Select = parsed[-1]
 
     x = BaseDialect().compile_statement(process_query(test_environment, select))
-    print(x)
+
+
+def test_date_functions(test_environment):
+    declarations = """
+
+    select
+        order_id,
+        date(order_timestamp) -> order_date,
+        timestamp(order_timestamp) -> order_timestamp_2,
+        second(order_timestamp) -> order_second,
+        minute(order_timestamp) -> order_minute,
+        hour(order_timestamp) -> order_hour,
+        day(order_timestamp) -> order_day,
+        month(order_timestamp) -> order_month,
+        year(order_timestamp) -> order_year,
+    ;
+    
+    
+        """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    x = BaseDialect().compile_statement(process_query(test_environment, select))
+
+
+def test_bad_cast(test_environment):
+    declarations = """
+
+    select
+        order_id,
+        date(order_id) -> order_date,
+    ;"""
+    with raises(TypeError):
+        env, parsed = parse(declarations, environment=test_environment)

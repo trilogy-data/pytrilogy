@@ -211,7 +211,7 @@ class Function:
     arguments: List[Concept]
     output_datatype: DataType
     output_purpose: Purpose
-    valid_inputs: Optional[Set[DataType]] = None
+    valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
     arg_count: int = field(default=1)
 
     def __post_init__(self):
@@ -226,6 +226,19 @@ class Function:
             if isinstance(arg, Function):
                 raise ParseError(
                     f"Anonymous function calls not allowed; map function to a concept, then pass in. {arg.operator.name} being passed into {self.operator.name}"
+                )
+        valid_inputs = self.valid_inputs
+        # if all arguments need to be the same type
+        # turn this into an array for validation
+        if isinstance(valid_inputs, set):
+            valid_inputs = [valid_inputs for _ in self.arguments]
+        elif not valid_inputs:
+            return
+        for idx, arg in enumerate(self.arguments):
+
+            if not arg.datatype in valid_inputs[idx]:
+                raise TypeError(
+                    f"Invalid input datatype {arg.datatype} passed into {self.operator.name} from concept {arg.name}"
                 )
 
     def with_namespace(self, namespace: str) -> "Function":
