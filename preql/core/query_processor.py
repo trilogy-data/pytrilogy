@@ -129,18 +129,29 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     return output
 
 
+def get_disconnected_components(concept_map: Dict[str, List[Concept]]):
+    """Find if any of the datasources are not linked"""
+    import networkx as nx
+
+    graph = nx.Graph()
+    for datasource, concepts in concept_map.items():
+        graph.add_node(datasource)
+        for concept in concepts:
+            graph.add_edge(datasource, concept.address)
+    sub_graphs = list(nx.connected_components(graph))
+    return len(sub_graphs)
+
+
 def get_query_datasources(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
 ) -> Tuple[Dict[str, List[Concept]], Dict[str, QueryDatasource]]:
-    concept_map: Dict = defaultdict(list)
+    concept_map: Dict[str, List[Concept]] = defaultdict(list)
     graph = graph or generate_graph(environment)
-    datasource_map: Dict = {}
+    datasource_map: Dict[str, QueryDatasource] = {}
     if statement.where_clause:
         # TODO: figure out right place to group to do predicate pushdown
         statement.grain.components += statement.where_clause.input
 
-    # we don't actually use whole_grain latest filter design
-    # but retain this to enable improved predicate pushdown in the future
     components = {False: statement.output_components + statement.grain.components}
 
     for key, concept_list in components.items():
@@ -158,6 +169,28 @@ def get_query_datasources(
                 )
             else:
                 datasource_map[datasource.identifier] = datasource
+    disconnected = get_disconnected_components(concept_map)
+    # if not all datasources can ultimately be merged
+    if disconnected > 1:
+        components = {True: statement.output_components + statement.grain.components}
+        for key, concept_list in components.items():
+            for concept in concept_list:
+                datasource = get_datasource_by_concept_and_grain(
+                    concept, statement.grain, environment, graph, whole_grain=key
+                )
+
+                if concept not in concept_map[datasource.identifier]:
+                    concept_map[datasource.identifier].append(concept)
+                if datasource.identifier in datasource_map:
+                    # concatenate to add new fields
+                    datasource_map[datasource.identifier] = (
+                        datasource_map[datasource.identifier] + datasource
+                    )
+                else:
+                    datasource_map[datasource.identifier] = datasource
+            # when we have a unified graph, break the execution
+            if get_disconnected_components(concept_map) == 1:
+                break
     return concept_map, datasource_map
 
 
