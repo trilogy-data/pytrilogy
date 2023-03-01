@@ -275,7 +275,7 @@ class ConceptTransform:
 
     @property
     def input(self) -> List[Concept]:
-        return self.function.arguments
+        return [v for v in self.function.arguments if isinstance(v, Concept)]
 
 
 @dataclass
