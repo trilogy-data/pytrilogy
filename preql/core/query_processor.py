@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Union
 
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
@@ -12,6 +12,7 @@ from preql.core.models import (
     JoinKey,
     ProcessedQuery,
     QueryDatasource,
+    Datasource,
     Concept,
     JoinType,
     BaseJoin,
@@ -144,10 +145,10 @@ def get_disconnected_components(concept_map: Dict[str, List[Concept]]):
 
 def get_query_datasources(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
-) -> Tuple[Dict[str, List[Concept]], Dict[str, QueryDatasource]]:
+) -> Tuple[Dict[str, List[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
     concept_map: Dict[str, List[Concept]] = defaultdict(list)
     graph = graph or generate_graph(environment)
-    datasource_map: Dict[str, QueryDatasource] = {}
+    datasource_map: Dict[str, Union[Datasource, QueryDatasource]] = {}
     if statement.where_clause:
         # TODO: figure out right place to group to do predicate pushdown
         statement.grain.components += statement.where_clause.input
@@ -207,6 +208,8 @@ def process_query(
     ctes = []
     joins = []
     for datasource in datasources.values():
+        if isinstance(datasource, Datasource):
+            raise ValueError("Unexpected base datasource")
         ctes += datasource_to_ctes(datasource)
 
     final_ctes = merge_ctes(ctes)

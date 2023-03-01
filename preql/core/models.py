@@ -519,6 +519,11 @@ class Datasource:
     grain: Grain = field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
 
+    def __add__(self, other):
+        if not other == self:
+            raise ValueError
+        return self
+
     def __str__(self):
         return f"{self.namespace}.{self.identifier}@<{self.grain}>"
 

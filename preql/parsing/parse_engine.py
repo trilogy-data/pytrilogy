@@ -195,6 +195,18 @@ grammar = r"""
 PARSER = Lark(grammar, start="start", propagate_positions=True)
 
 
+def parse_concept_reference(
+    name: str, environment: Environment
+) -> Tuple[str, str, str]:
+    if "." in name:
+        namespace, name = name.rsplit(".", 1)
+        lookup = f"{namespace}.{name}"
+    else:
+        namespace = environment.namespace or "default"
+        lookup = name
+    return lookup, namespace, name
+
+
 class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
         Transformer.__init__(self, visit_tokens)
@@ -294,7 +306,8 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        existing = self.environment.concepts.get(name)
+        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        existing = self.environment.concepts.get(lookup)
         if existing:
             raise ParseError(
                 f"Concept {name} on line {meta.line} is a duplicate declaration"
@@ -304,9 +317,9 @@ class ParseToObjects(Transformer):
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
-            namespace=self.environment.namespace,
+            namespace=namespace,
         )
-        self.environment.concepts[name] = concept
+        self.environment.concepts[lookup] = concept
         return args
 
     @v_args(meta=True)
@@ -316,7 +329,10 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        existing = self.environment.concepts.get(name)
+
+        lookup, namespace, name = parse_concept_reference(name, self.environment)
+
+        existing = self.environment.concepts.get(lookup)
         if existing:
             raise ParseError(
                 f"Concept {name} on line {meta.line} is a duplicate declaration"
@@ -330,9 +346,9 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
                 lineage=window_item,
                 # grain=function.output_grain,
-                namespace=self.environment.namespace,
+                namespace=namespace,
             )
-            self.environment.concepts[name] = concept
+            self.environment.concepts[lookup] = concept
             return args
         else:
             function: Function = args[2]
@@ -343,9 +359,9 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
                 lineage=function,
                 # grain=function.output_grain,
-                namespace=self.environment.namespace,
+                namespace=namespace,
             )
-            self.environment.concepts[name] = concept
+            self.environment.concepts[lookup] = concept
             return args
 
     @v_args(meta=True)
@@ -403,14 +419,9 @@ class ParseToObjects(Transformer):
         function: Function = args[0]
         output: str = args[1]
 
-        if "." in output:
-            namespace, output = output.split(".", 1)
-            lookup = f"{namespace}.{output}"
-        else:
-            namespace = self.environment.namespace or "default"
-            lookup = output
+        lookup, namespace, output = parse_concept_reference(output, self.environment)
+        existing = self.environment.concepts.get(lookup)
 
-        existing = self.environment.concepts.get(output)
         if existing:
             raise ParseError(
                 f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept"
