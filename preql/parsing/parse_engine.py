@@ -195,7 +195,9 @@ grammar = r"""
 PARSER = Lark(grammar, start="start", propagate_positions=True)
 
 
-def parse_concept_reference(name:str, environment:Environment)->Tuple[str, str, str]:
+def parse_concept_reference(
+    name: str, environment: Environment
+) -> Tuple[str, str, str]:
     if "." in name:
         namespace, name = name.rsplit(".", 1)
         lookup = f"{namespace}.{name}"
@@ -203,6 +205,7 @@ def parse_concept_reference(name:str, environment:Environment)->Tuple[str, str, 
         namespace = environment.namespace or "default"
         lookup = name
     return lookup, namespace, name
+
 
 class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
@@ -327,9 +330,7 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
 
-
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-
 
         existing = self.environment.concepts.get(lookup)
         if existing:
