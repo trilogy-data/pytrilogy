@@ -59,6 +59,9 @@ class WindowOrder(Enum):
 
 
 class FunctionType(Enum):
+    # Generic
+    CAST = "cast"
+
     # Aggregates
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"

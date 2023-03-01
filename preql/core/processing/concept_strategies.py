@@ -291,6 +291,8 @@ def get_datasource_from_complex_lineage(
             "Attempting to get complex lineage from non-function declaration"
         )
     for sub_concept in concept.lineage.arguments:
+        if not isinstance(sub_concept, Concept):
+            continue
         # if aggregate of aggregate
         if sub_concept.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.WINDOW):
             complex_lineage_flag = True
