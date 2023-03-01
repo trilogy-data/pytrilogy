@@ -73,3 +73,13 @@ def test_bad_cast(test_environment):
     ;"""
     with raises(TypeError):
         env, parsed = parse(declarations, environment=test_environment)
+
+
+def test_explicit_cast(test_environment):
+    declarations = """
+    property _str_order_id <- cast(order_id as string);
+    select
+        order_id,
+        _str_order_id
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)

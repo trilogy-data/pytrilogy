@@ -131,31 +131,36 @@ grammar = r"""
     
     in_comparison: expr "in" expr_tuple
     
-    expr: count | count_distinct | max | min | avg | sum | len | like | concat | _date_functions | in_comparison | comparison | literal | window_item | expr_reference
+    expr: fcast | count | count_distinct | max | min | avg | sum | len | like | concat | _date_functions | in_comparison | comparison | literal | window_item | expr_reference
     
     // functions
-    count: "count" "(" expr ")"
-    count_distinct: "count_distinct" "(" expr ")"
-    sum: "sum" "(" expr ")"
-    avg: "avg" "(" expr ")"
-    max: "max" "(" expr ")"
-    min: "min" "(" expr ")"
-    len: "len" "(" expr ")"
+    
+    //generic
+    fcast: "cast"i "(" expr "AS"i TYPE ")"
+    
+    //aggregates
+    count: "count"i "(" expr ")"
+    count_distinct: "count_distinct"i "(" expr ")"
+    sum: "sum"i "(" expr ")"
+    avg: "avg"i "(" expr ")"
+    max: "max"i "(" expr ")"
+    min: "min"i "(" expr ")"
+    len: "len"i "(" expr ")"
     like: "like"i "(" expr "," _string_lit ")"
     concat: "concat"i "(" (expr ",")* expr ")"
     
     // date functions
-    fdate: "date" "(" expr ")"
-    fdatetime: "datetime" "(" expr ")"
-    ftimestamp: "timestamp" "(" expr ")"
+    fdate: "date"i "(" expr ")"
+    fdatetime: "datetime"i "(" expr ")"
+    ftimestamp: "timestamp"i "(" expr ")"
     
-    fsecond: "second" "(" expr ")"
-    fminute: "minute" "(" expr ")"
-    fhour: "hour" "(" expr ")"
-    fday: "day" "(" expr ")"
-    fweek: "week" "(" expr ")"
-    fmonth: "month" "(" expr ")"
-    fyear: "year" "(" expr ")"
+    fsecond: "second"i "(" expr ")"
+    fminute: "minute"i "(" expr ")"
+    fhour: "hour"i "(" expr ")"
+    fday: "day"i "(" expr ")"
+    fweek: "week"i "(" expr ")"
+    fmonth: "month"i "(" expr ")"
+    fyear: "year"i "(" expr ")"
     
     _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fyear
     
@@ -180,7 +185,7 @@ grammar = r"""
 
     MODIFIER: "Optional"i | "Partial"i
     
-    TYPE : "string" | "number" | "bool" | "map" | "list" | "any" | "int" | "date" | "datetime" | "timestamp" | "float"
+    TYPE : "string"i | "number"i | "bool"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i
     
     PURPOSE:  "key" | "metric"
     PROPERTY: "property"
@@ -235,7 +240,7 @@ class ParseToObjects(Transformer):
         return bool(args)
 
     def TYPE(self, args) -> DataType:
-        return DataType(args)
+        return DataType(args.lower())
 
     def COMPARISON_OPERATOR(self, args) -> ComparisonOperator:
         return ComparisonOperator(args)
@@ -686,7 +691,7 @@ class ParseToObjects(Transformer):
         return Function(
             operator=FunctionType.CONCAT,
             arguments=args,
-            output_datatype=args[0].datatype,
+            output_datatype=DataType.STRING,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
             arg_count=99
@@ -813,6 +818,24 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=1,
+        )
+
+    # utility functions
+    def fcast(self, args):
+        input_concept: Concept = args[0]
+        output_datatype = args[1]
+        return Function(
+            operator=FunctionType.CAST,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=input_concept.purpose,
+            valid_inputs={
+                DataType.INTEGER,
+                DataType.STRING,
+                DataType.FLOAT,
+                DataType.NUMBER,
+            },
+            arg_count=2,
         )
 
 

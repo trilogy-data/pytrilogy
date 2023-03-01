@@ -41,7 +41,7 @@ class Concept(BaseModel):
     @validator("lineage")
     def lineage_validator(cls, v):
         if v and not isinstance(v, (Function, WindowItem)):
-            raise ValueError
+            raise ValueError(v)
         return v
 
     @validator("metadata")
@@ -137,7 +137,8 @@ class Concept(BaseModel):
                 components = self.keys
             if self.lineage:
                 for item in self.lineage.arguments:
-                    components += item.sources
+                    if isinstance(item, Concept):
+                        components += item.sources
             grain = Grain(components=components)
         else:
             grain = self.grain  # type: ignore
@@ -156,10 +157,10 @@ class Concept(BaseModel):
     def sources(self) -> List["Concept"]:
         if self.lineage:
             output = []
-            output += self.lineage.arguments
-            # recursively get further lineage
             for item in self.lineage.arguments:
-                output += item.sources
+                if isinstance(item, Concept):
+                    output.append(item)
+                    output += item.sources
             return output
         return []
 
@@ -208,7 +209,7 @@ class Statement:
 @dataclass(eq=True, frozen=True)
 class Function:
     operator: FunctionType
-    arguments: List[Concept]
+    arguments: List[Union[Concept, str, float, int, DataType]]
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
@@ -236,15 +237,31 @@ class Function:
             return
         for idx, arg in enumerate(self.arguments):
 
-            if not arg.datatype in valid_inputs[idx]:
+            if isinstance(arg, Concept) and not arg.datatype in valid_inputs[idx]:
                 raise TypeError(
                     f"Invalid input datatype {arg.datatype} passed into {self.operator.name} from concept {arg.name}"
                 )
 
+            for ptype, dtype in [
+                [str, DataType.STRING],
+                [int, DataType.INTEGER],
+                [float, DataType.FLOAT],
+            ]:
+                if isinstance(arg, ptype) and dtype in valid_inputs[idx]:
+                    # attempt to exit early to avoid checking all types
+                    break
+                elif isinstance(arg, ptype):
+                    raise TypeError(
+                        f"Invalid {dtype} constant passed into {self.operator.name} {arg}"
+                    )
+
     def with_namespace(self, namespace: str) -> "Function":
         return Function(
             operator=self.operator,
-            arguments=[c.with_namespace(namespace) for c in self.arguments],
+            arguments=[
+                c.with_namespace(namespace) if isinstance(c, Concept) else c
+                for c in self.arguments
+            ],
             output_datatype=self.output_datatype,
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,

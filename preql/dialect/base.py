@@ -4,7 +4,7 @@ from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
 from preql.core.hooks import BaseProcessingHook
-from preql.core.enums import Purpose
+from preql.core.enums import Purpose, DataType
 from preql.core.models import (
     Concept,
     CTE,
@@ -28,7 +28,17 @@ WINDOW_FUNCTION_MAP = {
     WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order})"
 }
 
+DATATYPE_MAP = {
+    DataType.STRING: "string",
+    DataType.INTEGER: "int",
+    DataType.FLOAT: "float",
+    DataType.BOOL: "bool",
+}
+
 FUNCTION_MAP = {
+    # generic types
+    FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
+    # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
     FunctionType.SUM: lambda x: f"sum({x[0]})",
@@ -48,6 +58,8 @@ FUNCTION_MAP = {
     FunctionType.DAY: lambda x: f"day({x[0]})",
     FunctionType.MONTH: lambda x: f"month({x[0]})",
     FunctionType.YEAR: lambda x: f"year({x[0]})",
+    # string types
+    FunctionType.CONCAT: lambda x: f"concat({','.join(x)})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -91,6 +103,8 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
     if not c.lineage:
         return True
     for sub_c in c.lineage.arguments:
+        if not isinstance(sub_c, Concept):
+            continue
         if sub_c.address in cte.source_map or (
             sub_c.lineage and check_lineage(sub_c, cte)
         ):
@@ -113,6 +127,7 @@ class BaseDialect:
     FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = GENERIC_SQL_TEMPLATE
+    DATATYPE_MAP = DATATYPE_MAP
 
     def render_order_item(self, order_item: OrderItem, ctes: List[CTE]) -> str:
         matched_ctes = [
@@ -126,6 +141,14 @@ class BaseDialect:
         return (
             f"{selected.name}.{order_item.expr.safe_address} {order_item.order.value}"
         )
+
+    def render_literal(self, v) -> str:
+        if isinstance(v, str):
+            return f"'{v}'"
+        elif isinstance(v, DataType):
+            return DATATYPE_MAP.get(v, "UNMAPPEDDTYPE")
+        else:
+            return v
 
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
@@ -146,6 +169,8 @@ class BaseDialect:
             else:
                 args = [
                     self.render_concept_sql(v, cte, alias=False)
+                    if isinstance(v, Concept)
+                    else self.render_literal(v)
                     for v in c.lineage.arguments
                 ]
                 if cte.group_to_grain:
