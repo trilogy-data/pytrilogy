@@ -316,7 +316,15 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        existing = self.environment.concepts.get(name)
+
+        if "." in name:
+            namespace, name = name.rsplit(".", 1)
+            lookup = f"{namespace}.{name}"
+        else:
+            namespace = self.environment.namespace or "default"
+            lookup = name
+
+        existing = self.environment.concepts.get(lookup)
         if existing:
             raise ParseError(
                 f"Concept {name} on line {meta.line} is a duplicate declaration"
@@ -330,9 +338,9 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
                 lineage=window_item,
                 # grain=function.output_grain,
-                namespace=self.environment.namespace,
+                namespace=namespace,
             )
-            self.environment.concepts[name] = concept
+            self.environment.concepts[lookup] = concept
             return args
         else:
             function: Function = args[2]
@@ -343,9 +351,9 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
                 lineage=function,
                 # grain=function.output_grain,
-                namespace=self.environment.namespace,
+                namespace=namespace,
             )
-            self.environment.concepts[name] = concept
+            self.environment.concepts[lookup] = concept
             return args
 
     @v_args(meta=True)
@@ -404,7 +412,7 @@ class ParseToObjects(Transformer):
         output: str = args[1]
 
         if "." in output:
-            namespace, output = output.split(".", 1)
+            namespace, output = output.rsplit(".", 1)
             lookup = f"{namespace}.{output}"
         else:
             namespace = self.environment.namespace or "default"
