@@ -1,5 +1,10 @@
+from typing import List
+
 class UndefinedConceptException(Exception):
-    pass
+
+    def __init__(self, message, suggestions: List[str]):
+        super().__init__(self, message)
+        self.suggestions = suggestions
 
 
 class InvalidSyntaxException(Exception):
