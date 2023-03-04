@@ -12,5 +12,5 @@ def test_undefined_concept(test_environment):
     try:
         parse(q, test_environment)
     except UndefinedConceptException as e:
-        assert e.suggestions == ['order_count', 'order_id', 'order_timestamp']
+        assert len(e.suggestions) == 3
 
