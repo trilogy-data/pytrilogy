@@ -1,18 +1,19 @@
-from typing import Mapping, Callable, Any
-
 from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
 
-WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
+WINDOW_FUNCTION_MAP = {
+    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order})"
+}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x: f"count({x[0]})",
     FunctionType.SUM: lambda x: f"sum({x[0]})",
     FunctionType.LENGTH: lambda x: f"length({x[0]})",
     FunctionType.AVG: lambda x: f"avg({x[0]})",
-    FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN True ELSE False END",
+    FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
+    FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     FunctionType.MINUTE: lambda x: f"EXTRACT(MINUTE from {x[0]})",
     FunctionType.SECOND: lambda x: f"EXTRACT(SECOND from {x[0]})",
     FunctionType.HOUR: lambda x: f"EXTRACT(HOUR from {x[0]})",
