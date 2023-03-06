@@ -165,7 +165,7 @@ class BaseDialect:
                     self.render_concept_sql(x.expr, cte, alias=False)
                     for x in c.lineage.order_by
                 ]
-                rval = f"{WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(rendered_components), order = 'desc')}"
+                rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(rendered_components), order = 'desc')}"
             else:
                 args = [
                     self.render_concept_sql(v, cte, alias=False)
@@ -174,9 +174,9 @@ class BaseDialect:
                     for v in c.lineage.arguments
                 ]
                 if cte.group_to_grain:
-                    rval = f"{FUNCTION_MAP[c.lineage.operator](args)}"
+                    rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
                 else:
-                    rval = f"{FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:
             rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
@@ -198,10 +198,10 @@ class BaseDialect:
             return f"{self.render_expr(e.left, cte=cte)} {e.operator.value} {self.render_expr(e.right, cte=cte)}"
         elif isinstance(e, Function):
             if cte and cte.group_to_grain:
-                return FUNCTION_MAP[e.operator](
+                return self.FUNCTION_MAP[e.operator](
                     [self.render_expr(z, cte=cte) for z in e.arguments]
                 )
-            return FUNCTION_GRAIN_MATCH_MAP[e.operator](
+            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](
                 [self.render_expr(z, cte=cte) for z in e.arguments]
             )
         elif isinstance(e, Concept):

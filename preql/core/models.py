@@ -272,6 +272,7 @@ class Function:
 class ConceptTransform:
     function: Function
     output: Concept
+    modifiers: List[Modifier] = field(default_factory=list)
 
     @property
     def input(self) -> List[Concept]:
@@ -333,6 +334,7 @@ class WindowItem(BaseModel):
 @dataclass(eq=True)
 class SelectItem:
     content: Union[Concept, ConceptTransform]
+    modifiers: List[Modifier] = field(default_factory=list)
 
     @property
     def output(self) -> Concept:
@@ -408,7 +410,8 @@ class Select:
     def output_components(self) -> List[Concept]:
         output = []
         for item in self.selection:
-            output.append(item.output)
+            if not Modifier.HIDDEN in item.modifiers:
+                output.append(item.output)
         return output
 
     @property
