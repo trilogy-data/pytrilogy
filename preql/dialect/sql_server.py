@@ -1,3 +1,5 @@
+from preql.dialect.base import BaseDialect
+
 from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType

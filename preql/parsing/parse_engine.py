@@ -2,6 +2,7 @@ from os.path import join, dirname
 from typing import Tuple, List, Optional
 
 from lark import Lark, Transformer, v_args
+from lark.tree import Meta
 from lark.exceptions import (
     VisitError,
     UnexpectedCharacters,
@@ -9,10 +10,8 @@ from lark.exceptions import (
     UnexpectedInput,
     UnexpectedToken,
 )
-from lark.tree import Meta
-from pydantic import ValidationError
+from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 
-from preql.constants import DEFAULT_NAMESPACE
 from preql.core.enums import (
     Purpose,
     DataType,
@@ -20,10 +19,9 @@ from preql.core.enums import (
     Ordering,
     FunctionType,
     ComparisonOperator,
-    BooleanOperator,
+    LogicalOperator,
     WindowOrder,
 )
-from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.core.models import (
     WhereClause,
     Comparison,
@@ -45,24 +43,20 @@ from preql.core.models import (
     Metadata,
     Window,
     WindowItem,
-    WindowItemOver,
-    WindowItemOrder,
-    FilterItem,
     Query,
 )
 from preql.parsing.exceptions import ParseError
 
 grammar = r"""
-    !start: ( block | comment )*
-    block: statement _TERMINATOR comment?
+    !start: ((statement _TERMINATOR) | comment )*
     ?statement: concept
     | datasource
     | select
     | import_statement
     
-    _TERMINATOR:  ";"i /\s*/
+    _TERMINATOR :  ";"i /\s*/
     
-    comment:   /#.*(\n|$)/ |  /\/\/.*\n/  
+    comment :   /#.*(\n|$)/ |  /\/\/.*\n/  
     
     // property display_name string
     concept_declaration: PURPOSE IDENTIFIER TYPE metadata?
@@ -70,10 +64,10 @@ grammar = r"""
     concept_property_declaration: PROPERTY IDENTIFIER TYPE metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | PROPERTY) IDENTIFIER "<" "-" expr
-    concept:  concept_declaration | concept_derivation | concept_property_declaration
+    concept :  concept_declaration | concept_derivation | concept_property_declaration
     
     // datasource concepts
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
+    datasource : "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
     
     grain_clause: "grain" "(" column_list ")"
     
@@ -83,35 +77,28 @@ grammar = r"""
     
     concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" )
     
-    column_assignment: (IDENTIFIER ":" concept_assignment) 
+    column_assignment : (IDENTIFIER ":" concept_assignment) 
     
     column_assignment_list : (column_assignment "," )* column_assignment ","?
     
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
     
-    import_statement: "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
+    import_statement : "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
     
     // select statement
-    select: "select"i select_list  where? comment* order_by? comment* limit? comment*
-    
-    // user_id where state = Mexico
-    filter_item: "filter"i IDENTIFIER where
+    select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
     // top 5 user_id
-    window_item: "rank"i (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
+    window_item: "rank" (IDENTIFIER | select_transform | comment+ )  ("BY"i order_list)?
     
-    window_item_over: ("OVER"i over_list)
+    select_item : (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
     
-    window_item_order: ("BY"i order_list)
-    
-    select_item: (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
-    
-    select_list:  ( select_item "," )* select_item ","?
+    select_list :  ( select_item "," )* select_item ","?
     
     //  count(post_id) -> post_count
     select_transform : expr "-" ">" IDENTIFIER metadata?
     
-    metadata: "metadata" "(" IDENTIFIER "=" _string_lit ")"
+    metadata : "metadata" "(" IDENTIFIER "=" _string_lit ")"
     
     limit: "LIMIT"i /[0-9]+/
     
@@ -121,9 +108,7 @@ grammar = r"""
     
     window_order_by: "BY"i column_list
     
-    order_list: (expr ORDERING "," )* expr ORDERING ","?
-    
-    over_list: (IDENTIFIER "," )* IDENTIFIER ","?
+    order_list : (expr ORDERING "," )* expr ORDERING ","?
     
     ORDERING: ("ASC"i | "DESC"i)
     
@@ -135,34 +120,23 @@ grammar = r"""
     
     conditional: expr LOGICAL_OPERATOR (conditional | expr)
     
-    where: "WHERE"i (expr | conditional)
+    where: "WHERE"i (expr | conditional+ )
     
     expr_reference: IDENTIFIER
     
-    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" | "is"i | "in"i )
-    
+    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!="  )
     comparison: expr COMPARISON_OPERATOR expr
     
     expr_tuple: "("  (expr ",")* expr ","?  ")"
     
     in_comparison: expr "in" expr_tuple
     
-    expr: window_item | filter_item | fcast | _aggregate_functions | len | _string_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference
+    expr: fcast | count | count_distinct | max | min | avg | sum | len | like | concat | _date_functions | in_comparison | comparison | literal | window_item | expr_reference
     
     // functions
     
     //generic
     fcast: "cast"i "(" expr "AS"i TYPE ")"
-    concat: "concat"i "(" (expr ",")* expr ")"
-    len: "len"i "(" expr ")"
-    
-    //string
-    like: "like"i "(" expr "," _string_lit ")"
-    ilike: "ilike"i "(" expr "," _string_lit ")"
-    upper: "upper"i "(" expr ")"
-    lower: "lower"i "(" expr ")"    
-    
-    _string_functions: like | ilike | upper | lower
     
     //aggregates
     count: "count"i "(" expr ")"
@@ -171,9 +145,9 @@ grammar = r"""
     avg: "avg"i "(" expr ")"
     max: "max"i "(" expr ")"
     min: "min"i "(" expr ")"
-    
-    _aggregate_functions: count | count_distinct | sum | avg | max | min
-
+    len: "len"i "(" expr ")"
+    like: "like"i "(" expr "," _string_lit ")"
+    concat: "concat"i "(" (expr ",")* expr ")"
     
     // date functions
     fdate: "date"i "(" expr ")"
@@ -188,9 +162,7 @@ grammar = r"""
     fmonth: "month"i "(" expr ")"
     fyear: "year"i "(" expr ")"
     
-    fdate_part: "date_part"i "(" expr ")"
-    
-    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fyear | fdate_part
+    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fyear
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -207,16 +179,18 @@ grammar = r"""
     
     float_lit: /[0-9]+\.[0-9]+/
     
-    !bool_lit: "True"i | "False"i
+    bool_lit: "True" | "False"
     
     literal: _string_lit | int_lit | float_lit | bool_lit
 
     MODIFIER: "Optional"i | "Partial"i
     
-    TYPE: "string"i | "number"i | "bool"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i
+    TYPE : "string"i | "number"i | "bool"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i
     
     PURPOSE:  "key" | "metric"
     PROPERTY: "property"
+    
+
 
     %import common.WS_INLINE -> _WHITESPACE
     %import common.WS
@@ -233,7 +207,7 @@ def parse_concept_reference(
         namespace, name = name.rsplit(".", 1)
         lookup = f"{namespace}.{name}"
     else:
-        namespace = environment.namespace or DEFAULT_NAMESPACE
+        namespace = environment.namespace or "default"
         lookup = name
     return lookup, namespace, name
 
@@ -244,28 +218,11 @@ class ParseToObjects(Transformer):
         self.text = text
         self.environment = environment
 
-    def validate_concept(self, lookup: str, meta: Meta):
-        existing = self.environment.concepts.get(lookup)
-        if existing:
-            raise ParseError(
-                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
-            )
-
     def start(self, args):
         return args
 
-    def block(self, args):
-        output = args[0]
-        if isinstance(output, Concept):
-            if len(args) > 1 and isinstance(args[1], Comment):
-                output.metadata.description = (
-                    output.metadata.description or args[1].text.split("#")[1].strip()
-                )
-        return args[0]
-
     def metadata(self, args):
-        pairs = {key: val for key, val in zip(args[::2], args[1::2])}
-        return Metadata(**pairs)
+        return Metadata()
 
     def IDENTIFIER(self, args) -> str:
         return args.value
@@ -279,14 +236,17 @@ class ParseToObjects(Transformer):
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
 
+    def BOOLEAN_LIT(self, args) -> bool:
+        return bool(args)
+
     def TYPE(self, args) -> DataType:
         return DataType(args.lower())
 
     def COMPARISON_OPERATOR(self, args) -> ComparisonOperator:
         return ComparisonOperator(args)
 
-    def LOGICAL_OPERATOR(self, args) -> BooleanOperator:
-        return BooleanOperator(args.lower())
+    def LOGICAL_OPERATOR(self, args) -> LogicalOperator:
+        return LogicalOperator(args.lower())
 
     def concept_assignment(self, args):
         return args
@@ -326,7 +286,11 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         grain, name = args[1].rsplit(".", 1)
-        self.validate_concept(name, meta)
+        existing = self.environment.concepts.get(name)
+        if existing:
+            raise ParseError(
+                f"Concept {name} on line {meta.line} is a duplicate declaration"
+            )
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -337,7 +301,7 @@ class ParseToObjects(Transformer):
             keys=[self.environment.concepts[grain]],
         )
         self.environment.concepts[name] = concept
-        return concept
+        return args
 
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> Concept:
@@ -348,7 +312,11 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-        self.validate_concept(lookup, meta)
+        existing = self.environment.concepts.get(lookup)
+        if existing:
+            raise ParseError(
+                f"Concept {name} on line {meta.line} is a duplicate declaration"
+            )
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -356,10 +324,8 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             namespace=namespace,
         )
-        if concept.metadata:
-            concept.metadata.line_number = meta.line
         self.environment.concepts[lookup] = concept
-        return concept
+        return args
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> Concept:
@@ -370,23 +336,12 @@ class ParseToObjects(Transformer):
         name = args[1]
 
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-        self.validate_concept(lookup, meta)
-        if isinstance(args[2], FilterItem):
-            filter_item: FilterItem = args[2]
-            concept = Concept(
-                name=name,
-                datatype=filter_item.content.datatype,
-                purpose=args[0],
-                metadata=metadata,
-                lineage=filter_item,
-                # filters are implicitly at the grain of the base item
-                grain=Grain(components=[filter_item.output]),
-                namespace=namespace,
+
+        existing = self.environment.concepts.get(lookup)
+        if existing:
+            raise ParseError(
+                f"Concept {name} on line {meta.line} is a duplicate declaration"
             )
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-            self.environment.concepts[lookup] = concept
-            return concept
         if isinstance(args[2], WindowItem):
             window_item: WindowItem = args[2]
             concept = Concept(
@@ -395,14 +350,11 @@ class ParseToObjects(Transformer):
                 purpose=args[0],
                 metadata=metadata,
                 lineage=window_item,
-                # windows are implicitly at the grain of the group by + the original content
-                grain=Grain(components=window_item.over + [window_item.content.output]),
+                # grain=function.output_grain,
                 namespace=namespace,
             )
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
-            return concept
+            return args
         else:
             function: Function = args[2]
             concept = Concept(
@@ -411,19 +363,14 @@ class ParseToObjects(Transformer):
                 purpose=args[0],
                 metadata=metadata,
                 lineage=function,
-                grain=function.output_grain,
+                # grain=function.output_grain,
                 namespace=namespace,
             )
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
-            return concept
+            return args
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> Concept:
-        concept: Concept = args[0]
-        if concept.metadata:
-            concept.metadata.line_number = meta.line
         return args[0]
 
     def column_assignment_list(self, args):
@@ -478,11 +425,15 @@ class ParseToObjects(Transformer):
         output: str = args[1]
 
         lookup, namespace, output = parse_concept_reference(output, self.environment)
-        self.validate_concept(lookup, meta)
-        # keys are used to pass through derivations
+        existing = self.environment.concepts.get(lookup)
+
+        if existing:
+            raise ParseError(
+                f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept"
+            )
         if function.output_purpose == Purpose.PROPERTY:
             grain = Grain(components=function.arguments)
-            keys = [x for x in function.arguments if isinstance(x, Concept)]
+            keys = function.arguments
         else:
             grain = None
             keys = None
@@ -495,8 +446,6 @@ class ParseToObjects(Transformer):
             grain=grain,
             keys=keys,
         )
-        if concept.metadata:
-            concept.metadata.line_number = meta.line
         # We don't assign it here because we'll do this later when we know the grain
         self.environment.concepts[lookup] = concept
         return ConceptTransform(function=function, output=concept)
@@ -528,13 +477,10 @@ class ParseToObjects(Transformer):
         return Ordering(args)
 
     def order_list(self, args):
-        return [OrderItem(expr=x, order=y) for x, y in zip(args[::2], args[1::2])]
+        return [OrderItem(x, y) for x, y in zip(args[::2], args[1::2])]
 
     def order_by(self, args):
         return OrderBy(items=args[0])
-
-    def over_list(self, args):
-        return [self.environment.concepts[x] for x in args]
 
     def import_statement(self, args):
         alias = args[-1]
@@ -558,7 +504,7 @@ class ParseToObjects(Transformer):
         return None
 
     @v_args(meta=True)
-    def select(self, meta: Meta, args) -> Select:
+    def select(self, meta: Meta, args):
 
         select_items = None
         limit = None
@@ -584,7 +530,6 @@ class ParseToObjects(Transformer):
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_grain(output.grain)
-                self.environment.concepts[new_concept.name] = new_concept
                 item.content.output = new_concept
             elif isinstance(item.content, Concept):
                 new_concept = item.content.with_grain(output.grain)
@@ -594,7 +539,7 @@ class ParseToObjects(Transformer):
                 item.content.output = new_concept
             else:
                 raise ValueError
-
+            self.environment.concepts[new_concept.name] = new_concept
         if order_by:
             for item in order_by.items:
                 if (
@@ -619,7 +564,7 @@ class ParseToObjects(Transformer):
         return int(args[0])
 
     def bool_lit(self, args):
-        return bool(args[0].capitalize())
+        return bool(args[0])
 
     def float_lit(self, args):
         return float(args[0])
@@ -627,18 +572,18 @@ class ParseToObjects(Transformer):
     def literal(self, args):
         return args[0]
 
-    def comparison(self, args) -> Comparison:
-        return Comparison(left=args[0], right=args[2], operator=args[1])
+    def comparison(self, args):
+        return Comparison(args[0], args[2], args[1])
 
     def expr_tuple(self, args):
         return tuple(args)
 
     def in_comparison(self, args):
         # x in (a,b,c)
-        return Comparison(left=args[0], right=args[1], operator=ComparisonOperator.IN)
+        return Comparison(args[0], args[1], ComparisonOperator.IN)
 
     def conditional(self, args):
-        return Conditional(left=args[0], right=args[2], operator=args[1])
+        return Conditional(args[0], args[2], args[1])
 
     def window_order(self, args):
         return WindowOrder(args[0])
@@ -650,28 +595,14 @@ class ParseToObjects(Transformer):
     def window(self, args):
         return Window(count=args[1].value, window_order=args[0])
 
-    def window_item_over(self, args):
-        return WindowItemOver(contents=args[0])
-
-    def window_item_order(self, args):
-        return WindowItemOrder(contents=args[0])
-
-    def window_item(self, args) -> WindowItem:
-        order_by = []
-        over = []
-        for item in args[1:]:
-            if isinstance(item, WindowItemOrder):
-                order_by = item.contents
-            elif isinstance(item, WindowItemOver):
-                over = item.contents
+    def window_item(self, args):
+        if len(args) > 1:
+            sort_concepts = args[1]
+        else:
+            sort_concepts = []
         concept = self.environment.concepts[args[0]]
-        return WindowItem(content=concept, over=over, order_by=order_by)
-
-    def filter_item(self, args) -> FilterItem:
-        where: WhereClause
-        string_concept, where = args
-        concept = self.environment.concepts[string_concept]
-        return FilterItem(content=concept, where=where)
+        # sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
+        return WindowItem(content=concept, order_by=sort_concepts)
 
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:
@@ -775,39 +706,6 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
             arg_count=2
-            # output_grain=Grain(components=args),
-        )
-
-    def ilike(self, args):
-        return Function(
-            operator=FunctionType.ILIKE,
-            arguments=args,
-            output_datatype=DataType.BOOL,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=2
-            # output_grain=Grain(components=args),
-        )
-
-    def upper(self, args):
-        return Function(
-            operator=FunctionType.UPPER,
-            arguments=args,
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=1
-            # output_grain=Grain(components=args),
-        )
-
-    def lower(self, args):
-        return Function(
-            operator=FunctionType.LOWER,
-            arguments=args,
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=1
             # output_grain=Grain(components=args),
         )
 
@@ -923,7 +821,7 @@ class ParseToObjects(Transformer):
         )
 
     # utility functions
-    def fcast(self, args) -> Function:
+    def fcast(self, args):
         input_concept: Concept = args[0]
         output_datatype = args[1]
         return Function(
@@ -951,18 +849,9 @@ def parse_text(
     except VisitError as e:
         if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
             raise e.orig_exc
-        # Pydantic validation errors on parsing are syntax errors
-        elif isinstance(e.orig_exc, ValidationError):
-            raise InvalidSyntaxException(str(e.orig_exc))
         else:
             raise e
-    except (
-        UnexpectedCharacters,
-        UnexpectedEOF,
-        UnexpectedInput,
-        UnexpectedToken,
-        ValidationError,
-    ) as e:
+    except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken) as e:
         raise InvalidSyntaxException(str(e))
 
     return environment, output
