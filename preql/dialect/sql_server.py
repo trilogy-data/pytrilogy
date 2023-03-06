@@ -1,28 +1,10 @@
+from preql.dialect.base import BaseDialect
+
 from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType
+from preql.core.models import ProcessedQuery
 from preql.dialect.base import BaseDialect
-from typing import List, Union, Optional, Dict
-
-from jinja2 import Template
-
-from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
-from preql.core.hooks import BaseProcessingHook
-from preql.core.models import (
-    Concept,
-    CTE,
-    ProcessedQuery,
-    CompiledCTE,
-    Conditional,
-    Expr,
-    Comparison,
-    Function,
-    OrderItem,
-    WindowItem,
-)
-from preql.core.models import Environment, Select
-from preql.core.query_processor import process_query
-from preql.dialect.common import render_join
 
 WINDOW_FUNCTION_MAP = {
     WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order})"
@@ -81,9 +63,12 @@ from preql.utility import string_to_hash
 
 
 class SqlServerDialect(BaseDialect):
-    WINDOW_FUNCTION_MAP = WINDOW_FUNCTION_MAP
-    FUNCTION_MAP = FUNCTION_MAP
-    FUNCTION_GRAIN_MATCH_MAP = FUNCTION_GRAIN_MATCH_MAP
+    WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
+    FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
+    FUNCTION_GRAIN_MATCH_MAP = {
+        **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
+        **FUNCTION_GRAIN_MATCH_MAP,
+    }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
 

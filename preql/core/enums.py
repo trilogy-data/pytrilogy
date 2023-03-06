@@ -20,6 +20,7 @@ class PurposeLineage(Enum):
 class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"
+    HIDDEN = "Hidden"
 
 
 class DataType(Enum):

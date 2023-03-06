@@ -91,7 +91,7 @@ grammar = r"""
     // top 5 user_id
     window_item: "rank" (IDENTIFIER | select_transform | comment+ )  ("BY"i order_list)?
     
-    select_item : (IDENTIFIER | select_transform | comment+ ) 
+    select_item : (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
     
     select_list :  ( select_item "," )* select_item ","?
     
