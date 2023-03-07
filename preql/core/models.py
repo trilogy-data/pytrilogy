@@ -915,7 +915,10 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError as e:
             matches = self._find_similar_concepts(key)
-            message =  f"undefined concept: {key}. Suggestions: {matches}"
+            message =  f"undefined concept: {key}."
+            if matches:
+                message += f" Suggestions: {matches}"
+
             if line_no:
                 raise UndefinedConceptException(
                     f"line: {line_no}: " + message,
