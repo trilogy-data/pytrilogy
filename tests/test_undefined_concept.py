@@ -24,7 +24,7 @@ def test_undefined_concept_dict():
         env["zzz"]
     except UndefinedConceptException as e:
         assert e.suggestions == []
-        assert "suggestions" not in str(e).lower()
+        assert "suggestions" not in e.message.lower()
 
     try:
         env["orid"]
