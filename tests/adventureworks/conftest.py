@@ -54,7 +54,7 @@ def local_express_flag():
 
 @fixture(scope="session")
 def db_must(local_express_flag):
-    # if a local instanc can be found
+    # if a local instance can be found
     # use that instead of managing docker
     if local_express_flag:
         yield TestConfig.LOCAL
