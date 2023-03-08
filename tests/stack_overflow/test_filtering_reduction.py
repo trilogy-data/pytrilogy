@@ -26,11 +26,3 @@ order by
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     select: Select = parsed[-1]
     query = process_query(statement=select, environment=env)
-    # cte_post_tags_users_at_tag_name_9745365236361274
-    for query in query.ctes:
-        print(query.name)
-        if query.name.startswith("cte_post_tags_users_at_tag_name_"):
-            print(query.grain)
-            print(query.group_to_grain)
-            for x in query.output_columns:
-                print(x)

@@ -91,13 +91,8 @@ limit 100
     concepts, datasources = get_query_datasources(environment=env, statement=select)
     # raise ValueError
 
-    for key, value in concepts.items():
-        print(key)
-        print(value)
-
     query = process_query(statement=select, environment=env, hooks=[GraphHook()])
     expected_base = query.ctes[0]
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
-    print(sql)

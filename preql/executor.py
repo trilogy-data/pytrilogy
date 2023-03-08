@@ -1,6 +1,7 @@
 from typing import Optional
 
 from sqlalchemy.engine import Engine, Result
+from sqlalchemy import text
 
 from preql.core.models import Environment, ProcessedQuery
 from preql.dialect.base import BaseDialect
@@ -38,16 +39,19 @@ class Executor(object):
             raise ValueError(f"Unsupported dialect {self.dialect}")
 
     def execute_query(self, query: ProcessedQuery) -> Result:
+
         sql = self.generator.compile_statement(query)
-        output = self.engine.execute(sql)
+        connection = self.engine.connect()
+        output = connection.execute(text(sql))
         return output
 
     def execute_text(self, command: str) -> List[Result]:
         _, parsed = parse_text(command, self.environment)
         sql = self.generator.generate_queries(self.environment, parsed)
         output = []
+        connection = self.engine.connect()
         for statement in sql:
             compiled_sql = self.generator.compile_statement(statement)
             logger.debug(compiled_sql)
-            output.append(self.engine.execute(compiled_sql))
+            output.append(connection.execute(text(compiled_sql)))
         return output

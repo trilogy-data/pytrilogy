@@ -3,6 +3,7 @@ from typing import Generator
 
 from pytest import fixture
 from sqlalchemy.engine import create_engine
+from sqlalchemy import text
 
 from preql import Executor, Dialects, parse, Environment
 
@@ -40,15 +41,21 @@ datasource fact_items (
 
 @fixture(scope="session")
 def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
-    engine = create_engine("duckdb:///:memory:")
+    engine = create_engine("duckdb:///:memory:", future=True)
 
-    engine.execute(
-        "CREATE TABLE items(item VARCHAR, value DECIMAL(10,2), count INTEGER)"
-    )
-    # insert two items into the table
-    engine.execute("INSERT INTO items VALUES ('jeans', 20.0, 1), ('hammer', 42.2, 2)")
-    # validate connection
-    results = engine.execute("select 1").fetchall()
+    with engine.connect() as connection:
+        connection.execute(
+            text("CREATE TABLE items(item VARCHAR, value DECIMAL(10,2), count INTEGER)")
+        )
+        connection.commit()
+        # insert two items into the table
+        connection.execute(
+            text("INSERT INTO items VALUES ('jeans', 20.0, 1), ('hammer', 42.2, 2)")
+        )
+        connection.commit()
+        # validate connection
+        connection.execute(text("select 1")).one_or_none()
+
     executor = Executor(
         dialect=Dialects.DUCK_DB, engine=engine, environment=duckdb_model
     )

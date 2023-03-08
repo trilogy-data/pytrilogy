@@ -11,8 +11,6 @@ def test_select_output(test_environment, test_environment_graph):
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
-    for item in product.grain.components:
-        print(item)
     datasource = get_datasource_by_concept_and_grain(
         product,
         grain=product.grain,
@@ -80,7 +78,6 @@ def test_query_aggregation(test_environment, test_environment_graph):
     assert len(ctes) == 1
 
     for cte in ctes:
-        print(cte.output_columns)
         assert len(cte.output_columns) == 1
         assert cte.output_columns[0].name == "total_revenue"
 
@@ -121,8 +118,7 @@ def test_query_datasources(test_environment, test_environment_graph):
         ctes += datasource_to_ctes(datasource)
 
     assert len(ctes) == 4
-    for cte in ctes:
-        print(cte.name)
+
     join_ctes = [
         cte
         for cte in ctes
