@@ -41,4 +41,3 @@ datasource posts (
 ;
 """
     parsed = parse(text)
-    print(parsed)

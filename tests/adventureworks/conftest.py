@@ -8,6 +8,7 @@ from urllib.parse import quote_plus
 
 from pytest import fixture
 from sqlalchemy.engine import create_engine
+from sqlalchemy import text
 from preql.constants import logger
 from logging import DEBUG
 
@@ -46,7 +47,7 @@ def can_bind(hostname, port):
 def local_express_flag():
     if os.environ.get("PYPREQL_INTEGRATION_SQLSERVER_EXPRESS", None) == "true":
         return create_engine(
-            "mssql://*server_name*\\SQLEXPRESS/*database_name*?trusted_connection=yes"
+            "mssql://*server_name*\\SQLEXPRESS/*database_name*?trusted_connection=yes;DRIVER={ODBC Driver 18 for SQL Server};"
         )
     else:
         return False
@@ -77,14 +78,15 @@ def adventureworks_engine(db_must):
     if db_must == TestConfig.DOCKER:
         connection_string = f"TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER=localhost;Uid=sa;Pwd=ThisIsAReallyCoolPassword123"
     elif db_must == TestConfig.LOCAL:
-        connection_string = f"Trusted_Connection=YES;TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={gethostname()}\SQLEXPRESS"
+        connection_string = f"Trusted_Connection=YES;TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={gethostname()}\\SQLEXPRESS"
     else:
         raise TestDependencyError("Unknown DB configuration")
     params = quote_plus(connection_string)
-    engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
-
+    engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params, future=True)
     # validate connection
-    engine.engine.execute("select 1").fetchall()
+    with engine.connect() as connection:
+        results = connection.execute(text("select 1")).one_or_none()
+        assert results == (1,)
     executor = Executor(dialect=Dialects.SQL_SERVER, engine=engine)
     yield executor
 

@@ -60,9 +60,6 @@ def test_query_datasources(environment):
 
     test: Select = statements[-1]  # multipart join
 
-    for item in test.grain.components:
-        print(item)
-    print("-----")
     environment_graph = generate_graph(environment)
 
     # assert a group up to the first name works
@@ -174,7 +171,6 @@ def test_query_datasources(environment):
 
 def recurse_datasource(parent: QueryDatasource, depth=0):
     for x in parent.datasources:
-        print("\t" * depth + x.identifier)
         if isinstance(x, QueryDatasource):
             recurse_datasource(x, depth + 1)
 
@@ -194,9 +190,6 @@ def test_two_properties(environment):
     environment, statements = parse(file, environment=environment)
     test: Select = statements[-3]
 
-    for item in test.grain.components:
-        print(item)
-    print("-----")
     environment_graph = generate_graph(environment)
 
     # assert a group up to the first name works
@@ -227,7 +220,6 @@ def test_two_properties(environment):
     generator = SqlServerDialect()
     sql2 = generator.generate_queries(environment, [test])
     sql = generator.compile_statement(sql2[0])
-    print(sql)
 
 
 @pytest.mark.adventureworks_execution
@@ -242,5 +234,4 @@ def test_online_sales_queries(adventureworks_engine, environment):
 
     for statement in sql:
         sql = generator.compile_statement(statement)
-        print(sql)
         results = adventureworks_engine.execute_query(statement).fetchall()
