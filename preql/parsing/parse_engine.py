@@ -222,7 +222,8 @@ class ParseToObjects(Transformer):
         return args
 
     def metadata(self, args):
-        return Metadata()
+        pairs = {key: val for key, val in zip(args[::2], args[1::2])}
+        return Metadata(**pairs)
 
     def IDENTIFIER(self, args) -> str:
         return args.value
