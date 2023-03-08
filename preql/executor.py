@@ -1,14 +1,14 @@
-from typing import List
 from typing import Optional
 
+from sqlalchemy.engine import Engine, Result
 from sqlalchemy import text
-from sqlalchemy.engine import Engine, CursorResult
 
-from preql.constants import logger
 from preql.core.models import Environment, ProcessedQuery
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
+from typing import List
+from preql.constants import logger
 
 
 class Executor(object):
@@ -38,14 +38,14 @@ class Executor(object):
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
 
-    def execute_query(self, query: ProcessedQuery) -> CursorResult:
+    def execute_query(self, query: ProcessedQuery) -> Result:
 
         sql = self.generator.compile_statement(query)
         connection = self.engine.connect()
         output = connection.execute(text(sql))
         return output
 
-    def execute_text(self, command: str) -> List[CursorResult]:
+    def execute_text(self, command: str) -> List[Result]:
         _, parsed = parse_text(command, self.environment)
         sql = self.generator.generate_queries(self.environment, parsed)
         output = []

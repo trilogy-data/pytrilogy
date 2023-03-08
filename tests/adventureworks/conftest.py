@@ -2,16 +2,15 @@ import os
 import socket
 import time
 from enum import Enum
-from logging import DEBUG
 from os.path import dirname, abspath
 from socket import gethostname
 from urllib.parse import quote_plus
 
 from pytest import fixture
-from sqlalchemy import text
 from sqlalchemy.engine import create_engine
-
+from sqlalchemy import text
 from preql.constants import logger
+from logging import DEBUG
 
 logger.setLevel(DEBUG)
 from preql import Executor, Dialects, Environment
@@ -56,7 +55,7 @@ def local_express_flag():
 
 @fixture(scope="session")
 def db_must(local_express_flag):
-    # if a local instance can be found
+    # if a local instanc can be found
     # use that instead of managing docker
     if local_express_flag:
         yield TestConfig.LOCAL
