@@ -1,15 +1,14 @@
-from typing import List
 from typing import Optional
 
+from sqlalchemy.engine import Engine, Result
 from sqlalchemy import text
-from sqlalchemy.engine import Engine, CursorResult
 
-from preql.constants import logger
 from preql.core.models import Environment, ProcessedQuery
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
-from preql.hooks.base_hook import BaseHook
+from typing import List
+from preql.constants import logger
 
 
 class Executor(object):
@@ -18,14 +17,12 @@ class Executor(object):
         dialect: Dialects,
         engine: Engine,
         environment: Optional[Environment] = None,
-        hooks: List[BaseHook] | None = None,
     ):
         self.dialect = dialect
         self.engine = engine
         self.environment = environment or Environment()
         self.generator: BaseDialect
         self.logger = logger
-        self.hooks = hooks
         if self.dialect == Dialects.BIGQUERY:
             from preql.dialect.bigquery import BigqueryDialect
 
@@ -41,29 +38,16 @@ class Executor(object):
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
 
-    def execute_query(self, query: ProcessedQuery) -> CursorResult:
+    def execute_query(self, query: ProcessedQuery) -> Result:
 
         sql = self.generator.compile_statement(query)
         connection = self.engine.connect()
         output = connection.execute(text(sql))
         return output
 
-    def generate_sql(self, command: str) -> List[str]:
+    def execute_text(self, command: str) -> List[Result]:
         _, parsed = parse_text(command, self.environment)
-        sql = self.generator.generate_queries(
-            self.environment, parsed, hooks=self.hooks
-        )
-        output = []
-        for statement in sql:
-            compiled_sql = self.generator.compile_statement(statement)
-            output.append(compiled_sql)
-        return output
-
-    def execute_text(self, command: str) -> List[CursorResult]:
-        _, parsed = parse_text(command, self.environment)
-        sql = self.generator.generate_queries(
-            self.environment, parsed, hooks=self.hooks
-        )
+        sql = self.generator.generate_queries(self.environment, parsed)
         output = []
         connection = self.engine.connect()
         for statement in sql:
