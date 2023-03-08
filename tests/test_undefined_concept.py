@@ -17,9 +17,12 @@ def test_undefined_concept_query(test_environment):
     except UndefinedConceptException as e:
         assert len(e.suggestions) == 3
 
+
 def test_undefined_concept_dict():
     env = EnvironmentConceptDict()
-    env["order_id"] = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    env["order_id"] = Concept(
+        name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     try:
         env["zzz"]
     except UndefinedConceptException as e:
@@ -32,8 +35,3 @@ def test_undefined_concept_dict():
         assert e.suggestions == ["order_id"]
         assert "suggestions" in e.message.lower()
         assert "order_id" in e.message.lower()
-
-
-    
-
-
