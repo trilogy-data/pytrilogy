@@ -36,7 +36,7 @@ class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    metadata: Metadata = Field(default_factory=Metadata)
+    metadata: Optional[Metadata] = Field(default_factory=Metadata)
     lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: str = ""
     keys: Optional[List["Concept"]] = None
