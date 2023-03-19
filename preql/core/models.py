@@ -26,14 +26,17 @@ VT = TypeVar("VT")
 
 
 class Metadata(BaseModel):
-    pass
+    """Metadata container object.
+    TODO: support arbitrary tags"""
+
+    description: Optional[str]
 
 
 class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    metadata: Optional[Metadata] = None
+    metadata: Optional[Metadata] = Field(default_factory=Metadata)
     lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: str = ""
     keys: Optional[List["Concept"]] = None
@@ -918,21 +921,17 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError as e:
             matches = self._find_similar_concepts(key)
-            message =  f"undefined concept: {key}."
+            message = f"undefined concept: {key}."
             if matches:
                 message += f" Suggestions: {matches}"
 
             if line_no:
-                raise UndefinedConceptException(
-                    f"line: {line_no}: " + message,
-                    matches
-                )
+                raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
             raise UndefinedConceptException(message, matches)
-        
+
     def _find_similar_concepts(self, concept_name):
         matches = difflib.get_close_matches(concept_name, self.keys())
         return matches
-
 
 
 @dataclass
