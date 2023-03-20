@@ -4,7 +4,6 @@ from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP = {
-    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order})"
 }
 
 FUNCTION_MAP = {

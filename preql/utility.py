@@ -1,8 +1,6 @@
 import hashlib
 from typing import List, Any, Union, Callable
 
-from preql.constants import DEFAULT_NAMESPACE
-
 INT_HASH_SIZE = 16
 
 
@@ -12,14 +10,11 @@ def string_to_hash(input: str) -> int:
     )
 
 
-def unique(inputs: List, property: Union[str, Callable]) -> List[Any]:
+def unique(inputs: List, property: Union[str,Callable]) -> List[Any]:
     final = []
     dedupe = set()
     if isinstance(property, str):
-
-        def getter(x):
-            return getattr(x, property, DEFAULT_NAMESPACE)
-
+        getter = lambda x: getattr(x, property, 'default')
     else:
         getter = property
     for input in inputs:

@@ -1,18 +1,22 @@
-from typing import List, Optional, Tuple, Dict, TypedDict, Union
+from collections import defaultdict
+from typing import List, Optional, Union, Tuple, Set, Dict, TypedDict
 
-from preql.core.enums import BooleanOperator
-from preql.core.graph_models import ReferenceGraph
+import networkx as nx
+
+from preql.constants import logger
+from preql.core.enums import Purpose, PurposeLineage
+from preql.core.env_processor import generate_graph
+from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 from preql.core.models import (
     Concept,
+    Environment,
     Datasource,
+    Grain,
+    QueryDatasource,
     JoinType,
     BaseJoin,
-    Conditional,
-    Comparison,
-    FilterItem,
-    QueryDatasource,
-    Grain,
     Function,
+    WindowItem,
 )
 from preql.utility import unique
 
@@ -72,17 +76,14 @@ def parse_path_to_matches(
     return output
 
 
-# Archiving to be used in future
-# def get_disconnected_components(
-#     concept_map: Dict[str, Set[Concept]]
-# ) -> Tuple[int, List]:
-#     """Find if any of the datasources are not linked"""
-#     import networkx as nx
-#
-#     graph = nx.Graph()
-#     for datasource, concepts in concept_map.items():
-#         graph.add_node(datasource)
-#         for concept in concepts:
-#             graph.add_edge(datasource, concept.address)
-#     sub_graphs = list(nx.connected_components(graph))
-#     return len(sub_graphs), sub_graphs
+def concept_to_inputs(concept: Concept) -> List[Concept]:
+    """Given a concept, return all relevant root inputs"""
+    output = []
+    if not concept.lineage:
+        return [concept]
+    for source in concept.sources:
+        # if something is a transformation of something with a lineage
+        # then we need to persist the original type
+        # ex: avg() of sum() @ grain
+        output += concept_to_inputs(source.with_default_grain())
+    return unique(output, hash)
