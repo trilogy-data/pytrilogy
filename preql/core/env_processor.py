@@ -1,5 +1,5 @@
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
-from preql.core.models import Environment
+from preql.core.models import Environment, Function, FunctionClass
 
 
 def generate_graph(environment: Environment,) -> ReferenceGraph:
@@ -25,5 +25,14 @@ def generate_graph(environment: Environment,) -> ReferenceGraph:
             # add an FK edge to the canonical source, if it exists
             # for example, order ID on order product table
             g.add_edge(concept, concept.with_default_grain())
+
+        # TODO: evaluate better way to handle scalar function associations
+        # for _, concept in environment.concepts.items():
+        #     if isinstance(concept.lineage, Function) and concept.lineage.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value:
+        #         if not all([c in dataset.concepts for c in concept.sources]):
+        #             continue
+        #         g.add_edge(dataset, concept.with_grain(dataset.grain))
+
+
 
     return g

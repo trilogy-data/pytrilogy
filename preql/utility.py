@@ -1,5 +1,5 @@
 import hashlib
-from typing import List, Any
+from typing import List, Any, Union, Callable
 
 INT_HASH_SIZE = 16
 
@@ -10,11 +10,15 @@ def string_to_hash(input: str) -> int:
     )
 
 
-def unique(inputs: List, property: str) -> List[Any]:
+def unique(inputs: List, property: Union[str,Callable]) -> List[Any]:
     final = []
     dedupe = set()
+    if isinstance(property, str):
+        getter = lambda x: getattr(x, property, 'default')
+    else:
+        getter = property
     for input in inputs:
-        key = getattr(input, property, "default")
+        key = getter(input)
         if key in dedupe:
             continue
         dedupe.add(key)

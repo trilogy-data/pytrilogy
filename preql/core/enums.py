@@ -95,8 +95,8 @@ class FunctionType(Enum):
 
 
 class FunctionClass(Enum):
-    AGGREGATE_FUNCTIONS = [FunctionType.SUM, FunctionType.AVG, FunctionType.COUNT]
-
+    AGGREGATE_FUNCTIONS = [FunctionType.MAX, FunctionType.MIN, FunctionType.SUM, FunctionType.AVG, FunctionType.COUNT, FunctionType.COUNT_DISTINCT,
+                           ]
 
 class Boolean(Enum):
     TRUE = "true"

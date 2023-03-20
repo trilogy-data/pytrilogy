@@ -86,4 +86,4 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
         # then we need to persist the original type
         # ex: avg() of sum() @ grain
         output += concept_to_inputs(source.with_default_grain())
-    return output
+    return unique(output, hash)
