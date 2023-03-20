@@ -15,7 +15,6 @@ class PurposeLineage(Enum):
     BASIC = "basic"
     WINDOW = "window"
     AGGREGATE = "aggregate"
-    FILTER = "filter"
 
 
 class Modifier(Enum):
@@ -25,7 +24,6 @@ class Modifier(Enum):
 
 
 class DataType(Enum):
-    # PRIMITIVES
     STRING = "string"
     BOOL = "bool"
     MAP = "map"
@@ -37,9 +35,6 @@ class DataType(Enum):
     DATETIME = "datetime"
     TIMESTAMP = "timestamp"
     ARRAY = "array"
-
-    # GRANULAR
-    UNIX_SECONDS = "unix_seconds"
 
 
 class JoinType(Enum):
@@ -67,7 +62,6 @@ class WindowOrder(Enum):
 class FunctionType(Enum):
     # Generic
     CAST = "cast"
-    CONCAT = "concat"
 
     # Aggregates
     COUNT = "count"
@@ -78,18 +72,16 @@ class FunctionType(Enum):
     AVG = "avg"
     LENGTH = "len"
 
-    # String
+    # String Like
     LIKE = "like"
-    ILIKE = "ilike"
-    LOWER = "lower"
-    UPPER = "upper"
+    CONCAT = "concat"
+    NOT_LIKE = "not_like"
 
     # Dates
     DATE = "date"
     DATETIME = "datetime"
     TIMESTAMP = "timestamp"
 
-    # time
     SECOND = "second"
     MINUTE = "minute"
     HOUR = "hour"
@@ -101,20 +93,10 @@ class FunctionType(Enum):
 
     DATE_PART = "date_part"
 
-    # UNIX
-    UNIX_TO_TIMESTAMP = "unix_to_timestamp"
-
 
 class FunctionClass(Enum):
-    AGGREGATE_FUNCTIONS = [
-        FunctionType.MAX,
-        FunctionType.MIN,
-        FunctionType.SUM,
-        FunctionType.AVG,
-        FunctionType.COUNT,
-        FunctionType.COUNT_DISTINCT,
-    ]
-
+    AGGREGATE_FUNCTIONS = [FunctionType.MAX, FunctionType.MIN, FunctionType.SUM, FunctionType.AVG, FunctionType.COUNT, FunctionType.COUNT_DISTINCT,
+                           ]
 
 class Boolean(Enum):
     TRUE = "true"
@@ -135,8 +117,7 @@ class ComparisonOperator(Enum):
     NE = "!="
     IN = "in"
 
-    @classmethod
-    def _missing_(cls, value):
-        if value == "is":
-            return ComparisonOperator.EQ
-        return super()._missing_(value)
+
+class LogicalOperator(Enum):
+    AND = "and"
+    OR = "or"

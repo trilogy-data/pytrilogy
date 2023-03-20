@@ -12,7 +12,6 @@ A non-exhaustive list of strategies:
 - See if an aggregation from a datasource can produce the field
 - See if a join between datasources can produce the field at grain
 - See if the function requires complex derivation, such as a window function
-- See if the concept is a filtered concept, and build a derivation
 - Etc
 
 In the second pass, all datasources will be converted to CTEs.

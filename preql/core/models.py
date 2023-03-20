@@ -30,6 +30,7 @@ class Metadata(BaseModel):
     TODO: support arbitrary tags"""
 
     description: Optional[str]
+    line_number: Optional[int]
 
 
 class Concept(BaseModel):
@@ -41,6 +42,9 @@ class Concept(BaseModel):
     namespace: str = ""
     keys: Optional[List["Concept"]] = None
     grain: "Grain" = Field(default=None)
+
+    def __hash__(self):
+        return hash(str(self))
 
     @validator("lineage")
     def lineage_validator(cls, v):
@@ -271,6 +275,24 @@ class Function:
             valid_inputs=self.valid_inputs,
         )
 
+    @property
+    def concept_arguments(self)->List[Concept]:
+        return [c for c in self.arguments if isinstance(c, Concept)]
+    @property
+    def output_grain(self):
+        # aggregates have an abstract grain
+        base_grain = Grain(components=[])
+        if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            return base_grain
+        # scalars have implicit grain of all arguments
+        # for input in self.concept_arguments:
+        #
+        #     print('ARG DEBUG')
+        #     print(input)
+        #     print(input.grain)
+        #     base_grain += input.grain
+        return base_grain
+
 
 @dataclass(eq=True)
 class ConceptTransform:
@@ -291,15 +313,22 @@ class Window:
     def __str__(self):
         return f"Window<{self.window_order}>"
 
+class WindowItemOver(BaseModel):
+    contents:List[Concept]
+
+class WindowItemOrder(BaseModel):
+    contents:List["OrderItem"]
 
 class WindowItem(BaseModel):
     content: Concept
     order_by: List["OrderItem"]
+    over: List["Concept"] = Field(default_factory=list)
 
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem(
             content=self.content.with_namespace(namespace),
-            order_by=[x.with_namespace(self.namespace) for x in self.order_by],
+            over = [x.with_namespace(namespace) for x in self.over],
+            order_by=[x.with_namespace(namespace) for x in self.order_by],
         )
 
     @property
@@ -307,6 +336,8 @@ class WindowItem(BaseModel):
         output = [self.content]
         for order in self.order_by:
             output += [order.output]
+        for item in self.over:
+            output += [item,]
         return output
 
     @property
@@ -324,7 +355,12 @@ class WindowItem(BaseModel):
 
     @property
     def input(self) -> List[Concept]:
-        return self.content.input + [v.input for v in self.order_by]
+        base = self.content.input
+        for v in self.order_by:
+            base += v.input
+        for c in self.over:
+            base += c.input
+        return base
 
     @property
     def output_datatype(self):
@@ -353,8 +389,7 @@ class SelectItem:
         return self.content.input
 
 
-@dataclass(eq=True)
-class OrderItem:
+class OrderItem(BaseModel):
     expr: Concept
     order: Ordering
 
@@ -441,9 +476,8 @@ class Select:
         # we want to group to that grain and ignore the property, which is a derivation
         # otherwise, we need to include property as the group by
         for item in self.output_components:
-
-            if item.purpose == Purpose.PROPERTY and not item.grain.issubset(
-                Grain(components=unique(output, "address"))
+            if item.purpose == Purpose.PROPERTY and (not item.grain.components or not item.grain.issubset(
+                Grain(components=unique(output, "address")))
             ):
                 output.append(item)
         return Grain(components=unique(output, "address"))
@@ -716,6 +750,15 @@ class QueryDatasource:
     def name(self):
         return self.identifier
 
+    @property
+    def group_required(self)->bool:
+        return (
+            False
+            if sum([ds.grain for ds in self.datasources])
+               == self.grain
+            else True
+        )
+
     def __post_init__(self):
         self.output_concepts = unique(self.output_concepts, "address")
         self.input_concepts = unique(self.input_concepts, "address")
@@ -760,6 +803,7 @@ class QueryDatasource:
         use_raw_name = (
             True
             if (len(self.datasources) == 1 or use_raw_name) and not force_alias
+            #if ((len(self.datasources) == 1 and isinstance(self.datasources[0], Datasource)) or use_raw_name) and not force_alias
             else False
         )
         for x in self.datasources:
@@ -836,28 +880,37 @@ class CTE:
         return self
 
     @property
+    def relevant_base_ctes(self):
+        return [cte for cte in self.parent_ctes if any([c.with_grain(self.grain) in self.output_columns for c in cte.output_columns])]
+
+    @property
     def base_name(self) -> str:
         # if this cte selects from a single datasource, select right from it
         if len(self.source.datasources) == 1 and isinstance(
             self.source.datasources[0], Datasource
         ):
             return self.source.datasources[0].safe_location
-        # if we have ctes, we should reference those
+        # if we have multiple joined CTEs, pick the base
+        # as the root
         elif self.joins and len(self.joins) > 0:
             return self.joins[0].left_cte.name
-        elif self.parent_ctes:  # and len(self.parent_ctes) == 1:
-            return self.parent_ctes[0].name
+        elif self.relevant_base_ctes:
+            return self.relevant_base_ctes[0].name
         # return self.source_map.values()[0]
         return self.source.name
 
     @property
     def base_alias(self) -> str:
-        if len(self.source.datasources) == 1:
-            if isinstance(self.source.datasources[0], QueryDatasource):
-                return self.parent_ctes[0].name
+        if len(self.source.datasources) == 1 and isinstance(
+            self.source.datasources[0], Datasource
+        ):
+            # if isinstance(self.source.datasources[0], QueryDatasource) and self.relevant_base_ctes:
+            #     return self.relevant_base_ctes[0].name
             return self.source.datasources[0].name
         if self.joins:
             return self.joins[0].left_cte.name
+        elif self.relevant_base_ctes:
+            return self.relevant_base_ctes[0].name
         return self.name
 
     def get_alias(self, concept: Concept) -> str:
@@ -882,6 +935,7 @@ def merge_ctes(ctes: List[CTE]) -> List[CTE]:
             final_ctes_dict[cte.name] = cte
         else:
             final_ctes_dict[cte.name] = final_ctes_dict[cte.name] + cte
+
     final_ctes = list(final_ctes_dict.values())
     return final_ctes
 
@@ -1046,3 +1100,4 @@ class Limit:
 Concept.update_forward_refs()
 Grain.update_forward_refs()
 WindowItem.update_forward_refs()
+WindowItemOrder.update_forward_refs()

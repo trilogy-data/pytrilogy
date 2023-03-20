@@ -25,7 +25,7 @@ from preql.utility import unique
 INVALID_REFERENCE_STRING = "INVALID_REFERENCE_BUG"
 
 WINDOW_FUNCTION_MAP = {
-    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order})"
+    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})" if window else  f"row_number() over (order by {sort} {order})"
 }
 
 DATATYPE_MAP = {
@@ -161,11 +161,15 @@ class BaseDialect:
                 dimension = self.render_concept_sql(
                     c.lineage.arguments[0], cte, alias=False
                 )
-                rendered_components = [
+                rendered_order_components = [
                     self.render_concept_sql(x.expr, cte, alias=False)
                     for x in c.lineage.order_by
                 ]
-                rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](dimension, sort=','.join(rendered_components), order = 'desc')}"
+                rendered_over_components = [
+                    self.render_concept_sql(x, cte, alias=False)
+                    for x in c.lineage.over
+                ]
+                rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](window=','.join(rendered_over_components), sort=','.join(rendered_order_components), order = 'desc')}"
             else:
                 args = [
                     self.render_concept_sql(v, cte, alias=False)
@@ -331,7 +335,7 @@ class BaseDialect:
 
             if not found:
                 raise NotImplementedError(
-                    "Cannot generate complex query with filtering on grain that does not match any source."
+                    f"Cannot generate complex query with filtering on grain {filter} that does not match any source."
                 )
         for join in query.joins:
 
