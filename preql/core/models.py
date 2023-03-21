@@ -37,11 +37,11 @@ class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    metadata: Optional[Metadata] = Field(default_factory=Metadata)
+    metadata: Optional[Metadata] = Field(default_factory=lambda: Metadata(description = None, line_number=None))
     lineage: Optional[Union["Function", "WindowItem"]] = None
-    namespace: str = ""
+    namespace: Optional[str] = ""
     keys: Optional[List["Concept"]] = None
-    grain: "Grain" = Field(default=None)
+    grain: Optional["Grain"] = Field(default=None)
 
     def __hash__(self):
         return hash(str(self))
@@ -245,7 +245,7 @@ class Function:
             return
         for idx, arg in enumerate(self.arguments):
 
-            if isinstance(arg, Concept) and not arg.datatype in valid_inputs[idx]:
+            if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
                 raise TypeError(
                     f"Invalid input datatype {arg.datatype} passed into {self.operator.name} from concept {arg.name}"
                 )
@@ -276,8 +276,9 @@ class Function:
         )
 
     @property
-    def concept_arguments(self)->List[Concept]:
+    def concept_arguments(self) -> List[Concept]:
         return [c for c in self.arguments if isinstance(c, Concept)]
+
     @property
     def output_grain(self):
         # aggregates have an abstract grain
@@ -313,11 +314,14 @@ class Window:
     def __str__(self):
         return f"Window<{self.window_order}>"
 
+
 class WindowItemOver(BaseModel):
-    contents:List[Concept]
+    contents: List[Concept]
+
 
 class WindowItemOrder(BaseModel):
-    contents:List["OrderItem"]
+    contents: List["OrderItem"]
+
 
 class WindowItem(BaseModel):
     content: Concept
@@ -327,7 +331,7 @@ class WindowItem(BaseModel):
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem(
             content=self.content.with_namespace(namespace),
-            over = [x.with_namespace(namespace) for x in self.over],
+            over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
         )
 
@@ -337,7 +341,7 @@ class WindowItem(BaseModel):
         for order in self.order_by:
             output += [order.output]
         for item in self.over:
-            output += [item,]
+            output += [item]
         return output
 
     @property
@@ -449,13 +453,13 @@ class Select:
     def output_components(self) -> List[Concept]:
         output = []
         for item in self.selection:
-            if not Modifier.HIDDEN in item.modifiers:
+            if Modifier.HIDDEN not in item.modifiers:
                 output.append(item.output)
         return output
 
     @property
     def all_components(self) -> List[Concept]:
-        return self.input_components + self.output_components + self.grain.components
+        return self.input_components + self.output_components + self.grain.components_copy
 
     @property
     def grain(self) -> "Grain":
@@ -476,8 +480,9 @@ class Select:
         # we want to group to that grain and ignore the property, which is a derivation
         # otherwise, we need to include property as the group by
         for item in self.output_components:
-            if item.purpose == Purpose.PROPERTY and (not item.grain.components or not item.grain.issubset(
-                Grain(components=unique(output, "address")))
+            if item.purpose == Purpose.PROPERTY and (
+                not item.grain.components
+                or not item.grain.issubset(Grain(components=unique(output, "address")))
             ):
                 output.append(item)
         return Grain(components=unique(output, "address"))
@@ -502,7 +507,12 @@ class Grain(BaseModel):
             kwargs["components"] = [
                 c.with_default_grain() for c in kwargs.get("components", [])
             ]
+        kwargs["components"] = unique(kwargs["components"], 'address')
         super().__init__(**kwargs)
+
+    @property
+    def components_copy(self)->List[Concept]:
+        return deepcopy(self.components)
 
     def __str__(self):
         if self.abstract:
@@ -540,7 +550,7 @@ class Grain(BaseModel):
         components = [i for i in self.components if i.name in intersection]
         return Grain(components=components)
 
-    def __add__(self, other: "Grain"):
+    def __add__(self, other: "Grain")->"Grain":
         components = []
         for clist in [self.components, other.components]:
             for component in clist:
@@ -549,7 +559,7 @@ class Grain(BaseModel):
                 components.append(component)
         return Grain(components=components)
 
-    def __radd__(self, other):
+    def __radd__(self, other)->"Grain":
         if other == 0:
             return self
         else:
@@ -700,12 +710,25 @@ class BaseJoin:
     right_datasource: Union[Datasource, "QueryDatasource"]
     concepts: List[Concept]
     join_type: JoinType
+    filter_to_mutual: bool = False
 
     def __post_init__(self):
+        final_concepts = []
         for concept in self.concepts:
+            include = True
             for ds in [self.left_datasource, self.right_datasource]:
                 if concept.address not in [c.address for c in ds.output_concepts]:
-                    raise SyntaxError(f"Invalid join, missing {concept} on {ds.name}")
+                    if self.filter_to_mutual:
+                        include = False
+                    else:
+                        raise SyntaxError(
+                            f"Invalid join, missing {concept} on {ds.name}, have {[c.address for c in ds.output_concepts]}"
+                        )
+            if include:
+                final_concepts.append(concept)
+        if not final_concepts:
+            raise SyntaxError("No mutual join keys found")
+        self.concepts = final_concepts
 
     @property
     def unique_id(self) -> str:
@@ -751,12 +774,9 @@ class QueryDatasource:
         return self.identifier
 
     @property
-    def group_required(self)->bool:
+    def group_required(self) -> bool:
         return (
-            False
-            if sum([ds.grain for ds in self.datasources])
-               == self.grain
-            else True
+            False if sum([ds.grain for ds in self.datasources]) == self.grain else True
         )
 
     def __post_init__(self):
@@ -803,7 +823,7 @@ class QueryDatasource:
         use_raw_name = (
             True
             if (len(self.datasources) == 1 or use_raw_name) and not force_alias
-            #if ((len(self.datasources) == 1 and isinstance(self.datasources[0], Datasource)) or use_raw_name) and not force_alias
+            # if ((len(self.datasources) == 1 and isinstance(self.datasources[0], Datasource)) or use_raw_name) and not force_alias
             else False
         )
         for x in self.datasources:
@@ -881,7 +901,16 @@ class CTE:
 
     @property
     def relevant_base_ctes(self):
-        return [cte for cte in self.parent_ctes if any([c.with_grain(self.grain) in self.output_columns for c in cte.output_columns])]
+        return [
+            cte
+            for cte in self.parent_ctes
+            if any(
+                [
+                    c.with_grain(self.grain) in self.output_columns
+                    for c in cte.output_columns
+                ]
+            )
+        ]
 
     @property
     def base_name(self) -> str:
@@ -973,7 +1002,7 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
     def __getitem__(self, key, line_no=None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
-        except KeyError as e:
+        except KeyError:
             matches = self._find_similar_concepts(key)
             message = f"undefined concept: {key}."
             if matches:
