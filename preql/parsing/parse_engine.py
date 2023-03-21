@@ -392,7 +392,8 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> Concept:
         concept: Concept = args[0]
-        concept.metadata.line_number = meta.line
+        if concept.metadata:
+            concept.metadata.line_number = meta.line
         return args[0]
 
     def column_assignment_list(self, args):
@@ -453,9 +454,11 @@ class ParseToObjects(Transformer):
             raise ParseError(
                 f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept; originally defined on line {existing.metadata.line_number}"
             )
+
+        # keys are used to pass through derivations
         if function.output_purpose == Purpose.PROPERTY:
             grain = Grain(components=function.arguments)
-            keys = function.arguments
+            keys = [x for x in function.arguments if isinstance(x, Concept)]
         else:
             grain = None
             keys = None
