@@ -30,17 +30,23 @@ class Metadata(BaseModel):
     TODO: support arbitrary tags"""
 
     description: Optional[str]
+    line_number: Optional[int]
 
 
 class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    metadata: Optional[Metadata] = Field(default_factory=Metadata)
+    metadata: Optional[Metadata] = Field(
+        default_factory=lambda: Metadata(description=None, line_number=None)
+    )
     lineage: Optional[Union["Function", "WindowItem"]] = None
-    namespace: str = ""
+    namespace: Optional[str] = ""
     keys: Optional[List["Concept"]] = None
-    grain: "Grain" = Field(default=None)
+    grain: Optional["Grain"] = Field(default=None)
+
+    def __hash__(self):
+        return hash(str(self))
 
     @validator("lineage")
     def lineage_validator(cls, v):
@@ -66,7 +72,7 @@ class Concept(BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace),
+            grain=self.grain.with_namespace(namespace) if self.grain else None,
             namespace=namespace,
             keys=self.keys,
         )
@@ -118,6 +124,10 @@ class Concept(BaseModel):
     @property
     def safe_address(self) -> str:
         return f"{self.namespace}_{self.name}"
+
+    @property
+    def grain_components(self) -> List["Concept"]:
+        return self.grain.components_copy if self.grain else []
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         return self.__class__(
@@ -241,7 +251,7 @@ class Function:
             return
         for idx, arg in enumerate(self.arguments):
 
-            if isinstance(arg, Concept) and not arg.datatype in valid_inputs[idx]:
+            if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
                 raise TypeError(
                     f"Invalid input datatype {arg.datatype} passed into {self.operator.name} from concept {arg.name}"
                 )
@@ -271,6 +281,25 @@ class Function:
             valid_inputs=self.valid_inputs,
         )
 
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        return [c for c in self.arguments if isinstance(c, Concept)]
+
+    @property
+    def output_grain(self):
+        # aggregates have an abstract grain
+        base_grain = Grain(components=[])
+        if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            return base_grain
+        # scalars have implicit grain of all arguments
+        # for input in self.concept_arguments:
+        #
+        #     print('ARG DEBUG')
+        #     print(input)
+        #     print(input.grain)
+        #     base_grain += input.grain
+        return base_grain
+
 
 @dataclass(eq=True)
 class ConceptTransform:
@@ -292,14 +321,24 @@ class Window:
         return f"Window<{self.window_order}>"
 
 
+class WindowItemOver(BaseModel):
+    contents: List[Concept]
+
+
+class WindowItemOrder(BaseModel):
+    contents: List["OrderItem"]
+
+
 class WindowItem(BaseModel):
     content: Concept
     order_by: List["OrderItem"]
+    over: List["Concept"] = Field(default_factory=list)
 
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem(
             content=self.content.with_namespace(namespace),
-            order_by=[x.with_namespace(self.namespace) for x in self.order_by],
+            over=[x.with_namespace(namespace) for x in self.over],
+            order_by=[x.with_namespace(namespace) for x in self.order_by],
         )
 
     @property
@@ -307,6 +346,8 @@ class WindowItem(BaseModel):
         output = [self.content]
         for order in self.order_by:
             output += [order.output]
+        for item in self.over:
+            output += [item]
         return output
 
     @property
@@ -324,7 +365,12 @@ class WindowItem(BaseModel):
 
     @property
     def input(self) -> List[Concept]:
-        return self.content.input + [v.input for v in self.order_by]
+        base = self.content.input
+        for v in self.order_by:
+            base += v.input
+        for c in self.over:
+            base += c.input
+        return base
 
     @property
     def output_datatype(self):
@@ -353,8 +399,7 @@ class SelectItem:
         return self.content.input
 
 
-@dataclass(eq=True)
-class OrderItem:
+class OrderItem(BaseModel):
     expr: Concept
     order: Ordering
 
@@ -414,13 +459,17 @@ class Select:
     def output_components(self) -> List[Concept]:
         output = []
         for item in self.selection:
-            if not Modifier.HIDDEN in item.modifiers:
+            if isinstance(item, Concept):
+                output.append(item)
+            elif Modifier.HIDDEN not in item.modifiers:
                 output.append(item.output)
         return output
 
     @property
     def all_components(self) -> List[Concept]:
-        return self.input_components + self.output_components + self.grain.components
+        return (
+            self.input_components + self.output_components + self.grain.components_copy
+        )
 
     @property
     def grain(self) -> "Grain":
@@ -441,9 +490,15 @@ class Select:
         # we want to group to that grain and ignore the property, which is a derivation
         # otherwise, we need to include property as the group by
         for item in self.output_components:
-
-            if item.purpose == Purpose.PROPERTY and not item.grain.issubset(
-                Grain(components=unique(output, "address"))
+            if (
+                item.purpose == Purpose.PROPERTY
+                and item.grain
+                and (
+                    not item.grain.components
+                    or not item.grain.issubset(
+                        Grain(components=unique(output, "address"))
+                    )
+                )
             ):
                 output.append(item)
         return Grain(components=unique(output, "address"))
@@ -468,7 +523,12 @@ class Grain(BaseModel):
             kwargs["components"] = [
                 c.with_default_grain() for c in kwargs.get("components", [])
             ]
+        kwargs["components"] = unique(kwargs["components"], "address")
         super().__init__(**kwargs)
+
+    @property
+    def components_copy(self) -> List[Concept]:
+        return deepcopy(self.components)
 
     def __str__(self):
         if self.abstract:
@@ -506,7 +566,7 @@ class Grain(BaseModel):
         components = [i for i in self.components if i.name in intersection]
         return Grain(components=components)
 
-    def __add__(self, other: "Grain"):
+    def __add__(self, other: "Grain") -> "Grain":
         components = []
         for clist in [self.components, other.components]:
             for component in clist:
@@ -515,7 +575,7 @@ class Grain(BaseModel):
                 components.append(component)
         return Grain(components=components)
 
-    def __radd__(self, other):
+    def __radd__(self, other) -> "Grain":
         if other == 0:
             return self
         else:
@@ -666,12 +726,25 @@ class BaseJoin:
     right_datasource: Union[Datasource, "QueryDatasource"]
     concepts: List[Concept]
     join_type: JoinType
+    filter_to_mutual: bool = False
 
     def __post_init__(self):
+        final_concepts = []
         for concept in self.concepts:
+            include = True
             for ds in [self.left_datasource, self.right_datasource]:
                 if concept.address not in [c.address for c in ds.output_concepts]:
-                    raise SyntaxError(f"Invalid join, missing {concept} on {ds.name}")
+                    if self.filter_to_mutual:
+                        include = False
+                    else:
+                        raise SyntaxError(
+                            f"Invalid join, missing {concept} on {ds.name}, have {[c.address for c in ds.output_concepts]}"
+                        )
+            if include:
+                final_concepts.append(concept)
+        if not final_concepts:
+            raise SyntaxError("No mutual join keys found")
+        self.concepts = final_concepts
 
     @property
     def unique_id(self) -> str:
@@ -715,6 +788,12 @@ class QueryDatasource:
     @property
     def name(self):
         return self.identifier
+
+    @property
+    def group_required(self) -> bool:
+        return (
+            False if sum([ds.grain for ds in self.datasources]) == self.grain else True
+        )
 
     def __post_init__(self):
         self.output_concepts = unique(self.output_concepts, "address")
@@ -760,6 +839,7 @@ class QueryDatasource:
         use_raw_name = (
             True
             if (len(self.datasources) == 1 or use_raw_name) and not force_alias
+            # if ((len(self.datasources) == 1 and isinstance(self.datasources[0], Datasource)) or use_raw_name) and not force_alias
             else False
         )
         for x in self.datasources:
@@ -836,28 +916,46 @@ class CTE:
         return self
 
     @property
+    def relevant_base_ctes(self):
+        return [
+            cte
+            for cte in self.parent_ctes
+            if any(
+                [
+                    c.with_grain(self.grain) in self.output_columns
+                    for c in cte.output_columns
+                ]
+            )
+        ]
+
+    @property
     def base_name(self) -> str:
         # if this cte selects from a single datasource, select right from it
         if len(self.source.datasources) == 1 and isinstance(
             self.source.datasources[0], Datasource
         ):
             return self.source.datasources[0].safe_location
-        # if we have ctes, we should reference those
+        # if we have multiple joined CTEs, pick the base
+        # as the root
         elif self.joins and len(self.joins) > 0:
             return self.joins[0].left_cte.name
-        elif self.parent_ctes:  # and len(self.parent_ctes) == 1:
-            return self.parent_ctes[0].name
+        elif self.relevant_base_ctes:
+            return self.relevant_base_ctes[0].name
         # return self.source_map.values()[0]
         return self.source.name
 
     @property
     def base_alias(self) -> str:
-        if len(self.source.datasources) == 1:
-            if isinstance(self.source.datasources[0], QueryDatasource):
-                return self.parent_ctes[0].name
+        if len(self.source.datasources) == 1 and isinstance(
+            self.source.datasources[0], Datasource
+        ):
+            # if isinstance(self.source.datasources[0], QueryDatasource) and self.relevant_base_ctes:
+            #     return self.relevant_base_ctes[0].name
             return self.source.datasources[0].name
         if self.joins:
             return self.joins[0].left_cte.name
+        elif self.relevant_base_ctes:
+            return self.relevant_base_ctes[0].name
         return self.name
 
     def get_alias(self, concept: Concept) -> str:
@@ -882,6 +980,7 @@ def merge_ctes(ctes: List[CTE]) -> List[CTE]:
             final_ctes_dict[cte.name] = cte
         else:
             final_ctes_dict[cte.name] = final_ctes_dict[cte.name] + cte
+
     final_ctes = list(final_ctes_dict.values())
     return final_ctes
 
@@ -919,7 +1018,7 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
     def __getitem__(self, key, line_no=None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
-        except KeyError as e:
+        except KeyError:
             matches = self._find_similar_concepts(key)
             message = f"undefined concept: {key}."
             if matches:
@@ -1018,7 +1117,7 @@ class WhereClause:
             if item.purpose == Purpose.KEY:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY:
-                output += item.grain.components
+                output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
 
 
@@ -1046,3 +1145,4 @@ class Limit:
 Concept.update_forward_refs()
 Grain.update_forward_refs()
 WindowItem.update_forward_refs()
+WindowItemOrder.update_forward_refs()

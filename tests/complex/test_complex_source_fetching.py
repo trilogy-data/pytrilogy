@@ -10,18 +10,6 @@ from preql.core.query_processor import (
 )
 from preql.dialect.sql_server import SqlServerDialect
 
-"""
-select
-    user_id,
-    about_me,
-    display_name,
-    user_post_count,
-    user_avg_post_length
-ORDER BY
-    user_post_count desc
- limit 10
-;"""
-
 
 def test_aggregate_of_property_function(stackoverflow_environment):
     env = stackoverflow_environment
@@ -45,16 +33,26 @@ def test_aggregate_of_property_function(stackoverflow_environment):
 
 
 def test_aggregate_of_aggregate(stackoverflow_environment):
+
     env = stackoverflow_environment
     post_id = env.concepts["post_id"]
     avg_user_post_count = env.concepts["avg_user_post_count"]
     user_post_count = env.concepts["user_post_count"]
 
+    posts = env.datasources["posts"]
+    post_grain = Grain(components=[env.concepts["post_id"]])
+
+    assert posts.grain == post_grain
+
     expected_parent = get_datasource_by_concept_and_grain(
         user_post_count, Grain(components=[env.concepts["user_id"]]), env, None
     )
 
-    assert set(expected_parent.source_map.keys()) == set(["post_id", "user_id"])
+    assert posts.grain == post_grain
+
+    assert set(expected_parent.source_map.keys()) == set(
+        ["default.post_id", "default.user_id"]
+    )
 
     assert user_post_count in expected_parent.output_concepts
 
@@ -74,11 +72,16 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert isinstance(parent, QueryDatasource)
     assert user_post_count in parent.output_concepts
 
-    assert set(parent.source_map.keys()) == set(["post_id", "user_id"])
+    assert set(parent.source_map.keys()) == set(["default.post_id", "default.user_id"])
 
     root = parent.datasources[0]
     assert isinstance(root, Datasource)
-
+    assert posts == root
+    print(root.identifier)
+    print(root.grain)
+    for i in root.concepts:
+        print(i)
+        print(i.grain.set)
     assert post_id in root.concepts
 
     ctes = datasource_to_ctes(datasource)

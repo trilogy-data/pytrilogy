@@ -21,6 +21,8 @@ from preql.core.models import (
 from preql.core.processing.utility import concept_to_inputs, PathInfo, path_to_joins
 from preql.utility import unique
 
+LOGGER_PREFIX = "[CONCEPT DETAIL]"
+
 
 def get_datasource_from_direct_select(
     concept: Concept, grain: Grain, environment: Environment, g: ReferenceGraph
@@ -39,10 +41,10 @@ def get_datasource_from_direct_select(
                     source=datasource_to_node(datasource),
                     target=concept_to_node(req_concept),
                 )
-            except nx.exception.NodeNotFound as e:
+            except nx.exception.NodeNotFound:
                 all_found = False
                 break
-            except nx.exception.NetworkXNoPath as e:
+            except nx.exception.NetworkXNoPath:
                 all_found = False
                 break
             if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
@@ -54,16 +56,16 @@ def get_datasource_from_direct_select(
             else:
                 final_grain = grain
             logger.debug(
-                f"got {datasource.identifier} for {concept} from direct select"
+                f"{LOGGER_PREFIX} Got {datasource.identifier} for {concept} from direct select"
             )
-            base_outputs = [concept] + final_grain.components
+            base_outputs = [concept] + final_grain.components_copy
             for item in datasource.concepts:
-                if item.address in [c.address for c in grain.components]:
+                if item.address in [c.address for c in grain.components_copy]:
                     base_outputs.append(item)
             return QueryDatasource(
                 output_concepts=unique(base_outputs, "address"),
                 input_concepts=all_concepts,
-                source_map={concept.name: {datasource} for concept in all_concepts},
+                source_map={concept.address: {datasource} for concept in all_concepts},
                 datasources=[datasource],
                 grain=final_grain,
                 joins=[],
@@ -110,7 +112,7 @@ def get_datasource_from_property_lookup(
                         source=datasource_to_node(datasource),
                         target=concept_to_node(req_concept),
                     )
-                except nx.exception.NetworkXNoPath as e:
+                except nx.exception.NetworkXNoPath:
                     all_found = False
                     break
                 if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
@@ -118,26 +120,36 @@ def get_datasource_from_property_lookup(
                     break
             if all_found:
                 logger.debug(
-                    f"Can satisfy query from property lookup for {concept} using {datasource.identifier}"
+                    f"{LOGGER_PREFIX} Can satisfy query from property lookup for {concept} using {datasource.identifier} with {strategy} grain"
                 )
-                outputs = [concept] + datasource.grain.components
+                outputs = [concept] + datasource.grain.components_copy
 
                 # also pull through any grain component that might exist
                 # to facilitate future joins
-                for concept in grain.components:
-                    if (
-                        concept.with_grain(datasource.grain)
-                        in datasource.output_concepts
+                final_grain_components = datasource.grain.components_copy
+                final_grain_inputs = []
+                for concept in grain.components_copy:
+                    required = concept_to_inputs(concept)
+                    if all(
+                        [
+                            sconcept.with_grain(datasource.grain)
+                            in datasource.output_concepts
+                            for sconcept in required
+                        ]
                     ):
                         outputs.append(concept)
+                        final_grain_components.append(concept)
+                        final_grain_inputs += required
                 outputs = unique(outputs, "address")
                 filters: List[Concept] = []
                 return QueryDatasource(
-                    input_concepts=all_concepts + datasource.grain.components,
+                    input_concepts=all_concepts + final_grain_inputs,
                     output_concepts=outputs,
-                    source_map={concept.name: {datasource} for concept in outputs},
+                    source_map={
+                        concept.address: {datasource} for concept in datasource.concepts
+                    },
                     datasources=[datasource],
-                    grain=datasource.grain,
+                    grain=Grain(components=final_grain_components),
                     joins=[],
                     filter_concepts=filters,
                 )
@@ -153,22 +165,32 @@ def get_datasource_from_group_select(
 ) -> QueryDatasource:
     """Return a datasource that can be grouped to a value and grain.
     Unique values in a column, for example"""
-    all_concepts = concept_to_inputs(concept.with_default_grain()) + grain.components
+    all_concepts = (
+        concept_to_inputs(concept.with_default_grain()) + grain.components_copy
+    )
+
+    expanded_concepts = []
+    for item in all_concepts:
+        expanded_concepts += concept_to_inputs(item)
+
     for datasource in environment.datasources.values():
         all_found = True
         for req_concept in all_concepts:
-            try:
-                path = nx.shortest_path(
-                    g,
-                    source=datasource_to_node(datasource),
-                    target=concept_to_node(req_concept),
-                )
-            except (nx.exception.NetworkXNoPath, nx.exception.NodeNotFound) as e:
-                all_found = False
-                break
-            if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
-                all_found = False
-                break
+            members = concept_to_inputs(req_concept)
+            for sub_req_concept in members:
+                target = sub_req_concept.with_grain(datasource.grain)
+                try:
+                    path = nx.shortest_path(
+                        g,
+                        source=datasource_to_node(datasource),
+                        target=concept_to_node(target),
+                    )
+                except (nx.exception.NetworkXNoPath, nx.exception.NodeNotFound):
+                    all_found = False
+                    break
+                if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
+                    all_found = False
+                    break
         if all_found:
             # if the dataset that can reach every concept
             # is in fact a subset of the concept
@@ -180,14 +202,16 @@ def get_datasource_from_group_select(
             #     final_grain = grain
             final_grain = grain
             logger.debug(
-                f"got {datasource.identifier} for {concept} from grouped select"
+                f"{LOGGER_PREFIX} Got {datasource.identifier} for {concept} from grouped select"
             )
-            outputs = [concept] + grain.components
+            outputs = [concept] + grain.components_copy
             filters: List[Concept] = []
             return QueryDatasource(
                 input_concepts=all_concepts,
                 output_concepts=outputs,
-                source_map={concept.name: {datasource} for concept in all_concepts},
+                source_map={
+                    concept.address: {datasource} for concept in expanded_concepts
+                },
                 datasources=[datasource],
                 grain=final_grain,
                 joins=[],
@@ -205,7 +229,9 @@ def get_datasource_by_joins(
 ) -> QueryDatasource:
     join_candidates: List[PathInfo] = []
 
-    all_requirements = unique(concept_to_inputs(concept) + grain.components, "address")
+    all_requirements = unique(
+        concept_to_inputs(concept) + grain.components_copy, "address"
+    )
 
     for datasource in environment.datasources.values():
         all_found = True
@@ -218,10 +244,10 @@ def get_datasource_by_joins(
                     target=concept_to_node(item),
                 )
                 paths[concept_to_node(item)] = path
-            except nx.exception.NodeNotFound as e:
+            except nx.exception.NodeNotFound:
                 all_found = False
                 continue
-            except nx.exception.NetworkXNoPath as e:
+            except nx.exception.NetworkXNoPath:
                 all_found = False
                 continue
         if all_found:
@@ -256,10 +282,10 @@ def get_datasource_by_joins(
                 all_requirements.append(jconcept)
     all_requirements = unique(all_requirements, "address")
     if whole_grain:
-        outputs = grain.components
+        outputs = grain.components_copy
         filters = [concept]
     else:
-        outputs = [concept] + grain.components
+        outputs = [concept] + grain.components_copy
         filters = []
     output = QueryDatasource(
         output_concepts=outputs,
@@ -273,7 +299,7 @@ def get_datasource_by_joins(
         joins=join_paths,
         filter_concepts=filters,
     )
-    logger.debug(f"got {concept} from joins")
+    logger.debug(f"{LOGGER_PREFIX} Got {concept} from joins")
     return output
 
 
@@ -301,27 +327,28 @@ def get_datasource_from_complex_lineage(
         )
         all_datasets.append(sub_datasource)
         all_requirements.append(sub_concept)
-        source_map[sub_concept.name] = {sub_datasource}
+        source_map[sub_concept.address] = {sub_datasource}
         if isinstance(sub_datasource, QueryDatasource):
             source_map = {**source_map, **sub_datasource.source_map}
 
     # for grain components, build in CTE if required
-    for sub_concept in grain.components:
+    for sub_concept in grain.components_copy:
         if sub_concept.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.WINDOW):
             complex_lineage_flag = True
         sub_datasource = get_datasource_by_concept_and_grain(
-            sub_concept, sub_concept.grain, environment=environment, g=g
+            sub_concept, sub_concept.grain or Grain(), environment=environment, g=g
         )
         all_datasets.append(sub_datasource)
         all_requirements.append(sub_concept)
-        source_map[sub_concept.name] = {sub_datasource}
+        source_map[sub_concept.address] = {sub_datasource}
         if isinstance(sub_datasource, QueryDatasource):
             source_map = {**source_map, **sub_datasource.source_map}
     if complex_lineage_flag:
-        logger.debug(f"Complex lineage found for {concept}")
-        logger.debug(f"Grain {grain}")
+        logger.debug(
+            f"{LOGGER_PREFIX} Complex lineage found for {concept} at grain {grain}"
+        )
         qds = QueryDatasource(
-            output_concepts=[concept] + grain.components,
+            output_concepts=[concept] + grain.components_copy,
             input_concepts=all_requirements,
             source_map=source_map,
             grain=grain,
@@ -329,7 +356,6 @@ def get_datasource_from_complex_lineage(
             joins=[]
             # joins=join_paths,
         )
-        source_map[concept.name] = {qds}
         return qds
 
 
@@ -343,19 +369,19 @@ def get_property_group_by_without_key(
     source_map = {}
     joins: List[BaseJoin] = []
     # early exit if no properties in the grain
-    if not any([x.purpose == Purpose.PROPERTY for x in grain.components]):
+    if not any([x.purpose == Purpose.PROPERTY for x in grain.components_copy]):
         raise ValueError("Cannot find property lookup")
     pgrain = Grain(
         components=[
             z
             if z.purpose != Purpose.PROPERTY
-            else z.with_default_grain().grain.components[0]
-            for z in grain.components
+            else z.with_default_grain().grain_components[0]
+            for z in grain.components_copy
         ]
     )
     # we require this sub datasource to match on all grain components
     sub_datasource = get_datasource_by_concept_and_grain(
-        concept.with_default_grain().grain.components[0],
+        concept.with_default_grain().grain_components[0],
         grain=pgrain,
         environment=environment,
         g=g,
@@ -363,17 +389,17 @@ def get_property_group_by_without_key(
     )
     all_datasets.append(sub_datasource)
     all_requirements.append(concept)
-    source_map[concept.name] = {sub_datasource}
+    source_map[concept.address] = {sub_datasource}
     if isinstance(sub_datasource, QueryDatasource):
         source_map = {**source_map, **sub_datasource.source_map}
-    remapped = [z for z in grain.components if z.purpose == Purpose.PROPERTY]
+    remapped = [z for z in grain.components_copy if z.purpose == Purpose.PROPERTY]
     output_concepts = sub_datasource.output_concepts
     for remapped_property in remapped:
         # we don't need another source if we already have this
         if remapped_property in sub_datasource.output_concepts:
             continue
-        remap_grain = remapped_property.with_default_grain().grain
-        keys = remap_grain.components
+        remap_grain = remapped_property.with_default_grain().grain or Grain()
+        keys = remap_grain.components_copy
         for key in keys:
             all_requirements.append(key)
         # this may not have all keys
@@ -389,7 +415,7 @@ def get_property_group_by_without_key(
         )
         all_datasets.append(remapped_datasource)
         all_requirements.append(remapped_property)
-        source_map[remapped_property.name] = {remapped_datasource}
+        source_map[remapped_property.address] = {remapped_datasource}
         if isinstance(remapped_datasource, QueryDatasource):
             source_map = {**source_map, **remapped_datasource.source_map}
         join_concepts = [
@@ -408,7 +434,7 @@ def get_property_group_by_without_key(
                 )
             )
     qds = QueryDatasource(
-        output_concepts=[concept] + grain.components,
+        output_concepts=[concept] + grain.components_copy,
         input_concepts=all_requirements,
         source_map=source_map,
         grain=grain,
@@ -416,7 +442,7 @@ def get_property_group_by_without_key(
         joins=joins
         # joins=join_paths,
     )
-    source_map[concept.name] = {qds}
+    source_map[concept.address] = {qds}
     return qds
 
 
@@ -428,13 +454,29 @@ def get_datasource_from_window_function(
             "Attempting to use windowed derivation for non window function"
         )
     window: WindowItem = concept.lineage
-    all_requirements = []
     all_datasets: Dict = {}
     source_map = {}
-    cte_grain = Grain(components=[window.content.output])
-    sub_concepts = unique([window.content.output] + grain.components, "identifier")
-    for arg in window.order_by:
-        sub_concepts += [arg.output]
+
+    window_grain = [window.content.output]
+
+    output_concepts = [concept] + grain.components_copy
+    sub_concepts = unique([window.content.output] + grain.components_copy, "identifier")
+
+    # order by statements need to be pulled in
+    # but include them to optimize fetching
+    for oarg in window.order_by:
+        sub_concepts += [oarg.output]
+
+    for warg in window.over:
+        sub_concepts += [warg]
+        # make sure to move this to the appropriate grain
+        window_grain += [warg.output]
+        output_concepts += [warg]
+
+    cte_grain = Grain(components=window_grain)
+    # window grouping need to be included in sources and in output
+    # to support future joins
+
     for sub_concept in sub_concepts:
         sub_concept = sub_concept.with_grain(cte_grain)
         sub_datasource = get_datasource_by_concept_and_grain(
@@ -446,8 +488,8 @@ def get_datasource_from_window_function(
             )
         else:
             all_datasets[sub_datasource.identifier] = sub_datasource
-        all_requirements.append(sub_concept)
-        source_map[sub_concept.name] = {all_datasets[sub_datasource.identifier]}
+        # all_requirements.append(sub_concept)
+        source_map[sub_concept.address] = {all_datasets[sub_datasource.identifier]}
         if isinstance(sub_datasource, QueryDatasource):
             source_map = {**source_map, **sub_datasource.source_map}
     dataset_list = list(all_datasets.values())
@@ -460,19 +502,50 @@ def get_datasource_from_window_function(
                 left_datasource=base,
                 right_datasource=right_value,
                 join_type=JoinType.LEFT_OUTER,
-                concepts=cte_grain.components,
+                concepts=[c for c in cte_grain.components_copy],
+                filter_to_mutual=True,
             )
         )
+
     qds = QueryDatasource(
-        output_concepts=[concept] + grain.components,
-        input_concepts=all_requirements,
+        output_concepts=output_concepts,
+        input_concepts=sub_concepts,
         source_map=source_map,
         grain=grain,
         datasources=list(all_datasets.values()),
         joins=joins,
     )
-    source_map[concept.name] = {qds}
-    return qds
+    if not qds.group_required:
+        return qds
+
+    # we can't group a row_number
+    # so if we would group a window function
+    # we must nest it one level further
+    qds2 = QueryDatasource(
+        output_concepts=output_concepts,
+        input_concepts=sub_concepts,
+        source_map=source_map,
+        grain=cte_grain,
+        datasources=list(all_datasets.values()),
+        joins=joins,
+    )
+    # first ensure that the grain of the first CTE does not require grouping
+
+    # restrict our new one to just output the components we want
+
+    # now create a new CTE, n which the group by will take place
+    final_outputs = [concept] + grain.components_copy
+
+    # parent query data source for group by
+    pqds = QueryDatasource(
+        output_concepts=final_outputs,
+        input_concepts=output_concepts,
+        source_map={c.address: {qds2} for c in final_outputs},
+        grain=grain,
+        datasources=[qds2],
+        joins=[],
+    )
+    return pqds
 
 
 def get_datasource_by_concept_and_grain(
@@ -485,23 +558,24 @@ def get_datasource_by_concept_and_grain(
     """Determine if it's possible to get a certain concept at a certain grain.
     """
     g = g or generate_graph(environment)
+    logger.debug(f"{LOGGER_PREFIX} sub search for {concept} at {grain}")
     if concept.lineage:
         if concept.derivation == PurposeLineage.WINDOW:
-            logger.debug("Checking for complex window function")
+            logger.debug(f"{LOGGER_PREFIX} Checking for complex window function")
             complex = get_datasource_from_window_function(
                 concept, grain, environment, g, whole_grain=whole_grain
             )
         elif concept.derivation == PurposeLineage.AGGREGATE:
-            logger.debug("Checking for complex function derivation")
+            logger.debug(f"{LOGGER_PREFIX} Checking for complex function derivation")
             complex = get_datasource_from_complex_lineage(
                 concept, grain, environment, g, whole_grain=whole_grain
             )
         else:
             complex = None
         if complex:
-            logger.debug(f"Returning complex lineage for {concept}")
+            logger.debug(f"{LOGGER_PREFIX} Returning complex lineage for {concept}")
             return complex
-        logger.debug(f"Can satisfy query with basic lineage for {concept}")
+        logger.debug(f"{LOGGER_PREFIX} Can satisfy query with basic lineage")
     # the concept is available directly on a datasource at appropriate grain
     if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
         try:
@@ -513,33 +587,35 @@ def get_datasource_by_concept_and_grain(
                 g,
                 whole_grain=whole_grain,
             )
-            logger.debug(f"Got {concept} from property lookup")
+            logger.debug(f"{LOGGER_PREFIX} Got {concept} from property lookup")
             return out
         except ValueError as e:
-            logger.debug(e)
+            logger.debug(f"{LOGGER_PREFIX} {str(e)}")
     # the concept is available on a datasource, but at a higher granularity
     try:
         out = get_datasource_from_group_select(
             concept, grain, environment, g, whole_grain=whole_grain
         )
-        logger.debug(f"Got {concept} from grouped select")
+        logger.debug(f"{LOGGER_PREFIX} Got {concept} from grouped select")
         return out
     except ValueError as e:
-        logger.error(e)
+        logger.debug(f"{LOGGER_PREFIX} {str(e)}")
     # the concept and grain together can be gotten via
     # a join from a root dataset to enrichment datasets
     try:
         out = get_datasource_by_joins(
             concept, grain, environment, g, whole_grain=whole_grain
         )
-        logger.debug(f"Got {concept} from joins")
+        logger.debug(f"{LOGGER_PREFIX} Got {concept} from joins")
         return out
     except ValueError as e:
-        logger.debug(e)
+        logger.debug(f"{LOGGER_PREFIX} {str(e)}")
+
+    logger.debug(f"{LOGGER_PREFIX} Full grain search exhausted, reducing grain ")
     from itertools import combinations
 
-    for x in range(1, len(grain.components)):
-        for combo in combinations(grain.components, x):
+    for x in range(1, len(grain.components_copy)):
+        for combo in combinations(grain.components_copy, x):
             ngrain = Grain(components=list(combo))
             try:
                 out = get_datasource_by_joins(
@@ -549,10 +625,12 @@ def get_datasource_by_concept_and_grain(
                     g,
                     whole_grain=whole_grain,
                 )
-                logger.debug(f"Got {concept} from join to a sub portion of grain")
+                logger.debug(
+                    f"{LOGGER_PREFIX} Got {concept} from join to a sub portion of grain"
+                )
                 return out
             except ValueError as e:
-                logger.debug(e)
+                logger.debug(f"{LOGGER_PREFIX} {str(e)}")
 
     # if there is a property in the grain, see if we can find a datasource
     # with all the keys of the property, which we can then join to
@@ -561,11 +639,13 @@ def get_datasource_by_concept_and_grain(
             concept, grain, environment, g, whole_grain=whole_grain
         )
         logger.debug(
-            f"Got {concept} from property lookup via transversing key based grain"
+            f"{LOGGER_PREFIX} {concept} from property lookup via transversing key based grain"
         )
         return out
     except ValueError as e:
         logger.debug(e)
 
     neighbors = list(g.predecessors(concept_to_node(concept)))
-    raise ValueError(f"No source for {concept} found, neighbors {neighbors}")
+    raise ValueError(
+        f"{LOGGER_PREFIX} No source for {concept} found, neighbors {neighbors}"
+    )

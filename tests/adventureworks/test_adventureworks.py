@@ -1,11 +1,10 @@
 # from preql.compiler import compile
 from os.path import dirname, join
 
-import networkx as nx
 import pytest
 
 from preql.core.env_processor import generate_graph
-from preql.core.models import Select, QueryDatasource, CTE
+from preql.core.models import Select, QueryDatasource, CTE, Grain
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
@@ -42,12 +41,6 @@ def test_finance_queries(adventureworks_engine, environment):
 
 @pytest.mark.adventureworks
 def test_query_datasources(environment):
-    from preql.constants import logger
-    from logging import StreamHandler
-    from preql.core.models import Grain
-
-    logger.addHandler(StreamHandler())
-
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -177,12 +170,6 @@ def recurse_datasource(parent: QueryDatasource, depth=0):
 
 @pytest.mark.adventureworks
 def test_two_properties(environment):
-    from preql.constants import logger
-    from logging import StreamHandler
-    from preql.core.models import Grain
-
-    logger.addHandler(StreamHandler())
-
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:

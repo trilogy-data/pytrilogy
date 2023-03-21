@@ -1,6 +1,7 @@
 from collections import defaultdict
-from typing import List, Optional, Dict, Tuple, Union
+from typing import List, Optional, Dict, Tuple, Union, Set
 
+from preql.constants import logger
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
 from preql.core.hooks import BaseProcessingHook
@@ -20,6 +21,8 @@ from preql.core.models import (
 )
 from preql.core.processing.concept_strategies import get_datasource_by_concept_and_grain
 from preql.utility import string_to_hash, unique
+
+LOGGER_PREFIX = "[QUERY BUILD]"
 
 
 def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
@@ -51,12 +54,6 @@ def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
 
 def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     int_id = string_to_hash(query_datasource.identifier)
-    group_to_grain = (
-        False
-        if sum([ds.grain for ds in query_datasource.datasources])
-        == query_datasource.grain
-        else True
-    )
     output = []
     children = []
     if len(query_datasource.datasources) > 1 or any(
@@ -107,30 +104,35 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         query_datasource.identifier.replace("<", "").replace(">", "").replace(",", "_")
     )
 
-    output.append(
-        CTE(
-            name=f"cte_{human_id}_{int_id}",
-            source=query_datasource,
-            # output columns are what are selected/grouped by
-            output_columns=[
-                c.with_grain(query_datasource.grain)
-                for c in query_datasource.output_concepts
-            ],
-            source_map=source_map,
-            # related columns include all referenced columns, such as filtering
-            # related_columns=datasource.concepts,
-            joins=[base_join_to_join(join, output) for join in query_datasource.joins],
-            related_columns=query_datasource.input_concepts,
-            filter_columns=query_datasource.filter_concepts,
-            grain=query_datasource.grain,
-            group_to_grain=group_to_grain,
-            parent_ctes=children,
-        )
+    cte = CTE(
+        name=f"cte_{human_id}_{int_id}",
+        source=query_datasource,
+        # output columns are what are selected/grouped by
+        output_columns=[
+            c.with_grain(query_datasource.grain)
+            for c in query_datasource.output_concepts
+        ],
+        source_map=source_map,
+        # related columns include all referenced columns, such as filtering
+        # related_columns=datasource.concepts,
+        joins=[base_join_to_join(join, output) for join in query_datasource.joins],
+        related_columns=query_datasource.input_concepts,
+        filter_columns=query_datasource.filter_concepts,
+        grain=query_datasource.grain,
+        group_to_grain=query_datasource.group_required,
+        # we restrict parent_ctes to one level
+        # as this set is used as the base for rendering the query
+        parent_ctes=children,
     )
+    if cte.grain != query_datasource.grain:
+        raise ValueError("Grain was corrupted in CTE generation")
+    output.append(cte)
     return output
 
 
-def get_disconnected_components(concept_map: Dict[str, List[Concept]]):
+def get_disconnected_components(
+    concept_map: Dict[str, Set[Concept]]
+) -> Tuple[int, List]:
     """Find if any of the datasources are not linked"""
     import networkx as nx
 
@@ -140,29 +142,37 @@ def get_disconnected_components(concept_map: Dict[str, List[Concept]]):
         for concept in concepts:
             graph.add_edge(datasource, concept.address)
     sub_graphs = list(nx.connected_components(graph))
-    return len(sub_graphs)
+    return len(sub_graphs), sub_graphs
 
 
 def get_query_datasources(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
-) -> Tuple[Dict[str, List[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
-    concept_map: Dict[str, List[Concept]] = defaultdict(list)
+) -> Tuple[Dict[str, set[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
+    concept_map: Dict[str, Set[Concept]] = defaultdict(set)
     graph = graph or generate_graph(environment)
     datasource_map: Dict[str, Union[Datasource, QueryDatasource]] = {}
-    if statement.where_clause:
-        # TODO: figure out right place to group to do predicate pushdown
-        statement.grain.components += statement.where_clause.input
-
+    # if statement.where_clause:
+    #     # TODO: figure out right place to group to do predicate pushdown
+    #     statement.grain = statement.grain + Grain(components =statement.where_clause.input)
     components = {False: statement.output_components + statement.grain.components}
 
     for key, concept_list in components.items():
+        # TODO - identify if concept is already available on a datasource, and skip further search
         for concept in concept_list:
+            logger.debug(
+                f"{LOGGER_PREFIX} Beginning search for {concept.address} at {str(statement.grain)}"
+            )
             datasource = get_datasource_by_concept_and_grain(
                 concept, statement.grain, environment, graph, whole_grain=key
             )
-
+            logger.debug(
+                f"{LOGGER_PREFIX} Finished search for {concept.address} from {datasource.name} "
+            )
             if concept not in concept_map[datasource.identifier]:
-                concept_map[datasource.identifier].append(concept)
+                concept_map[datasource.identifier].add(concept)
+            # add in the rest of our outptu concepts to the map
+            for item in datasource.output_concepts:
+                concept_map[datasource.identifier].add(item)
             if datasource.identifier in datasource_map:
                 # concatenate to add new fields
                 datasource_map[datasource.identifier] = (
@@ -170,9 +180,10 @@ def get_query_datasources(
                 )
             else:
                 datasource_map[datasource.identifier] = datasource
-    disconnected = get_disconnected_components(concept_map)
+    disconnected, disco_lists = get_disconnected_components(concept_map)
     # if not all datasources can ultimately be merged
     if disconnected > 1:
+        logger.debug(f"Disconnected nodes found, have {disco_lists}")
         components = {True: statement.output_components + statement.grain.components}
         for key, concept_list in components.items():
             for concept in concept_list:
@@ -181,7 +192,7 @@ def get_query_datasources(
                 )
 
                 if concept not in concept_map[datasource.identifier]:
-                    concept_map[datasource.identifier].append(concept)
+                    concept_map[datasource.identifier].add(concept)
                 if datasource.identifier in datasource_map:
                     # concatenate to add new fields
                     datasource_map[datasource.identifier] = (
@@ -211,9 +222,7 @@ def process_query(
         if isinstance(datasource, Datasource):
             raise ValueError("Unexpected base datasource")
         ctes += datasource_to_ctes(datasource)
-
     final_ctes = merge_ctes(ctes)
-
     base_list: List[CTE] = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
         base = base_list[0]
@@ -228,6 +237,11 @@ def process_query(
                 ]
             ),
         )
+        if not base_list:
+            cte_grain = [str(cte.grain) for cte in final_ctes]
+            raise ValueError(
+                f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
+            )
         base = base_list[0]
     others: List[CTE] = [cte for cte in final_ctes if cte != base]
 
@@ -236,6 +250,7 @@ def process_query(
         # where a query with a grain of properties has the components of the grain
         # with the default key grain rather than the grain of the select
         # TODO - evaluate if we can fix this in select definition
+
         joinkeys = [
             JoinKey(c)
             for c in statement.grain.components

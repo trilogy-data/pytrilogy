@@ -1,11 +1,10 @@
 from jinja2 import Template
+from typing import Mapping, Callable, Any
 
 from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
 
-WINDOW_FUNCTION_MAP = {
-    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over ( order by {sort} {order})"
-}
+WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x: f"count({x[0]})",

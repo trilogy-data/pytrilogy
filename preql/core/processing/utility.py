@@ -1,23 +1,8 @@
-from collections import defaultdict
-from typing import List, Optional, Union, Tuple, Set, Dict, TypedDict
+from typing import List, Optional, Tuple, Dict, TypedDict
 
-import networkx as nx
 
-from preql.constants import logger
-from preql.core.enums import Purpose, PurposeLineage
-from preql.core.env_processor import generate_graph
-from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
-from preql.core.models import (
-    Concept,
-    Environment,
-    Datasource,
-    Grain,
-    QueryDatasource,
-    JoinType,
-    BaseJoin,
-    Function,
-    WindowItem,
-)
+from preql.core.graph_models import ReferenceGraph
+from preql.core.models import Concept, Datasource, JoinType, BaseJoin
 from preql.utility import unique
 
 
@@ -76,6 +61,13 @@ def parse_path_to_matches(
     return output
 
 
+def concepts_to_inputs(concepts: List[Concept]) -> List[Concept]:
+    output = []
+    for concept in concepts:
+        output += concept_to_inputs(concept)
+    return unique(output, hash)
+
+
 def concept_to_inputs(concept: Concept) -> List[Concept]:
     """Given a concept, return all relevant root inputs"""
     output = []
@@ -86,4 +78,4 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
         # then we need to persist the original type
         # ex: avg() of sum() @ grain
         output += concept_to_inputs(source.with_default_grain())
-    return output
+    return unique(output, hash)

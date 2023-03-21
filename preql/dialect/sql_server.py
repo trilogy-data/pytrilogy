@@ -1,5 +1,3 @@
-from preql.dialect.base import BaseDialect
-
 from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType
@@ -24,7 +22,7 @@ FUNCTION_MAP = {
 # we may return a static value
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT: lambda args: f"1",
+    FunctionType.COUNT: lambda args: "1",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
 }

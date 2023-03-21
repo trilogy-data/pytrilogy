@@ -43,12 +43,15 @@ from preql.core.models import (
     Metadata,
     Window,
     WindowItem,
+    WindowItemOver,
+    WindowItemOrder,
     Query,
 )
 from preql.parsing.exceptions import ParseError
 
 grammar = r"""
-    !start: ((statement _TERMINATOR) | comment )*
+    !start: ( block | comment )*
+    block: statement _TERMINATOR comment?
     ?statement: concept
     | datasource
     | select
@@ -89,7 +92,11 @@ grammar = r"""
     select : "select"i select_list  where? comment* order_by? comment* limit? comment*
     
     // top 5 user_id
-    window_item: "rank" (IDENTIFIER | select_transform | comment+ )  ("BY"i order_list)?
+    window_item: "rank" (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
+    
+    window_item_over: ("OVER"i over_list)
+    
+    window_item_order: ("BY"i order_list)
     
     select_item : (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
     
@@ -109,6 +116,8 @@ grammar = r"""
     window_order_by: "BY"i column_list
     
     order_list : (expr ORDERING "," )* expr ORDERING ","?
+    
+    over_list: (IDENTIFIER "," )* IDENTIFIER ","?
     
     ORDERING: ("ASC"i | "DESC"i)
     
@@ -218,8 +227,24 @@ class ParseToObjects(Transformer):
         self.text = text
         self.environment = environment
 
+    def validate_concept(self, lookup: str, meta: Meta):
+        existing = self.environment.concepts.get(lookup)
+        if existing:
+            raise ParseError(
+                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+            )
+
     def start(self, args):
         return args
+
+    def block(self, args):
+        output = args[0]
+        if isinstance(output, Concept):
+            if len(args) > 1 and isinstance(args[1], Comment):
+                output.metadata.description = (
+                    output.metadata.description or args[1].text.split("#")[1].strip()
+                )
+        return args[0]
 
     def metadata(self, args):
         pairs = {key: val for key, val in zip(args[::2], args[1::2])}
@@ -287,11 +312,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         grain, name = args[1].rsplit(".", 1)
-        existing = self.environment.concepts.get(name)
-        if existing:
-            raise ParseError(
-                f"Concept {name} on line {meta.line} is a duplicate declaration"
-            )
+        self.validate_concept(name, meta)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -302,7 +323,7 @@ class ParseToObjects(Transformer):
             keys=[self.environment.concepts[grain]],
         )
         self.environment.concepts[name] = concept
-        return args
+        return concept
 
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> Concept:
@@ -313,11 +334,7 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-        existing = self.environment.concepts.get(lookup)
-        if existing:
-            raise ParseError(
-                f"Concept {name} on line {meta.line} is a duplicate declaration"
-            )
+        self.validate_concept(lookup, meta)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -326,7 +343,7 @@ class ParseToObjects(Transformer):
             namespace=namespace,
         )
         self.environment.concepts[lookup] = concept
-        return args
+        return concept
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> Concept:
@@ -335,6 +352,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
+        args[2]
 
         lookup, namespace, name = parse_concept_reference(name, self.environment)
 
@@ -351,11 +369,12 @@ class ParseToObjects(Transformer):
                 purpose=args[0],
                 metadata=metadata,
                 lineage=window_item,
-                # grain=function.output_grain,
+                # windows are implicitly at the grain of the group by + the original content
+                grain=Grain(components=window_item.over + [window_item.content.output]),
                 namespace=namespace,
             )
             self.environment.concepts[lookup] = concept
-            return args
+            return concept
         else:
             function: Function = args[2]
             concept = Concept(
@@ -364,14 +383,17 @@ class ParseToObjects(Transformer):
                 purpose=args[0],
                 metadata=metadata,
                 lineage=function,
-                # grain=function.output_grain,
+                grain=function.output_grain,
                 namespace=namespace,
             )
             self.environment.concepts[lookup] = concept
-            return args
+            return concept
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> Concept:
+        concept: Concept = args[0]
+        if concept.metadata:
+            concept.metadata.line_number = meta.line
         return args[0]
 
     def column_assignment_list(self, args):
@@ -430,11 +452,13 @@ class ParseToObjects(Transformer):
 
         if existing:
             raise ParseError(
-                f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept"
+                f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept; originally defined on line {existing.metadata.line_number}"
             )
+
+        # keys are used to pass through derivations
         if function.output_purpose == Purpose.PROPERTY:
             grain = Grain(components=function.arguments)
-            keys = function.arguments
+            keys = [x for x in function.arguments if isinstance(x, Concept)]
         else:
             grain = None
             keys = None
@@ -478,10 +502,13 @@ class ParseToObjects(Transformer):
         return Ordering(args)
 
     def order_list(self, args):
-        return [OrderItem(x, y) for x, y in zip(args[::2], args[1::2])]
+        return [OrderItem(expr=x, order=y) for x, y in zip(args[::2], args[1::2])]
 
     def order_by(self, args):
         return OrderBy(items=args[0])
+
+    def over_list(self, args):
+        return [self.environment.concepts[x] for x in args]
 
     def import_statement(self, args):
         alias = args[-1]
@@ -505,7 +532,7 @@ class ParseToObjects(Transformer):
         return None
 
     @v_args(meta=True)
-    def select(self, meta: Meta, args):
+    def select(self, meta: Meta, args) -> Select:
 
         select_items = None
         limit = None
@@ -531,6 +558,7 @@ class ParseToObjects(Transformer):
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_grain(output.grain)
+                self.environment.concepts[new_concept.name] = new_concept
                 item.content.output = new_concept
             elif isinstance(item.content, Concept):
                 new_concept = item.content.with_grain(output.grain)
@@ -540,7 +568,7 @@ class ParseToObjects(Transformer):
                 item.content.output = new_concept
             else:
                 raise ValueError
-            self.environment.concepts[new_concept.name] = new_concept
+
         if order_by:
             for item in order_by.items:
                 if (
@@ -596,14 +624,22 @@ class ParseToObjects(Transformer):
     def window(self, args):
         return Window(count=args[1].value, window_order=args[0])
 
+    def window_item_over(self, args):
+        return WindowItemOver(contents=args[0])
+
+    def window_item_order(self, args):
+        return WindowItemOrder(contents=args[0])
+
     def window_item(self, args):
-        if len(args) > 1:
-            sort_concepts = args[1]
-        else:
-            sort_concepts = []
+        kwargs = {}
+        for item in args[1:]:
+            if isinstance(item, WindowItemOrder):
+                kwargs["order_by"] = item.contents
+            elif isinstance(item, WindowItemOver):
+                kwargs["over"] = item.contents
         concept = self.environment.concepts[args[0]]
         # sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
-        return WindowItem(content=concept, order_by=sort_concepts)
+        return WindowItem(content=concept, **kwargs)
 
     # BEGIN FUNCTIONS
     def expr_reference(self, args) -> Concept:
