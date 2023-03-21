@@ -51,7 +51,7 @@ class ReferenceGraph(nx.DiGraph):
         else:
             node_name = node_for_adding
 
-        if node_name.startswith("c~") and not "concept" in attr.keys():
+        if node_name.startswith("c~") and "concept" not in attr.keys():
             raise ValueError
         super().add_node(node_name, **attr)
 

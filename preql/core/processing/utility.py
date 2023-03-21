@@ -1,23 +1,8 @@
-from collections import defaultdict
-from typing import List, Optional, Union, Tuple, Set, Dict, TypedDict
+from typing import List, Optional, Tuple, Dict, TypedDict
 
-import networkx as nx
 
-from preql.constants import logger
-from preql.core.enums import Purpose, PurposeLineage
-from preql.core.env_processor import generate_graph
-from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
-from preql.core.models import (
-    Concept,
-    Environment,
-    Datasource,
-    Grain,
-    QueryDatasource,
-    JoinType,
-    BaseJoin,
-    Function,
-    WindowItem,
-)
+from preql.core.graph_models import ReferenceGraph
+from preql.core.models import Concept, Datasource, JoinType, BaseJoin
 from preql.utility import unique
 
 
@@ -74,6 +59,13 @@ def parse_path_to_matches(
     if left_ds and concept and not right_ds:
         output.append((left_ds, None, [concept]))
     return output
+
+
+def concepts_to_inputs(concepts: List[Concept]) -> List[Concept]:
+    output = []
+    for concept in concepts:
+        output += concept_to_inputs(concept)
+    return unique(output, hash)
 
 
 def concept_to_inputs(concept: Concept) -> List[Concept]:

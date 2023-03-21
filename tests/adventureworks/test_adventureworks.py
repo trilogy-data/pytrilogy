@@ -1,11 +1,10 @@
 # from preql.compiler import compile
 from os.path import dirname, join
 
-import networkx as nx
 import pytest
 
 from preql.core.env_processor import generate_graph
-from preql.core.models import Select, QueryDatasource, CTE
+from preql.core.models import Select, QueryDatasource, CTE, Grain
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
@@ -18,7 +17,7 @@ from preql.parser import parse
 @pytest.mark.adventureworks
 def test_parsing(environment):
     with open(
-        join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
+            join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     generator = SqlServerDialect()
@@ -28,7 +27,7 @@ def test_parsing(environment):
 @pytest.mark.adventureworks_execution
 def test_finance_queries(adventureworks_engine, environment):
     with open(
-        join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
+            join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     generator = SqlServerDialect()
@@ -42,20 +41,14 @@ def test_finance_queries(adventureworks_engine, environment):
 
 @pytest.mark.adventureworks
 def test_query_datasources(environment):
-    from preql.constants import logger
-    from logging import StreamHandler
-    from preql.core.models import Grain
-
-    logger.addHandler(StreamHandler())
-
     with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
+            join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     assert (
-        str(environment.datasources["internet_sales.fact_internet_sales"].grain)
-        == "Grain<internet_sales.order_line_number,internet_sales.order_number>"
+            str(environment.datasources["internet_sales.fact_internet_sales"].grain)
+            == "Grain<internet_sales.order_line_number,internet_sales.order_number>"
     )
 
     test: Select = statements[-1]  # multipart join
@@ -87,9 +80,9 @@ def test_query_datasources(environment):
     )
 
     assert (
-        "fact_internet_sales_at_internet_sales_order_number"
-        in customer_datasource.identifier
-        and customer_datasource.grain == t_grain
+            "fact_internet_sales_at_internet_sales_order_number"
+            in customer_datasource.identifier
+            and customer_datasource.grain == t_grain
     )
 
     # assert a group up to the first name works
@@ -106,8 +99,8 @@ def test_query_datasources(environment):
     )
 
     assert (
-        customer_datasource.identifier
-        == "customers_at_customer_first_name_customer_last_name"
+            customer_datasource.identifier
+            == "customers_at_customer_first_name_customer_last_name"
     )
 
     concepts, datasources = get_query_datasources(
@@ -116,7 +109,7 @@ def test_query_datasources(environment):
 
     assert "ds~internet_sales.fact_internet_sales" in environment_graph.nodes
     assert (
-        "c~internet_sales.total_sales_amount@Grain<Abstract>" in environment_graph.nodes
+            "c~internet_sales.total_sales_amount@Grain<Abstract>" in environment_graph.nodes
     )
     # for val in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales))):
     #     print(val)
@@ -139,8 +132,8 @@ def test_query_datasources(environment):
             assert datasource.identifier == default_fact
         elif concept.name == "total_sales_amount":
             assert (
-                datasource.identifier
-                == "customers_fact_internet_sales_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
+                    datasource.identifier
+                    == "customers_fact_internet_sales_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
             )
         elif concept.name == "region":
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
@@ -177,14 +170,8 @@ def recurse_datasource(parent: QueryDatasource, depth=0):
 
 @pytest.mark.adventureworks
 def test_two_properties(environment):
-    from preql.constants import logger
-    from logging import StreamHandler
-    from preql.core.models import Grain
-
-    logger.addHandler(StreamHandler())
-
     with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
+            join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
@@ -225,7 +212,7 @@ def test_two_properties(environment):
 @pytest.mark.adventureworks_execution
 def test_online_sales_queries(adventureworks_engine, environment):
     with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
+            join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     generator = SqlServerDialect()

@@ -4,6 +4,14 @@ from preql import Environment
 from preql.core.enums import DataType, Purpose, FunctionType
 from preql.core.env_processor import generate_graph
 from preql.core.models import Concept, Datasource, ColumnAssignment, Function, Grain
+from preql.constants import logger
+from logging import StreamHandler, DEBUG
+
+
+@fixture(scope="session")
+def logger():
+    logger.addHandler(StreamHandler())
+    logger.setLevel(DEBUG)
 
 
 @fixture(scope="session")

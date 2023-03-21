@@ -10,11 +10,14 @@ def string_to_hash(input: str) -> int:
     )
 
 
-def unique(inputs: List, property: Union[str,Callable]) -> List[Any]:
+def unique(inputs: List, property: Union[str, Callable]) -> List[Any]:
     final = []
     dedupe = set()
     if isinstance(property, str):
-        getter = lambda x: getattr(x, property, 'default')
+
+        def getter(x):
+            return getattr(x, property, "default")
+
     else:
         getter = property
     for input in inputs:
