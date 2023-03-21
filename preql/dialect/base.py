@@ -25,7 +25,9 @@ from preql.utility import unique
 INVALID_REFERENCE_STRING = "INVALID_REFERENCE_BUG"
 
 WINDOW_FUNCTION_MAP = {
-    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})" if window else  f"row_number() over (order by {sort} {order})"
+    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})"
+    if window
+    else f"row_number() over (order by {sort} {order})"
 }
 
 DATATYPE_MAP = {
@@ -158,16 +160,13 @@ class BaseDialect:
         ).startswith("cte"):
             if isinstance(c.lineage, WindowItem):
                 # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
-                dimension = self.render_concept_sql(
-                    c.lineage.arguments[0], cte, alias=False
-                )
+                self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
                 rendered_order_components = [
                     self.render_concept_sql(x.expr, cte, alias=False)
                     for x in c.lineage.order_by
                 ]
                 rendered_over_components = [
-                    self.render_concept_sql(x, cte, alias=False)
-                    for x in c.lineage.over
+                    self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](window=','.join(rendered_over_components), sort=','.join(rendered_order_components), order = 'desc')}"
             else:

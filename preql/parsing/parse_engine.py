@@ -43,8 +43,8 @@ from preql.core.models import (
     Metadata,
     Window,
     WindowItem,
-WindowItemOver,
-WindowItemOrder,
+    WindowItemOver,
+    WindowItemOrder,
     Query,
 )
 from preql.parsing.exceptions import ParseError
@@ -352,8 +352,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        purpose = args[2]
-
+        args[2]
 
         lookup, namespace, name = parse_concept_reference(name, self.environment)
 
@@ -371,7 +370,7 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
                 lineage=window_item,
                 # windows are implicitly at the grain of the group by + the original content
-                grain=Grain(components = window_item.over + [window_item.content.output,] ),
+                grain=Grain(components=window_item.over + [window_item.content.output]),
                 namespace=namespace,
             )
             self.environment.concepts[lookup] = concept
@@ -530,7 +529,7 @@ class ParseToObjects(Transformer):
         return None
 
     @v_args(meta=True)
-    def select(self, meta: Meta, args)->Select:
+    def select(self, meta: Meta, args) -> Select:
 
         select_items = None
         limit = None
@@ -622,7 +621,6 @@ class ParseToObjects(Transformer):
     def window(self, args):
         return Window(count=args[1].value, window_order=args[0])
 
-
     def window_item_over(self, args):
         return WindowItemOver(contents=args[0])
 
@@ -633,9 +631,9 @@ class ParseToObjects(Transformer):
         kwargs = {}
         for item in args[1:]:
             if isinstance(item, WindowItemOrder):
-                kwargs['order_by'] = item.contents
+                kwargs["order_by"] = item.contents
             elif isinstance(item, WindowItemOver):
-                kwargs['over'] = item.contents
+                kwargs["over"] = item.contents
         concept = self.environment.concepts[args[0]]
         # sort_concepts_mapped = [self.environment.concepts[x].with_grain(concept.grain) for x in sort_concepts]
         return WindowItem(content=concept, **kwargs)

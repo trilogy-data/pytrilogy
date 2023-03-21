@@ -1,10 +1,9 @@
 from jinja2 import Template
 
-from preql.core.enums import FunctionType, WindowType
+from preql.core.enums import FunctionType
 from preql.dialect.base import BaseDialect
 
-WINDOW_FUNCTION_MAP = {
-}
+WINDOW_FUNCTION_MAP = {}
 
 FUNCTION_MAP = {
     FunctionType.COUNT: lambda x: f"count({x[0]})",

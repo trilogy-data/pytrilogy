@@ -1,29 +1,17 @@
-from logging import StreamHandler, DEBUG
-
 from pytest import fixture
 
 from preql import Environment
-from preql.constants import logger as base_logger
-from preql.core.enums import DataType, Purpose, FunctionType, ComparisonOperator
+from preql.core.enums import DataType, Purpose, FunctionType
 from preql.core.env_processor import generate_graph
-from preql.core.models import (
-    Concept,
-    Datasource,
-    ColumnAssignment,
-    Function,
-    Grain,
-    WindowItem,
-    FilterItem,
-    OrderItem,
-    WhereClause,
-    Comparison,
-)
+from preql.core.models import Concept, Datasource, ColumnAssignment, Function, Grain
+from preql.constants import logger
+from logging import StreamHandler, DEBUG
 
 
 @fixture(scope="session")
 def logger():
-    base_logger.addHandler(StreamHandler())
-    base_logger.setLevel(DEBUG)
+    logger.addHandler(StreamHandler())
+    logger.setLevel(DEBUG)
 
 
 @fixture(scope="session")
@@ -125,38 +113,8 @@ def test_environment():
         ),
     )
 
-    product_revenue_rank = Concept(
-        name="product_revenue_rank",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
-            content=product_id, order_by=[OrderItem(expr=total_revenue, order="desc")]
-        ),
-    )
-    product_revenue_rank_by_category = Concept(
-        name="product_revenue_rank_by_category",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
-            content=product_id,
-            over=[category_id],
-            order_by=[OrderItem(expr=total_revenue, order="desc")],
-        ),
-    )
+    # total_revenue =
 
-    products_with_revenue_over_50 = Concept(
-        name="products_with_revenue_over_50",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.PROPERTY,
-        lineage=FilterItem(
-            content=product_id,
-            where=WhereClause(
-                conditional=Comparison(
-                    left=total_revenue, operator=ComparisonOperator.GT, right=50
-                )
-            ),
-        ),
-    )
     test_revenue = Datasource(
         identifier="revenue",
         columns=[
@@ -176,7 +134,6 @@ def test_environment():
             ColumnAssignment(alias="category_id", concept=category_id),
         ],
         address="tblProducts",
-        grain=Grain(components=[product_id]),
     )
 
     test_category = Datasource(
@@ -186,7 +143,6 @@ def test_environment():
             ColumnAssignment(alias="category_name", concept=category_name),
         ],
         address="tblCategory",
-        grain=Grain(components=[category_id]),
     )
 
     for item in [test_product, test_category, test_revenue]:
@@ -205,9 +161,6 @@ def test_environment():
         distinct_order_count,
         min_order_id,
         max_order_id,
-        product_revenue_rank,
-        product_revenue_rank_by_category,
-        products_with_revenue_over_50,
     ]:
         env.concepts[item.name] = item
     yield env
