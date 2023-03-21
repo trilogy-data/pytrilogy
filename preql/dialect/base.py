@@ -192,7 +192,7 @@ class BaseDialect:
 
     def render_expr(
         self,
-        e: Union[Expr, Conditional, Concept, str, int, bool],
+        e: Union[Expr, Conditional, Concept, str, int, bool, float, DataType],
         cte: Optional[CTE] = None,
     ) -> str:
         if isinstance(e, Comparison):

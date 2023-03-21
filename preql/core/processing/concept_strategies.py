@@ -165,7 +165,9 @@ def get_datasource_from_group_select(
 ) -> QueryDatasource:
     """Return a datasource that can be grouped to a value and grain.
     Unique values in a column, for example"""
-    all_concepts = concept_to_inputs(concept.with_default_grain()) + grain.components_copy
+    all_concepts = (
+        concept_to_inputs(concept.with_default_grain()) + grain.components_copy
+    )
 
     expanded_concepts = []
     for item in all_concepts:
@@ -227,7 +229,9 @@ def get_datasource_by_joins(
 ) -> QueryDatasource:
     join_candidates: List[PathInfo] = []
 
-    all_requirements = unique(concept_to_inputs(concept) + grain.components_copy, "address")
+    all_requirements = unique(
+        concept_to_inputs(concept) + grain.components_copy, "address"
+    )
 
     for datasource in environment.datasources.values():
         all_found = True
@@ -332,7 +336,7 @@ def get_datasource_from_complex_lineage(
         if sub_concept.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.WINDOW):
             complex_lineage_flag = True
         sub_datasource = get_datasource_by_concept_and_grain(
-            sub_concept, sub_concept.grain, environment=environment, g=g
+            sub_concept, sub_concept.grain or Grain(), environment=environment, g=g
         )
         all_datasets.append(sub_datasource)
         all_requirements.append(sub_concept)
@@ -371,13 +375,13 @@ def get_property_group_by_without_key(
         components=[
             z
             if z.purpose != Purpose.PROPERTY
-            else z.with_default_grain().grain.components_copy[0]
+            else z.with_default_grain().grain_components[0]
             for z in grain.components_copy
         ]
     )
     # we require this sub datasource to match on all grain components
     sub_datasource = get_datasource_by_concept_and_grain(
-        concept.with_default_grain().grain.components_copy[0],
+        concept.with_default_grain().grain_components[0],
         grain=pgrain,
         environment=environment,
         g=g,
@@ -394,7 +398,7 @@ def get_property_group_by_without_key(
         # we don't need another source if we already have this
         if remapped_property in sub_datasource.output_concepts:
             continue
-        remap_grain = remapped_property.with_default_grain().grain
+        remap_grain = remapped_property.with_default_grain().grain or Grain()
         keys = remap_grain.components_copy
         for key in keys:
             all_requirements.append(key)
@@ -460,14 +464,14 @@ def get_datasource_from_window_function(
 
     # order by statements need to be pulled in
     # but include them to optimize fetching
-    for arg in window.order_by:
-        sub_concepts += [arg.output]
+    for oarg in window.order_by:
+        sub_concepts += [oarg.output]
 
-    for arg in window.over:
-        sub_concepts += [arg]
+    for warg in window.over:
+        sub_concepts += [warg]
         # make sure to move this to the appropriate grain
-        window_grain += [arg.output]
-        output_concepts += [arg]
+        window_grain += [warg.output]
+        output_concepts += [warg]
 
     cte_grain = Grain(components=window_grain)
     # window grouping need to be included in sources and in output
