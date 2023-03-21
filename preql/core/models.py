@@ -37,7 +37,9 @@ class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
-    metadata: Optional[Metadata] = Field(default_factory=lambda: Metadata(description = None, line_number=None))
+    metadata: Optional[Metadata] = Field(
+        default_factory=lambda: Metadata(description=None, line_number=None)
+    )
     lineage: Optional[Union["Function", "WindowItem"]] = None
     namespace: Optional[str] = ""
     keys: Optional[List["Concept"]] = None
@@ -70,7 +72,7 @@ class Concept(BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace),
+            grain=self.grain.with_namespace(namespace) if self.grain else None,
             namespace=namespace,
             keys=self.keys,
         )
@@ -122,6 +124,10 @@ class Concept(BaseModel):
     @property
     def safe_address(self) -> str:
         return f"{self.namespace}_{self.name}"
+
+    @property
+    def grain_components(self) -> List["Concept"]:
+        return self.grain.components_copy if self.grain else []
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         return self.__class__(
@@ -453,13 +459,17 @@ class Select:
     def output_components(self) -> List[Concept]:
         output = []
         for item in self.selection:
-            if Modifier.HIDDEN not in item.modifiers:
+            if isinstance(item, Concept):
+                output.append(item)
+            elif Modifier.HIDDEN not in item.modifiers:
                 output.append(item.output)
         return output
 
     @property
     def all_components(self) -> List[Concept]:
-        return self.input_components + self.output_components + self.grain.components_copy
+        return (
+            self.input_components + self.output_components + self.grain.components_copy
+        )
 
     @property
     def grain(self) -> "Grain":
@@ -480,9 +490,15 @@ class Select:
         # we want to group to that grain and ignore the property, which is a derivation
         # otherwise, we need to include property as the group by
         for item in self.output_components:
-            if item.purpose == Purpose.PROPERTY and (
-                not item.grain.components
-                or not item.grain.issubset(Grain(components=unique(output, "address")))
+            if (
+                item.purpose == Purpose.PROPERTY
+                and item.grain
+                and (
+                    not item.grain.components
+                    or not item.grain.issubset(
+                        Grain(components=unique(output, "address"))
+                    )
+                )
             ):
                 output.append(item)
         return Grain(components=unique(output, "address"))
@@ -507,11 +523,11 @@ class Grain(BaseModel):
             kwargs["components"] = [
                 c.with_default_grain() for c in kwargs.get("components", [])
             ]
-        kwargs["components"] = unique(kwargs["components"], 'address')
+        kwargs["components"] = unique(kwargs["components"], "address")
         super().__init__(**kwargs)
 
     @property
-    def components_copy(self)->List[Concept]:
+    def components_copy(self) -> List[Concept]:
         return deepcopy(self.components)
 
     def __str__(self):
@@ -550,7 +566,7 @@ class Grain(BaseModel):
         components = [i for i in self.components if i.name in intersection]
         return Grain(components=components)
 
-    def __add__(self, other: "Grain")->"Grain":
+    def __add__(self, other: "Grain") -> "Grain":
         components = []
         for clist in [self.components, other.components]:
             for component in clist:
@@ -559,7 +575,7 @@ class Grain(BaseModel):
                 components.append(component)
         return Grain(components=components)
 
-    def __radd__(self, other)->"Grain":
+    def __radd__(self, other) -> "Grain":
         if other == 0:
             return self
         else:
@@ -1101,7 +1117,7 @@ class WhereClause:
             if item.purpose == Purpose.KEY:
                 output.append(item)
             elif item.purpose == Purpose.PROPERTY:
-                output += item.grain.components
+                output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
 
 

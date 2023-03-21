@@ -18,7 +18,6 @@ from preql.core.models import (
     JoinType,
     BaseJoin,
     merge_ctes,
-Grain
 )
 from preql.core.processing.concept_strategies import get_datasource_by_concept_and_grain
 from preql.utility import string_to_hash, unique
@@ -148,7 +147,7 @@ def get_disconnected_components(
 
 def get_query_datasources(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
-) -> Tuple[Dict[str, List[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
+) -> Tuple[Dict[str, set[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
     concept_map: Dict[str, Set[Concept]] = defaultdict(set)
     graph = graph or generate_graph(environment)
     datasource_map: Dict[str, Union[Datasource, QueryDatasource]] = {}
@@ -193,7 +192,7 @@ def get_query_datasources(
                 )
 
                 if concept not in concept_map[datasource.identifier]:
-                    concept_map[datasource.identifier].append(concept)
+                    concept_map[datasource.identifier].add(concept)
                 if datasource.identifier in datasource_map:
                     # concatenate to add new fields
                     datasource_map[datasource.identifier] = (
