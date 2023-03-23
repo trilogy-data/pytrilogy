@@ -15,6 +15,7 @@ class PurposeLineage(Enum):
     BASIC = "basic"
     WINDOW = "window"
     AGGREGATE = "aggregate"
+    FILTER = "filter"
 
 
 class Modifier(Enum):
@@ -24,6 +25,7 @@ class Modifier(Enum):
 
 
 class DataType(Enum):
+    # PRIMITIVES
     STRING = "string"
     BOOL = "bool"
     MAP = "map"
@@ -35,6 +37,9 @@ class DataType(Enum):
     DATETIME = "datetime"
     TIMESTAMP = "timestamp"
     ARRAY = "array"
+
+    #GRANULAR
+    UNIX_SECONDS = "unix_seconds"
 
 
 class JoinType(Enum):
@@ -62,6 +67,7 @@ class WindowOrder(Enum):
 class FunctionType(Enum):
     # Generic
     CAST = "cast"
+    CONCAT = "concat"
 
     # Aggregates
     COUNT = "count"
@@ -72,16 +78,18 @@ class FunctionType(Enum):
     AVG = "avg"
     LENGTH = "len"
 
-    # String Like
+    # String
     LIKE = "like"
-    CONCAT = "concat"
-    NOT_LIKE = "not_like"
+    ILIKE = "ilike"
+    LOWER = "lower"
+    UPPER = "upper"
 
     # Dates
     DATE = "date"
     DATETIME = "datetime"
     TIMESTAMP = "timestamp"
 
+    # time
     SECOND = "second"
     MINUTE = "minute"
     HOUR = "hour"
@@ -92,6 +100,9 @@ class FunctionType(Enum):
     YEAR = "year"
 
     DATE_PART = "date_part"
+
+    # UNIX
+    UNIX_TO_TIMESTAMP = "unix_to_timestamp"
 
 
 class FunctionClass(Enum):
@@ -123,6 +134,7 @@ class ComparisonOperator(Enum):
     LTE = "<="
     NE = "!="
     IN = "in"
+    IS = "is"
 
 
 class LogicalOperator(Enum):
