@@ -16,13 +16,14 @@ from preql.core.models import (
     Function,
     OrderItem,
     WindowItem,
+    FilterItem
 )
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query
 from preql.dialect.common import render_join
 from preql.utility import unique
 
-INVALID_REFERENCE_STRING = "INVALID_REFERENCE_BUG"
+INVALID_REFERENCE_STRING = lambda x: f"INVALID_REFERENCE_BUG_FROM_{x.name}"
 
 WINDOW_FUNCTION_MAP = {
     WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})"
@@ -48,8 +49,11 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.MAX: lambda x: f"max({x[0]})",
     FunctionType.MIN: lambda x: f"min({x[0]})",
-    FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
-    FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
+    # string types
+    FunctionType.LIKE: lambda x: f" {x[0]} like {x[1]} ",
+    FunctionType.UPPER: lambda x: f"UPPER({x[0]}) ",
+    FunctionType.LOWER: lambda x: f"LOWER({x[0]}) ",
+    # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE: lambda x: f"date({x[0]})",
     FunctionType.DATETIME: lambda x: f"datetime({x[0]})",
@@ -169,6 +173,8 @@ class BaseDialect:
                     self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](window=','.join(rendered_over_components), sort=','.join(rendered_order_components), order = 'desc')}"
+            elif isinstance(c.lineage, FilterItem):
+                rval = f'{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}'
             else:
                 args = [
                     self.render_concept_sql(v, cte, alias=False)
@@ -182,9 +188,9 @@ class BaseDialect:
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
         else:
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
 
         if alias:
             return f"{rval} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"

@@ -1,7 +1,7 @@
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, MutableMapping, TypeVar, List, Optional, Union, Set
+from typing import Dict, MutableMapping, TypeVar, List, Optional, Union, Set, Any
 from pydantic import BaseModel, validator, Field
 import difflib
 
@@ -40,7 +40,7 @@ class Concept(BaseModel):
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None)
     )
-    lineage: Optional[Union["Function", "WindowItem"]] = None
+    lineage: Optional[Union["Function", "WindowItem", "FilterItem"]] = None
     namespace: Optional[str] = ""
     keys: Optional[List["Concept"]] = None
     grain: Optional["Grain"] = Field(default=None)
@@ -50,7 +50,7 @@ class Concept(BaseModel):
 
     @validator("lineage")
     def lineage_validator(cls, v):
-        if v and not isinstance(v, (Function, WindowItem)):
+        if v and not isinstance(v, (Function, WindowItem, FilterItem)):
             raise ValueError(v)
         return v
 
@@ -186,6 +186,8 @@ class Concept(BaseModel):
     def derivation(self) -> PurposeLineage:
         if self.lineage and isinstance(self.lineage, WindowItem):
             return PurposeLineage.WINDOW
+        if self.lineage and isinstance(self.lineage, FilterItem):
+            return PurposeLineage.FILTER
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -370,6 +372,50 @@ class WindowItem(BaseModel):
             base += v.input
         for c in self.over:
             base += c.input
+        return base
+
+    @property
+    def output_datatype(self):
+        return self.content.datatype
+
+    @property
+    def output_purpose(self):
+        return self.content.purpose
+
+
+class FilterItem(BaseModel):
+    content: Concept
+    where: "WhereClause"
+
+    def with_namespace(self, namespace: str) -> "FilterItem":
+        return FilterItem(
+            content=self.content.with_namespace(namespace),
+            where= self.where.with_namespace(namespace)
+        )
+
+    @property
+    def arguments(self) -> List[Concept]:
+        output = [self.content]
+        output += self.where.input
+        return output
+
+    @property
+    def output(self) -> Concept:
+        if isinstance(self.content, ConceptTransform):
+            return self.content.output
+        return self.content
+
+    @output.setter
+    def output(self, value):
+        if isinstance(self.content, ConceptTransform):
+            self.content.output = value
+        else:
+            self.content = value
+
+    @property
+    def input(self) -> List[Concept]:
+        base = self.content.input
+        base += self.where.input
         return base
 
     @property
@@ -568,11 +614,11 @@ class Grain(BaseModel):
 
     def __add__(self, other: "Grain") -> "Grain":
         components = []
-        for clist in [self.components, other.components]:
+        for clist in [self.components_copy, other.components_copy]:
             for component in clist:
-                if component in components:
+                if component.with_default_grain() in components:
                     continue
-                components.append(component)
+                components.append(component.with_default_grain())
         return Grain(components=components)
 
     def __radd__(self, other) -> "Grain":
@@ -768,6 +814,7 @@ class QueryDatasource:
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
+    condition: "Conditional"= field(default=None)
     filter_concepts: List[Concept] = field(default_factory=list)
 
     def __str__(self):
@@ -1043,9 +1090,8 @@ class Environment:
     working_path: str = field(default_factory=lambda: os.getcwd())
 
 
-@dataclass
-class Expr:
-    name: str = ""
+class Expr(BaseModel):
+    content:Any
 
     @property
     def input(self) -> List[Concept]:
@@ -1061,12 +1107,13 @@ class Expr:
         return ""
 
 
-@dataclass
-class Comparison:
-    left: Union[Concept, Expr, "Conditional"]
-    right: Union[Concept, Expr, "Conditional"]
+class Comparison(BaseModel):
+    left: Union[bool, int, str, float, Concept, Function, Expr, "Conditional"]
+    right: Union[bool, int, str, float, Concept, Function, Expr, "Conditional"]
     operator: ComparisonOperator
-
+    def with_namespace(self, namespace:str):
+        return Comparison(left= self.left.with_namespace(namespace) if isinstance(self.left,(Concept, Function)) else self.left ,
+                          right=self.right.with_namespace(namespace) if isinstance(self.right, (Concept, Function)) else self.right, operator=self.operator)
     @property
     def input(self) -> List[Concept]:
         output: List[Concept] = []
@@ -1081,11 +1128,12 @@ class Comparison:
         return output
 
 
-@dataclass
-class Conditional:
-    left: Union[Concept, Expr, "Conditional"]
-    right: Union[Concept, Expr, "Conditional"]
+class Conditional(BaseModel):
+    left: Union[Concept, Comparison, Function, "Conditional"]
+    right: Union[Concept, Comparison, Function,  "Conditional"]
     operator: BooleanOperator
+    def with_namespace(self, namespace:str):
+        return Conditional(left= self.left.with_namespace(namespace), right=self.right.with_namespace(namespace), operator=self.operator)
 
     @property
     def input(self) -> List[Concept]:
@@ -1102,13 +1150,16 @@ class Conditional:
         return output
 
 
-@dataclass
-class WhereClause:
-    conditional: Conditional
+class WhereClause(BaseModel):
+
+    conditional: Union[Comparison, Conditional]
 
     @property
     def input(self) -> List[Concept]:
         return self.conditional.input
+
+    def with_namespace(self, namespace:str):
+        return WhereClause(condition=self.conditional.with_namespace(namespace))
 
     @property
     def grain(self) -> Grain:
@@ -1146,3 +1197,4 @@ Concept.update_forward_refs()
 Grain.update_forward_refs()
 WindowItem.update_forward_refs()
 WindowItemOrder.update_forward_refs()
+FilterItem.update_forward_refs()
