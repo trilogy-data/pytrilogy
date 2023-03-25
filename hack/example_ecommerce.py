@@ -11,7 +11,12 @@ env = Environment(namespace="demo/ecommerce", working_path="demo/ecommerce")
 
 env, parsed = parse(text, environment=env)
 
-query = "import concepts.order as order; SELECT order.count;"
+query = """
+    import concepts.order as order;
+    import concepts.user as user;
+    
+    SELECT user.traffic_source, order.count;
+"""
 
 env, statements = parse(query, environment=env)
 
