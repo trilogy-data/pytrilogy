@@ -11,7 +11,7 @@ from lark.exceptions import (
     UnexpectedToken,
 )
 from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
-
+from pydantic import ValidationError
 from preql.core.enums import (
     Purpose,
     DataType,
@@ -19,7 +19,7 @@ from preql.core.enums import (
     Ordering,
     FunctionType,
     ComparisonOperator,
-    LogicalOperator,
+    BooleanOperator,
     WindowOrder,
 )
 from preql.core.models import (
@@ -50,6 +50,7 @@ from preql.core.models import (
     Expr
 )
 from preql.parsing.exceptions import ParseError
+from preql.constants import DEFAULT_NAMESPACE
 
 grammar = r"""
     !start: ( block | comment )*
@@ -232,7 +233,7 @@ def parse_concept_reference(
         namespace, name = name.rsplit(".", 1)
         lookup = f"{namespace}.{name}"
     else:
-        namespace = environment.namespace or "default"
+        namespace = environment.namespace or DEFAULT_NAMESPACE
         lookup = name
     return lookup, namespace, name
 
@@ -285,8 +286,8 @@ class ParseToObjects(Transformer):
     def COMPARISON_OPERATOR(self, args) -> ComparisonOperator:
         return ComparisonOperator(args)
 
-    def LOGICAL_OPERATOR(self, args) -> LogicalOperator:
-        return LogicalOperator(args.lower())
+    def LOGICAL_OPERATOR(self, args) -> BooleanOperator:
+        return BooleanOperator(args.lower())
 
     def concept_assignment(self, args):
         return args
@@ -356,6 +357,8 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             namespace=namespace,
         )
+        if concept.metadata:
+            concept.metadata.line_number = meta.line
         self.environment.concepts[lookup] = concept
         return concept
 
@@ -368,12 +371,7 @@ class ParseToObjects(Transformer):
         name = args[1]
 
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-
-        existing = self.environment.concepts.get(lookup)
-        if existing:
-            raise ParseError(
-                f"Concept {name} on line {meta.line} is a duplicate declaration"
-            )
+        self.validate_concept(lookup, meta)
         if isinstance(args[2], FilterItem):
             filter_item: FilterItem = args[2]
             concept = Concept(
@@ -386,6 +384,8 @@ class ParseToObjects(Transformer):
                 grain=Grain(components=[filter_item.output]),
                 namespace=namespace,
             )
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
             return concept
         if isinstance(args[2], WindowItem):
@@ -400,6 +400,8 @@ class ParseToObjects(Transformer):
                 grain=Grain(components=window_item.over + [window_item.content.output]),
                 namespace=namespace,
             )
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
             return concept
         else:
@@ -413,6 +415,8 @@ class ParseToObjects(Transformer):
                 grain=function.output_grain,
                 namespace=namespace,
             )
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
             return concept
 
@@ -475,13 +479,7 @@ class ParseToObjects(Transformer):
         output: str = args[1]
 
         lookup, namespace, output = parse_concept_reference(output, self.environment)
-        existing = self.environment.concepts.get(lookup)
-
-        if existing:
-            raise ParseError(
-                f"Assignment to concept {output} on line {meta.line} is a duplicate declaration for this concept; originally defined on line {existing.metadata.line_number}"
-            )
-
+        self.validate_concept(lookup, meta)
         # keys are used to pass through derivations
         if function.output_purpose == Purpose.PROPERTY:
             grain = Grain(components=function.arguments)
@@ -498,6 +496,8 @@ class ParseToObjects(Transformer):
             grain=grain,
             keys=keys,
         )
+        if concept.metadata:
+            concept.metadata.line_number = meta.line
         # We don't assign it here because we'll do this later when we know the grain
         self.environment.concepts[lookup] = concept
         return ConceptTransform(function=function, output=concept)
@@ -636,10 +636,10 @@ class ParseToObjects(Transformer):
 
     def in_comparison(self, args):
         # x in (a,b,c)
-        return Comparison(args[0], args[1], ComparisonOperator.IN)
+        return Comparison(left=args[0], right=args[1], operator=ComparisonOperator.IN)
 
     def conditional(self, args):
-        return Conditional(args[0], args[2], args[1])
+        return Conditional(left=args[0], right=args[2], operator=args[1])
 
     def window_order(self, args):
         return WindowOrder(args[0])
@@ -937,6 +937,7 @@ class ParseToObjects(Transformer):
         )
 
 
+
 def parse_text(
     text: str, environment: Optional[Environment] = None, print_flag: bool = False
 ) -> Tuple[Environment, List]:
@@ -947,9 +948,12 @@ def parse_text(
     except VisitError as e:
         if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
             raise e.orig_exc
+        # Pydantic validation errors on parsing are syntax errors
+        elif isinstance(e.orig_exc, ValidationError):
+            raise InvalidSyntaxException(str(e.orig_exc))
         else:
             raise e
-    except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken) as e:
+    except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken, ValidationError) as e:
         raise InvalidSyntaxException(str(e))
 
     return environment, output
