@@ -2,8 +2,9 @@ from typing import List, Optional, Tuple, Dict, TypedDict
 
 
 from preql.core.graph_models import ReferenceGraph
-from preql.core.models import Concept, Datasource, JoinType, BaseJoin
+from preql.core.models import Concept, Datasource, JoinType, BaseJoin, Conditional, Comparison, FilterItem
 from preql.utility import unique
+from preql.core.enums import BooleanOperator
 
 
 class PathInfo(TypedDict):
@@ -79,3 +80,21 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
         # ex: avg() of sum() @ grain
         output += concept_to_inputs(source.with_default_grain())
     return unique(output, hash)
+
+
+def concepts_to_conditions(concepts:List[Concept])->Optional[Conditional]:
+    conditions: List[Conditional] = []
+    for concept in concepts:
+        if isinstance(concept.lineage, FilterItem):
+            conditions.append(concept.lineage.where.conditional)
+    if not conditions:
+        return None
+    base_condition = conditions.pop()
+    while conditions:
+        condition = conditions.pop()
+        base_condition = Conditional(
+            left=base_condition,
+            right=condition,
+            operator=BooleanOperator.AND,
+        )
+    return base_condition
