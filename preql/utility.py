@@ -1,5 +1,6 @@
 import hashlib
 from typing import List, Any, Union, Callable
+from preql.constants import DEFAULT_NAMESPACE
 
 INT_HASH_SIZE = 16
 
@@ -16,7 +17,7 @@ def unique(inputs: List, property: Union[str, Callable]) -> List[Any]:
     if isinstance(property, str):
 
         def getter(x):
-            return getattr(x, property, "default")
+            return getattr(x, property, DEFAULT_NAMESPACE)
 
     else:
         getter = property

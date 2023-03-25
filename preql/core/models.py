@@ -23,7 +23,7 @@ from preql.utility import unique
 from preql.constants import logger, DEFAULT_NAMESPACE
 
 
-LOGGER_PREFIX = '[MODELS]'
+LOGGER_PREFIX = "[MODELS]"
 
 KT = TypeVar("KT")
 VT = TypeVar("VT")
@@ -88,7 +88,7 @@ class Concept(BaseModel):
             v = Grain(
                 components=[
                     Concept(
-                        namespace=values.get("namespace", "default"),
+                        namespace=values.get("namespace", DEFAULT_NAMESPACE),
                         name=values["name"],
                         datatype=values["datatype"],
                         purpose=values["purpose"],
@@ -226,7 +226,6 @@ class Statement:
     pass
 
 
-
 class Function(BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
@@ -235,15 +234,14 @@ class Function(BaseModel):
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
     arguments: List[Union[Concept, str, float, int, DataType]]
 
-
-    @validator('arguments', pre=True, always=True)
+    @validator("arguments", pre=True, always=True)
     def parse_arguments(cls, v, **kwargs):
         from preql.parsing.exceptions import ParseError
 
         arg_count = len(v)
-        target_arg_count = kwargs['values']['arg_count']
-        operator_name = kwargs['values']['operator'].name
-        valid_inputs = kwargs['values']['valid_inputs']
+        target_arg_count = kwargs["values"]["arg_count"]
+        operator_name = kwargs["values"]["operator"].name
+        valid_inputs = kwargs["values"]["valid_inputs"]
         if not arg_count <= target_arg_count:
             raise ParseError(
                 f"Incorrect argument count to {operator_name} function, expects {target_arg_count}, got {arg_count}"
@@ -399,7 +397,7 @@ class FilterItem(BaseModel):
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem(
             content=self.content.with_namespace(namespace),
-            where= self.where.with_namespace(namespace)
+            where=self.where.with_namespace(namespace),
         )
 
     @property
@@ -823,7 +821,7 @@ class QueryDatasource:
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
-    condition: "Conditional"= field(default=None)
+    condition: "Conditional" = field(default=None)
     filter_concepts: List[Concept] = field(default_factory=list)
 
     def __str__(self):
@@ -860,10 +858,12 @@ class QueryDatasource:
 
         # these are syntax errors to avoid being caught by current
         if not isinstance(other, QueryDatasource):
-            raise SyntaxError('Can only merge two query datasources')
+            raise SyntaxError("Can only merge two query datasources")
         if not other.grain == self.grain:
-            raise SyntaxError('Can only merge two query datasources with identical grain')
-        logger.debug(f'{LOGGER_PREFIX} merging {self.name} and {other.name}')
+            raise SyntaxError(
+                "Can only merge two query datasources with identical grain"
+            )
+        logger.debug(f"{LOGGER_PREFIX} merging {self.name} and {other.name}")
         return QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -878,7 +878,9 @@ class QueryDatasource:
             filter_concepts=unique(
                 self.filter_concepts + other.filter_concepts, "address"
             ),
-            condition=self.condition+other.condition if (self.condition or other.condition) else None
+            condition=self.condition + other.condition
+            if (self.condition or other.condition)
+            else None,
         )
 
     @property
@@ -1108,7 +1110,7 @@ class Environment:
 
 
 class Expr(BaseModel):
-    content:Any
+    content: Any
 
     @property
     def input(self) -> List[Concept]:
@@ -1131,15 +1133,25 @@ class Comparison(BaseModel):
 
     def __add__(self, other):
         if not isinstance(other, (Comparison, Conditional)):
-            raise ValueError('Cannot add Comparison to non-Comparison')
+            raise ValueError("Cannot add Comparison to non-Comparison")
         if other == self:
             return self
         return Conditional(left=self, right=other, operator=BooleanOperator.AND)
+
     def __repr__(self):
         return f"{self.left} {self.operator.value} {self.right}"
-    def with_namespace(self, namespace:str):
-        return Comparison(left= self.left.with_namespace(namespace) if isinstance(self.left,(Concept, Function)) else self.left ,
-                          right=self.right.with_namespace(namespace) if isinstance(self.right, (Concept, Function)) else self.right, operator=self.operator)
+
+    def with_namespace(self, namespace: str):
+        return Comparison(
+            left=self.left.with_namespace(namespace)
+            if isinstance(self.left, (Concept, Function))
+            else self.left,
+            right=self.right.with_namespace(namespace)
+            if isinstance(self.right, (Concept, Function))
+            else self.right,
+            operator=self.operator,
+        )
+
     @property
     def input(self) -> List[Concept]:
         output: List[Concept] = []
@@ -1156,30 +1168,36 @@ class Comparison(BaseModel):
 
 class Conditional(BaseModel):
     left: Union[Concept, Comparison, Function, "Conditional"]
-    right: Union[Concept, Comparison, Function,  "Conditional"]
+    right: Union[Concept, Comparison, Function, "Conditional"]
     operator: BooleanOperator
 
-    def __add__(self, other)->"Conditional":
+    def __add__(self, other) -> "Conditional":
         if not other:
             return self
         elif isinstance(other, Conditional):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
-        raise ValueError(f'Cannot add {self.__class__} and {type(other)}')
+        raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
+
     def __repr__(self):
         return f"{self.left} {self.operator.value} {self.right}"
-    def with_namespace(self, namespace:str):
-        return Conditional(left= self.left.with_namespace(namespace), right=self.right.with_namespace(namespace), operator=self.operator)
+
+    def with_namespace(self, namespace: str):
+        return Conditional(
+            left=self.left.with_namespace(namespace),
+            right=self.right.with_namespace(namespace),
+            operator=self.operator,
+        )
 
     @property
     def input(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
         if isinstance(self.left, Concept):
-            output+=self.input
+            output += self.input
         else:
             output += self.left.input
         if isinstance(self.right, Concept):
-            output+=self.right.input
+            output += self.right.input
         else:
             output += self.right.input
         return output
@@ -1193,7 +1211,7 @@ class WhereClause(BaseModel):
     def input(self) -> List[Concept]:
         return self.conditional.input
 
-    def with_namespace(self, namespace:str):
+    def with_namespace(self, namespace: str):
         return WhereClause(condition=self.conditional.with_namespace(namespace))
 
     @property

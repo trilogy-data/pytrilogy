@@ -6,6 +6,7 @@ from preql.parser import parse
 from pytest import raises
 from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 
+
 def test_functions(test_environment):
     declarations = """
 
@@ -73,7 +74,6 @@ def test_bad_cast(test_environment):
     ;"""
     with raises(InvalidSyntaxException):
         env, parsed = parse(declarations, environment=test_environment)
-
 
 
 def test_explicit_cast(test_environment):

@@ -4,7 +4,7 @@ from typing import List, Optional, Union, Set, Dict
 import networkx as nx
 
 from preql.constants import logger
-from preql.core.enums import Purpose, PurposeLineage, BooleanOperator
+from preql.core.enums import Purpose, PurposeLineage
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 from preql.core.models import (
@@ -18,10 +18,13 @@ from preql.core.models import (
     Function,
     WindowItem,
     FilterItem,
-Conditional,
-
 )
-from preql.core.processing.utility import concept_to_inputs, PathInfo, path_to_joins, concepts_to_conditions
+from preql.core.processing.utility import (
+    concept_to_inputs,
+    PathInfo,
+    path_to_joins,
+    concepts_to_conditions,
+)
 from preql.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
@@ -174,8 +177,10 @@ def get_datasource_from_group_select(
 
     for aconcept in all_concepts:
         if aconcept.lineage and isinstance(aconcept.lineage, WindowItem):
-            logger.debug(f"{LOGGER_PREFIX} Cannot use a grouped fetch on a windowed concept")
-            raise ValueError('Cannot use a grouped fetch on a windowed concept')
+            logger.debug(
+                f"{LOGGER_PREFIX} Cannot use a grouped fetch on a windowed concept"
+            )
+            raise ValueError("Cannot use a grouped fetch on a windowed concept")
 
     for datasource in environment.datasources.values():
         all_found = True
@@ -200,7 +205,9 @@ def get_datasource_from_group_select(
                     break
                 datasource_mapping[target.address] = {datasource}
         if all_found:
-            logger.debug(f'{LOGGER_PREFIX} found all concepts on {datasource.identifier}')
+            logger.debug(
+                f"{LOGGER_PREFIX} found all concepts on {datasource.identifier}"
+            )
             # if the dataset that can reach every concept
             # is in fact a subset of the concept
             # assume property lookup
@@ -228,7 +235,7 @@ def get_datasource_from_group_select(
                 grain=final_grain,
                 joins=[],
                 filter_concepts=filters,
-                condition=conditions
+                condition=conditions,
             )
     raise ValueError(f"No grouped select for {concept}")
 
@@ -382,12 +389,15 @@ def get_property_group_by_without_key(
     source_map = {}
     joins: List[BaseJoin] = []
     # early exit if no properties in the grain
-    if not any([x.purpose == Purpose.PROPERTY for x in grain.components_copy]):
+    property_grain = concept.with_default_grain().grain_components
+    if (
+        not any([x.purpose == Purpose.PROPERTY for x in grain.components_copy])
+        or not property_grain
+    ):
         raise ValueError("Cannot find property lookup")
 
     # if we have a property grain, we need to find a datasource that matche
 
-    property_grain = concept.with_default_grain().grain_components
     pgrain = Grain(
         components=[
             z
@@ -498,7 +508,7 @@ def get_datasource_from_window_function(
     window_grain = [window.content.output]
     for oarg in window.order_by:
         sub_concepts += [oarg.output]
-        #TODO: we need to add non metric order bys in here
+        # TODO: we need to add non metric order bys in here
 
     for warg in window.over:
         sub_concepts += [warg]
@@ -516,7 +526,9 @@ def get_datasource_from_window_function(
         sub_datasource = get_datasource_by_concept_and_grain(
             sub_concept, cte_grain, environment=environment, g=g
         )
-        logger.debug(f'{LOGGER_PREFIX} [{sub_concept.address}] got in window function from {sub_datasource.identifier}')
+        logger.debug(
+            f"{LOGGER_PREFIX} [{sub_concept.address}] got in window function from {sub_datasource.identifier}"
+        )
         if sub_datasource.identifier in all_datasets:
             all_datasets[sub_datasource.identifier] = (
                 all_datasets[sub_datasource.identifier] + sub_datasource
@@ -524,9 +536,15 @@ def get_datasource_from_window_function(
         else:
             all_datasets[sub_datasource.identifier] = sub_datasource
         # all_requirements.append(sub_concept)
-        source_map[sub_concept.address] = source_map.get(sub_concept.address, set()).union({all_datasets[sub_datasource.identifier]})
-        if sub_concept.address not in [s.address for s in sub_datasource.output_concepts]:
-            raise SyntaxError(f'Sub concept {sub_concept.address} missing from sub datasource {sub_datasource.identifier} when expected, have {[c.address for c in sub_datasource.output_concepts]}')
+        source_map[sub_concept.address] = source_map.get(
+            sub_concept.address, set()
+        ).union({all_datasets[sub_datasource.identifier]})
+        if sub_concept.address not in [
+            s.address for s in sub_datasource.output_concepts
+        ]:
+            raise SyntaxError(
+                f"Sub concept {sub_concept.address} missing from sub datasource {sub_datasource.identifier} when expected, have {[c.address for c in sub_datasource.output_concepts]}"
+            )
         # if isinstance(sub_datasource, QueryDatasource):
         #     source_map = {**source_map, **sub_datasource.source_map}
 
@@ -549,7 +567,9 @@ def get_datasource_from_window_function(
     # we want to find any members of the grain that we can get from the cte grain
     # if this is a subset of the final target grain, that is fine
     # TODO: unless ALL is set
-    final_grain_components = [item for item in cte_grain.components_copy if item in grain.components_copy]
+    final_grain_components = [
+        item for item in cte_grain.components_copy if item in grain.components_copy
+    ]
     datasources = dataset_list
 
     qds = QueryDatasource(
@@ -582,9 +602,13 @@ def get_datasource_from_window_function(
     # restrict our new one to just output the components we want
 
     # now create a new CTE, n which the group by will take place
-    final_grain_components = [item for item in cte_grain.components_copy if item in grain.components_copy]
+    final_grain_components = [
+        item for item in cte_grain.components_copy if item in grain.components_copy
+    ]
     final_grain = Grain(components=final_grain_components)
-    final_outputs = [concept] + [x.with_grain(final_grain) for x in final_grain_components]
+    final_outputs = [concept] + [
+        x.with_grain(final_grain) for x in final_grain_components
+    ]
     # parent query data source for group by
     pqds = QueryDatasource(
         output_concepts=final_outputs,
@@ -601,9 +625,7 @@ def get_datasource_for_filter(
     concept: Concept, grain: Grain, environment, g, whole_grain: bool = False
 ):
     if not isinstance(concept.lineage, FilterItem):
-        raise ValueError(
-            "Attempting to use filter derivation for non-filtered Item"
-        )
+        raise ValueError("Attempting to use filter derivation for non-filtered Item")
     filter: FilterItem = concept.lineage
     all_datasets: Dict = {}
     source_map = {}
@@ -613,7 +635,11 @@ def get_datasource_for_filter(
     # make sure that if the window is in the grain, it's not included here
     # we just need the base concept
     # this avoids infinite recursion, since the target grain includes the filter component
-    input_concepts = [filter.content] + [item for item in grain.components_copy if item.with_default_grain() != concept.with_default_grain()]
+    input_concepts = [filter.content] + [
+        item
+        for item in grain.components_copy
+        if item.with_default_grain() != concept.with_default_grain()
+    ]
     cte_grain = Grain(components=input_concepts)
     for sub_concept in input_concepts:
         sub_concept = sub_concept.with_grain(cte_grain)
@@ -656,8 +682,12 @@ def get_datasource_for_filter(
     # and assume the base query MUST have the grain of all
     # component datasources
 
-    output_components_base = [concept,]+cte_grain.components_copy
-    output_components = [c for c in output_components_base if c.with_default_grain() != filter.content.with_default_grain()]
+    output_components_base = [concept] + cte_grain.components_copy
+    output_components = [
+        c
+        for c in output_components_base
+        if c.with_default_grain() != filter.content.with_default_grain()
+    ]
     return QueryDatasource(
         output_concepts=output_components,
         input_concepts=input_concepts,
@@ -665,26 +695,9 @@ def get_datasource_for_filter(
         grain=Grain(components=output_components),
         datasources=datasources,
         joins=joins,
-        condition = filter.where.conditional
+        condition=filter.where.conditional,
     )
 
-
-    # first ensure that the grain of the first CTE does not require grouping
-
-    # restrict our new one to just output the components we want
-    #TODO we should not even needs this
-    # now create a new CTE, n which the group by will take place
-    # parent query data source for group by
-    pqds = QueryDatasource(
-        output_concepts=[concept],
-        input_concepts=[concept,]+cte_grain.components_copy,
-        source_map={c.address: {qds} for c in [concept,]+cte_grain.components_copy},
-        grain=Grain(components= [concept]+ grain.components_copy),
-        datasources=[qds],
-        joins=[],
-
-    )
-    return pqds
 
 def get_datasource_by_concept_and_grain(
     concept,

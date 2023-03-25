@@ -3,7 +3,19 @@ from pytest import fixture
 from preql import Environment
 from preql.core.enums import DataType, Purpose, FunctionType, ComparisonOperator
 from preql.core.env_processor import generate_graph
-from preql.core.models import Concept, Datasource, ColumnAssignment, Function, Grain, WindowItem, FilterItem, OrderItem, WhereClause,  Conditional, Comparison
+from preql.core.models import (
+    Concept,
+    Datasource,
+    ColumnAssignment,
+    Function,
+    Grain,
+    WindowItem,
+    FilterItem,
+    OrderItem,
+    WhereClause,
+    Conditional,
+    Comparison,
+)
 from preql.constants import logger
 from logging import StreamHandler, DEBUG
 
@@ -90,8 +102,6 @@ def test_environment():
 
     assert product_id.grain.components[0].name == "product_id"
 
-
-
     category_id = Concept(
         name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
@@ -115,24 +125,38 @@ def test_environment():
         ),
     )
 
-    product_revenue_rank = Concept(name='product_revenue_rank',
-                                   datatype=DataType.INTEGER, purpose=Purpose.PROPERTY,
-                                   lineage=WindowItem(content=product_id,
-                                                      order_by=[OrderItem(expr=total_revenue, order='desc')], ))
-    product_revenue_rank_by_category = Concept(name='product_revenue_rank_by_category',
-                                               datatype=DataType.INTEGER, purpose=Purpose.PROPERTY,
-                                               lineage=WindowItem(content=product_id,
-                                                                  over=[category_id],
-                                                                  order_by=[OrderItem(expr=total_revenue, order='desc')], ))
+    product_revenue_rank = Concept(
+        name="product_revenue_rank",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.PROPERTY,
+        lineage=WindowItem(
+            content=product_id, order_by=[OrderItem(expr=total_revenue, order="desc")]
+        ),
+    )
+    product_revenue_rank_by_category = Concept(
+        name="product_revenue_rank_by_category",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.PROPERTY,
+        lineage=WindowItem(
+            content=product_id,
+            over=[category_id],
+            order_by=[OrderItem(expr=total_revenue, order="desc")],
+        ),
+    )
 
-
-    products_with_revenue_over_50 = Concept(name='products_with_revenue_over_50',
-                                            datatype=DataType.INTEGER, purpose=Purpose.PROPERTY,
-                                            lineage=FilterItem(content=product_id,
-                                                               where=WhereClause(
-                                                                   conditional =  Comparison(left=total_revenue, operator=ComparisonOperator.GT, right=50)
-                                                               ))
-                                            )
+    products_with_revenue_over_50 = Concept(
+        name="products_with_revenue_over_50",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.PROPERTY,
+        lineage=FilterItem(
+            content=product_id,
+            where=WhereClause(
+                conditional=Comparison(
+                    left=total_revenue, operator=ComparisonOperator.GT, right=50
+                )
+            ),
+        ),
+    )
     test_revenue = Datasource(
         identifier="revenue",
         columns=[
@@ -152,7 +176,7 @@ def test_environment():
             ColumnAssignment(alias="category_id", concept=category_id),
         ],
         address="tblProducts",
-        grain=Grain(components=[product_id])
+        grain=Grain(components=[product_id]),
     )
 
     test_category = Datasource(
@@ -162,7 +186,7 @@ def test_environment():
             ColumnAssignment(alias="category_name", concept=category_name),
         ],
         address="tblCategory",
-        grain=Grain(components=[category_id])
+        grain=Grain(components=[category_id]),
     )
 
     for item in [test_product, test_category, test_revenue]:
@@ -183,7 +207,7 @@ def test_environment():
         max_order_id,
         product_revenue_rank,
         product_revenue_rank_by_category,
-        products_with_revenue_over_50
+        products_with_revenue_over_50,
     ]:
         env.concepts[item.name] = item
     yield env

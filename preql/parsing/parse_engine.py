@@ -47,7 +47,6 @@ from preql.core.models import (
     WindowItemOrder,
     FilterItem,
     Query,
-    Expr
 )
 from preql.parsing.exceptions import ParseError
 from preql.constants import DEFAULT_NAMESPACE
@@ -278,7 +277,6 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
-
 
     def TYPE(self, args) -> DataType:
         return DataType(args.lower())
@@ -628,7 +626,7 @@ class ParseToObjects(Transformer):
     def literal(self, args):
         return args[0]
 
-    def comparison(self, args)->Comparison:
+    def comparison(self, args) -> Comparison:
         return Comparison(left=args[0], right=args[2], operator=args[1])
 
     def expr_tuple(self, args):
@@ -657,7 +655,7 @@ class ParseToObjects(Transformer):
     def window_item_order(self, args):
         return WindowItemOrder(contents=args[0])
 
-    def window_item(self, args)->WindowItem:
+    def window_item(self, args) -> WindowItem:
         kwargs = {}
         for item in args[1:]:
             if isinstance(item, WindowItemOrder):
@@ -666,8 +664,9 @@ class ParseToObjects(Transformer):
                 kwargs["over"] = item.contents
         concept = self.environment.concepts[args[0]]
         return WindowItem(content=concept, **kwargs)
-    def filter_item(self, args)->FilterItem:
-        where:WhereClause
+
+    def filter_item(self, args) -> FilterItem:
+        where: WhereClause
         string_concept, where = args
         concept = self.environment.concepts[string_concept]
         return FilterItem(content=concept, where=where)
@@ -776,6 +775,7 @@ class ParseToObjects(Transformer):
             arg_count=2
             # output_grain=Grain(components=args),
         )
+
     def ilike(self, args):
         return Function(
             operator=FunctionType.ILIKE,
@@ -786,6 +786,7 @@ class ParseToObjects(Transformer):
             arg_count=2
             # output_grain=Grain(components=args),
         )
+
     def upper(self, args):
         return Function(
             operator=FunctionType.UPPER,
@@ -796,6 +797,7 @@ class ParseToObjects(Transformer):
             arg_count=1
             # output_grain=Grain(components=args),
         )
+
     def lower(self, args):
         return Function(
             operator=FunctionType.LOWER,
@@ -937,7 +939,6 @@ class ParseToObjects(Transformer):
         )
 
 
-
 def parse_text(
     text: str, environment: Optional[Environment] = None, print_flag: bool = False
 ) -> Tuple[Environment, List]:
@@ -953,7 +954,13 @@ def parse_text(
             raise InvalidSyntaxException(str(e.orig_exc))
         else:
             raise e
-    except (UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken, ValidationError) as e:
+    except (
+        UnexpectedCharacters,
+        UnexpectedEOF,
+        UnexpectedInput,
+        UnexpectedToken,
+        ValidationError,
+    ) as e:
         raise InvalidSyntaxException(str(e))
 
     return environment, output

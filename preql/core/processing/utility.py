@@ -2,7 +2,14 @@ from typing import List, Optional, Tuple, Dict, TypedDict
 
 
 from preql.core.graph_models import ReferenceGraph
-from preql.core.models import Concept, Datasource, JoinType, BaseJoin, Conditional, Comparison, FilterItem
+from preql.core.models import (
+    Concept,
+    Datasource,
+    JoinType,
+    BaseJoin,
+    Conditional,
+    FilterItem,
+)
 from preql.utility import unique
 from preql.core.enums import BooleanOperator
 
@@ -82,7 +89,7 @@ def concept_to_inputs(concept: Concept) -> List[Concept]:
     return unique(output, hash)
 
 
-def concepts_to_conditions(concepts:List[Concept])->Optional[Conditional]:
+def concepts_to_conditions(concepts: List[Concept]) -> Optional[Conditional]:
     conditions: List[Conditional] = []
     for concept in concepts:
         if isinstance(concept.lineage, FilterItem):
@@ -93,8 +100,6 @@ def concepts_to_conditions(concepts:List[Concept])->Optional[Conditional]:
     while conditions:
         condition = conditions.pop()
         base_condition = Conditional(
-            left=base_condition,
-            right=condition,
-            operator=BooleanOperator.AND,
+            left=base_condition, right=condition, operator=BooleanOperator.AND
         )
     return base_condition
