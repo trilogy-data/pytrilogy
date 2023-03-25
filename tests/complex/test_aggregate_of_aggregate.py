@@ -55,5 +55,5 @@ select
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
-    assert "count(posts.`id`) as `default_user_post_count`," in sql
+    assert "count(posts.`id`) as `local_user_post_count`," in sql
     assert "avg(cte_posts_at_local_user_id_" in sql

@@ -5,7 +5,13 @@ from preql.core.query_processor import (
     get_query_datasources,
     process_query,
 )
-from preql.core.processing.concept_strategies import get_datasource_for_filter, get_datasource_from_window_function,get_datasource_from_direct_select,get_datasource_from_group_select,get_datasource_from_complex_lineage
+from preql.core.processing.concept_strategies import (
+    get_datasource_for_filter,
+    get_datasource_from_window_function,
+    get_datasource_from_direct_select,
+    get_datasource_from_group_select,
+    get_datasource_from_complex_lineage,
+)
 
 
 def test_direct_select(test_environment, test_environment_graph):
@@ -22,6 +28,7 @@ def test_direct_select(test_environment, test_environment_graph):
     assert set([datasource.name for datasource in datasource.datasources]) == {
         "products"
     }
+
 
 def test_get_datasource_from_window_function(test_environment, test_environment_graph):
     # test without grouping
@@ -40,16 +47,17 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
         "products_at_local_product_id_join_revenue_at_local_product_id_at_local_product_id"
     }
 
-
-    product_rank_by_category = test_environment.concepts["product_revenue_rank_by_category"]
+    product_rank_by_category = test_environment.concepts[
+        "product_revenue_rank_by_category"
+    ]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = get_datasource_from_window_function(
-        product_rank_by_category ,
+        product_rank_by_category,
         grain=product_rank_by_category.grain,
         environment=test_environment,
         g=test_environment_graph,
     )
-    assert product_rank_by_category  in datasource.output_concepts
+    assert product_rank_by_category in datasource.output_concepts
     assert datasource.grain == product_rank_by_category.grain
 
     assert isinstance(datasource, QueryDatasource)
@@ -57,11 +65,16 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
         "products_at_local_product_id_join_products_join_revenue_at_local_product_id_local_category_id_at_local_product_id_local_category_id"
     }
 
+
 def test_get_datasource_for_filter(test_environment, test_environment_graph):
     product = test_environment.concepts["products_with_revenue_over_50"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
-    assert {n.name for n in product.sources} == {'total_revenue', 'revenue', 'product_id'}
+    assert {n.name for n in product.sources} == {
+        "total_revenue",
+        "revenue",
+        "product_id",
+    }
     datasource = get_datasource_for_filter(
         product,
         grain=product.grain,
@@ -74,6 +87,7 @@ def test_get_datasource_for_filter(test_environment, test_environment_graph):
     # assert set([datasource.name for datasource in datasource.datasources]) == {
     #     "products"
     # }
+
 
 def test_select_output(test_environment, test_environment_graph):
     product = test_environment.concepts["product_id"]
