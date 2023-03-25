@@ -134,9 +134,9 @@ class ComparisonOperator(Enum):
     LTE = "<="
     NE = "!="
     IN = "in"
-    IS = "is"
 
-
-class LogicalOperator(Enum):
-    AND = "and"
-    OR = "or"
+    @classmethod
+    def _missing_(cls, value):
+        if value == 'is':
+            return ComparisonOperator.EQ
+        return super()._missing_(value)
