@@ -127,6 +127,8 @@ class Concept(BaseModel):
 
     @property
     def safe_address(self) -> str:
+        if self.namespace == DEFAULT_NAMESPACE:
+            return self.name
         return f"{self.namespace}_{self.name}"
 
     @property
