@@ -25,8 +25,7 @@ def test_aggregate_of_property_function(stackoverflow_environment):
             # alias = cte.get_alias(avg_user_post_count)
             rendered = generator.render_concept_sql(avg_user_post_count, cte)
             assert (
-                rendered
-                == 'avg(length(posts."text")) as "default_user_avg_post_length"'
+                rendered == 'avg(length(posts."text")) as "local_user_avg_post_length"'
             )
 
     sql = generator.compile_statement(query)
@@ -51,7 +50,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert posts.grain == post_grain
 
     assert set(expected_parent.source_map.keys()) == set(
-        ["default.post_id", "default.user_id"]
+        ["local.post_id", "local.user_id"]
     )
 
     assert user_post_count in expected_parent.output_concepts
@@ -72,16 +71,11 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert isinstance(parent, QueryDatasource)
     assert user_post_count in parent.output_concepts
 
-    assert set(parent.source_map.keys()) == set(["default.post_id", "default.user_id"])
+    assert set(parent.source_map.keys()) == set(["local.post_id", "local.user_id"])
 
     root = parent.datasources[0]
     assert isinstance(root, Datasource)
     assert posts == root
-    print(root.identifier)
-    print(root.grain)
-    for i in root.concepts:
-        print(i)
-        print(i.grain.set)
     assert post_id in root.concepts
 
     ctes = datasource_to_ctes(datasource)

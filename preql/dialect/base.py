@@ -2,7 +2,7 @@ from typing import List, Union, Optional, Dict
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
+from preql.core.enums import FunctionType, WindowType, JoinType
 from preql.core.hooks import BaseProcessingHook
 from preql.core.enums import Purpose, DataType
 from preql.core.models import (
@@ -16,7 +16,7 @@ from preql.core.models import (
     Function,
     OrderItem,
     WindowItem,
-    FilterItem
+    FilterItem,
 )
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query
@@ -24,9 +24,12 @@ from preql.dialect.common import render_join
 from preql.utility import unique
 from preql.constants import logger
 
-LOGGER_PREFIX = '[RENDERING]'
+LOGGER_PREFIX = "[RENDERING]"
 
-INVALID_REFERENCE_STRING = lambda x: f"INVALID_REFERENCE_BUG"
+
+def INVALID_REFERENCE_STRING(x):
+    return "INVALID_REFERENCE_BUG"
+
 
 WINDOW_FUNCTION_MAP = {
     WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})"
@@ -110,7 +113,9 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
     checks = []
     if not c.lineage:
         return True
-    logger.debug(f"{LOGGER_PREFIX} [{c.address}] Checking lineage for rendering in {cte.name}")
+    logger.debug(
+        f"{LOGGER_PREFIX} [{c.address}] Checking lineage for rendering in {cte.name}"
+    )
     for sub_c in c.lineage.arguments:
         if not isinstance(sub_c, Concept):
             continue
@@ -119,7 +124,9 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
         ):
             checks.append(True)
         else:
-            logger.debug(f"{LOGGER_PREFIX} [{sub_c.address}] not found in source map for {cte.name}, have cte keys {[c for c in cte.source_map.keys()]} and datasource keys {[c for c in cte.source.source_map.keys()]}")
+            logger.debug(
+                f"{LOGGER_PREFIX} [{sub_c.address}] not found in source map for {cte.name}, have cte keys {[c for c in cte.source_map.keys()]} and datasource keys {[c for c in cte.source.source_map.keys()]}"
+            )
             checks.append(False)
     return all(checks)
 
@@ -162,12 +169,14 @@ class BaseDialect:
 
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
-        logger.debug(f'{LOGGER_PREFIX} [{c.address}] Rendering on {cte.name} alias={alias}')
+        logger.debug(
+            f"{LOGGER_PREFIX} [{c.address}] Rendering on {cte.name} alias={alias}"
+        )
 
         if (c.lineage and check_lineage(c, cte)) and not cte.source_map.get(
             c.address, ""
         ).startswith("cte"):
-            logger.debug(f'{LOGGER_PREFIX} [{c.address}] rendering lineage concept')
+            logger.debug(f"{LOGGER_PREFIX} [{c.address}] rendering lineage concept")
             if isinstance(c.lineage, WindowItem):
                 # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
                 self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
@@ -180,7 +189,7 @@ class BaseDialect:
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](window=','.join(rendered_over_components), sort=','.join(rendered_order_components), order = 'desc')}"
             elif isinstance(c.lineage, FilterItem):
-                rval = f'{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}'
+                rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             else:
                 args = [
                     self.render_concept_sql(v, cte, alias=False)
@@ -194,14 +203,22 @@ class BaseDialect:
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:
-            logger.debug(f'{LOGGER_PREFIX} [{c.address}] Complex reference falling back to source address')
+            logger.debug(
+                f"{LOGGER_PREFIX} [{c.address}] Complex reference falling back to source address"
+            )
             if not cte.source_map.get(c.address, None):
-                logger.debug(f'{LOGGER_PREFIX} [{c.address}] Cannot render from {cte.name}, have {cte.source_map.keys()} only')
+                logger.debug(
+                    f"{LOGGER_PREFIX} [{c.address}] Cannot render from {cte.name}, have {cte.source_map.keys()} only"
+                )
             rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
         else:
-            logger.debug(f'{LOGGER_PREFIX} [{c.address}] Basic reference, using source address for {c.address}')
+            logger.debug(
+                f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address for {c.address}"
+            )
             if not cte.source_map.get(c.address, None):
-                logger.debug(f'{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from {cte.name}, have {cte.source_map.keys()} only')
+                logger.debug(
+                    f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from {cte.name}, have {cte.source_map.keys()} only"
+                )
             rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
 
         if alias:
@@ -261,9 +278,9 @@ class BaseDialect:
                         render_join(join, self.QUOTE_CHARACTER)
                         for join in (cte.joins or [])
                     ],
-                    where=self.render_expr(
-                       cte.condition, cte
-                    ) if cte.condition else None,  # source_map=cte_output_map)
+                    where=self.render_expr(cte.condition, cte)
+                    if cte.condition
+                    else None,  # source_map=cte_output_map)
                     # where=self.render_expr(where_assignment[cte.name], cte)
                     # if cte.name in where_assignment
                     # else None,
@@ -329,7 +346,9 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             found = False
-            filter = set([str(x.with_grain(query.grain)) for x in query.where_clause.input])
+            filter = set(
+                [str(x.with_grain(query.grain)) for x in query.where_clause.input]
+            )
             query_output = set([str(z) for z in query.output_columns])
             filter_at_output_grain = set(
                 [str(x.with_grain(query.grain)) for x in query.where_clause.input]
@@ -371,7 +390,6 @@ class BaseDialect:
                 join.jointype = JoinType.FULL
         compiled_ctes = self.generate_ctes(query, where_assignment)
 
-
         return self.SQL_TEMPLATE.render(
             select_columns=select_columns,
             base=query.base.name,
@@ -380,7 +398,8 @@ class BaseDialect:
             limit=query.limit,
             # move up to CTEs
             where=self.render_expr(
-                query.where_clause.conditional, cte_map=cte_output_map)
+                query.where_clause.conditional, cte_map=cte_output_map
+            )
             if query.where_clause and output_where
             else None,
             order_by=[

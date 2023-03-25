@@ -38,7 +38,7 @@ class DataType(Enum):
     TIMESTAMP = "timestamp"
     ARRAY = "array"
 
-    #GRANULAR
+    # GRANULAR
     UNIX_SECONDS = "unix_seconds"
 
 
@@ -137,6 +137,6 @@ class ComparisonOperator(Enum):
 
     @classmethod
     def _missing_(cls, value):
-        if value == 'is':
+        if value == "is":
             return ComparisonOperator.EQ
         return super()._missing_(value)

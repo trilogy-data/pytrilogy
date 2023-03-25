@@ -69,9 +69,12 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     for key, item in query_datasource.source_map.items()
                     if datasource in item
                 }
-                sub_select ={**sub_select, **{c.address:datasource for c in datasource.concepts}}
+                sub_select = {
+                    **sub_select,
+                    **{c.address: datasource for c in datasource.concepts},
+                }
                 concepts = [
-                    c for c in datasource.concepts # if c.address in sub_select.keys()
+                    c for c in datasource.concepts  # if c.address in sub_select.keys()
                 ]
                 concepts = unique(concepts, "address")
                 sub_datasource = QueryDatasource(
@@ -124,7 +127,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         # we restrict parent_ctes to one level
         # as this set is used as the base for rendering the query
         parent_ctes=children,
-        condition = query_datasource.condition,
+        condition=query_datasource.condition,
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")

@@ -133,7 +133,7 @@ def test_query_datasources(environment):
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "customers_fact_internet_sales_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
+                == "customers_join_fact_internet_sales_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
             )
         elif concept.name == "region":
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
@@ -156,10 +156,14 @@ def test_query_datasources(environment):
             "cte_fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
         )
     ][0]
-    assert len(base_cte.output_columns) == 2
-
-    # the CTE has all grain components
     assert base_cte.group_to_grain == False
+
+    assert {c.address for c in base_cte.output_columns} == {
+        "customer.customer_id",
+        "internet_sales.order_line_number",
+        "internet_sales.order_number",
+    }
+    assert len(base_cte.output_columns) == 3
 
 
 def recurse_datasource(parent: QueryDatasource, depth=0):
