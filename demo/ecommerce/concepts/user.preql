@@ -1,0 +1,14 @@
+## users
+
+key id int metadata(description="the description");
+key country string metadata(description="The user country");
+property id.traffic_source string metadata(description="The source of the customer acquisition.");
+
+datasource users (
+    id: id,
+    country: country,
+    traffic_source: traffic_source
+    )
+    grain(id)
+    address bigquery-public-data.stackoverflow.users
+;

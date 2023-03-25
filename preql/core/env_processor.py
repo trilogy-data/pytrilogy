@@ -6,7 +6,7 @@ def generate_graph(environment: Environment,) -> ReferenceGraph:
     g = ReferenceGraph()
 
     # add all parsed concepts
-    for name, concept in environment.concepts.items():
+    for _, concept in environment.concepts.items():
         g.add_node(concept)
 
         # if we have sources, recursively add them
@@ -15,7 +15,7 @@ def generate_graph(environment: Environment,) -> ReferenceGraph:
             for source in concept.sources:
                 generic = source.with_default_grain()
                 g.add_edge(generic, node_name)
-    for key, dataset in environment.datasources.items():
+    for _, dataset in environment.datasources.items():
         node = datasource_to_node(dataset)
         g.add_node(dataset, type="datasource", datasource=dataset)
         for concept in dataset.concepts:
