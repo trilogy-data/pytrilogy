@@ -1,8 +1,8 @@
 # from preql.compiler import compile
 from preql.core.models import Select, Grain
-from preql.parser import parse
-from preql.dialect.base import BaseDialect
 from preql.core.query_processor import process_query
+from preql.dialect.base import BaseDialect
+from preql.parser import parse
 
 
 def test_select_where(test_environment):

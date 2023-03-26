@@ -4,7 +4,6 @@ from typing import Generator
 from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
-from sqlalchemy import text
 
 from preql import Executor, Dialects, parse, Environment
 

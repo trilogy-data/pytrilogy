@@ -1,6 +1,9 @@
+from logging import StreamHandler, DEBUG
+
 from pytest import fixture
 
 from preql import Environment
+from preql.constants import logger as base_logger
 from preql.core.enums import DataType, Purpose, FunctionType, ComparisonOperator
 from preql.core.env_processor import generate_graph
 from preql.core.models import (
@@ -13,11 +16,8 @@ from preql.core.models import (
     FilterItem,
     OrderItem,
     WhereClause,
-    Conditional,
     Comparison,
 )
-from preql.constants import logger as base_logger
-from logging import StreamHandler, DEBUG
 
 
 @fixture(scope="session")

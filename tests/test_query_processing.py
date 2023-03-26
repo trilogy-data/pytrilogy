@@ -1,16 +1,14 @@
 from preql.core.models import Select, Grain, QueryDatasource, CTE
+from preql.core.processing.concept_strategies import (
+    get_datasource_for_filter,
+    get_datasource_from_window_function,
+    get_datasource_from_direct_select,
+)
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
     get_query_datasources,
     process_query,
-)
-from preql.core.processing.concept_strategies import (
-    get_datasource_for_filter,
-    get_datasource_from_window_function,
-    get_datasource_from_direct_select,
-    get_datasource_from_group_select,
-    get_datasource_from_complex_lineage,
 )
 
 

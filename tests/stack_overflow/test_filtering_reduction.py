@@ -1,8 +1,8 @@
 from os.path import dirname
 
-from preql.core.models import Select, Grain, Environment
-from preql.parser import parse
+from preql.core.models import Select, Environment
 from preql.core.query_processor import process_query
+from preql.parser import parse
 
 
 def test_filtering_reduction():

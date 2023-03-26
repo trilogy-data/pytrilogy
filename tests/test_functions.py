@@ -1,10 +1,11 @@
 # from preql.compiler import compile
+from pytest import raises
+
+from preql.core.exceptions import InvalidSyntaxException
 from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
-from pytest import raises
-from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 
 
 def test_functions(test_environment):
