@@ -139,7 +139,7 @@ def test_query_datasources(environment):
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
         elif concept.name == "first_name":
             assert datasource.identifier.startswith(
-                "fact_internet_sales_at_internet_sales"
+                "customers_join_fact_internet_sales_at_internet_sales"
             )
         else:
             raise ValueError(concept)
@@ -148,7 +148,10 @@ def test_query_datasources(environment):
     for datasource in datasources.values():
         ctes += datasource_to_ctes(datasource)
 
-    assert len(ctes) == 7
+    # TODO: does this have value?
+    # It's catching query shape changes, but those are more innocous
+    # than outptu changes
+    assert len(ctes) == 4
     base_cte: CTE = [
         cte
         for cte in ctes
@@ -160,10 +163,16 @@ def test_query_datasources(environment):
 
     assert {c.address for c in base_cte.output_columns} == {
         "customer.customer_id",
+        "dates.due_key",
+        "dates.order_key",
+        "dates.ship_key",
         "internet_sales.order_line_number",
         "internet_sales.order_number",
+        "internet_sales.order_quantity",
+        "internet_sales.sales_amount",
+        "sales_territory.key",
     }
-    assert len(base_cte.output_columns) == 3
+    assert len(base_cte.output_columns) == 9
 
 
 def recurse_datasource(parent: QueryDatasource, depth=0):
