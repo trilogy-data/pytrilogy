@@ -62,14 +62,14 @@ select
     BaseDialect().compile_statement(process_query(test_environment, select))
 
 
-def test_select_where_attribute(test_environment, logger):
+def test_select_where_attribute_v2(test_environment, logger):
     declarations = """
-property special_order <- filter order_id where total_revenue > 1000;
-
+key special_order <- filter order_id where total_revenue > 1000;
+key special_category <- filter category_id where like(category_name, '%special%') is True;
 
 select
     special_order,
-    category_id
+    special_category
 ;
 
 
@@ -78,10 +78,30 @@ select
     select: Select = parsed[-1]
 
     BaseDialect().compile_statement(process_query(test_environment, select))
+
+
+def test_where_debug(test_environment, logger):
+    declarations = """
+
+select
+    revenue,
+    order_id,
+    product_id,
+    category_id
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    compiled = BaseDialect().compile_statement(process_query(test_environment, select))
+    print(compiled)
 
 
 # TODO: determine why this is failing
-@pytest.mark.skip(reason="Need to dig into this more")
+
+
 def test_select_where_attribute(test_environment, logger):
     declarations = """
 property special_order <- filter order_id where total_revenue > 1000;
@@ -89,8 +109,7 @@ property special_order <- filter order_id where total_revenue > 1000;
 
 select
     special_order,
-    total_revenue,
-    category_id
+    total_revenue
 ;
 
 
@@ -98,4 +117,5 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    BaseDialect().compile_statement(process_query(test_environment, select))
+    query = BaseDialect().compile_statement(process_query(test_environment, select))
+    print(query)
