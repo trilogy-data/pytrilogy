@@ -45,6 +45,15 @@ class Executor(object):
         output = connection.execute(text(sql))
         return output
 
+    def generate_sql(self, command: str) -> List[str]:
+        _, parsed = parse_text(command, self.environment)
+        sql = self.generator.generate_queries(self.environment, parsed)
+        output = []
+        for statement in sql:
+            compiled_sql = self.generator.compile_statement(statement)
+            output.append(compiled_sql)
+        return output
+
     def execute_text(self, command: str) -> List[CursorResult]:
         _, parsed = parse_text(command, self.environment)
         sql = self.generator.generate_queries(self.environment, parsed)

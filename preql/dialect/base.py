@@ -28,7 +28,7 @@ from preql.constants import CONFIG
 LOGGER_PREFIX = "[RENDERING]"
 
 
-def INVALID_REFERENCE_STRING(x:Any):
+def INVALID_REFERENCE_STRING(x: Any):
     return "INVALID_REFERENCE_BUG"
 
 
@@ -48,6 +48,11 @@ DATATYPE_MAP = {
 FUNCTION_MAP = {
     # generic types
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
+    # math
+    FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
+    FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",
+    FunctionType.DIVIDE: lambda x: f"({x[0]} / {x[1]})",
+    FunctionType.MULTIPLY: lambda x: f"({x[0]} * {x[1]})",
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -166,7 +171,7 @@ class BaseDialect:
         elif isinstance(v, DataType):
             return DATATYPE_MAP.get(v, "UNMAPPEDDTYPE")
         else:
-            return v
+            return str(v)
 
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
@@ -269,11 +274,13 @@ class BaseDialect:
         elif isinstance(e, bool):
             return f"{True if e else False}"
         elif isinstance(e, str):
+
             return f"'{e}'"
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, list):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+
         return str(e)
 
     def generate_ctes(
