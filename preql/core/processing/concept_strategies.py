@@ -223,9 +223,6 @@ def get_datasource_from_group_select(
 
             # we may be directly getting a value we can filter on
             conditions = concepts_to_conditions_mapping(outputs)
-            logger.debug(
-                f"{LOGGER_PREFIX} Got {datasource.identifier} for {concept} from grouped select, outputting {[c.address for c in outputs]}"
-            )
             base = QueryDatasource(
                 input_concepts=input_concepts,
                 output_concepts=outputs,
@@ -267,6 +264,9 @@ def get_datasource_from_group_select(
                         condition.add_concept,
                         [condition.remove_concept],
                     )
+            logger.debug(
+                f"{LOGGER_PREFIX} Got {datasource.identifier} for {concept} from grouped select, outputting {[c.address for c in base.output_concepts]}"
+            )
             return base
     raise ValueError(f"No grouped select for {concept}")
 
@@ -813,7 +813,7 @@ def _get_datasource_by_concept_and_grain(
                 g,
                 whole_grain=whole_grain,
             )
-            logger.debug(f"{LOGGER_PREFIX} Got {concept} from property lookup")
+            logger.debug(f"{LOGGER_PREFIX} Got {concept} from property lookup from {out.name}")
             return out
         except ValueError as e:
             logger.debug(f"{LOGGER_PREFIX} {str(e)}")
@@ -822,7 +822,7 @@ def _get_datasource_by_concept_and_grain(
         out = get_datasource_from_group_select(
             concept, grain, environment, g, whole_grain=whole_grain
         )
-        logger.debug(f"{LOGGER_PREFIX} Got {concept} from grouped select")
+        logger.debug(f"{LOGGER_PREFIX} Got {concept} from grouped select from {out.name}")
         return out
     except ValueError as e:
         logger.debug(f"{LOGGER_PREFIX} {str(e)}")
