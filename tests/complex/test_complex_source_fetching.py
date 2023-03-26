@@ -24,9 +24,7 @@ def test_aggregate_of_property_function(stackoverflow_environment):
             # checks on join
             # alias = cte.get_alias(avg_user_post_count)
             rendered = generator.render_concept_sql(avg_user_post_count, cte)
-            assert (
-                rendered == 'avg(length(posts."text")) as "local_user_avg_post_length"'
-            )
+            assert rendered == 'avg(length(posts."text")) as "user_avg_post_length"'
 
     sql = generator.compile_statement(query)
 

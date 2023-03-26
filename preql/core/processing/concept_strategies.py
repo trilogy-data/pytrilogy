@@ -23,7 +23,8 @@ from preql.core.processing.utility import (
     concept_to_inputs,
     PathInfo,
     path_to_joins,
-    concepts_to_conditions,
+    concepts_to_conditions_mapping,
+    get_nested_source_for_condition,
 )
 from preql.utility import unique
 
@@ -184,7 +185,7 @@ def get_datasource_from_group_select(
 
     for datasource in environment.datasources.values():
         all_found = True
-        datasource_mapping = {}
+        datasource_mapping: Dict[str, Set[Union[Datasource, QueryDatasource]]] = {}
         input_concepts = []
         for req_concept in all_concepts:
             members = concept_to_inputs(req_concept)
@@ -218,25 +219,51 @@ def get_datasource_from_group_select(
                 final_grain = grain
             # final_grain = grain
 
-            outputs = [concept] + final_grain.components_copy
-            filters: List[Concept] = []
-            # for item in outputs:
-            #     if isinstance(item.lineage, FilterItem):
-            #         conditions.append(item.lineage.where.conditional)
-            conditions = concepts_to_conditions(outputs)
+            outputs = unique([concept] + final_grain.components_copy, "address")
+
+            # we may be directly getting a value we can filter on
+            conditions = concepts_to_conditions_mapping(outputs)
             logger.debug(
                 f"{LOGGER_PREFIX} Got {datasource.identifier} for {concept} from grouped select, outputting {[c.address for c in outputs]}"
             )
-            return QueryDatasource(
+            base = QueryDatasource(
                 input_concepts=input_concepts,
                 output_concepts=outputs,
                 source_map=datasource_mapping,
                 datasources=[datasource],
                 grain=final_grain,
                 joins=[],
-                filter_concepts=filters,
-                condition=conditions,
             )
+
+            if conditions:
+                # we need to remove the filtered value from the output
+                # wrap this in another query
+                for condition in conditions:
+                    base.grain = Grain(
+                        components=list(
+                            filter(
+                                lambda x: x.address == condition.add_concept.address,
+                                base.grain.components_copy,
+                            )
+                        )
+                        + [condition.remove_concept]
+                    )
+                    base.output_concepts = unique(
+                        [
+                            c.with_grain(base.grain)
+                            for c in base.output_concepts
+                            if c.address != condition.add_concept.address
+                        ]
+                        + [condition.remove_concept],
+                        "address",
+                    )
+                    base = get_nested_source_for_condition(
+                        base,
+                        condition.condition,
+                        condition.add_concept,
+                        [condition.remove_concept],
+                    )
+            return base
     raise ValueError(f"No grouped select for {concept}")
 
 
@@ -498,7 +525,7 @@ def get_datasource_from_window_function(
         )
     window: WindowItem = concept.lineage
     all_datasets: Dict = {}
-    source_map = {}
+    source_map: Dict[str, Set[Union[Datasource, QueryDatasource]]] = {}
 
     output_concepts = [concept] + grain.components_copy
     sub_concepts = unique([window.content] + grain.components_copy, "identifier")
@@ -627,6 +654,9 @@ def get_datasource_for_filter(
     if not isinstance(concept.lineage, FilterItem):
         raise ValueError("Attempting to use filter derivation for non-filtered Item")
     filter: FilterItem = concept.lineage
+    logger.info(
+        f"{LOGGER_PREFIX} [{filter.content.address}] getting filtering expression for"
+    )
     all_datasets: Dict = {}
     source_map = {}
 
@@ -635,13 +665,23 @@ def get_datasource_for_filter(
     # make sure that if the window is in the grain, it's not included here
     # we just need the base concept
     # this avoids infinite recursion, since the target grain includes the filter component
-    input_concepts = [filter.content] + [
-        item
-        for item in grain.components_copy
-        if item.with_default_grain() != concept.with_default_grain()
-    ]
-    cte_grain = Grain(components=input_concepts)
+    input_concepts = (
+        [filter.content]
+        + [
+            item
+            for item in grain.components_copy
+            if item.with_default_grain() != concept.with_default_grain()
+        ]
+        + [x.with_grain(grain) for x in filter.arguments]
+    )
+    # keep metrics out of the new calculated grain, even though we need to find them
+    cte_grain = Grain(
+        components=[
+            x for x in input_concepts if x.purpose in (Purpose.KEY, Purpose.PROPERTY)
+        ]
+    )
     for sub_concept in input_concepts:
+        logger.debug(f"{LOGGER_PREFIX} [{sub_concept.address}] getting in filter")
         sub_concept = sub_concept.with_grain(cte_grain)
         sub_datasource = get_datasource_by_concept_and_grain(
             sub_concept, cte_grain, environment=environment, g=g
@@ -682,20 +722,22 @@ def get_datasource_for_filter(
     # and assume the base query MUST have the grain of all
     # component datasources
 
-    output_components_base = [concept] + cte_grain.components_copy
+    output_components_base = [filter.content] + input_concepts
     output_components = [
         c
         for c in output_components_base
         if c.with_default_grain() != filter.content.with_default_grain()
     ]
-    return QueryDatasource(
-        output_concepts=output_components,
+    base = QueryDatasource(
+        output_concepts=output_components_base,
         input_concepts=input_concepts,
         source_map=source_map,
-        grain=Grain(components=output_components),
+        grain=cte_grain,
         datasources=datasources,
         joins=joins,
-        condition=filter.where.conditional,
+    )
+    return get_nested_source_for_condition(
+        base, filter.where.conditional, concept, [filter.content] + filter.input
     )
 
 

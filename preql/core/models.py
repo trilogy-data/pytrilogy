@@ -1,10 +1,12 @@
+import difflib
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Dict, MutableMapping, TypeVar, List, Optional, Union, Set, Any
-from pydantic import BaseModel, validator, Field
-import difflib
 
+from pydantic import BaseModel, validator, Field
+
+from preql.constants import logger, DEFAULT_NAMESPACE
 from preql.core.enums import (
     DataType,
     Purpose,
@@ -20,8 +22,6 @@ from preql.core.enums import (
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
-from preql.constants import logger, DEFAULT_NAMESPACE
-
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -798,7 +798,9 @@ class BaseJoin:
             if include:
                 final_concepts.append(concept)
         if not final_concepts:
-            raise SyntaxError("No mutual join keys found")
+            raise SyntaxError(
+                f"No mutual join keys found between {self.left_datasource.identifier} and {self.right_datasource.identifier}"
+            )
         self.concepts = final_concepts
 
     @property
@@ -823,7 +825,7 @@ class QueryDatasource:
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
-    condition: "Conditional" = field(default=None)
+    condition: Optional[Union["Conditional", "Comparison"]] = field(default=None)
     filter_concepts: List[Concept] = field(default_factory=list)
 
     def __str__(self):
@@ -956,7 +958,7 @@ class CTE:
     group_to_grain: bool = False
     parent_ctes: List["CTE"] = field(default_factory=list)
     joins: List["Join"] = field(default_factory=list)
-    condition: Optional["Conditional"] = None
+    condition: Optional[Union["Conditional", "Comparison"]] = None
 
     def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
@@ -981,16 +983,25 @@ class CTE:
 
     @property
     def relevant_base_ctes(self):
-        return [
-            cte
-            for cte in self.parent_ctes
-            if any(
-                [
-                    c.with_grain(self.grain) in self.output_columns
-                    for c in cte.output_columns
-                ]
-            )
-        ]
+        """The parent CTEs includes all CTES,
+        not just those immediately referenced.
+        This method returns only those that are relevant
+        to the output of the query."""
+        ctes = []
+        for key in self.output_columns:
+            if not key.lineage:
+                ctes.append(self.source_map[key.address])
+        if not ctes:
+            for key, item in self.source_map.items():
+                for c in self.output_columns:
+                    if key == c.address:
+                        ctes.append(item)
+                        break
+                    elif key in [c2.address for c2 in c.sources]:
+                        ctes.append(item)
+                        break
+
+        return [cte for cte in self.parent_ctes if cte.name in ctes]
 
     @property
     def base_name(self) -> str:
@@ -1007,6 +1018,9 @@ class CTE:
             return self.relevant_base_ctes[0].name
         # return self.source_map.values()[0]
         elif self.parent_ctes:
+            raise SyntaxError(
+                f"{self.name} has no relevant base CTEs, {self.source_map}, {[x.name for x in self.parent_ctes]}, outputs {[x.address for x in self.output_columns]}"
+            )
             return self.parent_ctes[0].name
         return self.source.name
 
@@ -1114,6 +1128,9 @@ class Environment:
 class Expr(BaseModel):
     content: Any
 
+    def __init__(self):
+        raise SyntaxError
+
     @property
     def input(self) -> List[Concept]:
         output: List[Concept] = []
@@ -1129,8 +1146,31 @@ class Expr(BaseModel):
 
 
 class Comparison(BaseModel):
-    left: Union[bool, int, str, float, list, Concept, Function, Expr, "Conditional"]
-    right: Union[bool, int, str, float, list, Concept, Function, Expr, "Conditional"]
+
+    left: Union[
+        bool,
+        int,
+        str,
+        float,
+        list,
+        Function,
+        Concept,
+        "Conditional",
+        DataType,
+        "Comparison",
+    ]
+    right: Union[
+        bool,
+        int,
+        str,
+        float,
+        list,
+        Concept,
+        Function,
+        "Conditional",
+        DataType,
+        "Comparison",
+    ]
     operator: ComparisonOperator
 
     def __add__(self, other):
@@ -1169,8 +1209,8 @@ class Comparison(BaseModel):
 
 
 class Conditional(BaseModel):
-    left: Union[Concept, Comparison, Function, "Conditional"]
-    right: Union[Concept, Comparison, Function, "Conditional"]
+    left: Union[Concept, Comparison, "Conditional"]
+    right: Union[Concept, Comparison, "Conditional"]
     operator: BooleanOperator
 
     def __add__(self, other) -> "Conditional":
@@ -1214,7 +1254,7 @@ class WhereClause(BaseModel):
         return self.conditional.input
 
     def with_namespace(self, namespace: str):
-        return WhereClause(condition=self.conditional.with_namespace(namespace))
+        return WhereClause(conditional=self.conditional.with_namespace(namespace))
 
     @property
     def grain(self) -> Grain:

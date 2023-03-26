@@ -64,14 +64,14 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
             if isinstance(datasource, QueryDatasource):
                 sub_datasource = datasource
             else:
-                sub_select = {
+                sub_select: Dict[str, Set[Union[Datasource, QueryDatasource]]] = {
                     key: item
                     for key, item in query_datasource.source_map.items()
                     if datasource in item
                 }
                 sub_select = {
                     **sub_select,
-                    **{c.address: datasource for c in datasource.concepts},
+                    **{c.address: {datasource} for c in datasource.concepts},
                 }
                 concepts = [
                     c for c in datasource.concepts  # if c.address in sub_select.keys()
@@ -159,7 +159,11 @@ def get_query_datasources(
     # if statement.where_clause:
     #     # TODO: figure out right place to group to do predicate pushdown
     #     statement.grain = statement.grain + Grain(components =statement.where_clause.input)
-    components = {False: statement.output_components + statement.grain.components}
+    components = {
+        False: unique(
+            statement.output_components + statement.grain.components_copy, "address"
+        )
+    }
 
     for key, concept_list in components.items():
         # TODO - identify if concept is already available on a datasource, and skip further search

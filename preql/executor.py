@@ -1,14 +1,14 @@
+from typing import List
 from typing import Optional
 
-from sqlalchemy.engine import Engine, CursorResult
 from sqlalchemy import text
+from sqlalchemy.engine import Engine, CursorResult
 
+from preql.constants import logger
 from preql.core.models import Environment, ProcessedQuery
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
-from typing import List
-from preql.constants import logger
 
 
 class Executor(object):

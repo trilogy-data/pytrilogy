@@ -1,5 +1,6 @@
 import hashlib
 from typing import List, Any, Union, Callable
+
 from preql.constants import DEFAULT_NAMESPACE
 
 INT_HASH_SIZE = 16
