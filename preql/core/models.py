@@ -234,7 +234,7 @@ class Function(BaseModel):
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
-    arguments: List[Union[Concept, str, float, int, DataType]]
+    arguments: List[Union[Concept, int, float, str, DataType]]
 
     @validator("arguments", pre=True, always=True)
     def parse_arguments(cls, v, **kwargs):
@@ -869,7 +869,9 @@ class QueryDatasource:
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
             )
-        logger.debug(f"{LOGGER_PREFIX} merging {self.name} with {len(self.output_concepts)} concepts and {other.name} with {len(other.output_concepts)} concepts")
+        logger.debug(
+            f"{LOGGER_PREFIX} merging {self.name} with {len(self.output_concepts)} concepts and {other.name} with {len(other.output_concepts)} concepts"
+        )
         return QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"

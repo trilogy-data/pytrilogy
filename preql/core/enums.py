@@ -69,6 +69,12 @@ class FunctionType(Enum):
     CAST = "cast"
     CONCAT = "concat"
 
+    # Math
+    DIVIDE = "divide"
+    MULTIPLY = "multiply"
+    ADD = "add"
+    SUBTRACT = "subtract"
+
     # Aggregates
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"

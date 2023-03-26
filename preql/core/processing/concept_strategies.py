@@ -236,6 +236,10 @@ def get_datasource_from_group_select(
             )
 
             if conditions:
+
+                logger.debug(
+                    f"{LOGGER_PREFIX} Grouped select includes filtering conditions, wrapping in another query to apply"
+                )
                 # we need to remove the filtered value from the output
                 # wrap this in another query
                 for condition in conditions:
@@ -276,9 +280,12 @@ def get_datasource_by_joins(
 ) -> QueryDatasource:
     join_candidates: List[PathInfo] = []
 
-    all_requirements = [item.with_default_grain() for item in unique(
-        concept_to_inputs(concept) + grain.components_copy, "address"
-    )]
+    all_requirements = [
+        item.with_default_grain()
+        for item in unique(
+            concept_to_inputs(concept) + grain.components_copy, "address"
+        )
+    ]
 
     for datasource in environment.datasources.values():
         all_found = True
@@ -738,6 +745,7 @@ def get_datasource_for_filter(
         base, filter.where.conditional, concept, [filter.content] + filter.input
     )
 
+
 def get_datasource_by_concept_and_grain(
     concept,
     grain: Grain,
@@ -745,14 +753,16 @@ def get_datasource_by_concept_and_grain(
     g: Optional[ReferenceGraph] = None,
     whole_grain: bool = False,
 ) -> Union[Datasource, QueryDatasource]:
-    base = _get_datasource_by_concept_and_grain(concept,
-                                                grain,
-                                                environment,
-                                                g,
-                                                whole_grain)
+    base = _get_datasource_by_concept_and_grain(
+        concept, grain, environment, g, whole_grain
+    )
     if concept.address not in [x.address for x in base.output_concepts]:
-        raise SyntaxError(f"Failed to return {concept.address} from output of fetch looking for it at grain {grain} - this should never occur ")
+        raise SyntaxError(
+            f"Failed to return {concept.address} from output of fetch looking for it at grain {grain} - this should never occur "
+        )
     return base
+
+
 def _get_datasource_by_concept_and_grain(
     concept,
     grain: Grain,
@@ -840,7 +850,9 @@ def _get_datasource_by_concept_and_grain(
 
     logger.debug(f"{LOGGER_PREFIX} Full grain search exhausted ")
     if whole_grain:
-        raise ValueError(f"Cannot find {concept} at {grain}, full grain search exhausted and whole grain is set to true.")
+        raise ValueError(
+            f"Cannot find {concept} at {grain}, full grain search exhausted and whole grain is set to true."
+        )
     from itertools import combinations
 
     for x in range(1, len(grain.components_copy)):
