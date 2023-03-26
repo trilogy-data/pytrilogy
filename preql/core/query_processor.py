@@ -192,12 +192,16 @@ def get_query_datasources(
     disconnected, disco_lists = get_disconnected_components(concept_map)
     # if not all datasources can ultimately be merged
     if disconnected > 1:
-        logger.debug(f"{LOGGER_PREFIX} Disconnected nodes found, have {disco_lists}")
+        logger.debug(f"{LOGGER_PREFIX} Disconnected nodes found, have {disco_lists}, need to do subgrain search")
         components = {True: statement.output_components + statement.grain.components}
         for key, concept_list in components.items():
             for concept in concept_list:
                 datasource = get_datasource_by_concept_and_grain(
                     concept, statement.grain, environment, graph, whole_grain=key
+                )
+
+                logger.debug(
+                    f"{LOGGER_PREFIX} finished search for {concept.address} at {str(statement.grain)} from {datasource.identifier}"
                 )
 
                 if concept not in concept_map[datasource.identifier]:
@@ -211,6 +215,9 @@ def get_query_datasources(
                     datasource_map[datasource.identifier] = datasource
             # when we have a unified graph, break the execution
             if get_disconnected_components(concept_map) == 1:
+                logger.debug(
+                    f"{LOGGER_PREFIX} graph is now connected, exiting "
+                )
                 break
     return concept_map, datasource_map
 

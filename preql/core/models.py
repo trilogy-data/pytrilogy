@@ -723,7 +723,7 @@ class Datasource:
                 return concept.safe_address
         existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
         raise ValueError(
-            f"Concept {concept} not found on {self.identifier}; have {existing}."
+            f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have {existing}."
         )
 
     @property
@@ -771,7 +771,7 @@ class JoinedDataSource:
                 continue
         existing = [str(c) for c in self.concepts]
         raise ValueError(
-            f"Concept {str(concept)} not found on {self.identifier}; have {existing}."
+            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier}; have {existing}."
         )
 
 
@@ -798,8 +798,10 @@ class BaseJoin:
             if include:
                 final_concepts.append(concept)
         if not final_concepts:
+            left_keys = [c.address for c in self.left_datasource.output_concepts]
+            right_keys = [c.address for c in self.right_datasource.output_concepts]
             raise SyntaxError(
-                f"No mutual join keys found between {self.left_datasource.identifier} and {self.right_datasource.identifier}"
+                f"No mutual join keys found between {self.left_datasource.identifier} and {self.right_datasource.identifier}, left_keys {left_keys}, right_keys {right_keys}"
             )
         self.concepts = final_concepts
 
@@ -867,7 +869,7 @@ class QueryDatasource:
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
             )
-        logger.debug(f"{LOGGER_PREFIX} merging {self.name} and {other.name}")
+        logger.debug(f"{LOGGER_PREFIX} merging {self.name} with {len(self.output_concepts)} concepts and {other.name} with {len(other.output_concepts)} concepts")
         return QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -928,7 +930,7 @@ class QueryDatasource:
         existing_str = [str(c) for c in existing]
         datasources = [ds.identifier for ds in self.datasources]
         raise ValueError(
-            f"Concept {str(concept)} not found on {self.identifier}; have {existing_str} from {datasources}."
+            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier}; have {existing_str} from {datasources}."
         )
 
     @property
@@ -1205,6 +1207,10 @@ class Comparison(BaseModel):
             output += [self.right]
         if isinstance(self.right, (Concept, Expr, Conditional)):
             output += self.right.input
+        if isinstance(self.left, Function):
+            output += self.left.concept_arguments
+        elif isinstance(self.right, Function):
+            output += self.right.concept_arguments
         return output
 
 
@@ -1242,6 +1248,10 @@ class Conditional(BaseModel):
             output += self.right.input
         else:
             output += self.right.input
+        if isinstance(self.left, Function):
+            output += self.left.concept_arguments
+        elif isinstance(self.right, Function):
+            output += self.right.concept_arguments
         return output
 
 
