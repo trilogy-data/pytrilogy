@@ -696,7 +696,7 @@ def get_datasource_for_filter(
         source_map[sub_concept.address] = {all_datasets[sub_datasource.identifier]}
         if isinstance(sub_datasource, QueryDatasource):
             source_map = {**source_map, **sub_datasource.source_map}
-    dataset_list = list(all_datasets.values())
+    dataset_list = sorted(list(all_datasets.values()), key=lambda x: -len(x.grain.components_copy))
     base = dataset_list[0]
 
     joins = []
