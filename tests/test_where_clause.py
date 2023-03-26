@@ -62,14 +62,12 @@ select
     BaseDialect().compile_statement(process_query(test_environment, select))
 
 
-def test_select_where_attribute_v2(test_environment, logger):
+def test_select_where_joins(test_environment, logger):
     declarations = """
-key special_order <- filter order_id where total_revenue > 1000;
-key special_category <- filter category_id where like(category_name, '%special%') is True;
 
 select
-    special_order,
-    special_category
+    order_id,
+    category_id
 ;
 
 
@@ -77,7 +75,32 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    BaseDialect().compile_statement(process_query(test_environment, select))
+    final = BaseDialect().compile_statement(process_query(test_environment, select))
+    print(final)
+
+
+def test_select_where_attribute_v2(test_environment, logger):
+    declarations = """
+key special_category <- filter category_id where like(category_name, '%special%') is True;
+
+select
+    order_id,
+    special_category
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+
+    spec_category = env.concepts["special_category"]
+    category_name = env.concepts["category_name"]
+    inputs = [x.address for x in spec_category.lineage.where.input]
+    assert len(inputs) == 1
+    assert category_name.address in inputs
+
+    select: Select = parsed[-1]
+
+    cmd = BaseDialect().compile_statement(process_query(test_environment, select))
 
 
 def test_where_debug(test_environment, logger):
@@ -104,11 +127,11 @@ select
 
 def test_select_where_attribute(test_environment, logger):
     declarations = """
-property special_order <- filter order_id where total_revenue > 1000;
+property special_order_high_rev <- filter order_id where total_revenue > 1000;
 
 
 select
-    special_order,
+    special_order_high_rev,
     total_revenue
 ;
 

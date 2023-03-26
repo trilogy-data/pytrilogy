@@ -276,9 +276,9 @@ def get_datasource_by_joins(
 ) -> QueryDatasource:
     join_candidates: List[PathInfo] = []
 
-    all_requirements = unique(
+    all_requirements = [item.with_default_grain() for item in unique(
         concept_to_inputs(concept) + grain.components_copy, "address"
-    )
+    )]
 
     for datasource in environment.datasources.values():
         all_found = True
@@ -292,9 +292,13 @@ def get_datasource_by_joins(
                 )
                 paths[concept_to_node(item)] = path
             except nx.exception.NodeNotFound:
+                # TODO: support Verbose logging mode configuration and reenable tehse
+                # logger.debug(f'{LOGGER_PREFIX} could not find node for {item.address}')
                 all_found = False
+
                 continue
             except nx.exception.NetworkXNoPath:
+                # logger.debug(f'{LOGGER_PREFIX} could not get to {item.address} from {datasource}')
                 all_found = False
                 continue
         if all_found:
@@ -328,12 +332,8 @@ def get_datasource_by_joins(
                 source_map[jconcept.address].add(join.right_datasource)
                 all_requirements.append(jconcept)
     all_requirements = unique(all_requirements, "address")
-    if whole_grain:
-        outputs = grain.components_copy
-        filters = [concept]
-    else:
-        outputs = [concept] + grain.components_copy
-        filters = []
+
+    outputs = [concept] + grain.components_copy
     output = QueryDatasource(
         output_concepts=outputs,
         input_concepts=all_requirements,
@@ -344,9 +344,7 @@ def get_datasource_by_joins(
             key=lambda x: x.identifier,
         ),
         joins=join_paths,
-        filter_concepts=filters,
     )
-    logger.debug(f"{LOGGER_PREFIX} Got {concept} from joins")
     return output
 
 
@@ -683,9 +681,13 @@ def get_datasource_for_filter(
     for sub_concept in input_concepts:
         logger.debug(f"{LOGGER_PREFIX} [{sub_concept.address}] getting in filter")
         sub_concept = sub_concept.with_grain(cte_grain)
+        # we need to force whole grain here
         sub_datasource = get_datasource_by_concept_and_grain(
-            sub_concept, cte_grain, environment=environment, g=g
+            sub_concept, cte_grain, environment=environment, g=g, whole_grain=True
         )
+
+        assert sub_concept in sub_datasource.output_concepts
+
         if sub_datasource.identifier in all_datasets:
             all_datasets[sub_datasource.identifier] = (
                 all_datasets[sub_datasource.identifier] + sub_datasource
@@ -700,7 +702,6 @@ def get_datasource_for_filter(
         list(all_datasets.values()), key=lambda x: -len(x.grain.components_copy)
     )
     base = dataset_list[0]
-
     joins = []
     if dataset_list[1:]:
         for right_value in dataset_list[1:]:
@@ -725,11 +726,6 @@ def get_datasource_for_filter(
     # component datasources
 
     output_components_base = [filter.content] + input_concepts
-    output_components = [
-        c
-        for c in output_components_base
-        if c.with_default_grain() != filter.content.with_default_grain()
-    ]
     base = QueryDatasource(
         output_concepts=output_components_base,
         input_concepts=input_concepts,
@@ -742,8 +738,22 @@ def get_datasource_for_filter(
         base, filter.where.conditional, concept, [filter.content] + filter.input
     )
 
-
 def get_datasource_by_concept_and_grain(
+    concept,
+    grain: Grain,
+    environment: Environment,
+    g: Optional[ReferenceGraph] = None,
+    whole_grain: bool = False,
+) -> Union[Datasource, QueryDatasource]:
+    base = _get_datasource_by_concept_and_grain(concept,
+                                                grain,
+                                                environment,
+                                                g,
+                                                whole_grain)
+    if concept.address not in [x.address for x in base.output_concepts]:
+        raise SyntaxError(f"Failed to return {concept.address} from output of fetch looking for it at grain {grain} - this should never occur ")
+    return base
+def _get_datasource_by_concept_and_grain(
     concept,
     grain: Grain,
     environment: Environment,
@@ -817,11 +827,25 @@ def get_datasource_by_concept_and_grain(
     except ValueError as e:
         logger.debug(f"{LOGGER_PREFIX} {str(e)}")
 
-    logger.debug(f"{LOGGER_PREFIX} Full grain search exhausted, reducing grain ")
+    try:
+        out = get_property_group_by_without_key(
+            concept, grain, environment, g, whole_grain=whole_grain
+        )
+        logger.debug(
+            f"{LOGGER_PREFIX} {concept} from property lookup via transversing key based grain"
+        )
+        return out
+    except ValueError as e:
+        logger.debug(f"{LOGGER_PREFIX} failed to get property lookup")
+
+    logger.debug(f"{LOGGER_PREFIX} Full grain search exhausted ")
+    if whole_grain:
+        raise ValueError(f"Cannot find {concept} at {grain}, full grain search exhausted and whole grain is set to true.")
     from itertools import combinations
 
     for x in range(1, len(grain.components_copy)):
         for combo in combinations(grain.components_copy, x):
+            logger.debug(f"{LOGGER_PREFIX} looking at reduced grain {grain}")
             ngrain = Grain(components=list(combo))
             try:
                 # out = get_datasource_by_joins(
@@ -848,16 +872,7 @@ def get_datasource_by_concept_and_grain(
 
     # if there is a property in the grain, see if we can find a datasource
     # with all the keys of the property, which we can then join to
-    try:
-        out = get_property_group_by_without_key(
-            concept, grain, environment, g, whole_grain=whole_grain
-        )
-        logger.debug(
-            f"{LOGGER_PREFIX} {concept} from property lookup via transversing key based grain"
-        )
-        return out
-    except ValueError as e:
-        logger.debug(f"{LOGGER_PREFIX} failed to get property lookup")
+
     try:
         neighbors = list(g.predecessors(concept_to_node(concept)))
     # node is not in graph

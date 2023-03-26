@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Dict
+from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
 
@@ -23,11 +23,12 @@ from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query
 from preql.dialect.common import render_join
 from preql.utility import unique
+from preql.constants import CONFIG
 
 LOGGER_PREFIX = "[RENDERING]"
 
 
-def INVALID_REFERENCE_STRING(x):
+def INVALID_REFERENCE_STRING(x:Any):
     return "INVALID_REFERENCE_BUG"
 
 
@@ -399,7 +400,7 @@ class BaseDialect:
                 join.jointype = JoinType.FULL
         compiled_ctes = self.generate_ctes(query, {})
 
-        return self.SQL_TEMPLATE.render(
+        final = self.SQL_TEMPLATE.render(
             select_columns=select_columns,
             base=query.base.name,
             joins=[render_join(join, self.QUOTE_CHARACTER) for join in query.joins],
@@ -417,3 +418,9 @@ class BaseDialect:
             if query.order_by
             else None,
         )
+
+        if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
+            raise ValueError(
+                f"Invalid reference string found in query: {final}, this should never occur. Please report this issue."
+            )
+        return final
