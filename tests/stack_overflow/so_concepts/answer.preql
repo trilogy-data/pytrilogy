@@ -1,11 +1,12 @@
 import user as user;
+import question as question;
 
 key id int;
 
 property id.title	string	;			
 property id.body	string	;			
 property id.accepted_answer_id	string	;			
-property id.answer_count	string	;			
+property id.answer_count	string	;
 property id.comment_count	int	;
 property id.favorite_count	string	;
 
@@ -21,6 +22,7 @@ property id.view_count	string	;
 
 datasource post_answer_edits (
     id:id,
+    parent_id: question.id,
     last_editor_user_id: Partial[user.id],
     last_editor_display_name: last_editor_display_name
 )
@@ -30,6 +32,7 @@ datasource post_answer_edits (
 datasource post_answers (
     id:id,
     comment_count:comment_count,
+    parent_id: question.id,
     owner_user_id: Partial[user.id],
     owner_display_name: owner_display_name,
     )
