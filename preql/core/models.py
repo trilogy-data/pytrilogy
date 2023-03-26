@@ -872,6 +872,9 @@ class QueryDatasource:
         logger.debug(
             f"{LOGGER_PREFIX} merging {self.name} with {len(self.output_concepts)} concepts and {other.name} with {len(other.output_concepts)} concepts"
         )
+        logger.debug(
+            f"{LOGGER_PREFIX} condition check: merging {self.name} with condition {True if self.condition else False} concepts and {other.name} with {True if other.condition else False} "
+        )
         return QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"

@@ -346,7 +346,6 @@ class BaseDialect:
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
-
         # valid joins are anything that is a subset of the final grain
         output_ctes = [cte for cte in query.ctes if cte.grain.issubset(query.grain)]
         for cte in output_ctes:
