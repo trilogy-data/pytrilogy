@@ -2,7 +2,6 @@ from os.path import join, dirname
 from typing import Tuple, List, Optional
 
 from lark import Lark, Transformer, v_args
-from lark.tree import Meta
 from lark.exceptions import (
     VisitError,
     UnexpectedCharacters,
@@ -10,8 +9,10 @@ from lark.exceptions import (
     UnexpectedInput,
     UnexpectedToken,
 )
-from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
+from lark.tree import Meta
 from pydantic import ValidationError
+
+from preql.constants import DEFAULT_NAMESPACE
 from preql.core.enums import (
     Purpose,
     DataType,
@@ -22,6 +23,7 @@ from preql.core.enums import (
     BooleanOperator,
     WindowOrder,
 )
+from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.core.models import (
     WhereClause,
     Comparison,
@@ -49,7 +51,6 @@ from preql.core.models import (
     Query,
 )
 from preql.parsing.exceptions import ParseError
-from preql.constants import DEFAULT_NAMESPACE
 
 grammar = r"""
     !start: ( block | comment )*
@@ -656,14 +657,15 @@ class ParseToObjects(Transformer):
         return WindowItemOrder(contents=args[0])
 
     def window_item(self, args) -> WindowItem:
-        kwargs = {}
+        order_by = []
+        over = []
         for item in args[1:]:
             if isinstance(item, WindowItemOrder):
-                kwargs["order_by"] = item.contents
+                order_by = item.contents
             elif isinstance(item, WindowItemOver):
-                kwargs["over"] = item.contents
+                over = item.contents
         concept = self.environment.concepts[args[0]]
-        return WindowItem(content=concept, **kwargs)
+        return WindowItem(content=concept, over=over, order_by=order_by)
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
@@ -921,7 +923,7 @@ class ParseToObjects(Transformer):
         )
 
     # utility functions
-    def fcast(self, args):
+    def fcast(self, args) -> Function:
         input_concept: Concept = args[0]
         output_datatype = args[1]
         return Function(

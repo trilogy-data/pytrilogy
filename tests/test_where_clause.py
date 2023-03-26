@@ -43,18 +43,18 @@ where
     BaseDialect().compile_statement(process_query(test_environment, select))
 
 
-# def test_select_where_agg(test_environment):
-#     declarations = """
-# property my_favorite_order_revenue <- filter revenue where order_id in (1,2,3);
-#
-# metric my_favorite_order_total_revenue <- sum(my_favorite_order_revenue);
-# select
-#     my_favorite_order_total_revenue
-# ;
-#
-#
-#     """
-#     env, parsed = parse(declarations, environment=test_environment)
-#     select: Select = parsed[-1]
-#
-#     BaseDialect().compile_statement(process_query(test_environment, select))
+def test_select_where_agg(test_environment):
+    declarations = """
+property my_favorite_order_revenue <- filter revenue where order_id in (1,2,3);
+
+metric my_favorite_order_total_revenue <- sum(my_favorite_order_revenue);
+select
+    my_favorite_order_total_revenue
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    BaseDialect().compile_statement(process_query(test_environment, select))
