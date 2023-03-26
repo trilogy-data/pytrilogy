@@ -2,9 +2,10 @@ from typing import List, Union, Optional, Dict
 
 from jinja2 import Template
 
+from preql.constants import logger
 from preql.core.enums import FunctionType, WindowType, JoinType
-from preql.core.hooks import BaseProcessingHook
 from preql.core.enums import Purpose, DataType
+from preql.core.hooks import BaseProcessingHook
 from preql.core.models import (
     Concept,
     CTE,
@@ -13,16 +14,15 @@ from preql.core.models import (
     Conditional,
     Expr,
     Comparison,
-    Function,
     OrderItem,
     WindowItem,
     FilterItem,
+    Function,
 )
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query
 from preql.dialect.common import render_join
 from preql.utility import unique
-from preql.constants import logger
 
 LOGGER_PREFIX = "[RENDERING]"
 
@@ -227,7 +227,18 @@ class BaseDialect:
 
     def render_expr(
         self,
-        e: Union[Expr, Conditional, Concept, str, int, bool, float, DataType],
+        e: Union[
+            Function,
+            Conditional,
+            Comparison,
+            Concept,
+            str,
+            int,
+            list,
+            bool,
+            float,
+            DataType,
+        ],
         cte: Optional[CTE] = None,
         cte_map: Optional[Dict[str, CTE]] = None,
     ) -> str:
@@ -255,15 +266,20 @@ class BaseDialect:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
-            return f"{1 if e else 0}"
+            return f"{True if e else False}"
         elif isinstance(e, str):
             return f"'{e}'"
+        elif isinstance(e, (int, float)):
+            return str(e)
+        elif isinstance(e, list):
+            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+        elif isinstance(e, Expr):
+            raise NotImplementedError(f"Cannot render expression {e}")
         return str(e)
 
     def generate_ctes(
         self, query: ProcessedQuery, where_assignment: Dict[str, Conditional]
     ):
-
         return [
             CompiledCTE(
                 name=cte.name,
@@ -342,7 +358,6 @@ class BaseDialect:
             )
 
         # where assignment
-        where_assignment = {}
         output_where = False
         if query.where_clause:
             found = False
@@ -379,16 +394,12 @@ class BaseDialect:
                 )
         for join in query.joins:
 
-            if join.right_cte.name in where_assignment:
-                # force filtering if the CTE has a where clause
-                join.jointype = JoinType.INNER
-                # if the left source is partial, make it a full join
-            elif (
+            if (
                 join.left_cte.grain.issubset(query.grain)
                 and join.left_cte.grain != query.grain
             ):
                 join.jointype = JoinType.FULL
-        compiled_ctes = self.generate_ctes(query, where_assignment)
+        compiled_ctes = self.generate_ctes(query, {})
 
         return self.SQL_TEMPLATE.render(
             select_columns=select_columns,

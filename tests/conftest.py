@@ -16,14 +16,14 @@ from preql.core.models import (
     Conditional,
     Comparison,
 )
-from preql.constants import logger
+from preql.constants import logger as base_logger
 from logging import StreamHandler, DEBUG
 
 
 @fixture(scope="session")
 def logger():
-    logger.addHandler(StreamHandler())
-    logger.setLevel(DEBUG)
+    base_logger.addHandler(StreamHandler())
+    base_logger.setLevel(DEBUG)
 
 
 @fixture(scope="session")
