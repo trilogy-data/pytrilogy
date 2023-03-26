@@ -2,15 +2,16 @@ import os
 import socket
 import time
 from enum import Enum
+from logging import DEBUG
 from os.path import dirname, abspath
 from socket import gethostname
 from urllib.parse import quote_plus
 
 from pytest import fixture
-from sqlalchemy.engine import create_engine
 from sqlalchemy import text
+from sqlalchemy.engine import create_engine
+
 from preql.constants import logger
-from logging import DEBUG
 
 logger.setLevel(DEBUG)
 from preql import Executor, Dialects, Environment

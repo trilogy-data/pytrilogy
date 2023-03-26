@@ -273,8 +273,6 @@ class BaseDialect:
             return str(e)
         elif isinstance(e, list):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
-        elif isinstance(e, Expr):
-            raise NotImplementedError(f"Cannot render expression {e}")
         return str(e)
 
     def generate_ctes(
