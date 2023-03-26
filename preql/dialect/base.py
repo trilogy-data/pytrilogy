@@ -1,10 +1,11 @@
-from typing import List, Union, Optional, Dict
+from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType, WindowType, PurposeLineage, JoinType
-from preql.core.hooks import BaseProcessingHook
+from preql.constants import logger
+from preql.core.enums import FunctionType, WindowType, JoinType
 from preql.core.enums import Purpose, DataType
+from preql.core.hooks import BaseProcessingHook
 from preql.core.models import (
     Concept,
     CTE,
@@ -13,16 +14,23 @@ from preql.core.models import (
     Conditional,
     Expr,
     Comparison,
-    Function,
     OrderItem,
     WindowItem,
+    FilterItem,
+    Function,
 )
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query
 from preql.dialect.common import render_join
 from preql.utility import unique
+from preql.constants import CONFIG
 
-INVALID_REFERENCE_STRING = "INVALID_REFERENCE_BUG"
+LOGGER_PREFIX = "[RENDERING]"
+
+
+def INVALID_REFERENCE_STRING(x:Any):
+    return "INVALID_REFERENCE_BUG"
+
 
 WINDOW_FUNCTION_MAP = {
     WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})"
@@ -48,8 +56,11 @@ FUNCTION_MAP = {
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.MAX: lambda x: f"max({x[0]})",
     FunctionType.MIN: lambda x: f"min({x[0]})",
-    FunctionType.LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 1 ELSE 0 END",
-    FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
+    # string types
+    FunctionType.LIKE: lambda x: f" {x[0]} like {x[1]} ",
+    FunctionType.UPPER: lambda x: f"UPPER({x[0]}) ",
+    FunctionType.LOWER: lambda x: f"LOWER({x[0]}) ",
+    # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE: lambda x: f"date({x[0]})",
     FunctionType.DATETIME: lambda x: f"datetime({x[0]})",
@@ -89,8 +100,7 @@ FROM
 {{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
-{% endif %}
-{%- if group_by %}GROUP BY {% for group in group_by %}
+{% endif %}{%- if group_by %}GROUP BY {% for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
@@ -104,6 +114,9 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
     checks = []
     if not c.lineage:
         return True
+    logger.debug(
+        f"{LOGGER_PREFIX} [{c.address}] Checking lineage for rendering in {cte.name}"
+    )
     for sub_c in c.lineage.arguments:
         if not isinstance(sub_c, Concept):
             continue
@@ -112,6 +125,9 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
         ):
             checks.append(True)
         else:
+            logger.debug(
+                f"{LOGGER_PREFIX} [{sub_c.address}] not found in source map for {cte.name}, have cte keys {[c for c in cte.source_map.keys()]} and datasource keys {[c for c in cte.source.source_map.keys()]}"
+            )
             checks.append(False)
     return all(checks)
 
@@ -154,10 +170,14 @@ class BaseDialect:
 
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
+        logger.debug(
+            f"{LOGGER_PREFIX} [{c.address}] Rendering on {cte.name} alias={alias}"
+        )
 
         if (c.lineage and check_lineage(c, cte)) and not cte.source_map.get(
             c.address, ""
         ).startswith("cte"):
+            logger.debug(f"{LOGGER_PREFIX} [{c.address}] rendering lineage concept")
             if isinstance(c.lineage, WindowItem):
                 # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
                 self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
@@ -169,6 +189,8 @@ class BaseDialect:
                     self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](window=','.join(rendered_over_components), sort=','.join(rendered_order_components), order = 'desc')}"
+            elif isinstance(c.lineage, FilterItem):
+                rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             else:
                 args = [
                     self.render_concept_sql(v, cte, alias=False)
@@ -182,9 +204,23 @@ class BaseDialect:
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+            logger.debug(
+                f"{LOGGER_PREFIX} [{c.address}] Complex reference falling back to source address"
+            )
+            if not cte.source_map.get(c.address, None):
+                logger.debug(
+                    f"{LOGGER_PREFIX} [{c.address}] Cannot render from {cte.name}, have {cte.source_map.keys()} only"
+                )
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
         else:
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING)}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
+            logger.debug(
+                f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address for {c.address}"
+            )
+            if not cte.source_map.get(c.address, None):
+                logger.debug(
+                    f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from {cte.name}, have {cte.source_map.keys()} only"
+                )
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
 
         if alias:
             return f"{rval} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
@@ -192,36 +228,57 @@ class BaseDialect:
 
     def render_expr(
         self,
-        e: Union[Expr, Conditional, Concept, str, int, bool, float, DataType],
+        e: Union[
+            Function,
+            Conditional,
+            Comparison,
+            Concept,
+            str,
+            int,
+            list,
+            bool,
+            float,
+            DataType,
+        ],
         cte: Optional[CTE] = None,
+        cte_map: Optional[Dict[str, CTE]] = None,
     ) -> str:
+        # if isinstance(e, Concept):
+        #     cte = cte or cte_map.get(e.address, None)
+
         if isinstance(e, Comparison):
-            return f"{self.render_expr(e.left, cte=cte)} {e.operator.value} {self.render_expr(e.right, cte=cte)}"
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):
-            return f"{self.render_expr(e.left, cte=cte)} {e.operator.value} {self.render_expr(e.right, cte=cte)}"
+            # conditions need to be nested in parentheses
+            return f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
         elif isinstance(e, Function):
             if cte and cte.group_to_grain:
                 return self.FUNCTION_MAP[e.operator](
-                    [self.render_expr(z, cte=cte) for z in e.arguments]
+                    [self.render_expr(z, cte=cte, cte_map=cte_map) for z in e.arguments]
                 )
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](
-                [self.render_expr(z, cte=cte) for z in e.arguments]
+                [self.render_expr(z, cte=cte, cte_map=cte_map) for z in e.arguments]
             )
         elif isinstance(e, Concept):
             if cte:
                 return self.render_concept_sql(e, cte, False)
                 # return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
+            elif cte_map:
+                return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
-            return f"{1 if e else 0}"
+            return f"{True if e else False}"
         elif isinstance(e, str):
             return f"'{e}'"
+        elif isinstance(e, (int, float)):
+            return str(e)
+        elif isinstance(e, list):
+            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         return str(e)
 
     def generate_ctes(
         self, query: ProcessedQuery, where_assignment: Dict[str, Conditional]
     ):
-
         return [
             CompiledCTE(
                 name=cte.name,
@@ -236,9 +293,12 @@ class BaseDialect:
                         render_join(join, self.QUOTE_CHARACTER)
                         for join in (cte.joins or [])
                     ],
-                    where=self.render_expr(where_assignment[cte.name], cte)
-                    if cte.name in where_assignment
-                    else None,
+                    where=self.render_expr(cte.condition, cte)
+                    if cte.condition
+                    else None,  # source_map=cte_output_map)
+                    # where=self.render_expr(where_assignment[cte.name], cte)
+                    # if cte.name in where_assignment
+                    # else None,
                     group_by=[
                         self.render_concept_sql(c, cte, alias=False)
                         for c in unique(
@@ -297,58 +357,50 @@ class BaseDialect:
             )
 
         # where assignment
-        where_assignment = {}
         output_where = False
         if query.where_clause:
             found = False
-            filter = set([str(x.with_grain()) for x in query.where_clause.input])
-            # if all the where clause items are lineage derivation
-            # check if they match at output grain
-            # TODO: handle if they don't all match
-            # we need to force the filtering to happen after the initial CTE
-            if all(
-                [
-                    x.derivation in (PurposeLineage.WINDOW, PurposeLineage.AGGREGATE)
-                    for x in query.where_clause.input
-                ]
-            ):
-                query_output = set([str(z) for z in query.output_columns])
-                filter_at_output_grain = set(
-                    [str(x.with_grain(query.grain)) for x in query.where_clause.input]
-                )
-                if filter_at_output_grain.issubset(query_output):
-                    output_where = True
-                    found = True
-            if not found:
-                for cte in output_ctes:
-                    cte_filter = set([str(z.with_grain()) for z in cte.output_columns])
-                    if filter.issubset(cte_filter):
-                        # 2023-01-16 - removing related columns to look at output columns
-                        # will need to backport pushing where columns into original output search
-                        # if set([x.name for x in query.where_clause.input]).issubset(
-                        #     [z.name for z in cte.related_columns]
-                        # ):
-                        where_assignment[cte.name] = query.where_clause.conditional
-                        found = True
-                        break
+            filter = set(
+                [str(x.with_grain(query.grain)) for x in query.where_clause.input]
+            )
+            query_output = set([str(z) for z in query.output_columns])
+            filter_at_output_grain = set(
+                [str(x.with_grain(query.grain)) for x in query.where_clause.input]
+            )
+            if filter_at_output_grain.issubset(query_output):
+                output_where = True
+                found = True
+            # we can't push global filters up to CTEs
+            # because they may reference all columns in the output
+            # only some of which are joined
+            # TODO: optimize this?
+            # if not found:
+            #     for cte in output_ctes:
+            #         cte_filter = set([str(z.with_grain()) for z in cte.output_columns])
+            #         if filter.issubset(cte_filter):
+            #             # 2023-01-16 - removing related columns to look at output columns
+            #             # will need to backport pushing where columns into original output search
+            #             # if set([x.name for x in query.where_clause.input]).issubset(
+            #             #     [z.name for z in cte.related_columns]
+            #             # ):
+            #             where_assignment[cte.name] = query.where_clause.conditional
+            #             found = True
+            #             break
 
             if not found:
                 raise NotImplementedError(
-                    f"Cannot generate complex query with filtering on grain {filter} that does not match any source."
+                    f"Cannot generate query with filtering on grain {filter} that is not a subset of the query output grain {query_output}. Use a filtered concept instead."
                 )
         for join in query.joins:
 
-            if join.right_cte.name in where_assignment:
-                # force filtering if the CTE has a where clause
-                join.jointype = JoinType.INNER
-                # if the left source is partial, make it a full join
-            elif (
+            if (
                 join.left_cte.grain.issubset(query.grain)
                 and join.left_cte.grain != query.grain
             ):
                 join.jointype = JoinType.FULL
-        compiled_ctes = self.generate_ctes(query, where_assignment)
-        return self.SQL_TEMPLATE.render(
+        compiled_ctes = self.generate_ctes(query, {})
+
+        final = self.SQL_TEMPLATE.render(
             select_columns=select_columns,
             base=query.base.name,
             joins=[render_join(join, self.QUOTE_CHARACTER) for join in query.joins],
@@ -356,8 +408,8 @@ class BaseDialect:
             limit=query.limit,
             # move up to CTEs
             where=self.render_expr(
-                query.where_clause.conditional
-            )  # source_map=cte_output_map)
+                query.where_clause.conditional, cte_map=cte_output_map
+            )
             if query.where_clause and output_where
             else None,
             order_by=[
@@ -366,3 +418,9 @@ class BaseDialect:
             if query.order_by
             else None,
         )
+
+        if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
+            raise ValueError(
+                f"Invalid reference string found in query: {final}, this should never occur. Please report this issue."
+            )
+        return final

@@ -7,9 +7,13 @@ property id.creation_date timestamp;
 property length <- len(text);
 property id.comment_count int;
 
+
 metric count <- count( id);
 metric avg_length <- avg(length);
 metric total_comment_count <- sum(comment_count);
+
+key top_ids <- filter id where total_comment_count >50;
+
 
 datasource posts (
     owner_user_id: Partial[user.id],

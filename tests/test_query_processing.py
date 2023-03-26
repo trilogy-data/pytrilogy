@@ -1,10 +1,90 @@
 from preql.core.models import Select, Grain, QueryDatasource, CTE
+from preql.core.processing.concept_strategies import (
+    get_datasource_for_filter,
+    get_datasource_from_window_function,
+    get_datasource_from_direct_select,
+)
 from preql.core.query_processor import (
     get_datasource_by_concept_and_grain,
     datasource_to_ctes,
     get_query_datasources,
     process_query,
 )
+
+
+def test_direct_select(test_environment, test_environment_graph):
+    product = test_environment.concepts["product_id"]
+    #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
+    datasource = get_datasource_from_direct_select(
+        product,
+        grain=product.grain,
+        environment=test_environment,
+        g=test_environment_graph,
+    )
+
+    assert isinstance(datasource, QueryDatasource)
+    assert set([datasource.name for datasource in datasource.datasources]) == {
+        "products"
+    }
+
+
+def test_get_datasource_from_window_function(test_environment, test_environment_graph):
+    # test without grouping
+    product_rank = test_environment.concepts["product_revenue_rank"]
+    #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
+    datasource = get_datasource_from_window_function(
+        product_rank,
+        grain=product_rank.grain,
+        environment=test_environment,
+        g=test_environment_graph,
+    )
+    assert product_rank in datasource.output_concepts
+    assert datasource.grain == product_rank.grain
+    assert isinstance(datasource, QueryDatasource)
+    assert set([datasource.name for datasource in datasource.datasources]) == {
+        "products_at_local_product_id_join_revenue_at_local_product_id_at_local_product_id"
+    }
+
+    product_rank_by_category = test_environment.concepts[
+        "product_revenue_rank_by_category"
+    ]
+    #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
+    datasource = get_datasource_from_window_function(
+        product_rank_by_category,
+        grain=product_rank_by_category.grain,
+        environment=test_environment,
+        g=test_environment_graph,
+    )
+    assert product_rank_by_category in datasource.output_concepts
+    assert datasource.grain == product_rank_by_category.grain
+
+    assert isinstance(datasource, QueryDatasource)
+    assert set([datasource.name for datasource in datasource.datasources]) == {
+        "products_at_local_product_id_join_products_join_revenue_at_local_product_id_local_category_id_at_local_product_id_local_category_id"
+    }
+
+
+def test_get_datasource_for_filter(test_environment, test_environment_graph):
+    product = test_environment.concepts["products_with_revenue_over_50"]
+    #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
+
+    assert {n.name for n in product.sources} == {
+        "total_revenue",
+        "revenue",
+        "product_id",
+    }
+    datasource = get_datasource_for_filter(
+        product,
+        grain=product.grain,
+        environment=test_environment,
+        g=test_environment_graph,
+    )
+
+    assert isinstance(datasource, QueryDatasource)
+    assert datasource.output_concepts == [product]
+    # assert set([datasource.name for datasource in datasource.datasources]) == {
+    #     "products"
+    # }
 
 
 def test_select_output(test_environment, test_environment_graph):
@@ -94,14 +174,14 @@ def test_query_datasources(test_environment, test_environment_graph):
         environment=test_environment, graph=test_environment_graph, statement=select
     )
     assert set([datasource.identifier for datasource in datasources.values()]) == {
-        "products_revenue_at_default_category_id",
-        "category_at_default_category_id",
+        "products_join_revenue_at_local_category_id",
+        "category_at_local_category_id",
     }
 
     joined_datasource: QueryDatasource = [
         ds
         for ds in datasources.values()
-        if ds.identifier == "products_revenue_at_default_category_id"
+        if ds.identifier == "products_join_revenue_at_local_category_id"
     ][0]
     assert set([c.name for c in joined_datasource.input_concepts]) == {
         "product_id",
@@ -122,7 +202,7 @@ def test_query_datasources(test_environment, test_environment_graph):
     join_ctes = [
         cte
         for cte in ctes
-        if cte.name.startswith("cte_products_revenue_at_default_category_i")
+        if cte.name.startswith("cte_products_join_revenue_at_local_category_i")
     ]
     assert join_ctes
     join_cte: CTE = join_ctes[0]

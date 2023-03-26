@@ -12,8 +12,7 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda args: f"sum({args[0]})",
     FunctionType.AVG: lambda args: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args: f"length({args[0]})",
-    FunctionType.LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN 1 ELSE 0 END",
-    FunctionType.NOT_LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN 0 ELSE 1 END",
+    FunctionType.LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END",
     FunctionType.CONCAT: lambda args: f"CONCAT({','.join([f''' '{a}' ''' for a in args])})",
 }
 

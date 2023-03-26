@@ -1,27 +1,19 @@
 # from preql.compiler import compile
-from preql.core.models import (
-    Select,
-    Grain,
-    Window,
-    WindowOrder,
-    GrainWindow,
-    WindowItem,
-)
-from preql.parser import parse
+from logging import DEBUG
+
+from preql.constants import logger
 from preql.core.hooks import GraphHook
 
 # from preql.compiler import compile
-from preql.core.models import Select, Grain, Concept
+from preql.core.models import Select, Grain
+from preql.core.models import WindowItem
 from preql.core.query_processor import (
     process_query,
     get_datasource_by_concept_and_grain,
     get_query_datasources,
 )
-from preql.parser import parse
-from preql.dialect.sql_server import SqlServerDialect
 from preql.dialect.bigquery import BigqueryDialect
-from logging import DEBUG
-from preql.constants import logger
+from preql.parser import parse
 
 logger.setLevel(DEBUG)
 

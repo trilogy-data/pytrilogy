@@ -1,9 +1,11 @@
 # from preql.compiler import compile
+from pytest import raises
+
+from preql.core.exceptions import InvalidSyntaxException
 from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
-from pytest import raises
 
 
 def test_functions(test_environment):
@@ -69,9 +71,9 @@ def test_bad_cast(test_environment):
 
     select
         order_id,
-        date(order_id) -> order_date,
+        date(order_id) -> order_id_date,
     ;"""
-    with raises(TypeError):
+    with raises(InvalidSyntaxException):
         env, parsed = parse(declarations, environment=test_environment)
 
 
