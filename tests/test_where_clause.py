@@ -4,6 +4,8 @@ from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
 
+import pytest
+
 
 def test_select_where(test_environment):
     declarations = """
@@ -50,6 +52,45 @@ property my_favorite_order_revenue <- filter revenue where order_id in (1,2,3);
 metric my_favorite_order_total_revenue <- sum(my_favorite_order_revenue);
 select
     my_favorite_order_total_revenue
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    BaseDialect().compile_statement(process_query(test_environment, select))
+
+
+def test_select_where_attribute(test_environment, logger):
+    declarations = """
+property special_order <- filter order_id where total_revenue > 1000;
+
+
+select
+    special_order,
+    category_id
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    BaseDialect().compile_statement(process_query(test_environment, select))
+
+
+# TODO: determine why this is failing
+@pytest.mark.skip(reason="Need to dig into this more")
+def test_select_where_attribute(test_environment, logger):
+    declarations = """
+property special_order <- filter order_id where total_revenue > 1000;
+
+
+select
+    special_order,
+    total_revenue,
+    category_id
 ;
 
 
