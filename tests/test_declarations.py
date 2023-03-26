@@ -1,8 +1,7 @@
-from preql.core.models import Select, Grain
 from preql.parser import parse
 
 
-def test_declarations():
+def test_declarations(logger):
     declarations = """key namespace.user_id int metadata(description="the description");
     metric namespace.count <- count(namespace.user_id);
     metric namespace.distinct_count <- count_distinct(namespace.user_id); # the distinct count of user ids

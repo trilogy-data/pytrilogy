@@ -1,7 +1,8 @@
-from pytest import fixture
-from preql import parse
-
 from logging import DEBUG
+
+from pytest import fixture
+
+from preql import parse
 from preql.constants import logger
 
 logger.setLevel(DEBUG)
