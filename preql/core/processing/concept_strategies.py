@@ -696,7 +696,9 @@ def get_datasource_for_filter(
         source_map[sub_concept.address] = {all_datasets[sub_datasource.identifier]}
         if isinstance(sub_datasource, QueryDatasource):
             source_map = {**source_map, **sub_datasource.source_map}
-    dataset_list = sorted(list(all_datasets.values()), key=lambda x: -len(x.grain.components_copy))
+    dataset_list = sorted(
+        list(all_datasets.values()), key=lambda x: -len(x.grain.components_copy)
+    )
     base = dataset_list[0]
 
     joins = []
@@ -765,9 +767,15 @@ def get_datasource_by_concept_and_grain(
             )
         elif concept.derivation == PurposeLineage.AGGREGATE:
             logger.debug(f"{LOGGER_PREFIX} Checking for complex function derivation")
-            complex = get_datasource_from_complex_lineage(
-                concept, grain, environment, g, whole_grain=whole_grain
-            )
+            try:
+                complex = get_datasource_from_complex_lineage(
+                    concept, grain, environment, g, whole_grain=whole_grain
+                )
+            except ValueError:
+                complex = None
+                logger.debug(
+                    f"{LOGGER_PREFIX} Cannot retrieve complex lineage for aggregate {concept}"
+                )
         else:
             complex = None
         if complex:
@@ -816,17 +824,25 @@ def get_datasource_by_concept_and_grain(
         for combo in combinations(grain.components_copy, x):
             ngrain = Grain(components=list(combo))
             try:
-                out = get_datasource_by_joins(
+                # out = get_datasource_by_joins(
+                #     concept.with_grain(ngrain),
+                #     ngrain,
+                #     environment,
+                #     g,
+                #     whole_grain=whole_grain,
+                # )
+                nout = get_datasource_by_concept_and_grain(
                     concept.with_grain(ngrain),
-                    grain,
+                    ngrain,
                     environment,
                     g,
                     whole_grain=whole_grain,
                 )
+
                 logger.debug(
-                    f"{LOGGER_PREFIX} Got {concept} from join to a sub portion of grain"
+                    f"{LOGGER_PREFIX} Got {concept} from a sub-portion of grain"
                 )
-                return out
+                return nout
             except ValueError as e:
                 logger.debug(f"{LOGGER_PREFIX} {str(e)}")
 
@@ -841,9 +857,10 @@ def get_datasource_by_concept_and_grain(
         )
         return out
     except ValueError as e:
-        logger.debug(e)
-
-    neighbors = list(g.predecessors(concept_to_node(concept)))
-    raise ValueError(
-        f"{LOGGER_PREFIX} No source for {concept} found, neighbors {neighbors}"
-    )
+        logger.debug(f"{LOGGER_PREFIX} failed to get property lookup")
+    try:
+        neighbors = list(g.predecessors(concept_to_node(concept)))
+    # node is not in graph
+    except nx.exception.NetworkXError:
+        neighbors = []
+    raise ValueError(f"No source for {concept} found, neighbors {neighbors}")

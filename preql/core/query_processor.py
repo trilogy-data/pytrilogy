@@ -192,7 +192,7 @@ def get_query_datasources(
     disconnected, disco_lists = get_disconnected_components(concept_map)
     # if not all datasources can ultimately be merged
     if disconnected > 1:
-        logger.debug(f"Disconnected nodes found, have {disco_lists}")
+        logger.debug(f"{LOGGER_PREFIX} Disconnected nodes found, have {disco_lists}")
         components = {True: statement.output_components + statement.grain.components}
         for key, concept_list in components.items():
             for concept in concept_list:
