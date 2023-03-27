@@ -150,6 +150,10 @@ def get_disconnected_components(
     return len(sub_graphs), sub_graphs
 
 
+def get_query_datasources_v2(    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
+) -> Tuple[Dict[str, set[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
+    pass
+
 def get_query_datasources(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
 ) -> Tuple[Dict[str, set[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
@@ -254,7 +258,7 @@ def process_query(
             ),
         )
         if not base_list:
-            cte_grain = [str(cte.grain) for cte in final_ctes]
+            cte_grain = [cte.name + '@' + str(cte.grain) for cte in final_ctes]
             raise ValueError(
                 f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
             )
