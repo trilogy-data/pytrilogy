@@ -146,3 +146,10 @@ class ComparisonOperator(Enum):
         if value == "is":
             return ComparisonOperator.EQ
         return super()._missing_(value)
+
+
+class SourceType(Enum):
+    FILTER = "filter"
+    SELECT = "select"
+    GROUP = "group"
+    WINDOW = "window"

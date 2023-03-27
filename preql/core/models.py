@@ -19,6 +19,7 @@ from preql.core.enums import (
     ComparisonOperator,
     WindowOrder,
     PurposeLineage,
+SourceType
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -818,6 +819,7 @@ class BaseJoin:
         return f'{self.join_type.value} JOIN {self.left_datasource.identifier} and {self.right_datasource.identifier} on {",".join([str(k) for k in self.concepts])}'
 
 
+
 @dataclass(eq=True)
 class QueryDatasource:
     input_concepts: List[Concept]
@@ -829,6 +831,7 @@ class QueryDatasource:
     limit: Optional[int] = None
     condition: Optional[Union["Conditional", "Comparison"]] = field(default=None)
     filter_concepts: List[Concept] = field(default_factory=list)
+    source_type: SourceType = SourceType.SELECT
 
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"

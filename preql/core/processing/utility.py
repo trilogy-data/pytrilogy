@@ -115,8 +115,8 @@ from pydantic import BaseModel
 
 class DynamicConditionReturn(BaseModel):
     condition: Union[Comparison, Conditional]
-    remove_concept: Concept
-    add_concept: Concept
+    root_concept: Concept
+    wrapper_concept: Concept
 
 
 def concepts_to_conditions_mapping(
@@ -130,8 +130,8 @@ def concepts_to_conditions_mapping(
             conditions.append(
                 DynamicConditionReturn(
                     condition=concept.lineage.where.conditional,
-                    remove_concept=concept.lineage.content,
-                    add_concept=concept,
+                    root_concept=concept.lineage.content,
+                    wrapper_concept=concept,
                 )
             )
     return conditions

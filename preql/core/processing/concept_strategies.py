@@ -237,36 +237,48 @@ def get_datasource_from_group_select(
                 logger.debug(
                     f"{LOGGER_PREFIX} Grouped select includes filtering conditions, wrapping in another query to apply"
                 )
+                logger.debug(
+                    f"{LOGGER_PREFIX} original base at grain {base.grain} outputting {[c.address for c in base.output_concepts]}"
+                )
                 # we need to remove the filtered value from the output
                 # wrap this in another query
                 for condition in conditions:
+                    logger.debug(
+                    f"{LOGGER_PREFIX} to apply filter, need to move {condition.wrapper_concept.address} from base output to wrapper, and add {condition.root_concept} to initial select and grain"
+                )
+                    # filter out the grain
+
                     base.grain = Grain(
                         components=list(
                             filter(
-                                lambda x: x.address == condition.add_concept.address,
+                                lambda x: x.address == condition.wrapper_concept.address,
                                 base.grain.components_copy,
                             )
                         )
-                        + [condition.remove_concept]
+                        + [condition.root_concept] if condition.root_concept.purpose in (Purpose.KEY, Purpose.PROPERTY) else []
                     )
                     base.output_concepts = unique(
                         [
                             c.with_grain(base.grain)
                             for c in base.output_concepts
-                            if c.address != condition.add_concept.address
+                            if c.address != condition.wrapper_concept.address
                         ]
-                        + [condition.remove_concept],
+                        + [condition.root_concept],
                         "address",
                     )
                     base = get_nested_source_for_condition(
                         base,
                         condition.condition,
-                        condition.add_concept,
-                        [condition.remove_concept],
+                        condition.wrapper_concept,
+                        []
+                        #[condition.root_concept],
                     )
             logger.debug(
                 f"{LOGGER_PREFIX} Got {datasource.identifier} for {concept} from grouped select, outputting {[c.address for c in base.output_concepts]}"
             )
+
+            # assign back our grain
+            # base.grain = grain
             return base
     raise ValueError(f"No grouped select for {concept}")
 
@@ -670,7 +682,7 @@ def get_datasource_for_filter(
     # make sure that if the window is in the grain, it's not included here
     # we just need the base concept
     # this avoids infinite recursion, since the target grain includes the filter component
-    input_concepts = (
+    input_concepts = unique(
         [filter.content]
         + [
             item
@@ -678,7 +690,7 @@ def get_datasource_for_filter(
             if item.with_default_grain() != concept.with_default_grain()
         ]
         + [x.with_grain(grain) for x in filter.arguments]
-    )
+    , 'address')
     # keep metrics out of the new calculated grain, even though we need to find them
     cte_grain = Grain(
         components=[
@@ -760,6 +772,11 @@ def get_datasource_by_concept_and_grain(
         raise SyntaxError(
             f"Failed to return {concept.address} from output of fetch looking for it at grain {grain} - this should never occur "
         )
+    # we expect to either get the grain, a subset of the grain, or just the base concept
+    acceptable_grain = Grain(components = grain.components_copy + [concept.with_default_grain()])
+    if not base.grain.issubset(acceptable_grain):
+        raise SyntaxError(
+            f"Failed to match grain from output of fetch looking for {concept.address} at grain {grain}, had grain {base.grain}. This should never occur.")
     return base
 
 
@@ -822,6 +839,7 @@ def _get_datasource_by_concept_and_grain(
         out = get_datasource_from_group_select(
             concept, grain, environment, g, whole_grain=whole_grain
         )
+
         logger.debug(f"{LOGGER_PREFIX} Got {concept} from grouped select from {out.name}")
         return out
     except ValueError as e:
