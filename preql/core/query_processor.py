@@ -87,7 +87,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 )
             sub_cte = datasource_to_ctes(sub_datasource)
             children += sub_cte
-            output += sub_cte
             for cte in sub_cte:
                 for value in cte.output_columns:
                     source_map[value.address] = cte.name
@@ -119,9 +118,9 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         source_map=source_map,
         # related columns include all referenced columns, such as filtering
         # related_columns=datasource.concepts,
-        joins=[base_join_to_join(join, output) for join in query_datasource.joins],
+        joins=[base_join_to_join(join, children) for join in query_datasource.joins],
         related_columns=query_datasource.input_concepts,
-        filter_columns=query_datasource.filter_concepts,
+
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
         # we restrict parent_ctes to one level
@@ -149,10 +148,18 @@ def get_disconnected_components(
     sub_graphs = list(nx.connected_components(graph))
     return len(sub_graphs), sub_graphs
 
+from preql.core.processing.concept_strategies_v2 import source_query_concepts
+
 
 def get_query_datasources_v2(    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
-) -> Tuple[Dict[str, set[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
-    pass
+) -> QueryDatasource:
+    graph = graph or generate_graph(environment)
+    all_comps = statement.output_components
+    ds = source_query_concepts(statement.output_components, [] , environment = environment, g=graph)
+    final_qds = ds.resolve()
+    return final_qds
+
+
 
 def get_query_datasources(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
@@ -225,7 +232,79 @@ def get_query_datasources(
                 break
     return concept_map, datasource_map
 
+from preql.core.processing.concept_strategies_v2 import source_concepts
 
+def flatten_ctes(input:CTE)->list[CTE]:
+    output = [input]
+    for cte in input.parent_ctes:
+        output += flatten_ctes(cte)
+    return output
+def process_query_v2(    environment: Environment,
+    statement: Select,) -> ProcessedQuery:
+    graph = generate_graph(environment)
+    root_datasource = get_query_datasources_v2(        environment=environment, graph=graph, statement=statement)
+    # this should always return 1 - TODO, refactor
+    root_cte = datasource_to_ctes(root_datasource)
+    raw_ctes = list(reversed(flatten_ctes(root_cte[0])))
+    seen = set()
+    ctes = []
+    # we can have duplicate CTEs at this point
+    for cte in raw_ctes:
+        if cte.name not in seen:
+            seen.add(cte.name)
+            ctes.append(cte)
+    joins = []
+
+    final_ctes = ctes
+    base_list = sorted(
+        [cte for cte in ctes if cte.grain.issubset(statement.grain)],
+        key=lambda cte: -len(
+            [
+                x
+                for x in cte.output_columns
+                if x.address in [g.address for g in statement.grain.components]
+            ]
+        ),
+    )
+    if not base_list:
+        cte_grain = [cte.name + '@' + str(cte.grain) for cte in final_ctes]
+        raise ValueError(
+            f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
+        )
+    base = base_list[0]
+    others: List[CTE] = [cte for cte in final_ctes if cte != base]
+
+    for cte in others:
+        # we do the with_grain here to fix an issue
+        # where a query with a grain of properties has the components of the grain
+        # with the default key grain rather than the grain of the select
+        # TODO - evaluate if we can fix this in select definition
+        joinkeys = [
+            JoinKey(c)
+            for c in statement.grain.components
+            if c.with_grain(cte.grain) in cte.output_columns
+               and c.with_grain(base.grain) in base.output_columns
+               and cte.grain.issubset(statement.grain)
+        ]
+        if joinkeys:
+            joins.append(
+                Join(
+                    left_cte=base,
+                    right_cte=cte,
+                    joinkeys=joinkeys,
+                    jointype=JoinType.LEFT_OUTER,
+                )
+            )
+    return ProcessedQuery(
+        order_by=statement.order_by,
+        grain=statement.grain,
+        limit=statement.limit,
+        where_clause=statement.where_clause,
+        output_columns=statement.output_components,
+        ctes=final_ctes,
+        base=base,
+        joins=joins,
+    )
 def process_query(
     environment: Environment,
     statement: Select,
@@ -236,12 +315,15 @@ def process_query(
     concepts, datasources = get_query_datasources(
         environment=environment, graph=graph, statement=statement
     )
+
     ctes = []
-    joins = []
     for datasource in datasources.values():
         if isinstance(datasource, Datasource):
             raise ValueError("Unexpected base datasource")
         ctes += datasource_to_ctes(datasource)
+
+    joins = []
+
     final_ctes = merge_ctes(ctes)
     base_list: List[CTE] = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
