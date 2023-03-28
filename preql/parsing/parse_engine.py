@@ -998,7 +998,7 @@ def unpack_visit_error(e: VisitError):
     """This is required to get exceptions from imports, which would
     raise nested VisitErrors"""
     if isinstance(e.orig_exc, VisitError):
-        return unpack_visit_error(e.orig_exc)
+        unpack_visit_error(e.orig_exc)
     if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
         raise e.orig_exc
     elif isinstance(e.orig_exc, ValidationError):
@@ -1015,6 +1015,8 @@ def parse_text(
         output = [v for v in parser.transform(PARSER.parse(text)) if v]
     except VisitError as e:
         unpack_visit_error(e)
+        # this will never be reached
+        raise e
     except (
         UnexpectedCharacters,
         UnexpectedEOF,

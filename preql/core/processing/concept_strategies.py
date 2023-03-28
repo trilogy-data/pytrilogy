@@ -148,7 +148,6 @@ def get_datasource_from_property_lookup(
                         final_grain_components.append(concept)
                         final_grain_inputs += required
                 outputs = unique(outputs, "address")
-                filters: List[Concept] = []
                 return QueryDatasource(
                     input_concepts=all_concepts + final_grain_inputs,
                     output_concepts=outputs,
@@ -158,7 +157,7 @@ def get_datasource_from_property_lookup(
                     datasources=[datasource],
                     grain=Grain(components=final_grain_components),
                     joins=[],
-                    filter_concepts=filters,
+
                 )
     raise ValueError(f"No property lookup for {concept}")
 

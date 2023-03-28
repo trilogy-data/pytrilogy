@@ -20,7 +20,7 @@ from preql.core.models import (
     Function,
 )
 from preql.core.models import Environment, Select
-from preql.core.query_processor import process_query
+from preql.core.query_processor import process_query, process_query_v2
 from preql.dialect.common import render_join
 from preql.utility import unique
 from preql.constants import CONFIG
@@ -282,47 +282,48 @@ class BaseDialect:
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
 
         return str(e)
-
+    def render_cte(self, cte:CTE):
+        return CompiledCTE(
+            name=cte.name,
+            statement=self.SQL_TEMPLATE.render(
+                select_columns=[
+                    self.render_concept_sql(c, cte) for c in cte.output_columns
+                ],
+                base=f"{cte.base_name} as {cte.base_alias}",
+                grain=cte.grain,
+                limit=None,
+                joins=[
+                    render_join(join, self.QUOTE_CHARACTER)
+                    for join in (cte.joins or [])
+                ],
+                where=self.render_expr(cte.condition, cte)
+                if cte.condition
+                else None,  # source_map=cte_output_map)
+                # where=self.render_expr(where_assignment[cte.name], cte)
+                # if cte.name in where_assignment
+                # else None,
+                group_by=[
+                    self.render_concept_sql(c, cte, alias=False)
+                    for c in unique(
+                        cte.grain.components
+                        + [
+                            c
+                            for c in cte.output_columns
+                            if c.purpose == Purpose.PROPERTY
+                               and c not in cte.grain.components
+                        ],
+                        "address",
+                    )
+                ]
+                if cte.group_to_grain
+                else None,
+            ),
+        )
     def generate_ctes(
         self, query: ProcessedQuery, where_assignment: Dict[str, Conditional]
     ):
         return [
-            CompiledCTE(
-                name=cte.name,
-                statement=self.SQL_TEMPLATE.render(
-                    select_columns=[
-                        self.render_concept_sql(c, cte) for c in cte.output_columns
-                    ],
-                    base=f"{cte.base_name} as {cte.base_alias}",
-                    grain=cte.grain,
-                    limit=None,
-                    joins=[
-                        render_join(join, self.QUOTE_CHARACTER)
-                        for join in (cte.joins or [])
-                    ],
-                    where=self.render_expr(cte.condition, cte)
-                    if cte.condition
-                    else None,  # source_map=cte_output_map)
-                    # where=self.render_expr(where_assignment[cte.name], cte)
-                    # if cte.name in where_assignment
-                    # else None,
-                    group_by=[
-                        self.render_concept_sql(c, cte, alias=False)
-                        for c in unique(
-                            cte.grain.components
-                            + [
-                                c
-                                for c in cte.output_columns
-                                if c.purpose == Purpose.PROPERTY
-                                and c not in cte.grain.components
-                            ],
-                            "address",
-                        )
-                    ]
-                    if cte.group_to_grain
-                    else None,
-                ),
-            )
+            self.render_cte(cte)
             for cte in query.ctes
         ]
 
@@ -335,7 +336,7 @@ class BaseDialect:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
-                output.append(process_query(environment, statement, hooks))
+                output.append(process_query_v2(environment, statement,))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
         return output

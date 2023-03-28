@@ -161,6 +161,8 @@ class Concept(BaseModel):
                     if isinstance(item, Concept):
                         components += item.sources
             grain = Grain(components=components)
+        elif self.purpose == Purpose.METRIC:
+            grain = Grain()
         else:
             grain = self.grain  # type: ignore
         return self.__class__(
@@ -854,6 +856,10 @@ class QueryDatasource:
 
     @property
     def group_required(self) -> bool:
+        if self.source_type:
+            if self.source_type == SourceType.GROUP:
+                return True
+            return False
         return (
             False if sum([ds.grain for ds in self.datasources]) == self.grain else True
         )
@@ -861,7 +867,7 @@ class QueryDatasource:
     def __post_init__(self):
         self.output_concepts = unique(self.output_concepts, "address")
         self.input_concepts = unique(self.input_concepts, "address")
-        self.filter_concepts = unique(self.filter_concepts, "address")
+
 
     def __add__(self, other):
 
@@ -873,7 +879,7 @@ class QueryDatasource:
                 "Can only merge two query datasources with identical grain"
             )
         logger.debug(
-            f"{LOGGER_PREFIX} merging {self.name} with {len(self.output_concepts)} concepts and {other.name} with {len(other.output_concepts)} concepts"
+            f"{LOGGER_PREFIX} merging {self.name} with {[c.address for c in self.output_concepts]} concepts and {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
         logger.debug(
             f"{LOGGER_PREFIX} condition check: merging {self.name} with condition {True if self.condition else False} concepts and {other.name} with {True if other.condition else False} "
@@ -889,9 +895,6 @@ class QueryDatasource:
             datasources=self.datasources,
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
-            filter_concepts=unique(
-                self.filter_concepts + other.filter_concepts, "address"
-            ),
             condition=self.condition + other.condition
             if (self.condition or other.condition)
             else None,
@@ -899,12 +902,13 @@ class QueryDatasource:
 
     @property
     def identifier(self) -> str:
+        filters =  hash(str(self.condition)) if self.condition else ""
         grain = "_".join(
             [str(c.address).replace(".", "_") for c in self.grain.components]
         )
         return "_join_".join([d.name for d in self.datasources]) + (
             f"_at_{grain}" if grain else "_at_abstract"
-        )
+        ) + (f"_filtered_by_{filters}" if filters else "")
         # return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
 
     def get_alias(
@@ -960,9 +964,6 @@ class CTE:
     source_map: Dict[str, str]
     # related columns include all referenced columns
     related_columns: List[Concept]
-    # filter columns are specific output columns for filtering
-    # to support filtering before aggregation to grain
-    filter_columns: List[Concept]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
@@ -985,9 +986,6 @@ class CTE:
         self.joins = unique(self.joins + other.joins, "unique_id")
         self.related_columns = unique(
             self.related_columns + other.related_columns, "address"
-        )
-        self.filter_columns = unique(
-            self.filter_columns + other.filter_columns, "address"
         )
         return self
 
@@ -1227,7 +1225,10 @@ class Conditional(BaseModel):
     right: Union[Concept, Comparison, "Conditional"]
     operator: BooleanOperator
 
+
     def __add__(self, other) -> "Conditional":
+        if other == 0:
+            return self
         if not other:
             return self
         elif isinstance(other, Conditional):
