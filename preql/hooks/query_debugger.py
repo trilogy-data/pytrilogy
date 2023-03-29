@@ -12,7 +12,7 @@ renderer = BigqueryDialect()
 
 
 def print_recursive_resolved(input: QueryDatasource, depth=0):
-    print("  " * depth, input, "->", input.identifier, "->", [c.address for c in input.output_concepts])
+    print("  " * depth,  input.identifier, "->", input.group_required, "->", [c.address for c in input.output_concepts])
     if isinstance(input, QueryDatasource):
         for child in input.datasources:
             print_recursive_resolved(child, depth + 1)
@@ -33,7 +33,7 @@ def print_recursive_nodes(input: StrategyNode, depth=0):
 
 def print_recursive_ctes(input: CTE, depth=0):
     select_statement = [c.address for c in input.output_columns]
-    print("  " * depth, input.name, "->", select_statement)
+    print("  " * depth, input.name, "->", input.group_to_grain, "->", select_statement)
     sql = renderer.render_cte(input).statement
     for line in sql.split("\n"):
         print("  " * (depth), line)
