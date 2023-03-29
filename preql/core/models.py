@@ -699,6 +699,9 @@ class Datasource:
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
+    @property
+    def group_required(self):
+        return False
 
     @property
     def full_concepts(self) -> List[Concept]:

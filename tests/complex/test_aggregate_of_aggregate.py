@@ -57,5 +57,6 @@ select
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
     print(sql)
-    assert "count(posts.`id`) as `user_post_count`," in sql
+    raise ValueError('not account for grain of assigned concepts!')
+    assert "count(cte_posts_at_local_user_id" in sql
     assert "avg(cte_posts_at_local_user_id_" in sql

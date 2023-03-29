@@ -176,7 +176,7 @@ class BaseDialect:
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
-            f"{LOGGER_PREFIX} [{c.address}] Rendering on {cte.name} alias={alias}"
+            f"{LOGGER_PREFIX} [{c.address}] Attempting rendering on {cte.name} alias={alias}"
         )
 
         if (c.lineage and check_lineage(c, cte)) and not cte.source_map.get(
@@ -206,6 +206,7 @@ class BaseDialect:
                 if cte.group_to_grain:
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
                 else:
+                    logger.info(f'{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at target grain')
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:

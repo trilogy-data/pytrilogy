@@ -206,10 +206,11 @@ class GroupNode(StrategyNode):
 
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if comp_grain == grain:
+        if comp_grain == grain and set([c.address for c in outputs]) == set([c.address for c in input_concepts]):
             source_type = SourceType.SELECT
         else:
             source_type = SourceType.GROUP
+
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=outputs,
