@@ -1,3 +1,4 @@
+
 # from preql.compiler import compile
 from preql.core.models import Select, Grain
 from preql.core.query_processor import process_query
@@ -66,7 +67,7 @@ def test_select():
 
     assert select.grain == Grain(components=[env.concepts["category_name"]])
 
-    process_query(statement=select, environment=env)
+    process_query(statement=select, environment=env, )
 
 
 def test_joins_to_ctes():

@@ -1,5 +1,5 @@
 # from preql.compiler import compile
-from preql.core.hooks import GraphHook
+
 
 # from preql.compiler import compile
 from preql.core.models import Select, Grain, Datasource, QueryDatasource
@@ -17,7 +17,7 @@ def test_aggregate_of_property_function(stackoverflow_environment):
     user_id = env.concepts["user_id"]
     select: Select = Select(selection=[avg_user_post_count, user_id])
 
-    query = process_query(statement=select, environment=env, hooks=[GraphHook()])
+    query = process_query(statement=select, environment=env, )
     generator = SqlServerDialect()
     for cte in query.ctes:
         if avg_user_post_count in cte.output_columns:

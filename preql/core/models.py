@@ -19,7 +19,7 @@ from preql.core.enums import (
     ComparisonOperator,
     WindowOrder,
     PurposeLineage,
-SourceType
+    SourceType,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -821,7 +821,6 @@ class BaseJoin:
         return f'{self.join_type.value} JOIN {self.left_datasource.identifier} and {self.right_datasource.identifier} on {",".join([str(k) for k in self.concepts])}'
 
 
-
 @dataclass(eq=True)
 class QueryDatasource:
     input_concepts: List[Concept]
@@ -868,7 +867,6 @@ class QueryDatasource:
         self.output_concepts = unique(self.output_concepts, "address")
         self.input_concepts = unique(self.input_concepts, "address")
 
-
     def __add__(self, other):
 
         # these are syntax errors to avoid being caught by current
@@ -878,12 +876,25 @@ class QueryDatasource:
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
             )
+        if not self.source_type == other.source_type:
+            raise SyntaxError(
+                "Can only merge two query datasources with identical source type"
+            )
         logger.debug(
             f"{LOGGER_PREFIX} merging {self.name} with {[c.address for c in self.output_concepts]} concepts and {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
         logger.debug(
             f"{LOGGER_PREFIX} condition check: merging {self.name} with condition {True if self.condition else False} concepts and {other.name} with {True if other.condition else False} "
         )
+
+        merged_datasources = {}
+        for ds in self.datasources + other.datasources:
+            if ds.identifier in merged_datasources:
+                merged_datasources[ds.identifier] = (
+                    merged_datasources[ds.identifier] + ds
+                )
+            else:
+                merged_datasources[ds.identifier] = ds
         return QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -892,23 +903,26 @@ class QueryDatasource:
                 self.output_concepts + other.output_concepts, "address"
             ),
             source_map={**self.source_map, **other.source_map},
-            datasources=self.datasources,
+            datasources=list(merged_datasources.values()),
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
             condition=self.condition + other.condition
             if (self.condition or other.condition)
             else None,
+            source_type=self.source_type,
         )
 
     @property
     def identifier(self) -> str:
-        filters =  hash(str(self.condition)) if self.condition else ""
+        filters = abs(hash(str(self.condition))) if self.condition else ""
         grain = "_".join(
             [str(c.address).replace(".", "_") for c in self.grain.components]
         )
-        return "_join_".join([d.name for d in self.datasources]) + (
-            f"_at_{grain}" if grain else "_at_abstract"
-        ) + (f"_filtered_by_{filters}" if filters else "")
+        return (
+            "_join_".join([d.name for d in self.datasources])
+            + (f"_at_{grain}" if grain else "_at_abstract")
+            + (f"_filtered_by_{filters}" if filters else "")
+        )
         # return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
 
     def get_alias(
@@ -1224,7 +1238,6 @@ class Conditional(BaseModel):
     left: Union[Concept, Comparison, "Conditional"]
     right: Union[Concept, Comparison, "Conditional"]
     operator: BooleanOperator
-
 
     def __add__(self, other) -> "Conditional":
         if other == 0:

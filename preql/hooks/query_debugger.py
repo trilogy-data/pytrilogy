@@ -1,5 +1,4 @@
-from typing import Union
-from preql.core.models import QueryDatasource, CTE, Datasource
+from preql.core.models import QueryDatasource, CTE
 
 from preql.hooks.base_hook import BaseHook
 from preql.constants import logger
@@ -12,43 +11,29 @@ from preql.dialect.bigquery import BigqueryDialect
 renderer = BigqueryDialect()
 
 
-def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth=0):
-    display = [
-        (
-            "  " * depth,
-            input.full_name,
-            "->",
-            input.group_required,
-            "->",
-            [c.address for c in input.output_concepts],
-        )
-    ]
+def print_recursive_resolved(input: QueryDatasource, depth=0):
+    print("  " * depth, input, "->", input.identifier, "->", [c.address for c in input.output_concepts])
     if isinstance(input, QueryDatasource):
         for child in input.datasources:
-            display += print_recursive_resolved(child, depth + 1)
-    return display
+            print_recursive_resolved(child, depth + 1)
 
 
 def print_recursive_nodes(input: StrategyNode, depth=0):
-    resolved = input.resolve()
-    display = [
-        (
-            "  " * depth,
-            input,
-            "->",
-            resolved.grain,
-            "->",
-            [c.address for c in resolved.output_concepts],
-        )
-    ]
+    print(
+        "  " * depth,
+        input,
+        "->",
+        input.resolve().grain,
+        "->",
+        input.resolve().identifier,
+    )
     for child in input.parents:
-        display += print_recursive_nodes(child, depth + 1)
-    return display
+        print_recursive_nodes(child, depth + 1)
 
 
 def print_recursive_ctes(input: CTE, depth=0):
     select_statement = [c.address for c in input.output_columns]
-    print("  " * depth, input.name, "->", input.group_to_grain, "->", select_statement)
+    print("  " * depth, input.name, "->", select_statement)
     sql = renderer.render_cte(input).statement
     for line in sql.split("\n"):
         print("  " * (depth), line)
@@ -65,14 +50,10 @@ class DebuggingHook(BaseHook):
         logger.setLevel(DEBUG)
 
     def process_root_datasource(self, datasource: QueryDatasource):
-        printed = print_recursive_resolved(datasource)
-        for row in printed:
-            print("".join([str(v) for v in row]))
+        print_recursive_resolved(datasource)
 
     def process_root_cte(self, cte: CTE):
         print_recursive_ctes(cte)
 
     def process_root_strategy_node(self, node: StrategyNode):
-        printed = print_recursive_nodes(node)
-        for row in printed:
-            print("".join([str(v) for v in row]))
+        print_recursive_nodes(node)
