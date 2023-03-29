@@ -1,8 +1,9 @@
-from preql.core.hooks import GraphHook
+
 from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
+from preql.hooks.query_debugger import DebuggingHook
 
 
 def test_select():
@@ -51,9 +52,10 @@ select
     env, parsed = parse(declarations)
     select: Select = parsed[-1]
 
-    query = process_query(statement=select, environment=env, hooks=[GraphHook()])
+    query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
+    print(sql)
     assert "count(posts.`id`) as `user_post_count`," in sql
     assert "avg(cte_posts_at_local_user_id_" in sql

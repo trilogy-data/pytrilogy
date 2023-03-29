@@ -2,7 +2,6 @@
 from logging import DEBUG
 
 from preql.constants import logger
-from preql.core.hooks import GraphHook
 
 # from preql.compiler import compile
 from preql.core.models import Select, Grain
@@ -83,7 +82,7 @@ limit 100
     concepts, datasources = get_query_datasources(environment=env, statement=select)
     # raise ValueError
 
-    query = process_query(statement=select, environment=env, hooks=[GraphHook()])
+    query = process_query(statement=select, environment=env, )
     expected_base = query.ctes[0]
 
     generator = BigqueryDialect()

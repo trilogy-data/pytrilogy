@@ -1,4 +1,3 @@
-from preql.core.hooks import GraphHook
 
 # from preql.compiler import compile
 from preql.core.models import Select, Grain
@@ -68,7 +67,7 @@ def test_select():
 
     assert select.grain == Grain(components=[env.concepts["category_name"]])
 
-    process_query(statement=select, environment=env, hooks=[GraphHook()])
+    process_query(statement=select, environment=env, )
 
 
 def test_joins_to_ctes():

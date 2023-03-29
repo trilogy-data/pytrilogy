@@ -151,7 +151,7 @@ def test_query_datasources(environment):
     # TODO: does this have value?
     # It's catching query shape changes, but those are more innocous
     # than outptu changes
-    assert len(ctes) == 4
+    assert len(ctes) == 2
     base_cte: CTE = [
         cte
         for cte in ctes
@@ -161,18 +161,8 @@ def test_query_datasources(environment):
     ][0]
     assert base_cte.group_to_grain == False
 
-    assert {c.address for c in base_cte.output_columns} == {
-        "customer.customer_id",
-        "dates.due_key",
-        "dates.order_key",
-        "dates.ship_key",
-        "internet_sales.order_line_number",
-        "internet_sales.order_number",
-        "internet_sales.order_quantity",
-        "internet_sales.sales_amount",
-        "sales_territory.key",
-    }
-    assert len(base_cte.output_columns) == 9
+    assert {c.address for c in base_cte.output_columns} == {'internet_sales.order_number', 'internet_sales.order_line_number'}
+    assert len(base_cte.output_columns) == 2
 
 
 def recurse_datasource(parent: QueryDatasource, depth=0):

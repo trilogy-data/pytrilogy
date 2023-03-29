@@ -1,16 +1,15 @@
 from collections import defaultdict
-from typing import List, Optional, Union, Set, Dict
 from copy import deepcopy
+from typing import List, Optional, Set
+
 import networkx as nx
 
-from preql.constants import logger
 from preql.core.enums import Purpose, PurposeLineage
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 from preql.core.models import (
     Concept,
     Environment,
-    Datasource,
     Grain,
     QueryDatasource,
     JoinType,
@@ -18,29 +17,33 @@ from preql.core.models import (
     Function,
     WindowItem,
     FilterItem,
-SourceType
+    SourceType,
 )
 from preql.core.processing.utility import (
-    concept_to_inputs,
     PathInfo,
     path_to_joins,
-    concepts_to_conditions_mapping,
-    get_nested_source_for_condition,
 )
 from preql.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
-def resolve_concept_map(inputs:List[QueryDatasource]):
+
+
+def resolve_concept_map(inputs: List[QueryDatasource]):
     concept_map = defaultdict(set)
     for input in inputs:
         for concept in input.output_concepts:
             concept_map[concept.address].add(input)
     return concept_map
 
-def concept_list_to_grain(inputs:List[Concept], parent_sources:List[QueryDatasource])->Grain:
-    candidates = [c for c in inputs if c.purpose==Purpose.KEY]
+
+def concept_list_to_grain(
+        inputs: List[Concept], parent_sources: List[QueryDatasource]
+) -> Grain:
+    candidates = [c for c in inputs if c.purpose == Purpose.KEY]
     for x in inputs:
-        if x.purpose ==Purpose.PROPERTY and not any([key in candidates for key in (x.keys or [])]):
+        if x.purpose == Purpose.PROPERTY and not any(
+                [key in candidates for key in (x.keys or [])]
+        ):
             candidates.append(x)
         elif x.purpose == Purpose.METRIC:
             # metrics that were previously calculated must be included in grain
@@ -48,11 +51,21 @@ def concept_list_to_grain(inputs:List[Concept], parent_sources:List[QueryDatasou
                 candidates.append(x)
     return Grain(components=candidates)
 
-class StrategyNode():
+
+class StrategyNode:
     source_type = SourceType.FILTER
-    def __init__(self, mandatory_concepts, optional_concepts,  environment, g, whole_grain:bool=False, parents:List["StrategyNode"]=None):
+
+    def __init__(
+            self,
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain: bool = False,
+            parents: List["StrategyNode"] = None,
+    ):
         self.mandatory_concepts = mandatory_concepts
-        self.optional_concepts = optional_concepts
+        self.optional_concepts = deepcopy(optional_concepts)
         self.environment = environment
         self.g = g
         self.whole_grain = whole_grain
@@ -63,17 +76,21 @@ class StrategyNode():
         return deepcopy(self.mandatory_concepts + self.optional_concepts)
 
     def __repr__(self):
-        concepts = unique(self.mandatory_concepts + self.optional_concepts, 'address')
-        contents = ','.join([c.address for c in concepts])
-        return f'{self.__class__.__name__}<{contents}>'
+        concepts = unique(self.mandatory_concepts + self.optional_concepts, "address")
+        contents = ",".join([c.address for c in concepts])
+        return f"{self.__class__.__name__}<{contents}>"
 
     def resolve(self) -> QueryDatasource:
         parent_sources = [p.resolve() for p in self.parents]
         input_concepts = []
         for p in parent_sources:
             input_concepts += p.output_concepts
-        outputs = unique(self.mandatory_concepts + self.optional_concepts, 'address')
-        conditions = [c.lineage.where.conditional for c in self.mandatory_concepts if isinstance(c.lineage, FilterItem)]
+        outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
+        conditions = [
+            c.lineage.where.conditional
+            for c in self.mandatory_concepts
+            if isinstance(c.lineage, FilterItem)
+        ]
         conditional = conditions[0] if conditions else None
         for condition in conditions[1:]:
             conditional += condition
@@ -84,72 +101,120 @@ class StrategyNode():
             output_concepts += source.output_concepts
         # unless it is a specific kind of node, feed all parent concepts through
         return QueryDatasource(
-            input_concepts=unique(input_concepts, 'address'),
-            output_concepts=unique(output_concepts, 'address'),
+            input_concepts=unique(input_concepts, "address"),
+            output_concepts=unique(output_concepts, "address"),
             datasources=parent_sources,
             source_type=self.source_type,
             source_map=resolve_concept_map(parent_sources),
             joins=[],
             grain=grain,
-            condition=conditional
+            condition=conditional,
         )
+
 
 class WindowNode(StrategyNode):
     source_type = SourceType.WINDOW
-    def __init__(self, mandatory_concepts, optional_concepts, environment, g, whole_grain:bool=False, parents:List["StrategyNode"]=None):
-        super().__init__(mandatory_concepts, optional_concepts,  environment, g, whole_grain=whole_grain, parents=parents)
 
-
+    def __init__(
+            self,
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain: bool = False,
+            parents: List["StrategyNode"] = None,
+    ):
+        super().__init__(
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain=whole_grain,
+            parents=parents,
+        )
 
 
 class FilterStrategyNode(StrategyNode):
     source_type = SourceType.FILTER
-    def __init__(self, mandatory_concepts, optional_concepts, environment, g, whole_grain: bool = False,
-                 parents: List["StrategyNode"] = None):
-        super().__init__(mandatory_concepts, optional_concepts, environment, g, whole_grain=whole_grain,
-                         parents=parents)
+
+    def __init__(
+            self,
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain: bool = False,
+            parents: List["StrategyNode"] = None,
+    ):
+        super().__init__(
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain=whole_grain,
+            parents=parents,
+        )
 
     def resolve(self) -> QueryDatasource:
-        '''We need to ensure that any filtered values are removed from the output to avoid inappropriate references'''
+        """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super().resolve()
-        filtered_concepts = [c for c in self.all_concepts if isinstance(c.lineage, FilterItem)]
+        filtered_concepts = [
+            c for c in self.all_concepts if isinstance(c.lineage, FilterItem)
+        ]
         to_remove = [c.lineage.content.address for c in filtered_concepts]
-        base.output_concepts = [c for c in base.output_concepts if c.address not in to_remove]
-        base.source_map = {key: value for key, value in base.source_map.items() if key not in to_remove}
+        base.output_concepts = [
+            c for c in base.output_concepts if c.address not in to_remove
+        ]
+        base.source_map = {
+            key: value for key, value in base.source_map.items() if key not in to_remove
+        }
         return base
 
 
 class GroupNode(StrategyNode):
     source_type = SourceType.GROUP
-    def __init__(self, mandatory_concepts, optional_concepts, environment, g, whole_grain: bool = False,
-                 parents: List["StrategyNode"] = None):
-        super().__init__(mandatory_concepts, optional_concepts, environment, g, whole_grain=whole_grain,
-                         parents=parents)
 
-    def resolve(self)->QueryDatasource:
+    def __init__(
+            self,
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain: bool = False,
+            parents: List["StrategyNode"] = None,
+    ):
+        super().__init__(
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain=whole_grain,
+            parents=parents,
+        )
+
+    def resolve(self) -> QueryDatasource:
         parent_sources = [p.resolve() for p in self.parents]
         input_concepts = []
         for p in parent_sources:
             input_concepts += p.output_concepts
         # a group by node only outputs the actuall keys grouped by
-        outputs = unique(self.mandatory_concepts + self.optional_concepts, 'address')
+        outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
         grain = concept_list_to_grain(self.all_concepts, [])
         comp_grain = Grain()
         for source in parent_sources:
             comp_grain += source.grain
 
-        #dynamically select if we need to group
+        # dynamically select if we need to group
         # because sometimes, we are already at required grain
         if comp_grain == grain:
-            print('SKIPPING GROUP')
             source_type = SourceType.SELECT
         else:
             source_type = SourceType.GROUP
         return QueryDatasource(
-            input_concepts=unique(input_concepts, 'address'),
+            input_concepts=unique(input_concepts, "address"),
             output_concepts=outputs,
             datasources=parent_sources,
-            source_type= source_type,
+            source_type=source_type,
             source_map=resolve_concept_map(parent_sources),
             joins=[],
             grain=grain,
@@ -158,19 +223,46 @@ class GroupNode(StrategyNode):
 
 class OutputNode(StrategyNode):
     source_type = SourceType.SELECT
-    def __init__(self, mandatory_concepts, optional_concepts, environment, g, whole_grain: bool = False,
-                 parents: List["StrategyNode"] = None):
-        super().__init__(mandatory_concepts, optional_concepts, environment, g, whole_grain=whole_grain,
-                         parents=parents)
 
+    def __init__(
+            self,
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain: bool = False,
+            parents: List["StrategyNode"] = None,
+    ):
+        super().__init__(
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain=whole_grain,
+            parents=parents,
+        )
 
 
 class MergeNode(StrategyNode):
     source_type = SourceType.SELECT
-    def __init__(self, mandatory_concepts, optional_concepts, environment, g, whole_grain: bool = False,
-                 parents: List["StrategyNode"] = None):
-        super().__init__(mandatory_concepts, optional_concepts, environment, g, whole_grain=whole_grain,
-                         parents=parents)
+
+    def __init__(
+            self,
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain: bool = False,
+            parents: List["StrategyNode"] = None,
+    ):
+        super().__init__(
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain=whole_grain,
+            parents=parents,
+        )
 
     def resolve(self):
         parent_sources = [p.resolve() for p in self.parents]
@@ -183,13 +275,16 @@ class MergeNode(StrategyNode):
         # early exit if we can just return the parent
         final_datasets = list(merged.values())
         if len(merged.keys()) == 1:
-            return list(merged.values())[0]
+            final = list(merged.values())[0]
+            # restrict outputs to only what should come otu of this node
+            final.output_concepts = self.all_concepts
+            return final
         # if we have multiple candidates, see if one is good enough
         for dataset in final_datasets:
             output_set = set([c.address for c in dataset.output_concepts])
             if all([c.address in output_set for c in self.all_concepts]):
                 return dataset
-        #TODO - smarter filtering to only unique parents
+        # TODO - smarter filtering to only unique parents
 
         # only finally, join between them for unique values
         dataset_list = sorted(
@@ -197,7 +292,9 @@ class MergeNode(StrategyNode):
         )
         base = dataset_list[0]
         joins = []
-        all_concepts = unique(self.mandatory_concepts + self.optional_concepts, 'address')
+        all_concepts = unique(
+            self.mandatory_concepts + self.optional_concepts, "address"
+        )
         if dataset_list[1:]:
             for right_value in dataset_list[1:]:
                 joins.append(
@@ -212,12 +309,12 @@ class MergeNode(StrategyNode):
         input_concepts = []
         for p in parent_sources:
             input_concepts += p.output_concepts
-        outputs = unique(self.mandatory_concepts + self.optional_concepts, 'address')
+        outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
         grain = Grain()
         for source in parent_sources:
             grain += source.grain
         return QueryDatasource(
-            input_concepts=unique(input_concepts, 'address'),
+            input_concepts=unique(input_concepts, "address"),
             output_concepts=outputs,
             datasources=parent_sources,
             source_type=self.source_type,
@@ -226,17 +323,32 @@ class MergeNode(StrategyNode):
             grain=grain,
         )
 
+
 class SelectNode(StrategyNode):
-    '''Select nodes actually fetch raw data, eitehr
-    directly from a table or via joins '''
+    """Select nodes actually fetch raw data, eitehr
+    directly from a table or via joins """
+
     source_type = SourceType.SELECT
-    def __init__(self, mandatory_concepts, optional_concepts, environment, g, whole_grain: bool = False,
-                 parents: List["StrategyNode"] = None):
-        super().__init__(mandatory_concepts, optional_concepts, environment, g, whole_grain=whole_grain,
-                         parents=parents)
 
+    def __init__(
+            self,
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain: bool = False,
+            parents: List["StrategyNode"] = None,
+    ):
+        super().__init__(
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain=whole_grain,
+            parents=parents,
+        )
 
-    def resolve_join(self)->QueryDatasource:
+    def resolve_join(self) -> QueryDatasource:
         join_candidates: List[PathInfo] = []
 
         all_concepts = self.mandatory_concepts + self.optional_concepts
@@ -268,7 +380,9 @@ class SelectNode(StrategyNode):
         join_candidates.sort(key=lambda x: sum([len(v) for v in x["paths"].values()]))
         if not join_candidates:
             required = [c.address for c in all_input_concepts]
-            raise ValueError(f"Could not find any way to associate required concepts {required}")
+            raise ValueError(
+                f"Could not find any way to associate required concepts {required}"
+            )
         shortest: PathInfo = join_candidates[0]
         source_map = defaultdict(set)
         join_paths: List[BaseJoin] = []
@@ -286,7 +400,7 @@ class SelectNode(StrategyNode):
             new_joins = path_to_joins(value, g=self.g)
 
             join_paths += new_joins
-            source_map[source_concept.address].add(g.nodes[root]["datasource"])
+            source_map[source_concept.address].add(self.g.nodes[root]["datasource"])
             # ensure we add in all keys required for joins as inputs
             # even if they are not selected out
             for join in new_joins:
@@ -297,16 +411,16 @@ class SelectNode(StrategyNode):
         all_requirements = all_concepts
         final_grain = Grain()
         datasources = sorted(
-                [self.g.nodes[key]["datasource"] for key in all_datasets],
-                key=lambda x: x.identifier,
-            )
+            [self.g.nodes[key]["datasource"] for key in all_datasets],
+            key=lambda x: x.identifier,
+        )
         all_outputs = []
         for datasource in datasources:
             final_grain += datasource.grain
             all_outputs += datasource.output_concepts
         output = QueryDatasource(
             output_concepts=all_outputs,
-            input_concepts=unique(all_input_concepts, 'address'),
+            input_concepts=unique(all_input_concepts, "address"),
             source_map=source_map,
             grain=final_grain,
             datasources=datasources,
@@ -314,7 +428,7 @@ class SelectNode(StrategyNode):
         )
         return output
 
-    def resolve_from_raw_datasources(self)-> QueryDatasource:
+    def resolve_from_raw_datasources(self) -> QueryDatasource:
         whole_grain = True
         # TODO evaluate above
         if whole_grain:
@@ -350,17 +464,27 @@ class SelectNode(StrategyNode):
                             target=concept_to_node(req_concept),
                         )
                     except nx.NodeNotFound as e:
-                        candidates = [datasource_to_node(datasource), concept_to_node(req_concept)]
+                        candidates = [
+                            datasource_to_node(datasource),
+                            concept_to_node(req_concept),
+                        ]
                         for candidate in candidates:
                             try:
                                 self.g.nodes[candidate]
                             except KeyError:
-                                raise SyntaxError('Could not find node for {}'.format(candidate))
+                                raise SyntaxError(
+                                    "Could not find node for {}".format(candidate)
+                                )
                         raise e
                     except nx.exception.NetworkXNoPath:
                         all_found = False
                         break
-                    if len([p for p in path if self.g.nodes[p]["type"] == "datasource"]) != 1:
+                    if (
+                            len(
+                                [p for p in path if self.g.nodes[p]["type"] == "datasource"]
+                            )
+                            != 1
+                    ):
                         all_found = False
                         break
                 if all_found:
@@ -369,12 +493,12 @@ class SelectNode(StrategyNode):
                         input_concepts=all_concepts,
                         output_concepts=self.all_concepts,
                         source_map={
-                            concept.address: {datasource} for concept in self.all_concepts
+                            concept.address: {datasource}
+                            for concept in self.all_concepts
                         },
                         datasources=[datasource],
                         grain=datasource.grain,
                         joins=[],
-
                     )
 
     def resolve(self) -> QueryDatasource:
@@ -389,7 +513,8 @@ class SelectNode(StrategyNode):
         # if we don't have a select, see if we can join
         return self.resolve_join()
 
-def resolve_window_parent_concepts(concept:Concept)->List[Concept]:
+
+def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, WindowItem):
         raise ValueError
     base = [concept.lineage.content]
@@ -397,26 +522,28 @@ def resolve_window_parent_concepts(concept:Concept)->List[Concept]:
         base += concept.lineage.over
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
-            base += item.expr
-    return unique(base, 'address')
+            base += [item.expr.output]
+    return unique(base, "address")
 
-def resolve_filter_parent_concepts(concept:Concept)->List[Concept]:
+
+def resolve_filter_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, FilterItem):
         raise ValueError
     base = [concept.lineage.content]
     base += concept.lineage.where.input
-    return unique(base, 'address')
+    return unique(base, "address")
 
 
-def resolve_function_parent_concepts(concept:Concept)->List[Concept]:
+def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, Function):
         raise ValueError(f"Concept {concept} is not an aggregate function")
     if concept.derivation == PurposeLineage.AGGREGATE:
-        return unique(concept.lineage.concept_arguments, 'address')
-    #TODO: handle basic lineage chains?
-    return unique(concept.lineage.concept_arguments, 'address')
+        return unique(concept.lineage.concept_arguments, "address")
+    # TODO: handle basic lineage chains?
+    return unique(concept.lineage.concept_arguments, "address")
 
-def resolve_concept_to_immediate_parents(concept:Concept)->List[Concept]:
+
+def resolve_concept_to_immediate_parents(concept: Concept) -> List[Concept]:
     if concept.lineage:
         if concept.derivation == PurposeLineage.WINDOW:
             return resolve_window_parent_concepts(concept)
@@ -426,186 +553,123 @@ def resolve_concept_to_immediate_parents(concept:Concept)->List[Concept]:
             return resolve_function_parent_concepts(concept)
     return [concept]
 
-def source_concepts(mandatory_concepts:List[Concept], optional_concepts:List[Concept], environment:Environment,  g: Optional[ReferenceGraph] = None,)->StrategyNode:
-    g = g or generate_graph(environment)
-    stack:List[StrategyNode] = []
-    all_concepts = unique(mandatory_concepts + optional_concepts, 'address')
 
-    #TODO
-    #Loop through all possible grains + subgrains
-    #Starting with the most grain
+def source_concepts(
+        mandatory_concepts: List[Concept],
+        optional_concepts: List[Concept],
+        environment: Environment,
+        g: Optional[ReferenceGraph] = None,
+) -> StrategyNode:
+    g = g or generate_graph(environment)
+    stack: List[StrategyNode] = []
+    all_concepts = unique(mandatory_concepts + optional_concepts, "address")
+    # TODO
+    # Loop through all possible grains + subgrains
+    # Starting with the most grain
     found_addresses = []
+
     # early exit
     while not all(c.address in found_addresses for c in all_concepts):
-        remaining_concept = [c for c in all_concepts if c.address not in found_addresses]
-        priority = [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE] + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW] + [c for c in remaining_concept if c.derivation == PurposeLineage.FILTER] + [c for c in remaining_concept if c.derivation == PurposeLineage.BASIC] + [c for c in remaining_concept if not c.lineage]
+        remaining_concept = [
+            c for c in all_concepts if c.address not in found_addresses
+        ]
+        priority = (
+                [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
+                + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW]
+                + [c for c in remaining_concept if c.derivation == PurposeLineage.FILTER]
+                + [c for c in remaining_concept if c.derivation == PurposeLineage.BASIC]
+                + [c for c in remaining_concept if not c.lineage]
+        )
         concept = priority[0]
         # we don't actually want to look for multiple aggregates at the same time
-        local_optional = [x for x in optional_concepts+mandatory_concepts if x.address != concept.address and x.derivation != PurposeLineage.AGGREGATE]
+        local_optional = [
+            x
+            for x in optional_concepts + mandatory_concepts
+            if x.address != concept.address and x.derivation != PurposeLineage.AGGREGATE
+        ]
         if concept.lineage:
             if concept.derivation == PurposeLineage.WINDOW:
                 parent_concepts = resolve_window_parent_concepts(concept)
-                stack.append(WindowNode([concept], local_optional, environment, g, parents=[source_concepts(parent_concepts, local_optional,
-                                                                                                                         environment, g)]))
+                stack.append(
+                    WindowNode(
+                        [concept],
+                        local_optional,
+                        environment,
+                        g,
+                        parents=[
+                            source_concepts(
+                                parent_concepts, local_optional, environment, g
+                            )
+                        ],
+                    )
+                )
             elif concept.derivation == PurposeLineage.FILTER:
                 parent_concepts = resolve_filter_parent_concepts(concept)
-                stack.append(FilterStrategyNode([concept], local_optional, environment, g, parents=[source_concepts(parent_concepts, local_optional,
-                                                                                                                         environment, g)]))
+                stack.append(
+                    FilterStrategyNode(
+                        [concept],
+                        local_optional,
+                        environment,
+                        g,
+                        parents=[
+                            source_concepts(
+                                parent_concepts, local_optional, environment, g
+                            )
+                        ],
+                    )
+                )
             elif concept.derivation == PurposeLineage.AGGREGATE:
                 # aggregates MUST always group to the proper grain
                 # todo: is this true?
-                parent_concepts = unique(resolve_function_parent_concepts(concept) + local_optional, 'address')
-                stack.append(GroupNode([concept], local_optional, environment, g, parents=[source_concepts(parent_concepts, [],
-                                                                                                                         environment, g)]))
+                parent_concepts = unique(
+                    resolve_function_parent_concepts(concept) + local_optional,
+                    "address",
+                )
+                stack.append(
+                    GroupNode(
+                        [concept],
+                        local_optional,
+                        environment,
+                        g,
+                        parents=[source_concepts(parent_concepts, [], environment, g)],
+                    )
+                )
             elif concept.derivation == PurposeLineage.BASIC:
                 # directly select out a basic derivation
-                parent_concepts =  resolve_function_parent_concepts(concept)
+                parent_concepts = resolve_function_parent_concepts(concept)
 
-                stack.append(SelectNode([concept], local_optional, environment, g, parents=[source_concepts(parent_concepts, local_optional,
-                                                                                                                         environment, g)]))
+                stack.append(
+                    SelectNode(
+                        [concept],
+                        local_optional,
+                        environment,
+                        g,
+                        parents=[
+                            source_concepts(
+                                parent_concepts, local_optional, environment, g
+                            )
+                        ],
+                    )
+                )
             else:
                 raise ValueError(f"Unknown lineage type {concept.derivation}")
         else:
-            basic_inputs= [x for x in local_optional if x.lineage is None]
+            basic_inputs = [x for x in local_optional if x.lineage is None]
             stack.append(SelectNode([concept], basic_inputs, environment, g))
         for node in stack:
             for concept in node.all_concepts:
                 found_addresses.append(concept.address)
-    return MergeNode(mandatory_concepts, optional_concepts, environment, g, parents=stack)
+    return MergeNode(
+        mandatory_concepts, optional_concepts, environment, g, parents=stack
+    )
 
 
-def source_query_concepts(output_concepts, grain_components, environment:Environment,  g: Optional[ReferenceGraph] = None ):
+def source_query_concepts(
+        output_concepts,
+        grain_components,
+        environment: Environment,
+        g: Optional[ReferenceGraph] = None,
+):
     root = source_concepts(output_concepts, grain_components, environment, g)
-    #return root
-    return GroupNode(output_concepts, grain_components, environment, g, parents = [root])
-
-
-def _get_datasource_by_concept_and_grain(
-    concept,
-    grain: Grain,
-    environment: Environment,
-    g: Optional[ReferenceGraph] = None,
-    whole_grain: bool = False,
-) -> Union[Datasource, QueryDatasource]:
-    """Determine if it's possible to get a certain concept at a certain grain.
-    """
-    g = g or generate_graph(environment)
-    logger.debug(f"{LOGGER_PREFIX} Starting sub search for {concept} at {grain}")
-    if concept.lineage:
-        if concept.derivation == PurposeLineage.WINDOW:
-            logger.debug(f"{LOGGER_PREFIX} Returning complex window function")
-            complex = get_datasource_from_window_function(
-                concept, grain, environment, g, whole_grain=whole_grain
-            )
-        elif concept.derivation == PurposeLineage.FILTER:
-            logger.debug(f"{LOGGER_PREFIX} Returning filtration")
-            complex = get_datasource_for_filter(
-                concept, grain, environment, g, whole_grain=whole_grain
-            )
-        elif concept.derivation == PurposeLineage.AGGREGATE:
-            logger.debug(f"{LOGGER_PREFIX} Checking for complex function derivation")
-            try:
-                complex = get_datasource_from_complex_lineage(
-                    concept, grain, environment, g, whole_grain=whole_grain
-                )
-            except ValueError:
-                complex = None
-                logger.debug(
-                    f"{LOGGER_PREFIX} Cannot retrieve complex lineage for aggregate {concept}"
-                )
-        else:
-            complex = None
-        if complex:
-            logger.debug(f"{LOGGER_PREFIX} Returning complex lineage for {concept}")
-            return complex
-        logger.debug(f"{LOGGER_PREFIX} Can satisfy query with basic lineage")
-    # the concept is available directly on a datasource at appropriate grain
-    if concept.purpose in (Purpose.KEY, Purpose.PROPERTY):
-        try:
-
-            out = get_datasource_from_property_lookup(
-                concept.with_default_grain(),
-                grain,
-                environment,
-                g,
-                whole_grain=whole_grain,
-            )
-            logger.debug(f"{LOGGER_PREFIX} Got {concept} from property lookup from {out.name}")
-            return out
-        except ValueError as e:
-            logger.debug(f"{LOGGER_PREFIX} {str(e)}")
-    # the concept is available on a datasource, but at a higher granularity
-    try:
-        out = get_datasource_from_group_select(
-            concept, grain, environment, g, whole_grain=whole_grain
-        )
-
-        logger.debug(f"{LOGGER_PREFIX} Got {concept} from grouped select from {out.name}")
-        return out
-    except ValueError as e:
-        logger.debug(f"{LOGGER_PREFIX} {str(e)}")
-    # the concept and grain together can be gotten via
-    # a join from a root dataset to enrichment datasets
-    try:
-        out = get_datasource_by_joins(
-            concept, grain, environment, g, whole_grain=whole_grain
-        )
-        logger.debug(f"{LOGGER_PREFIX} Got {concept} from joins")
-        return out
-    except ValueError as e:
-        logger.debug(f"{LOGGER_PREFIX} {str(e)}")
-
-    try:
-        out = get_property_group_by_without_key(
-            concept, grain, environment, g, whole_grain=whole_grain
-        )
-        logger.debug(
-            f"{LOGGER_PREFIX} {concept} from property lookup via transversing key based grain"
-        )
-        return out
-    except ValueError as e:
-        logger.debug(f"{LOGGER_PREFIX} failed to get property lookup")
-
-    logger.debug(f"{LOGGER_PREFIX} Full grain search exhausted ")
-    if whole_grain:
-        raise ValueError(
-            f"Cannot find {concept} at {grain}, full grain search exhausted and whole grain is set to true."
-        )
-    from itertools import combinations
-
-    for x in range(1, len(grain.components_copy)):
-        for combo in combinations(grain.components_copy, x):
-            logger.debug(f"{LOGGER_PREFIX} looking at reduced grain {grain}")
-            ngrain = Grain(components=list(combo))
-            try:
-                # out = get_datasource_by_joins(
-                #     concept.with_grain(ngrain),
-                #     ngrain,
-                #     environment,
-                #     g,
-                #     whole_grain=whole_grain,
-                # )
-                nout = get_datasource_by_concept_and_grain(
-                    concept.with_grain(ngrain),
-                    ngrain,
-                    environment,
-                    g,
-                    whole_grain=whole_grain,
-                )
-
-                logger.debug(
-                    f"{LOGGER_PREFIX} Got {concept} from a sub-portion of grain"
-                )
-                return nout
-            except ValueError as e:
-                logger.debug(f"{LOGGER_PREFIX} {str(e)}")
-
-    # if there is a property in the grain, see if we can find a datasource
-    # with all the keys of the property, which we can then join to
-
-    try:
-        neighbors = list(g.predecessors(concept_to_node(concept)))
-    # node is not in graph
-    except nx.exception.NetworkXError:
-        neighbors = []
-    raise ValueError(f"No source for {concept} found, neighbors {neighbors}")
+    # return root
+    return GroupNode(output_concepts, grain_components, environment, g, parents=[root])

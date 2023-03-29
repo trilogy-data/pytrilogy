@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Tuple, Union, Set
 from preql.constants import logger
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
-from preql.core.hooks import BaseProcessingHook
+
 from preql.core.models import (
     Environment,
     Select,
@@ -21,6 +21,8 @@ from preql.core.models import (
 )
 from preql.core.processing.concept_strategies import get_datasource_by_concept_and_grain
 from preql.utility import string_to_hash, unique
+from preql.hooks.base_hook import BaseHook
+
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -120,7 +122,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         # related_columns=datasource.concepts,
         joins=[base_join_to_join(join, children) for join in query_datasource.joins],
         related_columns=query_datasource.input_concepts,
-
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
         # we restrict parent_ctes to one level
@@ -148,17 +149,23 @@ def get_disconnected_components(
     sub_graphs = list(nx.connected_components(graph))
     return len(sub_graphs), sub_graphs
 
+
 from preql.core.processing.concept_strategies_v2 import source_query_concepts
 
 
-def get_query_datasources_v2(    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
+def get_query_datasources_v2(
+    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None, hooks: Optional[List[BaseHook]] = None
 ) -> QueryDatasource:
     graph = graph or generate_graph(environment)
-    all_comps = statement.output_components
-    ds = source_query_concepts(statement.output_components, [] , environment = environment, g=graph)
+
+    ds = source_query_concepts(
+        statement.output_components, [], environment=environment, g=graph
+    )
+    if hooks:
+        for hook in hooks:
+            hook.process_root_strategy_node(ds)
     final_qds = ds.resolve()
     return final_qds
-
 
 
 def get_query_datasources(
@@ -232,19 +239,31 @@ def get_query_datasources(
                 break
     return concept_map, datasource_map
 
+
 from preql.core.processing.concept_strategies_v2 import source_concepts
 
-def flatten_ctes(input:CTE)->list[CTE]:
+
+def flatten_ctes(input: CTE) -> list[CTE]:
     output = [input]
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
     return output
-def process_query_v2(    environment: Environment,
-    statement: Select,) -> ProcessedQuery:
+
+
+def process_query_v2(
+    environment: Environment, statement: Select, hooks: Optional[List[BaseHook]] = None
+) -> ProcessedQuery:
+    hooks = hooks or []
     graph = generate_graph(environment)
-    root_datasource = get_query_datasources_v2(        environment=environment, graph=graph, statement=statement)
+    root_datasource = get_query_datasources_v2(
+        environment=environment, graph=graph, statement=statement, hooks=hooks
+    )
+    for hook in hooks:
+        hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
     root_cte = datasource_to_ctes(root_datasource)
+    for hook in hooks:
+        hook.process_root_cte(root_cte[0])
     raw_ctes = list(reversed(flatten_ctes(root_cte[0])))
     seen = set()
     ctes = []
@@ -267,7 +286,7 @@ def process_query_v2(    environment: Environment,
         ),
     )
     if not base_list:
-        cte_grain = [cte.name + '@' + str(cte.grain) for cte in final_ctes]
+        cte_grain = [cte.name + "@" + str(cte.grain) for cte in final_ctes]
         raise ValueError(
             f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
         )
@@ -283,8 +302,8 @@ def process_query_v2(    environment: Environment,
             JoinKey(c)
             for c in statement.grain.components
             if c.with_grain(cte.grain) in cte.output_columns
-               and c.with_grain(base.grain) in base.output_columns
-               and cte.grain.issubset(statement.grain)
+            and c.with_grain(base.grain) in base.output_columns
+            and cte.grain.issubset(statement.grain)
         ]
         if joinkeys:
             joins.append(
@@ -305,12 +324,16 @@ def process_query_v2(    environment: Environment,
         base=base,
         joins=joins,
     )
+
+
+from preql.hooks.base_hook import BaseHook
+
+
 def process_query(
-    environment: Environment,
-    statement: Select,
-    hooks: Optional[List[BaseProcessingHook]] = None,
+    environment: Environment, statement: Select, hooks: Optional[List[BaseHook]] = None
 ) -> ProcessedQuery:
     """Turn the raw query input into an instantiated execution tree."""
+    return process_query_v2(environment, statement, hooks)
     graph = generate_graph(environment)
     concepts, datasources = get_query_datasources(
         environment=environment, graph=graph, statement=statement
@@ -340,7 +363,7 @@ def process_query(
             ),
         )
         if not base_list:
-            cte_grain = [cte.name + '@' + str(cte.grain) for cte in final_ctes]
+            cte_grain = [cte.name + "@" + str(cte.grain) for cte in final_ctes]
             raise ValueError(
                 f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
             )

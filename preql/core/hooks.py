@@ -6,16 +6,6 @@ class BaseProcessingHook(object):
         pass
 
 
-class GraphHook(BaseProcessingHook):
-    def query_graph_built(self, graph: DiGraph):
-        from networkx import draw_kamada_kawai
-        from matplotlib import pyplot as plt
-
-        draw_kamada_kawai(graph, with_labels=True, connectionstyle="arc3, rad = 0.1")
-        # draw_spring(graph, with_labels=True, connectionstyle='arc3, rad = 0.1')
-        plt.show()
-
-
 def print_select_graph(input: str, G, indentation: int = 1):
     if input.startswith("select-"):
         output = "SELECT"

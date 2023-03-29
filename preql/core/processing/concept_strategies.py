@@ -157,7 +157,6 @@ def get_datasource_from_property_lookup(
                     datasources=[datasource],
                     grain=Grain(components=final_grain_components),
                     joins=[],
-
                 )
     raise ValueError(f"No property lookup for {concept}")
 
@@ -243,18 +242,22 @@ def get_datasource_from_group_select(
                 # wrap this in another query
                 for condition in conditions:
                     logger.debug(
-                    f"{LOGGER_PREFIX} to apply filter, need to move {condition.wrapper_concept.address} from base output to wrapper, and add {condition.root_concept} to initial select and grain"
-                )
+                        f"{LOGGER_PREFIX} to apply filter, need to move {condition.wrapper_concept.address} from base output to wrapper, and add {condition.root_concept} to initial select and grain"
+                    )
                     # filter out the grain
 
                     base.grain = Grain(
                         components=list(
                             filter(
-                                lambda x: x.address == condition.wrapper_concept.address,
+                                lambda x: x.address
+                                == condition.wrapper_concept.address,
                                 base.grain.components_copy,
                             )
                         )
-                        + [condition.root_concept] if condition.root_concept.purpose in (Purpose.KEY, Purpose.PROPERTY) else []
+                        + [condition.root_concept]
+                        if condition.root_concept.purpose
+                        in (Purpose.KEY, Purpose.PROPERTY)
+                        else []
                     )
                     base.output_concepts = unique(
                         [
@@ -270,7 +273,7 @@ def get_datasource_from_group_select(
                         condition.condition,
                         condition.wrapper_concept,
                         []
-                        #[condition.root_concept],
+                        # [condition.root_concept],
                     )
             logger.debug(
                 f"{LOGGER_PREFIX} Got {datasource.identifier} for {concept} from grouped select, outputting {[c.address for c in base.output_concepts]}"
@@ -688,8 +691,9 @@ def get_datasource_for_filter(
             for item in grain.components_copy
             if item.with_default_grain() != concept.with_default_grain()
         ]
-        + [x.with_grain(grain) for x in filter.arguments]
-    , 'address')
+        + [x.with_grain(grain) for x in filter.arguments],
+        "address",
+    )
     # keep metrics out of the new calculated grain, even though we need to find them
     cte_grain = Grain(
         components=[
@@ -772,10 +776,13 @@ def get_datasource_by_concept_and_grain(
             f"Failed to return {concept.address} from output of fetch looking for it at grain {grain} - this should never occur "
         )
     # we expect to either get the grain, a subset of the grain, or just the base concept
-    acceptable_grain = Grain(components = grain.components_copy + [concept.with_default_grain()])
+    acceptable_grain = Grain(
+        components=grain.components_copy + [concept.with_default_grain()]
+    )
     if not base.grain.issubset(acceptable_grain):
         raise SyntaxError(
-            f"Failed to match grain from output of fetch looking for {concept.address} at grain {grain}, had grain {base.grain}. This should never occur.")
+            f"Failed to match grain from output of fetch looking for {concept.address} at grain {grain}, had grain {base.grain}. This should never occur."
+        )
     return base
 
 
@@ -829,7 +836,9 @@ def _get_datasource_by_concept_and_grain(
                 g,
                 whole_grain=whole_grain,
             )
-            logger.debug(f"{LOGGER_PREFIX} Got {concept} from property lookup from {out.name}")
+            logger.debug(
+                f"{LOGGER_PREFIX} Got {concept} from property lookup from {out.name}"
+            )
             return out
         except ValueError as e:
             logger.debug(f"{LOGGER_PREFIX} {str(e)}")
@@ -839,7 +848,9 @@ def _get_datasource_by_concept_and_grain(
             concept, grain, environment, g, whole_grain=whole_grain
         )
 
-        logger.debug(f"{LOGGER_PREFIX} Got {concept} from grouped select from {out.name}")
+        logger.debug(
+            f"{LOGGER_PREFIX} Got {concept} from grouped select from {out.name}"
+        )
         return out
     except ValueError as e:
         logger.debug(f"{LOGGER_PREFIX} {str(e)}")

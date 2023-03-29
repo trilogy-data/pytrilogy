@@ -5,7 +5,7 @@ from jinja2 import Template
 from preql.constants import logger
 from preql.core.enums import FunctionType, WindowType, JoinType
 from preql.core.enums import Purpose, DataType
-from preql.core.hooks import BaseProcessingHook
+from preql.hooks.base_hook import BaseHook
 from preql.core.models import (
     Concept,
     CTE,
@@ -282,7 +282,8 @@ class BaseDialect:
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
 
         return str(e)
-    def render_cte(self, cte:CTE):
+
+    def render_cte(self, cte: CTE):
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
@@ -310,7 +311,7 @@ class BaseDialect:
                             c
                             for c in cte.output_columns
                             if c.purpose == Purpose.PROPERTY
-                               and c not in cte.grain.components
+                            and c not in cte.grain.components
                         ],
                         "address",
                     )
@@ -319,24 +320,22 @@ class BaseDialect:
                 else None,
             ),
         )
+
     def generate_ctes(
         self, query: ProcessedQuery, where_assignment: Dict[str, Conditional]
     ):
-        return [
-            self.render_cte(cte)
-            for cte in query.ctes
-        ]
+        return [self.render_cte(cte) for cte in query.ctes]
 
     def generate_queries(
         self,
         environment: Environment,
         statements,
-        hooks: Optional[List[BaseProcessingHook]] = None,
+        hooks: Optional[List[BaseHook]] = None,
     ) -> List[ProcessedQuery]:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
-                output.append(process_query_v2(environment, statement,))
+                output.append(process_query_v2(environment, statement))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
         return output

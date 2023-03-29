@@ -12,7 +12,7 @@ from preql.core.models import (
     FilterItem,
     QueryDatasource,
     Grain,
-    Function
+    Function,
 )
 from preql.utility import unique
 
@@ -125,7 +125,9 @@ def concepts_to_conditions_mapping(
     conditions: List[DynamicConditionReturn] = []
     for concept in concepts:
         if isinstance(concept.lineage, Function):
-            conditions += concepts_to_conditions_mapping(concept.lineage.concept_arguments)
+            conditions += concepts_to_conditions_mapping(
+                concept.lineage.concept_arguments
+            )
         if isinstance(concept.lineage, FilterItem):
             conditions.append(
                 DynamicConditionReturn(
