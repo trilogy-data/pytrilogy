@@ -112,6 +112,7 @@ class Concept(BaseModel):
             and self.purpose == other.purpose
             and self.namespace == other.namespace
             and self.grain == other.grain
+            and self.keys == other.keys
         )
 
     def __str__(self):
@@ -631,7 +632,13 @@ class Grain(BaseModel):
                 if component.with_default_grain() in components:
                     continue
                 components.append(component.with_default_grain())
-        return Grain(components=components)
+        base_components = [c for c in components if c.purpose == Purpose.KEY]
+        for c in components:
+            if c.purpose == Purpose.PROPERTY and not any(
+                    [key in base_components for key in (c.keys or [])]
+            ):
+                base_components.append(c)
+        return Grain(components=base_components)
 
     def __radd__(self, other) -> "Grain":
         if other == 0:

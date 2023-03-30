@@ -2,8 +2,8 @@ from preql.core.models import Select, QueryDatasource, CTE
 from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import (
     datasource_to_ctes,
-    get_query_datasources,
     process_query,
+    get_query_datasources_v2
 )
 from preql.hooks.query_debugger import print_recursive_nodes, print_recursive_resolved
 
@@ -39,7 +39,8 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
     # assert datasource.grain == product_rank.grain
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
-        'revenue_at_local_order_id_at_local_product_id'}
+        "revenue_at_local_order_id_at_local_product_id"
+    }
 
     product_rank_by_category = test_environment.concepts[
         "product_revenue_rank_by_category"
@@ -56,7 +57,8 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
 
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
-        'products_join_revenue_at_local_product_id_local_order_id_at_local_product_id_local_category_id'}
+        "products_join_revenue_at_local_product_id_local_order_id_at_local_product_id_local_category_id"
+    }
 
 
 def test_get_datasource_for_filter(test_environment, test_environment_graph):
@@ -133,13 +135,12 @@ def test_join_aggregate(test_environment, test_environment_graph):
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
         "products_join_revenue_at_local_product_id_local_order_id"
-
     }
 
 
 def test_query_aggregation(test_environment, test_environment_graph):
     select = Select(selection=[test_environment.concepts["total_revenue"]])
-    concepts, datasources = get_query_datasources(
+    concepts, datasources = get_query_datasources_v2(
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 

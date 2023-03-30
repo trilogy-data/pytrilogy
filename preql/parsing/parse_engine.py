@@ -374,7 +374,12 @@ class ParseToObjects(Transformer):
             metadata = args[3]
         else:
             metadata = None
+        purpose = args[0]
         name = args[1]
+
+
+
+
 
         lookup, namespace, name = parse_concept_reference(name, self.environment)
         self.validate_concept(lookup, meta)
@@ -396,6 +401,10 @@ class ParseToObjects(Transformer):
             return concept
         if isinstance(args[2], WindowItem):
             window_item: WindowItem = args[2]
+            if purpose == Purpose.PROPERTY:
+                keys = [window_item.content]
+            else:
+                keys = []
             concept = Concept(
                 name=name,
                 datatype=window_item.content.datatype,
@@ -405,6 +414,7 @@ class ParseToObjects(Transformer):
                 # windows are implicitly at the grain of the group by + the original content
                 grain=Grain(components=window_item.over + [window_item.content.output]),
                 namespace=namespace,
+                keys = keys
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -487,6 +497,7 @@ class ParseToObjects(Transformer):
         lookup, namespace, output = parse_concept_reference(output, self.environment)
         self.validate_concept(lookup, meta)
         # keys are used to pass through derivations
+
         if function.output_purpose == Purpose.PROPERTY:
             grain = Grain(components=function.arguments)
             keys = [x for x in function.arguments if isinstance(x, Concept)]

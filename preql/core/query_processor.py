@@ -5,6 +5,8 @@ from preql.constants import logger
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
 
+from preql.core.processing.concept_strategies_v2 import source_query_concepts
+
 from preql.core.models import (
     Environment,
     Select,
@@ -19,7 +21,7 @@ from preql.core.models import (
     BaseJoin,
     merge_ctes,
 )
-from preql.core.processing.concept_strategies import get_datasource_by_concept_and_grain
+
 from preql.utility import string_to_hash, unique
 from preql.hooks.base_hook import BaseHook
 
@@ -150,8 +152,6 @@ def get_disconnected_components(
     return len(sub_graphs), sub_graphs
 
 
-from preql.core.processing.concept_strategies_v2 import source_query_concepts
-
 
 def get_query_datasources_v2(
     environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None, hooks: Optional[List[BaseHook]] = None
@@ -166,81 +166,6 @@ def get_query_datasources_v2(
             hook.process_root_strategy_node(ds)
     final_qds = ds.resolve()
     return final_qds
-
-
-def get_query_datasources(
-    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
-) -> Tuple[Dict[str, set[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
-    concept_map: Dict[str, Set[Concept]] = defaultdict(set)
-    graph = graph or generate_graph(environment)
-    datasource_map: Dict[str, Union[Datasource, QueryDatasource]] = {}
-    # if statement.where_clause:
-    #     # TODO: figure out right place to group to do predicate pushdown
-    #     statement.grain = statement.grain + Grain(components =statement.where_clause.input)
-    components = {
-        False: unique(
-            statement.output_components + statement.grain.components_copy, "address"
-        )
-    }
-
-    for key, concept_list in components.items():
-        # TODO - identify if concept is already available on a datasource, and skip further search
-        for concept in concept_list:
-            logger.debug(
-                f"{LOGGER_PREFIX} Beginning search for {concept.address} at {str(statement.grain)}"
-            )
-            datasource = get_datasource_by_concept_and_grain(
-                concept, statement.grain, environment, graph, whole_grain=key
-            )
-            logger.debug(
-                f"{LOGGER_PREFIX} Finished search for {concept.address} from {datasource.name} "
-            )
-            if concept not in concept_map[datasource.identifier]:
-                concept_map[datasource.identifier].add(concept)
-            # add in the rest of our outptu concepts to the map
-            for item in datasource.output_concepts:
-                concept_map[datasource.identifier].add(item)
-            if datasource.identifier in datasource_map:
-                # concatenate to add new fields
-                datasource_map[datasource.identifier] = (
-                    datasource_map[datasource.identifier] + datasource
-                )
-            else:
-                datasource_map[datasource.identifier] = datasource
-    disconnected, disco_lists = get_disconnected_components(concept_map)
-    # if not all datasources can ultimately be merged
-    if disconnected > 1:
-        logger.debug(
-            f"{LOGGER_PREFIX} Disconnected nodes found, have {disco_lists}, need to do subgrain search"
-        )
-        components = {True: statement.output_components + statement.grain.components}
-        for key, concept_list in components.items():
-            for concept in concept_list:
-                datasource = get_datasource_by_concept_and_grain(
-                    concept, statement.grain, environment, graph, whole_grain=key
-                )
-
-                logger.debug(
-                    f"{LOGGER_PREFIX} finished search for {concept.address} at {str(statement.grain)} from {datasource.identifier}"
-                )
-
-                if concept not in concept_map[datasource.identifier]:
-                    concept_map[datasource.identifier].add(concept)
-                if datasource.identifier in datasource_map:
-                    # concatenate to add new fields
-                    datasource_map[datasource.identifier] = (
-                        datasource_map[datasource.identifier] + datasource
-                    )
-                else:
-                    datasource_map[datasource.identifier] = datasource
-            # when we have a unified graph, break the execution
-            if get_disconnected_components(concept_map) == 1:
-                logger.debug(f"{LOGGER_PREFIX} graph is now connected, exiting ")
-                break
-    return concept_map, datasource_map
-
-
-from preql.core.processing.concept_strategies_v2 import source_concepts
 
 
 def flatten_ctes(input: CTE) -> list[CTE]:

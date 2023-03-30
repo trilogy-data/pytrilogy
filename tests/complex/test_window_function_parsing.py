@@ -1,9 +1,3 @@
-# from preql.compiler import compile
-from logging import DEBUG
-
-from preql.constants import logger
-
-# from preql.compiler import compile
 from preql.core.models import Select, Grain
 from preql.core.models import WindowItem
 from preql.core.query_processor import (
@@ -13,8 +7,7 @@ from preql.core.query_processor import (
 )
 from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
-
-logger.setLevel(DEBUG)
+from preql.hooks.query_debugger import DebuggingHook
 
 
 def test_select():
@@ -82,7 +75,7 @@ limit 100
     concepts, datasources = get_query_datasources(environment=env, statement=select)
     # raise ValueError
 
-    query = process_query(statement=select, environment=env, )
+    query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
     expected_base = query.ctes[0]
 
     generator = BigqueryDialect()

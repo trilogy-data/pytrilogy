@@ -8,6 +8,7 @@ from preql.dialect.base import BaseDialect
 from preql.parser import parse
 from preql.hooks.query_debugger import DebuggingHook
 
+
 def test_functions(test_environment):
     declarations = """
 
@@ -24,7 +25,9 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    BaseDialect().compile_statement(process_query(test_environment, select, hooks=[DebuggingHook()]))
+    BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
 
 
 def test_wrapped_property_functions(test_environment):
