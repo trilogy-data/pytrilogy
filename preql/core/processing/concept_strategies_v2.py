@@ -49,11 +49,12 @@ def concept_list_to_grain(
             # metrics that were previously calculated must be included in grain
             if any([x in parent.output_concepts for parent in parent_sources]):
                 candidates.append(x)
+
     return Grain(components=candidates)
 
 
 class StrategyNode:
-    source_type = SourceType.FILTER
+    source_type = SourceType.SELECT
 
     def __init__(
             self,
@@ -98,8 +99,12 @@ class StrategyNode:
         output_concepts = self.all_concepts
         for source in parent_sources:
             grain += source.grain
+            # print('PARENT GRAIN')
+            # print(source.grain)
+
             output_concepts += source.output_concepts
-        # unless it is a specific kind of node, feed all parent concepts through
+        # print(grain)
+        # print('-----')
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=unique(output_concepts, "address"),
@@ -210,7 +215,6 @@ class GroupNode(StrategyNode):
             source_type = SourceType.SELECT
         else:
             source_type = SourceType.GROUP
-
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=outputs,
@@ -539,7 +543,7 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, Function):
         raise ValueError(f"Concept {concept} is not an aggregate function")
     if concept.derivation == PurposeLineage.AGGREGATE:
-        return unique(concept.lineage.concept_arguments, "address")
+        return unique(concept.lineage.concept_arguments + concept.grain.components_copy, "address")
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
 
@@ -623,9 +627,13 @@ def source_concepts(
                 # aggregates MUST always group to the proper grain
                 # todo: is this true?
                 parent_concepts = unique(
+
                     resolve_function_parent_concepts(concept) + local_optional,
                     "address",
                 )
+                # if the aggregation has a grain, we need to ensure these are in the output of the select
+                local_optional+=concept.grain.components_copy
+                local_optional = unique(local_optional, 'address')
                 stack.append(
                     GroupNode(
                         [concept],

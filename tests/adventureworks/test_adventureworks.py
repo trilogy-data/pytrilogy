@@ -6,9 +6,9 @@ import pytest
 from preql.core.env_processor import generate_graph
 from preql.core.models import Select, QueryDatasource, CTE, Grain
 from preql.core.query_processor import (
-    get_datasource_by_concept_and_grain,
+
     datasource_to_ctes,
-    get_query_datasources,
+
 )
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
@@ -161,7 +161,10 @@ def test_query_datasources(environment):
     ][0]
     assert base_cte.group_to_grain == False
 
-    assert {c.address for c in base_cte.output_columns} == {'internet_sales.order_number', 'internet_sales.order_line_number'}
+    assert {c.address for c in base_cte.output_columns} == {
+        "internet_sales.order_number",
+        "internet_sales.order_line_number",
+    }
     assert len(base_cte.output_columns) == 2
 
 

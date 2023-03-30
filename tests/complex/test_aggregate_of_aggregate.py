@@ -1,4 +1,3 @@
-
 from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
@@ -56,7 +55,5 @@ select
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
-    print(sql)
-    raise ValueError('not account for grain of assigned concepts!')
-    assert "count(cte_posts_at_local_user_id" in sql
-    assert "avg(cte_posts_at_local_user_id_" in sql
+    assert "count(cte_posts_at_local_post_id" in sql
+    assert "avg(cte_posts_at_local_post_id_at_local_user_id" in sql

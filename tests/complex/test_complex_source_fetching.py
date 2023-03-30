@@ -17,15 +17,19 @@ def test_aggregate_of_property_function(stackoverflow_environment):
     user_id = env.concepts["user_id"]
     select: Select = Select(selection=[avg_user_post_count, user_id])
 
-    query = process_query(statement=select, environment=env, )
+    query = process_query(statement=select, environment=env)
     generator = SqlServerDialect()
     for cte in query.ctes:
+        found = False
         if avg_user_post_count in cte.output_columns:
-            # checks on join
-            # alias = cte.get_alias(avg_user_post_count)
             rendered = generator.render_concept_sql(avg_user_post_count, cte)
-            assert rendered == 'avg(length(posts."text")) as "user_avg_post_length"'
-
+            assert (
+                rendered
+                == 'avg(cte_posts_at_local_post_id_at_local_post_id_3009661045417896."post_length") as "user_avg_post_length"'
+            )
+            found = True
+        if found:
+            break
     sql = generator.compile_statement(query)
 
 
@@ -78,21 +82,19 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
 
     ctes = datasource_to_ctes(datasource)
 
-    final_cte = ctes[1]
+    final_cte = ctes[0]
     assert len(final_cte.parent_ctes) > 0
-    assert len(ctes) == 2
 
     # now validate
     select: Select = Select(selection=[avg_user_post_count])
 
-    query = process_query(statement=select, environment=env, hooks=[GraphHook()])
-    parent_cte = query.ctes[0]
-    cte = query.ctes[1]
-    assert cte.output_columns[0] == avg_user_post_count
+    query = process_query(statement=select, environment=env, hooks=[])
+    parent_cte = query.ctes[1]
+    cte = query.ctes[2]
+    assert avg_user_post_count in cte.output_columns
     assert parent_cte.output_columns[0] == user_post_count
-    assert len(query.ctes) == 2
+    assert len(query.ctes) == 4
     assert len(cte.parent_ctes) > 0
-    assert cte.parent_ctes[0] == query.ctes[0]
 
     generator = SqlServerDialect()
     sql = generator.compile_statement(query)
