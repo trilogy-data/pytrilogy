@@ -1,4 +1,5 @@
-from preql.core.models import QueryDatasource, CTE
+from typing import Union
+from preql.core.models import QueryDatasource, CTE, Datasource
 
 from preql.hooks.base_hook import BaseHook
 from preql.constants import logger
@@ -11,8 +12,15 @@ from preql.dialect.bigquery import BigqueryDialect
 renderer = BigqueryDialect()
 
 
-def print_recursive_resolved(input: QueryDatasource, depth=0):
-    print("  " * depth,  input.identifier, "->", input.group_required, "->", [c.address for c in input.output_concepts])
+def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth=0):
+    print(
+        "  " * depth,
+        input.identifier,
+        "->",
+        input.group_required,
+        "->",
+        [c.address for c in input.output_concepts],
+    )
     if isinstance(input, QueryDatasource):
         for child in input.datasources:
             print_recursive_resolved(child, depth + 1)

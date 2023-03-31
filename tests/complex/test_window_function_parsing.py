@@ -1,10 +1,7 @@
 from preql.core.models import Select, Grain
 from preql.core.models import WindowItem
-from preql.core.query_processor import (
-    process_query,
-    get_datasource_by_concept_and_grain,
-    get_query_datasources,
-)
+from preql.core.query_processor import process_query, get_query_datasources
+from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
 from preql.hooks.query_debugger import DebuggingHook
@@ -58,24 +55,16 @@ limit 100
 
     assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
 
-    ds = get_datasource_by_concept_and_grain(
-        env.concepts["user_rank"],
-        Grain(components=[env.concepts["user_id"]]),
-        environment=env,
-    )
-
-    ds = get_datasource_by_concept_and_grain(
-        env.concepts["post_count"],
-        Grain(components=[env.concepts["user_id"]]),
-        environment=env,
-    )
+    ds = source_concepts(
+        [env.concepts["post_count"]], [env.concepts["user_id"]], environment=env
+    ).resolve()
     # ds.validate()
     ds.get_alias(env.concepts["post_count"].with_grain(ds.grain))
 
-    concepts, datasources = get_query_datasources(environment=env, statement=select)
+    datasource = get_query_datasources(environment=env, statement=select)
     # raise ValueError
 
-    query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
+    query = process_query(statement=select, environment=env)
     expected_base = query.ctes[0]
 
     generator = BigqueryDialect()

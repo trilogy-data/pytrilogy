@@ -152,9 +152,11 @@ def get_disconnected_components(
     return len(sub_graphs), sub_graphs
 
 
-
 def get_query_datasources_v2(
-    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None, hooks: Optional[List[BaseHook]] = None
+    environment: Environment,
+    statement: Select,
+    graph: Optional[ReferenceGraph] = None,
+    hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
     graph = graph or generate_graph(environment)
 
@@ -166,6 +168,9 @@ def get_query_datasources_v2(
             hook.process_root_strategy_node(ds)
     final_qds = ds.resolve()
     return final_qds
+
+
+get_query_datasources = get_query_datasources_v2
 
 
 def flatten_ctes(input: CTE) -> list[CTE]:
