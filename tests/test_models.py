@@ -38,3 +38,8 @@ def test_cte_merge(test_environment, test_environment_graph):
 
     merged = a + b
     assert merged.output_columns == outputs
+
+
+def test_grain():
+    grains = [Grain()] * 3
+    aggregate = sum(grains)
