@@ -632,14 +632,16 @@ def source_concepts(
                 )
             elif concept.derivation == PurposeLineage.AGGREGATE:
                 # aggregates MUST always group to the proper grain
-                # todo: is this true?
+                # except when the
                 parent_concepts = unique(
-                    resolve_function_parent_concepts(concept) + local_optional,
-                    "address",
+                    resolve_function_parent_concepts(concept), "address"
                 )
-                # if the aggregation has a grain, we need to ensure these are in the output of the select
-                local_optional += concept.grain.components_copy
-                local_optional = unique(local_optional, "address")
+                # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
+                if len(concept.grain.components_copy) > 0:
+                    local_optional = concept.grain.components_copy
+                # otherwise, local optional are mandatory
+                else:
+                    parent_concepts += local_optional
                 stack.append(
                     GroupNode(
                         [concept],

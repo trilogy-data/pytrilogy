@@ -360,16 +360,13 @@ class BaseDialect:
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
-        # valid joins are anything that is a subset of the final grain
-        output_ctes = [query.base]
-        for cte in output_ctes:
-            for c in cte.output_columns:
-                if c.address not in selected and c.address in output_addresses:
-                    select_columns[
-                        c.address
-                    ] = f"{cte.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                    cte_output_map[c.address] = cte
-                    selected.add(c.address)
+        for c in query.base.output_columns:
+            if c.address not in selected and c.address in output_addresses:
+                select_columns[
+                    c.address
+                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                cte_output_map[c.address] = query.base
+                selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
             missing = [x for x in output_addresses if x not in selected]
             raise ValueError(
@@ -438,7 +435,7 @@ class BaseDialect:
             if query.where_clause and output_where
             else None,
             order_by=[
-                self.render_order_item(i, output_ctes) for i in query.order_by.items
+                self.render_order_item(i, [query.base]) for i in query.order_by.items
             ]
             if query.order_by
             else None,
