@@ -852,10 +852,6 @@ class QueryDatasource:
             False if sum([ds.grain for ds in self.datasources]) == self.grain else True
         )
 
-    def __post_init__(self):
-        self.output_concepts = unique(self.output_concepts, "address")
-        self.input_concepts = unique(self.input_concepts, "address")
-
     def __add__(self, other):
 
         # these are syntax errors to avoid being caught by current
@@ -869,11 +865,12 @@ class QueryDatasource:
             raise SyntaxError(
                 "Can only merge two query datasources with identical source type"
             )
+        if not self.group_required == other.group_required:
+            raise SyntaxError(
+                "can only merge two datasources if the group required flag is the same"
+            )
         logger.debug(
             f"{LOGGER_PREFIX} merging {self.name} with {[c.address for c in self.output_concepts]} concepts and {other.name} with {[c.address for c in other.output_concepts]} concepts"
-        )
-        logger.debug(
-            f"{LOGGER_PREFIX} condition check: merging {self.name} with condition {True if self.condition else False} concepts and {other.name} with {True if other.condition else False} "
         )
 
         merged_datasources = {}
@@ -1001,7 +998,8 @@ class CTE:
         not just those immediately referenced.
         This method returns only those that are relevant
         to the output of the query."""
-        ctes = []
+        ctes = self.parent_ctes
+        return self.parent_ctes
         for key in self.output_columns:
             if not key.lineage:
                 ctes.append(self.source_map[key.address])
