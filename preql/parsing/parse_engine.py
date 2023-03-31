@@ -600,14 +600,14 @@ class ParseToObjects(Transformer):
                 new_concept = item.content.output.with_grain(output.grain)
                 self.environment.concepts[new_concept.name] = new_concept
                 item.content.output = new_concept
-            elif isinstance(item.content, Concept):
-                new_concept = item.content.with_grain(output.grain)
-                item.content = new_concept
-            elif isinstance(item.content, WindowItem):
-                new_concept = item.content.output.with_grain(output.grain)
-                item.content.output = new_concept
-            else:
-                raise ValueError
+            # elif isinstance(item.content, Concept):
+            #     # new_concept = item.content.with_grain(output.grain)
+            #     item.content = new_concept
+            # elif isinstance(item.content, WindowItem):
+            #     new_concept = item.content.output.with_grain(output.grain)
+            #     item.content.output = new_concept
+            # else:
+            #     raise ValueError
 
         if order_by:
             for item in order_by.items:
