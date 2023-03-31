@@ -94,10 +94,14 @@ def test_math_functions(test_environment):
     declarations = """
     property inflated_order_value<- multiply(revenue, 2);
     property fixed_order_value<- inflated_order_value / 2;
+    property order_sub <- revenue - 2;
+    property order_add <- revenue + 2;
     select
         order_id,
         inflated_order_value,
-        fixed_order_value
+        fixed_order_value,
+        order_sub,
+        order_add
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
