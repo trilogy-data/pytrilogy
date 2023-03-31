@@ -419,7 +419,7 @@ class SelectNode(StrategyNode):
             final_grain += datasource.grain
             all_outputs += datasource.output_concepts
         output = QueryDatasource(
-            output_concepts=all_outputs,
+            output_concepts=unique(all_outputs, "address"),
             input_concepts=unique(all_input_concepts, "address"),
             source_map=source_map,
             grain=final_grain,
@@ -492,8 +492,8 @@ class SelectNode(StrategyNode):
                 if all_found:
                     # keep all concepts on the output, until we get to a node which requires reduction
                     return QueryDatasource(
-                        input_concepts=all_concepts,
-                        output_concepts=self.all_concepts,
+                        input_concepts=unique(all_concepts, "address"),
+                        output_concepts=unique(self.all_concepts, "address"),
                         source_map={
                             concept.address: {datasource}
                             for concept in self.all_concepts
