@@ -349,7 +349,7 @@ class BaseDialect:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
-                output.append(process_query_v2(environment, statement))
+                output.append(process_query_v2(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
         return output
@@ -360,16 +360,13 @@ class BaseDialect:
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
-        # valid joins are anything that is a subset of the final grain
-        output_ctes = [query.base]
-        for cte in output_ctes:
-            for c in cte.output_columns:
-                if c.address not in selected and c.address in output_addresses:
-                    select_columns[
-                        c.address
-                    ] = f"{cte.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                    cte_output_map[c.address] = cte
-                    selected.add(c.address)
+        for c in query.base.output_columns:
+            if c.address not in selected and c.address in output_addresses:
+                select_columns[
+                    c.address
+                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                cte_output_map[c.address] = query.base
+                selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
             missing = [x for x in output_addresses if x not in selected]
             raise ValueError(
@@ -380,14 +377,9 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             found = False
-            filter = set(
-                [str(x.with_grain(query.grain)) for x in query.where_clause.input]
-            )
-            query_output = set([str(z) for z in query.output_columns])
-            filter_at_output_grain = set(
-                [str(x.with_grain(query.grain)) for x in query.where_clause.input]
-            )
-            if filter_at_output_grain.issubset(query_output):
+            filter = set([str(x.address) for x in query.where_clause.input])
+            query_output = set([str(z.address) for z in query.output_columns])
+            if filter.issubset(query_output):
                 output_where = True
                 found = True
             # we can't push global filters up to CTEs
@@ -438,7 +430,7 @@ class BaseDialect:
             if query.where_clause and output_where
             else None,
             order_by=[
-                self.render_order_item(i, output_ctes) for i in query.order_by.items
+                self.render_order_item(i, [query.base]) for i in query.order_by.items
             ]
             if query.order_by
             else None,
