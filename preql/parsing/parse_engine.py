@@ -22,6 +22,7 @@ from preql.core.enums import (
     ComparisonOperator,
     BooleanOperator,
     WindowOrder,
+    WindowType
 )
 from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.core.models import (
@@ -98,7 +99,9 @@ grammar = r"""
     filter_item: "filter"i IDENTIFIER where
     
     // top 5 user_id
-    window_item: "rank"i (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
+    WINDOW_TYPE: "rank"i|"lag"i|"lead"i 
+    
+    window_item: WINDOW_TYPE (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
     
     window_item_over: ("OVER"i over_list)
     
@@ -664,6 +667,9 @@ class ParseToObjects(Transformer):
     def window(self, args):
         return Window(count=args[1].value, window_order=args[0])
 
+    def WINDOW_TYPE(self, args):
+        return WindowType(args)
+
     def window_item_over(self, args):
         return WindowItemOver(contents=args[0])
 
@@ -671,15 +677,17 @@ class ParseToObjects(Transformer):
         return WindowItemOrder(contents=args[0])
 
     def window_item(self, args) -> WindowItem:
+        print(args)
+        type = args[0]
         order_by = []
         over = []
-        for item in args[1:]:
+        for item in args[2:]:
             if isinstance(item, WindowItemOrder):
                 order_by = item.contents
             elif isinstance(item, WindowItemOver):
                 over = item.contents
-        concept = self.environment.concepts[args[0]]
-        return WindowItem(content=concept, over=over, order_by=order_by)
+        concept = self.environment.concepts[args[1]]
+        return WindowItem(type = type,content=concept, over=over, order_by=order_by)
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
