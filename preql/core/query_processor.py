@@ -4,7 +4,9 @@ from typing import List, Optional, Dict, Tuple, Union, Set
 from preql.constants import logger
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
-from preql.core.hooks import BaseProcessingHook
+
+from preql.core.processing.concept_strategies_v2 import source_query_concepts
+
 from preql.core.models import (
     Environment,
     Select,
@@ -19,8 +21,10 @@ from preql.core.models import (
     BaseJoin,
     merge_ctes,
 )
-from preql.core.processing.concept_strategies import get_datasource_by_concept_and_grain
+
 from preql.utility import string_to_hash, unique
+from preql.hooks.base_hook import BaseHook
+
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -87,7 +91,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 )
             sub_cte = datasource_to_ctes(sub_datasource)
             children += sub_cte
-            output += sub_cte
             for cte in sub_cte:
                 for value in cte.output_columns:
                     source_map[value.address] = cte.name
@@ -119,9 +122,8 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         source_map=source_map,
         # related columns include all referenced columns, such as filtering
         # related_columns=datasource.concepts,
-        joins=[base_join_to_join(join, output) for join in query_datasource.joins],
+        joins=[base_join_to_join(join, children) for join in query_datasource.joins],
         related_columns=query_datasource.input_concepts,
-        filter_columns=query_datasource.filter_concepts,
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
         # we restrict parent_ctes to one level
@@ -135,109 +137,114 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     return output
 
 
-def get_disconnected_components(
-    concept_map: Dict[str, Set[Concept]]
-) -> Tuple[int, List]:
-    """Find if any of the datasources are not linked"""
-    import networkx as nx
-
-    graph = nx.Graph()
-    for datasource, concepts in concept_map.items():
-        graph.add_node(datasource)
-        for concept in concepts:
-            graph.add_edge(datasource, concept.address)
-    sub_graphs = list(nx.connected_components(graph))
-    return len(sub_graphs), sub_graphs
-
-
-def get_query_datasources(
-    environment: Environment, statement: Select, graph: Optional[ReferenceGraph] = None
-) -> Tuple[Dict[str, set[Concept]], Dict[str, Union[Datasource, QueryDatasource]]]:
-    concept_map: Dict[str, Set[Concept]] = defaultdict(set)
+def get_query_datasources_v2(
+    environment: Environment,
+    statement: Select,
+    graph: Optional[ReferenceGraph] = None,
+    hooks: Optional[List[BaseHook]] = None,
+) -> QueryDatasource:
     graph = graph or generate_graph(environment)
-    datasource_map: Dict[str, Union[Datasource, QueryDatasource]] = {}
-    # if statement.where_clause:
-    #     # TODO: figure out right place to group to do predicate pushdown
-    #     statement.grain = statement.grain + Grain(components =statement.where_clause.input)
-    components = {
-        False: unique(
-            statement.output_components + statement.grain.components_copy, "address"
-        )
-    }
 
-    for key, concept_list in components.items():
-        # TODO - identify if concept is already available on a datasource, and skip further search
-        for concept in concept_list:
-            logger.debug(
-                f"{LOGGER_PREFIX} Beginning search for {concept.address} at {str(statement.grain)}"
-            )
-            datasource = get_datasource_by_concept_and_grain(
-                concept, statement.grain, environment, graph, whole_grain=key
-            )
-            logger.debug(
-                f"{LOGGER_PREFIX} Finished search for {concept.address} from {datasource.name} "
-            )
-            if concept not in concept_map[datasource.identifier]:
-                concept_map[datasource.identifier].add(concept)
-            # add in the rest of our outptu concepts to the map
-            for item in datasource.output_concepts:
-                concept_map[datasource.identifier].add(item)
-            if datasource.identifier in datasource_map:
-                # concatenate to add new fields
-                datasource_map[datasource.identifier] = (
-                    datasource_map[datasource.identifier] + datasource
-                )
-            else:
-                datasource_map[datasource.identifier] = datasource
-    disconnected, disco_lists = get_disconnected_components(concept_map)
-    # if not all datasources can ultimately be merged
-    if disconnected > 1:
-        logger.debug(f"{LOGGER_PREFIX} Disconnected nodes found, have {disco_lists}, need to do subgrain search")
-        components = {True: statement.output_components + statement.grain.components}
-        for key, concept_list in components.items():
-            for concept in concept_list:
-                datasource = get_datasource_by_concept_and_grain(
-                    concept, statement.grain, environment, graph, whole_grain=key
-                )
+    ds = source_query_concepts(
+        statement.output_components, [], environment=environment, g=graph
+    )
+    if hooks:
+        for hook in hooks:
+            hook.process_root_strategy_node(ds)
+    final_qds = ds.resolve()
+    return final_qds
 
-                logger.debug(
-                    f"{LOGGER_PREFIX} finished search for {concept.address} at {str(statement.grain)} from {datasource.identifier}"
-                )
 
-                if concept not in concept_map[datasource.identifier]:
-                    concept_map[datasource.identifier].add(concept)
-                if datasource.identifier in datasource_map:
-                    # concatenate to add new fields
-                    datasource_map[datasource.identifier] = (
-                        datasource_map[datasource.identifier] + datasource
-                    )
-                else:
-                    datasource_map[datasource.identifier] = datasource
-            # when we have a unified graph, break the execution
-            if get_disconnected_components(concept_map) == 1:
-                logger.debug(
-                    f"{LOGGER_PREFIX} graph is now connected, exiting "
-                )
-                break
-    return concept_map, datasource_map
+get_query_datasources = get_query_datasources_v2
+
+
+def flatten_ctes(input: CTE) -> list[CTE]:
+    output = [input]
+    for cte in input.parent_ctes:
+        output += flatten_ctes(cte)
+    return output
+
+
+def process_query_v2(
+    environment: Environment, statement: Select, hooks: Optional[List[BaseHook]] = None
+) -> ProcessedQuery:
+    hooks = hooks or []
+    graph = generate_graph(environment)
+    root_datasource = get_query_datasources_v2(
+        environment=environment, graph=graph, statement=statement, hooks=hooks
+    )
+    for hook in hooks:
+        hook.process_root_datasource(root_datasource)
+    # this should always return 1 - TODO, refactor
+    root_cte = datasource_to_ctes(root_datasource)[0]
+    for hook in hooks:
+        hook.process_root_cte(root_cte)
+    raw_ctes = list(reversed(flatten_ctes(root_cte)))
+    seen = set()
+    ctes = []
+    # we can have duplicate CTEs at this point
+    # so filter them out
+    for cte in raw_ctes:
+        if cte.name not in seen:
+            seen.add(cte.name)
+            ctes.append(cte)
+    final_ctes = ctes
+
+    # for cte in others:
+    #     # we do the with_grain here to fix an issue
+    #     # where a query with a grain of properties has the components of the grain
+    #     # with the default key grain rather than the grain of the select
+    #     # TODO - evaluate if we can fix this in select definition
+    #     joinkeys = [
+    #         JoinKey(c)
+    #         for c in statement.grain.components
+    #         if c.with_grain(cte.grain) in cte.output_columns
+    #         and c.with_grain(base.grain) in base.output_columns
+    #         and cte.grain.issubset(statement.grain)
+    #     ]
+    #     if joinkeys:
+    #         joins.append(
+    #             Join(
+    #                 left_cte=base,
+    #                 right_cte=cte,
+    #                 joinkeys=joinkeys,
+    #                 jointype=JoinType.LEFT_OUTER,
+    #             )
+    #         )
+    return ProcessedQuery(
+        order_by=statement.order_by,
+        grain=statement.grain,
+        limit=statement.limit,
+        where_clause=statement.where_clause,
+        output_columns=statement.output_components,
+        ctes=final_ctes,
+        base=root_cte,
+        # we no longer do any joins at final level, this should always happen in parent CTEs
+        joins=[],
+    )
+
+
+from preql.hooks.base_hook import BaseHook
 
 
 def process_query(
-    environment: Environment,
-    statement: Select,
-    hooks: Optional[List[BaseProcessingHook]] = None,
+    environment: Environment, statement: Select, hooks: Optional[List[BaseHook]] = None
 ) -> ProcessedQuery:
     """Turn the raw query input into an instantiated execution tree."""
+    return process_query_v2(environment, statement, hooks)
     graph = generate_graph(environment)
     concepts, datasources = get_query_datasources(
         environment=environment, graph=graph, statement=statement
     )
+
     ctes = []
-    joins = []
     for datasource in datasources.values():
         if isinstance(datasource, Datasource):
             raise ValueError("Unexpected base datasource")
         ctes += datasource_to_ctes(datasource)
+
+    joins = []
+
     final_ctes = merge_ctes(ctes)
     base_list: List[CTE] = [cte for cte in final_ctes if cte.grain == statement.grain]
     if base_list:
@@ -254,7 +261,7 @@ def process_query(
             ),
         )
         if not base_list:
-            cte_grain = [str(cte.grain) for cte in final_ctes]
+            cte_grain = [cte.name + "@" + str(cte.grain) for cte in final_ctes]
             raise ValueError(
                 f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
             )

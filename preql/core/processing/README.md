@@ -1,27 +1,88 @@
 
 ## Query Planning
 
-Query planning is divided into phases.
+Query planning is divided into 3 core phases.
 
-In the first pass, every output concept is treated individually. For each one,
-the engine will run through strategies to return the output concept at the 
-query grain from one or more datasources.
+The first phase builds an abstract node tree by looping through every combination of
+output concept and keys in the output query grain and recursively searching for sources.
 
-A non-exhaustive list of strategies:
-- See if a datasource directly has the field at the grain
-- See if an aggregation from a datasource can produce the field
-- See if a join between datasources can produce the field at grain
-- See if the function requires complex derivation, such as a window function
-- See if the concept is a filtered concept, and build a derivation
-- Etc
+It will begin with aggregations if those exist, then window functions, then filtration functions,
+and finally look for bare selects.
 
-In the second pass, all datasources will be converted to CTEs.
+Each type of complex node will generate a new recursive node search for required parents,
+until a set of terminal nodes with bare concept selection is reached. 
 
-In the third pass, all CTEs will be merged, so that CTEs with the same
-sources and grains are consolidated into a singe reference with all 
-output columns.
+A default merge node is injected between every recursion. The overall loop will terminate early 
+if an output node is returned with all required query concepts. If not, the merge node will
+handle a join between the returned subtrees. If there are not multiple nodes to merge,
+the merge node will simply return the single parent node and prune itself from the graph.
 
-In the last pass, the CTEs will be rendered by a backend appropriate engine,
-and any extraneous CTEs will be pruned. (A CTE may become extraneous if it
-was originally created to serve a concept that is now returned as a byproduct
-of other concept fetching.)
+In the second pass, each node is resolved to an abstract CTE. At this phase, CTEs that are
+identical can be merged.
+
+Finally, in query rendering each CTE is rendered to a backend appropriate query. The finale
+CTE, or the `base`, will contain all required columns for the final output. The last
+select will only apply any query level filters + ordering, no joins will take place.
+
+## Debugging
+
+Base query derivation accepts the 'DebugHook' defined under hooks, which will print to console
+each step of the plan. This is a great first step to figure out what might be going
+wrong with discovery in a query. 
+
+Example usage
+
+```python
+from preql import parse
+from preql.core.query_processor import process_query
+from preql.hooks.query_debugger import DebuggingHook
+from preql.core.models import Select
+
+declarations = """
+key user_id int metadata(description="the description");
+property user_id.display_name string metadata(description="The display name ");
+property user_id.about_me string metadata(description="User provided description");
+
+
+key post_id int;
+metric post_count <-count(post_id);
+
+
+datasource posts (
+user_id: user_id,
+id: post_id
+)
+grain (post_id)
+address bigquery-public-data.stackoverflow.post_history
+;
+
+select
+user_id,
+count(post_id) -> user_post_count
+;
+
+metric avg_user_post_count <- avg(user_post_count);
+
+
+datasource users (
+id: user_id,
+display_name: display_name,
+about_me: about_me,
+)
+grain (user_id)
+address bigquery-public-data.stackoverflow.users
+;
+
+
+select
+avg_user_post_count
+;
+
+
+"""
+env, parsed = parse(declarations)
+select: Select = parsed[-1]
+
+query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
+
+```

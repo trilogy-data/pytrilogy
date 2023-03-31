@@ -6,6 +6,7 @@ from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
+from preql.hooks.query_debugger import DebuggingHook
 
 
 def test_functions(test_environment):
@@ -24,7 +25,9 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    BaseDialect().compile_statement(process_query(test_environment, select))
+    BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
 
 
 def test_wrapped_property_functions(test_environment):
@@ -85,3 +88,28 @@ def test_explicit_cast(test_environment):
         _str_order_id
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
+
+
+def test_math_functions(test_environment):
+    from preql.hooks.query_debugger import DebuggingHook
+
+    declarations = """
+    
+    
+    property inflated_order_value<- multiply(revenue, 2);
+    property fixed_order_value<- inflated_order_value / 2;
+    property order_sub <- revenue - 2;
+    property order_add <- revenue + 2;
+    select
+        order_id,
+        inflated_order_value,
+        fixed_order_value,
+        order_sub,
+        order_add
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    x = BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
+    print(x)

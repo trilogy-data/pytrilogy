@@ -1,7 +1,6 @@
 from typing import Mapping, Callable, Any
 
 from jinja2 import Template
-from typing import Mapping, Callable, Any
 
 from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect

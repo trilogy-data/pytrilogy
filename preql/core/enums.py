@@ -69,6 +69,12 @@ class FunctionType(Enum):
     CAST = "cast"
     CONCAT = "concat"
 
+    # Math
+    DIVIDE = "divide"
+    MULTIPLY = "multiply"
+    ADD = "add"
+    SUBTRACT = "subtract"
+
     # Aggregates
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
@@ -140,3 +146,10 @@ class ComparisonOperator(Enum):
         if value == "is":
             return ComparisonOperator.EQ
         return super()._missing_(value)
+
+
+class SourceType(Enum):
+    FILTER = "filter"
+    SELECT = "select"
+    GROUP = "group"
+    WINDOW = "window"

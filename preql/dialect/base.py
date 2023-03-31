@@ -5,7 +5,7 @@ from jinja2 import Template
 from preql.constants import logger
 from preql.core.enums import FunctionType, WindowType, JoinType
 from preql.core.enums import Purpose, DataType
-from preql.core.hooks import BaseProcessingHook
+from preql.hooks.base_hook import BaseHook
 from preql.core.models import (
     Concept,
     CTE,
@@ -20,7 +20,7 @@ from preql.core.models import (
     Function,
 )
 from preql.core.models import Environment, Select
-from preql.core.query_processor import process_query
+from preql.core.query_processor import process_query, process_query_v2
 from preql.dialect.common import render_join
 from preql.utility import unique
 from preql.constants import CONFIG
@@ -28,7 +28,7 @@ from preql.constants import CONFIG
 LOGGER_PREFIX = "[RENDERING]"
 
 
-def INVALID_REFERENCE_STRING(x:Any):
+def INVALID_REFERENCE_STRING(x: Any):
     return "INVALID_REFERENCE_BUG"
 
 
@@ -48,6 +48,11 @@ DATATYPE_MAP = {
 FUNCTION_MAP = {
     # generic types
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
+    # math
+    FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
+    FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",
+    FunctionType.DIVIDE: lambda x: f"({x[0]} / {x[1]})",
+    FunctionType.MULTIPLY: lambda x: f"({x[0]} * {x[1]})",
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -166,12 +171,12 @@ class BaseDialect:
         elif isinstance(v, DataType):
             return DATATYPE_MAP.get(v, "UNMAPPEDDTYPE")
         else:
-            return v
+            return str(v)
 
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
-            f"{LOGGER_PREFIX} [{c.address}] Rendering on {cte.name} alias={alias}"
+            f"{LOGGER_PREFIX} [{c.address}] Attempting rendering on {cte.name} alias={alias}"
         )
 
         if (c.lineage and check_lineage(c, cte)) and not cte.source_map.get(
@@ -201,6 +206,9 @@ class BaseDialect:
                 if cte.group_to_grain:
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
                 else:
+                    logger.info(
+                        f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at target grain"
+                    )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:
@@ -269,85 +277,97 @@ class BaseDialect:
         elif isinstance(e, bool):
             return f"{True if e else False}"
         elif isinstance(e, str):
+
             return f"'{e}'"
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, list):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+
         return str(e)
+
+    def render_cte(self, cte: CTE):
+        return CompiledCTE(
+            name=cte.name,
+            statement=self.SQL_TEMPLATE.render(
+                select_columns=[
+                    self.render_concept_sql(c, cte) for c in cte.output_columns
+                ],
+                base=f"{cte.base_name} as {cte.base_alias}",
+                grain=cte.grain,
+                limit=None,
+                joins=[
+                    render_join(join, self.QUOTE_CHARACTER)
+                    for join in (cte.joins or [])
+                ],
+                where=self.render_expr(cte.condition, cte)
+                if cte.condition
+                else None,  # source_map=cte_output_map)
+                # where=self.render_expr(where_assignment[cte.name], cte)
+                # if cte.name in where_assignment
+                # else None,
+                group_by=[
+                    self.render_concept_sql(c, cte, alias=False)
+                    for c in unique(
+                        cte.grain.components
+                        + [
+                            c
+                            for c in cte.output_columns
+                            if c.purpose == Purpose.PROPERTY
+                            and c not in cte.grain.components
+                        ]
+                        + [
+                            c
+                            for c in cte.output_columns
+                            if c.purpose == Purpose.METRIC
+                            and any(
+                                [
+                                    c.with_grain(cte.grain) in cte.output_columns
+                                    for cte in cte.parent_ctes
+                                ]
+                            )
+                        ],
+                        "address",
+                    )
+                ]
+                if cte.group_to_grain
+                else None,
+            ),
+        )
 
     def generate_ctes(
         self, query: ProcessedQuery, where_assignment: Dict[str, Conditional]
     ):
-        return [
-            CompiledCTE(
-                name=cte.name,
-                statement=self.SQL_TEMPLATE.render(
-                    select_columns=[
-                        self.render_concept_sql(c, cte) for c in cte.output_columns
-                    ],
-                    base=f"{cte.base_name} as {cte.base_alias}",
-                    grain=cte.grain,
-                    limit=None,
-                    joins=[
-                        render_join(join, self.QUOTE_CHARACTER)
-                        for join in (cte.joins or [])
-                    ],
-                    where=self.render_expr(cte.condition, cte)
-                    if cte.condition
-                    else None,  # source_map=cte_output_map)
-                    # where=self.render_expr(where_assignment[cte.name], cte)
-                    # if cte.name in where_assignment
-                    # else None,
-                    group_by=[
-                        self.render_concept_sql(c, cte, alias=False)
-                        for c in unique(
-                            cte.grain.components
-                            + [
-                                c
-                                for c in cte.output_columns
-                                if c.purpose == Purpose.PROPERTY
-                                and c not in cte.grain.components
-                            ],
-                            "address",
-                        )
-                    ]
-                    if cte.group_to_grain
-                    else None,
-                ),
-            )
-            for cte in query.ctes
-        ]
+        return [self.render_cte(cte) for cte in query.ctes]
 
     def generate_queries(
         self,
         environment: Environment,
         statements,
-        hooks: Optional[List[BaseProcessingHook]] = None,
+        hooks: Optional[List[BaseHook]] = None,
     ) -> List[ProcessedQuery]:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
-                output.append(process_query(environment, statement, hooks))
+                output.append(process_query_v2(environment, statement))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
         return output
 
     def compile_statement(self, query: ProcessedQuery) -> str:
 
-        select_columns: list[str] = []
+        select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
-
         # valid joins are anything that is a subset of the final grain
-        output_ctes = [cte for cte in query.ctes if cte.grain.issubset(query.grain)]
+        output_ctes = [query.base]
         for cte in output_ctes:
             for c in cte.output_columns:
                 if c.address not in selected and c.address in output_addresses:
-                    select_columns.append(
-                        f"{cte.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                    )
+                    select_columns[
+                        c.address
+                    ] = f"{cte.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                     cte_output_map[c.address] = cte
                     selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
@@ -391,17 +411,22 @@ class BaseDialect:
                 raise NotImplementedError(
                     f"Cannot generate query with filtering on grain {filter} that is not a subset of the query output grain {query_output}. Use a filtered concept instead."
                 )
-        for join in query.joins:
-
-            if (
-                join.left_cte.grain.issubset(query.grain)
-                and join.left_cte.grain != query.grain
-            ):
-                join.jointype = JoinType.FULL
+        # 2023-03-31 - this needs to be moved up into query building
+        # for join in query.joins:
+        #
+        #     if (
+        #         join.left_cte.grain.issubset(query.grain)
+        #         and join.left_cte.grain != query.grain
+        #     ):
+        #         join.jointype = JoinType.FULL
         compiled_ctes = self.generate_ctes(query, {})
 
+        # want to return columns in the order the user wrote
+        sorted_select = []
+        for c in query.output_columns:
+            sorted_select.append(select_columns[c.address])
         final = self.SQL_TEMPLATE.render(
-            select_columns=select_columns,
+            select_columns=sorted_select,
             base=query.base.name,
             joins=[render_join(join, self.QUOTE_CHARACTER) for join in query.joins],
             ctes=compiled_ctes,

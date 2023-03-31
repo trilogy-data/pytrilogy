@@ -19,7 +19,8 @@ datasource posts (
     owner_user_id: Partial[user.id],
     id: id,
     body: text,
-    creation_date: creation_date
+    creation_date: creation_date,
+    comment_count: comment_count
     )
     grain (id)
     address bigquery-public-data.stackoverflow.posts_questions

@@ -1,7 +1,7 @@
 from os.path import dirname
 
 from preql.core.models import Select, Environment
-from preql.core.query_processor import process_query
+from preql.core.query_processor import process_query, process_query_v2
 from preql.parser import parse
 
 
@@ -46,4 +46,4 @@ limit 10
     ;"""
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     select: Select = parsed[-1]
-    query = process_query(statement=select, environment=env)
+    query = process_query_v2(statement=select, environment=env)

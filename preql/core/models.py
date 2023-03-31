@@ -2,7 +2,17 @@ import difflib
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, MutableMapping, TypeVar, List, Optional, Union, Set, Any
+from typing import (
+    Dict,
+    MutableMapping,
+    TypeVar,
+    List,
+    Optional,
+    Union,
+    Set,
+    Any,
+    Sequence,
+)
 
 from pydantic import BaseModel, validator, Field
 
@@ -19,6 +29,7 @@ from preql.core.enums import (
     ComparisonOperator,
     WindowOrder,
     PurposeLineage,
+    SourceType,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -111,6 +122,7 @@ class Concept(BaseModel):
             and self.purpose == other.purpose
             and self.namespace == other.namespace
             and self.grain == other.grain
+            and self.keys == other.keys
         )
 
     def __str__(self):
@@ -160,6 +172,8 @@ class Concept(BaseModel):
                     if isinstance(item, Concept):
                         components += item.sources
             grain = Grain(components=components)
+        elif self.purpose == Purpose.METRIC:
+            grain = Grain()
         else:
             grain = self.grain  # type: ignore
         return self.__class__(
@@ -234,7 +248,7 @@ class Function(BaseModel):
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
-    arguments: List[Union[Concept, str, float, int, DataType]]
+    arguments: List[Union[Concept, int, float, str, DataType]]
 
     @validator("arguments", pre=True, always=True)
     def parse_arguments(cls, v, **kwargs):
@@ -628,7 +642,13 @@ class Grain(BaseModel):
                 if component.with_default_grain() in components:
                     continue
                 components.append(component.with_default_grain())
-        return Grain(components=components)
+        base_components = [c for c in components if c.purpose == Purpose.KEY]
+        for c in components:
+            if c.purpose == Purpose.PROPERTY and not any(
+                [key in base_components for key in (c.keys or [])]
+            ):
+                base_components.append(c)
+        return Grain(components=base_components)
 
     def __radd__(self, other) -> "Grain":
         if other == 0:
@@ -698,6 +718,10 @@ class Datasource:
         return [c.concept for c in self.columns]
 
     @property
+    def group_required(self):
+        return False
+
+    @property
     def full_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
@@ -737,42 +761,6 @@ class Datasource:
         if isinstance(self.address, Address):
             return self.address.location
         return self.address
-
-
-@dataclass(eq=True)
-class JoinedDataSource:
-    concepts: List[Concept]
-    source_map: Dict[str, "CTE"]
-    grain: Grain
-    address: Address
-    # base: Datasource
-    joins: List["Join"]
-
-    @property
-    def datasources(self) -> List[Datasource]:
-        datasources = []
-        for item in self.source_map.values():
-            datasources.append(item.source)
-
-        return unique(datasources, "identifier")
-
-    @property
-    def identifier(self) -> str:
-        return "_join_".join([d.name for d in self.datasources])
-
-    def get_alias(self, concept: Concept):
-        for x in self.datasources:
-            try:
-                return x.get_alias(concept.with_grain(x.grain))
-            except ValueError as e:
-                from preql.constants import logger
-
-                logger.error(e)
-                continue
-        existing = [str(c) for c in self.concepts]
-        raise ValueError(
-            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier}; have {existing}."
-        )
 
 
 @dataclass
@@ -823,12 +811,17 @@ class QueryDatasource:
     input_concepts: List[Concept]
     output_concepts: List[Concept]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]]
-    datasources: List[Union[Datasource, "QueryDatasource"]]
+    datasources: Sequence[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
     condition: Optional[Union["Conditional", "Comparison"]] = field(default=None)
     filter_concepts: List[Concept] = field(default_factory=list)
+    source_type: SourceType = SourceType.SELECT
+
+    def __post_init__(self):
+        self.input_concepts = unique(self.input_concepts, "address")
+        self.output_concepts = unique(self.output_concepts, "address")
 
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -851,14 +844,13 @@ class QueryDatasource:
 
     @property
     def group_required(self) -> bool:
+        if self.source_type:
+            if self.source_type == SourceType.GROUP:
+                return True
+            return False
         return (
             False if sum([ds.grain for ds in self.datasources]) == self.grain else True
         )
-
-    def __post_init__(self):
-        self.output_concepts = unique(self.output_concepts, "address")
-        self.input_concepts = unique(self.input_concepts, "address")
-        self.filter_concepts = unique(self.filter_concepts, "address")
 
     def __add__(self, other):
 
@@ -869,7 +861,26 @@ class QueryDatasource:
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
             )
-        logger.debug(f"{LOGGER_PREFIX} merging {self.name} with {len(self.output_concepts)} concepts and {other.name} with {len(other.output_concepts)} concepts")
+        if not self.source_type == other.source_type:
+            raise SyntaxError(
+                "Can only merge two query datasources with identical source type"
+            )
+        if not self.group_required == other.group_required:
+            raise SyntaxError(
+                "can only merge two datasources if the group required flag is the same"
+            )
+        logger.debug(
+            f"{LOGGER_PREFIX} merging {self.name} with {[c.address for c in self.output_concepts]} concepts and {other.name} with {[c.address for c in other.output_concepts]} concepts"
+        )
+
+        merged_datasources = {}
+        for ds in [*self.datasources, *other.datasources]:
+            if ds.identifier in merged_datasources:
+                merged_datasources[ds.identifier] = (
+                    merged_datasources[ds.identifier] + ds
+                )
+            else:
+                merged_datasources[ds.identifier] = ds
         return QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -878,24 +889,25 @@ class QueryDatasource:
                 self.output_concepts + other.output_concepts, "address"
             ),
             source_map={**self.source_map, **other.source_map},
-            datasources=self.datasources,
+            datasources=list(merged_datasources.values()),
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
-            filter_concepts=unique(
-                self.filter_concepts + other.filter_concepts, "address"
-            ),
             condition=self.condition + other.condition
             if (self.condition or other.condition)
             else None,
+            source_type=self.source_type,
         )
 
     @property
     def identifier(self) -> str:
+        filters = abs(hash(str(self.condition))) if self.condition else ""
         grain = "_".join(
             [str(c.address).replace(".", "_") for c in self.grain.components]
         )
-        return "_join_".join([d.name for d in self.datasources]) + (
-            f"_at_{grain}" if grain else "_at_abstract"
+        return (
+            "_join_".join([d.name for d in self.datasources])
+            + (f"_at_{grain}" if grain else "_at_abstract")
+            + (f"_filtered_by_{filters}" if filters else "")
         )
         # return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
 
@@ -952,15 +964,15 @@ class CTE:
     source_map: Dict[str, str]
     # related columns include all referenced columns
     related_columns: List[Concept]
-    # filter columns are specific output columns for filtering
-    # to support filtering before aggregation to grain
-    filter_columns: List[Concept]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
     parent_ctes: List["CTE"] = field(default_factory=list)
     joins: List["Join"] = field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison"]] = None
+
+    def __post_init__(self):
+        self.output_columns = unique(self.output_columns, "address")
 
     def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
@@ -978,9 +990,6 @@ class CTE:
         self.related_columns = unique(
             self.related_columns + other.related_columns, "address"
         )
-        self.filter_columns = unique(
-            self.filter_columns + other.filter_columns, "address"
-        )
         return self
 
     @property
@@ -989,7 +998,8 @@ class CTE:
         not just those immediately referenced.
         This method returns only those that are relevant
         to the output of the query."""
-        ctes = []
+        ctes = self.parent_ctes
+        return self.parent_ctes
         for key in self.output_columns:
             if not key.lineage:
                 ctes.append(self.source_map[key.address])
@@ -1220,6 +1230,8 @@ class Conditional(BaseModel):
     operator: BooleanOperator
 
     def __add__(self, other) -> "Conditional":
+        if other == 0:
+            return self
         if not other:
             return self
         elif isinstance(other, Conditional):

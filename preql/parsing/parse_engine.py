@@ -147,9 +147,17 @@ grammar = r"""
     
     in_comparison: expr "in" expr_tuple
     
-    expr: window_item | filter_item | fcast | _aggregate_functions | len | _string_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference
+    expr: window_item | filter_item | fcast | _aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference
     
     // functions
+    
+    //math TODO: add syntactic sugar
+    fadd: ("add"i "(" expr "," expr ")" ) | ( expr "+" expr )
+    fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
+    fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
+    fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
+    
+    _math_functions: fadd | fsub | fmul | fdiv
     
     //generic
     fcast: "cast"i "(" expr "AS"i TYPE ")"
@@ -174,7 +182,6 @@ grammar = r"""
     
     _aggregate_functions: count | count_distinct | sum | avg | max | min
 
-    
     // date functions
     fdate: "date"i "(" expr ")"
     fdatetime: "datetime"i "(" expr ")"
@@ -367,6 +374,7 @@ class ParseToObjects(Transformer):
             metadata = args[3]
         else:
             metadata = None
+        purpose = args[0]
         name = args[1]
 
         lookup, namespace, name = parse_concept_reference(name, self.environment)
@@ -389,6 +397,10 @@ class ParseToObjects(Transformer):
             return concept
         if isinstance(args[2], WindowItem):
             window_item: WindowItem = args[2]
+            if purpose == Purpose.PROPERTY:
+                keys = [window_item.content]
+            else:
+                keys = []
             concept = Concept(
                 name=name,
                 datatype=window_item.content.datatype,
@@ -398,6 +410,7 @@ class ParseToObjects(Transformer):
                 # windows are implicitly at the grain of the group by + the original content
                 grain=Grain(components=window_item.over + [window_item.content.output]),
                 namespace=namespace,
+                keys=keys,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -480,6 +493,7 @@ class ParseToObjects(Transformer):
         lookup, namespace, output = parse_concept_reference(output, self.environment)
         self.validate_concept(lookup, meta)
         # keys are used to pass through derivations
+
         if function.output_purpose == Purpose.PROPERTY:
             grain = Grain(components=function.arguments)
             keys = [x for x in function.arguments if isinstance(x, Concept)]
@@ -674,8 +688,9 @@ class ParseToObjects(Transformer):
         return FilterItem(content=concept, where=where)
 
     # BEGIN FUNCTIONS
-    def expr_reference(self, args) -> Concept:
-        return self.environment.concepts[args[0]]
+    @v_args(meta=True)
+    def expr_reference(self, meta, args) -> Concept:
+        return self.environment.concepts.__getitem__(args[0], meta.line)
 
     def expr(self, args):
         if len(args) > 1:
@@ -940,6 +955,63 @@ class ParseToObjects(Transformer):
             arg_count=2,
         )
 
+    # math functions
+    def fadd(self, args):
+        output_datatype = args[0].datatype
+        return Function(
+            operator=FunctionType.ADD,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.PROPERTY,
+            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=2,
+        )
+
+    def fsub(self, args):
+        output_datatype = args[0].datatype
+        return Function(
+            operator=FunctionType.SUBTRACT,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.PROPERTY,
+            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=2,
+        )
+
+    def fmul(self, args):
+        output_datatype = args[0].datatype
+        return Function(
+            operator=FunctionType.MULTIPLY,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.PROPERTY,
+            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=2,
+        )
+
+    def fdiv(self, args):
+        output_datatype = args[0].datatype
+        return Function(
+            operator=FunctionType.DIVIDE,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.PROPERTY,
+            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=2,
+        )
+
+
+def unpack_visit_error(e: VisitError):
+    """This is required to get exceptions from imports, which would
+    raise nested VisitErrors"""
+    if isinstance(e.orig_exc, VisitError):
+        unpack_visit_error(e.orig_exc)
+    if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
+        raise e.orig_exc
+    elif isinstance(e.orig_exc, ValidationError):
+        raise InvalidSyntaxException(str(e.orig_exc))
+    raise e
+
 
 def parse_text(
     text: str, environment: Optional[Environment] = None, print_flag: bool = False
@@ -949,13 +1021,9 @@ def parse_text(
     try:
         output = [v for v in parser.transform(PARSER.parse(text)) if v]
     except VisitError as e:
-        if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
-            raise e.orig_exc
-        # Pydantic validation errors on parsing are syntax errors
-        elif isinstance(e.orig_exc, ValidationError):
-            raise InvalidSyntaxException(str(e.orig_exc))
-        else:
-            raise e
+        unpack_visit_error(e)
+        # this will never be reached
+        raise e
     except (
         UnexpectedCharacters,
         UnexpectedEOF,

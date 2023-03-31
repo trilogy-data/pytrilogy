@@ -5,10 +5,10 @@ import pytest
 
 from preql.core.env_processor import generate_graph
 from preql.core.models import Select, QueryDatasource, CTE, Grain
-from preql.core.query_processor import (
-    get_datasource_by_concept_and_grain,
-    datasource_to_ctes,
-    get_query_datasources,
+from preql.core.query_processor import datasource_to_ctes, get_query_datasources
+from preql.core.processing.concept_strategies_v2 import (
+    source_concepts,
+    source_query_concepts,
 )
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
@@ -36,7 +36,9 @@ def test_finance_queries(adventureworks_engine, environment):
 
     for statement in sql:
         sql = generator.compile_statement(statement)
+        print(sql)
         results = adventureworks_engine.execute_query(statement)
+        assert list(results)[0] ==('Canadian Division', 8, 292174782.71999985)
 
 
 @pytest.mark.adventureworks
@@ -54,16 +56,24 @@ def test_query_datasources(environment):
     test: Select = statements[-1]  # multipart join
 
     environment_graph = generate_graph(environment)
+    from preql.hooks.query_debugger import print_recursive_nodes
 
     # assert a group up to the first name works
-    customer_datasource = get_datasource_by_concept_and_grain(
-        environment.concepts["customer.first_name"],
-        Grain(components=[environment.concepts["customer.first_name"]]),
+
+    # source query concepts includes extra group by to grain
+    customer_node = source_query_concepts(
+        [environment.concepts["customer.first_name"]],
+        [environment.concepts["customer.first_name"]],
         environment,
         environment_graph,
     )
+    print_recursive_nodes(customer_node)
+    customer_datasource = customer_node.resolve()
 
-    assert customer_datasource.identifier == "customers_at_customer_first_name"
+    assert (
+        customer_datasource.identifier
+        == "customers_at_customer_customer_id_at_customer_first_name"
+    )
 
     # assert a join before the group by works
     t_grain = Grain(
@@ -72,38 +82,35 @@ def test_query_datasources(environment):
             environment.concepts["customer.first_name"],
         ]
     )
-    customer_datasource = get_datasource_by_concept_and_grain(
-        environment.concepts["internet_sales.order_number"],
-        t_grain,
+    customer_datasource = source_concepts(
+        [environment.concepts["internet_sales.order_number"]],
+        t_grain.components_copy,
         environment,
         environment_graph,
-    )
+    ).resolve()
 
     assert (
-        "fact_internet_sales_at_internet_sales_order_number"
+        "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number"
         in customer_datasource.identifier
-        and customer_datasource.grain == t_grain
     )
 
     # assert a group up to the first name works
-    customer_datasource = get_datasource_by_concept_and_grain(
-        environment.concepts["customer.first_name"],
-        Grain(
-            components=[
-                environment.concepts["customer.first_name"],
-                environment.concepts["customer.last_name"],
-            ]
-        ),
+    customer_datasource = source_query_concepts(
+        [environment.concepts["customer.first_name"]],
+        [
+            environment.concepts["customer.first_name"],
+            environment.concepts["customer.last_name"],
+        ],
         environment,
         environment_graph,
-    )
+    ).resolve()
 
     assert (
         customer_datasource.identifier
-        == "customers_at_customer_first_name_customer_last_name"
+        == "customers_at_customer_customer_id_at_customer_first_name_customer_last_name"
     )
 
-    concepts, datasources = get_query_datasources(
+    datasource = get_query_datasources(
         environment=environment, graph=environment_graph, statement=test
     )
 
@@ -116,11 +123,11 @@ def test_query_datasources(environment):
     # assert concept_to_node(sales.with_grain) in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales)))
     # assert (concept_to_node(sales),concept_to_node(total_sales), ) in environment_graph.edges()
 
-    default_fact = "fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
+    default_fact = "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number"
     for concept in test.output_components:
-        datasource = get_datasource_by_concept_and_grain(
-            concept, test.grain, environment, environment_graph
-        )
+        datasource = source_concepts(
+            [concept], test.grain.components_copy, environment, environment_graph
+        ).resolve()
 
         if concept.name == "customer_id":
             assert datasource.identifier == "customers<customer_id>"
@@ -133,46 +140,26 @@ def test_query_datasources(environment):
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "customers_join_fact_internet_sales_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
+                == "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
             )
         elif concept.name == "region":
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
         elif concept.name == "first_name":
             assert datasource.identifier.startswith(
-                "customers_join_fact_internet_sales_at_internet_sales"
+                "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number"
             )
         else:
             raise ValueError(concept)
 
-    ctes = []
-    for datasource in datasources.values():
-        ctes += datasource_to_ctes(datasource)
+    cte = datasource_to_ctes(datasource)[0]
 
-    # TODO: does this have value?
-    # It's catching query shape changes, but those are more innocous
-    # than outptu changes
-    assert len(ctes) == 4
-    base_cte: CTE = [
-        cte
-        for cte in ctes
-        if cte.name.startswith(
-            "cte_fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
-        )
-    ][0]
-    assert base_cte.group_to_grain == False
-
-    assert {c.address for c in base_cte.output_columns} == {
-        "customer.customer_id",
-        "dates.due_key",
-        "dates.order_key",
-        "dates.ship_key",
+    assert {c.address for c in cte.output_columns} == {
+        "customer.first_name",
         "internet_sales.order_line_number",
         "internet_sales.order_number",
-        "internet_sales.order_quantity",
-        "internet_sales.sales_amount",
-        "sales_territory.key",
+        "internet_sales.total_sales_amount",
     }
-    assert len(base_cte.output_columns) == 9
+    assert len(cte.output_columns) == 4
 
 
 def recurse_datasource(parent: QueryDatasource, depth=0):
@@ -193,27 +180,33 @@ def test_two_properties(environment):
     environment_graph = generate_graph(environment)
 
     # assert a group up to the first name works
-    customer_datasource = get_datasource_by_concept_and_grain(
-        environment.concepts["customer.first_name"],
-        test.grain,
+    customer_datasource = source_concepts(
+        [environment.concepts["customer.first_name"]],
+        test.grain.components_copy,
         environment,
         environment_graph,
-    )
+    ).resolve()
 
     recurse_datasource(customer_datasource)
 
-    # assert customer_datasource.identifier == "customers_fact_internet_sales_order_dates_at_dates_order_date_customer_first_name"
-
-    order_date_datasource = get_datasource_by_concept_and_grain(
-        environment.concepts["dates.order_date"],
-        test.grain,
-        environment,
-        environment_graph,
+    assert (
+        customer_datasource.identifier
+        == "customers_join_fact_internet_sales_join_order_dates_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_dates_order_key"
     )
 
-    # assert order_date_datasource.identifier == "customers_fact_internet_sales_order_dates_at_dates_order_date_customer_first_name"
+    order_date_datasource = source_concepts(
+        [environment.concepts["dates.order_date"]],
+        test.grain.components_copy,
+        environment,
+        environment_graph,
+    ).resolve()
 
-    concepts, datasources = get_query_datasources(
+    assert (
+        order_date_datasource.identifier
+        == "customers_join_fact_internet_sales_join_order_dates_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_dates_order_key"
+    )
+
+    datasource = get_query_datasources(
         environment=environment, graph=environment_graph, statement=test
     )
 

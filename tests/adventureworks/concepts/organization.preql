@@ -3,7 +3,6 @@
 
 key key int;
 key parent_key int;
-property key.percentage_of_ownership number;
 property key.name string;
 key currency int;
 
@@ -11,7 +10,6 @@ key currency int;
 datasource organization (
     OrganizationKey:key,
     OrganizationName: name,
-    PercentOfOwnership: percentage_of_ownership,
     CurrencyKey:currency
     )
     grain (key)
