@@ -137,21 +137,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     return output
 
 
-def get_disconnected_components(
-    concept_map: Dict[str, Set[Concept]]
-) -> Tuple[int, List]:
-    """Find if any of the datasources are not linked"""
-    import networkx as nx
-
-    graph = nx.Graph()
-    for datasource, concepts in concept_map.items():
-        graph.add_node(datasource)
-        for concept in concepts:
-            graph.add_edge(datasource, concept.address)
-    sub_graphs = list(nx.connected_components(graph))
-    return len(sub_graphs), sub_graphs
-
-
 def get_query_datasources_v2(
     environment: Environment,
     statement: Select,

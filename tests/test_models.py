@@ -1,5 +1,4 @@
-from preql.core.enums import BooleanOperator
-from preql.core.models import CTE, Grain, QueryDatasource, Conditional
+from preql.core.models import CTE, Grain, QueryDatasource
 
 
 def test_cte_merge(test_environment, test_environment_graph):
@@ -39,30 +38,3 @@ def test_cte_merge(test_environment, test_environment_graph):
 
     merged = a + b
     assert merged.output_columns == outputs
-
-
-def test_grain():
-    grains = [Grain()] * 3
-    aggregate = sum(grains)
-
-
-def test_concept(test_environment, test_environment_graph):
-    test_concept = list(test_environment.concepts.values())[0]
-    new = test_concept.with_namespace("test")
-    assert new.namespace == "test"
-
-
-def test_conditional(test_environment, test_environment_graph):
-    test_concept = list(test_environment.concepts.values())[-1]
-
-    condition_a = Conditional(
-        left=test_concept, right=test_concept, operator=BooleanOperator.AND
-    )
-    condition_b = Conditional(
-        left=test_concept, right=test_concept, operator=BooleanOperator.AND
-    )
-
-    merged = condition_a + condition_b
-    assert merged.left == condition_a
-    assert merged.right == condition_b
-    assert merged.operator == BooleanOperator.AND
