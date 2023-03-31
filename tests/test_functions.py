@@ -92,6 +92,7 @@ def test_explicit_cast(test_environment):
 
 def test_math_functions(test_environment):
     from preql.hooks.query_debugger import DebuggingHook
+
     declarations = """
     
     
@@ -108,5 +109,7 @@ def test_math_functions(test_environment):
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
-    x = BaseDialect().compile_statement(process_query(test_environment, select, hooks=[DebuggingHook()]))
+    x = BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
     print(x)

@@ -176,59 +176,41 @@ def process_query_v2(
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
-    root_cte = datasource_to_ctes(root_datasource)
+    root_cte = datasource_to_ctes(root_datasource)[0]
     for hook in hooks:
-        hook.process_root_cte(root_cte[0])
-    raw_ctes = list(reversed(flatten_ctes(root_cte[0])))
+        hook.process_root_cte(root_cte)
+    raw_ctes = list(reversed(flatten_ctes(root_cte)))
     seen = set()
     ctes = []
     # we can have duplicate CTEs at this point
+    # so filter them out
     for cte in raw_ctes:
         if cte.name not in seen:
             seen.add(cte.name)
             ctes.append(cte)
-    joins = []
-
     final_ctes = ctes
-    base_list = sorted(
-        [cte for cte in ctes if cte.grain.issubset(statement.grain)],
-        key=lambda cte: -len(
-            [
-                x
-                for x in cte.output_columns
-                if x.address in [g.address for g in statement.grain.components]
-            ]
-        ),
-    )
-    if not base_list:
-        cte_grain = [cte.name + "@" + str(cte.grain) for cte in final_ctes]
-        raise ValueError(
-            f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
-        )
-    base = base_list[0]
-    others: List[CTE] = [cte for cte in final_ctes if cte != base]
 
-    for cte in others:
-        # we do the with_grain here to fix an issue
-        # where a query with a grain of properties has the components of the grain
-        # with the default key grain rather than the grain of the select
-        # TODO - evaluate if we can fix this in select definition
-        joinkeys = [
-            JoinKey(c)
-            for c in statement.grain.components
-            if c.with_grain(cte.grain) in cte.output_columns
-            and c.with_grain(base.grain) in base.output_columns
-            and cte.grain.issubset(statement.grain)
-        ]
-        if joinkeys:
-            joins.append(
-                Join(
-                    left_cte=base,
-                    right_cte=cte,
-                    joinkeys=joinkeys,
-                    jointype=JoinType.LEFT_OUTER,
-                )
-            )
+    # for cte in others:
+    #     # we do the with_grain here to fix an issue
+    #     # where a query with a grain of properties has the components of the grain
+    #     # with the default key grain rather than the grain of the select
+    #     # TODO - evaluate if we can fix this in select definition
+    #     joinkeys = [
+    #         JoinKey(c)
+    #         for c in statement.grain.components
+    #         if c.with_grain(cte.grain) in cte.output_columns
+    #         and c.with_grain(base.grain) in base.output_columns
+    #         and cte.grain.issubset(statement.grain)
+    #     ]
+    #     if joinkeys:
+    #         joins.append(
+    #             Join(
+    #                 left_cte=base,
+    #                 right_cte=cte,
+    #                 joinkeys=joinkeys,
+    #                 jointype=JoinType.LEFT_OUTER,
+    #             )
+    #         )
     return ProcessedQuery(
         order_by=statement.order_by,
         grain=statement.grain,
@@ -236,8 +218,9 @@ def process_query_v2(
         where_clause=statement.where_clause,
         output_columns=statement.output_components,
         ctes=final_ctes,
-        base=base,
-        joins=joins,
+        base=root_cte,
+        # we no longer do any joins at final level, this should always happen in parent CTEs
+        joins=[],
     )
 
 

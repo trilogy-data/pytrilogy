@@ -356,18 +356,18 @@ class BaseDialect:
 
     def compile_statement(self, query: ProcessedQuery) -> str:
 
-        select_columns: list[str] = []
+        select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()
         output_addresses = [c.address for c in query.output_columns]
         # valid joins are anything that is a subset of the final grain
-        output_ctes = [cte for cte in query.ctes if cte.grain.issubset(query.grain)]
+        output_ctes = [query.base]
         for cte in output_ctes:
             for c in cte.output_columns:
                 if c.address not in selected and c.address in output_addresses:
-                    select_columns.append(
-                        f"{cte.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                    )
+                    select_columns[
+                        c.address
+                    ] = f"{cte.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                     cte_output_map[c.address] = cte
                     selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
@@ -411,17 +411,22 @@ class BaseDialect:
                 raise NotImplementedError(
                     f"Cannot generate query with filtering on grain {filter} that is not a subset of the query output grain {query_output}. Use a filtered concept instead."
                 )
-        for join in query.joins:
-
-            if (
-                join.left_cte.grain.issubset(query.grain)
-                and join.left_cte.grain != query.grain
-            ):
-                join.jointype = JoinType.FULL
+        # 2023-03-31 - this needs to be moved up into query building
+        # for join in query.joins:
+        #
+        #     if (
+        #         join.left_cte.grain.issubset(query.grain)
+        #         and join.left_cte.grain != query.grain
+        #     ):
+        #         join.jointype = JoinType.FULL
         compiled_ctes = self.generate_ctes(query, {})
 
+        # want to return columns in the order the user wrote
+        sorted_select = []
+        for c in query.output_columns:
+            sorted_select.append(select_columns[c.address])
         final = self.SQL_TEMPLATE.render(
-            select_columns=select_columns,
+            select_columns=sorted_select,
             base=query.base.name,
             joins=[render_join(join, self.QUOTE_CHARACTER) for join in query.joins],
             ctes=compiled_ctes,

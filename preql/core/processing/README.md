@@ -20,7 +20,9 @@ the merge node will simply return the single parent node and prune itself from t
 In the second pass, each node is resolved to an abstract CTE. At this phase, CTEs that are
 identical can be merged.
 
-Finally, in query rendering each CTE is rendered to a backend appropriate query.
+Finally, in query rendering each CTE is rendered to a backend appropriate query. The finale
+CTE, or the `base`, will contain all required columns for the final output. The last
+select will only apply any query level filters + ordering, no joins will take place.
 
 ## Debugging
 
