@@ -551,17 +551,6 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     return unique(concept.lineage.concept_arguments, "address")
 
 
-def resolve_concept_to_immediate_parents(concept: Concept) -> List[Concept]:
-    if concept.lineage:
-        if concept.derivation == PurposeLineage.WINDOW:
-            return resolve_window_parent_concepts(concept)
-        if concept.derivation == PurposeLineage.FILTER:
-            return resolve_filter_parent_concepts(concept)
-        if concept.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.BASIC):
-            return resolve_function_parent_concepts(concept)
-    return [concept]
-
-
 def source_concepts(
     mandatory_concepts: List[Concept],
     optional_concepts: List[Concept],
