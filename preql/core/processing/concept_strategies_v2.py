@@ -160,14 +160,12 @@ class FilterStrategyNode(StrategyNode):
         filtered_concepts = [
             c for c in self.all_concepts if isinstance(c.lineage, FilterItem)
         ]
-        # to_remove = [c.lineage.content.address for c in filtered_concepts]
-        to_remove = []
+        to_remove = [c.lineage.content.address for c in filtered_concepts]
         base.output_concepts = [
             c for c in base.output_concepts if c.address not in to_remove
         ]
         base.source_map = {
-            key: value
-            for key, value in base.source_map.items()  # if key not in to_remove
+            key: value for key, value in base.source_map.items() if key not in to_remove
         }
         return base
 
