@@ -377,10 +377,6 @@ class ParseToObjects(Transformer):
         purpose = args[0]
         name = args[1]
 
-
-
-
-
         lookup, namespace, name = parse_concept_reference(name, self.environment)
         self.validate_concept(lookup, meta)
         if isinstance(args[2], FilterItem):
@@ -414,7 +410,7 @@ class ParseToObjects(Transformer):
                 # windows are implicitly at the grain of the group by + the original content
                 grain=Grain(components=window_item.over + [window_item.content.output]),
                 namespace=namespace,
-                keys = keys
+                keys=keys,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line

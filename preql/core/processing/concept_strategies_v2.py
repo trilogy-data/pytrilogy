@@ -19,10 +19,7 @@ from preql.core.models import (
     FilterItem,
     SourceType,
 )
-from preql.core.processing.utility import (
-    PathInfo,
-    path_to_joins,
-)
+from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
@@ -37,12 +34,12 @@ def resolve_concept_map(inputs: List[QueryDatasource]):
 
 
 def concept_list_to_grain(
-        inputs: List[Concept], parent_sources: List[QueryDatasource]
+    inputs: List[Concept], parent_sources: List[QueryDatasource]
 ) -> Grain:
     candidates = [c for c in inputs if c.purpose == Purpose.KEY]
     for x in inputs:
         if x.purpose == Purpose.PROPERTY and not any(
-                [key in candidates for key in (x.keys or [])]
+            [key in candidates for key in (x.keys or [])]
         ):
             candidates.append(x)
         elif x.purpose == Purpose.METRIC:
@@ -57,13 +54,13 @@ class StrategyNode:
     source_type = SourceType.SELECT
 
     def __init__(
-            self,
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain: bool = False,
-            parents: List["StrategyNode"] = None,
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
     ):
         self.mandatory_concepts = mandatory_concepts
         self.optional_concepts = deepcopy(optional_concepts)
@@ -93,18 +90,15 @@ class StrategyNode:
             if isinstance(c.lineage, FilterItem)
         ]
         conditional = conditions[0] if conditions else None
-        for condition in conditions[1:]:
-            conditional += condition
+        if conditional:
+            for condition in conditions[1:]:
+                conditional += condition
         grain = Grain()
         output_concepts = self.all_concepts
         for source in parent_sources:
             grain += source.grain
-            # print('PARENT GRAIN')
-            # print(source.grain)
 
             output_concepts += source.output_concepts
-        # print(grain)
-        # print('-----')
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=unique(output_concepts, "address"),
@@ -121,13 +115,13 @@ class WindowNode(StrategyNode):
     source_type = SourceType.WINDOW
 
     def __init__(
-            self,
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain: bool = False,
-            parents: List["StrategyNode"] = None,
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -143,13 +137,13 @@ class FilterStrategyNode(StrategyNode):
     source_type = SourceType.FILTER
 
     def __init__(
-            self,
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain: bool = False,
-            parents: List["StrategyNode"] = None,
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -180,13 +174,13 @@ class GroupNode(StrategyNode):
     source_type = SourceType.GROUP
 
     def __init__(
-            self,
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain: bool = False,
-            parents: List["StrategyNode"] = None,
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -211,7 +205,9 @@ class GroupNode(StrategyNode):
 
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if comp_grain == grain and set([c.address for c in outputs]) == set([c.address for c in input_concepts]):
+        if comp_grain == grain and set([c.address for c in outputs]) == set(
+            [c.address for c in input_concepts]
+        ):
             source_type = SourceType.SELECT
         else:
             source_type = SourceType.GROUP
@@ -230,13 +226,13 @@ class OutputNode(StrategyNode):
     source_type = SourceType.SELECT
 
     def __init__(
-            self,
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain: bool = False,
-            parents: List["StrategyNode"] = None,
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -252,13 +248,13 @@ class MergeNode(StrategyNode):
     source_type = SourceType.SELECT
 
     def __init__(
-            self,
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain: bool = False,
-            parents: List["StrategyNode"] = None,
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -336,13 +332,13 @@ class SelectNode(StrategyNode):
     source_type = SourceType.SELECT
 
     def __init__(
-            self,
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain: bool = False,
-            parents: List["StrategyNode"] = None,
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        whole_grain: bool = False,
+        parents: List["StrategyNode"] | None = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -393,12 +389,12 @@ class SelectNode(StrategyNode):
         join_paths: List[BaseJoin] = []
         parents = []
         all_datasets: Set = set()
-        all_concepts: Set = set()
+        all_search_concepts: Set = set()
         for key, value in shortest["paths"].items():
             datasource_nodes = [v for v in value if v.startswith("ds~")]
             concept_nodes = [v for v in value if v.startswith("c~")]
             all_datasets = all_datasets.union(set(datasource_nodes))
-            all_concepts = all_concepts.union(set(concept_nodes))
+            all_search_concepts = all_concepts.union(set(concept_nodes))
             root = datasource_nodes[-1]
             source_concept = self.g.nodes[value[-1]]["concept"]
             parents.append(source_concept)
@@ -413,7 +409,6 @@ class SelectNode(StrategyNode):
                     source_map[jconcept.address].add(join.left_datasource)
                     source_map[jconcept.address].add(join.right_datasource)
                     all_input_concepts.append(jconcept)
-        all_requirements = all_concepts
         final_grain = Grain()
         datasources = sorted(
             [self.g.nodes[key]["datasource"] for key in all_datasets],
@@ -441,7 +436,9 @@ class SelectNode(StrategyNode):
         else:
             valid_matches = ["all", "partial"]
         all_concepts = self.mandatory_concepts + self.optional_concepts
-        for strategy in valid_matches:
+        # 2023-03-30 strategy is not currently used
+        # but keeping it here for future use
+        for strategy in valid_matches[:1]:
             for datasource in self.environment.datasources.values():
                 # whole grain determines
                 # if we can get a partial grain match
@@ -485,10 +482,10 @@ class SelectNode(StrategyNode):
                         all_found = False
                         break
                     if (
-                            len(
-                                [p for p in path if self.g.nodes[p]["type"] == "datasource"]
-                            )
-                            != 1
+                        len(
+                            [p for p in path if self.g.nodes[p]["type"] == "datasource"]
+                        )
+                        != 1
                     ):
                         all_found = False
                         break
@@ -505,6 +502,7 @@ class SelectNode(StrategyNode):
                         grain=datasource.grain,
                         joins=[],
                     )
+        raise ValueError("No datasources found!")
 
     def resolve(self) -> QueryDatasource:
         # if we have parent nodes, treat this as a normal select
@@ -543,7 +541,12 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, Function):
         raise ValueError(f"Concept {concept} is not an aggregate function")
     if concept.derivation == PurposeLineage.AGGREGATE:
-        return unique(concept.lineage.concept_arguments + concept.grain.components_copy, "address")
+        if concept.grain:
+            return unique(
+                concept.lineage.concept_arguments + concept.grain.components_copy,
+                "address",
+            )
+        return concept.lineage.concept_arguments
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
 
@@ -560,10 +563,10 @@ def resolve_concept_to_immediate_parents(concept: Concept) -> List[Concept]:
 
 
 def source_concepts(
-        mandatory_concepts: List[Concept],
-        optional_concepts: List[Concept],
-        environment: Environment,
-        g: Optional[ReferenceGraph] = None,
+    mandatory_concepts: List[Concept],
+    optional_concepts: List[Concept],
+    environment: Environment,
+    g: Optional[ReferenceGraph] = None,
 ) -> StrategyNode:
     g = g or generate_graph(environment)
     stack: List[StrategyNode] = []
@@ -579,11 +582,11 @@ def source_concepts(
             c for c in all_concepts if c.address not in found_addresses
         ]
         priority = (
-                [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
-                + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW]
-                + [c for c in remaining_concept if c.derivation == PurposeLineage.FILTER]
-                + [c for c in remaining_concept if c.derivation == PurposeLineage.BASIC]
-                + [c for c in remaining_concept if not c.lineage]
+            [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
+            + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW]
+            + [c for c in remaining_concept if c.derivation == PurposeLineage.FILTER]
+            + [c for c in remaining_concept if c.derivation == PurposeLineage.BASIC]
+            + [c for c in remaining_concept if not c.lineage]
         )
         concept = priority[0]
         # we don't actually want to look for multiple aggregates at the same time
@@ -627,13 +630,12 @@ def source_concepts(
                 # aggregates MUST always group to the proper grain
                 # todo: is this true?
                 parent_concepts = unique(
-
                     resolve_function_parent_concepts(concept) + local_optional,
                     "address",
                 )
                 # if the aggregation has a grain, we need to ensure these are in the output of the select
-                local_optional+=concept.grain.components_copy
-                local_optional = unique(local_optional, 'address')
+                local_optional += concept.grain.components_copy
+                local_optional = unique(local_optional, "address")
                 stack.append(
                     GroupNode(
                         [concept],
@@ -674,10 +676,10 @@ def source_concepts(
 
 
 def source_query_concepts(
-        output_concepts,
-        grain_components,
-        environment: Environment,
-        g: Optional[ReferenceGraph] = None,
+    output_concepts,
+    grain_components,
+    environment: Environment,
+    g: Optional[ReferenceGraph] = None,
 ):
     root = source_concepts(output_concepts, grain_components, environment, g)
     # return root

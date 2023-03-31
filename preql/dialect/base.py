@@ -206,7 +206,9 @@ class BaseDialect:
                 if cte.group_to_grain:
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
                 else:
-                    logger.info(f'{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at target grain')
+                    logger.info(
+                        f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at target grain"
+                    )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:

@@ -2,7 +2,17 @@ import difflib
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Dict, MutableMapping, TypeVar, List, Optional, Union, Set, Any
+from typing import (
+    Dict,
+    MutableMapping,
+    TypeVar,
+    List,
+    Optional,
+    Union,
+    Set,
+    Any,
+    Sequence,
+)
 
 from pydantic import BaseModel, validator, Field
 
@@ -635,7 +645,7 @@ class Grain(BaseModel):
         base_components = [c for c in components if c.purpose == Purpose.KEY]
         for c in components:
             if c.purpose == Purpose.PROPERTY and not any(
-                    [key in base_components for key in (c.keys or [])]
+                [key in base_components for key in (c.keys or [])]
             ):
                 base_components.append(c)
         return Grain(components=base_components)
@@ -706,6 +716,7 @@ class Datasource:
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
+
     @property
     def group_required(self):
         return False
@@ -836,7 +847,7 @@ class QueryDatasource:
     input_concepts: List[Concept]
     output_concepts: List[Concept]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]]
-    datasources: List[Union[Datasource, "QueryDatasource"]]
+    datasources: Sequence[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
