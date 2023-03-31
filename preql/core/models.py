@@ -30,6 +30,7 @@ from preql.core.enums import (
     WindowOrder,
     PurposeLineage,
     SourceType,
+    WindowType
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -355,12 +356,14 @@ class WindowItemOrder(BaseModel):
 
 
 class WindowItem(BaseModel):
+    type: WindowType
     content: Concept
     order_by: List["OrderItem"]
     over: List["Concept"] = Field(default_factory=list)
 
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem(
+            type = self.type,
             content=self.content.with_namespace(namespace),
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],

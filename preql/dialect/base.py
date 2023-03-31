@@ -33,9 +33,18 @@ def INVALID_REFERENCE_STRING(x: Any):
 
 
 WINDOW_FUNCTION_MAP = {
-    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})"
+    WindowType.LAG: lambda concept,window, sort: f"lag({concept}) over (partition by {window} order by {sort} )"
     if window
-    else f"row_number() over (order by {sort} {order})"
+    else f"lag({concept}) over (order by {sort})",
+    WindowType.LEAD: lambda concept,window, sort: f"lead({concept}) over (partition by {window} order by {sort})"
+    if window
+    else f"lead({concept}) over (order by {sort})",
+    WindowType.RANK: lambda concept,window, sort: f"rank() over (partition by {window} order by {sort})"
+    if window
+    else f"rank() over (order by {sort} )",
+    WindowType.ROW_NUMBER: lambda concept, window, sort: f"row_number() over (partition by {window} order by {sort})"
+    if window
+    else f"row_number() over (order by {sort})"
 }
 
 DATATYPE_MAP = {
@@ -187,13 +196,13 @@ class BaseDialect:
                 # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
                 self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
                 rendered_order_components = [
-                    self.render_concept_sql(x.expr, cte, alias=False)
+                    f'{self.render_concept_sql(x.expr, cte, alias=False)} {x.order.value}'
                     for x in c.lineage.order_by
                 ]
                 rendered_over_components = [
                     self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
-                rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](window=','.join(rendered_over_components), sort=','.join(rendered_order_components), order = 'desc')}"
+                rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"
             elif isinstance(c.lineage, FilterItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             else:

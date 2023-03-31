@@ -57,6 +57,9 @@ class Ordering(Enum):
 
 class WindowType(Enum):
     ROW_NUMBER = "row_number"
+    RANK = "rank"
+    LAG = "lag"
+    LEAD = "lead"
 
 
 class WindowOrder(Enum):
