@@ -394,7 +394,7 @@ class SelectNode(StrategyNode):
             datasource_nodes = [v for v in value if v.startswith("ds~")]
             concept_nodes = [v for v in value if v.startswith("c~")]
             all_datasets = all_datasets.union(set(datasource_nodes))
-            all_search_concepts = all_concepts.union(set(concept_nodes))
+            all_search_concepts = all_search_concepts.union(set(concept_nodes))
             root = datasource_nodes[-1]
             source_concept = self.g.nodes[value[-1]]["concept"]
             parents.append(source_concept)
@@ -428,7 +428,7 @@ class SelectNode(StrategyNode):
         )
         return output
 
-    def resolve_from_raw_datasources(self) -> QueryDatasource:
+    def resolve_from_raw_datasources(self) -> Optional[QueryDatasource]:
         whole_grain = True
         # TODO evaluate above
         if whole_grain:
@@ -502,7 +502,7 @@ class SelectNode(StrategyNode):
                         grain=datasource.grain,
                         joins=[],
                     )
-        raise ValueError("No datasources found!")
+        return None
 
     def resolve(self) -> QueryDatasource:
         # if we have parent nodes, treat this as a normal select
