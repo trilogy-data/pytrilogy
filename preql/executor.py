@@ -9,6 +9,7 @@ from preql.core.models import Environment, ProcessedQuery
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
+from preql.hooks.base_hook import BaseHook
 
 
 class Executor(object):
@@ -17,12 +18,14 @@ class Executor(object):
         dialect: Dialects,
         engine: Engine,
         environment: Optional[Environment] = None,
+        hooks: List[BaseHook] | None = None,
     ):
         self.dialect = dialect
         self.engine = engine
         self.environment = environment or Environment()
         self.generator: BaseDialect
         self.logger = logger
+        self.hooks = hooks
         if self.dialect == Dialects.BIGQUERY:
             from preql.dialect.bigquery import BigqueryDialect
 
@@ -47,7 +50,9 @@ class Executor(object):
 
     def generate_sql(self, command: str) -> List[str]:
         _, parsed = parse_text(command, self.environment)
-        sql = self.generator.generate_queries(self.environment, parsed)
+        sql = self.generator.generate_queries(
+            self.environment, parsed, hooks=self.hooks
+        )
         output = []
         for statement in sql:
             compiled_sql = self.generator.compile_statement(statement)
@@ -56,7 +61,9 @@ class Executor(object):
 
     def execute_text(self, command: str) -> List[CursorResult]:
         _, parsed = parse_text(command, self.environment)
-        sql = self.generator.generate_queries(self.environment, parsed)
+        sql = self.generator.generate_queries(
+            self.environment, parsed, hooks=self.hooks
+        )
         output = []
         connection = self.engine.connect()
         for statement in sql:

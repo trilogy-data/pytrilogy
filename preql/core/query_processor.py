@@ -166,7 +166,7 @@ def flatten_ctes(input: CTE) -> list[CTE]:
 
 
 def process_query_v2(
-    environment: Environment, statement: Select, hooks: Optional[List[BaseHook]] = None
+    environment: Environment, statement: Select, hooks: List[BaseHook] | None = None
 ) -> ProcessedQuery:
     hooks = hooks or []
     graph = generate_graph(environment)
@@ -180,15 +180,17 @@ def process_query_v2(
     for hook in hooks:
         hook.process_root_cte(root_cte)
     raw_ctes = list(reversed(flatten_ctes(root_cte)))
-    seen = set()
-    ctes = []
+    seen = dict()
     # we can have duplicate CTEs at this point
-    # so filter them out
+    # so merge them together
     for cte in raw_ctes:
         if cte.name not in seen:
-            seen.add(cte.name)
-            ctes.append(cte)
-    final_ctes = ctes
+            seen[cte.name] = cte
+        else:
+            # merge them up
+            seen[cte.name] = seen[cte.name] + cte
+
+    final_ctes = list(seen.values())
 
     # for cte in others:
     #     # we do the with_grain here to fix an issue

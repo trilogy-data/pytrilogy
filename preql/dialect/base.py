@@ -349,7 +349,7 @@ class BaseDialect:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
-                output.append(process_query_v2(environment, statement))
+                output.append(process_query_v2(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
         return output
@@ -377,14 +377,9 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             found = False
-            filter = set(
-                [str(x.with_grain(query.grain)) for x in query.where_clause.input]
-            )
-            query_output = set([str(z) for z in query.output_columns])
-            filter_at_output_grain = set(
-                [str(x.with_grain(query.grain)) for x in query.where_clause.input]
-            )
-            if filter_at_output_grain.issubset(query_output):
+            filter = set([str(x.address) for x in query.where_clause.input])
+            query_output = set([str(z.address) for z in query.output_columns])
+            if filter.issubset(query_output):
                 output_where = True
                 found = True
             # we can't push global filters up to CTEs
