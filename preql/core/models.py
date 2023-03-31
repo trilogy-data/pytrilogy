@@ -819,6 +819,10 @@ class QueryDatasource:
     filter_concepts: List[Concept] = field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
 
+    def __post_init__(self):
+        self.input_concepts = unique(self.input_concepts, "address")
+        self.output_concepts = unique(self.output_concepts, "address")
+
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
 
@@ -873,7 +877,7 @@ class QueryDatasource:
         )
 
         merged_datasources = {}
-        for ds in self.datasources + other.datasources:
+        for ds in [*self.datasources, *other.datasources]:
             if ds.identifier in merged_datasources:
                 merged_datasources[ds.identifier] = (
                     merged_datasources[ds.identifier] + ds
@@ -969,6 +973,9 @@ class CTE:
     parent_ctes: List["CTE"] = field(default_factory=list)
     joins: List["Join"] = field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison"]] = None
+
+    def __post_init__(self):
+        self.output_columns = unique(self.output_columns, "address")
 
     def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
