@@ -91,7 +91,10 @@ def test_explicit_cast(test_environment):
 
 
 def test_math_functions(test_environment):
+    from preql.hooks.query_debugger import DebuggingHook
     declarations = """
+    
+    
     property inflated_order_value<- multiply(revenue, 2);
     property fixed_order_value<- inflated_order_value / 2;
     property order_sub <- revenue - 2;
@@ -105,5 +108,5 @@ def test_math_functions(test_environment):
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
-    x = BaseDialect().compile_statement(process_query(test_environment, select))
+    x = BaseDialect().compile_statement(process_query(test_environment, select, hooks=[DebuggingHook()]))
     print(x)

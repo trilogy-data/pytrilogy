@@ -315,6 +315,17 @@ class BaseDialect:
                             for c in cte.output_columns
                             if c.purpose == Purpose.PROPERTY
                             and c not in cte.grain.components
+                        ]
+                        + [
+                            c
+                            for c in cte.output_columns
+                            if c.purpose == Purpose.METRIC
+                            and any(
+                                [
+                                    c.with_grain(cte.grain) in cte.output_columns
+                                    for cte in cte.parent_ctes
+                                ]
+                            )
                         ],
                         "address",
                     )

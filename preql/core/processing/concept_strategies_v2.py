@@ -71,10 +71,12 @@ class StrategyNode:
 
     @property
     def all_concepts(self):
-        return deepcopy(self.mandatory_concepts + self.optional_concepts)
+        return unique(
+            deepcopy(self.mandatory_concepts + self.optional_concepts), "address"
+        )
 
     def __repr__(self):
-        concepts = unique(self.mandatory_concepts + self.optional_concepts, "address")
+        concepts = self.all_concepts
         contents = ",".join([c.address for c in concepts])
         return f"{self.__class__.__name__}<{contents}>"
 
@@ -83,7 +85,6 @@ class StrategyNode:
         input_concepts = []
         for p in parent_sources:
             input_concepts += p.output_concepts
-        outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
         conditions = [
             c.lineage.where.conditional
             for c in self.mandatory_concepts
@@ -97,11 +98,10 @@ class StrategyNode:
         output_concepts = self.all_concepts
         for source in parent_sources:
             grain += source.grain
-
-            output_concepts += source.output_concepts
+            output_concepts += source.grain.components_copy
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
-            output_concepts=unique(output_concepts, "address"),
+            output_concepts=unique(self.all_concepts, "address"),
             datasources=parent_sources,
             source_type=self.source_type,
             source_map=resolve_concept_map(parent_sources),
@@ -160,12 +160,14 @@ class FilterStrategyNode(StrategyNode):
         filtered_concepts = [
             c for c in self.all_concepts if isinstance(c.lineage, FilterItem)
         ]
-        to_remove = [c.lineage.content.address for c in filtered_concepts]
+        # to_remove = [c.lineage.content.address for c in filtered_concepts]
+        to_remove = []
         base.output_concepts = [
             c for c in base.output_concepts if c.address not in to_remove
         ]
         base.source_map = {
-            key: value for key, value in base.source_map.items() if key not in to_remove
+            key: value
+            for key, value in base.source_map.items()  # if key not in to_remove
         }
         return base
 
@@ -419,7 +421,7 @@ class SelectNode(StrategyNode):
             final_grain += datasource.grain
             all_outputs += datasource.output_concepts
         output = QueryDatasource(
-            output_concepts=unique(all_outputs, "address"),
+            output_concepts=unique(self.all_concepts, "address"),
             input_concepts=unique(all_input_concepts, "address"),
             source_map=source_map,
             grain=final_grain,
@@ -579,11 +581,21 @@ def source_concepts(
         )
         concept = priority[0]
         # we don't actually want to look for multiple aggregates at the same time
-        local_optional = [
-            x
-            for x in optional_concepts + mandatory_concepts
-            if x.address != concept.address and x.derivation != PurposeLineage.AGGREGATE
-        ]
+        # local optional should be relevant keys, but not metrics
+        local_optional_staging = unique(
+            [
+                x
+                for x in optional_concepts + mandatory_concepts
+                if x.address
+                != concept.address  # and #not x.derivation== PurposeLineage.AGGREGATE
+            ],
+            "address",
+        )
+
+        # reduce search space to actual grain
+        local_optional = concept_list_to_grain(
+            local_optional_staging, []
+        ).components_copy
         if concept.lineage:
             if concept.derivation == PurposeLineage.WINDOW:
                 parent_concepts = resolve_window_parent_concepts(concept)
