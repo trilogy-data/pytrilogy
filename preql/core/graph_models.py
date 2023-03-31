@@ -33,11 +33,6 @@ class ReferenceGraph(nx.DiGraph):
             attr["type"] = "datasource"
             attr["ds"] = node_for_adding
             attr["grain"] = node_for_adding.grain
-        elif isinstance(node_for_adding, JoinedDataSource):
-            node_name = datasource_to_node(node_for_adding)
-            attr["type"] = "joineddatasource"
-            attr["ds"] = node_for_adding
-            attr["grain"] = node_for_adding.grain
         else:
             node_name = node_for_adding
 
