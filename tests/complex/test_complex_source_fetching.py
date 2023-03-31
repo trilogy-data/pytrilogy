@@ -91,7 +91,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
 
     assert avg_user_post_count in cte.output_columns
     assert user_post_count in parent_cte.output_columns
-    assert len(query.ctes) == 4
+    assert len(query.ctes) == 3
     assert len(cte.parent_ctes) > 0
 
     generator = SqlServerDialect()

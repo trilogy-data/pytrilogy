@@ -145,14 +145,13 @@ def test_query_aggregation(test_environment, test_environment_graph):
     )
 
     assert {datasource.identifier} == {
-        "revenue_at_local_order_id_at_abstract_at_abstract"
+        "revenue_at_local_order_id_at_abstract"
     }
     check = datasource
     assert len(check.input_concepts) == 1
-    assert check.input_concepts[0].name == "total_revenue"
+    assert check.input_concepts[0].name == "revenue"
     assert len(check.output_concepts) == 1
     assert check.output_concepts[0].name == "total_revenue"
-    ctes = []
 
 
 def test_query_datasources(test_environment, test_environment_graph):

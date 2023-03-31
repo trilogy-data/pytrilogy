@@ -210,6 +210,11 @@ class GroupNode(StrategyNode):
         if comp_grain == grain and set([c.address for c in outputs]) == set(
             [c.address for c in input_concepts]
         ):
+            # if there is no group by, and inputs equal outputs
+            # return the parent
+            if len(parent_sources) == 1:
+                return parent_sources[0]
+            # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
             source_type = SourceType.GROUP
