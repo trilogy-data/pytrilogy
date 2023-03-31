@@ -33,7 +33,7 @@ Example usage
 ```python
 from preql import parse
 from preql.core.query_processor import process_query
-from preql.hooks.query_debugger import DebugHook
+from preql.hooks.query_debugger import DebuggingHook
 from preql.core.models import Select
 
 declarations = """
