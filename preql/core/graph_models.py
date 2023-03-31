@@ -1,8 +1,6 @@
-from typing import Union
-
 import networkx as nx
 
-from preql.core.models import Concept, Environment, Datasource, JoinedDataSource
+from preql.core.models import Concept, Datasource
 
 
 def concept_to_node(input: Concept) -> str:
@@ -11,20 +9,12 @@ def concept_to_node(input: Concept) -> str:
     return f"c~{input.namespace}.{input.name}@{input.grain}"
 
 
-def datasource_to_node(input: Union[Datasource, JoinedDataSource]) -> str:
-    if isinstance(input, JoinedDataSource):
-        return "ds~join~" + ",".join(
-            [datasource_to_node(sub) for sub in input.datasources]
-        )
+def datasource_to_node(input: Datasource) -> str:
+    # if isinstance(input, JoinedDataSource):
+    #     return "ds~join~" + ",".join(
+    #         [datasource_to_node(sub) for sub in input.datasources]
+    #     )
     return f"ds~{input.namespace}.{input.identifier}"
-
-
-def node_to_datasource(input: str, environment: Environment) -> Datasource:
-    stripped = input.lstrip("ds~")
-    namespace, title = stripped.split(".")
-    if namespace == "None":
-        return environment.datasources[title]
-    return environment.datasources[stripped]
 
 
 class ReferenceGraph(nx.DiGraph):
@@ -63,15 +53,11 @@ class ReferenceGraph(nx.DiGraph):
                 self.add_node(orig)
         elif isinstance(u_of_edge, Datasource):
             u_of_edge = datasource_to_node(u_of_edge)
-        elif isinstance(u_of_edge, JoinedDataSource):
-            u_of_edge = datasource_to_node(u_of_edge)
         if isinstance(v_of_edge, Concept):
             orig = v_of_edge
             v_of_edge = concept_to_node(v_of_edge)
             if v_of_edge not in self.nodes:
                 self.add_node(orig)
         elif isinstance(v_of_edge, Datasource):
-            v_of_edge = datasource_to_node(v_of_edge)
-        elif isinstance(v_of_edge, JoinedDataSource):
             v_of_edge = datasource_to_node(v_of_edge)
         super().add_edge(u_of_edge, v_of_edge, **attr)

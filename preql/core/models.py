@@ -763,42 +763,6 @@ class Datasource:
         return self.address
 
 
-@dataclass(eq=True)
-class JoinedDataSource:
-    concepts: List[Concept]
-    source_map: Dict[str, "CTE"]
-    grain: Grain
-    address: Address
-    # base: Datasource
-    joins: List["Join"]
-
-    @property
-    def datasources(self) -> List[Datasource]:
-        datasources = []
-        for item in self.source_map.values():
-            datasources.append(item.source)
-
-        return unique(datasources, "identifier")
-
-    @property
-    def identifier(self) -> str:
-        return "_join_".join([d.name for d in self.datasources])
-
-    def get_alias(self, concept: Concept):
-        for x in self.datasources:
-            try:
-                return x.get_alias(concept.with_grain(x.grain))
-            except ValueError as e:
-                from preql.constants import logger
-
-                logger.error(e)
-                continue
-        existing = [str(c) for c in self.concepts]
-        raise ValueError(
-            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier}; have {existing}."
-        )
-
-
 @dataclass
 class BaseJoin:
     left_datasource: Union[Datasource, "QueryDatasource"]
