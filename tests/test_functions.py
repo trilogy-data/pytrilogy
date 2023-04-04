@@ -80,6 +80,7 @@ def test_date_functions(test_environment):
         day(order_timestamp) -> order_day,
         week(order_timestamp) -> order_week,
         month(order_timestamp) -> order_month,
+        quarter(order_timestamp) -> order_quarter,
         year(order_timestamp) -> order_year,
     ;
     
