@@ -19,9 +19,9 @@ Please describe what you expected would happen.
 
 Please describe what happened instead.
 
-## Terraform Code
+## PreQL Code
 
-If relevant, terraform code sample, either unparseable input or incorrect output.
+The code that produces the error. 
 
 ## Affected Version
 
@@ -36,5 +36,4 @@ Please provide the version number where this issue was encountered.
 ## Checklist
 
 <!-- TODO: Update the link below to point to your project's contributing guidelines -->
-- [ ] I have read the [contributing guidelines](https://github.com/wayfair-incubator/oss-template/blob/main/CONTRIBUTING.md)
 - [ ] I have verified this does not duplicate an existing issue

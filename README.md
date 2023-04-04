@@ -1,24 +1,31 @@
 ## PreQL
 
-pypreql is a experimental implementation of the preql language [https://github.com/preqldata].
+pypreql is an experimental implementation of the [PreQL](https://github.com/preqldata).
 
 The preql language spec itself will be linked from the above repo. 
 
 Pypreql can be run locally to parse and execute preql [.preql] models.  
 
+## Examples
+
+Examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models). 
+This is a good place to start for a basic understanding of the language. 
+
 ## Dialects
 
 The POC supports alpha syntax for
 
-- SQL Server
 - Bigquery
+- SQL Server
+- DuckDB
+
 
 ## Setting Up Your Environment
 
 Recommend that you work in a virtual environment with requirements from both requirements.txt and requirements-test.txt installed. The latter is necessary to run
 tests (surprise). 
 
-Pypreql is python 3.9+
+Pypreql is python 3.10+
 
 ## Running Tests
 
