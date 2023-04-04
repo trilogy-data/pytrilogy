@@ -72,11 +72,13 @@ def test_date_functions(test_environment):
     select
         order_id,
         date(order_timestamp) -> order_date,
+        datetime(order_timestamp) -> order_timestamp_datetime,
         timestamp(order_timestamp) -> order_timestamp_2,
         second(order_timestamp) -> order_second,
         minute(order_timestamp) -> order_minute,
         hour(order_timestamp) -> order_hour,
         day(order_timestamp) -> order_day,
+        week(order_timestamp) -> order_timestamp,
         month(order_timestamp) -> order_month,
         year(order_timestamp) -> order_year,
     ;
@@ -121,13 +123,15 @@ def test_math_functions(test_environment):
     property order_sub <- revenue - 2;
     property order_add <- revenue + 2;
     property order_nested <- revenue*2/2;
+    property rounded <- round(revenue + 2.01,2);
     select
         order_id,
         inflated_order_value,
         fixed_order_value,
         order_sub,
         order_add,
-        order_nested
+        order_nested,
+        rounded
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
@@ -135,3 +139,16 @@ def test_math_functions(test_environment):
         process_query(test_environment, select, hooks=[DebuggingHook()])
     )
     print(x)
+
+
+def test_string_functions(test_environment):
+    declarations = """
+    property test_name <- concat(category_name, '_test');
+    property upper_name <- upper(category_name);
+    property lower_name <- lower(category_name);
+    select
+        test_name,
+        upper_name,
+        lower_name
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
