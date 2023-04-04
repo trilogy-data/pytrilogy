@@ -176,14 +176,6 @@ class BaseDialect:
             f"{selected.name}.{order_item.expr.safe_address} {order_item.order.value}"
         )
 
-    def render_literal(self, v) -> str:
-        if isinstance(v, str):
-            return f"'{v}'"
-        elif isinstance(v, DataType):
-            return DATATYPE_MAP.get(v, "UNMAPPEDDTYPE")
-        else:
-            return str(v)
-
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
