@@ -197,11 +197,12 @@ grammar = r"""
     fday: "day"i "(" expr ")"
     fweek: "week"i "(" expr ")"
     fmonth: "month"i "(" expr ")"
+    fquarter: "quarter"i  "(" expr ")"
     fyear: "year"i "(" expr ")"
     
     fdate_part: "date_part"i "(" expr ")"
     
-    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fyear | fdate_part
+    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fquarter | fyear | fdate_part
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -943,6 +944,16 @@ class ParseToObjects(Transformer):
     def fmonth(self, args):
         return Function(
             operator=FunctionType.MONTH,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
+    def fquarter(self, args):
+        return Function(
+            operator=FunctionType.QUARTER,
             arguments=args,
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.PROPERTY,
