@@ -5,9 +5,14 @@ from preql.core.exceptions import InvalidSyntaxException
 from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
+from preql.dialect.bigquery import BigqueryDialect
+from preql.dialect.duckdb import DuckDBDialect
+from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 from preql.hooks.query_debugger import DebuggingHook
 
+
+TEST_DIALECTS = [BaseDialect(), BigqueryDialect(), DuckDBDialect(), SqlServerDialect()]
 
 def test_functions(test_environment):
     declarations = """
@@ -25,9 +30,10 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, hooks=[])
+        )
 
 
 def test_wrapped_property_functions(test_environment):
@@ -43,7 +49,34 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    x = BaseDialect().compile_statement(process_query(test_environment, select))
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
+
+
+def test_window_functions(test_environment):
+    declarations = """
+
+    property prior_order_id <- lag order_id by order_id desc;
+    property next_order_id <- lead order_id order by order_id asc;
+    select
+        order_id,
+        prior_order_id,
+        next_order_id
+    ;
+    
+
+
+        """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
+
 
 
 def test_date_functions(test_environment):
@@ -52,12 +85,15 @@ def test_date_functions(test_environment):
     select
         order_id,
         date(order_timestamp) -> order_date,
-        timestamp(order_timestamp) -> order_timestamp_2,
+        datetime(order_timestamp) -> order_timestamp_datetime,
+        timestamp(order_timestamp) -> order_timestamp_dos,
         second(order_timestamp) -> order_second,
         minute(order_timestamp) -> order_minute,
         hour(order_timestamp) -> order_hour,
         day(order_timestamp) -> order_day,
+        week(order_timestamp) -> order_week,
         month(order_timestamp) -> order_month,
+        quarter(order_timestamp) -> order_quarter,
         year(order_timestamp) -> order_year,
     ;
     
@@ -66,7 +102,10 @@ def test_date_functions(test_environment):
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    x = BaseDialect().compile_statement(process_query(test_environment, select))
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
 
 
 def test_bad_cast(test_environment):
@@ -88,6 +127,11 @@ def test_explicit_cast(test_environment):
         _str_order_id
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
 
 
 def test_math_functions(test_environment):
@@ -100,16 +144,39 @@ def test_math_functions(test_environment):
     property fixed_order_value<- inflated_order_value / 2;
     property order_sub <- revenue - 2;
     property order_add <- revenue + 2;
+    property order_nested <- revenue*2/2;
+    property rounded <- round(revenue + 2.01,2);
     select
         order_id,
         inflated_order_value,
         fixed_order_value,
         order_sub,
-        order_add
+        order_add,
+        order_nested,
+        rounded
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
-    x = BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
-    print(x)
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
+
+
+def test_string_functions(test_environment):
+    declarations = """
+    property test_name <- concat(category_name, '_test');
+    property upper_name <- upper(category_name);
+    property lower_name <- lower(category_name);
+    select
+        test_name,
+        upper_name,
+        lower_name
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
+

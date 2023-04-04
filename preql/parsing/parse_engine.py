@@ -22,6 +22,7 @@ from preql.core.enums import (
     ComparisonOperator,
     BooleanOperator,
     WindowOrder,
+    WindowType,
 )
 from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.core.models import (
@@ -97,12 +98,14 @@ grammar = r"""
     // user_id where state = Mexico
     filter_item: "filter"i IDENTIFIER where
     
-    // top 5 user_id
-    window_item: "rank"i (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
+    // rank/lag/lead
+    WINDOW_TYPE: ("rank"i|"lag"i|"lead"i)  /[\s]+/
+    
+    window_item: WINDOW_TYPE (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
     
     window_item_over: ("OVER"i over_list)
     
-    window_item_order: ("BY"i order_list)
+    window_item_order: ("ORDER"i? "BY"i order_list)
     
     select_item: (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
     
@@ -156,8 +159,9 @@ grammar = r"""
     fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
     fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
     fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
+    fround: "round"i "(" expr "," expr ")"
     
-    _math_functions: fadd | fsub | fmul | fdiv
+    _math_functions: fadd | fsub | fmul | fdiv | fround
     
     //generic
     fcast: "cast"i "(" expr "AS"i TYPE ")"
@@ -193,11 +197,12 @@ grammar = r"""
     fday: "day"i "(" expr ")"
     fweek: "week"i "(" expr ")"
     fmonth: "month"i "(" expr ")"
+    fquarter: "quarter"i  "(" expr ")"
     fyear: "year"i "(" expr ")"
     
     fdate_part: "date_part"i "(" expr ")"
     
-    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fyear | fdate_part
+    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fquarter | fyear | fdate_part
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -243,6 +248,21 @@ def parse_concept_reference(
         namespace = environment.namespace or DEFAULT_NAMESPACE
         lookup = name
     return lookup, namespace, name
+
+
+def arg_to_datatype(arg) -> DataType:
+    if isinstance(arg, Function):
+        return arg.output_datatype
+    elif isinstance(arg, Concept):
+        return arg.datatype
+    elif isinstance(arg, int):
+        return DataType.INTEGER
+    elif isinstance(arg, str):
+        return DataType.STRING
+    elif isinstance(arg, float):
+        return DataType.FLOAT
+    else:
+        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
 
 
 class ParseToObjects(Transformer):
@@ -664,6 +684,9 @@ class ParseToObjects(Transformer):
     def window(self, args):
         return Window(count=args[1].value, window_order=args[0])
 
+    def WINDOW_TYPE(self, args):
+        return WindowType(args.strip())
+
     def window_item_over(self, args):
         return WindowItemOver(contents=args[0])
 
@@ -671,15 +694,16 @@ class ParseToObjects(Transformer):
         return WindowItemOrder(contents=args[0])
 
     def window_item(self, args) -> WindowItem:
+        type = args[0]
         order_by = []
         over = []
-        for item in args[1:]:
+        for item in args[2:]:
             if isinstance(item, WindowItemOrder):
                 order_by = item.contents
             elif isinstance(item, WindowItemOver):
                 over = item.contents
-        concept = self.environment.concepts[args[0]]
-        return WindowItem(content=concept, over=over, order_by=order_by)
+        concept = self.environment.concepts[args[1]]
+        return WindowItem(type=type, content=concept, over=over, order_by=order_by)
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
@@ -927,6 +951,16 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
+    def fquarter(self, args):
+        return Function(
+            operator=FunctionType.QUARTER,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+
     def fyear(self, args):
         return Function(
             operator=FunctionType.YEAR,
@@ -957,7 +991,8 @@ class ParseToObjects(Transformer):
 
     # math functions
     def fadd(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
+        # TODO: check for valid transforms?
         return Function(
             operator=FunctionType.ADD,
             arguments=args,
@@ -968,7 +1003,7 @@ class ParseToObjects(Transformer):
         )
 
     def fsub(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.SUBTRACT,
             arguments=args,
@@ -979,7 +1014,7 @@ class ParseToObjects(Transformer):
         )
 
     def fmul(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.MULTIPLY,
             arguments=args,
@@ -990,7 +1025,7 @@ class ParseToObjects(Transformer):
         )
 
     def fdiv(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.DIVIDE,
             arguments=args,
@@ -999,6 +1034,31 @@ class ParseToObjects(Transformer):
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
+
+    def fround(self, args):
+        output_datatype = arg_to_datatype(args[0])
+        return Function(
+            operator=FunctionType.ROUND,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs=[
+                {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+                {DataType.INTEGER},
+            ],
+            arg_count=2,
+        )
+
+    # def fcase(self, args):
+    #     output_datatype = arg_to_datatype(args[0])
+    #     return Function(
+    #         operator=FunctionType.CASE,
+    #         arguments=args,
+    #         output_datatype=output_datatype,
+    #         output_purpose=Purpose.PROPERTY,
+    #         # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
+    #         # arg_count=2,
+    #     )
 
 
 def unpack_visit_error(e: VisitError):

@@ -2,17 +2,16 @@ from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
 
+from preql.constants import CONFIG
 from preql.constants import logger
-from preql.core.enums import FunctionType, WindowType, JoinType
+from preql.core.enums import FunctionType, WindowType
 from preql.core.enums import Purpose, DataType
-from preql.hooks.base_hook import BaseHook
 from preql.core.models import (
     Concept,
     CTE,
     ProcessedQuery,
     CompiledCTE,
     Conditional,
-    Expr,
     Comparison,
     OrderItem,
     WindowItem,
@@ -20,10 +19,10 @@ from preql.core.models import (
     Function,
 )
 from preql.core.models import Environment, Select
-from preql.core.query_processor import process_query, process_query_v2
+from preql.core.query_processor import process_query_v2
 from preql.dialect.common import render_join
+from preql.hooks.base_hook import BaseHook
 from preql.utility import unique
-from preql.constants import CONFIG
 
 LOGGER_PREFIX = "[RENDERING]"
 
@@ -33,9 +32,18 @@ def INVALID_REFERENCE_STRING(x: Any):
 
 
 WINDOW_FUNCTION_MAP = {
-    WindowType.ROW_NUMBER: lambda window, sort, order: f"row_number() over (partition by {window} order by {sort} {order})"
+    WindowType.LAG: lambda concept, window, sort: f"lag({concept}) over (partition by {window} order by {sort} )"
     if window
-    else f"row_number() over (order by {sort} {order})"
+    else f"lag({concept}) over (order by {sort})",
+    WindowType.LEAD: lambda concept, window, sort: f"lead({concept}) over (partition by {window} order by {sort})"
+    if window
+    else f"lead({concept}) over (order by {sort})",
+    WindowType.RANK: lambda concept, window, sort: f"rank() over (partition by {window} order by {sort})"
+    if window
+    else f"rank() over (order by {sort} )",
+    WindowType.ROW_NUMBER: lambda concept, window, sort: f"row_number() over (partition by {window} order by {sort})"
+    if window
+    else f"row_number() over (order by {sort})",
 }
 
 DATATYPE_MAP = {
@@ -53,6 +61,7 @@ FUNCTION_MAP = {
     FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",
     FunctionType.DIVIDE: lambda x: f"({x[0]} / {x[1]})",
     FunctionType.MULTIPLY: lambda x: f"({x[0]} * {x[1]})",
+    FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -74,7 +83,9 @@ FUNCTION_MAP = {
     FunctionType.MINUTE: lambda x: f"minute({x[0]})",
     FunctionType.HOUR: lambda x: f"hour({x[0]})",
     FunctionType.DAY: lambda x: f"day({x[0]})",
+    FunctionType.WEEK: lambda x: f"week({x[0]})",
     FunctionType.MONTH: lambda x: f"month({x[0]})",
+    FunctionType.QUARTER: lambda x: f"quarter({x[0]})",
     FunctionType.YEAR: lambda x: f"year({x[0]})",
     # string types
     FunctionType.CONCAT: lambda x: f"concat({','.join(x)})",
@@ -165,14 +176,6 @@ class BaseDialect:
             f"{selected.name}.{order_item.expr.safe_address} {order_item.order.value}"
         )
 
-    def render_literal(self, v) -> str:
-        if isinstance(v, str):
-            return f"'{v}'"
-        elif isinstance(v, DataType):
-            return DATATYPE_MAP.get(v, "UNMAPPEDDTYPE")
-        else:
-            return str(v)
-
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -187,20 +190,18 @@ class BaseDialect:
                 # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
                 self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
                 rendered_order_components = [
-                    self.render_concept_sql(x.expr, cte, alias=False)
+                    f"{self.render_concept_sql(x.expr, cte, alias=False)} {x.order.value}"
                     for x in c.lineage.order_by
                 ]
                 rendered_over_components = [
                     self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
-                rval = f"{self.WINDOW_FUNCTION_MAP[WindowType.ROW_NUMBER](window=','.join(rendered_over_components), sort=','.join(rendered_order_components), order = 'desc')}"
+                rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"
             elif isinstance(c.lineage, FilterItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             else:
                 args = [
-                    self.render_concept_sql(v, cte, alias=False)
-                    if isinstance(v, Concept)
-                    else self.render_literal(v)
+                    self.render_expr(v, cte)  # , alias=False)
                     for v in c.lineage.arguments
                 ]
                 if cte.group_to_grain:
@@ -247,6 +248,7 @@ class BaseDialect:
             bool,
             float,
             DataType,
+            Function,
         ],
         cte: Optional[CTE] = None,
         cte_map: Optional[Dict[str, CTE]] = None,
