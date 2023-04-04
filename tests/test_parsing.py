@@ -1,5 +1,5 @@
-from preql.core.enums import DataType
 from preql.parsing.parse_engine import arg_to_datatype
+from preql.core.enums import DataType
 
 
 def test_arg_to_datatype():

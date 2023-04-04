@@ -1049,16 +1049,16 @@ class ParseToObjects(Transformer):
             arg_count=2,
         )
 
-    def fcase(self, args):
-        output_datatype = arg_to_datatype(args[0])
-        return Function(
-            operator=FunctionType.CASE,
-            arguments=args,
-            output_datatype=output_datatype,
-            output_purpose=Purpose.PROPERTY,
-            # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
-            # arg_count=2,
-        )
+    # def fcase(self, args):
+    #     output_datatype = arg_to_datatype(args[0])
+    #     return Function(
+    #         operator=FunctionType.CASE,
+    #         arguments=args,
+    #         output_datatype=output_datatype,
+    #         output_purpose=Purpose.PROPERTY,
+    #         # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
+    #         # arg_count=2,
+    #     )
 
 
 def unpack_visit_error(e: VisitError):
