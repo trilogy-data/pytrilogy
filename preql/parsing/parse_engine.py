@@ -249,6 +249,21 @@ def parse_concept_reference(
     return lookup, namespace, name
 
 
+def arg_to_datatype(arg) -> DataType:
+    if isinstance(arg, Function):
+        return arg.output_datatype
+    elif isinstance(arg, Concept):
+        return arg.datatype
+    elif isinstance(arg, int):
+        return DataType.INTEGER
+    elif isinstance(arg, str):
+        return DataType.STRING
+    elif isinstance(arg, float):
+        return DataType.FLOAT
+    else:
+        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+
+
 class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
         Transformer.__init__(self, visit_tokens)
@@ -965,7 +980,8 @@ class ParseToObjects(Transformer):
 
     # math functions
     def fadd(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
+        # TODO: check for valid transforms?
         return Function(
             operator=FunctionType.ADD,
             arguments=args,
@@ -976,7 +992,7 @@ class ParseToObjects(Transformer):
         )
 
     def fsub(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.SUBTRACT,
             arguments=args,
@@ -987,10 +1003,7 @@ class ParseToObjects(Transformer):
         )
 
     def fmul(self, args):
-        if isinstance(args[0], Function):
-            output_datatype = args[0].output_datatype
-        else:
-            output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.MULTIPLY,
             arguments=args,
@@ -1001,7 +1014,7 @@ class ParseToObjects(Transformer):
         )
 
     def fdiv(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.DIVIDE,
             arguments=args,
@@ -1012,7 +1025,7 @@ class ParseToObjects(Transformer):
         )
 
     def fround(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.ROUND,
             arguments=args,
@@ -1026,7 +1039,7 @@ class ParseToObjects(Transformer):
         )
 
     def fcase(self, args):
-        output_datatype = args[0].datatype
+        output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.CASE,
             arguments=args,
