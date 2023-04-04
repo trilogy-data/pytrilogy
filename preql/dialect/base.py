@@ -83,6 +83,7 @@ FUNCTION_MAP = {
     FunctionType.MINUTE: lambda x: f"minute({x[0]})",
     FunctionType.HOUR: lambda x: f"hour({x[0]})",
     FunctionType.DAY: lambda x: f"day({x[0]})",
+    FunctionType.WEEK: lambda x: f"week({x[0]})",
     FunctionType.MONTH: lambda x: f"month({x[0]})",
     FunctionType.YEAR: lambda x: f"year({x[0]})",
     # string types
