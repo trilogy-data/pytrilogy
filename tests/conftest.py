@@ -4,7 +4,13 @@ from pytest import fixture
 
 from preql import Environment
 from preql.constants import logger as base_logger
-from preql.core.enums import DataType, Purpose, FunctionType, ComparisonOperator
+from preql.core.enums import (
+    DataType,
+    Purpose,
+    FunctionType,
+    ComparisonOperator,
+    WindowType,
+)
 from preql.core.env_processor import generate_graph
 from preql.core.models import (
     Concept,
@@ -130,7 +136,9 @@ def test_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         lineage=WindowItem(
-            content=product_id, order_by=[OrderItem(expr=total_revenue, order="desc")]
+            type=WindowType.RANK,
+            content=product_id,
+            order_by=[OrderItem(expr=total_revenue, order="desc")],
         ),
     )
     product_revenue_rank_by_category = Concept(
@@ -138,6 +146,7 @@ def test_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         lineage=WindowItem(
+            type=WindowType.RANK,
             content=product_id,
             over=[category_id],
             order_by=[OrderItem(expr=total_revenue, order="desc")],

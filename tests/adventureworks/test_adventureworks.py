@@ -38,7 +38,7 @@ def test_finance_queries(adventureworks_engine, environment):
         sql = generator.compile_statement(statement)
         print(sql)
         results = adventureworks_engine.execute_query(statement)
-        assert list(results)[0] ==('Canadian Division', 8, 292174782.71999985)
+        assert list(results)[0] == ("Canadian Division", 8, 292174782.71999985)
 
 
 @pytest.mark.adventureworks
