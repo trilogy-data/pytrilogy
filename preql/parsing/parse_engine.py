@@ -575,15 +575,18 @@ class ParseToObjects(Transformer):
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
-        with open(target, "r", encoding="utf-8") as f:
 
-            text = f.read()
-        nparser = ParseToObjects(
-            visit_tokens=True,
-            text=text,
-            environment=Environment(working_path=dirname(target), namespace=alias),
-        )
-        nparser.transform(PARSER.parse(text))
+        try:
+            with open(target, "r", encoding="utf-8") as f:
+                text = f.read()
+            nparser = ParseToObjects(
+                visit_tokens=True,
+                text=text,
+                environment=Environment(working_path=dirname(target), namespace=alias),
+            )
+            nparser.transform(PARSER.parse(text))
+        except Exception as e:
+            raise ImportError(f'Unable to import file {dirname(target)}, parsing error: {e}')
 
         for key, concept in nparser.environment.concepts.items():
             self.environment.concepts[f"{alias}.{key}"] = concept
@@ -1067,6 +1070,8 @@ def unpack_visit_error(e: VisitError):
     if isinstance(e.orig_exc, VisitError):
         unpack_visit_error(e.orig_exc)
     if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
+        raise e.orig_exc
+    if isinstance(e.orig_exc, ImportError):
         raise e.orig_exc
     elif isinstance(e.orig_exc, ValidationError):
         raise InvalidSyntaxException(str(e.orig_exc))
