@@ -22,7 +22,7 @@ from preql.core.enums import (
     ComparisonOperator,
     BooleanOperator,
     WindowOrder,
-    WindowType
+    WindowType,
 )
 from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.core.models import (
@@ -99,7 +99,7 @@ grammar = r"""
     filter_item: "filter"i IDENTIFIER where
     
     // top 5 user_id
-    WINDOW_TYPE: "rank"i|"lag"i|"lead"i 
+    WINDOW_TYPE: "rank "i|"lag "i|"lead "i  /[\s]+/
     
     window_item: WINDOW_TYPE (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
     
@@ -159,8 +159,9 @@ grammar = r"""
     fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
     fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
     fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
+    fround: "round"i "(" expr "," expr ")"
     
-    _math_functions: fadd | fsub | fmul | fdiv
+    _math_functions: fadd | fsub | fmul | fdiv | fround
     
     //generic
     fcast: "cast"i "(" expr "AS"i TYPE ")"
@@ -668,7 +669,7 @@ class ParseToObjects(Transformer):
         return Window(count=args[1].value, window_order=args[0])
 
     def WINDOW_TYPE(self, args):
-        return WindowType(args)
+        return WindowType(args.strip())
 
     def window_item_over(self, args):
         return WindowItemOver(contents=args[0])
@@ -677,7 +678,6 @@ class ParseToObjects(Transformer):
         return WindowItemOrder(contents=args[0])
 
     def window_item(self, args) -> WindowItem:
-        print(args)
         type = args[0]
         order_by = []
         over = []
@@ -687,7 +687,7 @@ class ParseToObjects(Transformer):
             elif isinstance(item, WindowItemOver):
                 over = item.contents
         concept = self.environment.concepts[args[1]]
-        return WindowItem(type = type,content=concept, over=over, order_by=order_by)
+        return WindowItem(type=type, content=concept, over=over, order_by=order_by)
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
@@ -987,7 +987,10 @@ class ParseToObjects(Transformer):
         )
 
     def fmul(self, args):
-        output_datatype = args[0].datatype
+        if isinstance(args[0], Function):
+            output_datatype = args[0].output_datatype
+        else:
+            output_datatype = args[0].datatype
         return Function(
             operator=FunctionType.MULTIPLY,
             arguments=args,
@@ -1006,6 +1009,31 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
+        )
+
+    def fround(self, args):
+        output_datatype = args[0].datatype
+        return Function(
+            operator=FunctionType.ROUND,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs=[
+                {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+                {DataType.INTEGER},
+            ],
+            arg_count=2,
+        )
+
+    def fcase(self, args):
+        output_datatype = args[0].datatype
+        return Function(
+            operator=FunctionType.CASE,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.PROPERTY,
+            # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
+            # arg_count=2,
         )
 
 
