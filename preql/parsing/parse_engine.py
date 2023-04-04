@@ -586,7 +586,9 @@ class ParseToObjects(Transformer):
             )
             nparser.transform(PARSER.parse(text))
         except Exception as e:
-            raise ImportError(f'Unable to import file {dirname(target)}, parsing error: {e}')
+            raise ImportError(
+                f"Unable to import file {dirname(target)}, parsing error: {e}"
+            )
 
         for key, concept in nparser.environment.concepts.items():
             self.environment.concepts[f"{alias}.{key}"] = concept
@@ -1079,7 +1081,7 @@ def unpack_visit_error(e: VisitError):
 
 
 def parse_text(
-    text: str, environment: Optional[Environment] = None, print_flag: bool = False
+    text: str, environment: Optional[Environment] = None
 ) -> Tuple[Environment, List]:
     environment = environment or Environment(datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)

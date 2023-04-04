@@ -28,7 +28,7 @@ LOGGER_PREFIX = "[RENDERING]"
 
 
 def INVALID_REFERENCE_STRING(x: Any):
-    return "INVALID_REFERENCE_BUG"
+    return f"INVALID_REFERENCE_BUG<{x}>"
 
 
 WINDOW_FUNCTION_MAP = {
@@ -220,7 +220,12 @@ class BaseDialect:
                 logger.debug(
                     f"{LOGGER_PREFIX} [{c.address}] Cannot render from {cte.name}, have {cte.source_map.keys()} only"
                 )
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+            missing = [
+                sub_c.address
+                for sub_c in c.lineage.arguments
+                if isinstance(sub_c, Concept) and sub_c not in cte.source_map
+            ]
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
         else:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address for {c.address}"
@@ -229,7 +234,7 @@ class BaseDialect:
                 logger.debug(
                     f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from {cte.name}, have {cte.source_map.keys()} only"
                 )
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(cte))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
 
         if alias:
             return f"{rval} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
