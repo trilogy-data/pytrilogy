@@ -30,7 +30,7 @@ from preql.core.enums import (
     WindowOrder,
     PurposeLineage,
     SourceType,
-    WindowType
+    WindowType,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -249,7 +249,11 @@ class Function(BaseModel):
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
-    arguments: List[Union[Concept, int, float, str, DataType]]
+    arguments: List[Union[Concept, int, float, str, DataType, "Function"]]
+
+    @property
+    def datatype(self):
+        return self.output_datatype
 
     @validator("arguments", pre=True, always=True)
     def parse_arguments(cls, v, **kwargs):
@@ -263,11 +267,11 @@ class Function(BaseModel):
             raise ParseError(
                 f"Incorrect argument count to {operator_name} function, expects {target_arg_count}, got {arg_count}"
             )
-        for arg in v:
-            if isinstance(arg, Function):
-                raise ParseError(
-                    f"Anonymous function calls not allowed; map function to a concept, then pass in. {arg.operator.name} being passed into {operator_name}"
-                )
+        # for arg in v:
+        #     if isinstance(arg, Function):
+        #         raise ParseError(
+        #             f"Anonymous function calls not allowed; map function to a concept, then pass in. {arg.operator.name} being passed into {operator_name}"
+        #         )
         # if all arguments need to be the same type
         # turn this into an array for validation
         if isinstance(valid_inputs, set):
@@ -280,7 +284,14 @@ class Function(BaseModel):
                 raise TypeError(
                     f"Invalid input datatype {arg.datatype} passed into {operator_name} from concept {arg.name}"
                 )
-
+            if (
+                isinstance(arg, Function)
+                and arg.output_datatype not in valid_inputs[idx]
+            ):
+                raise TypeError(
+                    f"Invalid input datatype {arg.output_datatype} passed into {operator_name} from function {arg.operator.name}"
+                )
+            # check constants
             for ptype, dtype in [
                 [str, DataType.STRING],
                 [int, DataType.INTEGER],
@@ -309,7 +320,11 @@ class Function(BaseModel):
 
     @property
     def concept_arguments(self) -> List[Concept]:
-        return [c for c in self.arguments if isinstance(c, Concept)]
+        base = [c for c in self.arguments if isinstance(c, Concept)]
+        for arg in self.arguments:
+            if isinstance(arg, Function):
+                base += arg.concept_arguments
+        return base
 
     @property
     def output_grain(self):
@@ -363,7 +378,7 @@ class WindowItem(BaseModel):
 
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem(
-            type = self.type,
+            type=self.type,
             content=self.content.with_namespace(namespace),
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],

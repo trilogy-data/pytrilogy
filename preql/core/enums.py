@@ -69,6 +69,7 @@ class WindowOrder(Enum):
 
 class FunctionType(Enum):
     # Generic
+    CASE = "case"
     CAST = "cast"
     CONCAT = "concat"
 
@@ -77,6 +78,7 @@ class FunctionType(Enum):
     MULTIPLY = "multiply"
     ADD = "add"
     SUBTRACT = "subtract"
+    ROUND = "round"
 
     # Aggregates
     COUNT = "count"

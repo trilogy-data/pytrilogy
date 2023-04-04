@@ -19,6 +19,8 @@ FUNCTION_MAP = {
     FunctionType.YEAR: lambda x: f"EXTRACT(YEAR from {x[0]})",
     FunctionType.MONTH: lambda x: f"EXTRACT(MONTH from {x[0]})",
     FunctionType.QUARTER: lambda x: f"EXTRACT(QUARTER from {x[0]})",
+    # math
+    FunctionType.DIVIDE: lambda x: f"SAFE_DIVIDE({x[0]},{x[1]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
