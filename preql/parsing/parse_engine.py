@@ -98,14 +98,14 @@ grammar = r"""
     // user_id where state = Mexico
     filter_item: "filter"i IDENTIFIER where
     
-    // top 5 user_id
-    WINDOW_TYPE: "rank "i|"lag "i|"lead "i  /[\s]+/
+    // rank/lag/lead
+    WINDOW_TYPE: ("rank"i|"lag"i|"lead"i)  /[\s]+/
     
     window_item: WINDOW_TYPE (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
     
     window_item_over: ("OVER"i over_list)
     
-    window_item_order: ("BY"i order_list)
+    window_item_order: ("ORDER"i? "BY"i order_list)
     
     select_item: (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
     

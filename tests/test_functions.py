@@ -46,6 +46,26 @@ select
     x = BaseDialect().compile_statement(process_query(test_environment, select))
 
 
+def test_window_functions(test_environment):
+    declarations = """
+
+    property prior_order_id <- lag order_id by order_id desc;
+    property next_order_id <- lead order_id order by order_id asc;
+    select
+        order_id,
+        prior_order_id,
+        next_order_id
+    ;
+    
+
+
+        """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    x = BaseDialect().compile_statement(process_query(test_environment, select))
+
+
 def test_date_functions(test_environment):
     declarations = """
 
@@ -100,12 +120,14 @@ def test_math_functions(test_environment):
     property fixed_order_value<- inflated_order_value / 2;
     property order_sub <- revenue - 2;
     property order_add <- revenue + 2;
+    property order_nested <- revenue*2/2;
     select
         order_id,
         inflated_order_value,
         fixed_order_value,
         order_sub,
-        order_add
+        order_add,
+        order_nested
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
