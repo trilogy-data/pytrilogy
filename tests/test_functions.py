@@ -5,9 +5,14 @@ from preql.core.exceptions import InvalidSyntaxException
 from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
+from preql.dialect.bigquery import BigqueryDialect
+from preql.dialect.duckdb import DuckDBDialect
+from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 from preql.hooks.query_debugger import DebuggingHook
 
+
+TEST_DIALECTS = [BaseDialect(), BigqueryDialect(), DuckDBDialect(), SqlServerDialect()]
 
 def test_functions(test_environment):
     declarations = """
@@ -25,9 +30,10 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, hooks=[])
+        )
 
 
 def test_wrapped_property_functions(test_environment):
@@ -43,7 +49,10 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    x = BaseDialect().compile_statement(process_query(test_environment, select))
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
 
 
 def test_window_functions(test_environment):
@@ -63,7 +72,11 @@ def test_window_functions(test_environment):
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    x = BaseDialect().compile_statement(process_query(test_environment, select))
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
+
 
 
 def test_date_functions(test_environment):
@@ -89,7 +102,10 @@ def test_date_functions(test_environment):
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    x = BaseDialect().compile_statement(process_query(test_environment, select))
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
 
 
 def test_bad_cast(test_environment):
@@ -111,6 +127,11 @@ def test_explicit_cast(test_environment):
         _str_order_id
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
 
 
 def test_math_functions(test_environment):
@@ -136,10 +157,10 @@ def test_math_functions(test_environment):
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
-    x = BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
-    print(x)
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
 
 
 def test_string_functions(test_environment):
@@ -153,3 +174,9 @@ def test_string_functions(test_environment):
         lower_name
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(
+            process_query(test_environment, select, )
+        )
+
