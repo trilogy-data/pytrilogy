@@ -436,7 +436,7 @@ class FilterItem(BaseModel):
 
     @property
     def arguments(self) -> List[Concept]:
-        output = self.content.input
+        output = [self.content]
         output += self.where.input
         return output
 
@@ -803,7 +803,7 @@ class BaseJoin:
                         )
             if include:
                 final_concepts.append(concept)
-        if not final_concepts:
+        if not final_concepts and self.concepts:
             left_keys = [c.address for c in self.left_datasource.output_concepts]
             right_keys = [c.address for c in self.right_datasource.output_concepts]
             raise SyntaxError(

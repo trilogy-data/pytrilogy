@@ -51,3 +51,44 @@ datasource users (
 
     select: Select = parse_two[-1]
     assert select.grain == Grain(components=[env.concepts["about_me"]])
+
+
+def test_double_aggregate():
+    declarations = """
+    key user_id int metadata(description="the description");
+    property user_id.display_name string metadata(description="The display name ");
+    property user_id.about_me string metadata(description="User provided description");
+    key post_id int;
+
+
+    datasource posts (
+        user_id: user_id,
+        id: post_id
+        )
+        grain (post_id)
+        address bigquery-public-data.stackoverflow.post_history
+    ;
+
+
+    datasource users (
+        id: user_id,
+        display_name: display_name,
+        about_me: about_me,
+        )
+        grain (user_id)
+        address bigquery-public-data.stackoverflow.users
+    ;
+
+
+        """
+    env, parsed = parse(declarations)
+
+    q1 = """
+    metric post_count<- count(post_id);
+    metric distinct_post_count <- count_distinct(post_id);
+    
+    select
+        post_count,
+        distinct_post_count
+    ;"""
+    env, parse_one = parse(q1, environment=env)
