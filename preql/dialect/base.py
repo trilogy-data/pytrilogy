@@ -294,6 +294,7 @@ class BaseDialect:
         return str(e)
 
     def render_cte(self, cte: CTE):
+
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
