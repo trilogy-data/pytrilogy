@@ -30,24 +30,46 @@ LOGGER_PREFIX = "[QUERY BUILD]"
 
 
 def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
-    left_cte = [
+    left_ctes = [
         cte
         for cte in ctes
         if (
-            cte.source.datasources[0].identifier == base_join.left_datasource.identifier
-            or cte.source.identifier == base_join.left_datasource.identifier
+            # cte.source.datasources[0].identifier == base_join.left_datasource.identifier
+            # or
+            cte.source.identifier
+            == base_join.left_datasource.identifier
         )
-    ][0]
-    right_cte = [
+    ]
+    if not left_ctes:
+        left_ctes = [
+            cte
+            for cte in ctes
+            if (
+                cte.source.datasources[0].identifier
+                == base_join.left_datasource.identifier
+            )
+        ]
+    left_cte = left_ctes[0]
+    right_ctes = [
         cte
         for cte in ctes
         if (
-            cte.source.datasources[0].identifier
+            cte.source.identifier
             == base_join.right_datasource.identifier
-            or cte.source.identifier == base_join.right_datasource.identifier
+            #     or cte.source.datasources[0].identifier
+            # == base_join.right_datasource.identifier
         )
-    ][0]
-
+    ]
+    if not right_ctes:
+        right_ctes = [
+            cte
+            for cte in ctes
+            if (
+                cte.source.datasources[0].identifier
+                == base_join.right_datasource.identifier
+            )
+        ]
+    right_cte = right_ctes[0]
     return Join(
         left_cte=left_cte,
         right_cte=right_cte,
@@ -234,71 +256,3 @@ def process_query(
 ) -> ProcessedQuery:
     """Turn the raw query input into an instantiated execution tree."""
     return process_query_v2(environment, statement, hooks)
-    graph = generate_graph(environment)
-    concepts, datasources = get_query_datasources(
-        environment=environment, graph=graph, statement=statement
-    )
-
-    ctes = []
-    for datasource in datasources.values():
-        if isinstance(datasource, Datasource):
-            raise ValueError("Unexpected base datasource")
-        ctes += datasource_to_ctes(datasource)
-
-    joins = []
-
-    final_ctes = merge_ctes(ctes)
-    base_list: List[CTE] = [cte for cte in final_ctes if cte.grain == statement.grain]
-    if base_list:
-        base = base_list[0]
-    else:
-        base_list = sorted(
-            [cte for cte in ctes if cte.grain.issubset(statement.grain)],
-            key=lambda cte: -len(
-                [
-                    x
-                    for x in cte.output_columns
-                    if x.address in [g.address for g in statement.grain.components]
-                ]
-            ),
-        )
-        if not base_list:
-            cte_grain = [cte.name + "@" + str(cte.grain) for cte in final_ctes]
-            raise ValueError(
-                f"No eligible output CTEs created for target grain {statement.grain}, have {','.join(cte_grain)}"
-            )
-        base = base_list[0]
-    others: List[CTE] = [cte for cte in final_ctes if cte != base]
-
-    for cte in others:
-        # we do the with_grain here to fix an issue
-        # where a query with a grain of properties has the components of the grain
-        # with the default key grain rather than the grain of the select
-        # TODO - evaluate if we can fix this in select definition
-
-        joinkeys = [
-            JoinKey(c)
-            for c in statement.grain.components
-            if c.with_grain(cte.grain) in cte.output_columns
-            and c.with_grain(base.grain) in base.output_columns
-            and cte.grain.issubset(statement.grain)
-        ]
-        if joinkeys:
-            joins.append(
-                Join(
-                    left_cte=base,
-                    right_cte=cte,
-                    joinkeys=joinkeys,
-                    jointype=JoinType.LEFT_OUTER,
-                )
-            )
-    return ProcessedQuery(
-        order_by=statement.order_by,
-        grain=statement.grain,
-        limit=statement.limit,
-        where_clause=statement.where_clause,
-        output_columns=statement.output_components,
-        ctes=final_ctes,
-        base=base,
-        joins=joins,
-    )

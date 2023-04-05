@@ -292,20 +292,17 @@ class MergeNode(StrategyNode):
                 return dataset
 
         grain = Grain()
-        for source in parent_sources:
+        for source in final_datasets:
             grain += source.grain
         # only finally, join between them for unique values
         dataset_list = sorted(
-            list(merged.values()), key=lambda x: -len(x.grain.components_copy)
+            final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
         base = dataset_list[0]
         joins = []
         all_concepts = unique(
             self.mandatory_concepts + self.optional_concepts, "address"
         )
-
-        print("GRAIN DEBUG")
-        print(grain.components)
         if dataset_list[1:]:
             for right_value in dataset_list[1:]:
                 if not grain.components:
@@ -335,7 +332,7 @@ class MergeNode(StrategyNode):
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=outputs,
-            datasources=parent_sources,
+            datasources=final_datasets,
             source_type=self.source_type,
             source_map=resolve_concept_map(parent_sources),
             joins=joins,
@@ -701,5 +698,4 @@ def source_query_concepts(
     g: Optional[ReferenceGraph] = None,
 ):
     root = source_concepts(output_concepts, grain_components, environment, g)
-    # return root
     return GroupNode(output_concepts, grain_components, environment, g, parents=[root])

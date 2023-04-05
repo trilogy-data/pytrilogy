@@ -335,9 +335,6 @@ class Function(BaseModel):
         # scalars have implicit grain of all arguments
         # for input in self.concept_arguments:
         #
-        #     print('ARG DEBUG')
-        #     print(input)
-        #     print(input.grain)
         #     base_grain += input.grain
         return base_grain
 
@@ -790,6 +787,10 @@ class BaseJoin:
     filter_to_mutual: bool = False
 
     def __post_init__(self):
+        if self.left_datasource.identifier == self.right_datasource.identifier:
+            raise SyntaxError(
+                f"Cannot join a dataself to itself, joining {self.left_datasource} and {self.right_datasource}"
+            )
         final_concepts = []
         for concept in self.concepts:
             include = True
