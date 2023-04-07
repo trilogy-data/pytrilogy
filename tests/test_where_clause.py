@@ -4,8 +4,6 @@ from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
 
-import pytest
-
 
 def test_select_where(test_environment):
     declarations = """

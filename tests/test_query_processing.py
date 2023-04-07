@@ -1,7 +1,6 @@
-from preql.core.models import Select, QueryDatasource, CTE
+from preql.core.models import Select, QueryDatasource
 from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import (
-    datasource_to_ctes,
     process_query,
     get_query_datasources_v2,
 )

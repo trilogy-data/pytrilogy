@@ -3,9 +3,9 @@
 
 # from preql.compiler import compile
 from preql.core.models import Select, Grain, Datasource, QueryDatasource
+from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import process_query, datasource_to_ctes
 from preql.dialect.sql_server import SqlServerDialect
-from preql.core.processing.concept_strategies_v2 import source_concepts
 
 
 def test_aggregate_of_property_function(stackoverflow_environment):

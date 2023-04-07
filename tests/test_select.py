@@ -1,5 +1,8 @@
 # from preql.compiler import compile
-from preql.core.models import Select, Grain
+from preql.core.models import Grain
+from preql.core.models import Select
+from preql.core.query_processor import process_query
+from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
 
 
@@ -51,3 +54,53 @@ datasource users (
 
     select: Select = parse_two[-1]
     assert select.grain == Grain(components=[env.concepts["about_me"]])
+
+
+def test_double_aggregate():
+    declarations = """
+    key user_id int metadata(description="the description");
+    property user_id.display_name string metadata(description="The display name ");
+    property user_id.about_me string metadata(description="User provided description");
+    key post_id int;
+
+
+    datasource posts (
+        user_id: user_id,
+        id: post_id
+        )
+        grain (post_id)
+        address bigquery-public-data.stackoverflow.post_history
+    ;
+
+
+    datasource users (
+        id: user_id,
+        display_name: display_name,
+        about_me: about_me,
+        )
+        grain (user_id)
+        address bigquery-public-data.stackoverflow.users
+    ;
+
+
+        """
+    env, parsed = parse(declarations)
+
+    q1 = """
+    metric post_count<- count(post_id);
+    metric distinct_post_count <- count_distinct(post_id);
+    
+    metric user_count <- count(user_id);
+    
+    select
+        post_count,
+        distinct_post_count,
+        user_count
+    ;"""
+    env, parsed = parse(q1, environment=env)
+    select: Select = parsed[-1]
+
+    query = process_query(statement=select, environment=env)
+
+    generator = BigqueryDialect()
+    sql = generator.compile_statement(query)

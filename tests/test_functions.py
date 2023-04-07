@@ -9,10 +9,9 @@ from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
-from preql.hooks.query_debugger import DebuggingHook
-
 
 TEST_DIALECTS = [BaseDialect(), BigqueryDialect(), DuckDBDialect(), SqlServerDialect()]
+
 
 def test_functions(test_environment):
     declarations = """
@@ -31,9 +30,7 @@ select
     select: Select = parsed[-1]
 
     for dialect in TEST_DIALECTS:
-        dialect.compile_statement(
-            process_query(test_environment, select, hooks=[])
-        )
+        dialect.compile_statement(process_query(test_environment, select, hooks=[]))
 
 
 def test_wrapped_property_functions(test_environment):
@@ -50,9 +47,7 @@ select
     select: Select = parsed[-1]
 
     for dialect in TEST_DIALECTS:
-        dialect.compile_statement(
-            process_query(test_environment, select, )
-        )
+        dialect.compile_statement(process_query(test_environment, select))
 
 
 def test_window_functions(test_environment):
@@ -73,10 +68,7 @@ def test_window_functions(test_environment):
     select: Select = parsed[-1]
 
     for dialect in TEST_DIALECTS:
-        dialect.compile_statement(
-            process_query(test_environment, select, )
-        )
-
+        dialect.compile_statement(process_query(test_environment, select))
 
 
 def test_date_functions(test_environment):
@@ -103,9 +95,7 @@ def test_date_functions(test_environment):
     select: Select = parsed[-1]
 
     for dialect in TEST_DIALECTS:
-        dialect.compile_statement(
-            process_query(test_environment, select, )
-        )
+        dialect.compile_statement(process_query(test_environment, select))
 
 
 def test_bad_cast(test_environment):
@@ -129,14 +119,10 @@ def test_explicit_cast(test_environment):
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
-        dialect.compile_statement(
-            process_query(test_environment, select, )
-        )
+        dialect.compile_statement(process_query(test_environment, select))
 
 
 def test_math_functions(test_environment):
-    from preql.hooks.query_debugger import DebuggingHook
-
     declarations = """
     
     
@@ -158,9 +144,7 @@ def test_math_functions(test_environment):
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
-        dialect.compile_statement(
-            process_query(test_environment, select, )
-        )
+        dialect.compile_statement(process_query(test_environment, select))
 
 
 def test_string_functions(test_environment):
@@ -176,7 +160,4 @@ def test_string_functions(test_environment):
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
-        dialect.compile_statement(
-            process_query(test_environment, select, )
-        )
-
+        dialect.compile_statement(process_query(test_environment, select))

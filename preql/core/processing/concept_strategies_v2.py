@@ -282,7 +282,7 @@ class MergeNode(StrategyNode):
         final_datasets = list(merged.values())
         if len(merged.keys()) == 1:
             final = list(merged.values())[0]
-            # restrict outputs to only what should come otu of this node
+            # restrict outputs to only what should come out of this node
             final.output_concepts = self.all_concepts
             return final
         # if we have multiple candidates, see if one is good enough
@@ -290,11 +290,13 @@ class MergeNode(StrategyNode):
             output_set = set([c.address for c in dataset.output_concepts])
             if all([c.address in output_set for c in self.all_concepts]):
                 return dataset
-        # TODO - smarter filtering to only unique parents
 
+        grain = Grain()
+        for source in final_datasets:
+            grain += source.grain
         # only finally, join between them for unique values
         dataset_list = sorted(
-            list(merged.values()), key=lambda x: -len(x.grain.components_copy)
+            final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
         base = dataset_list[0]
         joins = []
@@ -303,6 +305,16 @@ class MergeNode(StrategyNode):
         )
         if dataset_list[1:]:
             for right_value in dataset_list[1:]:
+                if not grain.components:
+                    joins.append(
+                        BaseJoin(
+                            left_datasource=base,
+                            right_datasource=right_value,
+                            join_type=JoinType.FULL,
+                            concepts=[],
+                        )
+                    )
+                    continue
                 joins.append(
                     BaseJoin(
                         left_datasource=base,
@@ -316,13 +328,11 @@ class MergeNode(StrategyNode):
         for p in parent_sources:
             input_concepts += p.output_concepts
         outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
-        grain = Grain()
-        for source in parent_sources:
-            grain += source.grain
+
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=outputs,
-            datasources=parent_sources,
+            datasources=final_datasets,
             source_type=self.source_type,
             source_map=resolve_concept_map(parent_sources),
             joins=joins,
@@ -688,5 +698,4 @@ def source_query_concepts(
     g: Optional[ReferenceGraph] = None,
 ):
     root = source_concepts(output_concepts, grain_components, environment, g)
-    # return root
     return GroupNode(output_concepts, grain_components, environment, g, parents=[root])

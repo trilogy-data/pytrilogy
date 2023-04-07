@@ -4,12 +4,12 @@ from os.path import dirname, join
 import pytest
 
 from preql.core.env_processor import generate_graph
-from preql.core.models import Select, QueryDatasource, CTE, Grain
-from preql.core.query_processor import datasource_to_ctes, get_query_datasources
+from preql.core.models import Select, QueryDatasource, Grain
 from preql.core.processing.concept_strategies_v2 import (
     source_concepts,
     source_query_concepts,
 )
+from preql.core.query_processor import datasource_to_ctes, get_query_datasources
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 
