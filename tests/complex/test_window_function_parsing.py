@@ -1,10 +1,9 @@
-from preql.core.models import Select, Grain
+from preql.core.models import Select
 from preql.core.models import WindowItem
-from preql.core.query_processor import process_query, get_query_datasources
 from preql.core.processing.concept_strategies_v2 import source_concepts
+from preql.core.query_processor import process_query, get_query_datasources
 from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
-from preql.hooks.query_debugger import DebuggingHook
 
 
 def test_select():
