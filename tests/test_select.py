@@ -90,10 +90,12 @@ def test_double_aggregate():
     metric post_count<- count(post_id);
     metric distinct_post_count <- count_distinct(post_id);
     
+    metric user_count <- count(user_id);
     
     select
         post_count,
-        distinct_post_count
+        distinct_post_count,
+        user_count
     ;"""
     env, parsed = parse(q1, environment=env)
     select: Select = parsed[-1]
