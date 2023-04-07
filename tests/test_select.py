@@ -1,5 +1,8 @@
 # from preql.compiler import compile
-from preql.core.models import Select, Grain
+from preql.core.models import Grain
+from preql.core.models import Select
+from preql.core.query_processor import process_query
+from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
 
 
@@ -87,8 +90,15 @@ def test_double_aggregate():
     metric post_count<- count(post_id);
     metric distinct_post_count <- count_distinct(post_id);
     
+    
     select
         post_count,
         distinct_post_count
     ;"""
-    env, parse_one = parse(q1, environment=env)
+    env, parsed = parse(q1, environment=env)
+    select: Select = parsed[-1]
+
+    query = process_query(statement=select, environment=env)
+
+    generator = BigqueryDialect()
+    sql = generator.compile_statement(query)

@@ -9,8 +9,6 @@ from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
-from preql.hooks.query_debugger import DebuggingHook
-
 
 TEST_DIALECTS = [BaseDialect(), BigqueryDialect(), DuckDBDialect(), SqlServerDialect()]
 
@@ -125,8 +123,6 @@ def test_explicit_cast(test_environment):
 
 
 def test_math_functions(test_environment):
-    from preql.hooks.query_debugger import DebuggingHook
-
     declarations = """
     
     

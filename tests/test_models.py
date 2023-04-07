@@ -1,5 +1,5 @@
-from preql.core.models import CTE, Grain, QueryDatasource, Conditional
 from preql.core.enums import BooleanOperator
+from preql.core.models import CTE, Grain, QueryDatasource, Conditional
 
 
 def test_cte_merge(test_environment, test_environment_graph):

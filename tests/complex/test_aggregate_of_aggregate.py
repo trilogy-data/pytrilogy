@@ -1,8 +1,8 @@
 from preql.core.models import Select
 from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
-from preql.parser import parse
 from preql.hooks.query_debugger import DebuggingHook
+from preql.parser import parse
 
 
 def test_select():
