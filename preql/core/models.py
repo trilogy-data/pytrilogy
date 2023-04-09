@@ -772,6 +772,10 @@ class Datasource:
         # return f'{self.namespace}_{self.identifier}'
 
     @property
+    def full_name(self) -> str:
+        return f"{self.namespace}_{self.identifier}"
+
+    @property
     def safe_location(self) -> str:
         if isinstance(self.address, Address):
             return self.address.location
@@ -859,6 +863,10 @@ class QueryDatasource:
 
     @property
     def name(self):
+        return self.identifier
+
+    @property
+    def full_name(self):
         return self.identifier
 
     @property

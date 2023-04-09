@@ -30,14 +30,17 @@ LOGGER_PREFIX = "[QUERY BUILD]"
 
 
 def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
+    """This function converts joins at the datasource level
+    to joins at the CTE level"""
+
     left_ctes = [
         cte
         for cte in ctes
         if (
             # cte.source.datasources[0].identifier == base_join.left_datasource.identifier
             # or
-            cte.source.identifier
-            == base_join.left_datasource.identifier
+            cte.source.full_name
+            == base_join.left_datasource.full_name
         )
     ]
     if not left_ctes:
@@ -45,8 +48,8 @@ def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
             cte
             for cte in ctes
             if (
-                cte.source.datasources[0].identifier
-                == base_join.left_datasource.identifier
+                cte.source.datasources[0].full_name
+                == base_join.left_datasource.full_name
             )
         ]
     left_cte = left_ctes[0]
@@ -54,8 +57,8 @@ def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
         cte
         for cte in ctes
         if (
-            cte.source.identifier
-            == base_join.right_datasource.identifier
+            cte.source.full_name
+            == base_join.right_datasource.full_name
             #     or cte.source.datasources[0].identifier
             # == base_join.right_datasource.identifier
         )
@@ -65,8 +68,8 @@ def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
             cte
             for cte in ctes
             if (
-                cte.source.datasources[0].identifier
-                == base_join.right_datasource.identifier
+                cte.source.datasources[0].full_name
+                == base_join.right_datasource.full_name
             )
         ]
     right_cte = right_ctes[0]
