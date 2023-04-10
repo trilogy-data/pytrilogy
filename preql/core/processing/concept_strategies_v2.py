@@ -21,6 +21,8 @@ from preql.core.models import (
 )
 from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.utility import unique
+from preql.constants import logger
+from itertools import combinations
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
@@ -68,6 +70,7 @@ class StrategyNode:
         self.g = g
         self.whole_grain = whole_grain
         self.parents = parents or []
+        self.resolution_cache: Optional[QueryDatasource] = None
 
     @property
     def all_concepts(self):
@@ -80,7 +83,7 @@ class StrategyNode:
         contents = ",".join([c.address for c in concepts])
         return f"{self.__class__.__name__}<{contents}>"
 
-    def resolve(self) -> QueryDatasource:
+    def _resolve(self) -> QueryDatasource:
         parent_sources = [p.resolve() for p in self.parents]
         input_concepts = []
         for p in parent_sources:
@@ -109,6 +112,13 @@ class StrategyNode:
             grain=grain,
             condition=conditional,
         )
+
+    def resolve(self) -> QueryDatasource:
+        if self.resolution_cache:
+            return self.resolution_cache
+        qds = self._resolve()
+        self.resolution_cache = qds
+        return qds
 
 
 class WindowNode(StrategyNode):
@@ -154,9 +164,9 @@ class FilterStrategyNode(StrategyNode):
             parents=parents,
         )
 
-    def resolve(self) -> QueryDatasource:
+    def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
-        base = super().resolve()
+        base = super()._resolve()
         filtered_concepts = [
             c for c in self.all_concepts if isinstance(c.lineage, FilterItem)
         ]
@@ -191,14 +201,14 @@ class GroupNode(StrategyNode):
             parents=parents,
         )
 
-    def resolve(self) -> QueryDatasource:
+    def _resolve(self) -> QueryDatasource:
         parent_sources = [p.resolve() for p in self.parents]
         input_concepts = []
         for p in parent_sources:
             input_concepts += p.output_concepts
-        # a group by node only outputs the actuall keys grouped by
-        outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
-        grain = concept_list_to_grain(self.all_concepts, [])
+        # a group by node only outputs the actual keys grouped by
+        outputs = self.all_concepts
+        grain = concept_list_to_grain(outputs, [])
         comp_grain = Grain()
         for source in parent_sources:
             comp_grain += source.grain
@@ -210,7 +220,13 @@ class GroupNode(StrategyNode):
         ):
             # if there is no group by, and inputs equal outputs
             # return the parent
+            logger.info(
+                f"{LOGGER_PREFIX} Output of group by node equals input of group by node {[c.address for c in outputs]}"
+            )
             if len(parent_sources) == 1:
+                logger.info(
+                    f"{LOGGER_PREFIX} No group by required, returning parent node"
+                )
                 return parent_sources[0]
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
@@ -270,21 +286,25 @@ class MergeNode(StrategyNode):
             parents=parents,
         )
 
-    def resolve(self):
+    def _resolve(self):
         parent_sources = [p.resolve() for p in self.parents]
         merged = {}
         for source in parent_sources:
-            if source.identifier in merged:
-                merged[source.identifier] = merged[source.identifier] + source
+            if source.full_name in merged:
+                merged[source.full_name] = merged[source.full_name] + source
             else:
-                merged[source.identifier] = source
+                merged[source.full_name] = source
         # early exit if we can just return the parent
         final_datasets = list(merged.values())
         if len(merged.keys()) == 1:
             final = list(merged.values())[0]
-            # restrict outputs to only what should come out of this node
-            final.output_concepts = self.all_concepts
-            return final
+            if set([c.address for c in final.output_concepts]) == set(
+                [c.address for c in self.all_concepts]
+            ):
+                logger.info(
+                    f"{LOGGER_PREFIX} Merge node has only one parent with the same outputs as this merge node, dropping merge node "
+                )
+                return final
         # if we have multiple candidates, see if one is good enough
         for dataset in final_datasets:
             output_set = set([c.address for c in dataset.output_concepts])
@@ -340,8 +360,17 @@ class MergeNode(StrategyNode):
         )
 
 
+# def print_neighbors(g, node, seen=set(), depth=0):
+#     print('\t'*depth,node)
+#     for x in nx.neighbors(g, node):
+#         print('\t'*depth,x)
+#         if x not in seen:
+#             seen.add(x)
+#             print_neighbors(g, x, depth=depth+1)
+
+
 class SelectNode(StrategyNode):
-    """Select nodes actually fetch raw data, eitehr
+    """Select nodes actually fetch raw data, either
     directly from a table or via joins """
 
     source_type = SourceType.SELECT
@@ -364,16 +393,19 @@ class SelectNode(StrategyNode):
             parents=parents,
         )
 
-    def resolve_join(self) -> QueryDatasource:
-        join_candidates: List[PathInfo] = []
-
-        all_concepts = self.mandatory_concepts + self.optional_concepts
+    def resolve_joins_pass(self, all_concepts) -> Optional[QueryDatasource]:
         all_input_concepts = [*all_concepts]
+        # for key, value in self.environment.datasources.items():
+        #     print(key)
+        #     print(value.name)
+
+        join_candidates: List[PathInfo] = []
         for datasource in self.environment.datasources.values():
             all_found = True
             paths = {}
             for bitem in all_concepts:
                 item = bitem.with_default_grain()
+
                 try:
                     path = nx.shortest_path(
                         self.g,
@@ -382,23 +414,20 @@ class SelectNode(StrategyNode):
                     )
                     paths[concept_to_node(item)] = path
                 except nx.exception.NodeNotFound:
-                    # TODO: support Verbose logging mode configuration and reenable tehse
+                    # TODO: support Verbose logging mode configuration and reenable these
                     # logger.debug(f'{LOGGER_PREFIX} could not find node for {item.address}')
                     all_found = False
 
                     continue
                 except nx.exception.NetworkXNoPath:
-                    # logger.debug(f'{LOGGER_PREFIX} could not get to {item.address} from {datasource}')
+                    # logger.debug(f'{LOGGER_PREFIX} could not get to {item.address} at {item.grain} from {datasource}')
                     all_found = False
                     continue
             if all_found:
                 join_candidates.append({"paths": paths, "datasource": datasource})
         join_candidates.sort(key=lambda x: sum([len(v) for v in x["paths"].values()]))
         if not join_candidates:
-            required = [c.address for c in all_input_concepts]
-            raise ValueError(
-                f"Could not find any way to associate required concepts {required}"
-            )
+            return None
         shortest: PathInfo = join_candidates[0]
         source_map = defaultdict(set)
         join_paths: List[BaseJoin] = []
@@ -427,14 +456,14 @@ class SelectNode(StrategyNode):
         final_grain = Grain()
         datasources = sorted(
             [self.g.nodes[key]["datasource"] for key in all_datasets],
-            key=lambda x: x.identifier,
+            key=lambda x: x.full_name,
         )
         all_outputs = []
         for datasource in datasources:
             final_grain += datasource.grain
             all_outputs += datasource.output_concepts
         output = QueryDatasource(
-            output_concepts=unique(self.all_concepts, "address"),
+            output_concepts=unique(all_concepts, "address"),
             input_concepts=unique(all_input_concepts, "address"),
             source_map=source_map,
             grain=final_grain,
@@ -442,6 +471,24 @@ class SelectNode(StrategyNode):
             joins=join_paths,
         )
         return output
+
+    def resolve_join(self) -> QueryDatasource:
+
+        ds = None
+        for x in reversed(range(1, len(self.optional_concepts) + 1)):
+            for combo in combinations(self.optional_concepts, x):
+                all_concepts = self.mandatory_concepts + list(combo)
+                required = [c.address for c in all_concepts]
+                logger.info(
+                    f'{LOGGER_PREFIX} Attempting to resolve joins to reach {",".join(required)}'
+                )
+                ds = self.resolve_joins_pass(all_concepts)
+                if ds:
+                    return ds
+        required = [c.address for c in self.mandatory_concepts]
+        raise ValueError(
+            f"Could not find any way to associate required concepts {required}"
+        )
 
     def resolve_from_raw_datasources(self) -> Optional[QueryDatasource]:
         whole_grain = True
@@ -519,10 +566,10 @@ class SelectNode(StrategyNode):
                     )
         return None
 
-    def resolve(self) -> QueryDatasource:
+    def _resolve(self) -> QueryDatasource:
         # if we have parent nodes, treat this as a normal select
         if self.parents:
-            return super().resolve()
+            return super()._resolve()
         # otherwise, look if there is a datasource in the graph
         raw = self.resolve_from_raw_datasources()
 
@@ -580,7 +627,7 @@ def source_concepts(
     # Starting with the most grain
     found_addresses = []
 
-    # early exit
+    # early exit when we have found all concepts
     while not all(c.address in found_addresses for c in all_concepts):
         remaining_concept = [
             c for c in all_concepts if c.address not in found_addresses
@@ -683,9 +730,18 @@ def source_concepts(
         else:
             basic_inputs = [x for x in local_optional if x.lineage is None]
             stack.append(SelectNode([concept], basic_inputs, environment, g))
+
         for node in stack:
-            for concept in node.all_concepts:
+            for concept in node.resolve().output_concepts:
                 found_addresses.append(concept.address)
+        logger.info(
+            f"{LOGGER_PREFIX} finished a loop iteration, have {found_addresses} from {[n for n in stack]}"
+        )
+        if all(c.address in found_addresses for c in all_concepts):
+            logger.info(
+                f"{LOGGER_PREFIX} have all concepts, have {found_addresses} from {[n for n in stack]}"
+            )
+
     return MergeNode(
         mandatory_concepts, optional_concepts, environment, g, parents=stack
     )

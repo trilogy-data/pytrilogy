@@ -695,7 +695,9 @@ class Datasource:
 
     def __add__(self, other):
         if not other == self:
-            raise ValueError
+            raise ValueError(
+                "Attempted to add two datasources that are not identical, this should never happen"
+            )
         return self
 
     def __str__(self):
@@ -772,6 +774,10 @@ class Datasource:
         # return f'{self.namespace}_{self.identifier}'
 
     @property
+    def full_name(self) -> str:
+        return f"{self.namespace}_{self.identifier}"
+
+    @property
     def safe_location(self) -> str:
         if isinstance(self.address, Address):
             return self.address.location
@@ -787,7 +793,7 @@ class BaseJoin:
     filter_to_mutual: bool = False
 
     def __post_init__(self):
-        if self.left_datasource.identifier == self.right_datasource.identifier:
+        if self.left_datasource.full_name == self.right_datasource.full_name:
             raise SyntaxError(
                 f"Cannot join a dataself to itself, joining {self.left_datasource} and {self.right_datasource}"
             )
@@ -862,6 +868,10 @@ class QueryDatasource:
         return self.identifier
 
     @property
+    def full_name(self):
+        return self.identifier
+
+    @property
     def group_required(self) -> bool:
         if self.source_type:
             if self.source_type == SourceType.GROUP:
@@ -894,12 +904,10 @@ class QueryDatasource:
 
         merged_datasources = {}
         for ds in [*self.datasources, *other.datasources]:
-            if ds.identifier in merged_datasources:
-                merged_datasources[ds.identifier] = (
-                    merged_datasources[ds.identifier] + ds
-                )
+            if ds.full_name in merged_datasources:
+                merged_datasources[ds.full_name] = merged_datasources[ds.full_name] + ds
             else:
-                merged_datasources[ds.identifier] = ds
+                merged_datasources[ds.full_name] = ds
         return QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -1017,22 +1025,7 @@ class CTE:
         not just those immediately referenced.
         This method returns only those that are relevant
         to the output of the query."""
-        ctes = self.parent_ctes
         return self.parent_ctes
-        for key in self.output_columns:
-            if not key.lineage:
-                ctes.append(self.source_map[key.address])
-        if not ctes:
-            for key, item in self.source_map.items():
-                for c in self.output_columns:
-                    if key == c.address:
-                        ctes.append(item)
-                        break
-                    elif key in [c2.address for c2 in c.sources]:
-                        ctes.append(item)
-                        break
-
-        return [cte for cte in self.parent_ctes if cte.name in ctes]
 
     @property
     def base_name(self) -> str:
@@ -1052,7 +1045,6 @@ class CTE:
             raise SyntaxError(
                 f"{self.name} has no relevant base CTEs, {self.source_map}, {[x.name for x in self.parent_ctes]}, outputs {[x.address for x in self.output_columns]}"
             )
-            return self.parent_ctes[0].name
         return self.source.name
 
     @property
@@ -1062,7 +1054,7 @@ class CTE:
         ):
             # if isinstance(self.source.datasources[0], QueryDatasource) and self.relevant_base_ctes:
             #     return self.relevant_base_ctes[0].name
-            return self.source.datasources[0].name
+            return self.source.datasources[0].full_name.replace(".", "_")
         if self.joins:
             return self.joins[0].left_cte.name
         elif self.relevant_base_ctes:
@@ -1082,7 +1074,6 @@ class CTE:
                 if not error:
                     error = e
         return "INVALID_ALIAS"
-        raise error
 
 
 def merge_ctes(ctes: List[CTE]) -> List[CTE]:

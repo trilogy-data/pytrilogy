@@ -13,30 +13,37 @@ renderer = BigqueryDialect()
 
 
 def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth=0):
-    print(
-        "  " * depth,
-        input.identifier,
-        "->",
-        input.group_required,
-        "->",
-        [c.address for c in input.output_concepts],
-    )
+    display = [
+        (
+            "  " * depth,
+            input.full_name,
+            "->",
+            input.group_required,
+            "->",
+            [c.address for c in input.output_concepts],
+        )
+    ]
     if isinstance(input, QueryDatasource):
         for child in input.datasources:
-            print_recursive_resolved(child, depth + 1)
+            display += print_recursive_resolved(child, depth + 1)
+    return display
 
 
 def print_recursive_nodes(input: StrategyNode, depth=0):
-    print(
-        "  " * depth,
-        input,
-        "->",
-        input.resolve().grain,
-        "->",
-        input.resolve().identifier,
-    )
+    resolved = input.resolve()
+    display = [
+        (
+            "  " * depth,
+            input,
+            "->",
+            resolved.grain,
+            "->",
+            [c.address for c in resolved.output_concepts],
+        )
+    ]
     for child in input.parents:
-        print_recursive_nodes(child, depth + 1)
+        display += print_recursive_nodes(child, depth + 1)
+    return display
 
 
 def print_recursive_ctes(input: CTE, depth=0):
@@ -58,10 +65,14 @@ class DebuggingHook(BaseHook):
         logger.setLevel(DEBUG)
 
     def process_root_datasource(self, datasource: QueryDatasource):
-        print_recursive_resolved(datasource)
+        printed = print_recursive_resolved(datasource)
+        for row in printed:
+            print("".join([str(v) for v in row]))
 
     def process_root_cte(self, cte: CTE):
         print_recursive_ctes(cte)
 
     def process_root_strategy_node(self, node: StrategyNode):
-        print_recursive_nodes(node)
+        printed = print_recursive_nodes(node)
+        for row in printed:
+            print("".join([str(v) for v in row]))

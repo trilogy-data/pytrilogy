@@ -30,43 +30,36 @@ LOGGER_PREFIX = "[QUERY BUILD]"
 
 
 def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
+    """This function converts joins at the datasource level
+    to joins at the CTE level"""
+
     left_ctes = [
         cte
         for cte in ctes
-        if (
-            # cte.source.datasources[0].identifier == base_join.left_datasource.identifier
-            # or
-            cte.source.identifier
-            == base_join.left_datasource.identifier
-        )
+        if (cte.source.full_name == base_join.left_datasource.full_name)
     ]
     if not left_ctes:
         left_ctes = [
             cte
             for cte in ctes
             if (
-                cte.source.datasources[0].identifier
-                == base_join.left_datasource.identifier
+                cte.source.datasources[0].full_name
+                == base_join.left_datasource.full_name
             )
         ]
     left_cte = left_ctes[0]
     right_ctes = [
         cte
         for cte in ctes
-        if (
-            cte.source.identifier
-            == base_join.right_datasource.identifier
-            #     or cte.source.datasources[0].identifier
-            # == base_join.right_datasource.identifier
-        )
+        if (cte.source.full_name == base_join.right_datasource.full_name)
     ]
     if not right_ctes:
         right_ctes = [
             cte
             for cte in ctes
             if (
-                cte.source.datasources[0].identifier
-                == base_join.right_datasource.identifier
+                cte.source.datasources[0].full_name
+                == base_join.right_datasource.full_name
             )
         ]
     right_cte = right_ctes[0]
@@ -79,7 +72,7 @@ def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
 
 
 def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
-    int_id = string_to_hash(query_datasource.identifier)
+    int_id = string_to_hash(query_datasource.full_name)
     output = []
     children = []
     if len(query_datasource.datasources) > 1 or any(
@@ -119,18 +112,18 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     else:
         source = query_datasource.datasources[0]
         source_map = {
-            concept.address: source.identifier
+            concept.address: source.full_name
             for concept in query_datasource.output_concepts
         }
         source_map = {
             **source_map,
             **{
-                concept.address: source.identifier
+                concept.address: source.full_name
                 for concept in query_datasource.input_concepts
             },
         }
     human_id = (
-        query_datasource.identifier.replace("<", "").replace(">", "").replace(",", "_")
+        query_datasource.full_name.replace("<", "").replace(">", "").replace(",", "_")
     )
 
     cte = CTE(
