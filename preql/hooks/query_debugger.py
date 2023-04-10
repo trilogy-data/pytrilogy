@@ -16,7 +16,7 @@ def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth=0)
     display = [
         (
             "  " * depth,
-            input.identifier,
+            input.full_name,
             "->",
             input.group_required,
             "->",
@@ -30,14 +30,15 @@ def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth=0)
 
 
 def print_recursive_nodes(input: StrategyNode, depth=0):
+    resolved = input.resolve()
     display = [
         (
             "  " * depth,
             input,
             "->",
-            input.resolve().grain,
+            resolved.grain,
             "->",
-            input.resolve().identifier,
+            [c.address for c in resolved.output_concepts],
         )
     ]
     for child in input.parents:
