@@ -225,7 +225,7 @@ grammar = r"""
 
     MODIFIER: "Optional"i | "Partial"i
     
-    TYPE: "string"i | "number"i | "bool"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i
+    TYPE: "string"i | "number"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i 
     
     PURPOSE:  "key" | "metric"
     PROPERTY: "property"

@@ -1170,11 +1170,11 @@ class Expr(BaseModel):
 class Comparison(BaseModel):
 
     left: Union[
-        bool,
         int,
         str,
         float,
         list,
+        bool,
         Function,
         Concept,
         "Conditional",
@@ -1182,11 +1182,11 @@ class Comparison(BaseModel):
         "Comparison",
     ]
     right: Union[
-        bool,
         int,
         str,
         float,
         list,
+        bool,
         Concept,
         Function,
         "Conditional",
@@ -1235,14 +1235,12 @@ class Comparison(BaseModel):
 
 
 class Conditional(BaseModel):
-    left: Union[Concept, Comparison, "Conditional"]
-    right: Union[Concept, Comparison, "Conditional"]
+    left: Union[int, str, float, list, bool, Concept, Comparison, "Conditional"]
+    right: Union[int, str, float, list, bool, Concept, Comparison, "Conditional"]
     operator: BooleanOperator
 
     def __add__(self, other) -> "Conditional":
-        if other == 0:
-            return self
-        if not other:
+        if other is None:
             return self
         elif isinstance(other, Conditional):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
@@ -1253,8 +1251,12 @@ class Conditional(BaseModel):
 
     def with_namespace(self, namespace: str):
         return Conditional(
-            left=self.left.with_namespace(namespace),
-            right=self.right.with_namespace(namespace),
+            left=self.left.with_namespace(namespace)
+            if isinstance(self.left, (Concept, Comparison, Conditional))
+            else self.left,
+            right=self.right.with_namespace(namespace)
+            if isinstance(self.right, (Concept, Comparison, Conditional))
+            else self.right,
             operator=self.operator,
         )
 
@@ -1264,11 +1266,11 @@ class Conditional(BaseModel):
         output = []
         if isinstance(self.left, Concept):
             output += self.input
-        else:
+        elif isinstance(self.left, (Comparison, Conditional)):
             output += self.left.input
         if isinstance(self.right, Concept):
             output += self.right.input
-        else:
+        elif isinstance(self.right, (Comparison, Conditional)):
             output += self.right.input
         if isinstance(self.left, Function):
             output += self.left.concept_arguments

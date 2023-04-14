@@ -282,7 +282,7 @@ class BaseDialect:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
-            return f"{True if e else False}"
+            return f"{e}"
         elif isinstance(e, str):
 
             return f"'{e}'"
