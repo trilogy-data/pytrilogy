@@ -70,7 +70,7 @@ grammar = r"""
     //customer_id.property first_name STRING;
     concept_property_declaration: PROPERTY IDENTIFIER TYPE metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | PROPERTY) IDENTIFIER "<" "-" expr
+    concept_derivation:  (PURPOSE | PROPERTY | AUTO ) IDENTIFIER "<" "-" expr
     concept:  concept_declaration | concept_derivation | concept_property_declaration
     
     // datasource concepts
@@ -227,8 +227,9 @@ grammar = r"""
     
     TYPE: "string"i | "number"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i 
     
-    PURPOSE:  "key" | "metric"
-    PROPERTY: "property"
+    PURPOSE:  "key"i | "metric"i
+    PROPERTY: "property"i
+    AUTO: "AUTO"i 
 
     %import common.WS_INLINE -> _WHITESPACE
     %import common.WS
@@ -404,7 +405,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=filter_item.content.datatype,
-                purpose=args[0],
+                purpose=filter_item.content.purpose,
                 metadata=metadata,
                 lineage=filter_item,
                 # filters are implicitly at the grain of the base item
@@ -424,7 +425,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=window_item.content.datatype,
-                purpose=args[0],
+                purpose=Purpose.PROPERTY,
                 metadata=metadata,
                 lineage=window_item,
                 # windows are implicitly at the grain of the group by + the original content
@@ -441,7 +442,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=function.output_datatype,
-                purpose=args[0],
+                purpose=function.output_purpose,
                 metadata=metadata,
                 lineage=function,
                 grain=function.output_grain,
@@ -770,22 +771,36 @@ class ParseToObjects(Transformer):
 
     def max(self, arguments):
         return Function(
-            operator=FunctionType.MIN,
+            operator=FunctionType.MAX,
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            valid_inputs={
+                DataType.INTEGER,
+                DataType.FLOAT,
+                DataType.NUMBER,
+                DataType.DATE,
+                DataType.DATETIME,
+                DataType.TIMESTAMP,
+            },
             arg_count=1
             # output_grain=Grain(components=arguments),
         )
 
     def min(self, arguments):
         return Function(
-            operator=FunctionType.MAX,
+            operator=FunctionType.MIN,
             arguments=arguments,
             output_datatype=arguments[0].datatype,
             output_purpose=Purpose.METRIC,
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            valid_inputs={
+                DataType.INTEGER,
+                DataType.FLOAT,
+                DataType.NUMBER,
+                DataType.DATE,
+                DataType.DATETIME,
+                DataType.TIMESTAMP,
+            },
             arg_count=1
             # output_grain=Grain(components=arguments),
         )

@@ -44,4 +44,4 @@ jobs:
           pip install pytest
           pip install pytest-cov
           # disable active adventureworks queries unless we get docker configured
-          pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution"
+          pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
