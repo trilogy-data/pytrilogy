@@ -1,9 +1,14 @@
 from preql.core.processing.concept_strategies_v2 import GroupNode
 
 
-def test_group_node(test_environment):
-    revenue = test_environment.concepts['total_revenue']
-    product = test_environment.concepts['product_name']
-    group_node = GroupNode(required_concepts = [revenue, product], environment=test_environment)
+def test_group_node(test_environment, test_environment_graph):
+    revenue = test_environment.concepts["total_revenue"]
+    category = test_environment.concepts["category_name"]
+    group_node = GroupNode(
+        mandatory_concepts=[revenue, category],
+        optional_concepts=[],
+        environment=test_environment,
+        g=test_environment_graph,
+    )
 
     resolved = group_node.resolve()

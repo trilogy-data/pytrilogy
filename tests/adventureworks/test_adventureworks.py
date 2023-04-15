@@ -189,10 +189,8 @@ def test_two_properties(environment):
 
     recurse_datasource(customer_datasource)
 
-    expected_identifier = 'customers_join_order_dates_join_fact_internet_sales_at_customer_customer_id_dates_order_key_internet_sales_order_line_number_internet_sales_order_number'
-    assert (
-        customer_datasource.identifier
-        == expected_identifier )
+    expected_identifier = "customers_join_order_dates_join_fact_internet_sales_at_customer_customer_id_dates_order_key_internet_sales_order_line_number_internet_sales_order_number"
+    assert customer_datasource.identifier == expected_identifier
 
     order_date_datasource = source_concepts(
         [environment.concepts["dates.order_date"]],
@@ -201,9 +199,7 @@ def test_two_properties(environment):
         environment_graph,
     ).resolve()
 
-    assert (
-        order_date_datasource.identifier
-        == expected_identifier)
+    assert order_date_datasource.identifier == expected_identifier
 
     datasource = get_query_datasources(
         environment=environment, graph=environment_graph, statement=test
