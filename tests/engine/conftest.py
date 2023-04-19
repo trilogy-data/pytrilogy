@@ -21,12 +21,17 @@ def duckdb_model(environment):
 key item string;
 key value float;
 key count int;
+key store_id int;
 
 metric total_count <- sum(count);
 
+metric total_count_per_product <- sum(count) by item;
+
+metric avg_count_per_product <- avg(total_count_per_product);
 
 datasource fact_items (
     item:item,
+    store_id:store_id,
     value:value,
     count:count,
     )
@@ -45,12 +50,16 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
 
     with engine.connect() as connection:
         connection.execute(
-            text("CREATE TABLE items(item VARCHAR, value DECIMAL(10,2), count INTEGER)")
+            text(
+                "CREATE TABLE items(item VARCHAR, value DECIMAL(10,2), count INTEGER, store_id INTEGER)"
+            )
         )
         connection.commit()
         # insert two items into the table
         connection.execute(
-            text("INSERT INTO items VALUES ('jeans', 20.0, 1), ('hammer', 42.2, 2)")
+            text(
+                "INSERT INTO items VALUES ('jeans', 20.0, 1, 1), ('hammer', 42.2, 2,1 ), ('hammer', 42.2, 2,2 )"
+            )
         )
         connection.commit()
         # validate connection
@@ -64,4 +73,4 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def expected_results():
-    yield {"total_count": 3}
+    yield {"total_count": 5, "avg_count_per_product": 2.5}

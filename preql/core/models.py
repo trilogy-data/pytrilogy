@@ -1279,6 +1279,11 @@ class Conditional(BaseModel):
         return output
 
 
+class AggregateWrapper(BaseModel):
+    function: Function
+    by: List[Concept] | None
+
+
 class WhereClause(BaseModel):
 
     conditional: Union[Comparison, Conditional]
