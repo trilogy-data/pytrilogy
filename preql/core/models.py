@@ -215,6 +215,8 @@ class Concept(BaseModel):
             and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return PurposeLineage.AGGREGATE
+        elif self.purpose == Purpose.CONSTANT:
+            return PurposeLineage.CONSTANT
         return PurposeLineage.BASIC
 
 
@@ -296,6 +298,7 @@ class Function(BaseModel):
                 [str, DataType.STRING],
                 [int, DataType.INTEGER],
                 [float, DataType.FLOAT],
+                [bool, DataType.BOOL],
             ]:
                 if isinstance(arg, ptype) and dtype in valid_inputs[idx]:
                     # attempt to exit early to avoid checking all types
@@ -811,8 +814,17 @@ class BaseJoin:
             if include:
                 final_concepts.append(concept)
         if not final_concepts and self.concepts:
+
+            # if one datasource only has constants
+            # we can join on 1=1
+            for ds in [self.left_datasource, self.right_datasource]:
+                if all([c.purpose == Purpose.CONSTANT for c in ds.output_concepts]):
+                    self.concepts = []
+                    return
+
             left_keys = [c.address for c in self.left_datasource.output_concepts]
             right_keys = [c.address for c in self.right_datasource.output_concepts]
+
             raise SyntaxError(
                 f"No mutual join keys found between {self.left_datasource.identifier} and {self.right_datasource.identifier}, left_keys {left_keys}, right_keys {right_keys}"
             )
@@ -1074,6 +1086,12 @@ class CTE:
                 if not error:
                     error = e
         return "INVALID_ALIAS"
+
+    @property
+    def render_from_clause(self) -> bool:
+        if all([c.purpose == Purpose.CONSTANT for c in self.output_columns]):
+            return False
+        return True
 
 
 def merge_ctes(ctes: List[CTE]) -> List[CTE]:

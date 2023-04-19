@@ -35,8 +35,8 @@ SELECT
 TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-FROM
-    {{ base }}{% if joins %}
+{% if base %}FROM
+    {{ base }}{% endif %}{% if joins %}
 {% for join in joins %}
 {{ join }}
 {% endfor %}{% endif %}

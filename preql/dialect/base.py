@@ -55,6 +55,7 @@ DATATYPE_MAP = {
 
 FUNCTION_MAP = {
     # generic types
+    FunctionType.CONSTANT: lambda x: f"{x[0]}",
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
     # math
     FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
@@ -111,8 +112,8 @@ SELECT
 TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-FROM
-    {{ base }}{% if joins %}{% for join in joins %}
+{% if base %}FROM
+    {{ base }}{% endif %}{% if joins %}{% for join in joins %}
 {{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
@@ -301,7 +302,9 @@ class BaseDialect:
                 select_columns=[
                     self.render_concept_sql(c, cte) for c in cte.output_columns
                 ],
-                base=f"{cte.base_name} as {cte.base_alias}",
+                base=f"{cte.base_name} as {cte.base_alias}"
+                if cte.render_from_clause
+                else None,
                 grain=cte.grain,
                 limit=None,
                 joins=[

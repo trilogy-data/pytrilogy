@@ -1,5 +1,5 @@
 from os.path import join, dirname
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Union
 
 from lark import Lark, Transformer, v_args
 from lark.exceptions import (
@@ -72,7 +72,10 @@ grammar = r"""
     concept_property_declaration: PROPERTY IDENTIFIER TYPE metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | PROPERTY | AUTO ) IDENTIFIER "<" "-" expr
-    concept:  concept_declaration | concept_derivation | concept_property_declaration
+    
+    constant_derivation: CONST IDENTIFIER "<" "-" literal
+    
+    concept:  concept_declaration | concept_derivation | concept_property_declaration | constant_derivation
     
     // datasource concepts
     datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
@@ -232,6 +235,7 @@ grammar = r"""
     
     PURPOSE:  "key"i | "metric"i
     PROPERTY: "property"i
+    CONST: "const"i
     AUTO: "AUTO"i 
 
     %import common.WS_INLINE -> _WHITESPACE
@@ -267,6 +271,22 @@ def arg_to_datatype(arg) -> DataType:
         return DataType.FLOAT
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+
+
+def extract_function(
+    input: Union[Function, AggregateWrapper, int, str, float, bool]
+) -> Function:
+    if isinstance(input, Function):
+        return input
+    elif isinstance(input, AggregateWrapper):
+        return input.function
+    else:
+        return Function(
+            operator=FunctionType.CONSTANT,
+            output_datatype=arg_to_datatype(input),
+            output_purpose=Purpose.CONSTANT,
+            arguments=[input],
+        )
 
 
 class ParseToObjects(Transformer):
@@ -440,7 +460,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
             return concept
-        elif isinstance(args[2], AggregateWrapper):
+        if isinstance(args[2], AggregateWrapper):
             parent: AggregateWrapper = args[2]
             aggfunction: Function = parent.function
 
@@ -459,7 +479,28 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
             return concept
-        else:
+        if isinstance(args[2], (int, float, str, bool)):
+            const_function: Function = Function(
+                operator=FunctionType.CONSTANT,
+                output_datatype=arg_to_datatype(args[2]),
+                output_purpose=Purpose.CONSTANT,
+                arguments=[args[2]],
+            )
+            concept = Concept(
+                name=name,
+                datatype=const_function.output_datatype,
+                purpose=const_function.output_purpose,
+                metadata=metadata,
+                lineage=const_function,
+                grain=const_function.output_grain,
+                namespace=namespace,
+            )
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
+            self.environment.concepts[lookup] = concept
+            return concept
+
+        if isinstance(args[2], Function):
             function: Function = args[2]
             concept = Concept(
                 name=name,
@@ -474,6 +515,38 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
             return concept
+        raise SyntaxError(
+            f"Recieved invalid type {type(args[2])} {args[2]} as input to select transform"
+        )
+
+    @v_args(meta=True)
+    def constant_derivation(self, meta: Meta, args) -> Concept:
+        if len(args) > 3:
+            metadata = args[3]
+        else:
+            metadata = None
+        name = args[1]
+        constant: Union[str, float, int, bool] = args[2]
+        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        self.validate_concept(lookup, meta)
+        concept = Concept(
+            name=name,
+            datatype=arg_to_datatype(constant),
+            purpose=Purpose.CONSTANT,
+            metadata=metadata,
+            lineage=Function(
+                operator=FunctionType.CONSTANT,
+                output_datatype=arg_to_datatype(constant),
+                output_purpose=Purpose.CONSTANT,
+                arguments=[constant],
+            ),
+            grain=Grain(components=[]),
+            namespace=namespace,
+        )
+        if concept.metadata:
+            concept.metadata.line_number = meta.line
+        self.environment.concepts[lookup] = concept
+        return concept
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> Concept:
@@ -530,9 +603,8 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_transform(self, meta, args) -> ConceptTransform:
-        function: Function = args[0].function if isinstance(
-            args[0], AggregateWrapper
-        ) else args[0]
+
+        function = extract_function(args[0])
         output: str = args[1]
 
         lookup, namespace, output = parse_concept_reference(output, self.environment)
