@@ -26,6 +26,7 @@ from preql.core.enums import (
 )
 from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.core.models import (
+    AggregateWrapper,
     WhereClause,
     Comparison,
     Conditional,
@@ -150,7 +151,7 @@ grammar = r"""
     
     in_comparison: expr "in" expr_tuple
     
-    expr: window_item | filter_item | fcast | _aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference
+    expr: window_item | filter_item | fcast | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference
     
     // functions
     
@@ -184,7 +185,9 @@ grammar = r"""
     max: "max"i "(" expr ")"
     min: "min"i "(" expr ")"
     
-    _aggregate_functions: count | count_distinct | sum | avg | max | min
+    //aggregates can force a grain
+    aggregate_over: ("BY"i over_list)
+    aggregate_functions: (count | count_distinct | sum | avg | max | min) aggregate_over?
 
     // date functions
     fdate: "date"i "(" expr ")"
@@ -437,6 +440,25 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.concepts[lookup] = concept
             return concept
+        elif isinstance(args[2], AggregateWrapper):
+            parent: AggregateWrapper = args[2]
+            aggfunction: Function = parent.function
+
+            concept = Concept(
+                name=name,
+                datatype=aggfunction.output_datatype,
+                purpose=aggfunction.output_purpose,
+                metadata=metadata,
+                lineage=aggfunction,
+                grain=Grain(components=parent.by)
+                if parent.by
+                else aggfunction.output_grain,
+                namespace=namespace,
+            )
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
+            self.environment.concepts[lookup] = concept
+            return concept
         else:
             function: Function = args[2]
             concept = Concept(
@@ -508,7 +530,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_transform(self, meta, args) -> ConceptTransform:
-        function: Function = args[0]
+        function: Function = args[0].function if isinstance(
+            args[0], AggregateWrapper
+        ) else args[0]
         output: str = args[1]
 
         lookup, namespace, output = parse_concept_reference(output, self.environment)
@@ -726,6 +750,15 @@ class ParseToObjects(Transformer):
         if len(args) > 1:
             raise ParseError("Expression should have one child only.")
         return args[0]
+
+    def aggregate_over(self, args):
+        return args[0]
+
+    def aggregate_functions(self, args):
+
+        if len(args) == 2:
+            return AggregateWrapper(function=args[0], by=args[1])
+        return AggregateWrapper(function=args[0])
 
     def count(self, args):
         return Function(
