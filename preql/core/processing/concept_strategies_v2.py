@@ -12,6 +12,7 @@ from preql.core.models import (
     Environment,
     Grain,
     QueryDatasource,
+    Datasource,
     JoinType,
     BaseJoin,
     Function,
@@ -22,6 +23,7 @@ from preql.core.models import (
 from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.utility import unique
 from preql.constants import logger
+from preql.core.constants import CONSTANT_DATASET
 from itertools import combinations
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
@@ -43,6 +45,9 @@ def concept_list_to_grain(
         if x.purpose == Purpose.PROPERTY and not any(
             [key in candidates for key in (x.keys or [])]
         ):
+            candidates.append(x)
+        # TODO: figure out how to avoid this?
+        elif x.purpose == Purpose.CONSTANT:
             candidates.append(x)
         elif x.purpose == Purpose.METRIC:
             # metrics that were previously calculated must be included in grain
@@ -473,8 +478,6 @@ class SelectNode(StrategyNode):
         return output
 
     def resolve_join(self) -> QueryDatasource:
-
-        ds = None
         for x in reversed(range(1, len(self.optional_concepts) + 1)):
             for combo in combinations(self.optional_concepts, x):
                 all_concepts = self.mandatory_concepts + list(combo)
@@ -520,7 +523,6 @@ class SelectNode(StrategyNode):
                 for raw_concept in all_concepts:
                     # look for connection to abstract grain
                     req_concept = raw_concept.with_default_grain()
-                    path = []
                     try:
                         path = nx.shortest_path(
                             self.g,
@@ -566,10 +568,26 @@ class SelectNode(StrategyNode):
                     )
         return None
 
+    def resolve_from_constant_datasources(self) -> QueryDatasource:
+        datasource = Datasource(
+            identifier=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
+        )
+        return QueryDatasource(
+            input_concepts=unique(self.all_concepts, "address"),
+            output_concepts=unique(self.all_concepts, "address"),
+            source_map={concept.address: {datasource} for concept in self.all_concepts},
+            datasources=[datasource],
+            grain=datasource.grain,
+            joins=[],
+        )
+
     def _resolve(self) -> QueryDatasource:
         # if we have parent nodes, treat this as a normal select
         if self.parents:
             return super()._resolve()
+
+        if all([c.purpose == Purpose.CONSTANT for c in self.all_concepts]):
+            return self.resolve_from_constant_datasources()
         # otherwise, look if there is a datasource in the graph
         raw = self.resolve_from_raw_datasources()
 
@@ -638,6 +656,7 @@ def source_concepts(
             + [c for c in remaining_concept if c.derivation == PurposeLineage.FILTER]
             + [c for c in remaining_concept if c.derivation == PurposeLineage.BASIC]
             + [c for c in remaining_concept if not c.lineage]
+            + [c for c in remaining_concept if c.derivation == PurposeLineage.CONSTANT]
         )
         concept = priority[0]
         # we don't actually want to look for multiple aggregates at the same time
@@ -708,6 +727,8 @@ def source_concepts(
                         parents=[source_concepts(parent_concepts, [], environment, g)],
                     )
                 )
+            elif concept.derivation == PurposeLineage.CONSTANT:
+                stack.append(SelectNode([concept], [], environment, g, parents=[]))
             elif concept.derivation == PurposeLineage.BASIC:
                 # directly select out a basic derivation
                 parent_concepts = resolve_function_parent_concepts(concept)

@@ -6,6 +6,7 @@ class StatementType(Enum):
 
 
 class Purpose(Enum):
+    CONSTANT = "const"
     KEY = "key"
     PROPERTY = "property"
     METRIC = "metric"
@@ -16,6 +17,7 @@ class PurposeLineage(Enum):
     WINDOW = "window"
     AGGREGATE = "aggregate"
     FILTER = "filter"
+    CONSTANT = "constant"
 
 
 class Modifier(Enum):
@@ -72,6 +74,7 @@ class FunctionType(Enum):
     CASE = "case"
     CAST = "cast"
     CONCAT = "concat"
+    CONSTANT = "constant"
 
     # Math
     DIVIDE = "divide"
