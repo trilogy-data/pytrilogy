@@ -15,6 +15,7 @@ from typing import (
 )
 
 from pydantic import BaseModel, validator, Field
+from lark.tree import Meta
 
 from preql.constants import logger, DEFAULT_NAMESPACE
 from preql.core.enums import (
@@ -251,7 +252,8 @@ class Function(BaseModel):
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
-    arguments: List[Union[Concept, int, float, str, DataType, "Function"]]
+    arguments: List[Any]
+    # arguments: List[Union[Concept, int, float, str, DataType, "Function"]]
 
     @property
     def datatype(self):
@@ -274,7 +276,7 @@ class Function(BaseModel):
         #         raise ParseError(
         #             f"Anonymous function calls not allowed; map function to a concept, then pass in. {arg.operator.name} being passed into {operator_name}"
         #         )
-        # if all arguments need to be the same type
+        # if all arguments can be any of the set type
         # turn this into an array for validation
         if isinstance(valid_inputs, set):
             valid_inputs = [valid_inputs for _ in v]
@@ -1089,7 +1091,7 @@ class CTE:
 
     @property
     def render_from_clause(self) -> bool:
-        if all([c.purpose == Purpose.CONSTANT for c in self.output_columns]):
+        if all([c.purpose == Purpose.CONSTANT for c in self.output_columns]) and not self.parent_ctes and not self.group_to_grain:
             return False
         return True
 
@@ -1164,6 +1166,33 @@ class Environment:
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 
+
+    def validate_concept(self, lookup: str, meta: Meta=None):
+        existing = self.concepts.get(lookup)
+        if existing and meta and existing.metadata:
+            raise ValueError(
+                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+            )
+        elif existing and existing.metadata:
+            raise ValueError(
+                f"Assignment to concept '{lookup}'  is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+            )
+        elif existing:
+            raise ValueError(
+                f"Assignment to concept '{lookup}'  is a duplicate declaration;"
+            )
+    def add_concept(self, concept:Concept,  meta: Meta=None, force:bool = False, add_derived:bool = True):
+
+        if not force:
+            self.validate_concept(concept.address, meta=meta)
+        if concept.namespace == DEFAULT_NAMESPACE or concept.namespace == self.namespace:
+            self.concepts[concept.name] = concept
+        else:
+            self.concepts[concept.address] =concept
+        if add_derived:
+            from preql.core.environment_helpers import generate_related_concepts
+            generate_related_concepts(concept, self)
+        
 
 class Expr(BaseModel):
     content: Any

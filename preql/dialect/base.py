@@ -2,10 +2,8 @@ from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
 
-from preql.constants import CONFIG
-from preql.constants import logger
-from preql.core.enums import FunctionType, WindowType
-from preql.core.enums import Purpose, DataType
+from preql.constants import CONFIG, logger
+from preql.core.enums import Purpose, DataType, FunctionType, WindowType
 from preql.core.models import (
     Concept,
     CTE,
@@ -291,7 +289,8 @@ class BaseDialect:
             return str(e)
         elif isinstance(e, list):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
-
+        elif isinstance(e, DataType):
+            return str(e.value)
         return str(e)
 
     def render_cte(self, cte: CTE):
