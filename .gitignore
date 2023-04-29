@@ -5,7 +5,10 @@ examples/
 dist/
 build/
 venv/
+.venv/
 __pycache__/
 
 .pytest_cache/
 AdventureWorksDW2019.bak
+
+.vscode/
