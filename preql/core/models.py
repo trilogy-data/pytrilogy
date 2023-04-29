@@ -283,7 +283,6 @@ class Function(BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
-
             if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
                 raise TypeError(
                     f"Invalid input datatype {arg.datatype} passed into {operator_name} from concept {arg.name}"
@@ -625,7 +624,6 @@ class Grain(BaseModel):
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
 
     def with_namespace(self, namespace: str) -> "Grain":
-
         return Grain(
             components=[c.with_namespace(namespace) for c in self.components],
             nested=self.nested,
@@ -816,7 +814,6 @@ class BaseJoin:
             if include:
                 final_concepts.append(concept)
         if not final_concepts and self.concepts:
-
             # if one datasource only has constants
             # we can join on 1=1
             for ds in [self.left_datasource, self.right_datasource]:
@@ -896,7 +893,6 @@ class QueryDatasource:
         )
 
     def __add__(self, other):
-
         # these are syntax errors to avoid being caught by current
         if not isinstance(other, QueryDatasource):
             raise SyntaxError("Can only merge two query datasources")
@@ -1091,7 +1087,11 @@ class CTE:
 
     @property
     def render_from_clause(self) -> bool:
-        if all([c.purpose == Purpose.CONSTANT for c in self.output_columns]) and not self.parent_ctes and not self.group_to_grain:
+        if (
+            all([c.purpose == Purpose.CONSTANT for c in self.output_columns])
+            and not self.parent_ctes
+            and not self.group_to_grain
+        ):
             return False
         return True
 
@@ -1139,7 +1139,7 @@ class Join:
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-    def __getitem__(self, key, line_no=None):
+    def __getitem__(self, key, line_no:int | None=None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -1166,8 +1166,7 @@ class Environment:
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 
-
-    def validate_concept(self, lookup: str, meta: Meta=None):
+    def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing = self.concepts.get(lookup)
         if existing and meta and existing.metadata:
             raise ValueError(
@@ -1181,18 +1180,28 @@ class Environment:
             raise ValueError(
                 f"Assignment to concept '{lookup}'  is a duplicate declaration;"
             )
-    def add_concept(self, concept:Concept,  meta: Meta=None, force:bool = False, add_derived:bool = True):
 
+    def add_concept(
+        self,
+        concept: Concept,
+        meta: Meta | None = None,
+        force: bool = False,
+        add_derived: bool = True,
+    ):
         if not force:
             self.validate_concept(concept.address, meta=meta)
-        if concept.namespace == DEFAULT_NAMESPACE or concept.namespace == self.namespace:
+        if (
+            concept.namespace == DEFAULT_NAMESPACE
+            or concept.namespace == self.namespace
+        ):
             self.concepts[concept.name] = concept
         else:
-            self.concepts[concept.address] =concept
+            self.concepts[concept.address] = concept
         if add_derived:
             from preql.core.environment_helpers import generate_related_concepts
+
             generate_related_concepts(concept, self)
-        
+
 
 class Expr(BaseModel):
     content: Any
@@ -1215,7 +1224,6 @@ class Expr(BaseModel):
 
 
 class Comparison(BaseModel):
-
     left: Union[
         int,
         str,
@@ -1332,7 +1340,6 @@ class AggregateWrapper(BaseModel):
 
 
 class WhereClause(BaseModel):
-
     conditional: Union[Comparison, Conditional]
 
     @property
