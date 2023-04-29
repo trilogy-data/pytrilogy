@@ -1488,7 +1488,6 @@ class AggregateWrapper(BaseModel):
     def datatype(self):
         return self.function.datatype
 
-
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
 
