@@ -114,6 +114,7 @@ class FunctionType(Enum):
     YEAR = "year"
 
     DATE_PART = "date_part"
+    DATE_TRUNCATE = "date_truncate"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"
@@ -128,6 +129,7 @@ class FunctionClass(Enum):
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
     ]
+    
 
 
 class Boolean(Enum):

@@ -371,13 +371,11 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
-
         if len(args) > 3:
             metadata = args[3]
         else:
             metadata = None
         grain, name = args[1].rsplit(".", 1)
-        self.validate_concept(name, meta)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -387,19 +385,17 @@ class ParseToObjects(Transformer):
             namespace=self.environment.namespace,
             keys=[self.environment.concepts[grain]],
         )
-        self.environment.concepts[name] = concept
+        self.environment.add_concept(concept, meta)
         return concept
 
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> Concept:
-
         if len(args) > 3:
             metadata = args[3]
         else:
             metadata = None
         name = args[1]
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-        self.validate_concept(lookup, meta)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -409,7 +405,7 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        self.environment.concepts[lookup] = concept
+        self.environment.add_concept(concept, meta=meta)
         return concept
 
     @v_args(meta=True)
@@ -422,7 +418,6 @@ class ParseToObjects(Transformer):
         name = args[1]
 
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-        self.validate_concept(lookup, meta)
         if isinstance(args[2], FilterItem):
             filter_item: FilterItem = args[2]
             concept = Concept(
@@ -437,7 +432,7 @@ class ParseToObjects(Transformer):
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
-            self.environment.concepts[lookup] = concept
+            self.environment.add_concept(concept, meta=meta)
             return concept
         if isinstance(args[2], WindowItem):
             window_item: WindowItem = args[2]
@@ -458,7 +453,7 @@ class ParseToObjects(Transformer):
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
-            self.environment.concepts[lookup] = concept
+            self.environment.add_concept(concept, meta=meta)
             return concept
         if isinstance(args[2], AggregateWrapper):
             parent: AggregateWrapper = args[2]
@@ -477,7 +472,7 @@ class ParseToObjects(Transformer):
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
-            self.environment.concepts[lookup] = concept
+            self.environment.add_concept(concept, meta=meta)
             return concept
         if isinstance(args[2], (int, float, str, bool)):
             const_function: Function = Function(
@@ -497,7 +492,7 @@ class ParseToObjects(Transformer):
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
-            self.environment.concepts[lookup] = concept
+            self.environment.add_concept(concept, meta=meta)
             return concept
 
         if isinstance(args[2], Function):
@@ -513,7 +508,7 @@ class ParseToObjects(Transformer):
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
-            self.environment.concepts[lookup] = concept
+            self.environment.add_concept(concept, meta=meta)
             return concept
         raise SyntaxError(
             f"Recieved invalid type {type(args[2])} {args[2]} as input to select transform"
@@ -528,7 +523,6 @@ class ParseToObjects(Transformer):
         name = args[1]
         constant: Union[str, float, int, bool] = args[2]
         lookup, namespace, name = parse_concept_reference(name, self.environment)
-        self.validate_concept(lookup, meta)
         concept = Concept(
             name=name,
             datatype=arg_to_datatype(constant),
@@ -545,7 +539,7 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        self.environment.concepts[lookup] = concept
+        self.environment.add_concept(concept, meta)
         return concept
 
     @v_args(meta=True)
@@ -603,12 +597,10 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_transform(self, meta, args) -> ConceptTransform:
-
         function = extract_function(args[0])
         output: str = args[1]
 
         lookup, namespace, output = parse_concept_reference(output, self.environment)
-        self.validate_concept(lookup, meta)
         # keys are used to pass through derivations
 
         if function.output_purpose == Purpose.PROPERTY:
@@ -628,13 +620,11 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        # We don't assign it here because we'll do this later when we know the grain
-        self.environment.concepts[lookup] = concept
+        self.environment.add_concept(concept, meta=meta)
         return ConceptTransform(function=function, output=concept)
 
     @v_args(meta=True)
     def select_item(self, meta: Meta, args) -> Optional[SelectItem]:
-
         args = [arg for arg in args if not isinstance(arg, Comment)]
         if not args:
             return None
@@ -695,7 +685,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:
-
         select_items = None
         limit = None
         order_by = None
@@ -827,7 +816,6 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def aggregate_functions(self, args):
-
         if len(args) == 2:
             return AggregateWrapper(function=args[0], by=args[1])
         return AggregateWrapper(function=args[0])
@@ -861,7 +849,6 @@ class ParseToObjects(Transformer):
         )
 
     def avg(self, arguments):
-
         arg = arguments[0]
 
         return Function(
@@ -1098,13 +1085,18 @@ class ParseToObjects(Transformer):
 
     # utility functions
     def fcast(self, args) -> Function:
-        input_concept: Concept = args[0]
         output_datatype = args[1]
+        if isinstance(args[0], Concept) and args[0].purpose == Purpose.CONSTANT:
+            purpose = Purpose.CONSTANT
+        elif isinstance(args[0], (str, int, float)):
+            purpose = Purpose.CONSTANT
+        else:
+            purpose = Purpose.PROPERTY
         return Function(
             operator=FunctionType.CAST,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=input_concept.purpose,
+            output_purpose=purpose,
             valid_inputs={
                 DataType.INTEGER,
                 DataType.STRING,

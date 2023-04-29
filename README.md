@@ -38,7 +38,7 @@ in Microsoft SQL Server that can be downloaded via this [link]https://github.com
 
 The tests will treat this as database server a pytest fixture, starting a docker image if the tests detect a sql server is not already running. Before
 you run tests you must build this docker image. From the root of this repository run the following to fetch the database data and build a docker image
-containg it
+containing it
 
 ```bash
 /bin/bash ./docker/build_image.sh
