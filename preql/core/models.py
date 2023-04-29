@@ -1173,7 +1173,7 @@ class Join:
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-    def __getitem__(self, key, line_no=None):
+    def __getitem__(self, key, line_no:int | None=None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -1423,7 +1423,6 @@ class AggregateWrapper(BaseModel):
         return self.function.datatype
 
 class WhereClause(BaseModel):
-
     conditional: Union[Comparison, Conditional]
 
     @property
