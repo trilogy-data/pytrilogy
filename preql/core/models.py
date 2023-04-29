@@ -1384,6 +1384,7 @@ class AggregateWrapper(BaseModel):
         return self.function.datatype
 
 class WhereClause(BaseModel):
+
     conditional: Union[Comparison, Conditional]
 
     @property
