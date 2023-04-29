@@ -1275,18 +1275,28 @@ class Environment:
             raise ValueError(
                 f"Assignment to concept '{lookup}'  is a duplicate declaration;"
             )
-    def add_concept(self, concept:Concept,  meta: Meta=None, force:bool = False, add_derived:bool = True):
 
+    def add_concept(
+        self,
+        concept: Concept,
+        meta: Meta | None = None,
+        force: bool = False,
+        add_derived: bool = True,
+    ):
         if not force:
             self.validate_concept(concept.address, meta=meta)
-        if concept.namespace == DEFAULT_NAMESPACE or concept.namespace == self.namespace:
+        if (
+            concept.namespace == DEFAULT_NAMESPACE
+            or concept.namespace == self.namespace
+        ):
             self.concepts[concept.name] = concept
         else:
-            self.concepts[concept.address] =concept
+            self.concepts[concept.address] = concept
         if add_derived:
             from preql.core.environment_helpers import generate_related_concepts
+
             generate_related_concepts(concept, self)
-        
+
 
 class Expr(BaseModel):
     content: Any
