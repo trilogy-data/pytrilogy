@@ -371,7 +371,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
-
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -391,7 +390,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> Concept:
-
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -599,7 +597,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_transform(self, meta, args) -> ConceptTransform:
-
         function = extract_function(args[0])
         output: str = args[1]
 
@@ -628,7 +625,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_item(self, meta: Meta, args) -> Optional[SelectItem]:
-
         args = [arg for arg in args if not isinstance(arg, Comment)]
         if not args:
             return None
@@ -689,7 +685,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:
-
         select_items = None
         limit = None
         order_by = None
@@ -821,7 +816,6 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def aggregate_functions(self, args):
-
         if len(args) == 2:
             return AggregateWrapper(function=args[0], by=args[1])
         return AggregateWrapper(function=args[0])
@@ -855,7 +849,6 @@ class ParseToObjects(Transformer):
         )
 
     def avg(self, arguments):
-
         arg = arguments[0]
 
         return Function(
@@ -1096,7 +1089,7 @@ class ParseToObjects(Transformer):
         if isinstance(args[0], Concept) and args[0].purpose == Purpose.CONSTANT:
             purpose = Purpose.CONSTANT
         elif isinstance(args[0], (str, int, float)):
-            purpose = Purpose
+            purpose = Purpose.CONSTANT
         else:
             purpose = Purpose.PROPERTY
         return Function(
