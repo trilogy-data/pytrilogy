@@ -269,6 +269,8 @@ def arg_to_datatype(arg) -> DataType:
         return DataType.STRING
     elif isinstance(arg, float):
         return DataType.FLOAT
+    elif isinstance(arg, AggregateWrapper):
+        return arg.function.output_datatype
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
 
