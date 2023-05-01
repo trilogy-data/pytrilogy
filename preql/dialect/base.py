@@ -15,6 +15,7 @@ from preql.core.models import (
     WindowItem,
     FilterItem,
     Function,
+    AggregateWrapper,
 )
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query_v2
@@ -273,6 +274,8 @@ class BaseDialect:
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](
                 [self.render_expr(z, cte=cte, cte_map=cte_map) for z in e.arguments]
             )
+        elif isinstance(e, AggregateWrapper):
+            return self.render_expr(e.function, cte, cte_map=cte_map)
         elif isinstance(e, Concept):
             if cte:
                 return self.render_concept_sql(e, cte, False)
@@ -283,7 +286,6 @@ class BaseDialect:
         elif isinstance(e, bool):
             return f"{e}"
         elif isinstance(e, str):
-
             return f"'{e}'"
         elif isinstance(e, (int, float)):
             return str(e)
@@ -294,7 +296,6 @@ class BaseDialect:
         return str(e)
 
     def render_cte(self, cte: CTE):
-
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
@@ -365,7 +366,6 @@ class BaseDialect:
         return output
 
     def compile_statement(self, query: ProcessedQuery) -> str:
-
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()
