@@ -142,8 +142,10 @@ class Concept(BaseModel):
     @property
     def safe_address(self) -> str:
         if self.namespace == DEFAULT_NAMESPACE:
-            return self.name
-        return f"{self.namespace}_{self.name}"
+            return self.name.replace(".", "_")
+        elif self.namespace:
+            return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
+        return self.name.replace(".", "_")
 
     @property
     def grain_components(self) -> List["Concept"]:
@@ -328,6 +330,8 @@ class Function(BaseModel):
         for arg in self.arguments:
             if isinstance(arg, Function):
                 base += arg.concept_arguments
+            if isinstance(arg, AggregateWrapper):
+                base += arg.function.concept_arguments
         return base
 
     @property
@@ -1139,7 +1143,7 @@ class Join:
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-    def __getitem__(self, key, line_no:int | None=None):
+    def __getitem__(self, key, line_no: int | None = None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -1180,6 +1184,12 @@ class Environment:
             raise ValueError(
                 f"Assignment to concept '{lookup}'  is a duplicate declaration;"
             )
+
+    def parse(self, input: str):
+        from preql import parse
+
+        parse(input, self)
+        return self
 
     def add_concept(
         self,
@@ -1337,6 +1347,10 @@ class Conditional(BaseModel):
 class AggregateWrapper(BaseModel):
     function: Function
     by: List[Concept] | None
+
+    @property
+    def datatype(self):
+        return self.function.datatype
 
 
 class WhereClause(BaseModel):
