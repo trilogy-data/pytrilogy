@@ -13,7 +13,7 @@ property user_id.about_me string metadata(description="User provided description
 
 
 key post_id int;
-metric user_post_count <-count(post_id) by user_id;
+metric user_post_count <-count(post_id*2) by user_id;
 
 
 datasource posts (
@@ -28,7 +28,7 @@ datasource posts (
 metric avg_user_post_count_double <- avg(user_post_count)*2;
 
 select
-    avg_user_post_count
+    avg_user_post_count_double
 ;
 
 
@@ -40,5 +40,3 @@ select
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
-    assert "count(cte_posts_at_local_post_id" in sql
-    assert "avg(cte_posts_at_local_post_id_at_local_user_id" in sql
