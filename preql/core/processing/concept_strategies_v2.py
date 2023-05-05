@@ -323,6 +323,8 @@ class MergeNode(StrategyNode):
         dataset_list = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
+        if not dataset_list:
+            raise SyntaxError('Empty merge node')
         base = dataset_list[0]
         joins = []
         all_concepts = unique(
@@ -640,6 +642,8 @@ def source_concepts(
     g = g or generate_graph(environment)
     stack: List[StrategyNode] = []
     all_concepts = unique(mandatory_concepts + optional_concepts, "address")
+    if not all_concepts:
+        raise SyntaxError('Cannot source empty')
     # TODO
     # Loop through all possible grains + subgrains
     # Starting with the most grain
@@ -718,13 +722,17 @@ def source_concepts(
                 # otherwise, local optional are mandatory
                 else:
                     parent_concepts += local_optional
+                if parent_concepts:
+                    parents = [source_concepts(parent_concepts, [], environment, g)]
+                else:
+                    parents = []
                 stack.append(
                     GroupNode(
                         [concept],
                         local_optional,
                         environment,
                         g,
-                        parents=[source_concepts(parent_concepts, [], environment, g)],
+                        parents=parents,
                     )
                 )
             elif concept.derivation == PurposeLineage.CONSTANT:
