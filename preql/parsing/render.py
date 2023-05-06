@@ -12,16 +12,6 @@ from preql.core.models import (
     SelectItem,
 )
 
-from preql.constants import DEFAULT_NAMESPACE
-from preql.core.models import (
-    Concept,
-    ConceptTransform,
-    Function,
-    OrderItem,
-    Select,
-    SelectItem,
-)
-
 QUERY_TEMPLATE = Template(
     """SELECT{%- for select in select_columns %}
     {{ select }},{% endfor %}{% if where %}WHERE

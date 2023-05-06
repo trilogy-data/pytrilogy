@@ -1173,7 +1173,7 @@ class Join:
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-    def __getitem__(self, key, line_no: int | None = None):
+    def __getitem__(self, key, line_no:int | None=None):
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -1244,8 +1244,23 @@ class Environment:
         if add_derived:
             from preql.core.environment_helpers import generate_related_concepts
 
-        parse(input, self)
-        return self
+            generate_related_concepts(concept, self)
+
+
+    def validate_concept(self, lookup: str, meta: Meta=None):
+        existing = self.concepts.get(lookup)
+        if existing and meta and existing.metadata:
+            raise ValueError(
+                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+            )
+        elif existing and existing.metadata:
+            raise ValueError(
+                f"Assignment to concept '{lookup}'  is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+            )
+        elif existing:
+            raise ValueError(
+                f"Assignment to concept '{lookup}'  is a duplicate declaration;"
+            )
 
     def add_concept(
         self,
@@ -1408,8 +1423,8 @@ class AggregateWrapper(BaseModel):
     def datatype(self):
         return self.function.datatype
 
-
 class WhereClause(BaseModel):
+
     conditional: Union[Comparison, Conditional]
 
     @property
