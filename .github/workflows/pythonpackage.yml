@@ -33,7 +33,6 @@ jobs:
           # stop the build if there are Python syntax errors or undefined names
           mypy preql
       - name: Lint with ruff
-        working-directory: ./services/backend
         run: |
           # stop the build if there are Python syntax errors or undefined names
           ruff check .
