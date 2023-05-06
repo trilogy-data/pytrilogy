@@ -16,11 +16,12 @@ def test_basic_query(test_environment):
     )
 
     string_query = render_query(query)
-
+    print(string_query)
     assert (
         string_query
         == """SELECT
-order_id,
+    order_id,
 ORDER BY
-order_Id asc;"""
+    order_id asc
+;"""
     )

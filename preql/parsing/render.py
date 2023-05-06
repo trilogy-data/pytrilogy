@@ -1,37 +1,57 @@
 from typing import TYPE_CHECKING, Union
-
-if TYPE_CHECKING:
-    from preql.core.models import Select, SelectItem, Concept, ConceptTransform
+from functools import singledispatchmethod
+from preql.core.models import Select, SelectItem, Concept, ConceptTransform, Function, OrderItem
 from jinja2 import Template
+from preql.constants import DEFAULT_NAMESPACE
 
 QUERY_TEMPLATE = Template(
-    """
-SELECT
-{%- if limit is not none %}
-TOP {{ limit }}{% endif %}
-{%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
-{% if where %}WHERE
+    """SELECT{%- for select in select_columns %}
+    {{ select }},{% endfor %}{% if where %}WHERE
     {{ where }}
-{% endif %}
-{%- if order_by %}
-ORDER BY {% for order in order_by %}
+{% endif %}{%- if order_by %}
+ORDER BY{% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
-"""
+{% endfor %}{% endif %}{%- if limit is not none %}
+LIMIT {{ limit }}{% endif %};"""
 )
 
 
-def render_select_item():
-    pass
+class Renderer():
+    @singledispatchmethod
+    def to_string(self, arg):
+        raise NotImplementedError("Cannot render type {}".format(type(arg)))
+    
+    @to_string.register
+    def _(self, arg: Select):
+        return QUERY_TEMPLATE.render(
+        select_columns=[self.to_string(c) for c in arg.selection],
+        order_by=[self.to_string(c) for c in arg.order_by.items],
+        limit=arg.limit,
+    )
 
+    @to_string.register
+    def _(self, arg:"SelectItem"):
+        return self.to_string(arg.content)
+    
+    @to_string.register
+    def _(self, arg:"Concept"):
+        if arg.namespace == DEFAULT_NAMESPACE:
+            return arg.name
+        return arg.address
+    
+    @to_string.register
+    def _(self, arg:"ConceptTransform"):
+        return f'{self.to_string(arg.function)}->{arg.output.name}'
 
-def render_select(item: Union[SelectItem, Concept, ConceptTransform]):
-    pass
+    @to_string.register
+    def _(self, arg:"Function"):
+        inputs= ','.join(self.to_string(c) for c in arg.inputs)
+        return f'{arg.operator}({inputs})'
+    
+    @to_string.register
+    def _(self, arg:"OrderItem"):
+        return f'{self.to_string(arg.expr)} {arg.order.value}'
 
 
 def render_query(query: "Select") -> str:
-    return QUERY_TEMPLATE.render(
-        select_columns=[c.concept.address for c in query.selection],
-        order_by=[f"{c.expr} {c.order}" for c in query.order_by],
-    )
+    return Renderer().to_string(query)
