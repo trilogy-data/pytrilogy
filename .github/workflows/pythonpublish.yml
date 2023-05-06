@@ -14,6 +14,8 @@ jobs:
     environment:
       name: release
       url: https://pypi.org/p/pypreql
+    permissions:
+      id-token: write
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python
