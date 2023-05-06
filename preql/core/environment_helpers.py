@@ -17,13 +17,14 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
+        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
             grain=const_function.output_grain,
-            namespace=concept.namespace,
+            namespace=namespace,
             keys=[concept],
         )
         environment.add_concept(new_concept)
@@ -43,13 +44,14 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
+        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
             grain=const_function.output_grain,
-            namespace=concept.namespace,
+            namespace=namespace,
             keys=[concept],
         )
         environment.add_concept(new_concept)
