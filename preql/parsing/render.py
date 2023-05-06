@@ -1,6 +1,7 @@
 from functools import singledispatchmethod
 
 from jinja2 import Template
+from preql.constants import DEFAULT_NAMESPACE
 
 from preql.constants import DEFAULT_NAMESPACE
 from preql.core.enums import Purpose, DataType
