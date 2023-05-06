@@ -1243,7 +1243,6 @@ class Environment:
             self.concepts[concept.address] = concept
         if add_derived:
             from preql.core.environment_helpers import generate_related_concepts
-
             generate_related_concepts(concept, self)
 
 

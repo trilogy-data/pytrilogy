@@ -12,3 +12,4 @@ __pycache__/
 AdventureWorksDW2019.bak
 
 .vscode/
+.ruff_cache/

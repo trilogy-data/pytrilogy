@@ -218,7 +218,8 @@ def test_environment():
         product_revenue_rank_by_category,
         products_with_revenue_over_50,
     ]:
-        env.concepts[item.name] = item
+        env.add_concept(item)
+        # env.concepts[item.name] = item
     yield env
 
 
