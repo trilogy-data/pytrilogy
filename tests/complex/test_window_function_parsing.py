@@ -60,11 +60,11 @@ limit 100
     # ds.validate()
     ds.get_alias(env.concepts["post_count"].with_grain(ds.grain))
 
-    datasource = get_query_datasources(environment=env, statement=select)
+    get_query_datasources(environment=env, statement=select)
     # raise ValueError
 
     query = process_query(statement=select, environment=env)
-    expected_base = query.ctes[0]
+    query.ctes[0]
 
     generator = BigqueryDialect()
-    sql = generator.compile_statement(query)
+    generator.compile_statement(query)

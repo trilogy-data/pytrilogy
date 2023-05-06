@@ -22,7 +22,6 @@ class ReferenceGraph(nx.DiGraph):
         super().__init__(*args, **kwargs)
 
     def add_node(self, node_for_adding, **attr):
-
         if isinstance(node_for_adding, Concept):
             node_name = concept_to_node(node_for_adding)
             attr["type"] = "concept"

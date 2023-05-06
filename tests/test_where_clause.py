@@ -98,7 +98,7 @@ select
 
     select: Select = parsed[-1]
 
-    cmd = BaseDialect().compile_statement(process_query(test_environment, select))
+    BaseDialect().compile_statement(process_query(test_environment, select))
 
 
 def test_where_debug(test_environment, logger):

@@ -43,7 +43,7 @@ def test_cte_merge(test_environment, test_environment_graph):
 
 def test_grain():
     grains = [Grain()] * 3
-    aggregate = sum(grains)
+    sum(grains)
 
 
 def test_concept(test_environment, test_environment_graph):

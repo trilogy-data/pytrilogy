@@ -25,7 +25,7 @@ order by
     ;"""
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     select: Select = parsed[-1]
-    query = process_query(statement=select, environment=env)
+    process_query(statement=select, environment=env)
 
 
 def test_filtering_reduction_two():
@@ -46,4 +46,4 @@ limit 10
     ;"""
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     select: Select = parsed[-1]
-    query = process_query_v2(statement=select, environment=env)
+    process_query_v2(statement=select, environment=env)

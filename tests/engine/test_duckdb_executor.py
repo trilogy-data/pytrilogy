@@ -1,5 +1,4 @@
-from datetime import date, datetime
-from preql.core.enums import DataType
+from datetime import datetime
 def test_basic_query(duckdb_engine, expected_results):
     results = duckdb_engine.execute_text("""select total_count;""")[0].fetchall()
     assert results[0].total_count == expected_results["total_count"]
@@ -9,7 +8,6 @@ def test_concept_derivation(duckdb_engine):
 
     test_datetime = datetime(hour = 12, day = 1, month =2, year = 2022, second =34)
 
-    date = test_datetime.date
     duckdb_engine.execute_text(f''' key test <- cast('{test_datetime.isoformat()}' as datetime);
     ''')
     for  property, check in [['hour', test_datetime.hour], 

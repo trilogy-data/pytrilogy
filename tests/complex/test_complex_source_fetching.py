@@ -27,7 +27,7 @@ def test_aggregate_of_property_function(stackoverflow_environment):
             found = True
         if found:
             break
-    sql = generator.compile_statement(query)
+    generator.compile_statement(query)
 
 
 def test_aggregate_of_aggregate(stackoverflow_environment):

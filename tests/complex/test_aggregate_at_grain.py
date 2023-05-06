@@ -39,4 +39,4 @@ select
     query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 
     generator = BigqueryDialect()
-    sql = generator.compile_statement(query)
+    generator.compile_statement(query)

@@ -1,20 +1,11 @@
-from typing import List, Optional, Tuple, Dict, TypedDict, Union
+from typing import List, Optional, Tuple, Dict, TypedDict
 
-from preql.core.enums import BooleanOperator
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import (
-    Concept,
     Datasource,
     JoinType,
     BaseJoin,
-    Conditional,
-    Comparison,
-    FilterItem,
-    QueryDatasource,
-    Grain,
-    Function,
 )
-from preql.utility import unique
 
 
 class PathInfo(TypedDict):
@@ -23,7 +14,7 @@ class PathInfo(TypedDict):
 
 
 def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:
-    """ Build joins and ensure any required CTEs are also created/tracked"""
+    """Build joins and ensure any required CTEs are also created/tracked"""
     out = []
     zipped = parse_path_to_matches(input)
     for row in zipped:
@@ -45,7 +36,7 @@ def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:
 
 
 def parse_path_to_matches(
-    input: List[str]
+    input: List[str],
 ) -> List[Tuple[Optional[str], Optional[str], List[str]]]:
     """Parse a networkx path to a set of join relations"""
     left_ds = None

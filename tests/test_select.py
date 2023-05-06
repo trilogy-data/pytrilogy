@@ -103,4 +103,4 @@ def test_double_aggregate():
     query = process_query(statement=select, environment=env)
 
     generator = BigqueryDialect()
-    sql = generator.compile_statement(query)
+    generator.compile_statement(query)

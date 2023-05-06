@@ -31,16 +31,24 @@ def INVALID_REFERENCE_STRING(x: Any):
 
 
 WINDOW_FUNCTION_MAP = {
-    WindowType.LAG: lambda concept, window, sort: f"lag({concept}) over (partition by {window} order by {sort} )"
+    WindowType.LAG: lambda concept, window, sort: (
+        f"lag({concept}) over (partition by {window} order by {sort} )"
+    )
     if window
     else f"lag({concept}) over (order by {sort})",
-    WindowType.LEAD: lambda concept, window, sort: f"lead({concept}) over (partition by {window} order by {sort})"
+    WindowType.LEAD: lambda concept, window, sort: (
+        f"lead({concept}) over (partition by {window} order by {sort})"
+    )
     if window
     else f"lead({concept}) over (order by {sort})",
-    WindowType.RANK: lambda concept, window, sort: f"rank() over (partition by {window} order by {sort})"
+    WindowType.RANK: lambda concept, window, sort: (
+        f"rank() over (partition by {window} order by {sort})"
+    )
     if window
     else f"rank() over (order by {sort} )",
-    WindowType.ROW_NUMBER: lambda concept, window, sort: f"row_number() over (partition by {window} order by {sort})"
+    WindowType.ROW_NUMBER: lambda concept, window, sort: (
+        f"row_number() over (partition by {window} order by {sort})"
+    )
     if window
     else f"row_number() over (order by {sort})",
 }
@@ -142,7 +150,9 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
             checks.append(True)
         else:
             logger.debug(
-                f"{LOGGER_PREFIX} [{sub_c.address}] not found in source map for {cte.name}, have cte keys {[c for c in cte.source_map.keys()]} and datasource keys {[c for c in cte.source.source_map.keys()]}"
+                f"{LOGGER_PREFIX} [{sub_c.address}] not found in source map for"
+                f" {cte.name}, have cte keys {[c for c in cte.source_map.keys()]} and"
+                f" datasource keys {[c for c in cte.source.source_map.keys()]}"
             )
             checks.append(False)
     return all(checks)
@@ -179,7 +189,8 @@ class BaseDialect:
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
-            f"{LOGGER_PREFIX} [{c.address}] Attempting rendering on {cte.name} alias={alias}"
+            f"{LOGGER_PREFIX} [{c.address}] Attempting rendering on"
+            f" {cte.name} alias={alias}"
         )
 
         if (c.lineage and check_lineage(c, cte)) and not cte.source_map.get(
@@ -196,9 +207,13 @@ class BaseDialect:
                 rendered_over_components = [
                     self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
-                rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"
+                rval = (
+                    f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
+                )
             elif isinstance(c.lineage, FilterItem):
-                rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
+                rval = (
+                    f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
+                )
             else:
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
@@ -208,36 +223,48 @@ class BaseDialect:
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
                 else:
                     logger.info(
-                        f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at target grain"
+                        f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at"
+                        " target grain"
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
         # else if it's complex, just reference it from the source
         elif c.lineage:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] Complex reference falling back to source address"
+                f"{LOGGER_PREFIX} [{c.address}] Complex reference falling back to"
+                " source address"
             )
             if not cte.source_map.get(c.address, None):
                 logger.debug(
-                    f"{LOGGER_PREFIX} [{c.address}] Cannot render from {cte.name}, have {cte.source_map.keys()} only"
+                    f"{LOGGER_PREFIX} [{c.address}] Cannot render from {cte.name}, have"
+                    f" {cte.source_map.keys()} only"
                 )
             missing = [
                 sub_c.address
                 for sub_c in c.lineage.arguments
                 if isinstance(sub_c, Concept) and sub_c not in cte.source_map
             ]
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+            rval = (
+                f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+            )
         else:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address for {c.address}"
+                f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address"
+                f" for {c.address}"
             )
             if not cte.source_map.get(c.address, None):
                 logger.debug(
-                    f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from {cte.name}, have {cte.source_map.keys()} only"
+                    f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from"
+                    f" {cte.name}, have {cte.source_map.keys()} only"
                 )
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
+            rval = (
+                f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
+            )
 
         if alias:
-            return f"{rval} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+            return (
+                f"{rval} as"
+                f" {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+            )
         return rval
 
     def render_expr(
@@ -262,10 +289,14 @@ class BaseDialect:
         #     cte = cte or cte_map.get(e.address, None)
 
         if isinstance(e, Comparison):
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
+            return (
+                f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
+            )
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
-            return f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
+            return (
+                f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
+            )
         elif isinstance(e, Function):
             if cte and cte.group_to_grain:
                 return self.FUNCTION_MAP[e.operator](
@@ -290,7 +321,9 @@ class BaseDialect:
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, list):
-            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+            return (
+                f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+            )
         elif isinstance(e, DataType):
             return str(e.value)
         return str(e)
@@ -372,15 +405,16 @@ class BaseDialect:
         output_addresses = [c.address for c in query.output_columns]
         for c in query.base.output_columns:
             if c.address not in selected and c.address in output_addresses:
-                select_columns[
-                    c.address
-                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                select_columns[c.address] = (
+                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                )
                 cte_output_map[c.address] = query.base
                 selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
             missing = [x for x in output_addresses if x not in selected]
             raise ValueError(
-                f"Did not get all output addresses in select - missing: {missing}, have {selected}"
+                f"Did not get all output addresses in select - missing: {missing}, have"
+                f" {selected}"
             )
 
         # where assignment
@@ -411,7 +445,9 @@ class BaseDialect:
 
             if not found:
                 raise NotImplementedError(
-                    f"Cannot generate query with filtering on grain {filter} that is not a subset of the query output grain {query_output}. Use a filtered concept instead."
+                    f"Cannot generate query with filtering on grain {filter} that is"
+                    f" not a subset of the query output grain {query_output}. Use a"
+                    " filtered concept instead."
                 )
         # 2023-03-31 - this needs to be moved up into query building
         # for join in query.joins:
@@ -448,7 +484,7 @@ class BaseDialect:
 
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
             raise ValueError(
-                f"Invalid reference string found in query: {final}, this should never occur. Please report this issue."
+                f"Invalid reference string found in query: {final}, this should never"
+                " occur. Please report this issue."
             )
         return final
-    

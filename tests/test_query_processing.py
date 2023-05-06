@@ -156,7 +156,7 @@ def test_query_datasources(test_environment, test_environment_graph):
             test_environment.concepts["total_revenue"],
         ]
     )
-    datasource = get_query_datasources_v2(
+    get_query_datasources_v2(
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 

@@ -1,6 +1,8 @@
 from typing import Mapping, Callable, Any
 
 from jinja2 import Template
+from preql.utility import string_to_hash
+
 
 from preql.core.enums import FunctionType, WindowType
 from preql.core.models import ProcessedQuery
@@ -13,8 +15,12 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda args: f"sum({args[0]})",
     FunctionType.AVG: lambda args: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args: f"length({args[0]})",
-    FunctionType.LIKE: lambda args: f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END",
-    FunctionType.CONCAT: lambda args: f"CONCAT({','.join([f''' '{a}' ''' for a in args])})",
+    FunctionType.LIKE: lambda args: (
+        f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
+    ),
+    FunctionType.CONCAT: lambda args: (
+        f"CONCAT({','.join([f''' '{a}' ''' for a in args])})"
+    ),
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
@@ -55,8 +61,6 @@ ORDER BY {% for order in order_by %}
 )
 
 MAX_IDENTIFIER_LENGTH = 128
-
-from preql.utility import string_to_hash
 
 
 class SqlServerDialect(BaseDialect):

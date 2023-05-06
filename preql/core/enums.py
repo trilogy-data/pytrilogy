@@ -129,7 +129,6 @@ class FunctionClass(Enum):
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
     ]
-    
 
 
 class Boolean(Enum):

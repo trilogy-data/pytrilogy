@@ -5,5 +5,5 @@ markers = [
 ]
 
 [tool.ruff]
-# Allow lines to be as long as 100 characters.
-line-length = 100
+# Allow lines to be as long as 200 characters.
+line-length = 200
