@@ -221,5 +221,5 @@ def test_online_sales_queries(adventureworks_engine: Executor, environment: Envi
     sql = generator.generate_queries(environment, statements)
 
     for statement in sql:
-        sqls = generator.compile_statement(statement)
+        generator.compile_statement(statement)
         adventureworks_engine.execute_query(statement).fetchall()
