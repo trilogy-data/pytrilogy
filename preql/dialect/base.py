@@ -208,7 +208,7 @@ class BaseDialect:
                     self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
                 rval = (
-                    f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"
+                    f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
                 )
             elif isinstance(c.lineage, FilterItem):
                 rval = (

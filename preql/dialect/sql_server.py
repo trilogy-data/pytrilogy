@@ -1,6 +1,8 @@
 from typing import Mapping, Callable, Any
 
 from jinja2 import Template
+from preql.utility import string_to_hash
+
 
 from preql.core.enums import FunctionType, WindowType
 from preql.core.models import ProcessedQuery
@@ -59,8 +61,6 @@ ORDER BY {% for order in order_by %}
 )
 
 MAX_IDENTIFIER_LENGTH = 128
-
-from preql.utility import string_to_hash
 
 
 class SqlServerDialect(BaseDialect):
