@@ -4,7 +4,7 @@ from os.path import dirname, join
 import pytest
 
 from preql.core.env_processor import generate_graph
-from preql.core.models import Select, QueryDatasource, Grain
+from preql.core.models import Select, QueryDatasource, Grain, Environment
 from preql.core.processing.concept_strategies_v2 import (
     source_concepts,
     source_query_concepts,
@@ -15,7 +15,7 @@ from preql.parser import parse
 
 
 @pytest.mark.adventureworks
-def test_parsing(environment):
+def test_parsing(environment: Environment):
     with open(
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -25,7 +25,7 @@ def test_parsing(environment):
 
 
 @pytest.mark.adventureworks_execution
-def test_finance_queries(adventureworks_engine, environment):
+def test_finance_queries(adventureworks_engine: Executor, environment: Environment):
     with open(
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -42,7 +42,7 @@ def test_finance_queries(adventureworks_engine, environment):
 
 
 @pytest.mark.adventureworks
-def test_query_datasources(environment):
+def test_query_datasources(environment: Environment):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -140,7 +140,7 @@ def test_query_datasources(environment):
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
+                == "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"  # noqa: E501
             )
         elif concept.name == "region":
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
@@ -169,7 +169,7 @@ def recurse_datasource(parent: QueryDatasource, depth=0):
 
 
 @pytest.mark.adventureworks
-def test_two_properties(environment):
+def test_two_properties(environment: Environment):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -211,7 +211,7 @@ def test_two_properties(environment):
 
 
 @pytest.mark.adventureworks_execution
-def test_online_sales_queries(adventureworks_engine, environment):
+def test_online_sales_queries(adventureworks_engine: Executor, environment: Environment):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
