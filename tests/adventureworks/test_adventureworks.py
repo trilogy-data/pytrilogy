@@ -2,7 +2,7 @@
 from os.path import dirname, join
 
 import pytest
-
+from preql import Executor
 from preql.core.env_processor import generate_graph
 from preql.core.models import Select, QueryDatasource, Grain, Environment
 from preql.core.processing.concept_strategies_v2 import (
@@ -35,8 +35,8 @@ def test_finance_queries(adventureworks_engine: Executor, environment: Environme
     sql = generator.generate_queries(environment, statements)
 
     for statement in sql:
-        sql = generator.compile_statement(statement)
-        print(sql)
+        sql_str = generator.compile_statement(statement)
+        print(sql_str)
         results = adventureworks_engine.execute_query(statement)
         assert list(results)[0] == ("Canadian Division", 8, 292174782.71999985)
 
@@ -221,5 +221,5 @@ def test_online_sales_queries(adventureworks_engine: Executor, environment: Envi
     sql = generator.generate_queries(environment, statements)
 
     for statement in sql:
-        sql = generator.compile_statement(statement)
+        sqls = generator.compile_statement(statement)
         adventureworks_engine.execute_query(statement).fetchall()
