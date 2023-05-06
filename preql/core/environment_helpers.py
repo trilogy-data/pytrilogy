@@ -17,24 +17,21 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
-        if concept.namespace != DEFAULT_NAMESPACE:
-            new_namespace = f"{concept.namespace}.{concept.name}"
-        else:
-            new_namespace = concept.name
+        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         new_concept = Concept(
-            name=fname,
+            name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
             grain=const_function.output_grain,
-            namespace=new_namespace,
+            namespace=namespace,
             keys=[concept],
         )
         environment.add_concept(new_concept)
 
 
 def generate_datetime_concepts(concept: Concept, environment: Environment):
-    for ftype in [FunctionType.HOUR, FunctionType.MINUTE, FunctionType.SECOND]:
+    for ftype in [FunctionType.DATE, FunctionType.HOUR, FunctionType.MINUTE, FunctionType.SECOND]:
         fname = ftype.name.lower()
         default_type = (
             Purpose.CONSTANT
@@ -47,17 +44,14 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
-        if concept.namespace != DEFAULT_NAMESPACE:
-            new_namespace = f"{concept.namespace}.{concept.name}"
-        else:
-            new_namespace = concept.name
+        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         new_concept = Concept(
-            name=f"{fname}",
+            name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
             grain=const_function.output_grain,
-            namespace=new_namespace,
+            namespace=namespace,
             keys=[concept],
         )
         environment.add_concept(new_concept)
@@ -67,5 +61,8 @@ def generate_related_concepts(concept: Concept, environment: Environment):
     if concept.datatype == DataType.DATE:
         generate_date_concepts(concept, environment)
     elif concept.datatype == DataType.DATETIME:
+        generate_date_concepts(concept, environment)
+        generate_datetime_concepts(concept, environment)
+    elif concept.datatype == DataType.TIMESTAMP:
         generate_date_concepts(concept, environment)
         generate_datetime_concepts(concept, environment)
