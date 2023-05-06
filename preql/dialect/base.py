@@ -451,3 +451,4 @@ class BaseDialect:
                 f"Invalid reference string found in query: {final}, this should never occur. Please report this issue."
             )
         return final
+    
