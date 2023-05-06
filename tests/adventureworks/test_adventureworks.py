@@ -20,7 +20,7 @@ def test_parsing(environment):
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    generator = SqlServerDialect()
+    SqlServerDialect()
     environment, statements = parse(file, environment=environment)
 
 
@@ -201,13 +201,13 @@ def test_two_properties(environment):
 
     assert order_date_datasource.identifier == expected_identifier
 
-    datasource = get_query_datasources(
+    get_query_datasources(
         environment=environment, graph=environment_graph, statement=test
     )
 
     generator = SqlServerDialect()
     sql2 = generator.generate_queries(environment, [test])
-    sql = generator.compile_statement(sql2[0])
+    generator.compile_statement(sql2[0])
 
 
 @pytest.mark.adventureworks_execution
@@ -222,4 +222,4 @@ def test_online_sales_queries(adventureworks_engine, environment):
 
     for statement in sql:
         sql = generator.compile_statement(statement)
-        results = adventureworks_engine.execute_query(statement).fetchall()
+        adventureworks_engine.execute_query(statement).fetchall()

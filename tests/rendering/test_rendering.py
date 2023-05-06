@@ -1,5 +1,5 @@
 from preql.parsing.render import render_query
-from preql.core.models import OrderBy, Ordering, OrderItem, Select, SelectItem
+from preql.core.models import OrderBy, Ordering, OrderItem, Select
 
 
 def test_basic_query(test_environment):

@@ -35,7 +35,7 @@ def can_bind(hostname, port):
     sock = None
     try:
         sock = socket.create_connection((hostname, port), timeout=5)
-    except Exception as e:
+    except Exception:
         return False
     finally:
         if sock:
@@ -77,7 +77,7 @@ def db_must(local_express_flag):
 @fixture(scope="session")
 def adventureworks_engine(db_must):
     if db_must == TestConfig.DOCKER:
-        connection_string = f"TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER=localhost;Uid=sa;Pwd=ThisIsAReallyCoolPassword123"
+        connection_string = "TrustServerCertificate=YES;DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost;Uid=sa;Pwd=ThisIsAReallyCoolPassword123"
     elif db_must == TestConfig.LOCAL:
         connection_string = f"Trusted_Connection=YES;TrustServerCertificate=YES;DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={gethostname()}\\SQLEXPRESS"
     else:

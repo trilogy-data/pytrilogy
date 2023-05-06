@@ -11,4 +11,4 @@ def test_group_node(test_environment, test_environment_graph):
         g=test_environment_graph,
     )
 
-    resolved = group_node.resolve()
+    group_node.resolve()
