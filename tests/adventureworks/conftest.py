@@ -3,7 +3,7 @@ import socket
 import time
 from enum import Enum
 from logging import DEBUG
-from os.path import dirname, abspath
+from os.path import abspath, dirname
 from socket import gethostname
 from urllib.parse import quote_plus
 
@@ -11,10 +11,10 @@ from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
+from preql import Dialects, Environment, Executor
 from preql.constants import logger
 
 logger.setLevel(DEBUG)
-from preql import Executor, Dialects, Environment
 
 
 class TestConfig(Enum):
