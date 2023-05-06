@@ -42,7 +42,6 @@ class Executor(object):
             raise ValueError(f"Unsupported dialect {self.dialect}")
 
     def execute_query(self, query: ProcessedQuery) -> CursorResult:
-
         sql = self.generator.compile_statement(query)
         connection = self.engine.connect()
         output = connection.execute(text(sql))

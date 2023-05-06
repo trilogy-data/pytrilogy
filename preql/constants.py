@@ -5,6 +5,7 @@ logger = getLogger("preql")
 
 DEFAULT_NAMESPACE = "local"
 
+
 # TODO: support loading from environments
 @dataclass
 class Config:

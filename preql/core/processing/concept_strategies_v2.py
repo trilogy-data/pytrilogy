@@ -226,7 +226,8 @@ class GroupNode(StrategyNode):
             # if there is no group by, and inputs equal outputs
             # return the parent
             logger.info(
-                f"{LOGGER_PREFIX} Output of group by node equals input of group by node {[c.address for c in outputs]}"
+                f"{LOGGER_PREFIX} Output of group by node equals input of group by node"
+                f" {[c.address for c in outputs]}"
             )
             if len(parent_sources) == 1:
                 logger.info(
@@ -307,7 +308,8 @@ class MergeNode(StrategyNode):
                 [c.address for c in self.all_concepts]
             ):
                 logger.info(
-                    f"{LOGGER_PREFIX} Merge node has only one parent with the same outputs as this merge node, dropping merge node "
+                    f"{LOGGER_PREFIX} Merge node has only one parent with the same"
+                    " outputs as this merge node, dropping merge node "
                 )
                 return final
         # if we have multiple candidates, see if one is good enough
@@ -324,7 +326,7 @@ class MergeNode(StrategyNode):
             final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
         if not dataset_list:
-            raise SyntaxError('Empty merge node')
+            raise SyntaxError("Empty merge node")
         base = dataset_list[0]
         joins = []
         all_concepts = unique(
@@ -378,7 +380,7 @@ class MergeNode(StrategyNode):
 
 class SelectNode(StrategyNode):
     """Select nodes actually fetch raw data, either
-    directly from a table or via joins """
+    directly from a table or via joins"""
 
     source_type = SourceType.SELECT
 
@@ -485,7 +487,8 @@ class SelectNode(StrategyNode):
                 all_concepts = self.mandatory_concepts + list(combo)
                 required = [c.address for c in all_concepts]
                 logger.info(
-                    f'{LOGGER_PREFIX} Attempting to resolve joins to reach {",".join(required)}'
+                    f"{LOGGER_PREFIX} Attempting to resolve joins to reach"
+                    f" {','.join(required)}"
                 )
                 ds = self.resolve_joins_pass(all_concepts)
                 if ds:
@@ -643,7 +646,7 @@ def source_concepts(
     stack: List[StrategyNode] = []
     all_concepts = unique(mandatory_concepts + optional_concepts, "address")
     if not all_concepts:
-        raise SyntaxError('Cannot source empty')
+        raise SyntaxError("Cannot source empty")
     # TODO
     # Loop through all possible grains + subgrains
     # Starting with the most grain
@@ -764,11 +767,13 @@ def source_concepts(
             for concept in node.resolve().output_concepts:
                 found_addresses.append(concept.address)
         logger.info(
-            f"{LOGGER_PREFIX} finished a loop iteration, have {found_addresses} from {[n for n in stack]}"
+            f"{LOGGER_PREFIX} finished a loop iteration, have {found_addresses} from"
+            f" {[n for n in stack]}"
         )
         if all(c.address in found_addresses for c in all_concepts):
             logger.info(
-                f"{LOGGER_PREFIX} have all concepts, have {found_addresses} from {[n for n in stack]}"
+                f"{LOGGER_PREFIX} have all concepts, have {found_addresses} from"
+                f" {[n for n in stack]}"
             )
 
     return MergeNode(

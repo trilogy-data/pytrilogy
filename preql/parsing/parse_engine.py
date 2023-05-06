@@ -301,7 +301,9 @@ class ParseToObjects(Transformer):
         existing = self.environment.concepts.get(lookup)
         if existing:
             raise ParseError(
-                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
+                f" declaration; '{lookup}' was originally defined on line"
+                f" {existing.metadata.line_number}"
             )
 
     def start(self, args):
@@ -513,7 +515,8 @@ class ParseToObjects(Transformer):
             self.environment.add_concept(concept, meta=meta)
             return concept
         raise SyntaxError(
-            f"Recieved invalid type {type(args[2])} {args[2]} as input to select transform"
+            f"Recieved invalid type {type(args[2])} {args[2]} as input to select"
+            " transform"
         )
 
     @v_args(meta=True)
@@ -632,7 +635,8 @@ class ParseToObjects(Transformer):
             return None
         if len(args) != 1:
             raise ParseError(
-                f"Malformed select statement {args} {self.text[meta.start_pos:meta.end_pos]}"
+                "Malformed select statement"
+                f" {args} {self.text[meta.start_pos:meta.end_pos]}"
             )
         content = args[0]
         if isinstance(content, ConceptTransform):

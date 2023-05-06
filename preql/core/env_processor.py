@@ -2,7 +2,9 @@ from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_
 from preql.core.models import Environment
 
 
-def generate_graph(environment: Environment,) -> ReferenceGraph:
+def generate_graph(
+    environment: Environment,
+) -> ReferenceGraph:
     g = ReferenceGraph()
 
     # add all parsed concepts

@@ -1,7 +1,5 @@
-from collections import defaultdict
-from typing import List, Optional, Dict, Tuple, Union, Set
+from typing import List, Optional, Dict, Union, Set
 
-from preql.constants import logger
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
 
@@ -16,10 +14,7 @@ from preql.core.models import (
     ProcessedQuery,
     QueryDatasource,
     Datasource,
-    Concept,
-    JoinType,
     BaseJoin,
-    merge_ctes,
 )
 
 from preql.utility import string_to_hash, unique
@@ -240,8 +235,6 @@ def process_query_v2(
         joins=[],
     )
 
-
-from preql.hooks.base_hook import BaseHook
 
 
 def process_query(
