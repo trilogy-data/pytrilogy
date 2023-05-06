@@ -1,7 +1,7 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
-    from preql.core.models import Select
+    from preql.core.models import Select, SelectItem, Concept, ConceptTransform
 from jinja2 import Template
 
 QUERY_TEMPLATE = Template(
@@ -20,6 +20,14 @@ ORDER BY {% for order in order_by %}
 {% endfor %}{% endif %}
 """
 )
+
+
+def render_select_item():
+    pass
+
+
+def render_select(item: Union[SelectItem, Concept, ConceptTransform]):
+    pass
 
 
 def render_query(query: "Select") -> str:
