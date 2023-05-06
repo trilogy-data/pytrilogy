@@ -271,7 +271,8 @@ class Function(BaseModel):
         valid_inputs = kwargs["values"]["valid_inputs"]
         if not arg_count <= target_arg_count:
             raise ParseError(
-                f"Incorrect argument count to {operator_name} function, expects {target_arg_count}, got {arg_count}"
+                f"Incorrect argument count to {operator_name} function, expects"
+                f" {target_arg_count}, got {arg_count}"
             )
         # for arg in v:
         #     if isinstance(arg, Function):
@@ -287,14 +288,16 @@ class Function(BaseModel):
         for idx, arg in enumerate(v):
             if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
                 raise TypeError(
-                    f"Invalid input datatype {arg.datatype} passed into {operator_name} from concept {arg.name}"
+                    f"Invalid input datatype {arg.datatype} passed into"
+                    f" {operator_name} from concept {arg.name}"
                 )
             if (
                 isinstance(arg, Function)
                 and arg.output_datatype not in valid_inputs[idx]
             ):
                 raise TypeError(
-                    f"Invalid input datatype {arg.output_datatype} passed into {operator_name} from function {arg.operator.name}"
+                    f"Invalid input datatype {arg.output_datatype} passed into"
+                    f" {operator_name} from function {arg.operator.name}"
                 )
             # check constants
             for ptype, dtype in [
@@ -514,10 +517,15 @@ class OrderBy:
 
 @dataclass(eq=True)
 class Select:
-    selection: Union[List[SelectItem], List[Union[Concept, ConceptTransform]]]
+    selection: List[Union[SelectItem, Concept, ConceptTransform]]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+
+    def __str__(self):
+        from preql.parsing.render import render_query
+
+        return render_query(self)
 
     def __post_init__(self):
         final = []
@@ -703,7 +711,8 @@ class Datasource:
     def __add__(self, other):
         if not other == self:
             raise ValueError(
-                "Attempted to add two datasources that are not identical, this should never happen"
+                "Attempted to add two datasources that are not identical, this should"
+                " never happen"
             )
         return self
 
@@ -771,7 +780,8 @@ class Datasource:
                 return concept.safe_address
         existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
         raise ValueError(
-            f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have {existing}."
+            f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have"
+            f" {existing}."
         )
 
     @property
@@ -802,7 +812,8 @@ class BaseJoin:
     def __post_init__(self):
         if self.left_datasource.full_name == self.right_datasource.full_name:
             raise SyntaxError(
-                f"Cannot join a dataself to itself, joining {self.left_datasource} and {self.right_datasource}"
+                f"Cannot join a dataself to itself, joining {self.left_datasource} and"
+                f" {self.right_datasource}"
             )
         final_concepts = []
         for concept in self.concepts:
@@ -813,7 +824,8 @@ class BaseJoin:
                         include = False
                     else:
                         raise SyntaxError(
-                            f"Invalid join, missing {concept} on {ds.name}, have {[c.address for c in ds.output_concepts]}"
+                            f"Invalid join, missing {concept} on {ds.name}, have"
+                            f" {[c.address for c in ds.output_concepts]}"
                         )
             if include:
                 final_concepts.append(concept)
@@ -829,7 +841,10 @@ class BaseJoin:
             right_keys = [c.address for c in self.right_datasource.output_concepts]
 
             raise SyntaxError(
-                f"No mutual join keys found between {self.left_datasource.identifier} and {self.right_datasource.identifier}, left_keys {left_keys}, right_keys {right_keys}"
+                "No mutual join keys found between"
+                f" {self.left_datasource.identifier} and"
+                f" {self.right_datasource.identifier}, left_keys {left_keys},"
+                f" right_keys {right_keys}"
             )
         self.concepts = final_concepts
 
@@ -843,7 +858,11 @@ class BaseJoin:
         )
 
     def __str__(self):
-        return f'{self.join_type.value} JOIN {self.left_datasource.identifier} and {self.right_datasource.identifier} on {",".join([str(k) for k in self.concepts])}'
+        return (
+            f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
+            f" {self.right_datasource.identifier} on"
+            f" {','.join([str(k) for k in self.concepts])}"
+        )
 
 
 @dataclass(eq=True)
@@ -913,7 +932,9 @@ class QueryDatasource:
                 "can only merge two datasources if the group required flag is the same"
             )
         logger.debug(
-            f"{LOGGER_PREFIX} merging {self.name} with {[c.address for c in self.output_concepts]} concepts and {other.name} with {[c.address for c in other.output_concepts]} concepts"
+            f"{LOGGER_PREFIX} merging {self.name} with"
+            f" {[c.address for c in self.output_concepts]} concepts and"
+            f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
 
         merged_datasources = {}
@@ -983,7 +1004,8 @@ class QueryDatasource:
         existing_str = [str(c) for c in existing]
         datasources = [ds.identifier for ds in self.datasources]
         raise ValueError(
-            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier}; have {existing_str} from {datasources}."
+            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier};"
+            f" have {existing_str} from {datasources}."
         )
 
     @property
@@ -1017,7 +1039,10 @@ class CTE:
 
     def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
-            error = f"Attempting to merge two ctes of different grains {self.name} {other.name} grains {self.grain} {other.grain}"
+            error = (
+                "Attempting to merge two ctes of different grains"
+                f" {self.name} {other.name} grains {self.grain} {other.grain}"
+            )
             raise ValueError(error)
 
         self.parent_ctes = merge_ctes(self.parent_ctes + other.parent_ctes)
@@ -1057,7 +1082,9 @@ class CTE:
         # return self.source_map.values()[0]
         elif self.parent_ctes:
             raise SyntaxError(
-                f"{self.name} has no relevant base CTEs, {self.source_map}, {[x.name for x in self.parent_ctes]}, outputs {[x.address for x in self.output_columns]}"
+                f"{self.name} has no relevant base CTEs, {self.source_map},"
+                f" {[x.name for x in self.parent_ctes]}, outputs"
+                f" {[x.address for x in self.output_columns]}"
             )
         return self.source.name
 
@@ -1139,7 +1166,10 @@ class Join:
         return self.left_cte.name + self.right_cte.name + self.jointype.value
 
     def __str__(self):
-        return f'{self.jointype.value} JOIN {self.left_cte.name} and {self.right_cte.name} on {",".join([str(k) for k in self.joinkeys])}'
+        return (
+            f"{self.jointype.value} JOIN {self.left_cte.name} and"
+            f" {self.right_cte.name} on {','.join([str(k) for k in self.joinkeys])}"
+        )
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
@@ -1174,11 +1204,15 @@ class Environment:
         existing = self.concepts.get(lookup)
         if existing and meta and existing.metadata:
             raise ValueError(
-                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
+                f" declaration; '{lookup}' was originally defined on line"
+                f" {existing.metadata.line_number}"
             )
         elif existing and existing.metadata:
             raise ValueError(
-                f"Assignment to concept '{lookup}'  is a duplicate declaration; '{lookup}' was originally defined on line {existing.metadata.line_number}"
+                f"Assignment to concept '{lookup}'  is a duplicate declaration;"
+                f" '{lookup}' was originally defined on line"
+                f" {existing.metadata.line_number}"
             )
         elif existing:
             raise ValueError(

@@ -3,3 +3,4 @@ pytest-cov
 duckdb
 duckdb-engine
 mypy
+ruff
