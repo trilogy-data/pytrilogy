@@ -10,6 +10,9 @@ from preql.core.models import (
     OrderItem,
     Select,
     SelectItem,
+    WhereClause,
+    Conditional,
+    Comparison,
 )
 
 from preql.constants import DEFAULT_NAMESPACE
