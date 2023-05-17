@@ -156,6 +156,10 @@ class ComparisonOperator(Enum):
     def _missing_(cls, value):
         if value == "is":
             return ComparisonOperator.EQ
+        if str(value).lower() == "like":
+            return ComparisonOperator.LIKE
+        if str(value).lower() == "ilike":
+            return ComparisonOperator.ILIKE
         return super()._missing_(value)
 
 
