@@ -149,6 +149,8 @@ class ComparisonOperator(Enum):
     LTE = "<="
     NE = "!="
     IN = "in"
+    LIKE = "like"
+    ILIKE = "ilike"
 
     @classmethod
     def _missing_(cls, value):
