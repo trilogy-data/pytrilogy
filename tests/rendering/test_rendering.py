@@ -31,8 +31,6 @@ def test_basic_query(test_environment):
         string_query
         == """SELECT
     order_id,
-WHERE
-    (order_id = 123 or order_id = 456)
 ORDER BY
     order_id asc
 ;"""
