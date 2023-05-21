@@ -36,7 +36,7 @@ class Renderer:
     def _(self, arg: Select):
         return QUERY_TEMPLATE.render(
             select_columns=[self.to_string(c) for c in arg.selection],
-            where=self.to_string(arg.where_clause),
+            where=self.to_string(arg.where_clause) if arg.where_clause else None,
             order_by=[self.to_string(c) for c in arg.order_by.items]
             if arg.order_by
             else None,
