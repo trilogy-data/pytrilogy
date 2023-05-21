@@ -517,7 +517,7 @@ class OrderBy:
 
 @dataclass(eq=True)
 class Select:
-    selection: List[Union[SelectItem, Concept, ConceptTransform]]
+    selection: Sequence[Union[SelectItem, Concept, ConceptTransform]]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None

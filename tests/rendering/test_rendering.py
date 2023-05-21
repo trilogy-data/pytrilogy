@@ -11,7 +11,32 @@ from preql.core.models import (
 from preql.core.enums import ComparisonOperator, BooleanOperator
 
 
+
 def test_basic_query(test_environment):
+    query = Select(
+        selection=[test_environment.concepts["order_id"]],
+        where_clause=None,
+        order_by=OrderBy(
+            [
+                OrderItem(
+                    expr=test_environment.concepts["order_id"],
+                    order=Ordering.ASCENDING,
+                )
+            ]
+        ),
+    )
+
+    string_query = render_query(query)
+    assert (
+        string_query
+        == """SELECT
+    order_id,
+ORDER BY
+    order_id asc
+;"""
+    )
+
+def test_full_query(test_environment):
     query = Select(
         selection=[test_environment.concepts["order_id"]],
         where_clause=WhereClause(
@@ -40,7 +65,6 @@ def test_basic_query(test_environment):
     )
 
     string_query = render_query(query)
-    print(string_query)
     assert (
         string_query
         == """SELECT
