@@ -108,6 +108,7 @@ class FunctionType(Enum):
     MINUTE = "minute"
     HOUR = "hour"
     DAY = "day"
+    DAY_OF_WEEK = "day_of_week"
     WEEK = "week"
     MONTH = "month"
     QUARTER = "quarter"
@@ -149,8 +150,10 @@ class ComparisonOperator(Enum):
     LTE = "<="
     NE = "!="
     IN = "in"
+    # TODO: deprecate for contains?
     LIKE = "like"
     ILIKE = "ilike"
+    CONTAINS = "contains"
 
     @classmethod
     def _missing_(cls, value):
@@ -160,6 +163,8 @@ class ComparisonOperator(Enum):
             return ComparisonOperator.LIKE
         if str(value).lower() == "ilike":
             return ComparisonOperator.ILIKE
+        if str(value).lower() == "contains":
+            return ComparisonOperator.CONTAINS
         return super()._missing_(value)
 
 

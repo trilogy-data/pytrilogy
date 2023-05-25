@@ -1,10 +1,14 @@
-from preql.core.models import Concept, Environment, Function
+from preql.core.models import Concept, Environment, Function, Metadata
 from preql.core.enums import DataType, Purpose, FunctionType
 from preql.constants import DEFAULT_NAMESPACE
 
 
 def generate_date_concepts(concept: Concept, environment: Environment):
-    for ftype in [FunctionType.MONTH, FunctionType.YEAR, FunctionType.QUARTER]:
+    if concept.metadata and concept.metadata.description:
+        base_description = concept.metadata.description
+    else:
+        base_description = f'a {concept.datatype.value}'
+    for ftype in [FunctionType.MONTH, FunctionType.YEAR, FunctionType.QUARTER, FunctionType.DAY, FunctionType.DAY_OF_WEEK]:
         fname = ftype.name.lower()
         default_type = (
             Purpose.CONSTANT
@@ -26,11 +30,16 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             grain=const_function.output_grain,
             namespace=namespace,
             keys=[concept],
+            metadata=Metadata(description=f'Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}')
         )
         environment.add_concept(new_concept)
 
 
 def generate_datetime_concepts(concept: Concept, environment: Environment):
+    if concept.metadata and concept.metadata.description:
+        base_description = concept.metadata.description
+    else:
+        base_description = f'a {concept.datatype.value}'
     for ftype in [FunctionType.DATE, FunctionType.HOUR, FunctionType.MINUTE, FunctionType.SECOND]:
         fname = ftype.name.lower()
         default_type = (
@@ -53,6 +62,8 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             grain=const_function.output_grain,
             namespace=namespace,
             keys=[concept],
+            metadata=Metadata(description=f'Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}')
+       
         )
         environment.add_concept(new_concept)
 

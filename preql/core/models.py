@@ -12,6 +12,7 @@ from typing import (
     Set,
     Any,
     Sequence,
+    ValuesView
 )
 
 from pydantic import BaseModel, validator, Field
@@ -1173,7 +1174,11 @@ class Join:
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-    def __getitem__(self, key, line_no: int | None = None):
+
+    def values(self)->ValuesView[Concept]:
+        return super().values()
+    
+    def __getitem__(self, key, line_no: int | None = None)->Concept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -1199,6 +1204,8 @@ class Environment:
     datasources: Dict[str, Datasource] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
+
+
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing = self.concepts.get(lookup)
@@ -1426,6 +1433,10 @@ class ProcessedQuery:
 @dataclass
 class Limit:
     count: int
+
+
+class ConceptDeclaration(BaseModel):
+    concept:Concept
 
 
 Concept.update_forward_refs()
