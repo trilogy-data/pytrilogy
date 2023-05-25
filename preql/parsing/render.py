@@ -3,16 +3,26 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE
+from preql.core.enums import Purpose
 from preql.core.models import (
+    Address,
+    Query,
     Concept,
     ConceptTransform,
     Function,
+    Grain,
     OrderItem,
     Select,
     SelectItem,
     WhereClause,
     Conditional,
     Comparison,
+    Environment,
+    ConceptDeclaration,
+    Datasource,
+    WindowItem,
+    FilterItem,
+    ColumnAssignment
 )
 
 from preql.constants import DEFAULT_NAMESPACE
@@ -215,7 +225,19 @@ class Renderer:
     @to_string.register
     def _(self, arg: "SelectItem"):
         return self.to_string(arg.content)
-
+    
+    @to_string.register
+    def _(self, arg: "WindowItem"):
+        over = ",".join(self.to_string(c) for c in arg.over)
+        order = ",".join(self.to_string(c) for c in arg.order_by)
+        if over:
+            return f'{arg.type.value} {self.to_string(arg.content)} by {order} OVER {over}'
+        return f'{arg.type.value} {self.to_string(arg.content)} by {order}'
+    
+    @to_string.register
+    def _(self, arg: "FilterItem"):
+        return f'filter {self.to_string(arg.content)} where {self.to_string(arg.where)}'
+    
     @to_string.register
     def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)

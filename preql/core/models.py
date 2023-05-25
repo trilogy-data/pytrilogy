@@ -1265,6 +1265,8 @@ class Environment:
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 
+
+
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing = self.concepts.get(lookup)
         if existing and existing.metadata:
