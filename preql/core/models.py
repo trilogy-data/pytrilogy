@@ -1565,7 +1565,9 @@ class Parenthetical(BaseModel):
 
 class Parenthetical(BaseModel):
     content:Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
-
+    
+    class Config:
+        smart_union = True
     def __repr__(self):
         return f"({str(self.content)})"
 
