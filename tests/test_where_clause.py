@@ -169,5 +169,4 @@ where
     assert address == set(['local.order_id',])
 
     query = BaseDialect().compile_statement(process_query(test_environment, select))
-    print(query)
     assert '`order_id` = 1' in query

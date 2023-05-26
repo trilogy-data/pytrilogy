@@ -244,7 +244,7 @@ grammar = r"""
     %import common.WS_INLINE -> _WHITESPACE
     %import common.WS
     %ignore WS
-"""
+"""  # noqa: E501
 
 PARSER = Lark(grammar, start="start", propagate_positions=True)
 
