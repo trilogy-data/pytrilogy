@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose
+from preql.core.enums import Purpose, DataType
 from preql.core.models import (
     Address,
     Query,
@@ -48,8 +48,8 @@ class Renderer:
     @to_string.register
     def _(self, arg: Environment):
         output_concepts = []
-        constants:list[Concept] = []
-        keys:list[Concept] = []
+        constants: list[Concept] = []
+        keys: list[Concept] = []
         properties = defaultdict(list)
         metrics = []
         # first, keys
@@ -87,11 +87,11 @@ class Renderer:
             self.to_string(datasource) for datasource in arg.datasources.values()
         ]
 
-        return "\n".join(rendered_concepts) + "\n\n"  + "\n\n".join(rendered_datasources)
+        return "\n".join(rendered_concepts) + "\n\n" + "\n\n".join(rendered_datasources)
 
     @to_string.register
     def _(self, arg: Datasource):
-        assignments = ',\n\t'.join([self.to_string(x) for x in arg.columns])    
+        assignments = ",\n\t".join([self.to_string(x) for x in arg.columns])
         return f"""datasource {arg.name} (
     {assignments}
     ) 
@@ -99,23 +99,25 @@ class Renderer:
 {self.to_string(arg.address)};"""
 
     @to_string.register
-    def _(self, arg:"Grain"):
-        components = ','.join(self.to_string(x) for x in arg.components)
-        return f'grain ({components})'
-    
-    @to_string.register
-    def _(self, arg:"Query"):
+    def _(self, arg: "Grain"):
+        components = ",".join(self.to_string(x) for x in arg.components)
+        return f"grain ({components})"
 
-        return f'''query {arg.text}'''
-     
     @to_string.register
-    def _(self, arg:"Address"):
-        return f'address {arg.location}'
-    
+    def _(self, arg: "Query"):
+        return f"""query {arg.text}"""
+
     @to_string.register
-    def _(self, arg:"ColumnAssignment"):
+    def _(self, arg: DataType):
+        return arg.value
+
+    @to_string.register
+    def _(self, arg: "Address"):
+        return f"address {arg.location}"
+
+    @to_string.register
+    def _(self, arg: "ColumnAssignment"):
         return f"{arg.alias}:{self.to_string(arg.concept)}"
-
 
     @to_string.register
     def _(self, arg: "ConceptDeclaration"):
@@ -128,7 +130,9 @@ class Renderer:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
                 output = f"{concept.purpose.value} {concept.keys[0].name}.{concept.name} {concept.datatype.value};"
             else:
-                output = f"{concept.purpose.value} {concept.name} {concept.datatype.value};"
+                output = (
+                    f"{concept.purpose.value} {concept.name} {concept.datatype.value};"
+                )
         else:
             output = f"{concept.purpose.value} {concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:
@@ -161,19 +165,21 @@ class Renderer:
     @to_string.register
     def _(self, arg: "SelectItem"):
         return self.to_string(arg.content)
-    
+
     @to_string.register
     def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
         if over:
-            return f'{arg.type.value} {self.to_string(arg.content)} by {order} OVER {over}'
-        return f'{arg.type.value} {self.to_string(arg.content)} by {order}'
-    
+            return (
+                f"{arg.type.value} {self.to_string(arg.content)} by {order} OVER {over}"
+            )
+        return f"{arg.type.value} {self.to_string(arg.content)} by {order}"
+
     @to_string.register
     def _(self, arg: "FilterItem"):
-        return f'filter {self.to_string(arg.content)} where {self.to_string(arg.where)}'
-    
+        return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+
     @to_string.register
     def _(self, arg: "Concept"):
         if arg.namespace == DEFAULT_NAMESPACE:
