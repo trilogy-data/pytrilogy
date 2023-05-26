@@ -1035,7 +1035,7 @@ class CTE:
     group_to_grain: bool = False
     parent_ctes: List["CTE"] = field(default_factory=list)
     joins: List["Join"] = field(default_factory=list)
-    condition: Optional[Union["Conditional", "Comparison"]] = None
+    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
 
     def __post_init__(self):
         self.output_columns = unique(self.output_columns, "address")
