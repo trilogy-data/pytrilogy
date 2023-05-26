@@ -7,8 +7,18 @@ def generate_date_concepts(concept: Concept, environment: Environment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
-        base_description = f'a {concept.datatype.value}'
-    for ftype in [FunctionType.MONTH, FunctionType.YEAR, FunctionType.QUARTER, FunctionType.DAY, FunctionType.DAY_OF_WEEK]:
+        base_description = f"a {concept.datatype.value}"
+    if concept.metadata and concept.metadata.line_number:
+        base_line_number = concept.metadata.line_number
+    else:
+        base_line_number = None
+    for ftype in [
+        FunctionType.MONTH,
+        FunctionType.YEAR,
+        FunctionType.QUARTER,
+        FunctionType.DAY,
+        FunctionType.DAY_OF_WEEK,
+    ]:
         fname = ftype.name.lower()
         default_type = (
             Purpose.CONSTANT
@@ -21,7 +31,9 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
-        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
+        namespace = (
+            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
+        )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
@@ -30,7 +42,10 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             grain=const_function.output_grain,
             namespace=namespace,
             keys=[concept],
-            metadata=Metadata(description=f'Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}')
+            metadata=Metadata(
+                description=f"Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}",
+                line_number=base_line_number,
+            ),
         )
         if concept.name in environment.concepts:
             continue
@@ -41,8 +56,17 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
-        base_description = f'a {concept.datatype.value}'
-    for ftype in [FunctionType.DATE, FunctionType.HOUR, FunctionType.MINUTE, FunctionType.SECOND]:
+        base_description = f"a {concept.datatype.value}"
+    if concept.metadata and concept.metadata.line_number:
+        base_line_number = concept.metadata.line_number
+    else:
+        base_line_number = None
+    for ftype in [
+        FunctionType.DATE,
+        FunctionType.HOUR,
+        FunctionType.MINUTE,
+        FunctionType.SECOND,
+    ]:
         fname = ftype.name.lower()
         default_type = (
             Purpose.CONSTANT
@@ -55,7 +79,9 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
-        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
+        namespace = (
+            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
+        )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
@@ -64,8 +90,10 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             grain=const_function.output_grain,
             namespace=namespace,
             keys=[concept],
-            metadata=Metadata(description=f'Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}')
-       
+            metadata=Metadata(
+                description=f"Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}",
+                line_number=base_line_number,
+            ),
         )
         if concept.name in environment.concepts:
             continue
