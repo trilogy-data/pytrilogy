@@ -32,7 +32,9 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             keys=[concept],
             metadata=Metadata(description=f'Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}')
         )
-        environment.add_concept(new_concept)
+        if concept.name in environment.concepts:
+            continue
+        environment.add_concept(new_concept, add_derived=False)
 
 
 def generate_datetime_concepts(concept: Concept, environment: Environment):
@@ -65,7 +67,9 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             metadata=Metadata(description=f'Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}')
        
         )
-        environment.add_concept(new_concept)
+        if concept.name in environment.concepts:
+            continue
+        environment.add_concept(new_concept, add_derived=False)
 
 
 def generate_related_concepts(concept: Concept, environment: Environment):

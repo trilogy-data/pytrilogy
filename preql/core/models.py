@@ -1302,6 +1302,10 @@ class Comparison(BaseModel):
     ]
     operator: ComparisonOperator
 
+
+    class Config:
+        smart_union = True
+        
     def __add__(self, other):
         if not isinstance(other, (Comparison, Conditional)):
             raise ValueError("Cannot add Comparison to non-Comparison")
@@ -1362,6 +1366,9 @@ class Conditional(BaseModel):
     left: Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
     right: Union[int, str, float, list, bool, Concept, Comparison, "Conditional",         "Parenthetical"]
     operator: BooleanOperator
+
+    class Config:
+        smart_union = True
 
     def __add__(self, other) -> "Conditional":
         if other is None:
@@ -1484,7 +1491,9 @@ class ConceptDeclaration(BaseModel):
 
 class Parenthetical(BaseModel):
     content:Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
-
+    
+    class Config:
+        smart_union = True
     def __repr__(self):
         return f"({str(self.content)})"
 
@@ -1520,3 +1529,5 @@ WindowItemOrder.update_forward_refs()
 FilterItem.update_forward_refs()
 Comparison.update_forward_refs()
 Conditional.update_forward_refs()
+Parenthetical.update_forward_refs()
+WhereClause.update_forward_refs()

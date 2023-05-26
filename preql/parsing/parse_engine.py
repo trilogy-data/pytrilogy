@@ -204,6 +204,7 @@ grammar = r"""
     fminute: "minute"i "(" expr ")"
     fhour: "hour"i "(" expr ")"
     fday: "day"i "(" expr ")"
+    fday_of_week: "day_of_week"i "(" expr ")"
     fweek: "week"i "(" expr ")"
     fmonth: "month"i "(" expr ")"
     fquarter: "quarter"i  "(" expr ")"
@@ -211,7 +212,7 @@ grammar = r"""
     
     fdate_part: "date_part"i "(" expr ")"
     
-    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fquarter | fyear | fdate_part
+    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -1054,7 +1055,17 @@ class ParseToObjects(Transformer):
             valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=1,
         )
-
+    
+    def fday_of_week(self, args):
+        return Function(
+            operator=FunctionType.DAY_OF_WEEK,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+    
     def fweek(self, args):
         return Function(
             operator=FunctionType.WEEK,

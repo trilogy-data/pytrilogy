@@ -63,7 +63,9 @@ class Renderer:
 
             elif not concept.lineage and concept.purpose == Purpose.PROPERTY:
                 if concept.keys:
-                    for key in concept.keys:
+                    # avoid duplicate declarations
+                    # but we need better composite key support
+                    for key in concept.keys[:1]:
                         properties[key.name].append(concept)
                 else:
                     keys.append(concept)
@@ -75,6 +77,7 @@ class Renderer:
             output_concepts += [key]
             output_concepts += properties.get(key.name, [])
         output_concepts += metrics
+
         rendered_concepts = [
             self.to_string(ConceptDeclaration(concept=concept))
             for concept in output_concepts

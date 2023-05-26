@@ -170,3 +170,24 @@ where
 
     query = BaseDialect().compile_statement(process_query(test_environment, select))
     assert '`order_id` = 1' in query
+
+
+
+def test_like_filter(test_environment, logger):
+    declarations = """
+property special_order <- filter order_id where like(category_name, 'test') = True;
+property special_order_2 <- filter order_id where like(category_name, 'test') = 1;
+
+select
+    special_order
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    assert env.concepts['special_order'].lineage.where.conditional.right == True
+    assert env.concepts['special_order_2'].lineage.where.conditional.right == 1
+    query = BaseDialect().compile_statement(process_query(test_environment, select))
+    assert "'test'  = True" in query
