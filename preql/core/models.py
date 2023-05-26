@@ -1505,6 +1505,13 @@ class Parenthetical(BaseModel):
     def __repr__(self):
         return f"({str(self.content)})"
 
+    def __add__(self, other):
+        if not isinstance(other, (Comparison, Conditional, Parenthetical)):
+            raise ValueError(f"Cannot add Parenthetical to {type(other)}")
+        if other == self:
+            return self
+        return Conditional(left=self, right=other, operator=BooleanOperator.AND)
+
     def with_namespace(self, namespace: str):
         return Parenthetical(
             content=self.content.with_namespace(namespace)
