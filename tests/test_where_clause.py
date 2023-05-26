@@ -142,8 +142,6 @@ select
     print(query)
 
 
-
-
 def test_parenthetical(test_environment, logger):
     declarations = """
 
@@ -166,11 +164,14 @@ where
 
     address = set([x.address for x in left.concept_arguments])
 
-    assert address == set(['local.order_id',])
+    assert address == set(
+        [
+            "local.order_id",
+        ]
+    )
 
     query = BaseDialect().compile_statement(process_query(test_environment, select))
-    assert '`order_id` = 1' in query
-
+    assert "`order_id` = 1" in query
 
 
 def test_like_filter(test_environment, logger):
@@ -187,7 +188,7 @@ select
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
 
-    assert env.concepts['special_order'].lineage.where.conditional.right == True
-    assert env.concepts['special_order_2'].lineage.where.conditional.right == 1
+    assert env.concepts["special_order"].lineage.where.conditional.right is True
+    assert env.concepts["special_order_2"].lineage.where.conditional.right == 1
     query = BaseDialect().compile_statement(process_query(test_environment, select))
     assert "'test'  = True" in query
