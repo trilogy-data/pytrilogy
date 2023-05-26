@@ -1285,6 +1285,7 @@ class Comparison(BaseModel):
         "Conditional",
         DataType,
         "Comparison",
+        "Parenthetical"
     ]
     right: Union[
         int,
@@ -1297,6 +1298,7 @@ class Comparison(BaseModel):
         "Conditional",
         DataType,
         "Comparison",
+        "Parenthetical"
     ]
     operator: ComparisonOperator
 
@@ -1308,15 +1310,15 @@ class Comparison(BaseModel):
         return Conditional(left=self, right=other, operator=BooleanOperator.AND)
 
     def __repr__(self):
-        return f"{self.left} {self.operator.value} {self.right}"
+        return f"{str(self.left)} {self.operator.value} {str(self.right)}"
 
     def with_namespace(self, namespace: str):
         return Comparison(
             left=self.left.with_namespace(namespace)
-            if isinstance(self.left, (Concept, Function))
+            if isinstance(self.left, (Concept, Function, Conditional, Parenthetical))
             else self.left,
             right=self.right.with_namespace(namespace)
-            if isinstance(self.right, (Concept, Function))
+            if isinstance(self.right, (Concept, Function, Conditional, Parenthetical))
             else self.right,
             operator=self.operator,
         )
@@ -1326,22 +1328,39 @@ class Comparison(BaseModel):
         output: List[Concept] = []
         if isinstance(self.left, (Concept,)):
             output += [self.left]
-        elif isinstance(self.left, (Concept, Expr, Conditional)):
+        if isinstance(self.left, (Concept, Expr, Conditional, Parenthetical)):
             output += self.left.input
         if isinstance(self.right, (Concept,)):
             output += [self.right]
-        if isinstance(self.right, (Concept, Expr, Conditional)):
+        if isinstance(self.right, (Concept, Expr, Conditional, Parenthetical)):
             output += self.right.input
         if isinstance(self.left, Function):
             output += self.left.concept_arguments
-        elif isinstance(self.right, Function):
+        if isinstance(self.right, Function):
+            output += self.right.concept_arguments
+        return output
+    
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        """Return concepts directly referenced in where clause"""
+        output = []
+        if isinstance(self.left, Concept):
+            output += [self.left]
+        elif isinstance(self.left, (Comparison, Conditional)):
+            output += self.left.concept_arguments
+        if isinstance(self.right, Concept):
+            output += [self.right]
+        elif isinstance(self.right, (Comparison, Conditional)):
+            output += self.right.concept_arguments
+        if isinstance(self.left, (Function, Parenthetical)):
+            output += self.left.concept_arguments
+        elif isinstance(self.right, (Function, Parenthetical)):
             output += self.right.concept_arguments
         return output
 
-
 class Conditional(BaseModel):
-    left: Union[int, str, float, list, bool, Concept, Comparison, "Conditional"]
-    right: Union[int, str, float, list, bool, Concept, Comparison, "Conditional"]
+    left: Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
+    right: Union[int, str, float, list, bool, Concept, Comparison, "Conditional",         "Parenthetical"]
     operator: BooleanOperator
 
     def __add__(self, other) -> "Conditional":
@@ -1351,16 +1370,19 @@ class Conditional(BaseModel):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
+    def __str__(self):
+        return self.__repr__()
+    
     def __repr__(self):
-        return f"{self.left} {self.operator.value} {self.right}"
+        return f"{str(self.left)} {self.operator.value} {str(self.right)}"
 
     def with_namespace(self, namespace: str):
         return Conditional(
             left=self.left.with_namespace(namespace)
-            if isinstance(self.left, (Concept, Comparison, Conditional))
+            if isinstance(self.left, (Concept, Comparison, Conditional, Parenthetical))
             else self.left,
             right=self.right.with_namespace(namespace)
-            if isinstance(self.right, (Concept, Comparison, Conditional))
+            if isinstance(self.right, (Concept, Comparison, Conditional, Parenthetical))
             else self.right,
             operator=self.operator,
         )
@@ -1377,13 +1399,30 @@ class Conditional(BaseModel):
             output += self.right.input
         elif isinstance(self.right, (Comparison, Conditional)):
             output += self.right.input
-        if isinstance(self.left, Function):
+        if isinstance(self.left, (Function, Parenthetical)):
             output += self.left.concept_arguments
-        elif isinstance(self.right, Function):
+        elif isinstance(self.right, (Function, Parenthetical)):
             output += self.right.concept_arguments
         return output
 
-
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        """Return concepts directly referenced in where clause"""
+        output = []
+        if isinstance(self.left, Concept):
+            output += [self.left]
+        elif isinstance(self.left, (Comparison, Conditional)):
+            output += self.left.concept_arguments
+        if isinstance(self.right, Concept):
+            output += [self.right]
+        elif isinstance(self.right, (Comparison, Conditional)):
+            output += self.right.concept_arguments
+        if isinstance(self.left, (Function, Parenthetical)):
+            output += self.left.concept_arguments
+        elif isinstance(self.right, (Function, Parenthetical)):
+            output += self.right.concept_arguments
+        return output
+    
 class AggregateWrapper(BaseModel):
     function: Function
     by: List[Concept] | None
@@ -1394,12 +1433,16 @@ class AggregateWrapper(BaseModel):
 
 
 class WhereClause(BaseModel):
-    conditional: Union[Comparison, Conditional]
+    conditional: Union[Comparison, Conditional, "Parenthetical"]
 
     @property
     def input(self) -> List[Concept]:
         return self.conditional.input
-
+    
+    @property
+    def concept_arguments(self)->List[Concept]:
+        return self.conditional.concept_arguments
+    
     def with_namespace(self, namespace: str):
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
 
@@ -1438,6 +1481,37 @@ class Limit:
 class ConceptDeclaration(BaseModel):
     concept:Concept
 
+
+class Parenthetical(BaseModel):
+    content:Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
+
+    def __repr__(self):
+        return f"({str(self.content)})"
+
+    
+
+    def with_namespace(self, namespace: str):
+        return Parenthetical(
+            content = self.content.with_namespace(namespace) if hasattr(self.content, 'with_namespace') else self.content
+        )
+    
+    @property
+    def concept_arguments(self)->List[Concept]:
+        base = []
+        x = self.content
+        if hasattr(x, 'concept_arguments'):
+            base +=x.concept_arguments
+        elif isinstance(x, Concept):
+            base.append(x)
+        return base
+  
+    @property
+    def input(self):
+        base = []
+        x = self.content
+        if hasattr(x, 'input'):
+            base +=x.input
+        return base
 
 Concept.update_forward_refs()
 Grain.update_forward_refs()

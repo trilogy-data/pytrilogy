@@ -22,21 +22,11 @@ from preql.core.models import (
     Datasource,
     WindowItem,
     FilterItem,
-    ColumnAssignment
+    ColumnAssignment,
 )
 
-from preql.constants import DEFAULT_NAMESPACE
-from preql.core.models import (
-    Concept,
-    ConceptTransform,
-    Function,
-    OrderItem,
-    Select,
-    SelectItem,
-    WhereClause,
-    Conditional,
-    Comparison,
-)
+from collections import defaultdict
+
 
 QUERY_TEMPLATE = Template(
     """SELECT{%- for select in select_columns %}
@@ -58,9 +48,9 @@ class Renderer:
     @to_string.register
     def _(self, arg: Environment):
         output_concepts = []
-        constants = []
-        keys = []
-        properties = {}
+        constants:list[Concept] = []
+        keys:list[Concept] = []
+        properties = defaultdict(list)
         metrics = []
         # first, keys
         for concept in arg.concepts.values():
@@ -74,7 +64,7 @@ class Renderer:
             elif not concept.lineage and concept.purpose == Purpose.PROPERTY:
                 if concept.keys:
                     for key in concept.keys:
-                        properties[key.name] = concept
+                        properties[key.name].append(concept)
                 else:
                     keys.append(concept)
             else:
@@ -83,7 +73,7 @@ class Renderer:
         output_concepts = constants
         for key in keys:
             output_concepts += [key]
-            output_concepts += properties.get(key, [])
+            output_concepts += properties.get(key.name, [])
         output_concepts += metrics
         rendered_concepts = [
             self.to_string(ConceptDeclaration(concept=concept))
@@ -125,7 +115,7 @@ class Renderer:
 
 
     @to_string.register
-    def _(self, arg: ConceptDeclaration):
+    def _(self, arg: "ConceptDeclaration"):
         concept = arg.concept
         if concept.metadata and concept.metadata.description:
             base_description = concept.metadata.description
@@ -133,7 +123,7 @@ class Renderer:
             base_description = None
         if not concept.lineage:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
-                output = f"{concept.purpose.value} {concept.keys[0]}.{concept.name} {concept.datatype.value};"
+                output = f"{concept.purpose.value} {concept.keys[0].name}.{concept.name} {concept.datatype.value};"
             else:
                 output = f"{concept.purpose.value} {concept.name} {concept.datatype.value};"
         else:

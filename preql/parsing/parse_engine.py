@@ -51,6 +51,7 @@ from preql.core.models import (
     WindowItemOrder,
     FilterItem,
     Query,
+    Parenthetical
 )
 from preql.parsing.exceptions import ParseError
 
@@ -153,8 +154,10 @@ grammar = r"""
     expr_tuple: "("  (expr ",")* expr ","?  ")"
     
     in_comparison: expr "in" expr_tuple
+
+    parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fcast | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference
+    expr: window_item | filter_item | fcast | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference | parenthetical
     
     // functions
     
@@ -763,6 +766,9 @@ class ParseToObjects(Transformer):
 
     def expr_tuple(self, args):
         return tuple(args)
+    
+    def parenthetical(self, args):
+        return Parenthetical(content=args[0])
 
     def in_comparison(self, args):
         # x in (a,b,c)
