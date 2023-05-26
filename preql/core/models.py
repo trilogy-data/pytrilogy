@@ -12,7 +12,7 @@ from typing import (
     Set,
     Any,
     Sequence,
-    ValuesView
+    ValuesView,
 )
 
 from pydantic import BaseModel, validator, Field
@@ -875,7 +875,9 @@ class QueryDatasource:
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
-    condition: Optional[Union["Conditional", "Comparison"]] = field(default=None)
+    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = field(
+        default=None
+    )
     filter_concepts: List[Concept] = field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
 
@@ -1174,11 +1176,10 @@ class Join:
 
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
-
-    def values(self)->ValuesView[Concept]: #type: ignore
+    def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
-    
-    def __getitem__(self, key, line_no: int | None = None)->Concept:
+
+    def __getitem__(self, key, line_no: int | None = None) -> Concept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -1204,8 +1205,6 @@ class Environment:
     datasources: Dict[str, Datasource] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
-
-
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing = self.concepts.get(lookup)
@@ -1250,6 +1249,7 @@ class Environment:
             self.concepts[concept.address] = concept
         if add_derived:
             from preql.core.environment_helpers import generate_related_concepts
+
             generate_related_concepts(concept, self)
 
 
@@ -1285,7 +1285,7 @@ class Comparison(BaseModel):
         "Conditional",
         DataType,
         "Comparison",
-        "Parenthetical"
+        "Parenthetical",
     ]
     right: Union[
         int,
@@ -1298,16 +1298,15 @@ class Comparison(BaseModel):
         "Conditional",
         DataType,
         "Comparison",
-        "Parenthetical"
+        "Parenthetical",
     ]
     operator: ComparisonOperator
 
-
     class Config:
         smart_union = True
-        
+
     def __add__(self, other):
-        if not isinstance(other, (Comparison, Conditional)):
+        if not isinstance(other, (Comparison, Conditional, Parenthetical)):
             raise ValueError("Cannot add Comparison to non-Comparison")
         if other == self:
             return self
@@ -1343,7 +1342,7 @@ class Comparison(BaseModel):
         if isinstance(self.right, Function):
             output += self.right.concept_arguments
         return output
-    
+
     @property
     def concept_arguments(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
@@ -1362,9 +1361,14 @@ class Comparison(BaseModel):
             output += self.right.concept_arguments
         return output
 
+
 class Conditional(BaseModel):
-    left: Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
-    right: Union[int, str, float, list, bool, Concept, Comparison, "Conditional",         "Parenthetical"]
+    left: Union[
+        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
+    ]
+    right: Union[
+        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
+    ]
     operator: BooleanOperator
 
     class Config:
@@ -1373,13 +1377,13 @@ class Conditional(BaseModel):
     def __add__(self, other) -> "Conditional":
         if other is None:
             return self
-        elif isinstance(other, Conditional):
+        elif isinstance(other, (Comparison, Conditional, Parenthetical)):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
     def __str__(self):
         return self.__repr__()
-    
+
     def __repr__(self):
         return f"{str(self.left)} {self.operator.value} {str(self.right)}"
 
@@ -1429,7 +1433,8 @@ class Conditional(BaseModel):
         elif isinstance(self.right, (Function, Parenthetical)):
             output += self.right.concept_arguments
         return output
-    
+
+
 class AggregateWrapper(BaseModel):
     function: Function
     by: List[Concept] | None
@@ -1445,11 +1450,11 @@ class WhereClause(BaseModel):
     @property
     def input(self) -> List[Concept]:
         return self.conditional.input
-    
+
     @property
-    def concept_arguments(self)->List[Concept]:
+    def concept_arguments(self) -> List[Concept]:
         return self.conditional.concept_arguments
-    
+
     def with_namespace(self, namespace: str):
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
 
@@ -1486,41 +1491,45 @@ class Limit:
 
 
 class ConceptDeclaration(BaseModel):
-    concept:Concept
+    concept: Concept
 
 
 class Parenthetical(BaseModel):
-    content:Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
+    content: Union[
+        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
+    ]
 
     class Config:
         smart_union = True
+
     def __repr__(self):
         return f"({str(self.content)})"
 
-    
-
     def with_namespace(self, namespace: str):
         return Parenthetical(
-            content = self.content.with_namespace(namespace) if hasattr(self.content, 'with_namespace') else self.content
+            content=self.content.with_namespace(namespace)
+            if hasattr(self.content, "with_namespace")
+            else self.content
         )
-    
+
     @property
-    def concept_arguments(self)->List[Concept]:
-        base:List[Concept] = []
+    def concept_arguments(self) -> List[Concept]:
+        base: List[Concept] = []
         x = self.content
-        if hasattr(x, 'concept_arguments'):
-            base +=x.concept_arguments
+        if hasattr(x, "concept_arguments"):
+            base += x.concept_arguments
         elif isinstance(x, Concept):
             base.append(x)
         return base
-  
+
     @property
     def input(self):
         base = []
         x = self.content
-        if hasattr(x, 'input'):
-            base +=x.input
+        if hasattr(x, "input"):
+            base += x.input
         return base
+
 
 Concept.update_forward_refs()
 Grain.update_forward_refs()
