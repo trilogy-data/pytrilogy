@@ -1214,8 +1214,6 @@ class Environment:
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 
-
-
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing = self.concepts.get(lookup)
         if existing and meta and existing.metadata:
@@ -1370,6 +1368,7 @@ class Comparison(BaseModel):
         elif isinstance(self.right, (Function, Parenthetical)):
             output += self.right.concept_arguments
         return output
+
 
 class Conditional(BaseModel):
     left: Union[
@@ -1564,37 +1563,41 @@ class Parenthetical(BaseModel):
 
 
 class Parenthetical(BaseModel):
-    content:Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
+    content: Union[
+        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
+    ]
 
     class Config:
         smart_union = True
+
     def __repr__(self):
         return f"({str(self.content)})"
 
-    
-
     def with_namespace(self, namespace: str):
         return Parenthetical(
-            content = self.content.with_namespace(namespace) if hasattr(self.content, 'with_namespace') else self.content
+            content=self.content.with_namespace(namespace)
+            if hasattr(self.content, "with_namespace")
+            else self.content
         )
-    
+
     @property
-    def concept_arguments(self)->List[Concept]:
-        base:List[Concept] = []
+    def concept_arguments(self) -> List[Concept]:
+        base: List[Concept] = []
         x = self.content
-        if hasattr(x, 'concept_arguments'):
-            base +=x.concept_arguments
+        if hasattr(x, "concept_arguments"):
+            base += x.concept_arguments
         elif isinstance(x, Concept):
             base.append(x)
         return base
-  
+
     @property
     def input(self):
         base = []
         x = self.content
-        if hasattr(x, 'input'):
-            base +=x.input
+        if hasattr(x, "input"):
+            base += x.input
         return base
+
 
 Concept.update_forward_refs()
 Grain.update_forward_refs()
