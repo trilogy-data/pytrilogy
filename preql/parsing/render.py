@@ -22,7 +22,7 @@ from preql.core.models import (
     Datasource,
     WindowItem,
     FilterItem,
-    ColumnAssignment
+    ColumnAssignment,
 )
 
 from preql.constants import DEFAULT_NAMESPACE
