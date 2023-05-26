@@ -112,6 +112,11 @@ class Renderer:
         return arg.value
 
     @to_string.register
+    def _(self, arg: list):
+        base = ", ".join([self.to_string(x) for x in arg])
+        return f"[{base}]"
+
+    @to_string.register
     def _(self, arg: "Address"):
         return f"address {arg.location}"
 
