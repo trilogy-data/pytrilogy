@@ -1,10 +1,11 @@
-from typing import List, Optional, Tuple, Dict, TypedDict
+from typing import List, Optional, Tuple, Dict, TypedDict, Set
 
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import (
     Datasource,
     JoinType,
     BaseJoin,
+    Concept
 )
 
 
@@ -63,17 +64,17 @@ def parse_path_to_matches(
     return output
 
 
-# Archiving to be used in future
-# def get_disconnected_components(
-#     concept_map: Dict[str, Set[Concept]]
-# ) -> Tuple[int, List]:
-#     """Find if any of the datasources are not linked"""
-#     import networkx as nx
-#
-#     graph = nx.Graph()
-#     for datasource, concepts in concept_map.items():
-#         graph.add_node(datasource)
-#         for concept in concepts:
-#             graph.add_edge(datasource, concept.address)
-#     sub_graphs = list(nx.connected_components(graph))
-#     return len(sub_graphs), sub_graphs
+#Archiving to be used in future
+def get_disconnected_components(
+    concept_map: Dict[str, Set[Concept]]
+) -> Tuple[int, List]:
+    """Find if any of the datasources are not linked"""
+    import networkx as nx
+
+    graph = nx.Graph()
+    for datasource, concepts in concept_map.items():
+        graph.add_node(datasource)
+        for concept in concepts:
+            graph.add_edge(datasource, concept.address)
+    sub_graphs = list(nx.connected_components(graph))
+    return len(sub_graphs), sub_graphs
