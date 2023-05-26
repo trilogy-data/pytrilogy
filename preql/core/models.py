@@ -1619,7 +1619,7 @@ Expr =  int |str | float | list | bool | Concept | Comparison | Conditional | Pa
 
 class Parenthetical(BaseModel):
     content:Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
-    
+
     class Config:
         smart_union = True
     def __repr__(self):
@@ -1634,7 +1634,7 @@ class Parenthetical(BaseModel):
     
     @property
     def concept_arguments(self)->List[Concept]:
-        base = []
+        base:List[Concept] = []
         x = self.content
         if hasattr(x, 'concept_arguments'):
             base +=x.concept_arguments
