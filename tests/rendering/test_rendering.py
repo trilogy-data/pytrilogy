@@ -1,4 +1,4 @@
-from preql.parsing.render import render_query
+from preql.parsing.render import render_query, render_environment
 from preql.core.models import (
     OrderBy,
     Ordering,
@@ -75,3 +75,10 @@ ORDER BY
     order_id asc
 ;"""
     )
+
+
+def test_environment_rendering(test_environment):
+
+    rendered = render_environment(test_environment)
+
+    assert 'address tblRevenue' in rendered

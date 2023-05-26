@@ -51,6 +51,7 @@ from preql.core.models import (
     WindowItemOrder,
     FilterItem,
     Query,
+    Parenthetical
 )
 from preql.parsing.exceptions import ParseError
 
@@ -153,8 +154,10 @@ grammar = r"""
     expr_tuple: "("  (expr ",")* expr ","?  ")"
     
     in_comparison: expr "in" expr_tuple
+
+    parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fcast | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference
+    expr: window_item | filter_item | fcast | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference | parenthetical
     
     // functions
     
@@ -201,6 +204,7 @@ grammar = r"""
     fminute: "minute"i "(" expr ")"
     fhour: "hour"i "(" expr ")"
     fday: "day"i "(" expr ")"
+    fday_of_week: "day_of_week"i "(" expr ")"
     fweek: "week"i "(" expr ")"
     fmonth: "month"i "(" expr ")"
     fquarter: "quarter"i  "(" expr ")"
@@ -208,7 +212,7 @@ grammar = r"""
     
     fdate_part: "date_part"i "(" expr ")"
     
-    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fweek | fmonth | fquarter | fyear | fdate_part
+    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -241,7 +245,7 @@ grammar = r"""
     %import common.WS_INLINE -> _WHITESPACE
     %import common.WS
     %ignore WS
-"""
+"""  # noqa: E501
 
 PARSER = Lark(grammar, start="start", propagate_positions=True)
 
@@ -763,6 +767,9 @@ class ParseToObjects(Transformer):
 
     def expr_tuple(self, args):
         return tuple(args)
+    
+    def parenthetical(self, args):
+        return Parenthetical(content=args[0])
 
     def in_comparison(self, args):
         # x in (a,b,c)
@@ -1048,7 +1055,17 @@ class ParseToObjects(Transformer):
             valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=1,
         )
-
+    
+    def fday_of_week(self, args):
+        return Function(
+            operator=FunctionType.DAY_OF_WEEK,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=1,
+        )
+    
     def fweek(self, args):
         return Function(
             operator=FunctionType.WEEK,

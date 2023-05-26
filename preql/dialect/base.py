@@ -16,6 +16,7 @@ from preql.core.models import (
     FilterItem,
     Function,
     AggregateWrapper,
+    Parenthetical
 )
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query_v2
@@ -91,6 +92,7 @@ FUNCTION_MAP = {
     FunctionType.MINUTE: lambda x: f"minute({x[0]})",
     FunctionType.HOUR: lambda x: f"hour({x[0]})",
     FunctionType.DAY: lambda x: f"day({x[0]})",
+    FunctionType.DAY_OF_WEEK: lambda x: f"day_of_week({x[0]})",
     FunctionType.WEEK: lambda x: f"week({x[0]})",
     FunctionType.MONTH: lambda x: f"month({x[0]})",
     FunctionType.QUARTER: lambda x: f"quarter({x[0]})",
@@ -281,6 +283,7 @@ class BaseDialect:
             float,
             DataType,
             Function,
+            Parenthetical
         ],
         cte: Optional[CTE] = None,
         cte_map: Optional[Dict[str, CTE]] = None,
@@ -296,6 +299,11 @@ class BaseDialect:
             # conditions need to be nested in parentheses
             return (
                 f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
+            )
+        elif isinstance(e, Parenthetical):
+            # conditions need to be nested in parentheses
+            return (
+                f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
             )
         elif isinstance(e, Function):
             if cte and cte.group_to_grain:
@@ -421,7 +429,7 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             found = False
-            filter = set([str(x.address) for x in query.where_clause.input])
+            filter = set([str(x.address) for x in query.where_clause.concept_arguments])
             query_output = set([str(z.address) for z in query.output_columns])
             if filter.issubset(query_output):
                 output_where = True

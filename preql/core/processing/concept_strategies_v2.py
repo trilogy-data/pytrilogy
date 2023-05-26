@@ -1,30 +1,30 @@
 from collections import defaultdict
 from copy import deepcopy
+from itertools import combinations
 from typing import List, Optional, Set
 
 import networkx as nx
 
+from preql.constants import logger
+from preql.core.constants import CONSTANT_DATASET
 from preql.core.enums import Purpose, PurposeLineage
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 from preql.core.models import (
-    Concept,
-    Environment,
-    Grain,
-    QueryDatasource,
-    Datasource,
-    JoinType,
     BaseJoin,
-    Function,
-    WindowItem,
+    Concept,
+    Datasource,
+    Environment,
     FilterItem,
+    Function,
+    Grain,
+    JoinType,
+    QueryDatasource,
     SourceType,
+    WindowItem,
 )
 from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.utility import unique
-from preql.constants import logger
-from preql.core.constants import CONSTANT_DATASET
-from itertools import combinations
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 

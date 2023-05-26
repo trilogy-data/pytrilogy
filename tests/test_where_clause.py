@@ -1,5 +1,5 @@
 # from preql.compiler import compile
-from preql.core.models import Select, Grain
+from preql.core.models import Select, Grain, Parenthetical
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
@@ -140,3 +140,55 @@ select
 
     query = BaseDialect().compile_statement(process_query(test_environment, select))
     print(query)
+
+
+def test_parenthetical(test_environment, logger):
+    declarations = """
+
+
+select
+    order_id,
+    total_revenue,
+where 
+(order_id =1 or order_id = 2) and total_revenue>30
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    left = select.where_clause.conditional.left
+
+    assert isinstance(left, Parenthetical)
+
+    address = set([x.address for x in left.concept_arguments])
+
+    assert address == set(
+        [
+            "local.order_id",
+        ]
+    )
+
+    query = BaseDialect().compile_statement(process_query(test_environment, select))
+    assert "`order_id` = 1" in query
+
+
+def test_like_filter(test_environment, logger):
+    declarations = """
+property special_order <- filter order_id where like(category_name, 'test') = True;
+property special_order_2 <- filter order_id where like(category_name, 'test') = 1;
+
+select
+    special_order
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+
+    assert env.concepts["special_order"].lineage.where.conditional.right is True
+    assert env.concepts["special_order_2"].lineage.where.conditional.right == 1
+    query = BaseDialect().compile_statement(process_query(test_environment, select))
+    assert "'test'  = True" in query
