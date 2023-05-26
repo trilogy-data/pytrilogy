@@ -47,7 +47,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
                 line_number=base_line_number,
             ),
         )
-        if concept.name in environment.concepts:
+        if new_concept.name in environment.concepts:
             continue
         environment.add_concept(new_concept, add_derived=False)
 
@@ -95,7 +95,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
                 line_number=base_line_number,
             ),
         )
-        if concept.name in environment.concepts:
+        if new_concept.name in environment.concepts:
             continue
         environment.add_concept(new_concept, add_derived=False)
 
