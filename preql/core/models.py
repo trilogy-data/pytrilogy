@@ -1175,7 +1175,7 @@ class Join:
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
 
-    def values(self)->ValuesView[Concept]:
+    def values(self)->ValuesView[Concept]: #type: ignore
         return super().values()
     
     def __getitem__(self, key, line_no: int | None = None)->Concept:
@@ -1491,7 +1491,7 @@ class ConceptDeclaration(BaseModel):
 
 class Parenthetical(BaseModel):
     content:Union[int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"]
-    
+
     class Config:
         smart_union = True
     def __repr__(self):
@@ -1506,7 +1506,7 @@ class Parenthetical(BaseModel):
     
     @property
     def concept_arguments(self)->List[Concept]:
-        base = []
+        base:List[Concept] = []
         x = self.content
         if hasattr(x, 'concept_arguments'):
             base +=x.concept_arguments
