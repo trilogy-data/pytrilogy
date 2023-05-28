@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose, DataType
+from preql.core.enums import Purpose, DataType, ConceptSource
 from preql.core.models import (
     Address,
     Query,
@@ -252,9 +252,11 @@ class Renderer:
     @to_string.register
     def _(self, arg: "FilterItem"):
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+
     @to_string.register
     def _(self, arg: "Import"):
-        return f'import {arg.path} as {arg.alias};'
+        return f"import {arg.path} as {arg.alias};"
+
     @to_string.register
     def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
