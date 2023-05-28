@@ -1510,6 +1510,13 @@ class Parenthetical(BaseModel):
     class Config:
         smart_union = True
 
+    def __add__(self, other) -> Union["Parenthetical", "Conditional"]:
+        if other is None:
+            return self
+        elif isinstance(other, (Comparison, Conditional, Parenthetical)):
+            return Conditional(left=self, right=other, operator=BooleanOperator.AND)
+        raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
+
     def __repr__(self):
         return f"({str(self.content)})"
 
