@@ -33,7 +33,7 @@ from preql.core.enums import (
     PurposeLineage,
     SourceType,
     WindowType,
-    ConceptSource
+    ConceptSource,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -1530,43 +1530,6 @@ class Parenthetical(BaseModel):
         elif isinstance(other, (Comparison, Conditional, Parenthetical)):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
-
-    def __repr__(self):
-        return f"({str(self.content)})"
-
-    def with_namespace(self, namespace: str):
-        return Parenthetical(
-            content=self.content.with_namespace(namespace)
-            if hasattr(self.content, "with_namespace")
-            else self.content
-        )
-
-    @property
-    def concept_arguments(self) -> List[Concept]:
-        base: List[Concept] = []
-        x = self.content
-        if hasattr(x, "concept_arguments"):
-            base += x.concept_arguments
-        elif isinstance(x, Concept):
-            base.append(x)
-        return base
-
-    @property
-    def input(self):
-        base = []
-        x = self.content
-        if hasattr(x, "input"):
-            base += x.input
-        return base
-
-
-class Parenthetical(BaseModel):
-    content: Union[
-        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
-    ]
-
-    class Config:
-        smart_union = True
 
     def __repr__(self):
         return f"({str(self.content)})"

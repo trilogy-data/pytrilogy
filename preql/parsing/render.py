@@ -23,30 +23,7 @@ from preql.core.models import (
     WindowItem,
     FilterItem,
     ColumnAssignment,
-)
-
-from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose, DataType
-from preql.core.models import (
-    Address,
-    Query,
-    Concept,
-    ConceptTransform,
-    Import,
-    Function,
-    Grain,
-    OrderItem,
-    Select,
-    SelectItem,
-    WhereClause,
-    Conditional,
-    Comparison,
-    Environment,
-    ConceptDeclaration,
-    Datasource,
-    WindowItem,
-    FilterItem,
-    ColumnAssignment,
+    Import
 )
 
 from collections import defaultdict
@@ -80,7 +57,10 @@ class Renderer:
         for concept in arg.concepts.values():
             if concept.namespace != DEFAULT_NAMESPACE:
                 continue
-            if concept.metadata and concept.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+            if (
+                concept.metadata
+                and concept.metadata.concept_source == ConceptSource.AUTO_DERIVED
+            ):
                 continue
             elif not concept.lineage and concept.purpose == Purpose.CONSTANT:
                 constants.append(concept)
@@ -112,7 +92,7 @@ class Renderer:
         rendered_datasources = [
             # extra padding between datasources
             # todo: make this more generic
-            self.to_string(datasource)+'\n'
+            self.to_string(datasource) + "\n"
             for datasource in arg.datasources.values()
             if datasource.namespace == DEFAULT_NAMESPACE
         ]
@@ -127,7 +107,7 @@ class Renderer:
             components.append(rendered_concepts)
         if rendered_datasources:
             components.append(rendered_datasources)
-        final = '\n\n'.join('\n'.join(x) for x in components)
+        final = "\n\n".join("\n".join(x) for x in components)
         return final
 
     @to_string.register
@@ -257,9 +237,11 @@ class Renderer:
     @to_string.register
     def _(self, arg: "FilterItem"):
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+
     @to_string.register
     def _(self, arg: "Import"):
-        return f'import {arg.path} as {arg.alias};'
+        return f"import {arg.path} as {arg.alias};"
+
     @to_string.register
     def _(self, arg: "Concept"):
         if arg.namespace == DEFAULT_NAMESPACE:
