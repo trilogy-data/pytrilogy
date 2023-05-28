@@ -1456,24 +1456,7 @@ class Conditional(BaseModel):
             output += self.right.concept_arguments
         return output
 
-    @property
-    def concept_arguments(self) -> List[Concept]:
-        """Return concepts directly referenced in where clause"""
-        output = []
-        if isinstance(self.left, Concept):
-            output += [self.left]
-        elif isinstance(self.left, (Comparison, Conditional)):
-            output += self.left.concept_arguments
-        if isinstance(self.right, Concept):
-            output += [self.right]
-        elif isinstance(self.right, (Comparison, Conditional)):
-            output += self.right.concept_arguments
-        if isinstance(self.left, (Function, Parenthetical)):
-            output += self.left.concept_arguments
-        elif isinstance(self.right, (Function, Parenthetical)):
-            output += self.right.concept_arguments
-        return output
-    
+
 class AggregateWrapper(BaseModel):
     function: Function
     by: List[Concept] | None
@@ -1481,6 +1464,7 @@ class AggregateWrapper(BaseModel):
     @property
     def datatype(self):
         return self.function.datatype
+
 
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
