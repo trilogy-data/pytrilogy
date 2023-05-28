@@ -1197,12 +1197,20 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
         return matches
 
 
+class Import(BaseModel):
+    alias: str
+    path: str
+    # TODO: this might result in a lot of duplication
+    # environment:"Environment"
+
+
 @dataclass
 class Environment:
     concepts: EnvironmentConceptDict[str, Concept] = field(
         default_factory=EnvironmentConceptDict
     )
     datasources: Dict[str, Datasource] = field(default_factory=dict)
+    imports: Dict[str, Import] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 
@@ -1434,24 +1442,7 @@ class Conditional(BaseModel):
             output += self.right.concept_arguments
         return output
 
-    @property
-    def concept_arguments(self) -> List[Concept]:
-        """Return concepts directly referenced in where clause"""
-        output = []
-        if isinstance(self.left, Concept):
-            output += [self.left]
-        elif isinstance(self.left, (Comparison, Conditional)):
-            output += self.left.concept_arguments
-        if isinstance(self.right, Concept):
-            output += [self.right]
-        elif isinstance(self.right, (Comparison, Conditional)):
-            output += self.right.concept_arguments
-        if isinstance(self.left, (Function, Parenthetical)):
-            output += self.left.concept_arguments
-        elif isinstance(self.right, (Function, Parenthetical)):
-            output += self.right.concept_arguments
-        return output
-    
+
 class AggregateWrapper(BaseModel):
     function: Function
     by: List[Concept] | None
@@ -1459,6 +1450,7 @@ class AggregateWrapper(BaseModel):
     @property
     def datatype(self):
         return self.function.datatype
+
 
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
@@ -1521,50 +1513,6 @@ class Parenthetical(BaseModel):
     def __repr__(self):
         return f"({str(self.content)})"
 
-    def __add__(self, other):
-        if not isinstance(other, (Comparison, Conditional, Parenthetical)):
-            raise ValueError(f"Cannot add Parenthetical to {type(other)}")
-        if other == self:
-            return self
-        return Conditional(left=self, right=other, operator=BooleanOperator.AND)
-
-    def with_namespace(self, namespace: str):
-        return Parenthetical(
-            content=self.content.with_namespace(namespace)
-            if hasattr(self.content, "with_namespace")
-            else self.content
-        )
-
-    @property
-    def concept_arguments(self) -> List[Concept]:
-        base: List[Concept] = []
-        x = self.content
-        if hasattr(x, "concept_arguments"):
-            base += x.concept_arguments
-        elif isinstance(x, Concept):
-            base.append(x)
-        return base
-
-    @property
-    def input(self):
-        base = []
-        x = self.content
-        if hasattr(x, "input"):
-            base += x.input
-        return base
-
-
-class Parenthetical(BaseModel):
-    content: Union[
-        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
-    ]
-
-    class Config:
-        smart_union = True
-
-    def __repr__(self):
-        return f"({str(self.content)})"
-
     def with_namespace(self, namespace: str):
         return Parenthetical(
             content=self.content.with_namespace(namespace)
@@ -1600,3 +1548,4 @@ Comparison.update_forward_refs()
 Conditional.update_forward_refs()
 Parenthetical.update_forward_refs()
 WhereClause.update_forward_refs()
+Import.update_forward_refs
