@@ -16,7 +16,7 @@ property user_id.about_me string metadata(description="User provided description
 key post_id int;
 property post_id.post_text string;
 metric post_count <-count(post_id);
-
+metric avg_post_length_by_post_id <- avg(len(post_text)) by post_id;
 
 datasource posts (
     user_id: user_id,
