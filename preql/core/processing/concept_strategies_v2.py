@@ -23,7 +23,7 @@ from preql.core.models import (
     SourceType,
     WindowItem,
 )
-from preql.core.processing.utility import PathInfo, path_to_joins
+from preql.core.processing.utility import PathInfo, path_to_joins, get_disconnected_components
 from preql.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
@@ -240,7 +240,7 @@ class GroupNode(StrategyNode):
             source_type = SourceType.GROUP
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
-            output_concepts=outputs,
+            output_concepts=unique(outputs, "address"),
             datasources=parent_sources,
             source_type=source_type,
             source_map=resolve_concept_map(parent_sources),
@@ -367,15 +367,6 @@ class MergeNode(StrategyNode):
             joins=joins,
             grain=grain,
         )
-
-
-# def print_neighbors(g, node, seen=set(), depth=0):
-#     print('\t'*depth,node)
-#     for x in nx.neighbors(g, node):
-#         print('\t'*depth,x)
-#         if x not in seen:
-#             seen.add(x)
-#             print_neighbors(g, x, depth=depth+1)
 
 
 class SelectNode(StrategyNode):
@@ -635,7 +626,6 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
 
-
 def source_concepts(
     mandatory_concepts: List[Concept],
     optional_concepts: List[Concept],
@@ -650,7 +640,9 @@ def source_concepts(
     # TODO
     # Loop through all possible grains + subgrains
     # Starting with the most grain
-    found_addresses = []
+    found_addresses:list[str] = []
+    found_concepts:set[Concept] = set()
+    found_map = defaultdict(set)
 
     # early exit when we have found all concepts
     while not all(c.address in found_addresses for c in all_concepts):
@@ -766,15 +758,46 @@ def source_concepts(
         for node in stack:
             for concept in node.resolve().output_concepts:
                 found_addresses.append(concept.address)
+                found_concepts.add(concept)
+                found_map[str(node)].add(concept)
         logger.info(
-            f"{LOGGER_PREFIX} finished a loop iteration, have {found_addresses} from"
+            f"{LOGGER_PREFIX} finished a loop iteration looking for {[c.address for c in all_concepts]} from"
             f" {[n for n in stack]}"
         )
         if all(c.address in found_addresses for c in all_concepts):
+            
             logger.info(
-                f"{LOGGER_PREFIX} have all concepts, have {found_addresses} from"
+                f"{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
                 f" {[n for n in stack]}"
+                " checking for convergence"
             )
+            
+            graph_count, graphs = get_disconnected_components(found_map)
+            if graph_count>1:
+                logger.info("fetched nodes are not a connected graph, rerunning with more mandatory concepts")
+                candidates = [x for x in found_concepts if x.purpose in (Purpose.KEY, Purpose.PROPERTY) and x not in mandatory_concepts]
+                for x in range(1, len(candidates) + 1):
+                    for combo in combinations(candidates, x):
+                        new_mandatory = mandatory_concepts + list(combo)
+                        logger.info(
+                            f"{LOGGER_PREFIX} Attempting to resolve joins to reach"
+                            f" {','.join([str(c) for c in new_mandatory])}"
+                        )
+                        try:
+                            return source_concepts(
+                                mandatory_concepts = new_mandatory,
+                                optional_concepts = optional_concepts,
+                                environment = environment,
+                                g = g
+                            )
+                        except ValueError:
+                            continue
+                required = [c.address for c in mandatory_concepts]
+                raise ValueError(
+                    f"Could not find any way to associate required concepts {required}"
+                )
+            logger.info('One fully connected subgraph returned, success.')
+                            
 
     return MergeNode(
         mandatory_concepts, optional_concepts, environment, g, parents=stack

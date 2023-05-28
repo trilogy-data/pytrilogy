@@ -27,11 +27,34 @@ def test_aggregate_of_property_function(stackoverflow_environment):
             found = True
         if found:
             break
+    assert found
+    generator.compile_statement(query)
+
+
+def test_aggregate_to_grain(stackoverflow_environment):
+    env = stackoverflow_environment
+    avg_post_length = env.concepts["avg_post_length_by_post_id"]
+    user_id = env.concepts["user_id"]
+    select: Select = Select(selection=[avg_post_length, user_id])
+
+    query = process_query(statement=select, environment=env)
+    generator = SqlServerDialect()
+    for cte in query.ctes:
+        found = False
+        if avg_post_length in cte.output_columns:
+            rendered = generator.render_concept_sql(avg_post_length, cte)
+            assert (
+                rendered
+                == 'avg(length(cte_posts_at_local_post_id_1440317801136014."post_text")) as "avg_post_length_by_post_id"'
+            )
+            found = True
+        if found:
+            break
+    assert found
     generator.compile_statement(query)
 
 
 def test_aggregate_of_aggregate(stackoverflow_environment):
-
     env = stackoverflow_environment
     post_id = env.concepts["post_id"]
     avg_user_post_count = env.concepts["avg_user_post_count"]
@@ -96,4 +119,3 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
 
     generator = SqlServerDialect()
     sql = generator.compile_statement(query)
-    print(sql)

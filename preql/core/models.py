@@ -1197,12 +1197,20 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
         return matches
 
 
+class Import(BaseModel):
+    alias: str
+    path: str
+    # TODO: this might result in a lot of duplication
+    # environment:"Environment"
+
+
 @dataclass
 class Environment:
     concepts: EnvironmentConceptDict[str, Concept] = field(
         default_factory=EnvironmentConceptDict
     )
     datasources: Dict[str, Datasource] = field(default_factory=dict)
+    imports: Dict[str, Import] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
 
@@ -1502,15 +1510,15 @@ class Parenthetical(BaseModel):
     class Config:
         smart_union = True
 
+    def __add__(self, other) -> Union["Parenthetical", "Conditional"]:
+        if other is None:
+            return self
+        elif isinstance(other, (Comparison, Conditional, Parenthetical)):
+            return Conditional(left=self, right=other, operator=BooleanOperator.AND)
+        raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
+
     def __repr__(self):
         return f"({str(self.content)})"
-
-    def __add__(self, other):
-        if not isinstance(other, (Comparison, Conditional, Parenthetical)):
-            raise ValueError(f"Cannot add Parenthetical to {type(other)}")
-        if other == self:
-            return self
-        return Conditional(left=self, right=other, operator=BooleanOperator.AND)
 
     def with_namespace(self, namespace: str):
         return Parenthetical(
@@ -1547,3 +1555,4 @@ Comparison.update_forward_refs()
 Conditional.update_forward_refs()
 Parenthetical.update_forward_refs()
 WhereClause.update_forward_refs()
+Import.update_forward_refs
