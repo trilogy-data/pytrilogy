@@ -66,7 +66,7 @@ def parse_path_to_matches(
             concept = None
     if left_ds and concept and not right_ds:
         output.append((left_ds, None, [concept]))
-    return
+    return output
     
 def calculate_graph_relevance(g:nx.DiGraph, subset_nodes:set[str], concepts:set[Concept])->int:
     """Calculate the relevance of each node in a graph"""  
@@ -79,7 +79,7 @@ def calculate_graph_relevance(g:nx.DiGraph, subset_nodes:set[str], concepts:set[
         concept = [x for x in concepts if x.address == node].pop()
         if concept.purpose == Purpose.CONSTANT:
             continue
-        if len(concept.grain.components)>0:
+        if concept.grain and len(concept.grain.components)>0:
             relevance +=1
     return relevance
         
