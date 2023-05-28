@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose, DataType
+from preql.core.enums import Purpose, DataType, ConceptSource
 from preql.core.models import (
     Address,
     Query,
@@ -80,6 +80,8 @@ class Renderer:
         for concept in arg.concepts.values():
             if concept.namespace != DEFAULT_NAMESPACE:
                 continue
+            if concept.metadata and concept.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+                continue
             elif not concept.lineage and concept.purpose == Purpose.CONSTANT:
                 constants.append(concept)
             elif not concept.lineage and concept.purpose == Purpose.KEY:
@@ -108,13 +110,25 @@ class Renderer:
         ]
 
         rendered_datasources = [
-            self.to_string(datasource) for datasource in arg.datasources.values()
+            # extra padding between datasources
+            # todo: make this more generic
+            self.to_string(datasource)+'\n'
+            for datasource in arg.datasources.values()
+            if datasource.namespace == DEFAULT_NAMESPACE
         ]
         rendered_imports = [
-            self.to_string(import_statement) for import_statement in arg.imports.values()
+            self.to_string(import_statement)
+            for import_statement in arg.imports.values()
         ]
-
-        return "\n".join(rendered_imports)+ "\n\n" +"\n".join(rendered_concepts) + "\n\n" + "\n\n".join(rendered_datasources)
+        components = []
+        if rendered_imports:
+            components.append(rendered_imports)
+        if rendered_concepts:
+            components.append(rendered_concepts)
+        if rendered_datasources:
+            components.append(rendered_datasources)
+        final = '\n\n'.join('\n'.join(x) for x in components)
+        return final
 
     @to_string.register
     def _(self, arg: Datasource):
@@ -225,9 +239,11 @@ class Renderer:
     @to_string.register
     def _(self, arg: "FilterItem"):
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+
     @to_string.register
     def _(self, arg: "Import"):
-        return f'import {arg.path} as {arg.alias};'
+        return f"import {arg.path} as {arg.alias};"
+
     @to_string.register
     def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
