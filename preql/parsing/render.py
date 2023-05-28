@@ -242,7 +242,9 @@ class Renderer:
     @to_string.register
     def _(self, arg: "FilterItem"):
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
-
+    @to_string.register
+    def _(self, arg: "Import"):
+        return f'import {arg.path} as {arg.alias};'
     @to_string.register
     def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
