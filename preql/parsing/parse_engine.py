@@ -51,7 +51,8 @@ from preql.core.models import (
     WindowItemOrder,
     FilterItem,
     Query,
-    Parenthetical
+    Parenthetical,
+    Import
 )
 from preql.parsing.exceptions import ParseError
 
@@ -299,7 +300,7 @@ class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
         Transformer.__init__(self, visit_tokens)
         self.text = text
-        self.environment = environment
+        self.environment:Environment = environment
 
     def validate_concept(self, lookup: str, meta: Meta):
         existing = self.environment.concepts.get(lookup)
@@ -691,6 +692,7 @@ class ParseToObjects(Transformer):
             self.environment.concepts[f"{alias}.{key}"] = concept
         for key, datasource in nparser.environment.datasources.items():
             self.environment.datasources[f"{alias}.{key}"] = datasource
+        self.environment.imports[alias] = Import(alias=alias, path=args[0] )
         return None
 
     @v_args(meta=True)

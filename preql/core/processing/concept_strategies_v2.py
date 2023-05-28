@@ -369,15 +369,6 @@ class MergeNode(StrategyNode):
         )
 
 
-# def print_neighbors(g, node, seen=set(), depth=0):
-#     print('\t'*depth,node)
-#     for x in nx.neighbors(g, node):
-#         print('\t'*depth,x)
-#         if x not in seen:
-#             seen.add(x)
-#             print_neighbors(g, x, depth=depth+1)
-
-
 class SelectNode(StrategyNode):
     """Select nodes actually fetch raw data, either
     directly from a table or via joins"""
@@ -635,7 +626,6 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
 
-
 def source_concepts(
     mandatory_concepts: List[Concept],
     optional_concepts: List[Concept],
@@ -650,8 +640,8 @@ def source_concepts(
     # TODO
     # Loop through all possible grains + subgrains
     # Starting with the most grain
-    found_addresses = []
-    found_concepts = set()
+    found_addresses:list[str] = []
+    found_concepts:set[Concept] = set()
     found_map = defaultdict(set)
 
     # early exit when we have found all concepts
@@ -781,12 +771,11 @@ def source_concepts(
                 f" {[n for n in stack]}"
                 " checking for convergence"
             )
+            
             graph_count, graphs = get_disconnected_components(found_map)
             if graph_count>1:
                 logger.info("fetched nodes are not a connected graph, rerunning with more mandatory concepts")
                 candidates = [x for x in found_concepts if x.purpose in (Purpose.KEY, Purpose.PROPERTY) and x not in mandatory_concepts]
-                if not candidates:
-                    raise SyntaxError([x.purpose for x in all_concepts])
                 for x in range(1, len(candidates) + 1):
                     for combo in combinations(candidates, x):
                         new_mandatory = mandatory_concepts + list(combo)
@@ -807,7 +796,6 @@ def source_concepts(
                 raise ValueError(
                     f"Could not find any way to associate required concepts {required}"
                 )
-
             logger.info('One fully connected subgraph returned, success.')
                             
 

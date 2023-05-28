@@ -9,29 +9,7 @@ from preql.core.models import (
     Query,
     Concept,
     ConceptTransform,
-    Function,
-    Grain,
-    OrderItem,
-    Select,
-    SelectItem,
-    WhereClause,
-    Conditional,
-    Comparison,
-    Environment,
-    ConceptDeclaration,
-    Datasource,
-    WindowItem,
-    FilterItem,
-    ColumnAssignment,
-)
-
-from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose, DataType
-from preql.core.models import (
-    Address,
-    Query,
-    Concept,
-    ConceptTransform,
+    Import,
     Function,
     Grain,
     OrderItem,
@@ -109,8 +87,11 @@ class Renderer:
         rendered_datasources = [
             self.to_string(datasource) for datasource in arg.datasources.values()
         ]
+        rendered_imports = [
+            self.to_string(import_statement) for import_statement in arg.imports.values()
+        ]
 
-        return "\n".join(rendered_concepts) + "\n\n" + "\n\n".join(rendered_datasources)
+        return "\n".join(rendered_imports)+ "\n\n" +"\n".join(rendered_concepts) + "\n\n" + "\n\n".join(rendered_datasources)
 
     @to_string.register
     def _(self, arg: Datasource):
@@ -221,7 +202,9 @@ class Renderer:
     @to_string.register
     def _(self, arg: "FilterItem"):
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
-
+    @to_string.register
+    def _(self, arg: "Import"):
+        return f'import {arg.path} as {arg.alias};'
     @to_string.register
     def _(self, arg: "Concept"):
         if arg.namespace == DEFAULT_NAMESPACE:

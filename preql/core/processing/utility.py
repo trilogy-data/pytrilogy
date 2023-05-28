@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple, Dict, TypedDict, Set
-
+import networkx as nx
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import (
     Datasource,
@@ -7,7 +7,12 @@ from preql.core.models import (
     BaseJoin,
     Concept
 )
+from preql.core.enums import Purpose
+from enum import Enum
 
+class NodeType(Enum):
+    CONCEPT = 1
+    NODE= 2
 
 class PathInfo(TypedDict):
     paths: Dict[str, List[str]]
@@ -61,10 +66,24 @@ def parse_path_to_matches(
             concept = None
     if left_ds and concept and not right_ds:
         output.append((left_ds, None, [concept]))
-    return output
+    return
+    
+def calculate_graph_relevance(g:nx.DiGraph, subset_nodes:set[str], concepts:set[Concept])->int:
+    """Calculate the relevance of each node in a graph"""  
+    relevance = 0
+    for node in g.nodes:
+        if node not in subset_nodes:
+            continue
+        if not g.nodes[node]["type"] == NodeType.CONCEPT:
+            continue
+        concept = [x for x in concepts if x.address == node].pop()
+        if concept.purpose == Purpose.CONSTANT:
+            continue
+        if len(concept.grain.components)>0:
+            relevance +=1
+    return relevance
+        
 
-
-#Archiving to be used in future
 def get_disconnected_components(
     concept_map: Dict[str, Set[Concept]]
 ) -> Tuple[int, List]:
@@ -72,9 +91,21 @@ def get_disconnected_components(
     import networkx as nx
 
     graph = nx.Graph()
+    all_concepts = set()
     for datasource, concepts in concept_map.items():
-        graph.add_node(datasource)
+        graph.add_node(datasource, type=NodeType.NODE)
         for concept in concepts:
+            graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource, concept.address)
+            all_concepts.add(concept)
     sub_graphs = list(nx.connected_components(graph))
+    sub_graphs = [x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts)>0]
     return len(sub_graphs), sub_graphs
+
+# def print_neighbors(g, node, seen=set(), depth=0):
+#     print('\t'*depth,node)
+#     for x in nx.neighbors(g, node):
+#         print('\t'*depth,x)
+#         if x not in seen:
+#             seen.add(x)
+#             print_neighbors(g, x, depth=depth+1)
