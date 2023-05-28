@@ -52,7 +52,7 @@ from preql.core.models import (
     FilterItem,
     Query,
     Parenthetical,
-    Import
+    Import,
 )
 from preql.parsing.exceptions import ParseError
 
@@ -300,7 +300,7 @@ class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
         Transformer.__init__(self, visit_tokens)
         self.text = text
-        self.environment:Environment = environment
+        self.environment: Environment = environment
 
     def validate_concept(self, lookup: str, meta: Meta):
         existing = self.environment.concepts.get(lookup)
@@ -384,6 +384,8 @@ class ParseToObjects(Transformer):
             metadata = args[3]
         else:
             metadata = None
+        if "." not in args[1]:
+            raise ParseError(f"Property declaration {args[1]} must be fully qualified with a parent key")
         grain, name = args[1].rsplit(".", 1)
         concept = Concept(
             name=name,
@@ -692,7 +694,7 @@ class ParseToObjects(Transformer):
             self.environment.concepts[f"{alias}.{key}"] = concept
         for key, datasource in nparser.environment.datasources.items():
             self.environment.datasources[f"{alias}.{key}"] = datasource
-        self.environment.imports[alias] = Import(alias=alias, path=args[0] )
+        self.environment.imports[alias] = Import(alias=alias, path=args[0])
         return None
 
     @v_args(meta=True)
@@ -769,7 +771,7 @@ class ParseToObjects(Transformer):
 
     def expr_tuple(self, args):
         return tuple(args)
-    
+
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
 
@@ -1057,7 +1059,7 @@ class ParseToObjects(Transformer):
             valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=1,
         )
-    
+
     def fday_of_week(self, args):
         return Function(
             operator=FunctionType.DAY_OF_WEEK,
@@ -1067,7 +1069,7 @@ class ParseToObjects(Transformer):
             valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=1,
         )
-    
+
     def fweek(self, args):
         return Function(
             operator=FunctionType.WEEK,

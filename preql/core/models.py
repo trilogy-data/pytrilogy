@@ -33,6 +33,7 @@ from preql.core.enums import (
     PurposeLineage,
     SourceType,
     WindowType,
+    ConceptSource,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -49,6 +50,7 @@ class Metadata(BaseModel):
 
     description: Optional[str]
     line_number: Optional[int]
+    concept_source: ConceptSource = ConceptSource.MANUAL
 
 
 class Concept(BaseModel):
@@ -701,13 +703,36 @@ class GrainWindow:
         )
 
 
-@dataclass
-class Datasource:
+class Datasource(BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = field(default_factory=lambda: Grain(components=[]))
+    grain: Grain = Field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
+
+    @validator("namespace", pre=True, always=True)
+    def namespace_enforcement(cls, v):
+        if not v:
+            return DEFAULT_NAMESPACE
+        return v
+
+    @validator("address", pre=True, always=True)
+    def address_enforcement(cls, v):
+        if isinstance(v, str):
+            v = Address(location=v)
+        return v
+
+    @validator("grain", always=True, pre=True)
+    def grain_enforcement(cls, v: Grain, values):
+        if not v or (v and not v.components):
+            v = Grain(
+                components=[
+                    deepcopy(c.concept).with_grain(Grain())
+                    for c in values["columns"]
+                    if c.concept.purpose == Purpose.KEY
+                ]
+            )
+        return v
 
     def __add__(self, other):
         if not other == self:
@@ -722,21 +747,6 @@ class Datasource:
 
     def __hash__(self):
         return (self.namespace + self.identifier).__hash__()
-
-    def __post_init__(self):
-        # if a user skips defining a grain, use the defined keys
-        if not self.grain or not self.grain.components:
-            self.grain = Grain(
-                components=[
-                    deepcopy(v).with_grain(Grain())
-                    for v in self.concepts
-                    if v.purpose == Purpose.KEY
-                ]
-            )
-        if isinstance(self.address, str):
-            self.address = Address(location=self.address)
-        if not self.namespace:
-            self.namespace = ""
 
     def with_namespace(self, namespace: str):
         return Datasource(
@@ -1216,6 +1226,10 @@ class Environment:
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing = self.concepts.get(lookup)
+        if existing and existing.metadata:
+            # if the existing concept is auto derived, we can overwrite it
+            if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+                return
         if existing and meta and existing.metadata:
             raise ValueError(
                 f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
