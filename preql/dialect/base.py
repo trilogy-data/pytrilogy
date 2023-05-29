@@ -140,9 +140,9 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
     checks = []
     if not c.lineage:
         return True
-    logger.debug(
-        f"{LOGGER_PREFIX} [{c.address}] Checking lineage for rendering in {cte.name}"
-    )
+    # logger.debug(
+    #     f"{LOGGER_PREFIX} [{c.address}] Checking lineage for rendering in {cte.name}"
+    # )
     for sub_c in c.lineage.arguments:
         if not isinstance(sub_c, Concept):
             continue
@@ -283,7 +283,8 @@ class BaseDialect:
             float,
             DataType,
             Function,
-            Parenthetical
+            Parenthetical,
+            # FilterItem
         ],
         cte: Optional[CTE] = None,
         cte_map: Optional[Dict[str, CTE]] = None,
@@ -305,6 +306,11 @@ class BaseDialect:
             return (
                 f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
             )
+        # elif isinstance(e, Parenthetical):
+        #     # conditions need to be nested in parentheses
+        #     return (
+        #         f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
+        #     )
         elif isinstance(e, Function):
             if cte and cte.group_to_grain:
                 return self.FUNCTION_MAP[e.operator](
@@ -401,6 +407,9 @@ class BaseDialect:
         output = []
         for statement in statements:
             if isinstance(statement, Select):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_select_info(statement)
                 output.append(process_query_v2(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))

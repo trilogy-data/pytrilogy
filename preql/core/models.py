@@ -277,11 +277,11 @@ class Function(BaseModel):
                 f"Incorrect argument count to {operator_name} function, expects"
                 f" {target_arg_count}, got {arg_count}"
             )
-        # for arg in v:
-        #     if isinstance(arg, Function):
-        #         raise ParseError(
-        #             f"Anonymous function calls not allowed; map function to a concept, then pass in. {arg.operator.name} being passed into {operator_name}"
-        #         )
+        for arg in v:
+            if isinstance(arg, FilterItem):
+                raise ParseError(
+                    f"Filtered concepts cannot be directly passed into a function; define as a concept before query, then pass in. Filter over {arg.content} being passed into {operator_name}"
+                )
         # if all arguments can be any of the set type
         # turn this into an array for validation
         if isinstance(valid_inputs, set):

@@ -95,6 +95,14 @@ def get_disconnected_components(
     for datasource, concepts in concept_map.items():
         graph.add_node(datasource, type=NodeType.NODE)
         for concept in concepts:
+            # TODO: determine if this is the right way to handle things
+            # if concept.derivation in (PurposeLineage.FILTER, PurposeLineage.WINDOW):
+            #     if isinstance(concept.lineage, FilterItem):
+            #         graph.add_node(concept.lineage.content.address, type=NodeType.CONCEPT)
+            #         graph.add_edge(datasource, concept.lineage.content.address)
+            #     if isinstance(concept.lineage, WindowItem):
+            #         graph.add_node(concept.lineage.content.address, type=NodeType.CONCEPT)
+            #         graph.add_edge(datasource, concept.lineage.content.address)
             graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource, concept.address)
             all_concepts.add(concept)
