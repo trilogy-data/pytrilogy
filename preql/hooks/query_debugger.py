@@ -1,5 +1,5 @@
 from typing import Union
-from preql.core.models import QueryDatasource, CTE, Datasource
+from preql.core.models import QueryDatasource, CTE, Datasource, Select
 
 from preql.hooks.base_hook import BaseHook
 from preql.constants import logger
@@ -63,6 +63,9 @@ class DebuggingHook(BaseHook):
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
         logger.setLevel(DEBUG)
+
+    def process_select_info(self, select:Select):
+        print(f'grain: {str(select.grain)}')
 
     def process_root_datasource(self, datasource: QueryDatasource):
         printed = print_recursive_resolved(datasource)

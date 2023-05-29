@@ -295,6 +295,28 @@ def extract_function(
             arguments=[input],
         )
 
+def arguments_to_type(args)->Purpose:
+    has_metric = False
+    has_non_constant = False
+    has_constant = False
+    has_concept = False
+    for arg in args:
+        if isinstance(arg, Concept):
+            has_concept = True
+            if arg.purpose == Purpose.METRIC:
+                has_metric=True
+            if arg.purpose == Purpose.CONSTANT:
+                has_constant=True
+            if arg.purpose != Purpose.CONSTANT:
+                has_non_constant=True
+    if not has_concept:
+        return Purpose.CONSTANT
+    if has_constant and not has_non_constant:
+        return Purpose.CONSTANT
+    if has_metric:
+        return Purpose.METRIC
+    return Purpose.PROPERTY
+
 
 class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
@@ -1113,17 +1135,11 @@ class ParseToObjects(Transformer):
     # utility functions
     def fcast(self, args) -> Function:
         output_datatype = args[1]
-        if isinstance(args[0], Concept) and args[0].purpose == Purpose.CONSTANT:
-            purpose = Purpose.CONSTANT
-        elif isinstance(args[0], (str, int, float)):
-            purpose = Purpose.CONSTANT
-        else:
-            purpose = Purpose.PROPERTY
         return Function(
             operator=FunctionType.CAST,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=purpose,
+            output_purpose=arguments_to_type(args),
             valid_inputs={
                 DataType.INTEGER,
                 DataType.STRING,
@@ -1141,7 +1157,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.ADD,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=Purpose.PROPERTY,
+            output_purpose=arguments_to_type(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1152,7 +1168,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.SUBTRACT,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=Purpose.PROPERTY,
+            output_purpose=arguments_to_type(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1163,7 +1179,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.MULTIPLY,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=Purpose.PROPERTY,
+            output_purpose=arguments_to_type(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1174,7 +1190,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.DIVIDE,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=Purpose.PROPERTY,
+            output_purpose=arguments_to_type(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1185,7 +1201,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.ROUND,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=Purpose.PROPERTY,
+            output_purpose=arguments_to_type(args),
             valid_inputs=[
                 {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
                 {DataType.INTEGER},

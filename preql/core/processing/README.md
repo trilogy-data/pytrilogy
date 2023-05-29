@@ -10,7 +10,7 @@ It will begin with aggregations if those exist, then window functions, then filt
 and finally look for bare selects.
 
 Each type of complex node will generate a new recursive node search for required parents,
-until a set of terminal nodes with bare concept selection is reached. 
+until a set of terminal nodes with base concept selection is reached. 
 
 A default merge node is injected between every recursion. The overall loop will terminate early 
 if an output node is returned with all required query concepts. If not, the merge node will
@@ -20,7 +20,7 @@ the merge node will simply return the single parent node and prune itself from t
 In the second pass, each node is resolved to an abstract CTE. At this phase, CTEs that are
 identical can be merged.
 
-Finally, in query rendering each CTE is rendered to a backend appropriate query. The finale
+Finally, in query rendering each CTE is rendered to a backend appropriate query. The final
 CTE, or the `base`, will contain all required columns for the final output. The last
 select will only apply any query level filters + ordering, no joins will take place.
 
