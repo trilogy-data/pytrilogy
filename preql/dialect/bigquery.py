@@ -4,6 +4,14 @@ from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
+from typing import Mapping, Callable, Any
+
+from jinja2 import Template
+
+
+from preql.core.enums import FunctionType, WindowType
+from preql.core.models import ProcessedQuery
+from preql.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -63,6 +71,7 @@ ORDER BY {% for order in order_by %}
 LIMIT {{ limit }}{% endif %}
 """
 )
+MAX_IDENTIFIER_LENGTH = 50
 
 
 class BigqueryDialect(BaseDialect):

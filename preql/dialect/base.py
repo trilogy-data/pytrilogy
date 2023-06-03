@@ -1,6 +1,7 @@
 from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
+from preql.utility import string_to_hash
 
 from preql.constants import CONFIG, logger
 from preql.core.enums import Purpose, DataType, FunctionType, WindowType
@@ -16,7 +17,9 @@ from preql.core.models import (
     FilterItem,
     Function,
     AggregateWrapper,
-    Parenthetical
+    Parenthetical,
+    CaseWhen,
+    CaseElse,
 )
 from preql.core.models import Environment, Select
 from preql.core.query_processor import process_query_v2
@@ -61,10 +64,16 @@ DATATYPE_MAP = {
     DataType.BOOL: "bool",
 }
 
+
+def render_case(args):
+    return "CASE\n\t\t" + "\n\t\t".join(args) + "\n\tEND"
+
+
 FUNCTION_MAP = {
     # generic types
     FunctionType.CONSTANT: lambda x: f"{x[0]}",
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
+    FunctionType.CASE: lambda x: render_case(x),
     # math
     FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
     FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",
@@ -209,13 +218,9 @@ class BaseDialect:
                 rendered_over_components = [
                     self.render_concept_sql(x, cte, alias=False) for x in c.lineage.over
                 ]
-                rval = (
-                    f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
-                )
+                rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
-                rval = (
-                    f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
-                )
+                rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             else:
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
@@ -245,9 +250,7 @@ class BaseDialect:
                 for sub_c in c.lineage.arguments
                 if isinstance(sub_c, Concept) and sub_c not in cte.source_map
             ]
-            rval = (
-                f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-            )
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
         else:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address"
@@ -258,9 +261,7 @@ class BaseDialect:
                     f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from"
                     f" {cte.name}, have {cte.source_map.keys()} only"
                 )
-            rval = (
-                f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
-            )
+            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
 
         if alias:
             return (
@@ -293,19 +294,20 @@ class BaseDialect:
         #     cte = cte or cte_map.get(e.address, None)
 
         if isinstance(e, Comparison):
-            return (
-                f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
-            )
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
-            return (
-                f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
-            )
+            return f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
         elif isinstance(e, Parenthetical):
             # conditions need to be nested in parentheses
-            return (
-                f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
-            )
+            return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
+        elif isinstance(e, CaseWhen):
+            return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map) }"
+        elif isinstance(e, CaseElse):
+            return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map) }"
+        # elif isinstance(e, FilterItem):
+        #     return f"{self.render_expr}"
+
         # elif isinstance(e, Parenthetical):
         #     # conditions need to be nested in parentheses
         #     return (
@@ -335,12 +337,10 @@ class BaseDialect:
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, list):
-            return (
-                f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
-            )
+            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         elif isinstance(e, DataType):
             return str(e.value)
-        return str(e)
+        raise ValueError(f"Unable to render type {type(e)} {e}")
 
     def render_cte(self, cte: CTE):
         return CompiledCTE(
@@ -422,9 +422,9 @@ class BaseDialect:
         output_addresses = [c.address for c in query.output_columns]
         for c in query.base.output_columns:
             if c.address not in selected and c.address in output_addresses:
-                select_columns[c.address] = (
-                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                )
+                select_columns[
+                    c.address
+                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                 cte_output_map[c.address] = query.base
                 selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
@@ -504,4 +504,8 @@ class BaseDialect:
                 f"Invalid reference string found in query: {final}, this should never"
                 " occur. Please report this issue."
             )
+        if CONFIG.hash_identifiers:
+            for cte in query.ctes:
+                new_name = f"rhash_{string_to_hash(cte.name)}"
+                final = final.replace(cte.name, new_name)
         return final
