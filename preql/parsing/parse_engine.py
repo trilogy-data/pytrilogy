@@ -49,6 +49,8 @@ from preql.core.models import (
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
 
+
+
 grammar = r"""
     !start: ( block | comment )*
     block: statement _TERMINATOR comment?
@@ -285,6 +287,8 @@ def unwrap_transformation(
         return input
     elif isinstance(input, AggregateWrapper):
         return input.function
+    elif isinstance(input, FilterItem):
+        return input
     else:
         return Function(
             operator=FunctionType.CONSTANT,
