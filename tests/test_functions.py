@@ -161,3 +161,19 @@ def test_string_functions(test_environment):
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
+
+
+def test_case_function(test_environment):
+    declarations = """
+    property test_upper_case <- CASE WHEN category_name = upper(category_name) then True else False END;
+    select
+        category_name,
+        test_upper_case
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        compiled = dialect.compile_statement(process_query(test_environment, select))
+        assert 'CASE' in compiled
+        assert 'ELSE' in compiled
+        assert 'END' in compiled

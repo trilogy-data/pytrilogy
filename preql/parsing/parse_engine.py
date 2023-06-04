@@ -23,6 +23,7 @@ from preql.core.enums import (
     BooleanOperator,
     WindowOrder,
     WindowType,
+    InfiniteFunctionArgs
 )
 from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.core.models import (
@@ -30,6 +31,8 @@ from preql.core.models import (
     WhereClause,
     Comparison,
     Conditional,
+    CaseWhen,
+    CaseElse,
     Comment,
     Datasource,
     Concept,
@@ -55,6 +58,8 @@ from preql.core.models import (
     Import,
 )
 from preql.parsing.exceptions import ParseError
+
+
 
 grammar = r"""
     !start: ( block | comment )*
@@ -158,7 +163,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fcast | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference | parenthetical
+    expr: window_item | filter_item | fcast | fcase | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference | parenthetical
     
     // functions
     
@@ -174,6 +179,9 @@ grammar = r"""
     //generic
     fcast: "cast"i "(" expr "AS"i TYPE ")"
     concat: "concat"i "(" (expr ",")* expr ")"
+    fcase_when: "WHEN"i comparison "THEN"i expr
+    fcase_else: "ELSE"i expr
+    fcase: "CASE"i (fcase_when)* (fcase_else)? "END"i
     len: "len"i "(" expr ")"
     
     //string
@@ -276,6 +284,8 @@ def arg_to_datatype(arg) -> DataType:
         return DataType.FLOAT
     elif isinstance(arg, AggregateWrapper):
         return arg.function.output_datatype
+    elif isinstance(arg, Parenthetical):
+        return arg_to_datatype(arg.content)
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
 
@@ -287,6 +297,8 @@ def extract_function(
         return input
     elif isinstance(input, AggregateWrapper):
         return input.function
+    elif isinstance(input, FilterItem):
+        return input
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -301,6 +313,8 @@ def arguments_to_type(args)->Purpose:
     has_constant = False
     has_concept = False
     for arg in args:
+        if isinstance(arg, (int, float, bool, str)):
+            has_constant = True
         if isinstance(arg, Concept):
             has_concept = True
             if arg.purpose == Purpose.METRIC:
@@ -309,7 +323,21 @@ def arguments_to_type(args)->Purpose:
                 has_constant=True
             if arg.purpose != Purpose.CONSTANT:
                 has_non_constant=True
-    if not has_concept:
+        elif isinstance(arg, Function):
+            if arg.output_purpose == Purpose.METRIC:
+                has_metric=True
+            if arg.output_purpose == Purpose.CONSTANT:
+                has_constant=True
+            if arg.output_purpose != Purpose.CONSTANT:
+                has_non_constant=True
+        elif isinstance(arg, AggregateWrapper):
+            if arg.function.output_purpose == Purpose.METRIC:
+                has_metric=True
+            if arg.function.output_purpose == Purpose.CONSTANT:
+                has_constant=True
+            if arg.function.output_purpose != Purpose.CONSTANT:
+                has_non_constant=True
+    if not has_non_constant:
         return Purpose.CONSTANT
     if has_constant and not has_non_constant:
         return Purpose.CONSTANT
@@ -638,8 +666,8 @@ class ParseToObjects(Transformer):
         # keys are used to pass through derivations
 
         if function.output_purpose == Purpose.PROPERTY:
-            grain = Grain(components=function.arguments)
             keys = [x for x in function.arguments if isinstance(x, Concept)]
+            grain = Grain(components=keys)
         else:
             grain = None
             keys = None
@@ -780,7 +808,7 @@ class ParseToObjects(Transformer):
         return int(args[0])
 
     def bool_lit(self, args):
-        return bool(args[0].capitalize())
+        return args[0].capitalize() == 'True'
 
     def float_lit(self, args):
         return float(args[0])
@@ -1208,17 +1236,28 @@ class ParseToObjects(Transformer):
             ],
             arg_count=2,
         )
+    
+    def fcase_when(self, args):
+        return CaseWhen(comparison=args[0], expr=args[1])
+    
+    def fcase_else(self, args):
+        return CaseElse(expr=args[0])
 
-    # def fcase(self, args):
-    #     output_datatype = arg_to_datatype(args[0])
-    #     return Function(
-    #         operator=FunctionType.CASE,
-    #         arguments=args,
-    #         output_datatype=output_datatype,
-    #         output_purpose=Purpose.PROPERTY,
-    #         # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
-    #         # arg_count=2,
-    #     )
+    def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
+        datatypes = set()
+        for arg in args:
+            output_datatype = arg_to_datatype(arg.expr)
+            datatypes.add(output_datatype)
+        if not len(datatypes) == 1:
+            raise SyntaxError(f'All case expressions must have the same output datatype, got {datatypes}')
+        return Function(
+            operator=FunctionType.CASE,
+            arguments=args,
+            output_datatype=datatypes.pop(),
+            output_purpose=Purpose.PROPERTY,
+            # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
+            arg_count=InfiniteFunctionArgs
+        )
 
 
 def unpack_visit_error(e: VisitError):
