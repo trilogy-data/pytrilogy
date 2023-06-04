@@ -20,6 +20,7 @@ from lark.tree import Meta
 
 from preql.constants import logger, DEFAULT_NAMESPACE
 from preql.core.enums import (
+    InfiniteFunctionArgs,
     DataType,
     Purpose,
     JoinType,
@@ -43,6 +44,18 @@ LOGGER_PREFIX = "[MODELS]"
 KT = TypeVar("KT")
 VT = TypeVar("VT")
 
+
+def get_concept_arguments(expr)->List["Concept"]:
+    output = []
+    if isinstance(expr, Concept):
+        output += [expr]
+    elif isinstance(expr, (Comparison, Conditional)):
+        output += expr.concept_arguments
+    elif isinstance(expr, (Function, Parenthetical)):
+        output += expr.concept_arguments
+    elif isinstance(expr, (CaseWhen, CaseElse)):
+        output += expr.concept_arguments
+    return output
 
 class Metadata(BaseModel):
     """Metadata container object.
@@ -273,10 +286,11 @@ class Function(BaseModel):
         operator_name = kwargs["values"]["operator"].name
         valid_inputs = kwargs["values"]["valid_inputs"]
         if not arg_count <= target_arg_count:
-            raise ParseError(
-                f"Incorrect argument count to {operator_name} function, expects"
-                f" {target_arg_count}, got {arg_count}"
-            )
+            if target_arg_count != InfiniteFunctionArgs:
+                raise ParseError(
+                    f"Incorrect argument count to {operator_name} function, expects"
+                    f" {target_arg_count}, got {arg_count}"
+                )
         for arg in v:
             if isinstance(arg, FilterItem):
                 raise ParseError(
@@ -332,12 +346,9 @@ class Function(BaseModel):
 
     @property
     def concept_arguments(self) -> List[Concept]:
-        base = [c for c in self.arguments if isinstance(c, Concept)]
+        base = []
         for arg in self.arguments:
-            if isinstance(arg, Function):
-                base += arg.concept_arguments
-            if isinstance(arg, AggregateWrapper):
-                base += arg.function.concept_arguments
+            base +=get_concept_arguments(arg)
         return base
 
     @property
@@ -1275,24 +1286,25 @@ class Environment:
             generate_related_concepts(concept, self)
 
 
-class Expr(BaseModel):
-    content: Any
+# class Expr(BaseModel):
+#     content: Any
 
-    def __init__(self):
-        raise SyntaxError
+#     def __init__(self):
+#         raise SyntaxError
 
-    @property
-    def input(self) -> List[Concept]:
-        output: List[Concept] = []
-        return output
+#     @property
+#     def input(self) -> List[Concept]:
+#         output: List[Concept] = []
+#         return output
 
-    @property
-    def safe_address(self):
-        return ""
+#     @property
+#     def safe_address(self):
+#         return ""
 
-    @property
-    def address(self):
-        return ""
+#     @property
+#     def address(self):
+#         return ""
+
 
 
 class Comparison(BaseModel):
@@ -1353,11 +1365,11 @@ class Comparison(BaseModel):
         output: List[Concept] = []
         if isinstance(self.left, (Concept,)):
             output += [self.left]
-        if isinstance(self.left, (Concept, Expr, Conditional, Parenthetical)):
+        if isinstance(self.left, (Concept,  Conditional, Parenthetical)):
             output += self.left.input
         if isinstance(self.right, (Concept,)):
             output += [self.right]
-        if isinstance(self.right, (Concept, Expr, Conditional, Parenthetical)):
+        if isinstance(self.right, (Concept, Conditional, Parenthetical)):
             output += self.right.input
         if isinstance(self.left, Function):
             output += self.left.concept_arguments
@@ -1369,20 +1381,31 @@ class Comparison(BaseModel):
     def concept_arguments(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
-        if isinstance(self.left, Concept):
-            output += [self.left]
-        elif isinstance(self.left, (Comparison, Conditional)):
-            output += self.left.concept_arguments
-        if isinstance(self.right, Concept):
-            output += [self.right]
-        elif isinstance(self.right, (Comparison, Conditional)):
-            output += self.right.concept_arguments
-        if isinstance(self.left, (Function, Parenthetical)):
-            output += self.left.concept_arguments
-        elif isinstance(self.right, (Function, Parenthetical)):
-            output += self.right.concept_arguments
+        output+= get_concept_arguments(self.left)
+        output+= get_concept_arguments(self.right)
         return output
 
+
+class CaseWhen(BaseModel):
+    comparison:Comparison
+    expr: "Expr"
+
+    @property
+    def concept_arguments(self):
+        return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
+
+    class Config:
+        smart_union = True
+        
+class CaseElse(BaseModel):
+    expr: "Expr"
+
+    @property
+    def concept_arguments(self):
+        return get_concept_arguments(self.expr)
+    
+    class Config:
+        smart_union = True
 
 class Conditional(BaseModel):
     left: Union[
@@ -1442,18 +1465,8 @@ class Conditional(BaseModel):
     def concept_arguments(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
-        if isinstance(self.left, Concept):
-            output += [self.left]
-        elif isinstance(self.left, (Comparison, Conditional)):
-            output += self.left.concept_arguments
-        if isinstance(self.right, Concept):
-            output += [self.right]
-        elif isinstance(self.right, (Comparison, Conditional)):
-            output += self.right.concept_arguments
-        if isinstance(self.left, (Function, Parenthetical)):
-            output += self.left.concept_arguments
-        elif isinstance(self.right, (Function, Parenthetical)):
-            output += self.right.concept_arguments
+        output += get_concept_arguments(self.left)
+        output += get_concept_arguments(self.right)
         return output
 
 
@@ -1517,9 +1530,10 @@ class ConceptDeclaration(BaseModel):
 
 
 class Parenthetical(BaseModel):
-    content: Union[
-        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
-    ]
+    content: "Expr" 
+    #Union[
+    #     int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
+    # ]
 
     class Config:
         smart_union = True
@@ -1559,6 +1573,8 @@ class Parenthetical(BaseModel):
             base += x.input
         return base
 
+Expr =  int |str | float | list | bool | Concept | Comparison | Conditional | Parenthetical | Function | AggregateWrapper
+
 
 Concept.update_forward_refs()
 Grain.update_forward_refs()
@@ -1570,3 +1586,5 @@ Conditional.update_forward_refs()
 Parenthetical.update_forward_refs()
 WhereClause.update_forward_refs()
 Import.update_forward_refs
+CaseWhen.update_forward_refs()
+CaseElse.update_forward_refs()

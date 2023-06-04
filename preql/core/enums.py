@@ -1,5 +1,7 @@
 from enum import Enum
 
+InfiniteFunctionArgs = -1
+
 class ConceptSource(Enum):
     MANUAL = "manual"
     AUTO_DERIVED = "auto_derived"
