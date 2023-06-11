@@ -289,9 +289,6 @@ class Function(BaseModel):
     def __str__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
 
-    def __str__(self):
-        return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
-
     @property
     def datatype(self):
         return self.output_datatype
