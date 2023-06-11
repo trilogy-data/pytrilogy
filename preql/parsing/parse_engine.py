@@ -359,6 +359,7 @@ def function_args_to_output_purpose(args) -> Purpose:
         return Purpose.METRIC
     return Purpose.PROPERTY
 
+from preql.utility import string_to_hash
 
 class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
