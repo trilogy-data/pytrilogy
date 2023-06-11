@@ -4,14 +4,7 @@ from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
-from typing import Mapping, Callable, Any
 
-from jinja2 import Template
-
-
-from preql.core.enums import FunctionType, WindowType
-from preql.core.models import ProcessedQuery
-from preql.dialect.base import BaseDialect
 
 
 
