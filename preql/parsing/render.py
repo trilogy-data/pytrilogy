@@ -48,7 +48,7 @@ from preql.core.models import (
     ColumnAssignment,
     CaseElse,
     CaseWhen,
-    Import
+    Import,
 )
 
 
@@ -153,14 +153,15 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Query"):
         return f"""query {arg.text}"""
+
     @to_string.register
     def _(self, arg: "CaseWhen"):
         return f"""WHEN {arg.comparison} THEN {self.to_string(arg.expr)}"""
-    
+
     @to_string.register
-    def  _(self, arg: "CaseElse"):
+    def _(self, arg: "CaseElse"):
         return f"""ELSE {self.to_string(arg.expr)}"""
-    
+
     @to_string.register
     def _(self, arg: DataType):
         return arg.value

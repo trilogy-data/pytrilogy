@@ -2,13 +2,13 @@ from typing import List
 
 
 from preql.constants import logger
-from preql.core.models import (
-    Grain,
-    QueryDatasource,
-    SourceType
-)
+from preql.core.models import Grain, QueryDatasource, SourceType
 from preql.utility import unique
-from preql.core.processing.nodes.base_node import StrategyNode, resolve_concept_map, concept_list_to_grain
+from preql.core.processing.nodes.base_node import (
+    StrategyNode,
+    resolve_concept_map,
+    concept_list_to_grain,
+)
 
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"

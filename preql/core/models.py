@@ -45,13 +45,25 @@ KT = TypeVar("KT")
 VT = TypeVar("VT")
 
 
-def get_concept_arguments(expr)->List["Concept"]:
+def get_concept_arguments(expr) -> List["Concept"]:
     output = []
     if isinstance(expr, Concept):
         output += [expr]
-    elif isinstance(expr, (Comparison, Conditional, Function, Parenthetical, AggregateWrapper, CaseWhen, CaseElse)):
+    elif isinstance(
+        expr,
+        (
+            Comparison,
+            Conditional,
+            Function,
+            Parenthetical,
+            AggregateWrapper,
+            CaseWhen,
+            CaseElse,
+        ),
+    ):
         output += expr.concept_arguments
     return output
+
 
 class Metadata(BaseModel):
     """Metadata container object.
@@ -69,7 +81,9 @@ class Concept(BaseModel):
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None)
     )
-    lineage: Optional[Union["Function", "WindowItem", "FilterItem", "AggregateWrapper"]] = None
+    lineage: Optional[
+        Union["Function", "WindowItem", "FilterItem", "AggregateWrapper"]
+    ] = None
     namespace: Optional[str] = ""
     keys: Optional[List["Concept"]] = None
     grain: Optional["Grain"] = Field(default=None)
@@ -79,7 +93,9 @@ class Concept(BaseModel):
 
     @validator("lineage")
     def lineage_validator(cls, v):
-        if v and not isinstance(v, (Function, WindowItem, FilterItem, AggregateWrapper)):
+        if v and not isinstance(
+            v, (Function, WindowItem, FilterItem, AggregateWrapper)
+        ):
             raise ValueError(v)
         return v
 
@@ -449,7 +465,7 @@ class FilterItem(BaseModel):
     where: "WhereClause"
 
     def __str__(self):
-        return f'<{str(self.content)} {str(self.where)}>'
+        return f"<{str(self.content)} {str(self.where)}>"
 
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem(
@@ -489,10 +505,11 @@ class FilterItem(BaseModel):
     @property
     def output_purpose(self):
         return self.content.purpose
-    
+
     @property
     def concept_arguments(self):
-        return [self.content]+ self.where.concept_arguments
+        return [self.content] + self.where.concept_arguments
+
 
 @dataclass(eq=True)
 class SelectItem:
@@ -1305,7 +1322,6 @@ class Environment:
 #         return ""
 
 
-
 class Comparison(BaseModel):
     left: Union[
         int,
@@ -1364,7 +1380,7 @@ class Comparison(BaseModel):
         output: List[Concept] = []
         if isinstance(self.left, (Concept,)):
             output += [self.left]
-        if isinstance(self.left, (Concept,  Conditional, Parenthetical)):
+        if isinstance(self.left, (Concept, Conditional, Parenthetical)):
             output += self.left.input
         if isinstance(self.right, (Concept,)):
             output += [self.right]
@@ -1380,13 +1396,13 @@ class Comparison(BaseModel):
     def concept_arguments(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
-        output+= get_concept_arguments(self.left)
-        output+= get_concept_arguments(self.right)
+        output += get_concept_arguments(self.left)
+        output += get_concept_arguments(self.right)
         return output
 
 
 class CaseWhen(BaseModel):
-    comparison:Comparison
+    comparison: Comparison
     expr: "Expr"
 
     @property
@@ -1395,16 +1411,18 @@ class CaseWhen(BaseModel):
 
     class Config:
         smart_union = True
-        
+
+
 class CaseElse(BaseModel):
     expr: "Expr"
 
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
-    
+
     class Config:
         smart_union = True
+
 
 class Conditional(BaseModel):
     left: Union[
@@ -1480,15 +1498,15 @@ class AggregateWrapper(BaseModel):
     @property
     def datatype(self):
         return self.function.datatype
-    
+
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.function.concept_arguments
-    
+
     @property
     def output_datatype(self):
         return self.function.output_datatype
-    
+
     @property
     def output_purpose(self):
         return self.function.output_purpose
@@ -1496,10 +1514,13 @@ class AggregateWrapper(BaseModel):
     @property
     def arguments(self):
         return self.function.arguments
-    
-    def with_namespace(self, namespace: str)->"AggregateWrapper":
-        return AggregateWrapper(function = self.function.with_namespace(namespace),
-                                by = [c.with_namespace(namespace) for c in self.by] if self.by else None)
+
+    def with_namespace(self, namespace: str) -> "AggregateWrapper":
+        return AggregateWrapper(
+            function=self.function.with_namespace(namespace),
+            by=[c.with_namespace(namespace) for c in self.by] if self.by else None,
+        )
+
 
     @property
     def arguments(self):
@@ -1556,8 +1577,8 @@ class ConceptDeclaration(BaseModel):
 
 
 class Parenthetical(BaseModel):
-    content: "Expr" 
-    #Union[
+    content: "Expr"
+    # Union[
     #     int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
     # ]
 
@@ -1602,7 +1623,20 @@ class Parenthetical(BaseModel):
             base += x.input
         return base
 
-Expr =  int |str | float | list | bool | Concept | Comparison | Conditional | Parenthetical | Function | AggregateWrapper
+
+Expr = (
+    int
+    | str
+    | float
+    | list
+    | bool
+    | Concept
+    | Comparison
+    | Conditional
+    | Parenthetical
+    | Function
+    | AggregateWrapper
+)
 
 
 Concept.update_forward_refs()

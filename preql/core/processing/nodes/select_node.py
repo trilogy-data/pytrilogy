@@ -25,7 +25,6 @@ from preql.core.processing.nodes.base_node import StrategyNode
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
 
 
-
 class SelectNode(StrategyNode):
     """Select nodes actually fetch raw data, either
     directly from a table or via joins"""

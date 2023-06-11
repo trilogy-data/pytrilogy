@@ -235,7 +235,6 @@ def process_query_v2(
     )
 
 
-
 def process_query(
     environment: Environment, statement: Select, hooks: Optional[List[BaseHook]] = None
 ) -> ProcessedQuery:
