@@ -5,6 +5,7 @@ from jinja2 import Template
 from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
 
+
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
@@ -51,10 +52,8 @@ SELECT
 {% if where %}WHERE
     {{ where }}
 {% endif %}
-{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
+{%- if group_by %}GROUP BY {% for group in group_by %}
+    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}
@@ -63,6 +62,7 @@ ORDER BY {% for order in order_by %}
 LIMIT {{ limit }}{% endif %}
 """
 )
+MAX_IDENTIFIER_LENGTH = 50
 
 
 class BigqueryDialect(BaseDialect):
