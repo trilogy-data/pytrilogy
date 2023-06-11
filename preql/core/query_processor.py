@@ -133,7 +133,6 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         # related columns include all referenced columns, such as filtering
         # related_columns=datasource.concepts,
         joins=[base_join_to_join(join, children) for join in query_datasource.joins],
-        related_columns=query_datasource.input_concepts,
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
         # we restrict parent_ctes to one level

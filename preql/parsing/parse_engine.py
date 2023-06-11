@@ -337,6 +337,7 @@ def function_args_to_output_purpose(args)->Purpose:
         return Purpose.METRIC
     return Purpose.PROPERTY
 
+from preql.utility import string_to_hash
 
 class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
@@ -344,6 +345,64 @@ class ParseToObjects(Transformer):
         self.text = text
         self.environment: Environment = environment
 
+    def process_function_args(self, args, meta:Meta):
+        final = []
+        for arg in args:
+            # if a function has an anonymous function argument
+            # create an implicit concept
+            if isinstance(arg, Function):
+                id_hash = string_to_hash(str(arg))
+                concept = Concept(
+                name=f'_anon_function_input_{id_hash}',
+                datatype=arg.output_datatype,
+                purpose=arg.output_purpose,
+                lineage=arg,
+                namespace=DEFAULT_NAMESPACE,
+                grain=None,
+                keys=None,
+                )
+                # to satisfy mypy, concept will always have metadata
+                if concept.metadata:
+                    concept.metadata.line_number = meta.line
+                self.environment.add_concept(concept, meta=meta)
+                final.append(concept)
+            elif isinstance(arg, FilterItem):
+                id_hash = string_to_hash(str(arg))
+                concept = Concept(
+                name=f'_anon_function_input_{id_hash}',
+                datatype=arg.content.datatype,
+                purpose=arg.content.purpose,
+                lineage=arg,
+                # filters are implicitly at the grain of the base item
+                grain=Grain(components=[arg.output]),
+                namespace=DEFAULT_NAMESPACE,
+            )
+                if concept.metadata:
+                    concept.metadata.line_number = meta.line
+                self.environment.add_concept(concept, meta=meta)
+                final.append(concept)
+            elif isinstance(arg, AggregateWrapper):
+                parent = arg
+                aggfunction = arg.function
+                id_hash = string_to_hash(str(arg))
+                concept = Concept(
+                name=f'_anon_function_input_{id_hash}',
+                datatype=aggfunction.output_datatype,
+                purpose=aggfunction.output_purpose,
+                lineage=aggfunction,
+                grain=Grain(components=parent.by)
+                if parent.by
+                else aggfunction.output_grain,
+                 namespace=DEFAULT_NAMESPACE,
+                )   
+                if concept.metadata:
+                    concept.metadata.line_number = meta.line
+                self.environment.add_concept(concept, meta=meta)
+                final.append(concept)
+            else:
+                final.append(arg)
+        return final
+    
     def validate_concept(self, lookup: str, meta: Meta):
         existing = self.environment.concepts.get(lookup)
         if existing:
@@ -879,7 +938,9 @@ class ParseToObjects(Transformer):
             return AggregateWrapper(function=args[0], by=args[1])
         return AggregateWrapper(function=args[0])
 
-    def count(self, args):
+    @v_args(meta=True)
+    def count(self, meta, args):
+        args = self.process_function_args(args, meta)
         return Function(
             operator=FunctionType.COUNT,
             arguments=args,
@@ -1204,8 +1265,10 @@ class ParseToObjects(Transformer):
             arg_count=2,
         )
 
-    def fdiv(self, args):
+    @v_args(meta=True)
+    def fdiv(self, meta: Meta, args):
         output_datatype = arg_to_datatype(args[0])
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.DIVIDE,
             arguments=args,

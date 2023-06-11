@@ -13,6 +13,7 @@ from preql.core.models import (
     FilterItem,
     Function,
     WindowItem,
+    AggregateWrapper
 )
 from preql.core.processing.utility import (
     get_disconnected_components,
@@ -56,7 +57,7 @@ def resolve_filter_parent_concepts(concept: Concept) -> List[Concept]:
 
 
 def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
-    if not isinstance(concept.lineage, Function):
+    if not isinstance(concept.lineage, (Function, AggregateWrapper)):
         raise ValueError(f"Concept {concept} is not an aggregate function")
     if concept.derivation == PurposeLineage.AGGREGATE:
         if concept.grain:
@@ -158,7 +159,6 @@ def source_concepts(
                     resolve_function_parent_concepts(concept), "address"
                 )
 
-                # raise SyntaxError([str(c) for c in parent_concepts])
                 # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
                 if len(concept.grain.components_copy) > 0:
                     local_optional = concept.grain.components_copy

@@ -9,7 +9,6 @@ def test_cte_merge(test_environment, test_environment_graph):
     a = CTE(
         name="test",
         output_columns=[outputs[0]],
-        related_columns=[],
         grain=Grain(),
         source=QueryDatasource(
             input_concepts=[outputs[0]],
@@ -24,7 +23,6 @@ def test_cte_merge(test_environment, test_environment_graph):
     b = CTE(
         name="testb",
         output_columns=outputs,
-        related_columns=[],
         grain=Grain(),
         source=QueryDatasource(
             input_concepts=outputs,

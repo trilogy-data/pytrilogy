@@ -20,7 +20,7 @@ class Executor(object):
         environment: Optional[Environment] = None,
         hooks: List[BaseHook] | None = None,
     ):
-        self.dialect = dialect
+        self.dialect:Dialects = dialect
         self.engine = engine
         self.environment = environment or Environment()
         self.generator: BaseDialect

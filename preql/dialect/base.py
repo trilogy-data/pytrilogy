@@ -221,6 +221,19 @@ class BaseDialect:
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
+            elif isinstance(c.lineage, AggregateWrapper):
+                args = [
+                    self.render_expr(v, cte)  # , alias=False)
+                    for v in c.lineage.function.arguments
+                ]
+                if cte.group_to_grain:
+                    rval = f"{self.FUNCTION_MAP[c.lineage.function.operator](args)}"
+                else:
+                    logger.info(
+                        f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at"
+                        " target grain"
+                    )
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
             else:
                 args = [
                     self.render_expr(v, cte)  # , alias=False)

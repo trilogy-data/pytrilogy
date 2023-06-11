@@ -69,7 +69,7 @@ class Concept(BaseModel):
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None)
     )
-    lineage: Optional[Union["Function", "WindowItem", "FilterItem"]] = None
+    lineage: Optional[Union["Function", "WindowItem", "FilterItem", "AggregateWrapper"]] = None
     namespace: Optional[str] = ""
     keys: Optional[List["Concept"]] = None
     grain: Optional["Grain"] = Field(default=None)
@@ -79,7 +79,7 @@ class Concept(BaseModel):
 
     @validator("lineage")
     def lineage_validator(cls, v):
-        if v and not isinstance(v, (Function, WindowItem, FilterItem)):
+        if v and not isinstance(v, (Function, WindowItem, FilterItem, AggregateWrapper)):
             raise ValueError(v)
         return v
 
@@ -222,8 +222,10 @@ class Concept(BaseModel):
     def derivation(self) -> PurposeLineage:
         if self.lineage and isinstance(self.lineage, WindowItem):
             return PurposeLineage.WINDOW
-        if self.lineage and isinstance(self.lineage, FilterItem):
+        elif self.lineage and isinstance(self.lineage, FilterItem):
             return PurposeLineage.FILTER
+        elif self.lineage and isinstance(self.lineage, AggregateWrapper):
+            return PurposeLineage.AGGREGATE
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -290,11 +292,11 @@ class Function(BaseModel):
                     f"Incorrect argument count to {operator_name} function, expects"
                     f" {target_arg_count}, got {arg_count}"
                 )
-        for arg in v:
-            if isinstance(arg, FilterItem):
-                raise ParseError(
-                    f"Filtered concepts cannot be directly passed into a function; define as a concept before query, then pass in. Filter over {arg.content} being passed into {operator_name}"
-                )
+        # for arg in v:
+        #     if isinstance(arg, FilterItem):
+        #         raise ParseError(
+        #             f"Filtered concepts cannot be directly passed into a function; define as a concept before query, then pass in. Filter over {arg.content} being passed into {operator_name}"
+        #         )
         # if all arguments can be any of the set type
         # turn this into an array for validation
         if isinstance(valid_inputs, set):
@@ -448,6 +450,9 @@ class WindowItem(BaseModel):
 class FilterItem(BaseModel):
     content: Concept
     where: "WhereClause"
+
+    def __str__(self):
+        return f'<{str(self.content)} {str(self.where)}>'
 
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem(
@@ -1051,8 +1056,6 @@ class CTE:
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
     source_map: Dict[str, str]
-    # related columns include all referenced columns
-    related_columns: List[Concept]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
@@ -1079,9 +1082,6 @@ class CTE:
             self.output_columns + other.output_columns, "address"
         )
         self.joins = unique(self.joins + other.joins, "unique_id")
-        self.related_columns = unique(
-            self.related_columns + other.related_columns, "address"
-        )
         return self
 
     @property
@@ -1476,6 +1476,10 @@ class AggregateWrapper(BaseModel):
     function: Function
     by: List[Concept] | None
 
+    def __str__(self):
+        grain_str = [str(c) for c in self.by] if self.by else "abstract"
+        return f"{str(self.function)}<{grain_str}>"
+
     @property
     def datatype(self):
         return self.function.datatype
@@ -1483,7 +1487,18 @@ class AggregateWrapper(BaseModel):
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.function.concept_arguments
+    
+    @property
+    def output_datatype(self):
+        return self.function.output_datatype
+    
+    @property
+    def output_purpose(self):
+        return self.function.output_purpose
 
+    @property
+    def arguments(self):
+        return self.function.arguments
 
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
