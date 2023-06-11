@@ -261,15 +261,21 @@ PARSER = Lark(grammar, start="start", propagate_positions=True)
 
 
 def parse_concept_reference(
-    name: str, environment: Environment
-) -> Tuple[str, str, str]:
+    name: str, environment: Environment, purpose: Optional[Purpose] = None
+) -> Tuple[str, str, str, str|None]:
+    parent = None
     if "." in name:
-        namespace, name = name.rsplit(".", 1)
-        lookup = f"{namespace}.{name}"
+        if purpose == Purpose.PROPERTY:
+            parent, name = name.rsplit(".", 1)
+            namespace = environment.concepts[parent].namespace
+            lookup = f"{namespace}.{name}"
+        else:
+            namespace, name = name.rsplit(".", 1)
+            lookup = f"{namespace}.{name}"
     else:
         namespace = environment.namespace or DEFAULT_NAMESPACE
         lookup = name
-    return lookup, namespace, name
+    return lookup, namespace, name, parent
 
 
 def arg_to_datatype(arg) -> DataType:
@@ -491,14 +497,15 @@ class ParseToObjects(Transformer):
                 f"Property declaration {args[1]} must be fully qualified with a parent key"
             )
         grain, name = args[1].rsplit(".", 1)
+        parent = self.environment.concepts[grain]
         concept = Concept(
             name=name,
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
             grain=Grain(components=[self.environment.concepts[grain]]),
-            namespace=self.environment.namespace,
-            keys=[self.environment.concepts[grain]],
+            namespace=parent.namespace,
+            keys=[parent],
         )
         self.environment.add_concept(concept, meta)
         return concept
@@ -510,7 +517,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -532,7 +539,7 @@ class ParseToObjects(Transformer):
         purpose = args[0]
         name = args[1]
 
-        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(name, self.environment, purpose)
         if isinstance(args[2], FilterItem):
             filter_item: FilterItem = args[2]
             concept = Concept(
@@ -544,6 +551,7 @@ class ParseToObjects(Transformer):
                 # filters are implicitly at the grain of the base item
                 grain=Grain(components=[filter_item.output]),
                 namespace=namespace,
+
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -620,6 +628,7 @@ class ParseToObjects(Transformer):
                 lineage=function,
                 grain=function.output_grain,
                 namespace=namespace,
+                keys = [self.environment.concepts[parent] ] if parent else None
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -638,7 +647,7 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         constant: Union[str, float, int, bool] = args[2]
-        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
             datatype=arg_to_datatype(constant),
@@ -716,7 +725,7 @@ class ParseToObjects(Transformer):
         function = unwrap_transformation(args[0])
         output: str = args[1]
 
-        lookup, namespace, output = parse_concept_reference(output, self.environment)
+        lookup, namespace, output, parent = parse_concept_reference(output, self.environment)
         # keys are used to pass through derivations
 
         if function.output_purpose == Purpose.PROPERTY:
