@@ -5,8 +5,8 @@ from preql.core.processing.concept_strategies_v2 import StrategyNode
 class BaseHook:
     pass
 
-    def process_select_info(self, select:Select):
-        print(f'grain: {str(select.grain)}')
+    def process_select_info(self, select: Select):
+        print(f"grain: {str(select.grain)}")
 
     def process_root_datasource(self, datasource: QueryDatasource):
         pass

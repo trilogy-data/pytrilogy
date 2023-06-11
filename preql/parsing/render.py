@@ -25,7 +25,7 @@ from preql.core.models import (
     ColumnAssignment,
     CaseElse,
     CaseWhen,
-    Import
+    Import,
 )
 
 
@@ -130,14 +130,15 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Query"):
         return f"""query {arg.text}"""
+
     @to_string.register
     def _(self, arg: "CaseWhen"):
         return f"""WHEN {arg.comparison} THEN {self.to_string(arg.expr)}"""
-    
+
     @to_string.register
-    def  _(self, arg: "CaseElse"):
+    def _(self, arg: "CaseElse"):
         return f"""ELSE {self.to_string(arg.expr)}"""
-    
+
     @to_string.register
     def _(self, arg: DataType):
         return arg.value
@@ -215,6 +216,24 @@ class Renderer:
     @to_string.register
     def _(self, arg: "FilterItem"):
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+
+    @to_string.register
+    def _(self, arg: "WindowItem"):
+        over = ",".join(self.to_string(c) for c in arg.over)
+        order = ",".join(self.to_string(c) for c in arg.order_by)
+        if over:
+            return (
+                f"{arg.type.value} {self.to_string(arg.content)} by {order} OVER {over}"
+            )
+        return f"{arg.type.value} {self.to_string(arg.content)} by {order}"
+
+    @to_string.register
+    def _(self, arg: "FilterItem"):
+        return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+
+    @to_string.register
+    def _(self, arg: "Import"):
+        return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
     def _(self, arg: "WindowItem"):

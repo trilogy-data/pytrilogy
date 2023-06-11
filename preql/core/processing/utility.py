@@ -1,18 +1,15 @@
 from typing import List, Optional, Tuple, Dict, TypedDict, Set
 import networkx as nx
 from preql.core.graph_models import ReferenceGraph
-from preql.core.models import (
-    Datasource,
-    JoinType,
-    BaseJoin,
-    Concept
-)
+from preql.core.models import Datasource, JoinType, BaseJoin, Concept
 from preql.core.enums import Purpose
 from enum import Enum
 
+
 class NodeType(Enum):
     CONCEPT = 1
-    NODE= 2
+    NODE = 2
+
 
 class PathInfo(TypedDict):
     paths: Dict[str, List[str]]
@@ -67,9 +64,12 @@ def parse_path_to_matches(
     if left_ds and concept and not right_ds:
         output.append((left_ds, None, [concept]))
     return output
-    
-def calculate_graph_relevance(g:nx.DiGraph, subset_nodes:set[str], concepts:set[Concept])->int:
-    """Calculate the relevance of each node in a graph"""  
+
+
+def calculate_graph_relevance(
+    g: nx.DiGraph, subset_nodes: set[str], concepts: set[Concept]
+) -> int:
+    """Calculate the relevance of each node in a graph"""
     relevance = 0
     for node in g.nodes:
         if node not in subset_nodes:
@@ -79,10 +79,10 @@ def calculate_graph_relevance(g:nx.DiGraph, subset_nodes:set[str], concepts:set[
         concept = [x for x in concepts if x.address == node].pop()
         if concept.purpose == Purpose.CONSTANT:
             continue
-        if concept.grain and len(concept.grain.components)>0:
-            relevance +=1
+        if concept.grain and len(concept.grain.components) > 0:
+            relevance += 1
     return relevance
-        
+
 
 def get_disconnected_components(
     concept_map: Dict[str, Set[Concept]]
@@ -107,8 +107,11 @@ def get_disconnected_components(
             graph.add_edge(datasource, concept.address)
             all_concepts.add(concept)
     sub_graphs = list(nx.connected_components(graph))
-    sub_graphs = [x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts)>0]
+    sub_graphs = [
+        x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts) > 0
+    ]
     return len(sub_graphs), sub_graphs
+
 
 # def print_neighbors(g, node, seen=set(), depth=0):
 #     print('\t'*depth,node)

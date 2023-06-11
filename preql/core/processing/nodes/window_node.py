@@ -7,7 +7,6 @@ from preql.core.models import (
 from preql.core.processing.nodes.base_node import StrategyNode
 
 
-
 class WindowNode(StrategyNode):
     source_type = SourceType.WINDOW
 

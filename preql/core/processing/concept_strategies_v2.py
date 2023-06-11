@@ -13,7 +13,7 @@ from preql.core.models import (
     FilterItem,
     Function,
     WindowItem,
-    AggregateWrapper
+    AggregateWrapper,
 )
 from preql.core.processing.utility import (
     get_disconnected_components,
@@ -31,9 +31,6 @@ from preql.core.processing.nodes.base_node import concept_list_to_grain
 
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
-
-
-
 
 
 def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:

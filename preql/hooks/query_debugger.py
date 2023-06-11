@@ -64,8 +64,8 @@ class DebuggingHook(BaseHook):
             logger.addHandler(StreamHandler())
         logger.setLevel(DEBUG)
 
-    def process_select_info(self, select:Select):
-        print(f'grain: {str(select.grain)}')
+    def process_select_info(self, select: Select):
+        print(f"grain: {str(select.grain)}")
 
     def process_root_datasource(self, datasource: QueryDatasource):
         printed = print_recursive_resolved(datasource)

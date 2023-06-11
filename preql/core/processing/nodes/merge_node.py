@@ -15,7 +15,6 @@ from preql.core.processing.nodes.base_node import StrategyNode, resolve_concept_
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
-
 class MergeNode(StrategyNode):
     source_type = SourceType.SELECT
 

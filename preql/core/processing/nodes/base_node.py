@@ -2,16 +2,9 @@ from copy import deepcopy
 from typing import List, Optional
 from collections import defaultdict
 
-from preql.core.models import (
-    FilterItem,
-    Grain,
-    QueryDatasource,
-    SourceType,
-    Concept
-)
+from preql.core.models import FilterItem, Grain, QueryDatasource, SourceType, Concept
 from preql.core.enums import Purpose
 from preql.utility import unique
-
 
 
 def concept_list_to_grain(
@@ -33,13 +26,13 @@ def concept_list_to_grain(
 
     return Grain(components=candidates)
 
+
 def resolve_concept_map(inputs: List[QueryDatasource]):
     concept_map = defaultdict(set)
     for input in inputs:
         for concept in input.output_concepts:
             concept_map[concept.address].add(input)
     return concept_map
-
 
 
 class StrategyNode:

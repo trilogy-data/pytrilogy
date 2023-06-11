@@ -10,7 +10,7 @@ DEFAULT_NAMESPACE = "local"
 @dataclass
 class Config:
     strict_mode: bool = True
-    hash_identifiers:bool = True
+    hash_identifiers: bool = True
 
 
 CONFIG = Config()

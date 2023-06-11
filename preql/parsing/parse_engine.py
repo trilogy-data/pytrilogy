@@ -13,7 +13,18 @@ from lark.tree import Meta
 from pydantic import ValidationError
 
 from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import BooleanOperator, ComparisonOperator, DataType, FunctionType, InfiniteFunctionArgs, Modifier, Ordering, Purpose, WindowOrder, WindowType
+from preql.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    DataType,
+    FunctionType,
+    InfiniteFunctionArgs,
+    Modifier,
+    Ordering,
+    Purpose,
+    WindowOrder,
+    WindowType,
+)
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from preql.core.models import (
     Address,
@@ -48,6 +59,8 @@ from preql.core.models import (
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
+
+
 
 grammar = r"""
     !start: ( block | comment )*
@@ -248,15 +261,21 @@ PARSER = Lark(grammar, start="start", propagate_positions=True)
 
 
 def parse_concept_reference(
-    name: str, environment: Environment
-) -> Tuple[str, str, str]:
+    name: str, environment: Environment, purpose: Optional[Purpose] = None
+) -> Tuple[str, str, str, str|None]:
+    parent = None
     if "." in name:
-        namespace, name = name.rsplit(".", 1)
-        lookup = f"{namespace}.{name}"
+        if purpose == Purpose.PROPERTY:
+            parent, name = name.rsplit(".", 1)
+            namespace = environment.concepts[parent].namespace or DEFAULT_NAMESPACE
+            lookup = f"{namespace}.{name}"
+        else:
+            namespace, name = name.rsplit(".", 1)
+            lookup = f"{namespace}.{name}"
     else:
         namespace = environment.namespace or DEFAULT_NAMESPACE
         lookup = name
-    return lookup, namespace, name
+    return lookup, namespace, name, parent
 
 
 def arg_to_datatype(arg) -> DataType:
@@ -293,7 +312,8 @@ def unwrap_transformation(
             arguments=[input],
         )
 
-def argument_to_purpose(arg)->Purpose:
+
+def argument_to_purpose(arg) -> Purpose:
     if isinstance(arg, Function):
         return arg.output_purpose
     elif isinstance(arg, AggregateWrapper):
@@ -308,17 +328,17 @@ def argument_to_purpose(arg)->Purpose:
         return Purpose.CONSTANT
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
-    
 
-def function_args_to_output_purpose(args)->Purpose:
+
+def function_args_to_output_purpose(args) -> Purpose:
     has_metric = False
     has_non_constant = False
     for arg in args:
         purpose = argument_to_purpose(arg)
         if purpose == Purpose.METRIC:
-            has_metric=True
+            has_metric = True
         if purpose != Purpose.CONSTANT:
-            has_non_constant=True
+            has_non_constant = True
     if not has_non_constant:
         return Purpose.CONSTANT
     if has_metric:
@@ -332,7 +352,7 @@ class ParseToObjects(Transformer):
         self.text = text
         self.environment: Environment = environment
 
-    def process_function_args(self, args, meta:Meta):
+    def process_function_args(self, args, meta: Meta):
         final = []
         for arg in args:
             # if a function has an anonymous function argument
@@ -340,13 +360,13 @@ class ParseToObjects(Transformer):
             if isinstance(arg, Function):
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                name=f'_anon_function_input_{id_hash}',
-                datatype=arg.output_datatype,
-                purpose=arg.output_purpose,
-                lineage=arg,
-                namespace=DEFAULT_NAMESPACE,
-                grain=None,
-                keys=None,
+                    name=f"_anon_function_input_{id_hash}",
+                    datatype=arg.output_datatype,
+                    purpose=arg.output_purpose,
+                    lineage=arg,
+                    namespace=DEFAULT_NAMESPACE,
+                    grain=None,
+                    keys=None,
                 )
                 # to satisfy mypy, concept will always have metadata
                 if concept.metadata:
@@ -356,14 +376,14 @@ class ParseToObjects(Transformer):
             elif isinstance(arg, FilterItem):
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                name=f'_anon_function_input_{id_hash}',
-                datatype=arg.content.datatype,
-                purpose=arg.content.purpose,
-                lineage=arg,
-                # filters are implicitly at the grain of the base item
-                grain=Grain(components=[arg.output]),
-                namespace=DEFAULT_NAMESPACE,
-            )
+                    name=f"_anon_function_input_{id_hash}",
+                    datatype=arg.content.datatype,
+                    purpose=arg.content.purpose,
+                    lineage=arg,
+                    # filters are implicitly at the grain of the base item
+                    grain=Grain(components=[arg.output]),
+                    namespace=DEFAULT_NAMESPACE,
+                )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
@@ -373,15 +393,15 @@ class ParseToObjects(Transformer):
                 aggfunction = arg.function
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                name=f'_anon_function_input_{id_hash}',
-                datatype=aggfunction.output_datatype,
-                purpose=aggfunction.output_purpose,
-                lineage=aggfunction,
-                grain=Grain(components=parent.by)
-                if parent.by
-                else aggfunction.output_grain,
-                 namespace=DEFAULT_NAMESPACE,
-                )   
+                    name=f"_anon_function_input_{id_hash}",
+                    datatype=aggfunction.output_datatype,
+                    purpose=aggfunction.output_purpose,
+                    lineage=aggfunction,
+                    grain=Grain(components=parent.by)
+                    if parent.by
+                    else aggfunction.output_grain,
+                    namespace=DEFAULT_NAMESPACE,
+                )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
@@ -389,7 +409,7 @@ class ParseToObjects(Transformer):
             else:
                 final.append(arg)
         return final
-    
+
     def validate_concept(self, lookup: str, meta: Meta):
         existing = self.environment.concepts.get(lookup)
         if existing:
@@ -473,16 +493,19 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         if "." not in args[1]:
-            raise ParseError(f"Property declaration {args[1]} must be fully qualified with a parent key")
+            raise ParseError(
+                f"Property declaration {args[1]} must be fully qualified with a parent key"
+            )
         grain, name = args[1].rsplit(".", 1)
+        parent = self.environment.concepts[grain]
         concept = Concept(
             name=name,
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
             grain=Grain(components=[self.environment.concepts[grain]]),
-            namespace=self.environment.namespace,
-            keys=[self.environment.concepts[grain]],
+            namespace=parent.namespace,
+            keys=[parent],
         )
         self.environment.add_concept(concept, meta)
         return concept
@@ -494,7 +517,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -516,7 +539,7 @@ class ParseToObjects(Transformer):
         purpose = args[0]
         name = args[1]
 
-        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent_concept = parse_concept_reference(name, self.environment, purpose)
         if isinstance(args[2], FilterItem):
             filter_item: FilterItem = args[2]
             concept = Concept(
@@ -528,6 +551,7 @@ class ParseToObjects(Transformer):
                 # filters are implicitly at the grain of the base item
                 grain=Grain(components=[filter_item.output]),
                 namespace=namespace,
+
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -604,6 +628,7 @@ class ParseToObjects(Transformer):
                 lineage=function,
                 grain=function.output_grain,
                 namespace=namespace,
+                keys = [self.environment.concepts[parent_concept] ] if parent_concept else None
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -622,7 +647,7 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         constant: Union[str, float, int, bool] = args[2]
-        lookup, namespace, name = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
             datatype=arg_to_datatype(constant),
@@ -700,7 +725,7 @@ class ParseToObjects(Transformer):
         function = unwrap_transformation(args[0])
         output: str = args[1]
 
-        lookup, namespace, output = parse_concept_reference(output, self.environment)
+        lookup, namespace, output, parent = parse_concept_reference(output, self.environment)
         # keys are used to pass through derivations
 
         if function.output_purpose == Purpose.PROPERTY:
@@ -846,7 +871,7 @@ class ParseToObjects(Transformer):
         return int(args[0])
 
     def bool_lit(self, args):
-        return args[0].capitalize() == 'True'
+        return args[0].capitalize() == "True"
 
     def float_lit(self, args):
         return float(args[0])
@@ -958,7 +983,6 @@ class ParseToObjects(Transformer):
             arg_count=1
             # output_grain=Grain(components=arguments),
         )
-
 
     @v_args(meta=True)
     def avg(self, meta, args):
@@ -1222,6 +1246,7 @@ class ParseToObjects(Transformer):
             valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=1,
         )
+
     @v_args(meta=True)
     def fquarter(self, meta, args):
         args = self.process_function_args(args, meta=meta)
@@ -1248,7 +1273,7 @@ class ParseToObjects(Transformer):
 
     # utility functions
     @v_args(meta=True)
-    def fcast(self, meta, args)->Function:
+    def fcast(self, meta, args) -> Function:
         args = self.process_function_args(args, meta=meta)
         output_datatype = args[1]
         return Function(
@@ -1267,7 +1292,7 @@ class ParseToObjects(Transformer):
 
     # math functions
     @v_args(meta=True)
-    def fadd(self, meta, args)->Function:
+    def fadd(self, meta, args) -> Function:
         args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         # TODO: check for valid transforms?
@@ -1279,8 +1304,9 @@ class ParseToObjects(Transformer):
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
+
     @v_args(meta=True)
-    def fsub(self, meta, args)->Function:
+    def fsub(self, meta, args) -> Function:
         args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         return Function(
@@ -1293,7 +1319,7 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
-    def fmul(self, meta, args)->Function:
+    def fmul(self, meta, args) -> Function:
         args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         return Function(
@@ -1319,7 +1345,7 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
-    def fround(self, meta, args)->Function:
+    def fround(self, meta, args) -> Function:
         args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         return Function(
@@ -1333,14 +1359,14 @@ class ParseToObjects(Transformer):
             ],
             arg_count=2,
         )
-    
+
     @v_args(meta=True)
-    def fcase_when(self, meta, args)->CaseWhen:
+    def fcase_when(self, meta, args) -> CaseWhen:
         args = self.process_function_args(args, meta=meta)
         return CaseWhen(comparison=args[0], expr=args[1])
-    
+
     @v_args(meta=True)
-    def fcase_else(self, meta, args)->CaseElse:
+    def fcase_else(self, meta, args) -> CaseElse:
         args = self.process_function_args(args, meta=meta)
         return CaseElse(expr=args[0])
 
@@ -1350,14 +1376,16 @@ class ParseToObjects(Transformer):
             output_datatype = arg_to_datatype(arg.expr)
             datatypes.add(output_datatype)
         if not len(datatypes) == 1:
-            raise SyntaxError(f'All case expressions must have the same output datatype, got {datatypes}')
+            raise SyntaxError(
+                f"All case expressions must have the same output datatype, got {datatypes}"
+            )
         return Function(
             operator=FunctionType.CASE,
             arguments=args,
             output_datatype=datatypes.pop(),
             output_purpose=Purpose.PROPERTY,
             # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
-            arg_count=InfiniteFunctionArgs
+            arg_count=InfiniteFunctionArgs,
         )
 
 
