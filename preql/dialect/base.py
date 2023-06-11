@@ -285,6 +285,7 @@ class BaseDialect:
             DataType,
             Function,
             Parenthetical,
+            AggregateWrapper
             # FilterItem
         ],
         cte: Optional[CTE] = None,

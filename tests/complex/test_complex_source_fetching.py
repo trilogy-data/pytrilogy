@@ -118,4 +118,4 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert len(cte.parent_ctes) > 0
 
     generator = SqlServerDialect()
-    sql = generator.compile_statement(query)
+    generator.compile_statement(query)

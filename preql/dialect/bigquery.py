@@ -4,14 +4,7 @@ from jinja2 import Template
 
 from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
-from typing import Mapping, Callable, Any
 
-from jinja2 import Template
-
-
-from preql.core.enums import FunctionType, WindowType
-from preql.core.models import ProcessedQuery
-from preql.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -59,10 +52,8 @@ SELECT
 {% if where %}WHERE
     {{ where }}
 {% endif %}
-{%- if group_by %}
-GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
+{%- if group_by %}GROUP BY {% for group in group_by %}
+    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}

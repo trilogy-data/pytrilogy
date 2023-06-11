@@ -290,15 +290,13 @@ def arg_to_datatype(arg) -> DataType:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
 
 
-def extract_function(
+def unwrap_transformation(
     input: Union[Function, AggregateWrapper, int, str, float, bool]
 ) -> Function:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
         return input.function
-    elif isinstance(input, FilterItem):
-        return input
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -307,39 +305,33 @@ def extract_function(
             arguments=[input],
         )
 
-def arguments_to_type(args)->Purpose:
+def argument_to_purpose(arg)->Purpose:
+    if isinstance(arg, Function):
+        return arg.output_purpose
+    elif isinstance(arg, AggregateWrapper):
+        return arg.function.output_purpose
+    elif isinstance(arg, Parenthetical):
+        return argument_to_purpose(arg.content)
+    elif isinstance(arg, Concept):
+        return arg.purpose
+    elif isinstance(arg, (int, float, str, bool)):
+        return Purpose.CONSTANT
+    elif isinstance(arg, DataType):
+        return Purpose.CONSTANT
+    else:
+        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+    
+
+def function_args_to_output_purpose(args)->Purpose:
     has_metric = False
     has_non_constant = False
-    has_constant = False
-    has_concept = False
     for arg in args:
-        if isinstance(arg, (int, float, bool, str)):
-            has_constant = True
-        if isinstance(arg, Concept):
-            has_concept = True
-            if arg.purpose == Purpose.METRIC:
-                has_metric=True
-            if arg.purpose == Purpose.CONSTANT:
-                has_constant=True
-            if arg.purpose != Purpose.CONSTANT:
-                has_non_constant=True
-        elif isinstance(arg, Function):
-            if arg.output_purpose == Purpose.METRIC:
-                has_metric=True
-            if arg.output_purpose == Purpose.CONSTANT:
-                has_constant=True
-            if arg.output_purpose != Purpose.CONSTANT:
-                has_non_constant=True
-        elif isinstance(arg, AggregateWrapper):
-            if arg.function.output_purpose == Purpose.METRIC:
-                has_metric=True
-            if arg.function.output_purpose == Purpose.CONSTANT:
-                has_constant=True
-            if arg.function.output_purpose != Purpose.CONSTANT:
-                has_non_constant=True
+        purpose = argument_to_purpose(arg)
+        if purpose == Purpose.METRIC:
+            has_metric=True
+        if purpose != Purpose.CONSTANT:
+            has_non_constant=True
     if not has_non_constant:
-        return Purpose.CONSTANT
-    if has_constant and not has_non_constant:
         return Purpose.CONSTANT
     if has_metric:
         return Purpose.METRIC
@@ -659,7 +651,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_transform(self, meta, args) -> ConceptTransform:
-        function = extract_function(args[0])
+        function = unwrap_transformation(args[0])
         output: str = args[1]
 
         lookup, namespace, output = parse_concept_reference(output, self.environment)
@@ -1167,7 +1159,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.CAST,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=arguments_to_type(args),
+            output_purpose=function_args_to_output_purpose(args),
             valid_inputs={
                 DataType.INTEGER,
                 DataType.STRING,
@@ -1185,7 +1177,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.ADD,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=arguments_to_type(args),
+            output_purpose=function_args_to_output_purpose(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1196,7 +1188,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.SUBTRACT,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=arguments_to_type(args),
+            output_purpose=function_args_to_output_purpose(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1207,7 +1199,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.MULTIPLY,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=arguments_to_type(args),
+            output_purpose=function_args_to_output_purpose(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1218,7 +1210,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.DIVIDE,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=arguments_to_type(args),
+            output_purpose=function_args_to_output_purpose(args),
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
@@ -1229,7 +1221,7 @@ class ParseToObjects(Transformer):
             operator=FunctionType.ROUND,
             arguments=args,
             output_datatype=output_datatype,
-            output_purpose=arguments_to_type(args),
+            output_purpose=function_args_to_output_purpose(args),
             valid_inputs=[
                 {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
                 {DataType.INTEGER},

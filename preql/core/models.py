@@ -49,11 +49,7 @@ def get_concept_arguments(expr)->List["Concept"]:
     output = []
     if isinstance(expr, Concept):
         output += [expr]
-    elif isinstance(expr, (Comparison, Conditional)):
-        output += expr.concept_arguments
-    elif isinstance(expr, (Function, Parenthetical)):
-        output += expr.concept_arguments
-    elif isinstance(expr, (CaseWhen, CaseElse)):
+    elif isinstance(expr, (Comparison, Conditional, Function, Parenthetical, AggregateWrapper, CaseWhen, CaseElse)):
         output += expr.concept_arguments
     return output
 
@@ -273,6 +269,9 @@ class Function(BaseModel):
     arguments: List[Any]
     # arguments: List[Union[Concept, int, float, str, DataType, "Function"]]
 
+    def __str__(self):
+        return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
+
     @property
     def datatype(self):
         return self.output_datatype
@@ -348,7 +347,7 @@ class Function(BaseModel):
     def concept_arguments(self) -> List[Concept]:
         base = []
         for arg in self.arguments:
-            base +=get_concept_arguments(arg)
+            base += get_concept_arguments(arg)
         return base
 
     @property
@@ -488,7 +487,10 @@ class FilterItem(BaseModel):
     @property
     def output_purpose(self):
         return self.content.purpose
-
+    
+    @property
+    def concept_arguments(self):
+        return [self.content]+ self.where.concept_arguments
 
 @dataclass(eq=True)
 class SelectItem:
@@ -1477,6 +1479,10 @@ class AggregateWrapper(BaseModel):
     @property
     def datatype(self):
         return self.function.datatype
+    
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        return self.function.concept_arguments
 
 
 class WhereClause(BaseModel):
@@ -1537,6 +1543,9 @@ class Parenthetical(BaseModel):
 
     class Config:
         smart_union = True
+
+    def __str__(self):
+        return self.__repr__()
 
     def __add__(self, other) -> Union["Parenthetical", "Conditional"]:
         if other is None:
