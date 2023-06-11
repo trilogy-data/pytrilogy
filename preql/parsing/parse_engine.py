@@ -287,8 +287,6 @@ def unwrap_transformation(
         return input
     elif isinstance(input, AggregateWrapper):
         return input.function
-    elif isinstance(input, FilterItem):
-        return input
     else:
         return Function(
             operator=FunctionType.CONSTANT,
