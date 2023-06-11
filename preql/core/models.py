@@ -269,7 +269,6 @@ class Function(BaseModel):
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
     arguments: List[Any]
-    # arguments: List[Union[Concept, int, float, str, DataType, "Function"]]
 
     def __str__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -292,11 +291,6 @@ class Function(BaseModel):
                     f"Incorrect argument count to {operator_name} function, expects"
                     f" {target_arg_count}, got {arg_count}"
                 )
-        # for arg in v:
-        #     if isinstance(arg, FilterItem):
-        #         raise ParseError(
-        #             f"Filtered concepts cannot be directly passed into a function; define as a concept before query, then pass in. Filter over {arg.content} being passed into {operator_name}"
-        #         )
         # if all arguments can be any of the set type
         # turn this into an array for validation
         if isinstance(valid_inputs, set):

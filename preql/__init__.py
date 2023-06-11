@@ -5,4 +5,4 @@ from preql.parser import parse
 
 __version__ = "0.0.1-rc.42"
 
-__all__ = ["parse", "Executor", "Dialects", "Environment"]2
+__all__ = ["parse", "Executor", "Dialects", "Environment"]

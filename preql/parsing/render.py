@@ -23,31 +23,11 @@ from preql.core.models import (
     WindowItem,
     FilterItem,
     ColumnAssignment,
-)
-
-from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose, DataType, ConceptSource
-from preql.core.models import (
-    Address,
-    Query,
-    Concept,
-    ConceptTransform,
-    Function,
-    Grain,
-    OrderItem,
-    Select,
-    SelectItem,
-    WhereClause,
-    Conditional,
-    Comparison,
-    Environment,
-    ConceptDeclaration,
-    Datasource,
-    WindowItem,
-    FilterItem,
-    ColumnAssignment,
+    CaseElse,
+    CaseWhen,
     Import
 )
+
 
 from collections import defaultdict
 
