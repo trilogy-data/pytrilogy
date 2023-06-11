@@ -3,6 +3,7 @@ from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
 from preql.hooks.query_debugger import DebuggingHook
 from preql.parser import parse
+import re
 
 
 def test_select():
@@ -55,5 +56,7 @@ select
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
-    assert "count(cte_posts_at_local_post_id" in sql
-    assert "avg(cte_posts_at_local_post_id_at_local_user_id" in sql
+    print(sql)
+
+    assert re.search(r'(count\([A-z0-9\_]+\.`post_id`\) as `user_post_count`)', sql)
+    assert re.search(r"avg\([A-z0-9\_]+\.`user_post_count`\) as `avg_user_post_count`",sql)

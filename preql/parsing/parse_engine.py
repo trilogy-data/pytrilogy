@@ -940,7 +940,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def count(self, meta, args):
-        args = self.process_function_args(args, meta)
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.COUNT,
             arguments=args,
@@ -949,7 +949,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def count_distinct(self, args):
+    @v_args(meta=True)
+    def count_distinct(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.COUNT_DISTINCT,
             arguments=args,
@@ -958,22 +960,27 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def sum(self, arguments):
+    @v_args(meta=True)
+    def sum(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.SUM,
-            arguments=arguments,
-            output_datatype=arguments[0].datatype,
+            arguments=args,
+            output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             arg_count=1
             # output_grain=Grain(components=arguments),
         )
 
-    def avg(self, arguments):
-        arg = arguments[0]
+
+    @v_args(meta=True)
+    def avg(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        arg = args[0]
 
         return Function(
             operator=FunctionType.AVG,
-            arguments=arguments,
+            arguments=args,
             output_datatype=arg.datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
@@ -981,11 +988,13 @@ class ParseToObjects(Transformer):
             # output_grain=Grain(components=arguments),
         )
 
-    def max(self, arguments):
+    @v_args(meta=True)
+    def max(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.MAX,
-            arguments=arguments,
-            output_datatype=arguments[0].datatype,
+            arguments=args,
+            output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={
                 DataType.INTEGER,
@@ -999,11 +1008,13 @@ class ParseToObjects(Transformer):
             # output_grain=Grain(components=arguments),
         )
 
-    def min(self, arguments):
+    @v_args(meta=True)
+    def min(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.MIN,
-            arguments=arguments,
-            output_datatype=arguments[0].datatype,
+            arguments=args,
+            output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={
                 DataType.INTEGER,
@@ -1017,7 +1028,9 @@ class ParseToObjects(Transformer):
             # output_grain=Grain(components=arguments),
         )
 
-    def len(self, args):
+    @v_args(meta=True)
+    def len(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.LENGTH,
             arguments=args,
@@ -1027,7 +1040,9 @@ class ParseToObjects(Transformer):
             # output_grain=args[0].grain,
         )
 
-    def concat(self, args):
+    @v_args(meta=True)
+    def concat(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.CONCAT,
             arguments=args,
@@ -1038,7 +1053,9 @@ class ParseToObjects(Transformer):
             # output_grain=args[0].grain,
         )
 
-    def like(self, args):
+    @v_args(meta=True)
+    def like(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.LIKE,
             arguments=args,
@@ -1049,7 +1066,9 @@ class ParseToObjects(Transformer):
             # output_grain=Grain(components=args),
         )
 
-    def ilike(self, args):
+    @v_args(meta=True)
+    def ilike(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.ILIKE,
             arguments=args,
@@ -1060,7 +1079,9 @@ class ParseToObjects(Transformer):
             # output_grain=Grain(components=args),
         )
 
-    def upper(self, args):
+    @v_args(meta=True)
+    def upper(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.UPPER,
             arguments=args,
@@ -1071,7 +1092,9 @@ class ParseToObjects(Transformer):
             # output_grain=Grain(components=args),
         )
 
-    def lower(self, args):
+    @v_args(meta=True)
+    def lower(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.LOWER,
             arguments=args,
@@ -1083,7 +1106,9 @@ class ParseToObjects(Transformer):
         )
 
     # date functions
-    def fdate(self, args):
+    @v_args(meta=True)
+    def fdate(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.DATE,
             arguments=args,
@@ -1098,7 +1123,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fdatetime(self, args):
+    @v_args(meta=True)
+    def fdatetime(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.DATETIME,
             arguments=args,
@@ -1113,7 +1140,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def ftimestamp(self, args):
+    @v_args(meta=True)
+    def ftimestamp(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.TIMESTAMP,
             arguments=args,
@@ -1123,7 +1152,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fsecond(self, args):
+    @v_args(meta=True)
+    def fsecond(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.SECOND,
             arguments=args,
@@ -1133,7 +1164,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fminute(self, args):
+    @v_args(meta=True)
+    def fminute(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.MINUTE,
             arguments=args,
@@ -1143,7 +1176,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fhour(self, args):
+    @v_args(meta=True)
+    def fhour(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.HOUR,
             arguments=args,
@@ -1153,7 +1188,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fday(self, args):
+    @v_args(meta=True)
+    def fday(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.DAY,
             arguments=args,
@@ -1163,7 +1200,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fday_of_week(self, args):
+    @v_args(meta=True)
+    def fday_of_week(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.DAY_OF_WEEK,
             arguments=args,
@@ -1173,7 +1212,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fweek(self, args):
+    @v_args(meta=True)
+    def fweek(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.WEEK,
             arguments=args,
@@ -1183,7 +1224,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fmonth(self, args):
+    @v_args(meta=True)
+    def fmonth(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.MONTH,
             arguments=args,
@@ -1192,8 +1235,9 @@ class ParseToObjects(Transformer):
             valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=1,
         )
-
-    def fquarter(self, args):
+    @v_args(meta=True)
+    def fquarter(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.QUARTER,
             arguments=args,
@@ -1203,7 +1247,9 @@ class ParseToObjects(Transformer):
             arg_count=1,
         )
 
-    def fyear(self, args):
+    @v_args(meta=True)
+    def fyear(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.YEAR,
             arguments=args,
@@ -1214,7 +1260,9 @@ class ParseToObjects(Transformer):
         )
 
     # utility functions
-    def fcast(self, args) -> Function:
+    @v_args(meta=True)
+    def fcast(self, meta, args)->Function:
+        args = self.process_function_args(args, meta=meta)
         output_datatype = args[1]
         return Function(
             operator=FunctionType.CAST,
@@ -1231,7 +1279,9 @@ class ParseToObjects(Transformer):
         )
 
     # math functions
-    def fadd(self, args):
+    @v_args(meta=True)
+    def fadd(self, meta, args)->Function:
+        args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         # TODO: check for valid transforms?
         return Function(
@@ -1242,8 +1292,9 @@ class ParseToObjects(Transformer):
             # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
             arg_count=2,
         )
-
-    def fsub(self, args):
+    @v_args(meta=True)
+    def fsub(self, meta, args)->Function:
+        args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.SUBTRACT,
@@ -1254,7 +1305,9 @@ class ParseToObjects(Transformer):
             arg_count=2,
         )
 
-    def fmul(self, args):
+    @v_args(meta=True)
+    def fmul(self, meta, args)->Function:
+        args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.MULTIPLY,
@@ -1278,7 +1331,9 @@ class ParseToObjects(Transformer):
             arg_count=2,
         )
 
-    def fround(self, args):
+    @v_args(meta=True)
+    def fround(self, meta, args)->Function:
+        args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.ROUND,
@@ -1292,10 +1347,14 @@ class ParseToObjects(Transformer):
             arg_count=2,
         )
     
-    def fcase_when(self, args):
+    @v_args(meta=True)
+    def fcase_when(self, meta, args)->Function:
+        args = self.process_function_args(args, meta=meta)
         return CaseWhen(comparison=args[0], expr=args[1])
     
-    def fcase_else(self, args):
+    @v_args(meta=True)
+    def fcase_else(self, meta, args)->Function:
+        args = self.process_function_args(args, meta=meta)
         return CaseElse(expr=args[0])
 
     def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
