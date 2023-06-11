@@ -1,65 +1,53 @@
-from os.path import join, dirname
-from typing import Tuple, List, Optional, Union
+from os.path import dirname, join
+from typing import List, Optional, Tuple, Union
 
 from lark import Lark, Transformer, v_args
 from lark.exceptions import (
-    VisitError,
     UnexpectedCharacters,
     UnexpectedEOF,
     UnexpectedInput,
     UnexpectedToken,
+    VisitError,
 )
 from lark.tree import Meta
 from pydantic import ValidationError
 
 from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import (
-    Purpose,
-    DataType,
-    Modifier,
-    Ordering,
-    FunctionType,
-    ComparisonOperator,
-    BooleanOperator,
-    WindowOrder,
-    WindowType,
-    InfiniteFunctionArgs
-)
-from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
+from preql.core.enums import BooleanOperator, ComparisonOperator, DataType, FunctionType, InfiniteFunctionArgs, Modifier, Ordering, Purpose, WindowOrder, WindowType
+from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from preql.core.models import (
-    AggregateWrapper,
-    WhereClause,
-    Comparison,
-    Conditional,
-    CaseWhen,
-    CaseElse,
-    Comment,
-    Datasource,
-    Concept,
-    ColumnAssignment,
-    Select,
     Address,
-    Grain,
-    SelectItem,
+    AggregateWrapper,
+    CaseElse,
+    CaseWhen,
+    ColumnAssignment,
+    Comment,
+    Comparison,
+    Concept,
     ConceptTransform,
-    Function,
-    OrderItem,
+    Conditional,
+    Datasource,
     Environment,
+    FilterItem,
+    Function,
+    Grain,
+    Import,
     Limit,
-    OrderBy,
     Metadata,
+    OrderBy,
+    OrderItem,
+    Parenthetical,
+    Query,
+    Select,
+    SelectItem,
+    WhereClause,
     Window,
     WindowItem,
-    WindowItemOver,
     WindowItemOrder,
-    FilterItem,
-    Query,
-    Parenthetical,
-    Import,
+    WindowItemOver,
 )
 from preql.parsing.exceptions import ParseError
-
-
+from preql.utility import string_to_hash
 
 grammar = r"""
     !start: ( block | comment )*
@@ -337,7 +325,6 @@ def function_args_to_output_purpose(args)->Purpose:
         return Purpose.METRIC
     return Purpose.PROPERTY
 
-from preql.utility import string_to_hash
 
 class ParseToObjects(Transformer):
     def __init__(self, visit_tokens, text, environment: Environment):
@@ -1348,12 +1335,12 @@ class ParseToObjects(Transformer):
         )
     
     @v_args(meta=True)
-    def fcase_when(self, meta, args)->Function:
+    def fcase_when(self, meta, args)->CaseWhen:
         args = self.process_function_args(args, meta=meta)
         return CaseWhen(comparison=args[0], expr=args[1])
     
     @v_args(meta=True)
-    def fcase_else(self, meta, args)->Function:
+    def fcase_else(self, meta, args)->CaseElse:
         args = self.process_function_args(args, meta=meta)
         return CaseElse(expr=args[0])
 

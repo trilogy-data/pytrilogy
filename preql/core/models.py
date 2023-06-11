@@ -1499,6 +1499,10 @@ class AggregateWrapper(BaseModel):
     @property
     def arguments(self):
         return self.function.arguments
+    
+    def with_namespace(self, namespace: str)->"AggregateWrapper":
+        return AggregateWrapper(function = self.function.with_namespace(namespace),
+                                by = [c.with_namespace(namespace) for c in self.by] if self.by else None)
 
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
