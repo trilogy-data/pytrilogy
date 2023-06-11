@@ -289,9 +289,6 @@ class Function(BaseModel):
     def __str__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
 
-    def __str__(self):
-        return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
-
     @property
     def datatype(self):
         return self.output_datatype
@@ -1520,11 +1517,6 @@ class AggregateWrapper(BaseModel):
             function=self.function.with_namespace(namespace),
             by=[c.with_namespace(namespace) for c in self.by] if self.by else None,
         )
-
-
-    @property
-    def arguments(self):
-        return self.function.arguments
 
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]

@@ -267,7 +267,7 @@ def parse_concept_reference(
     if "." in name:
         if purpose == Purpose.PROPERTY:
             parent, name = name.rsplit(".", 1)
-            namespace = environment.concepts[parent].namespace
+            namespace = environment.concepts[parent].namespace or DEFAULT_NAMESPACE
             lookup = f"{namespace}.{name}"
         else:
             namespace, name = name.rsplit(".", 1)
@@ -539,7 +539,7 @@ class ParseToObjects(Transformer):
         purpose = args[0]
         name = args[1]
 
-        lookup, namespace, name, parent = parse_concept_reference(name, self.environment, purpose)
+        lookup, namespace, name, parent_concept = parse_concept_reference(name, self.environment, purpose)
         if isinstance(args[2], FilterItem):
             filter_item: FilterItem = args[2]
             concept = Concept(
@@ -628,7 +628,7 @@ class ParseToObjects(Transformer):
                 lineage=function,
                 grain=function.output_grain,
                 namespace=namespace,
-                keys = [self.environment.concepts[parent] ] if parent else None
+                keys = [self.environment.concepts[parent_concept] ] if parent_concept else None
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
