@@ -12,6 +12,7 @@ from preql.core.enums import (
     WindowType,
 )
 from preql.core.env_processor import generate_graph
+from preql.core.functions import Count, CountDistinct, Max, Min
 from preql.core.models import (
     Concept,
     Datasource,
@@ -45,48 +46,28 @@ def test_environment():
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Function(
-            arguments=[order_id],
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            operator=FunctionType.COUNT,
-        ),
+        lineage=Count([order_id])
     )
 
     distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Function(
-            arguments=[order_id],
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            operator=FunctionType.COUNT_DISTINCT,
-        ),
+        lineage=CountDistinct([order_id])
     )
 
     max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Function(
-            arguments=[order_id],
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            operator=FunctionType.MAX,
-        ),
+        lineage=Max([order_id])
     )
 
     min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Function(
-            arguments=[order_id],
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            operator=FunctionType.MIN,
-        ),
+        lineage=Min([order_id])
     )
 
     revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
@@ -199,7 +180,7 @@ def test_environment():
     )
 
     for item in [test_product, test_category, test_revenue]:
-        env.datasources[item.identifier] = item
+        env.add_datasource(item)
 
     for item in [
         category_id,
