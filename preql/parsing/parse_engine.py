@@ -26,6 +26,7 @@ from preql.core.enums import (
     WindowType,
 )
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
+from preql.core.functions import Count, CountDistinct, Max, Min
 from preql.core.models import (
     Address,
     AggregateWrapper,
@@ -59,7 +60,6 @@ from preql.core.models import (
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
-
 
 
 grammar = r"""
@@ -262,7 +262,7 @@ PARSER = Lark(grammar, start="start", propagate_positions=True)
 
 def parse_concept_reference(
     name: str, environment: Environment, purpose: Optional[Purpose] = None
-) -> Tuple[str, str, str, str|None]:
+) -> Tuple[str, str, str, str | None]:
     parent = None
     if "." in name:
         if purpose == Purpose.PROPERTY:
@@ -517,7 +517,9 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        lookup, namespace, name, parent = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(
+            name, self.environment
+        )
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -539,7 +541,9 @@ class ParseToObjects(Transformer):
         purpose = args[0]
         name = args[1]
 
-        lookup, namespace, name, parent_concept = parse_concept_reference(name, self.environment, purpose)
+        lookup, namespace, name, parent_concept = parse_concept_reference(
+            name, self.environment, purpose
+        )
         if isinstance(args[2], FilterItem):
             filter_item: FilterItem = args[2]
             concept = Concept(
@@ -551,7 +555,6 @@ class ParseToObjects(Transformer):
                 # filters are implicitly at the grain of the base item
                 grain=Grain(components=[filter_item.output]),
                 namespace=namespace,
-
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -628,7 +631,9 @@ class ParseToObjects(Transformer):
                 lineage=function,
                 grain=function.output_grain,
                 namespace=namespace,
-                keys = [self.environment.concepts[parent_concept] ] if parent_concept else None
+                keys=[self.environment.concepts[parent_concept]]
+                if parent_concept
+                else None,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -647,7 +652,9 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         constant: Union[str, float, int, bool] = args[2]
-        lookup, namespace, name, parent = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(
+            name, self.environment
+        )
         concept = Concept(
             name=name,
             datatype=arg_to_datatype(constant),
@@ -725,7 +732,9 @@ class ParseToObjects(Transformer):
         function = unwrap_transformation(args[0])
         output: str = args[1]
 
-        lookup, namespace, output, parent = parse_concept_reference(output, self.environment)
+        lookup, namespace, output, parent = parse_concept_reference(
+            output, self.environment
+        )
         # keys are used to pass through derivations
 
         if function.output_purpose == Purpose.PROPERTY:
@@ -953,24 +962,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def count(self, meta, args):
         args = self.process_function_args(args, meta=meta)
-        return Function(
-            operator=FunctionType.COUNT,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            arg_count=1,
-        )
+        return Count(args)
 
     @v_args(meta=True)
     def count_distinct(self, meta, args):
         args = self.process_function_args(args, meta=meta)
-        return Function(
-            operator=FunctionType.COUNT_DISTINCT,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            arg_count=1,
-        )
+        return CountDistinct(args)
 
     @v_args(meta=True)
     def sum(self, meta, args):
@@ -1002,42 +999,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def max(self, meta, args):
         args = self.process_function_args(args, meta=meta)
-        return Function(
-            operator=FunctionType.MAX,
-            arguments=args,
-            output_datatype=args[0].datatype,
-            output_purpose=Purpose.METRIC,
-            valid_inputs={
-                DataType.INTEGER,
-                DataType.FLOAT,
-                DataType.NUMBER,
-                DataType.DATE,
-                DataType.DATETIME,
-                DataType.TIMESTAMP,
-            },
-            arg_count=1
-            # output_grain=Grain(components=arguments),
-        )
+        return Max(args)
 
     @v_args(meta=True)
     def min(self, meta, args):
         args = self.process_function_args(args, meta=meta)
-        return Function(
-            operator=FunctionType.MIN,
-            arguments=args,
-            output_datatype=args[0].datatype,
-            output_purpose=Purpose.METRIC,
-            valid_inputs={
-                DataType.INTEGER,
-                DataType.FLOAT,
-                DataType.NUMBER,
-                DataType.DATE,
-                DataType.DATETIME,
-                DataType.TIMESTAMP,
-            },
-            arg_count=1
-            # output_grain=Grain(components=arguments),
-        )
+        return Min(args)
 
     @v_args(meta=True)
     def len(self, meta, args):

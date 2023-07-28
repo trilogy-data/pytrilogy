@@ -3,4 +3,4 @@ jinja2
 sqlalchemy
 networkx
 pyodbc
-pydantic
+pydantic<2.0.0
