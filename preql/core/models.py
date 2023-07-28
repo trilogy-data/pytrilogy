@@ -739,6 +739,11 @@ class Datasource(BaseModel):
     grain: Grain = Field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
 
+    def add_column(self, concept: Concept, alias: str, modifiers=None):
+        self.columns.append(
+            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
+        )
+
     @validator("namespace", pre=True, always=True)
     def namespace_enforcement(cls, v):
         if not v:
@@ -757,7 +762,7 @@ class Datasource(BaseModel):
             v = Grain(
                 components=[
                     deepcopy(c.concept).with_grain(Grain())
-                    for c in values["columns"]
+                    for c in values.get("columns", [])
                     if c.concept.purpose == Purpose.KEY
                 ]
             )
@@ -1297,6 +1302,14 @@ class Environment:
             from preql.core.environment_helpers import generate_related_concepts
 
             generate_related_concepts(concept, self)
+        return concept
+
+    def add_datasource(
+        self,
+        datasource: Datasource,
+    ):
+        self.datasources[datasource.identifier] = datasource
+        return datasource
 
 
 # class Expr(BaseModel):
@@ -1517,6 +1530,7 @@ class AggregateWrapper(BaseModel):
             function=self.function.with_namespace(namespace),
             by=[c.with_namespace(namespace) for c in self.by] if self.by else None,
         )
+
 
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
