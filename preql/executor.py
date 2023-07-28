@@ -40,11 +40,12 @@ class Executor(object):
             self.generator = DuckDBDialect()
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
+        self.connection = self.engine.connect()
 
     def execute_query(self, query: ProcessedQuery) -> CursorResult:
         sql = self.generator.compile_statement(query)
-        connection = self.engine.connect()
-        output = connection.execute(text(sql))
+        # connection = self.engine.connect()
+        output = self.connection.execute(text(sql))
         return output
 
     def generate_sql(self, command: str) -> List[str]:
@@ -64,9 +65,9 @@ class Executor(object):
             self.environment, parsed, hooks=self.hooks
         )
         output = []
-        connection = self.engine.connect()
+        # connection = self.engine.connect()
         for statement in sql:
             compiled_sql = self.generator.compile_statement(statement)
             logger.debug(compiled_sql)
-            output.append(connection.execute(text(compiled_sql)))
+            output.append(self.connection.execute(text(compiled_sql)))
         return output
