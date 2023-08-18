@@ -102,7 +102,7 @@ def test_query_datasources(environment: Environment):
 
     assert (
         customer_datasource.identifier
-        == "customers_at_customer_customer_id_at_customer_first_name_customer_last_name"
+        == "customers_at_customer_customer_id_at_customer_first_name"
     )
 
     datasource = get_query_datasources(
