@@ -547,6 +547,7 @@ class OrderBy:
     items: List[OrderItem]
 
 
+
 @dataclass(eq=True)
 class Select:
     selection: Sequence[Union[SelectItem, Concept, ConceptTransform]]
@@ -634,6 +635,12 @@ class Select:
             ):
                 output.append(item)
         return Grain(components=unique(output, "address"))
+
+
+@dataclass(eq=True)
+class Persist:
+    address: str
+    select: Select
 
 
 @dataclass(eq=True, frozen=True)
@@ -1559,6 +1566,11 @@ class WhereClause(BaseModel):
                 output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
 
+@dataclass
+class MaterializedDataset:
+    address:str
+
+
 
 # TODO: combine with CTEs
 # CTE contains procesed query?
@@ -1573,8 +1585,15 @@ class ProcessedQuery:
     limit: Optional[int] = None
     where_clause: Optional[WhereClause] = None
     order_by: Optional[OrderBy] = None
-    # base:Dataset
 
+@dataclass
+class ProcessedQueryMixin:
+    output_to: MaterializedDataset
+
+    # base:Dataset
+@dataclass
+class ProcessedQueryPersist( ProcessedQuery, ProcessedQueryMixin):
+    pass
 
 @dataclass
 class Limit:

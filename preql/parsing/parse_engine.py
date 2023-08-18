@@ -49,6 +49,7 @@ from preql.core.models import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    Persist,
     Query,
     Select,
     SelectItem,
@@ -63,11 +64,12 @@ from preql.utility import string_to_hash
 
 
 grammar = r"""
-    !start: ( block | comment )*
+    !start: ( block | show |comment )*
     block: statement _TERMINATOR comment?
     ?statement: concept
     | datasource
     | select
+    | persist
     | import_statement
     
     _TERMINATOR:  ";"i /\s*/
@@ -103,7 +105,10 @@ grammar = r"""
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
     
     import_statement: "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
-    
+
+    // persist_statement
+    persist: "persist"i "into"i IDENTIFIER select
+
     // select statement
     select: "select"i select_list  where? comment* order_by? comment* limit? comment*
     
@@ -251,6 +256,13 @@ grammar = r"""
     PROPERTY: "property"i
     CONST: "const"i
     AUTO: "AUTO"i 
+
+    // meta functions
+    SHOW: "show"i
+    CONCEPTS: "CONCEPTS"i
+    DATASOURCES: "DATASOURCES"i
+
+    show: SHOW (CONCEPTS | DATASOURCES)
 
     %import common.WS_INLINE -> _WHITESPACE
     %import common.WS
@@ -818,6 +830,20 @@ class ParseToObjects(Transformer):
             self.environment.datasources[f"{alias}.{key}"] = datasource
         self.environment.imports[alias] = Import(alias=alias, path=args[0])
         return None
+
+    @v_args(meta=True)
+    def show(self, meta:Meta, args) -> Select:
+        raise NotImplementedError('TODO: let users query current model values')
+        output = Select(
+            selection=SelectItem(), where_clause=None, limit=None, order_by=None
+        )
+        return output
+    @v_args(meta=True)
+    def persist(self, meta:Meta, args)-> Persist:
+        address:str = args[0]
+        select:Select = args[1]
+
+        return Persist(address, select)
 
     @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:

@@ -1,4 +1,4 @@
-from preql.core.models import QueryDatasource, CTE, Select
+from preql.core.models import QueryDatasource, CTE, Select, Persist
 from preql.core.processing.concept_strategies_v2 import StrategyNode
 
 
@@ -7,6 +7,10 @@ class BaseHook:
 
     def process_select_info(self, select: Select):
         print(f"grain: {str(select.grain)}")
+
+    def process_persist_info(self, persist: Persist):
+        print(f'persisting to {persist.address}')
+        self.process_select_info(persist.select)
 
     def process_root_datasource(self, datasource: QueryDatasource):
         pass

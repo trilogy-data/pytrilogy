@@ -7,11 +7,14 @@ from preql.core.processing.concept_strategies_v2 import source_query_concepts
 
 from preql.core.models import (
     Environment,
+    Persist,
     Select,
     CTE,
     Join,
     JoinKey,
+    MaterializedDataset,
     ProcessedQuery,
+    ProcessedQueryPersist,
     QueryDatasource,
     Datasource,
     BaseJoin,
@@ -146,7 +149,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     return output
 
 
-def get_query_datasources_v2(
+def get_query_datasources(
     environment: Environment,
     statement: Select,
     graph: Optional[ReferenceGraph] = None,
@@ -163,23 +166,26 @@ def get_query_datasources_v2(
     final_qds = ds.resolve()
     return final_qds
 
-
-get_query_datasources = get_query_datasources_v2
-
-
 def flatten_ctes(input: CTE) -> list[CTE]:
     output = [input]
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
     return output
 
+def process_persist(
+         environment: Environment, statement: Persist, hooks: List[BaseHook] | None = None
 
-def process_query_v2(
+)-> ProcessedQueryPersist:
+    select = process_query(environment=environment, statement=statement.select, hooks=hooks)
+    arg_dict = {k:v for k, v in select.__dict__.items()}
+    return ProcessedQueryPersist(**arg_dict, output_to = MaterializedDataset(address=statement.address))
+
+def process_query(
     environment: Environment, statement: Select, hooks: List[BaseHook] | None = None
 ) -> ProcessedQuery:
     hooks = hooks or []
     graph = generate_graph(environment)
-    root_datasource = get_query_datasources_v2(
+    root_datasource = get_query_datasources(
         environment=environment, graph=graph, statement=statement, hooks=hooks
     )
     for hook in hooks:
@@ -234,9 +240,3 @@ def process_query_v2(
         joins=[],
     )
 
-
-def process_query(
-    environment: Environment, statement: Select, hooks: Optional[List[BaseHook]] = None
-) -> ProcessedQuery:
-    """Turn the raw query input into an instantiated execution tree."""
-    return process_query_v2(environment, statement, hooks)

@@ -14,6 +14,7 @@ from preql.core.models import (
     Grain,
     QueryDatasource,
     SourceType,
+    Environment
 )
 from preql.core.processing.utility import (
     PathInfo,
@@ -24,6 +25,29 @@ from preql.core.processing.nodes.base_node import StrategyNode
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
 
+class StaticSelectNode(StrategyNode):
+    source_type = SourceType.SELECT
+    
+    def __init__(
+        self,
+        mandatory_concepts,
+        optional_concepts,
+        environment:Environment,
+        g,
+        datasource: QueryDatasource
+    ):
+        super().__init__(
+            mandatory_concepts,
+            optional_concepts,
+            environment,
+            g,
+            whole_grain=True,
+            parents=[],
+        )
+        self.datasource = datasource
+    
+    def _resolve(self):
+        return self.datasource
 
 class SelectNode(StrategyNode):
     """Select nodes actually fetch raw data, either
@@ -35,7 +59,7 @@ class SelectNode(StrategyNode):
         self,
         mandatory_concepts,
         optional_concepts,
-        environment,
+        environment:Environment,
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
@@ -49,6 +73,45 @@ class SelectNode(StrategyNode):
             parents=parents,
         )
 
+    def resolve_direct_select(self):
+        for datasource in self.environment.datasources.values():
+            print(datasource)
+            all_found = True
+            for raw_concept in self.all_concepts:
+                try:
+                    path = nx.shortest_path(
+                        self.g,
+                        source=datasource_to_node(datasource),
+                        target=concept_to_node(raw_concept),
+                    )
+                    print(path)
+                except nx.exception.NetworkXNoPath:
+                    all_found = False
+                    break
+                # if it's not a two node hop, not a direct select
+                if (
+                    len(
+                       path
+                    )
+                    != 2
+                ):
+                    all_found = False
+                    break
+            if all_found:
+                # keep all concepts on the output, until we get to a node which requires reduction
+                return QueryDatasource(
+                    input_concepts=unique(self.all_concepts, "address"),
+                    output_concepts=unique(self.all_concepts, "address"),
+                    source_map={
+                        concept.address: {datasource}
+                        for concept in self.all_concepts
+                    },
+                    datasources=[datasource],
+                    grain=datasource.grain,
+                    joins=[],
+                )
+        return None
+    
     def resolve_joins_pass(self, all_concepts) -> Optional[QueryDatasource]:
         all_input_concepts = [*all_concepts]
         # for key, value in self.environment.datasources.items():

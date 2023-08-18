@@ -21,6 +21,7 @@ from preql.core.processing.utility import (
 from preql.utility import unique
 from preql.core.processing.nodes import (
     FilterNode,
+    StaticSelectNode,
     SelectNode,
     MergeNode,
     GroupNode,
@@ -87,7 +88,32 @@ def source_concepts(
     found_addresses: list[str] = []
     found_concepts: set[Concept] = set()
     found_map = defaultdict(set)
+    # attempt to find a direct match
+    # such as a materialized aggregate or cache
+    try:
+        test = SelectNode(
+            mandatory_concepts + optional_concepts,
+            [],
+            environment,
+            g,
+            parents=[],
+        )
 
+        resolved = test.resolve_direct_select()
+        if resolved:
+            logger.info(
+                f"{LOGGER_PREFIX} found direct select node with all concepts, returning static selection"
+            )
+            return StaticSelectNode(
+                mandatory_concepts + optional_concepts,
+                [],
+                environment,
+                g,
+                datasource=resolved,
+            )
+    except Exception as e:
+        logger.info(f"{LOGGER_PREFIX} could not find constant source, {str(e)}")
+        pass
     # early exit when we have found all concepts
     while not all(c.address in found_addresses for c in all_concepts):
         remaining_concept = [
@@ -118,6 +144,7 @@ def source_concepts(
         local_optional = concept_list_to_grain(
             local_optional_staging, []
         ).components_copy
+
         if concept.lineage:
             if concept.derivation == PurposeLineage.WINDOW:
                 parent_concepts = resolve_window_parent_concepts(concept)
