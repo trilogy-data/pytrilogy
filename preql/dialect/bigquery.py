@@ -6,7 +6,6 @@ from preql.core.enums import FunctionType, WindowType
 from preql.dialect.base import BaseDialect
 
 
-
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {

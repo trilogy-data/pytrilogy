@@ -25,16 +25,17 @@ from preql.core.processing.nodes.base_node import StrategyNode
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
 
+
 class StaticSelectNode(StrategyNode):
     source_type = SourceType.SELECT
-    
+
     def __init__(
         self,
         mandatory_concepts,
         optional_concepts,
-        environment:Environment,
+        environment: Environment,
         g,
-        datasource: QueryDatasource
+        datasource: QueryDatasource,
     ):
         super().__init__(
             mandatory_concepts,
@@ -45,7 +46,7 @@ class StaticSelectNode(StrategyNode):
             parents=[],
         )
         self.datasource = datasource
-    
+
     def _resolve(self):
         return self.datasource
 

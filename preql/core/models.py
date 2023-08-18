@@ -417,6 +417,7 @@ class WindowItem(BaseModel):
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
         )
+
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.arguments
@@ -553,7 +554,6 @@ class OrderItem(BaseModel):
 @dataclass(eq=True, frozen=True)
 class OrderBy:
     items: List[OrderItem]
-
 
 
 @dataclass(eq=True)
@@ -1547,9 +1547,6 @@ class AggregateWrapper(BaseModel):
             by=[c.with_namespace(namespace) for c in self.by] if self.by else None,
         )
 
-    @property
-    def arguments(self):
-        return self.function.arguments
 
 class WhereClause(BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
@@ -1575,10 +1572,10 @@ class WhereClause(BaseModel):
                 output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
 
+
 @dataclass
 class MaterializedDataset:
-    address:str
-
+    address: str
 
 
 @dataclass
@@ -1612,9 +1609,12 @@ class ProcessedQueryMixin:
     output_to: MaterializedDataset
 
     # base:Dataset
+
+
 @dataclass
-class ProcessedQueryPersist( ProcessedQuery, ProcessedQueryMixin):
+class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
     pass
+
 
 @dataclass
 class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
