@@ -417,6 +417,9 @@ class WindowItem(BaseModel):
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
         )
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        return self.arguments
 
     @property
     def concept_arguments(self) -> List[Concept]:

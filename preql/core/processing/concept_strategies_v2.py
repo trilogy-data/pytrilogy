@@ -225,8 +225,8 @@ def source_concepts(
                         parents=[
                             source_concepts(
                                 parent_concepts, local_optional, environment, g
-                            )
-                        ],
+                            ) 
+                        ] ,
                     )
                 )
             else:

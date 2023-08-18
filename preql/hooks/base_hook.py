@@ -13,7 +13,7 @@ class BaseHook:
         self.process_select_info(persist.select)
 
     def process_persist_info(self, persist: Persist):
-        print(f'persisting to {persist.address}')
+        print(f'Persist statement persisting to {persist.address}')
         self.process_select_info(persist.select)
 
     def process_root_datasource(self, datasource: QueryDatasource):
