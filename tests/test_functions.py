@@ -1,6 +1,7 @@
 # from preql.compiler import compile
 from pytest import raises
 
+from preql.core.enums import DataType
 from preql.core.exceptions import InvalidSyntaxException
 from preql.core.models import Select
 from preql.core.query_processor import process_query
@@ -177,3 +178,4 @@ def test_case_function(test_environment):
         assert 'CASE' in compiled
         assert 'ELSE' in compiled
         assert 'END' in compiled
+        assert test_environment.concepts['test_upper_case'].datatype == DataType.BOOL

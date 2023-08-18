@@ -111,12 +111,3 @@ def get_disconnected_components(
         x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts) > 0
     ]
     return len(sub_graphs), sub_graphs
-
-
-# def print_neighbors(g, node, seen=set(), depth=0):
-#     print('\t'*depth,node)
-#     for x in nx.neighbors(g, node):
-#         print('\t'*depth,x)
-#         if x not in seen:
-#             seen.add(x)
-#             print_neighbors(g, x, depth=depth+1)

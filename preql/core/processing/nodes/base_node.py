@@ -2,7 +2,14 @@ from copy import deepcopy
 from typing import List, Optional
 from collections import defaultdict
 
-from preql.core.models import FilterItem, Grain, QueryDatasource, SourceType, Concept
+from preql.core.models import (
+    FilterItem,
+    Grain,
+    QueryDatasource,
+    SourceType,
+    Concept,
+    Environment,
+)
 from preql.core.enums import Purpose
 from preql.utility import unique
 
@@ -42,7 +49,7 @@ class StrategyNode:
         self,
         mandatory_concepts,
         optional_concepts,
-        environment,
+        environment: Environment,
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,

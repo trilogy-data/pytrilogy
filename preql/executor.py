@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine, CursorResult
 
 from preql.constants import logger
-from preql.core.models import Environment, ProcessedQuery
+from preql.core.models import Environment, ProcessedQuery, ProcessedQueryPersist
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
@@ -59,11 +59,15 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
-    def execute_text(self, command: str) -> List[CursorResult]:
+    def parse_text(self, command: str) -> List[ProcessedQuery | ProcessedQueryPersist]:
         _, parsed = parse_text(command, self.environment)
         sql = self.generator.generate_queries(
             self.environment, parsed, hooks=self.hooks
         )
+        return sql
+
+    def execute_text(self, command: str) -> List[CursorResult]:
+        sql = self.parse_text(command)
         output = []
         # connection = self.engine.connect()
         for statement in sql:

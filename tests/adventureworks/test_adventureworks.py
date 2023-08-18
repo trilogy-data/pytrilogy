@@ -63,7 +63,6 @@ def test_query_datasources(environment: Environment):
     # source query concepts includes extra group by to grain
     customer_node = source_query_concepts(
         [environment.concepts["customer.first_name"]],
-        [environment.concepts["customer.first_name"]],
         environment,
         environment_graph,
     )
@@ -97,17 +96,13 @@ def test_query_datasources(environment: Environment):
     # assert a group up to the first name works
     customer_datasource = source_query_concepts(
         [environment.concepts["customer.first_name"]],
-        [
-            environment.concepts["customer.first_name"],
-            environment.concepts["customer.last_name"],
-        ],
         environment,
         environment_graph,
     ).resolve()
 
     assert (
         customer_datasource.identifier
-        == "customers_at_customer_customer_id_at_customer_first_name_customer_last_name"
+        == "customers_at_customer_customer_id_at_customer_first_name"
     )
 
     datasource = get_query_datasources(

@@ -9,6 +9,7 @@ from preql.core.models import (
     Concept,
     CTE,
     ProcessedQuery,
+    ProcessedQueryPersist,
     CompiledCTE,
     Conditional,
     Comparison,
@@ -20,9 +21,11 @@ from preql.core.models import (
     Parenthetical,
     CaseWhen,
     CaseElse,
+    Select,
+    Persist,
+    Environment,
 )
-from preql.core.models import Environment, Select
-from preql.core.query_processor import process_query_v2
+from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
 from preql.hooks.base_hook import BaseHook
 from preql.utility import unique
@@ -152,7 +155,7 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
     # logger.debug(
     #     f"{LOGGER_PREFIX} [{c.address}] Checking lineage for rendering in {cte.name}"
     # )
-    for sub_c in c.lineage.arguments:
+    for sub_c in c.lineage.concept_arguments:
         if not isinstance(sub_c, Concept):
             continue
         if sub_c.address in cte.source_map or (
@@ -260,7 +263,7 @@ class BaseDialect:
                 )
             missing = [
                 sub_c.address
-                for sub_c in c.lineage.arguments
+                for sub_c in c.lineage.concept_arguments
                 if isinstance(sub_c, Concept) and sub_c not in cte.source_map
             ]
             rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
@@ -415,21 +418,28 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements,
+        statements: List[Select | Persist],
         hooks: Optional[List[BaseHook]] = None,
-    ) -> List[ProcessedQuery]:
-        output = []
+    ) -> List[ProcessedQuery | ProcessedQueryPersist]:
+        output: List[ProcessedQuery | ProcessedQueryPersist] = []
         for statement in statements:
-            if isinstance(statement, Select):
+            if isinstance(statement, Persist):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_persist_info(statement)
+                persist = process_persist(environment, statement, hooks=hooks)
+                output.append(persist)
+            elif isinstance(statement, Select):
                 if hooks:
                     for hook in hooks:
                         hook.process_select_info(statement)
-                output.append(process_query_v2(environment, statement, hooks=hooks))
+                output.append(process_query(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
+
         return output
 
-    def compile_statement(self, query: ProcessedQuery) -> str:
+    def compile_statement(self, query: ProcessedQuery | ProcessedQueryPersist) -> str:
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()
@@ -495,6 +505,9 @@ class BaseDialect:
         for c in query.output_columns:
             sorted_select.append(select_columns[c.address])
         final = self.SQL_TEMPLATE.render(
+            output=query.output_to
+            if isinstance(query, ProcessedQueryPersist)
+            else None,
             select_columns=sorted_select,
             base=query.base.name,
             joins=[render_join(join, self.QUOTE_CHARACTER) for join in query.joins],

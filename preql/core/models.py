@@ -49,6 +49,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
     output = []
     if isinstance(expr, Concept):
         output += [expr]
+
     elif isinstance(
         expr,
         (
@@ -418,6 +419,10 @@ class WindowItem(BaseModel):
         )
 
     @property
+    def concept_arguments(self) -> List[Concept]:
+        return self.arguments
+
+    @property
     def arguments(self) -> List[Concept]:
         output = [self.content]
         for order in self.order_by:
@@ -634,6 +639,13 @@ class Select:
             ):
                 output.append(item)
         return Grain(components=unique(output, "address"))
+
+
+@dataclass(eq=True)
+class Persist:
+    identifier: str
+    address: str
+    select: Select
 
 
 @dataclass(eq=True, frozen=True)
@@ -1557,6 +1569,11 @@ class WhereClause(BaseModel):
         return Grain(components=list(set(output)))
 
 
+@dataclass
+class MaterializedDataset:
+    address: str
+
+
 # TODO: combine with CTEs
 # CTE contains procesed query?
 # or CTE references CTE?
@@ -1570,7 +1587,18 @@ class ProcessedQuery:
     limit: Optional[int] = None
     where_clause: Optional[WhereClause] = None
     order_by: Optional[OrderBy] = None
+
+
+@dataclass
+class ProcessedQueryMixin:
+    output_to: MaterializedDataset
+
     # base:Dataset
+
+
+@dataclass
+class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
+    pass
 
 
 @dataclass
@@ -1631,11 +1659,11 @@ class Parenthetical(BaseModel):
 
 
 Expr = (
-    int
+    bool
+    | int
     | str
     | float
     | list
-    | bool
     | Concept
     | Comparison
     | Conditional
