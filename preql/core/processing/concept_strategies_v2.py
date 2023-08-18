@@ -50,7 +50,7 @@ def resolve_filter_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, FilterItem):
         raise ValueError
     base = [concept.lineage.content]
-    base += concept.lineage.where.input
+    base += concept.lineage.where.concept_arguments
     return unique(base, "address")
 
 
@@ -81,7 +81,7 @@ def source_concepts(
     stack: List[StrategyNode] = []
     all_concepts = unique(mandatory_concepts + optional_concepts, "address")
     if not all_concepts:
-        raise SyntaxError("Cannot source empty concept inputs")
+        raise SyntaxError(f"Cannot source empty concept inputs, had {mandatory_concepts} and {optional_concepts}")
     # TODO
     # Loop through all possible grains + subgrains
     # Starting with the most grain
@@ -115,6 +115,9 @@ def source_concepts(
         logger.info(f"{LOGGER_PREFIX} could not find constant source, {str(e)}")
         pass
     # early exit when we have found all concepts
+    logger.info(
+            f"{LOGGER_PREFIX} Beginning sourcing loop for {[str(c) for c in all_concepts]}"
+        )
     while not all(c.address in found_addresses for c in all_concepts):
         remaining_concept = [
             c for c in all_concepts if c.address not in found_addresses
@@ -207,6 +210,8 @@ def source_concepts(
             elif concept.derivation == PurposeLineage.BASIC:
                 # directly select out a basic derivation
                 parent_concepts = resolve_function_parent_concepts(concept)
+                if not parent_concepts:
+                    raise ValueError(f'concept {concept} has basic lineage {concept.derivation} {type(concept.lineage)} but no parnets!')
                 stack.append(
                     SelectNode(
                         [concept],
@@ -216,8 +221,8 @@ def source_concepts(
                         parents=[
                             source_concepts(
                                 parent_concepts, local_optional, environment, g
-                            )
-                        ],
+                            ) 
+                        ] ,
                     )
                 )
             else:
@@ -286,9 +291,10 @@ def source_concepts(
 
 def source_query_concepts(
     output_concepts,
-    grain_components,
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
-):
-    root = source_concepts(output_concepts, grain_components, environment, g)
-    return GroupNode(output_concepts, grain_components, environment, g, parents=[root])
+):  
+    if not output_concepts:
+        raise ValueError(f'NO output concepts provided {output_concepts}')
+    root = source_concepts(output_concepts, [], environment, g)
+    return GroupNode(output_concepts, [], environment, g, parents=[root])

@@ -46,12 +46,14 @@ def print_recursive_nodes(input: StrategyNode, depth=0):
     return display
 
 
-def print_recursive_ctes(input: CTE, depth=0):
+def print_recursive_ctes(input: CTE, depth:int=0, max_depth: int | None = None):
+    if max_depth and depth>max_depth:
+        return
     select_statement = [c.address for c in input.output_columns]
     print("  " * depth, input.name, "->", input.group_to_grain, "->", select_statement)
     sql = renderer.render_cte(input).statement
     for line in sql.split("\n"):
-        print("  " * (depth), line)
+        logger.debug("  " * (depth) + line)
     print("-----")
     if isinstance(input, CTE):
         for child in input.parent_ctes:
@@ -59,10 +61,11 @@ def print_recursive_ctes(input: CTE, depth=0):
 
 
 class DebuggingHook(BaseHook):
-    def __init__(self):
+    def __init__(self, level=DEBUG, max_depth:int = None):
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
-        logger.setLevel(DEBUG)
+        logger.setLevel(level)
+        self.max_depth = max_depth
 
     def process_select_info(self, select: Select):
         print(f"grain: {str(select.grain)}")
@@ -73,7 +76,7 @@ class DebuggingHook(BaseHook):
             print("".join([str(v) for v in row]))
 
     def process_root_cte(self, cte: CTE):
-        print_recursive_ctes(cte)
+        print_recursive_ctes(cte, max_depth=self.max_depth)
 
     def process_root_strategy_node(self, node: StrategyNode):
         printed = print_recursive_nodes(node)

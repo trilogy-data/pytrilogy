@@ -1,6 +1,6 @@
 from preql.core.models import Select, QueryDatasource
 from preql.core.processing.concept_strategies_v2 import source_concepts
-from preql.core.query_processor import process_query, get_query_datasources_v2
+from preql.core.query_processor import process_query, get_query_datasources
 from preql.hooks.query_debugger import print_recursive_nodes, print_recursive_resolved
 
 
@@ -136,7 +136,7 @@ def test_join_aggregate(test_environment, test_environment_graph):
 
 def test_query_aggregation(test_environment, test_environment_graph):
     select = Select(selection=[test_environment.concepts["total_revenue"]])
-    datasource = get_query_datasources_v2(
+    datasource = get_query_datasources(
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 
@@ -156,7 +156,7 @@ def test_query_datasources(test_environment, test_environment_graph):
             test_environment.concepts["total_revenue"],
         ]
     )
-    get_query_datasources_v2(
+    get_query_datasources(
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 

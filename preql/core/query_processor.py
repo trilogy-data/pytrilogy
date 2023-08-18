@@ -18,11 +18,12 @@ from preql.core.models import (
     QueryDatasource,
     Datasource,
     BaseJoin,
+    ColumnAssignment,
 )
 
 from preql.utility import string_to_hash, unique
 from preql.hooks.base_hook import BaseHook
-
+from preql.constants import logger
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -156,9 +157,13 @@ def get_query_datasources(
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
     graph = graph or generate_graph(environment)
-
+    logger.info(
+        f"{LOGGER_PREFIX} getting source datasource for query with output {[str(c) for c in statement.output_components]}"
+    )
+    if not statement.output_components:
+        raise ValueError(f'Statement has no output components {statement}')
     ds = source_query_concepts(
-        statement.output_components, [], environment=environment, g=graph
+        statement.output_components, environment=environment, g=graph
     )
     if hooks:
         for hook in hooks:
@@ -166,19 +171,48 @@ def get_query_datasources(
     final_qds = ds.resolve()
     return final_qds
 
+
 def flatten_ctes(input: CTE) -> list[CTE]:
     output = [input]
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
     return output
 
-def process_persist(
-         environment: Environment, statement: Persist, hooks: List[BaseHook] | None = None
+def process_auto(
+        environment: Environment, statement: Persist | Select, hooks: List[BaseHook] | None = None
+):
+    if isinstance(statement, Persist):
+        return process_persist(environment, statement, hooks)
+    elif isinstance(statement, Select):
+        return process_query(environment, statement, hooks)
+    raise ValueError(f'Do not know how to process {type(statement)}')
 
-)-> ProcessedQueryPersist:
-    select = process_query(environment=environment, statement=statement.select, hooks=hooks)
-    arg_dict = {k:v for k, v in select.__dict__.items()}
-    return ProcessedQueryPersist(**arg_dict, output_to = MaterializedDataset(address=statement.address))
+def process_persist(
+    environment: Environment, statement: Persist, hooks: List[BaseHook] | None = None
+) -> ProcessedQueryPersist:
+    select = process_query(
+        environment=environment, statement=statement.select, hooks=hooks
+    )
+    
+    # add in this datasource now that it has been created
+    columns = [ColumnAssignment(alias=c.name, concept=c) for c in select.output_columns]
+    datasource = Datasource(
+        identifier=statement.identifier,
+        columns=columns,
+        grain=select.grain,  # type: ignore
+        address=statement.address,
+        namespace=environment.namespace,
+    )
+    for column in columns:
+        column.concept = column.concept.with_grain(datasource.grain)
+    environment.datasources[datasource.identifier] = datasource
+
+    # build our object to return
+    arg_dict = {k: v for k, v in select.__dict__.items()}
+    return ProcessedQueryPersist(
+        **arg_dict, output_to=MaterializedDataset(address=statement.address)
+    )
+
 
 def process_query(
     environment: Environment, statement: Select, hooks: List[BaseHook] | None = None
@@ -239,4 +273,3 @@ def process_query(
         # we no longer do any joins at final level, this should always happen in parent CTEs
         joins=[],
     )
-

@@ -49,6 +49,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
     output = []
     if isinstance(expr, Concept):
         output += [expr]
+    
     elif isinstance(
         expr,
         (
@@ -416,6 +417,9 @@ class WindowItem(BaseModel):
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
         )
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        return self.arguments
 
     @property
     def arguments(self) -> List[Concept]:
@@ -639,6 +643,7 @@ class Select:
 
 @dataclass(eq=True)
 class Persist:
+    identifier: str
     address: str
     select: Select
 
@@ -1653,11 +1658,11 @@ class Parenthetical(BaseModel):
 
 
 Expr = (
-    int
+    bool
+    | int
     | str
     | float
     | list
-    | bool
     | Concept
     | Comparison
     | Conditional

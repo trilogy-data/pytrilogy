@@ -8,7 +8,7 @@ def test_concept_derivation(duckdb_engine):
 
     test_datetime = datetime(hour = 12, day = 1, month =2, year = 2022, second =34)
 
-    duckdb_engine.execute_text(f''' key test <- cast('{test_datetime.isoformat()}' as datetime);
+    duckdb_engine.execute_text(f'''const test <- cast('{test_datetime.isoformat()}' as datetime);
     ''')
     for  property, check in [['hour', test_datetime.hour], 
                              ['second', test_datetime.second], 

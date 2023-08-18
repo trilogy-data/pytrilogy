@@ -75,19 +75,29 @@ class SelectNode(StrategyNode):
 
     def resolve_direct_select(self):
         for datasource in self.environment.datasources.values():
-            print(datasource)
+            print_flag = False
+            if datasource.address.location == 'bool_is_upper_name':
+                print_flag = True
             all_found = True
             for raw_concept in self.all_concepts:
+                if not raw_concept.grain.components:
+                    target = concept_to_node(raw_concept.with_default_grain())
+                else:
+                    target = concept_to_node(raw_concept)
                 try:
                     path = nx.shortest_path(
                         self.g,
                         source=datasource_to_node(datasource),
-                        target=concept_to_node(raw_concept),
+                        target=target,
                     )
-                    print(path)
+
                 except nx.exception.NetworkXNoPath:
                     all_found = False
+                    if print_flag:
+                        print(f'no path to {concept_to_node(raw_concept)}')
                     break
+                if print_flag:
+                    print(path)
                 # if it's not a two node hop, not a direct select
                 if (
                     len(
@@ -114,9 +124,6 @@ class SelectNode(StrategyNode):
     
     def resolve_joins_pass(self, all_concepts) -> Optional[QueryDatasource]:
         all_input_concepts = [*all_concepts]
-        # for key, value in self.environment.datasources.items():
-        #     print(key)
-        #     print(value.name)
 
         join_candidates: List[PathInfo] = []
         for datasource in self.environment.datasources.values():

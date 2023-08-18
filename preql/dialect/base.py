@@ -21,6 +21,8 @@ from preql.core.models import (
     Parenthetical,
     CaseWhen,
     CaseElse,
+    Select,
+    Persist
 )
 from preql.core.models import Environment, Select, Persist
 from preql.core.query_processor import process_query, process_persist
@@ -153,7 +155,7 @@ def check_lineage(c: Concept, cte: CTE) -> bool:
     # logger.debug(
     #     f"{LOGGER_PREFIX} [{c.address}] Checking lineage for rendering in {cte.name}"
     # )
-    for sub_c in c.lineage.arguments:
+    for sub_c in c.lineage.concept_arguments:
         if not isinstance(sub_c, Concept):
             continue
         if sub_c.address in cte.source_map or (
@@ -261,7 +263,7 @@ class BaseDialect:
                 )
             missing = [
                 sub_c.address
-                for sub_c in c.lineage.arguments
+                for sub_c in c.lineage.concept_arguments
                 if isinstance(sub_c, Concept) and sub_c not in cte.source_map
             ]
             rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
@@ -416,7 +418,7 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements,
+        statements:List[Select | Persist],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[ProcessedQuery]:
         output = []
@@ -426,8 +428,6 @@ class BaseDialect:
                     for hook in hooks:
                         hook.process_persist_info(statement)
                 persist = process_persist(environment, statement, hooks=hooks)
-                if not persist.output_to:
-                    raise ValueError('NO output found for Persist')
                 output.append(persist)
             elif isinstance(statement, Select):
                 if hooks:

@@ -81,7 +81,7 @@ grammar = r"""
     //customer_id.property first_name STRING;
     concept_property_declaration: PROPERTY IDENTIFIER TYPE metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | PROPERTY | AUTO ) IDENTIFIER "<" "-" expr
+    concept_derivation:  (PURPOSE | PROPERTY | CONST | AUTO ) IDENTIFIER "<" "-" expr
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
@@ -107,7 +107,7 @@ grammar = r"""
     import_statement: "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
 
     // persist_statement
-    persist: "persist"i "into"i IDENTIFIER select
+    persist: "persist"i IDENTIFIER "into"i IDENTIFIER select
 
     // select statement
     select: "select"i select_list  where? comment* order_by? comment* limit? comment*
@@ -254,7 +254,7 @@ grammar = r"""
     
     PURPOSE:  "key"i | "metric"i
     PROPERTY: "property"i
-    CONST: "const"i
+    CONST: "const"i | "constant"i
     AUTO: "AUTO"i 
 
     // meta functions
@@ -295,6 +295,8 @@ def arg_to_datatype(arg) -> DataType:
         return arg.output_datatype
     elif isinstance(arg, Concept):
         return arg.datatype
+    elif isinstance(arg, bool):
+        return DataType.BOOL
     elif isinstance(arg, int):
         return DataType.INTEGER
     elif isinstance(arg, str):
@@ -551,6 +553,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         purpose = args[0]
+
         name = args[1]
 
         lookup, namespace, name, parent_concept = parse_concept_reference(
@@ -561,11 +564,12 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=filter_item.content.datatype,
-                purpose=filter_item.content.purpose,
+                purpose= purpose, #filter_item.content.purpose,
                 metadata=metadata,
                 lineage=filter_item,
                 # filters are implicitly at the grain of the base item
-                grain=Grain(components=[filter_item.output]),
+                # 2023-08-18 - asked why, commented out
+                # grain=Grain(components=[filter_item.output]),
                 namespace=namespace,
             )
             if concept.metadata:
@@ -581,7 +585,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=window_item.content.datatype,
-                purpose=Purpose.PROPERTY,
+                purpose=purpose,
                 metadata=metadata,
                 lineage=window_item,
                 # windows are implicitly at the grain of the group by + the original content
@@ -596,7 +600,8 @@ class ParseToObjects(Transformer):
         if isinstance(args[2], AggregateWrapper):
             parent: AggregateWrapper = args[2]
             aggfunction: Function = parent.function
-
+            if purpose != aggfunction.output_purpose:
+                raise SyntaxError(f'Invalid output purpose assigned {purpose}')
             concept = Concept(
                 name=name,
                 datatype=aggfunction.output_datatype,
@@ -622,7 +627,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=const_function.output_datatype,
-                purpose=const_function.output_purpose,
+                purpose=Purpose.CONSTANT,
                 metadata=metadata,
                 lineage=const_function,
                 grain=const_function.output_grain,
@@ -635,10 +640,12 @@ class ParseToObjects(Transformer):
 
         if isinstance(args[2], Function):
             function: Function = args[2]
+            # if purpose != function.output_purpose:
+            #     raise SyntaxError(f'Invalid output purpose assigned {purpose}')
             concept = Concept(
                 name=name,
                 datatype=function.output_datatype,
-                purpose=function.output_purpose,
+                purpose=purpose,
                 metadata=metadata,
                 lineage=function,
                 grain=function.output_grain,
@@ -652,7 +659,7 @@ class ParseToObjects(Transformer):
             self.environment.add_concept(concept, meta=meta)
             return concept
         raise SyntaxError(
-            f"Recieved invalid type {type(args[2])} {args[2]} as input to select"
+            f"Received invalid type {type(args[2])} {args[2]} as input to select"
             " transform"
         )
 
@@ -840,10 +847,11 @@ class ParseToObjects(Transformer):
         return output
     @v_args(meta=True)
     def persist(self, meta:Meta, args)-> Persist:
-        address:str = args[0]
-        select:Select = args[1]
+        identifier:str = args[0]
+        address:str = args[1]
+        select:Select = args[2]
 
-        return Persist(address, select)
+        return Persist(identifier, address, select)
 
     @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:
