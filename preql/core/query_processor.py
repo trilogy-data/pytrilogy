@@ -178,6 +178,8 @@ def flatten_ctes(input: CTE) -> list[CTE]:
         output += flatten_ctes(cte)
     return output
 
+def process_persist(
+         environment: Environment, statement: Persist, hooks: List[BaseHook] | None = None
 
 def process_auto(
     environment: Environment,

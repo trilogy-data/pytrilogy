@@ -74,4 +74,23 @@ class Executor(object):
             compiled_sql = self.generator.compile_statement(statement)
             logger.debug(compiled_sql)
             output.append(self.connection.execute(text(compiled_sql)))
+
+            # post_execution handling
+            if isinstance(statement, ProcessedQueryPersist):
+                select = statement
+                address = statement.output_to.address
+                # add in this datasource now that it has been created
+                columns = [ColumnAssignment(alias = c.name, concept = c) for c in select.output_columns]
+                datasource = Datasource(
+                    identifier=address,
+                    columns=columns,
+                    # grain will be set by default from args
+                    # TODO: move to factory
+                    grain=select.grain,  # type: ignore
+                    address=address,
+                    namespace=self.environment.namespace,
+                )
+                for column in columns:
+                    column.concept = column.concept.with_grain(datasource.grain)
+                self.environment.datasources[datasource.identifier] = datasource
         return output

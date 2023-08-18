@@ -552,6 +552,7 @@ class OrderBy:
     items: List[OrderItem]
 
 
+
 @dataclass(eq=True)
 class Select:
     selection: Sequence[Union[SelectItem, Concept, ConceptTransform]]
@@ -1571,6 +1572,11 @@ class WhereClause(BaseModel):
                 output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
 
+@dataclass
+class MaterializedDataset:
+    address:str
+
+
 
 @dataclass
 class MaterializedDataset:
@@ -1598,6 +1604,14 @@ class ProcessedQueryMixin:
 
     # base:Dataset
 
+@dataclass
+class ProcessedQueryMixin:
+    output_to: MaterializedDataset
+
+    # base:Dataset
+@dataclass
+class ProcessedQueryPersist( ProcessedQuery, ProcessedQueryMixin):
+    pass
 
 @dataclass
 class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
