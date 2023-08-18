@@ -161,7 +161,7 @@ def get_query_datasources(
         f"{LOGGER_PREFIX} getting source datasource for query with output {[str(c) for c in statement.output_components]}"
     )
     if not statement.output_components:
-        raise ValueError(f'Statement has no output components {statement}')
+        raise ValueError(f"Statement has no output components {statement}")
     ds = source_query_concepts(
         statement.output_components, environment=environment, g=graph
     )
@@ -178,14 +178,18 @@ def flatten_ctes(input: CTE) -> list[CTE]:
         output += flatten_ctes(cte)
     return output
 
+
 def process_auto(
-        environment: Environment, statement: Persist | Select, hooks: List[BaseHook] | None = None
+    environment: Environment,
+    statement: Persist | Select,
+    hooks: List[BaseHook] | None = None,
 ):
     if isinstance(statement, Persist):
         return process_persist(environment, statement, hooks)
     elif isinstance(statement, Select):
         return process_query(environment, statement, hooks)
-    raise ValueError(f'Do not know how to process {type(statement)}')
+    raise ValueError(f"Do not know how to process {type(statement)}")
+
 
 def process_persist(
     environment: Environment, statement: Persist, hooks: List[BaseHook] | None = None
@@ -193,7 +197,7 @@ def process_persist(
     select = process_query(
         environment=environment, statement=statement.select, hooks=hooks
     )
-    
+
     # add in this datasource now that it has been created
     columns = [ColumnAssignment(alias=c.name, concept=c) for c in select.output_columns]
     datasource = Datasource(

@@ -111,4 +111,3 @@ def get_disconnected_components(
         x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts) > 0
     ]
     return len(sub_graphs), sub_graphs
-

@@ -564,7 +564,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=filter_item.content.datatype,
-                purpose= purpose, #filter_item.content.purpose,
+                purpose=purpose,  # filter_item.content.purpose,
                 metadata=metadata,
                 lineage=filter_item,
                 # filters are implicitly at the grain of the base item
@@ -601,7 +601,7 @@ class ParseToObjects(Transformer):
             parent: AggregateWrapper = args[2]
             aggfunction: Function = parent.function
             if purpose != aggfunction.output_purpose:
-                raise SyntaxError(f'Invalid output purpose assigned {purpose}')
+                raise SyntaxError(f"Invalid output purpose assigned {purpose}")
             concept = Concept(
                 name=name,
                 datatype=aggfunction.output_datatype,
@@ -839,17 +839,18 @@ class ParseToObjects(Transformer):
         return None
 
     @v_args(meta=True)
-    def show(self, meta:Meta, args) -> Select:
-        raise NotImplementedError('TODO: let users query current model values')
+    def show(self, meta: Meta, args) -> Select:
+        raise NotImplementedError("TODO: let users query current model values")
         output = Select(
             selection=SelectItem(), where_clause=None, limit=None, order_by=None
         )
         return output
+
     @v_args(meta=True)
-    def persist(self, meta:Meta, args)-> Persist:
-        identifier:str = args[0]
-        address:str = args[1]
-        select:Select = args[2]
+    def persist(self, meta: Meta, args) -> Persist:
+        identifier: str = args[0]
+        address: str = args[1]
+        select: Select = args[2]
 
         return Persist(identifier, address, select)
 

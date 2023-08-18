@@ -12,7 +12,7 @@ from preql.dialect.bigquery import BigqueryDialect
 renderer = BigqueryDialect()
 
 
-def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth=0):
+def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth: int = 0):
     display = [
         (
             "  " * depth,
@@ -29,7 +29,7 @@ def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth=0)
     return display
 
 
-def print_recursive_nodes(input: StrategyNode, depth=0):
+def print_recursive_nodes(input: StrategyNode, depth: int = 0):
     resolved = input.resolve()
     display = [
         (
@@ -46,8 +46,8 @@ def print_recursive_nodes(input: StrategyNode, depth=0):
     return display
 
 
-def print_recursive_ctes(input: CTE, depth:int=0, max_depth: int | None = None):
-    if max_depth and depth>max_depth:
+def print_recursive_ctes(input: CTE, depth: int = 0, max_depth: int | None = None):
+    if max_depth and depth > max_depth:
         return
     select_statement = [c.address for c in input.output_columns]
     print("  " * depth, input.name, "->", input.group_to_grain, "->", select_statement)
@@ -61,7 +61,7 @@ def print_recursive_ctes(input: CTE, depth:int=0, max_depth: int | None = None):
 
 
 class DebuggingHook(BaseHook):
-    def __init__(self, level=DEBUG, max_depth:int = None):
+    def __init__(self, level=DEBUG, max_depth: int | None = None):
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
         logger.setLevel(level)

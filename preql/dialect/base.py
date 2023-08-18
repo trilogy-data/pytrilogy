@@ -22,9 +22,9 @@ from preql.core.models import (
     CaseWhen,
     CaseElse,
     Select,
-    Persist
+    Persist,
+    Environment,
 )
-from preql.core.models import Environment, Select, Persist
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
 from preql.hooks.base_hook import BaseHook
@@ -418,10 +418,10 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements:List[Select | Persist],
+        statements: List[Select | Persist],
         hooks: Optional[List[BaseHook]] = None,
-    ) -> List[ProcessedQuery]:
-        output = []
+    ) -> List[ProcessedQuery | ProcessedQueryPersist]:
+        output: List[ProcessedQuery | ProcessedQueryPersist] = []
         for statement in statements:
             if isinstance(statement, Persist):
                 if hooks:
@@ -436,10 +436,10 @@ class BaseDialect:
                 output.append(process_query(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
-            
+
         return output
 
-    def compile_statement(self, query: ProcessedQuery| ProcessedQueryPersist) -> str:
+    def compile_statement(self, query: ProcessedQuery | ProcessedQueryPersist) -> str:
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()
@@ -505,7 +505,9 @@ class BaseDialect:
         for c in query.output_columns:
             sorted_select.append(select_columns[c.address])
         final = self.SQL_TEMPLATE.render(
-            output = query.output_to if isinstance(query, ProcessedQueryPersist) else None,
+            output=query.output_to
+            if isinstance(query, ProcessedQueryPersist)
+            else None,
             select_columns=sorted_select,
             base=query.base.name,
             joins=[render_join(join, self.QUOTE_CHARACTER) for join in query.joins],
