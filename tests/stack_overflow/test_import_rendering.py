@@ -4,6 +4,7 @@ from os.path import dirname
 from preql.core.models import Environment
 from preql.parser import parse
 from preql.parsing.render import render_environment
+
 QUERY = """import concepts.core as core;
 
 select
@@ -39,4 +40,4 @@ order by
 def test_select():
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     rendered = render_environment(env)
-    assert rendered.startswith('import concepts.core as core;')
+    assert rendered.startswith("import concepts.core as core;")

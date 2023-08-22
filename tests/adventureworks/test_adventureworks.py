@@ -206,7 +206,9 @@ def test_two_properties(environment: Environment):
 
 
 @pytest.mark.adventureworks_execution
-def test_online_sales_queries(adventureworks_engine: Executor, environment: Environment):
+def test_online_sales_queries(
+    adventureworks_engine: Executor, environment: Environment
+):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:

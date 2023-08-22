@@ -8,6 +8,7 @@ from preql.core.query_processor import process_query, datasource_to_ctes
 from preql.dialect.sql_server import SqlServerDialect
 import re
 
+
 def test_aggregate_of_property_function(stackoverflow_environment):
     env = stackoverflow_environment
     avg_user_post_count = env.concepts["user_avg_post_length"]
@@ -44,9 +45,10 @@ def test_aggregate_to_grain(stackoverflow_environment):
         if avg_post_length in cte.output_columns:
             rendered = generator.render_concept_sql(avg_post_length, cte)
 
-            assert (
-                re.search(r'avg\([0-9A-z\_]+\."post_length"\) as "avg_post_length_by_post_id"', rendered)
-                )
+            assert re.search(
+                r'avg\([0-9A-z\_]+\."post_length"\) as "avg_post_length_by_post_id"',
+                rendered,
+            )
             found = True
         if found:
             break

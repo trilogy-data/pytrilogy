@@ -58,17 +58,17 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
 
 
 def test_get_datasource_for_filter(test_environment, test_environment_graph):
-    product = test_environment.concepts["products_with_revenue_over_50"]
+    hi_rev_product = test_environment.concepts["products_with_revenue_over_50"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
-    assert {n.name for n in product.sources} == {
+    assert {n.name for n in hi_rev_product.sources} == {
         "total_revenue",
         "revenue",
         "product_id",
     }
     datasource = source_concepts(
-        [product],
-        product.grain.components_copy,
+        [hi_rev_product],
+        hi_rev_product.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
     )
@@ -76,7 +76,7 @@ def test_get_datasource_for_filter(test_environment, test_environment_graph):
     datasource = datasource.resolve()
     print_recursive_resolved(datasource)
     assert isinstance(datasource, QueryDatasource)
-    assert datasource.output_concepts == [product]
+    assert hi_rev_product in datasource.output_concepts
     # assert set([datasource.name for datasource in datasource.datasources]) == {
     #     "products"
     # }

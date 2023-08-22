@@ -61,24 +61,40 @@ def print_recursive_ctes(input: CTE, depth: int = 0, max_depth: int | None = Non
 
 
 class DebuggingHook(BaseHook):
-    def __init__(self, level=DEBUG, max_depth: int | None = None):
+    def __init__(
+        self,
+        level=DEBUG,
+        max_depth: int | None = None,
+        process_ctes: bool = True,
+        process_nodes: bool = True,
+        process_datasources: bool = True,
+        process_other: bool = True,
+    ):
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
         logger.setLevel(level)
         self.max_depth = max_depth
+        self.process_ctes = process_ctes
+        self.process_nodes = process_nodes
+        self.process_datasources = process_datasources
+        self.process_other = process_other
 
     def process_select_info(self, select: Select):
-        print(f"grain: {str(select.grain)}")
+        if self.process_other:
+            print(f"grain: {str(select.grain)}")
 
     def process_root_datasource(self, datasource: QueryDatasource):
-        printed = print_recursive_resolved(datasource)
-        for row in printed:
-            print("".join([str(v) for v in row]))
+        if self.process_datasources:
+            printed = print_recursive_resolved(datasource)
+            for row in printed:
+                print("".join([str(v) for v in row]))
 
     def process_root_cte(self, cte: CTE):
-        print_recursive_ctes(cte, max_depth=self.max_depth)
+        if self.process_ctes:
+            print_recursive_ctes(cte, max_depth=self.max_depth)
 
     def process_root_strategy_node(self, node: StrategyNode):
-        printed = print_recursive_nodes(node)
-        for row in printed:
-            print("".join([str(v) for v in row]))
+        if self.process_nodes:
+            printed = print_recursive_nodes(node)
+            for row in printed:
+                print("".join([str(v) for v in row]))

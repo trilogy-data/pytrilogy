@@ -553,7 +553,8 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         purpose = args[0]
-
+        if purpose == "auto":
+            purpose = None
         name = args[1]
 
         lookup, namespace, name, parent_concept = parse_concept_reference(
@@ -564,7 +565,9 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=filter_item.content.datatype,
-                purpose=purpose,  # filter_item.content.purpose,
+                purpose=purpose
+                if purpose
+                else filter_item.content.purpose,  # filter_item.content.purpose,
                 metadata=metadata,
                 lineage=filter_item,
                 # filters are implicitly at the grain of the base item
@@ -585,7 +588,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=window_item.content.datatype,
-                purpose=purpose,
+                purpose=purpose if purpose else window_item.content.purpose,
                 metadata=metadata,
                 lineage=window_item,
                 # windows are implicitly at the grain of the group by + the original content
@@ -600,8 +603,6 @@ class ParseToObjects(Transformer):
         if isinstance(args[2], AggregateWrapper):
             parent: AggregateWrapper = args[2]
             aggfunction: Function = parent.function
-            if purpose != aggfunction.output_purpose:
-                raise SyntaxError(f"Invalid output purpose assigned {purpose}")
             concept = Concept(
                 name=name,
                 datatype=aggfunction.output_datatype,
@@ -645,7 +646,7 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=function.output_datatype,
-                purpose=purpose,
+                purpose=purpose if purpose else function.output_purpose,
                 metadata=metadata,
                 lineage=function,
                 grain=function.output_grain,
