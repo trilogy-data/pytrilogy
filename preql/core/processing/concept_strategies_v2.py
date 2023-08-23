@@ -225,7 +225,7 @@ def source_concepts(
                 )
 
                 # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
-                if len(concept.grain.components_copy) > 0:
+                if concept.grain and len(concept.grain.components_copy) > 0:
                     local_optional = concept.grain.components_copy
                 # otherwise, local optional are mandatory
                 else:

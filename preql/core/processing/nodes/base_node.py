@@ -53,7 +53,7 @@ class StrategyNode:
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
-        partial_concepts: List[Concept] = None,
+        partial_concepts: List[Concept] | None = None,
     ):
         self.mandatory_concepts = mandatory_concepts
         self.optional_concepts = deepcopy(optional_concepts)

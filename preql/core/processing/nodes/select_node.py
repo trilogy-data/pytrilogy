@@ -50,30 +50,6 @@ class StaticSelectNode(StrategyNode):
     def _resolve(self):
         return self.datasource
 
-class StaticSelectNode(StrategyNode):
-    source_type = SourceType.SELECT
-
-    def __init__(
-        self,
-        mandatory_concepts,
-        optional_concepts,
-        environment: Environment,
-        g,
-        datasource: QueryDatasource,
-    ):
-        super().__init__(
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
-            whole_grain=True,
-            parents=[],
-        )
-        self.datasource = datasource
-
-    def _resolve(self):
-        return self.datasource
-
 
 class SelectNode(StrategyNode):
     """Select nodes actually fetch raw data, either

@@ -423,10 +423,6 @@ class WindowItem(BaseModel):
         return self.arguments
 
     @property
-    def concept_arguments(self) -> List[Concept]:
-        return self.arguments
-
-    @property
     def arguments(self) -> List[Concept]:
         output = [self.content]
         for order in self.order_by:
@@ -1580,11 +1576,6 @@ class MaterializedDataset:
     address: str
 
 
-@dataclass
-class MaterializedDataset:
-    address: str
-
-
 # TODO: combine with CTEs
 # CTE contains procesed query?
 # or CTE references CTE?
@@ -1605,17 +1596,6 @@ class ProcessedQueryMixin:
     output_to: MaterializedDataset
 
     # base:Dataset
-
-@dataclass
-class ProcessedQueryMixin:
-    output_to: MaterializedDataset
-
-    # base:Dataset
-
-
-@dataclass
-class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
-    pass
 
 
 @dataclass

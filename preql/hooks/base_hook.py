@@ -12,10 +12,6 @@ class BaseHook:
         print(f"Persist statement persisting to {persist.address}")
         self.process_select_info(persist.select)
 
-    def process_persist_info(self, persist: Persist):
-        print(f'Persist statement persisting to {persist.address}')
-        self.process_select_info(persist.select)
-
     def process_root_datasource(self, datasource: QueryDatasource):
         pass
 

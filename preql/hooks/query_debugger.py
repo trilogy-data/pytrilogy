@@ -54,23 +54,23 @@ def print_recursive_nodes(input: StrategyNode, mode: PrintMode, depth: int = 0):
     resolved = input.resolve()
     if mode == PrintMode.FULL:
         display = [
-            (
+            [
                 "  " * depth,
                 input,
                 "->",
                 resolved.grain,
                 "->",
                 [c.address for c in resolved.output_concepts],
-            )
+            ]
         ]
     elif mode == PrintMode.BASIC:
         display = [
-            (
+            [
                 "  " * depth,
                 input,
                 "->",
                 resolved.grain,
-            )
+            ]
         ]
     for child in input.parents:
         display += print_recursive_nodes(child, mode=mode, depth=depth + 1)
