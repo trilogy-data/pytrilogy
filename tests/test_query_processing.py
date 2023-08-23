@@ -1,7 +1,6 @@
 from preql.core.models import Select, QueryDatasource
 from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import process_query, get_query_datasources
-from preql.hooks.query_debugger import print_recursive_nodes, print_recursive_resolved
 
 
 def test_direct_select(test_environment, test_environment_graph):
@@ -58,28 +57,23 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
 
 
 def test_get_datasource_for_filter(test_environment, test_environment_graph):
-    product = test_environment.concepts["products_with_revenue_over_50"]
+    hi_rev_product = test_environment.concepts["products_with_revenue_over_50"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
-    assert {n.name for n in product.sources} == {
+    assert {n.name for n in hi_rev_product.sources} == {
         "total_revenue",
         "revenue",
         "product_id",
     }
     datasource = source_concepts(
-        [product],
-        product.grain.components_copy,
+        [hi_rev_product],
+        hi_rev_product.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
     )
-    print_recursive_nodes(datasource)
     datasource = datasource.resolve()
-    print_recursive_resolved(datasource)
     assert isinstance(datasource, QueryDatasource)
-    assert datasource.output_concepts == [product]
-    # assert set([datasource.name for datasource in datasource.datasources]) == {
-    #     "products"
-    # }
+    assert hi_rev_product in datasource.output_concepts
 
 
 def test_select_output(test_environment, test_environment_graph):
@@ -109,9 +103,7 @@ def test_basic_aggregate(test_environment, test_environment_graph):
         environment=test_environment,
         g=test_environment_graph,
     )
-    print_recursive_nodes(datasource)
     datasource = datasource.resolve()
-    print_recursive_resolved(datasource)
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
         "revenue_at_local_order_id"

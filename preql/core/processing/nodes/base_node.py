@@ -53,6 +53,7 @@ class StrategyNode:
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
+        partial_concepts: List[Concept] | None = None,
     ):
         self.mandatory_concepts = mandatory_concepts
         self.optional_concepts = deepcopy(optional_concepts)
@@ -61,6 +62,7 @@ class StrategyNode:
         self.whole_grain = whole_grain
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
+        self.partial_concepts = partial_concepts or []
 
     @property
     def all_concepts(self):

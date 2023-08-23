@@ -1,4 +1,4 @@
-examples/
+
 
 *.egg-info
 
@@ -15,3 +15,5 @@ AdventureWorksDW2019.bak
 .ruff_cache/
 
 *.code-workspace
+
+examples/

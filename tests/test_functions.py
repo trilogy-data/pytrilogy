@@ -175,7 +175,7 @@ def test_case_function(test_environment):
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
         compiled = dialect.compile_statement(process_query(test_environment, select))
-        assert 'CASE' in compiled
-        assert 'ELSE' in compiled
-        assert 'END' in compiled
-        assert test_environment.concepts['test_upper_case'].datatype == DataType.BOOL
+        assert "CASE" in compiled
+        assert "ELSE" in compiled
+        assert "END" in compiled
+        assert test_environment.concepts["test_upper_case"].datatype == DataType.BOOL

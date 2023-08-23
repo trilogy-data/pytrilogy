@@ -24,6 +24,12 @@ Finally, in query rendering each CTE is rendered to a backend appropriate query.
 CTE, or the `base`, will contain all required columns for the final output. The last
 select will only apply any query level filters + ordering, no joins will take place.
 
+## Aug 2023 Update
+
+For complex derivations, propogating the "full" context upstream is an issue. Instead, we need to adjust logic to prune the optional nodes in each search pattern.
+
+For filter nodes -> we should have these generate a node with _just_ the filtered column + the new concept. 
+
 ## Debugging
 
 Base query derivation accepts the 'DebugHook' defined under hooks, which will print to console

@@ -896,12 +896,13 @@ class BaseJoin:
 
             left_keys = [c.address for c in self.left_datasource.output_concepts]
             right_keys = [c.address for c in self.right_datasource.output_concepts]
-
+            match_concepts = [c.address for c in self.concepts]
             raise SyntaxError(
                 "No mutual join keys found between"
                 f" {self.left_datasource.identifier} and"
                 f" {self.right_datasource.identifier}, left_keys {left_keys},"
-                f" right_keys {right_keys}"
+                f" right_keys {right_keys},"
+                f" provided join concepts {match_concepts}"
             )
         self.concepts = final_concepts
 
@@ -936,6 +937,7 @@ class QueryDatasource:
     )
     filter_concepts: List[Concept] = field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
+    partial_concepts: List[Concept] = field(default_factory=list)
 
     def __post_init__(self):
         self.input_concepts = unique(self.input_concepts, "address")

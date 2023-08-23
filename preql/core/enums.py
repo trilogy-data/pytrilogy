@@ -17,6 +17,7 @@ class Purpose(Enum):
     KEY = "key"
     PROPERTY = "property"
     METRIC = "metric"
+    AUTO = "auto"
 
 
 class PurposeLineage(Enum):

@@ -11,7 +11,6 @@ from preql.core.models import (
 from preql.core.enums import ComparisonOperator, BooleanOperator
 
 
-
 def test_basic_query(test_environment):
     query = Select(
         selection=[test_environment.concepts["order_id"]],
@@ -35,6 +34,7 @@ ORDER BY
     order_id asc
 ;"""
     )
+
 
 def test_full_query(test_environment):
     query = Select(
@@ -78,7 +78,6 @@ ORDER BY
 
 
 def test_environment_rendering(test_environment):
-
     rendered = render_environment(test_environment)
 
-    assert 'address tblRevenue' in rendered
+    assert "address tblRevenue" in rendered

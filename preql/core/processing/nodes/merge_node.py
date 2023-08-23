@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 
 from preql.constants import logger
@@ -26,6 +26,9 @@ class MergeNode(StrategyNode):
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
+        join_concepts: Optional[List] = None,
+        force_join_type: Optional[JoinType] = None,
+        partial_concepts: Optional[List] = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -34,7 +37,10 @@ class MergeNode(StrategyNode):
             g,
             whole_grain=whole_grain,
             parents=parents,
+            partial_concepts=partial_concepts,
         )
+        self.join_concepts = join_concepts
+        self.force_join_type = force_join_type
 
     def _resolve(self):
         parent_sources = [p.resolve() for p in self.parents]
@@ -76,6 +82,9 @@ class MergeNode(StrategyNode):
         all_concepts = unique(
             self.mandatory_concepts + self.optional_concepts, "address"
         )
+
+        join_concepts = self.join_concepts or all_concepts
+
         if dataset_list[1:]:
             for right_value in dataset_list[1:]:
                 if not grain.components:
@@ -83,7 +92,9 @@ class MergeNode(StrategyNode):
                         BaseJoin(
                             left_datasource=base,
                             right_datasource=right_value,
-                            join_type=JoinType.FULL,
+                            join_type=self.force_join_type
+                            if self.force_join_type
+                            else JoinType.FULL,
                             concepts=[],
                         )
                     )
@@ -92,8 +103,10 @@ class MergeNode(StrategyNode):
                     BaseJoin(
                         left_datasource=base,
                         right_datasource=right_value,
-                        join_type=JoinType.LEFT_OUTER,
-                        concepts=all_concepts,
+                        join_type=self.force_join_type
+                        if self.force_join_type
+                        else JoinType.LEFT_OUTER,
+                        concepts=join_concepts,
                         filter_to_mutual=True,
                     )
                 )
