@@ -9,40 +9,71 @@ from preql.core.processing.concept_strategies_v2 import StrategyNode
 
 from preql.dialect.bigquery import BigqueryDialect
 
+from enum import Enum
+
+
+class PrintMode(Enum):
+    OFF = False
+    BASIC = True
+    FULL = 3
+
+
 renderer = BigqueryDialect()
 
 
-def print_recursive_resolved(input: Union[QueryDatasource, Datasource], depth: int = 0):
+def print_recursive_resolved(
+    input: Union[QueryDatasource, Datasource], mode: PrintMode, depth: int = 0
+):
+    extra = []
+    if isinstance(input, QueryDatasource):
+        if input.joins:
+            extra.append("join")
+        if input.condition:
+            extra.append("filter")
+    if input.group_required:
+        extra.append("group")
     display = [
         (
             "  " * depth,
-            input.full_name,
-            "->",
-            input.group_required,
+            input.__class__.__name__,
+            "<",
+            ",".join(extra),
+            ">",
+            # [c.address for c in input.input_concepts],
             "->",
             [c.address for c in input.output_concepts],
         )
     ]
     if isinstance(input, QueryDatasource):
         for child in input.datasources:
-            display += print_recursive_resolved(child, depth + 1)
+            display += print_recursive_resolved(child, mode=mode, depth=depth + 1)
     return display
 
 
-def print_recursive_nodes(input: StrategyNode, depth: int = 0):
+def print_recursive_nodes(input: StrategyNode, mode: PrintMode, depth: int = 0):
     resolved = input.resolve()
-    display = [
-        (
-            "  " * depth,
-            input,
-            "->",
-            resolved.grain,
-            "->",
-            [c.address for c in resolved.output_concepts],
-        )
-    ]
+    if mode == PrintMode.FULL:
+        display = [
+            (
+                "  " * depth,
+                input,
+                "->",
+                resolved.grain,
+                "->",
+                [c.address for c in resolved.output_concepts],
+            )
+        ]
+    elif mode == PrintMode.BASIC:
+        display = [
+            (
+                "  " * depth,
+                input,
+                "->",
+                resolved.grain,
+            )
+        ]
     for child in input.parents:
-        display += print_recursive_nodes(child, depth + 1)
+        display += print_recursive_nodes(child, mode=mode, depth=depth + 1)
     return display
 
 
@@ -65,18 +96,19 @@ class DebuggingHook(BaseHook):
         self,
         level=DEBUG,
         max_depth: int | None = None,
-        process_ctes: bool = True,
-        process_nodes: bool = True,
-        process_datasources: bool = True,
+        process_ctes: PrintMode | bool = True,
+        process_nodes: PrintMode | bool = True,
+        process_datasources: PrintMode | bool = True,
         process_other: bool = True,
     ):
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
         logger.setLevel(level)
+
         self.max_depth = max_depth
-        self.process_ctes = process_ctes
-        self.process_nodes = process_nodes
-        self.process_datasources = process_datasources
+        self.process_ctes = PrintMode(process_ctes)
+        self.process_nodes = PrintMode(process_nodes)
+        self.process_datasources = PrintMode(process_datasources)
         self.process_other = process_other
 
     def process_select_info(self, select: Select):
@@ -84,17 +116,17 @@ class DebuggingHook(BaseHook):
             print(f"grain: {str(select.grain)}")
 
     def process_root_datasource(self, datasource: QueryDatasource):
-        if self.process_datasources:
-            printed = print_recursive_resolved(datasource)
+        if self.process_datasources != PrintMode.OFF:
+            printed = print_recursive_resolved(datasource, self.process_datasources)
             for row in printed:
                 print("".join([str(v) for v in row]))
 
     def process_root_cte(self, cte: CTE):
-        if self.process_ctes:
+        if self.process_ctes != PrintMode.OFF:
             print_recursive_ctes(cte, max_depth=self.max_depth)
 
     def process_root_strategy_node(self, node: StrategyNode):
-        if self.process_nodes:
-            printed = print_recursive_nodes(node)
+        if self.process_nodes != PrintMode.OFF:
+            printed = print_recursive_nodes(node, mode=self.process_nodes)
             for row in printed:
                 print("".join([str(v) for v in row]))
