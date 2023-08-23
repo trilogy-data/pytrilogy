@@ -50,7 +50,9 @@ def print_recursive_resolved(
     return display
 
 
-def print_recursive_nodes(input: StrategyNode, mode: PrintMode, depth: int = 0):
+def print_recursive_nodes(
+    input: StrategyNode, mode: PrintMode = PrintMode.BASIC, depth: int = 0
+):
     resolved = input.resolve()
     if mode == PrintMode.FULL:
         display = [

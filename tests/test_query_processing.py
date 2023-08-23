@@ -1,7 +1,6 @@
 from preql.core.models import Select, QueryDatasource
 from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import process_query, get_query_datasources
-from preql.hooks.query_debugger import print_recursive_nodes, print_recursive_resolved
 
 
 def test_direct_select(test_environment, test_environment_graph):
@@ -72,14 +71,9 @@ def test_get_datasource_for_filter(test_environment, test_environment_graph):
         environment=test_environment,
         g=test_environment_graph,
     )
-    print_recursive_nodes(datasource)
     datasource = datasource.resolve()
-    print_recursive_resolved(datasource)
     assert isinstance(datasource, QueryDatasource)
     assert hi_rev_product in datasource.output_concepts
-    # assert set([datasource.name for datasource in datasource.datasources]) == {
-    #     "products"
-    # }
 
 
 def test_select_output(test_environment, test_environment_graph):
@@ -109,9 +103,7 @@ def test_basic_aggregate(test_environment, test_environment_graph):
         environment=test_environment,
         g=test_environment_graph,
     )
-    print_recursive_nodes(datasource)
     datasource = datasource.resolve()
-    print_recursive_resolved(datasource)
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
         "revenue_at_local_order_id"

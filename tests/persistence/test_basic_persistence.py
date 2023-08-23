@@ -1,8 +1,6 @@
 # from preql.compiler import compile
-from pytest import raises
-from preql.core.enums import DataType, Purpose
-from preql.core.exceptions import InvalidSyntaxException
-from preql.core.models import Select, Environment, Grain
+from preql.core.enums import Purpose
+from preql.core.models import Environment, Grain
 from preql.core.query_processor import process_auto
 from preql.dialect.base import BaseDialect
 from preql.dialect.bigquery import BigqueryDialect
