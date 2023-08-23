@@ -1,7 +1,7 @@
 from typing import List
 
 
-from preql.core.models import FilterItem, QueryDatasource, SourceType, Concept
+from preql.core.models import QueryDatasource, SourceType, Concept
 from preql.core.processing.nodes.base_node import StrategyNode
 
 
