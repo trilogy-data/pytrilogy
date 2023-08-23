@@ -214,6 +214,7 @@ def source_concepts(
                         ],
                         join_concepts=[immediate_parent],
                         force_join_type=JoinType.INNER,
+                        partial_concepts=[immediate_parent],
                     )
                 )
             elif concept.derivation == PurposeLineage.AGGREGATE:
@@ -280,9 +281,10 @@ def source_concepts(
 
         for node in stack:
             for concept in node.resolve().output_concepts:
-                found_addresses.append(concept.address)
-                found_concepts.add(concept)
-                found_map[str(node)].add(concept)
+                if concept not in node.partial_concepts:
+                    found_addresses.append(concept.address)
+                    found_concepts.add(concept)
+                    found_map[str(node)].add(concept)
         logger.info(
             f"{local_prefix}{LOGGER_PREFIX} finished a loop iteration looking for {[c.address for c in all_concepts]} from"
             f" {[n for n in stack]}, have {found_addresses}"
@@ -343,6 +345,6 @@ def source_query_concepts(
     g: Optional[ReferenceGraph] = None,
 ):
     if not output_concepts:
-        raise ValueError(f"NO output concepts provided {output_concepts}")
+        raise ValueError(f"No output concepts provided {output_concepts}")
     root = source_concepts(output_concepts, [], environment, g, depth=0)
     return GroupNode(output_concepts, [], environment, g, parents=[root])

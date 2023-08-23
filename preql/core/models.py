@@ -941,6 +941,7 @@ class QueryDatasource:
     )
     filter_concepts: List[Concept] = field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
+    partial_concepts: List[Concept] = field(default_factory=list)
 
     def __post_init__(self):
         self.input_concepts = unique(self.input_concepts, "address")

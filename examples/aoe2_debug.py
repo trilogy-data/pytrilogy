@@ -1,6 +1,6 @@
 from trilogy_public_models import models
 from preql import Executor, Dialects
-from preql.hooks.query_debugger import DebuggingHook
+from preql.hooks.query_debugger import DebuggingHook, PrintMode
 from preql.core.processing.concept_strategies_v2 import resolve_function_parent_concepts
 from preql.core.models import CTE, QueryDatasource, Grain
 from logging import INFO
@@ -13,9 +13,9 @@ executor = Dialects.BIGQUERY.default_executor(
         DebuggingHook(
             level=INFO,
             process_ctes=False,
-            process_nodes=True,
+            process_nodes=PrintMode.BASIC,
             process_other=False,
-            process_datasources=False,
+            process_datasources=PrintMode.BASIC,
         ),
     ],
 )

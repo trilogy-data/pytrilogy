@@ -99,6 +99,11 @@ class SelectNode(StrategyNode):
             parents=parents,
         )
 
+    def __repr__(self):
+        concepts = self.all_concepts
+        contents = ",".join([c.address for c in concepts])
+        return f"{self.__class__.__name__}<{contents}>"
+
     def resolve_direct_select(self):
         for datasource in self.environment.datasources.values():
             print_flag = False

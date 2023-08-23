@@ -28,6 +28,7 @@ class MergeNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
+        partial_concepts: Optional[List] = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -36,6 +37,7 @@ class MergeNode(StrategyNode):
             g,
             whole_grain=whole_grain,
             parents=parents,
+            partial_concepts=partial_concepts,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type

@@ -3,7 +3,6 @@ from typing import List
 
 from preql.core.models import FilterItem, QueryDatasource, SourceType, Concept
 from preql.core.processing.nodes.base_node import StrategyNode
-from preql.core.processing.nodes.merge_node import MergeNode
 
 
 class FilterNode(StrategyNode):
@@ -30,9 +29,7 @@ class FilterNode(StrategyNode):
     def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
-        filtered_concepts: List[Concept] = [
-            c for c in self.mandatory_concepts if isinstance(c.lineage, FilterItem)
-        ]
+        [c for c in self.mandatory_concepts if isinstance(c.lineage, FilterItem)]
         # to_remove = [c.lineage.content.address for c in filtered_concepts]
         to_remove = []
         base.output_concepts = [
