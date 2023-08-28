@@ -58,7 +58,7 @@ from preql.core.models import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
-    RawColumnExpr
+    RawColumnExpr,
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
@@ -716,7 +716,7 @@ class ParseToObjects(Transformer):
 
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[0][3:-3])
-    
+
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
