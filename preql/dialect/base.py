@@ -24,6 +24,7 @@ from preql.core.models import (
     Select,
     Persist,
     Environment,
+    RawColumnExpr,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -267,6 +268,7 @@ class BaseDialect:
                 if isinstance(sub_c, Concept) and sub_c not in cte.source_map
             ]
             rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+
         else:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address"
@@ -277,7 +279,11 @@ class BaseDialect:
                     f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from"
                     f" {cte.name}, have {cte.source_map.keys()} only"
                 )
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(cte.get_alias(c), self.QUOTE_CHARACTER)}"
+            raw_content = cte.get_alias(c)
+            if isinstance(raw_content, RawColumnExpr):
+                rval = raw_content.text
+            else:
+                rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(raw_content, self.QUOTE_CHARACTER)}"
 
         if alias:
             return (
@@ -342,7 +348,7 @@ class BaseDialect:
             return self.render_expr(e.function, cte, cte_map=cte_map)
         elif isinstance(e, Concept):
             if cte:
-                return self.render_concept_sql(e, cte, False)
+                return self.render_concept_sql(e, cte, alias=False)
                 # return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
             elif cte_map:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"

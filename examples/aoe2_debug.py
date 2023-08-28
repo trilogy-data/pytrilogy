@@ -31,13 +31,15 @@ select games_with_longbows;
 
 key unit_creations_in_longbow_games <- filter unit_creations.id where matches.id = games_with_longbows;
 
+metric creations_per_longbow_game <- count(unit_creations_in_longbow_games) by matches.id;
+metric creations_per_game <- count(unit_creations.id) by matches.id;
+
 
 select 
     units.name, 
-    unit_creations.id.count,
-    unit_creations_in_longbow_games.count,
-    (unit_creations.id.count - unit_creations_in_longbow_games.count) / unit_creations.id.count  -> percent_longbow_vs_all
-order by unit_creations_in_longbow_games.count desc;
+    avg(creations_per_game) -> normal_avg
+order by 
+    unit_creations_in_longbow_games.count desc;
 """
 
 # executor.parse_text(text)

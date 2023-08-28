@@ -58,6 +58,7 @@ from preql.core.models import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
+    RawColumnExpr
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
@@ -98,7 +99,9 @@ grammar = r"""
     
     concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" )
     
-    column_assignment: (IDENTIFIER ":" concept_assignment) 
+    column_assignment: ((IDENTIFIER | raw_column_assignment ) ":" concept_assignment) 
+
+    raw_column_assignment: "raw" "(" MULTILINE_STRING ")"
     
     column_assignment_list : (column_assignment "," )* column_assignment ","?
     
@@ -711,6 +714,9 @@ class ParseToObjects(Transformer):
         #            namespace=self.environment.namespace,
         return Grain(components=[self.environment.concepts[a] for a in args[0]])
 
+    def raw_column_assignment(self, args):
+        return RawColumnExpr(text=args[0][3:-3])
+    
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
