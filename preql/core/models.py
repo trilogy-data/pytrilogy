@@ -974,7 +974,7 @@ class QueryDatasource:
     @property
     def group_required(self) -> bool:
         if self.source_type:
-            if self.source_type == SourceType.GROUP:
+            if self.source_type in [SourceType.GROUP, SourceType.FILTER]:
                 return True
             return False
         return (
@@ -1261,6 +1261,9 @@ class Import(BaseModel):
     # TODO: this might result in a lot of duplication
     # environment:"Environment"
 
+@dataclass
+class EnvironmentOptions:
+    allow_duplicate_declaration: bool = True
 
 @dataclass
 class Environment:
@@ -1271,29 +1274,33 @@ class Environment:
     imports: Dict[str, Import] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
+    environment_config:EnvironmentOptions = field(default_factory=EnvironmentOptions)
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
-        existing = self.concepts.get(lookup)
-        if existing and existing.metadata:
+        existing:Concept = self.concepts.get(lookup)
+        if not existing:
+            return
+        elif existing and self.environment_config.allow_duplicate_declaration:
+            return
+        elif existing.metadata:
             # if the existing concept is auto derived, we can overwrite it
             if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
                 return
-        if existing and meta and existing.metadata:
+        elif meta and existing.metadata:
             raise ValueError(
                 f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
                 f" declaration; '{lookup}' was originally defined on line"
                 f" {existing.metadata.line_number}"
             )
-        elif existing and existing.metadata:
+        elif existing.metadata:
             raise ValueError(
                 f"Assignment to concept '{lookup}'  is a duplicate declaration;"
                 f" '{lookup}' was originally defined on line"
                 f" {existing.metadata.line_number}"
             )
-        elif existing:
-            raise ValueError(
-                f"Assignment to concept '{lookup}'  is a duplicate declaration;"
-            )
+        raise ValueError(
+            f"Assignment to concept '{lookup}'  is a duplicate declaration;"
+        )
 
     def parse(self, input: str):
         from preql import parse
@@ -1382,6 +1389,12 @@ class Comparison(BaseModel):
 
     class Config:
         smart_union = True
+
+    def __post_init__(self):
+        if arg_to_datatype(self.left) != arg_to_datatype(self.right):
+            raise ValueError(
+                f"Cannot compare {self.left} and {self.right} of different types"
+            )
 
     def __add__(self, other):
         if not isinstance(other, (Comparison, Conditional, Parenthetical)):
@@ -1692,3 +1705,24 @@ WhereClause.update_forward_refs()
 Import.update_forward_refs
 CaseWhen.update_forward_refs()
 CaseElse.update_forward_refs()
+
+
+def arg_to_datatype(arg) -> DataType:
+    if isinstance(arg, Function):
+        return arg.output_datatype
+    elif isinstance(arg, Concept):
+        return arg.datatype
+    elif isinstance(arg, bool):
+        return DataType.BOOL
+    elif isinstance(arg, int):
+        return DataType.INTEGER
+    elif isinstance(arg, str):
+        return DataType.STRING
+    elif isinstance(arg, float):
+        return DataType.FLOAT
+    elif isinstance(arg, AggregateWrapper):
+        return arg.function.output_datatype
+    elif isinstance(arg, Parenthetical):
+        return arg_to_datatype(arg.content)
+    else:
+        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")

@@ -59,10 +59,11 @@ from preql.core.models import (
     WindowItemOrder,
     WindowItemOver,
     RawColumnExpr,
+    arg_to_datatype
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
-
+from preql.parsing.config import ParseConfig
 
 grammar = r"""
     !start: ( block | show |comment )*
@@ -293,25 +294,6 @@ def parse_concept_reference(
     return lookup, namespace, name, parent
 
 
-def arg_to_datatype(arg) -> DataType:
-    if isinstance(arg, Function):
-        return arg.output_datatype
-    elif isinstance(arg, Concept):
-        return arg.datatype
-    elif isinstance(arg, bool):
-        return DataType.BOOL
-    elif isinstance(arg, int):
-        return DataType.INTEGER
-    elif isinstance(arg, str):
-        return DataType.STRING
-    elif isinstance(arg, float):
-        return DataType.FLOAT
-    elif isinstance(arg, AggregateWrapper):
-        return arg.function.output_datatype
-    elif isinstance(arg, Parenthetical):
-        return arg_to_datatype(arg.content)
-    else:
-        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
 
 
 def unwrap_transformation(
@@ -427,14 +409,6 @@ class ParseToObjects(Transformer):
                 final.append(arg)
         return final
 
-    def validate_concept(self, lookup: str, meta: Meta):
-        existing = self.environment.concepts.get(lookup)
-        if existing:
-            raise ParseError(
-                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
-                f" declaration; '{lookup}' was originally defined on line"
-                f" {existing.metadata.line_number}"
-            )
 
     def start(self, args):
         return args
