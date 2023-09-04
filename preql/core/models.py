@@ -254,9 +254,14 @@ class Concept(BaseModel):
         return PurposeLineage.BASIC
 
 
+@dataclass
+class RawColumnExpr:
+    text: str
+
+
 @dataclass(eq=True)
 class ColumnAssignment:
-    alias: str
+    alias: str | RawColumnExpr
     concept: Concept
     modifiers: List[Modifier] = field(default_factory=list)
 
@@ -825,7 +830,7 @@ class Datasource(BaseModel):
 
     def get_alias(
         self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
-    ) -> Optional[str]:
+    ) -> Optional[str | RawColumnExpr]:
         # 2022-01-22
         # this logic needs to be refined.
         # if concept.lineage:

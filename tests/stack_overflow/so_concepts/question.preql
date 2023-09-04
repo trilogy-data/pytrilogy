@@ -6,6 +6,7 @@ property id.text string;
 property id.creation_date timestamp;
 property length <- len(text);
 property id.comment_count int;
+property id.constant string;
 
 
 metric count <- count( id);
@@ -16,6 +17,7 @@ key top_ids <- filter id where total_comment_count >50;
 
 
 datasource posts (
+    raw('''abc'''):constant,
     owner_user_id: Partial[user.id],
     id: id,
     body: text,
