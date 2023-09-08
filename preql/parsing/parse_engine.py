@@ -59,11 +59,10 @@ from preql.core.models import (
     WindowItemOrder,
     WindowItemOver,
     RawColumnExpr,
-    arg_to_datatype
+    arg_to_datatype,
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
-from preql.parsing.config import ParseConfig
 
 grammar = r"""
     !start: ( block | show |comment )*
@@ -294,8 +293,6 @@ def parse_concept_reference(
     return lookup, namespace, name, parent
 
 
-
-
 def unwrap_transformation(
     input: Union[Function, AggregateWrapper, int, str, float, bool]
 ) -> Function:
@@ -408,7 +405,6 @@ class ParseToObjects(Transformer):
             else:
                 final.append(arg)
         return final
-
 
     def start(self, args):
         return args

@@ -8,11 +8,12 @@ from preql.core.processing.nodes.base_node import StrategyNode
 class FilterNode(StrategyNode):
     """Filter nodes represent a restriction operation
     on a concept that creates a new derived concept.
-    
+
     They should only output a concept and it's filtered
     version, but will have parents that provide all required
     filtering keys as inputs.
     """
+
     source_type = SourceType.FILTER
 
     def __init__(

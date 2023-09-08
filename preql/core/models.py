@@ -1258,12 +1258,15 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
 class Import(BaseModel):
     alias: str
     path: str
+    # environment: "Environment" | None = None
     # TODO: this might result in a lot of duplication
     # environment:"Environment"
+
 
 @dataclass
 class EnvironmentOptions:
     allow_duplicate_declaration: bool = True
+
 
 @dataclass
 class Environment:
@@ -1274,10 +1277,10 @@ class Environment:
     imports: Dict[str, Import] = field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str = field(default_factory=lambda: os.getcwd())
-    environment_config:EnvironmentOptions = field(default_factory=EnvironmentOptions)
+    environment_config: EnvironmentOptions = field(default_factory=EnvironmentOptions)
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
-        existing:Concept = self.concepts.get(lookup)
+        existing: Concept = self.concepts.get(lookup) #type: ignore
         if not existing:
             return
         elif existing and self.environment_config.allow_duplicate_declaration:
@@ -1302,9 +1305,17 @@ class Environment:
             f"Assignment to concept '{lookup}'  is a duplicate declaration;"
         )
 
-    def parse(self, input: str):
+    def parse(self, input: str, namespace: str | None = None):
         from preql import parse
 
+        if namespace:
+            new = Environment(namespace=namespace)
+            new.parse(input)
+            for key, concept in new.concepts.items():
+                self.concepts[f"{namespace}.{key}"] = concept
+            for key, datasource in new.datasources.items():
+                self.datasources[f"{namespace}.{key}"] = datasource
+            return self
         parse(input, self)
         return self
 
