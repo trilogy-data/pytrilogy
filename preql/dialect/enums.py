@@ -10,6 +10,8 @@ class Dialects(Enum):
     BIGQUERY = "bigquery"
     SQL_SERVER = "sql_server"
     DUCK_DB = "duck_db"
+    PRESTO = "presto"
+    TRINO = "trino"
 
     def default_engine(self):
         if self == Dialects.BIGQUERY:
@@ -32,7 +34,9 @@ class Dialects(Enum):
 
             return create_engine(r"duckdb:///:memory:", future=True)
         else:
-            raise ValueError(f"Unsupported dialect {self}")
+            raise ValueError(
+                f"Unsupported dialect {self} for default engine creation; create one explicitly."
+            )
 
     def default_executor(
         self, environment: "Environment", hooks: List["BaseHook"] | None = None

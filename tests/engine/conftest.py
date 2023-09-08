@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
 from preql import Executor, Dialects, parse, Environment
+from preql.engine import CustomEngine
 
 ENV_PATH = abspath(__file__)
 
@@ -74,3 +75,22 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
 @fixture(scope="session")
 def expected_results():
     yield {"total_count": 5, "avg_count_per_product": 2.5, "converted_total_count": 10}
+
+
+@fixture(scope="session")
+def presto_model(environment):
+    text = """
+const pi <-3.14;
+"""
+    environment, statements = parse(text, environment=environment)
+    yield environment
+
+
+@fixture(scope="session")
+def presto_engine(presto_model) -> Generator[Executor, None, None]:
+    engine = CustomEngine()
+
+    executor = Executor(
+        dialect=Dialects.DUCK_DB, engine=engine, environment=presto_model
+    )
+    yield executor

@@ -1280,7 +1280,7 @@ class Environment:
     environment_config: EnvironmentOptions = field(default_factory=EnvironmentOptions)
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
-        existing: Concept = self.concepts.get(lookup) #type: ignore
+        existing: Concept = self.concepts.get(lookup)  # type: ignore
         if not existing:
             return
         elif existing and self.environment_config.allow_duplicate_declaration:
