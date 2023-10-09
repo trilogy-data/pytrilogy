@@ -1,5 +1,5 @@
 from sqlalchemy.engine import Engine, Connection, CursorResult
-from typing import Protocol
+from typing import Protocol, Any
 
 
 class EngineResult(Protocol):
@@ -12,7 +12,7 @@ class EngineResult(Protocol):
 class EngineConnection(Protocol):
     pass
 
-    def execute(self, query: str) -> EngineResult:
+    def execute(self, statement: str) -> EngineResult:
         pass
 
 
@@ -40,8 +40,8 @@ class SqlAlchemyConnection(EngineConnection):
     def __init__(self, connection: Connection):
         self.connection = connection
 
-    def execute(self) -> SqlAlchemyResult:
-        return SqlAlchemyResult(self.connection.execute())
+    def execute(self, statement: str) -> SqlAlchemyResult:
+        return SqlAlchemyResult(self.connection.execute(statement))
 
 
 class SqlAlchemyEngine(ExecutionEngine):
