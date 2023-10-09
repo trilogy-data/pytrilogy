@@ -34,7 +34,9 @@ class Dialects(Enum):
 
             return create_engine(r"duckdb:///:memory:", future=True)
         else:
-            raise ValueError(f"Unsupported dialect {self} for default engine creation; create one explicitly.")
+            raise ValueError(
+                f"Unsupported dialect {self} for default engine creation; create one explicitly."
+            )
 
     def default_executor(
         self, environment: "Environment", hooks: List["BaseHook"] | None = None

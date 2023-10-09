@@ -78,6 +78,5 @@ class PrestoDialect(BaseDialect):
     SQL_TEMPLATE = SQL_TEMPLATE
 
 
-
 class TrinoDialect(PrestoDialect):
     pass
