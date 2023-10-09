@@ -38,6 +38,15 @@ class Executor(object):
             from preql.dialect.duckdb import DuckDBDialect
 
             self.generator = DuckDBDialect()
+        elif self.dialect == Dialects.PRESTO:
+            from preql.dialect.presto import PrestoDialect
+
+            self.generator = PrestoDialect()
+        elif self.dialect == Dialects.TRINO:
+            from preql.dialect.presto import TrinoDialect
+
+            self.generator = TrinoDialect()
+
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
         self.connection = self.engine.connect()
