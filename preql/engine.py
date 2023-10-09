@@ -1,5 +1,5 @@
 from sqlalchemy.engine import Engine, Connection, CursorResult
-from typing import Protocol, Any
+from typing import Protocol
 
 
 class EngineResult(Protocol):
