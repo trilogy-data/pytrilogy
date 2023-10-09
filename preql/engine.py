@@ -40,7 +40,7 @@ class SqlAlchemyConnection(EngineConnection):
     def __init__(self, connection: Connection):
         self.connection = connection
 
-    def execute(self):
+    def execute(self) -> SqlAlchemyResult:
         return SqlAlchemyResult(self.connection.execute())
 
 
@@ -48,5 +48,5 @@ class SqlAlchemyEngine(ExecutionEngine):
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def connect(self) -> Connection:
+    def connect(self) -> SqlAlchemyConnection:
         return SqlAlchemyConnection(self.engine.connect())
