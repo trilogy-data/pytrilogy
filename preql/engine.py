@@ -12,7 +12,7 @@ class EngineResult(Protocol):
 class EngineConnection(Protocol):
     pass
 
-    def execute(self, query: str) -> EngineResult:
+    def execute(self, statement: str) -> EngineResult:
         pass
 
 
@@ -40,13 +40,13 @@ class SqlAlchemyConnection(EngineConnection):
     def __init__(self, connection: Connection):
         self.connection = connection
 
-    def execute(self):
-        return SqlAlchemyResult(self.connection.execute())
+    def execute(self, statement: str) -> SqlAlchemyResult:
+        return SqlAlchemyResult(self.connection.execute(statement))
 
 
 class SqlAlchemyEngine(ExecutionEngine):
     def __init__(self, engine: Engine):
         self.engine = engine
 
-    def connect(self) -> Connection:
+    def connect(self) -> SqlAlchemyConnection:
         return SqlAlchemyConnection(self.engine.connect())
