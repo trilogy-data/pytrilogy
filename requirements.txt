@@ -1,6 +1,6 @@
 lark
 jinja2
-sqlalchemy
+sqlalchemy<2.0.0
 networkx
 pyodbc
 pydantic<2.0.0
