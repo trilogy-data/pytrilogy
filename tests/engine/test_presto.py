@@ -1,4 +1,3 @@
-from datetime import datetime
 
 
 def test_render_query(presto_engine):
