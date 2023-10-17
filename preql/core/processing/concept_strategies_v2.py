@@ -81,7 +81,7 @@ def source_concepts(
     g = g or generate_graph(environment)
     local_prefix = "\t" * depth
     stack: List[StrategyNode] = []
-    all_concepts = unique(mandatory_concepts + optional_concepts, "address")
+    all_concepts:List[Concept] = unique(mandatory_concepts + optional_concepts, "address")
     if not all_concepts:
         raise SyntaxError(
             f"Cannot source empty concept inputs, had {mandatory_concepts} and {optional_concepts}"
@@ -95,6 +95,7 @@ def source_concepts(
     # attempt to find a direct match
     # such as a materialized aggregate or cache
     try:
+
         test = SelectNode(
             mandatory_concepts + optional_concepts,
             [],
@@ -106,7 +107,7 @@ def source_concepts(
         resolved = test.resolve_direct_select()
         if resolved:
             logger.info(
-                f"{local_prefix}{LOGGER_PREFIX} found direct select node with all concepts, returning static selection"
+                f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {len(mandatory_concepts+optional_concepts)} concepts, returning static selection"
             )
             return StaticSelectNode(
                 mandatory_concepts + optional_concepts,
@@ -117,7 +118,7 @@ def source_concepts(
             )
     except Exception as e:
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} could not find constant source, {str(e)}"
+            f"{local_prefix}{LOGGER_PREFIX} error with finding constant source: {str(e)}"
         )
         pass
     # early exit when we have found all concepts
@@ -254,7 +255,7 @@ def source_concepts(
                 parent_concepts = resolve_function_parent_concepts(concept)
                 if not parent_concepts:
                     raise ValueError(
-                        f"concept {concept} has basic lineage {concept.derivation} {type(concept.lineage)} but no parnets!"
+                        f"concept {concept} has basic lineage {concept.derivation} {type(concept.lineage)} but no parents!"
                     )
                 stack.append(
                     SelectNode(

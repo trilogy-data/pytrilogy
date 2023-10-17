@@ -29,6 +29,8 @@ class MergeNode(StrategyNode):
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
         partial_concepts: Optional[List] = None,
+        depth:Optional[int] = 0
+    
     ):
         super().__init__(
             mandatory_concepts,
@@ -38,11 +40,13 @@ class MergeNode(StrategyNode):
             whole_grain=whole_grain,
             parents=parents,
             partial_concepts=partial_concepts,
+            depth=depth
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
 
     def _resolve(self):
+        local_prefix = '\t'*self.depth
         parent_sources = [p.resolve() for p in self.parents]
         merged = {}
         for source in parent_sources:
@@ -58,7 +62,7 @@ class MergeNode(StrategyNode):
                 [c.address for c in self.all_concepts]
             ):
                 logger.info(
-                    f"{LOGGER_PREFIX} Merge node has only one parent with the same"
+                    f"{local_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
                     " outputs as this merge node, dropping merge node "
                 )
                 return final

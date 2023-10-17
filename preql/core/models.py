@@ -646,12 +646,6 @@ class Select:
         return Grain(components=unique(output, "address"))
 
 
-@dataclass(eq=True)
-class Persist:
-    identifier: str
-    address: str
-    select: Select
-
 
 @dataclass(eq=True, frozen=True)
 class Address:
@@ -1240,6 +1234,7 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
     def __getitem__(self, key, line_no: int | None = None) -> Concept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
+        
         except KeyError:
             matches = self._find_similar_concepts(key)
             message = f"undefined concept: {key}."
@@ -1623,7 +1618,7 @@ class ProcessedQuery:
 @dataclass
 class ProcessedQueryMixin:
     output_to: MaterializedDataset
-
+    datasource: Datasource
     # base:Dataset
 
 
@@ -1737,3 +1732,17 @@ def arg_to_datatype(arg) -> DataType:
         return arg_to_datatype(arg.content)
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+
+
+@dataclass(eq=True)
+class Persist:
+    datasource: Datasource
+    select: Select
+
+    @property
+    def identifier(self):
+        return self.datasource.identifier
+    
+    @property
+    def address(self):
+        return self.datasource.address

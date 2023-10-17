@@ -16,8 +16,15 @@ FUNCTION_MAP = {
         f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
     ),
     FunctionType.CONCAT: lambda args: (
-        f"CONCAT({','.join([f''' '{a}' ''' for a in args])})"
+        f"CONCAT({','.join([f''' {str(a)} ''' for a in args])})"
     ),
+    FunctionType.SPLIT: lambda args: (
+        f"STRING_SPLIT({','.join([f''' {str(a)} ''' for a in args])})"
+    ),
+    ## Duckdb indexes from 1, not 0
+    FunctionType.INDEX_ACCESS:lambda args: (
+        f"{args[0]}[{args[1]}]"
+    )
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
@@ -31,7 +38,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
 
 DUCKDB_TEMPLATE = Template(
     """{%- if output %}
-CREATE OR REPLACE TABLE {{ output.address }} AS
+CREATE OR REPLACE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}

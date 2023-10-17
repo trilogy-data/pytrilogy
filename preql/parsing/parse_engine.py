@@ -26,7 +26,7 @@ from preql.core.enums import (
     WindowType,
 )
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
-from preql.core.functions import Count, CountDistinct, Max, Min
+from preql.core.functions import Count, CountDistinct, Max, Min, Split, IndexAccess
 from preql.core.models import (
     Address,
     AggregateWrapper,
@@ -110,7 +110,7 @@ grammar = r"""
     import_statement: "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
 
     // persist_statement
-    persist: "persist"i IDENTIFIER "into"i IDENTIFIER select
+    persist: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select grain_clause?
 
     // select statement
     select: "select"i select_list  where? comment* order_by? comment* limit? comment*
@@ -167,12 +167,15 @@ grammar = r"""
     comparison: expr COMPARISON_OPERATOR expr
     
     expr_tuple: "("  (expr ",")* expr ","?  ")"
+
+    //indexing into an expression is a function
+    index_access: expr "[" int_lit "]"
     
     in_comparison: expr "in" expr_tuple
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fcast | fcase | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference | parenthetical
+    expr: window_item | filter_item | fcast | fcase | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference | index_access | parenthetical
     
     // functions
     
@@ -198,8 +201,9 @@ grammar = r"""
     ilike: "ilike"i "(" expr "," _string_lit ")"
     upper: "upper"i "(" expr ")"
     lower: "lower"i "(" expr ")"    
+    fsplit: "split"i "(" expr "," _string_lit ")"
     
-    _string_functions: like | ilike | upper | lower
+    _string_functions: like | ilike | upper | lower | fsplit
     
     //aggregates
     count: "count"i "(" expr ")"
@@ -828,8 +832,24 @@ class ParseToObjects(Transformer):
         identifier: str = args[0]
         address: str = args[1]
         select: Select = args[2]
+        if len(args)>3:
+            grain: Grain = args[3]
+        else:
+            grain = None
+        columns = [ColumnAssignment(alias=c.name, concept=c) for c in select.output_components]
+        new_datasource = Datasource(
+            identifier = identifier,
+            address=address,
+            grain = grain or select.grain,
+            columns = columns,
+            namespace = self.environment.namespace
 
-        return Persist(identifier, address, select)
+        )
+        for column in columns:
+            column.concept = column.concept.with_grain(new_datasource.grain)
+        # self.environment.add_datasource(new_datasource)
+        return Persist(select=select, datasource=new_datasource
+                       )
 
     @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:
@@ -972,6 +992,11 @@ class ParseToObjects(Transformer):
         return AggregateWrapper(function=args[0])
 
     @v_args(meta=True)
+    def index_access(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return IndexAccess(args)
+
+    @v_args(meta=True)
     def count(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Count(args)
@@ -1030,6 +1055,11 @@ class ParseToObjects(Transformer):
             # output_grain=args[0].grain,
         )
 
+    @v_args(meta=True)
+    def fsplit(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Split(args)
+    
     @v_args(meta=True)
     def concat(self, meta, args):
         args = self.process_function_args(args, meta=meta)

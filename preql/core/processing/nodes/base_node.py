@@ -54,6 +54,7 @@ class StrategyNode:
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         partial_concepts: List[Concept] | None = None,
+        depth:Optional[int] = 0
     ):
         self.mandatory_concepts = mandatory_concepts
         self.optional_concepts = deepcopy(optional_concepts)
@@ -63,9 +64,10 @@ class StrategyNode:
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
         self.partial_concepts = partial_concepts or []
+        self.depth = depth
 
     @property
-    def all_concepts(self):
+    def all_concepts(self)->list[Concept]:
         return unique(
             deepcopy(self.mandatory_concepts + self.optional_concepts), "address"
         )

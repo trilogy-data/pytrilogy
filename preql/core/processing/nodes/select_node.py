@@ -82,9 +82,6 @@ class SelectNode(StrategyNode):
 
     def resolve_direct_select(self):
         for datasource in self.environment.datasources.values():
-            print_flag = False
-            if datasource.address.location == "bool_is_upper_name":
-                print_flag = True
             all_found = True
             for raw_concept in self.all_concepts:
                 if not raw_concept.grain.components:
@@ -100,11 +97,7 @@ class SelectNode(StrategyNode):
 
                 except nx.exception.NetworkXNoPath:
                     all_found = False
-                    if print_flag:
-                        print(f"no path to {concept_to_node(raw_concept)}")
                     break
-                if print_flag:
-                    print(path)
                 # if it's not a two node hop, not a direct select
                 if len(path) != 2:
                     all_found = False

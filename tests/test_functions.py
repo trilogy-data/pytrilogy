@@ -179,3 +179,17 @@ def test_case_function(test_environment):
         assert "ELSE" in compiled
         assert "END" in compiled
         assert test_environment.concepts["test_upper_case"].datatype == DataType.BOOL
+
+def test_split_and_index_function(test_environment):
+    declarations = """
+    constant test_string <- 'abc_def';
+
+    
+    select
+        split(test_string, '_')->split_string,
+        split(test_string, '_')[0] -> first_element,
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(process_query(test_environment, select))

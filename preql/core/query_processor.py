@@ -198,23 +198,11 @@ def process_persist(
         environment=environment, statement=statement.select, hooks=hooks
     )
 
-    # add in this datasource now that it has been created
-    columns = [ColumnAssignment(alias=c.name, concept=c) for c in select.output_columns]
-    datasource = Datasource(
-        identifier=statement.identifier,
-        columns=columns,
-        grain=select.grain,  # type: ignore
-        address=statement.address,
-        namespace=environment.namespace,
-    )
-    for column in columns:
-        column.concept = column.concept.with_grain(datasource.grain)
-    environment.datasources[datasource.identifier] = datasource
-
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
     return ProcessedQueryPersist(
-        **arg_dict, output_to=MaterializedDataset(address=statement.address)
+        **arg_dict, output_to=MaterializedDataset(address=statement.address),
+        datasource = statement.datasource
     )
 
 
