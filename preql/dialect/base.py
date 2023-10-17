@@ -79,10 +79,8 @@ FUNCTION_MAP = {
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
     FunctionType.CASE: lambda x: render_case(x),
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
-
-    #complex
+    # complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
-
     # math
     FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
     FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",

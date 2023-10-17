@@ -646,7 +646,6 @@ class Select:
         return Grain(components=unique(output, "address"))
 
 
-
 @dataclass(eq=True, frozen=True)
 class Address:
     location: str
@@ -1234,7 +1233,7 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
     def __getitem__(self, key, line_no: int | None = None) -> Concept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
-        
+
         except KeyError:
             matches = self._find_similar_concepts(key)
             message = f"undefined concept: {key}."
@@ -1742,7 +1741,7 @@ class Persist:
     @property
     def identifier(self):
         return self.datasource.identifier
-    
+
     @property
     def address(self):
         return self.datasource.address

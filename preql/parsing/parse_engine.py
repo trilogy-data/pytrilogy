@@ -832,24 +832,24 @@ class ParseToObjects(Transformer):
         identifier: str = args[0]
         address: str = args[1]
         select: Select = args[2]
-        if len(args)>3:
-            grain: Grain = args[3]
+        if len(args) > 3:
+            grain: Grain | None = args[3]
         else:
             grain = None
-        columns = [ColumnAssignment(alias=c.name, concept=c) for c in select.output_components]
+        columns = [
+            ColumnAssignment(alias=c.name, concept=c) for c in select.output_components
+        ]
         new_datasource = Datasource(
-            identifier = identifier,
+            identifier=identifier,
             address=address,
-            grain = grain or select.grain,
-            columns = columns,
-            namespace = self.environment.namespace
-
+            grain=grain or select.grain,
+            columns=columns,
+            namespace=self.environment.namespace,
         )
         for column in columns:
             column.concept = column.concept.with_grain(new_datasource.grain)
         # self.environment.add_datasource(new_datasource)
-        return Persist(select=select, datasource=new_datasource
-                       )
+        return Persist(select=select, datasource=new_datasource)
 
     @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:
@@ -1059,7 +1059,7 @@ class ParseToObjects(Transformer):
     def fsplit(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Split(args)
-    
+
     @v_args(meta=True)
     def concat(self, meta, args):
         args = self.process_function_args(args, meta=meta)

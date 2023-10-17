@@ -53,9 +53,11 @@ class DataType(Enum):
     # GRANULAR
     UNIX_SECONDS = "unix_seconds"
 
+
 @dataclass
 class ArrayType:
     type: Union["ArrayType", "MapType", DataType]
+
 
 @dataclass
 class MapType:

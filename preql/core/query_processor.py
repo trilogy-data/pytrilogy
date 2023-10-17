@@ -18,7 +18,6 @@ from preql.core.models import (
     QueryDatasource,
     Datasource,
     BaseJoin,
-    ColumnAssignment,
 )
 
 from preql.utility import string_to_hash, unique
@@ -201,8 +200,9 @@ def process_persist(
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
     return ProcessedQueryPersist(
-        **arg_dict, output_to=MaterializedDataset(address=statement.address),
-        datasource = statement.datasource
+        **arg_dict,
+        output_to=MaterializedDataset(address=statement.address),
+        datasource=statement.datasource,
     )
 
 

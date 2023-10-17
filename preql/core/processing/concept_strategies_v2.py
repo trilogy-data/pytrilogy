@@ -81,7 +81,9 @@ def source_concepts(
     g = g or generate_graph(environment)
     local_prefix = "\t" * depth
     stack: List[StrategyNode] = []
-    all_concepts:List[Concept] = unique(mandatory_concepts + optional_concepts, "address")
+    all_concepts: List[Concept] = unique(
+        mandatory_concepts + optional_concepts, "address"
+    )
     if not all_concepts:
         raise SyntaxError(
             f"Cannot source empty concept inputs, had {mandatory_concepts} and {optional_concepts}"
@@ -95,7 +97,6 @@ def source_concepts(
     # attempt to find a direct match
     # such as a materialized aggregate or cache
     try:
-
         test = SelectNode(
             mandatory_concepts + optional_concepts,
             [],

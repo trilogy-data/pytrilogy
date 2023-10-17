@@ -22,9 +22,7 @@ FUNCTION_MAP = {
         f"STRING_SPLIT({','.join([f''' {str(a)} ''' for a in args])})"
     ),
     ## Duckdb indexes from 1, not 0
-    FunctionType.INDEX_ACCESS:lambda args: (
-        f"{args[0]}[{args[1]}]"
-    )
+    FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate

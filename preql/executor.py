@@ -78,7 +78,7 @@ class Executor(object):
         )
         return sql
 
-    def execute_raw_sql(self, command:str) -> CursorResult:
+    def execute_raw_sql(self, command: str) -> CursorResult:
         """Run a command against the raw underlying
         execution engine."""
         return self.connection.execute(text(command))
@@ -93,6 +93,6 @@ class Executor(object):
             logger.debug(compiled_sql)
             output.append(self.connection.execute(text(compiled_sql)))
             # generalize post-run success hooks
-            if isinstance(statement,  ProcessedQueryPersist):
+            if isinstance(statement, ProcessedQueryPersist):
                 self.environment.add_datasource(statement.datasource)
         return output
