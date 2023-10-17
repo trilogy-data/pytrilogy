@@ -1,4 +1,6 @@
 from enum import Enum
+from dataclasses import dataclass
+from typing import Union
 
 InfiniteFunctionArgs = -1
 
@@ -52,6 +54,17 @@ class DataType(Enum):
     UNIX_SECONDS = "unix_seconds"
 
 
+@dataclass
+class ArrayType:
+    type: Union["ArrayType", "MapType", DataType]
+
+
+@dataclass
+class MapType:
+    key_type: DataType
+    content_type: Union["ArrayType", DataType]
+
+
 class JoinType(Enum):
     INNER = "inner"
     LEFT_OUTER = "left outer"
@@ -83,6 +96,12 @@ class FunctionType(Enum):
     CAST = "cast"
     CONCAT = "concat"
     CONSTANT = "constant"
+
+    # COMPLEX
+    INDEX_ACCESS = "index_access"
+
+    # TEXT AND MAYBE MORE
+    SPLIT = "split"
 
     # Math
     DIVIDE = "divide"

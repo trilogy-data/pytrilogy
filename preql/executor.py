@@ -52,12 +52,14 @@ class Executor(object):
         self.connection = self.engine.connect()
 
     def execute_query(self, query: ProcessedQuery) -> CursorResult:
+        """Run parsed preql query"""
         sql = self.generator.compile_statement(query)
         # connection = self.engine.connect()
         output = self.connection.execute(text(sql))
         return output
 
     def generate_sql(self, command: str) -> List[str]:
+        """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
         sql = self.generator.generate_queries(
             self.environment, parsed, hooks=self.hooks
@@ -69,13 +71,20 @@ class Executor(object):
         return output
 
     def parse_text(self, command: str) -> List[ProcessedQuery | ProcessedQueryPersist]:
+        """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
         sql = self.generator.generate_queries(
             self.environment, parsed, hooks=self.hooks
         )
         return sql
 
+    def execute_raw_sql(self, command: str) -> CursorResult:
+        """Run a command against the raw underlying
+        execution engine."""
+        return self.connection.execute(text(command))
+
     def execute_text(self, command: str) -> List[CursorResult]:
+        """Run a preql text command"""
         sql = self.parse_text(command)
         output = []
         # connection = self.engine.connect()
@@ -83,4 +92,7 @@ class Executor(object):
             compiled_sql = self.generator.compile_statement(statement)
             logger.debug(compiled_sql)
             output.append(self.connection.execute(text(compiled_sql)))
+            # generalize post-run success hooks
+            if isinstance(statement, ProcessedQueryPersist):
+                self.environment.add_datasource(statement.datasource)
         return output
