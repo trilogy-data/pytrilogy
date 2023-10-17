@@ -31,17 +31,15 @@ def test_derivations(test_environment: Environment):
     env, parsed = parse(declarations, environment=test_environment)
     for dialect in TEST_DIALECTS:
         compiled = []
-        
+
         for statement in parsed[1:]:
             processed = process_auto(test_environment, statement)
-            compiled.append(
-                dialect.compile_statement(processed)
-            )
+            compiled.append(dialect.compile_statement(processed))
             if isinstance(processed, ProcessedQueryPersist):
                 test_environment.add_datasource(processed.datasource)
         assert len(compiled) == 2
         # force add since we didn't run it
-        
+
         concept = test_environment.concepts["test_upper_case_2"]
         assert concept.purpose == Purpose.KEY
         assert test_environment.datasources["bool_is_upper_name"].grain == Grain(
