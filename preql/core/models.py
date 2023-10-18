@@ -1274,7 +1274,7 @@ class Environment:
     environment_config: EnvironmentOptions = field(default_factory=EnvironmentOptions)
 
     @property
-    def materialized_concepts(self)->List[Concept]:
+    def materialized_concepts(self) -> List[Concept]:
         output = []
         for concept in self.concepts.values():
             found = False

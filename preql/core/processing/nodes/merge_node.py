@@ -29,7 +29,7 @@ class MergeNode(StrategyNode):
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
         partial_concepts: Optional[List] = None,
-        depth: Optional[int] = 0,
+        depth: int = 0,
     ):
         super().__init__(
             mandatory_concepts,
@@ -49,7 +49,9 @@ class MergeNode(StrategyNode):
         merged = {}
         for source in parent_sources:
             if source.full_name in merged:
-                logger.info(f'{self.logging_prefix}{LOGGER_PREFIX} merging two nodes with {source.full_name}')
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} merging two nodes with {source.full_name}"
+                )
                 merged[source.full_name] = merged[source.full_name] + source
             else:
                 merged[source.full_name] = source
@@ -79,18 +81,18 @@ class MergeNode(StrategyNode):
         for source in final_datasets:
             grain += source.grain
         # only finally, join between them for unique values
-        dataset_list:List[QueryDatasource] = sorted(
+        dataset_list: List[QueryDatasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
         if not dataset_list:
             raise SyntaxError("Empty merge node")
         logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
-                )
+            f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
+        )
         for item in dataset_list:
             logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} for {item.full_name}"
-                )
+                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} for {item.full_name}"
+            )
         base = dataset_list[0]
         joins = []
         all_concepts = unique(

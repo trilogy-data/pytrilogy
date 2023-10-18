@@ -39,7 +39,10 @@ def test_derivations(test_environment: Environment):
             # force add since we didn't run it
             if isinstance(processed, ProcessedQueryPersist):
                 test_environment.add_datasource(processed.datasource)
-        assert test_environment.concepts['test_upper_case_2'] in test_environment.materialized_concepts
+        assert (
+            test_environment.concepts["test_upper_case_2"]
+            in test_environment.materialized_concepts
+        )
         assert len(compiled) == 2
         print(compiled[-1])
         assert "CASE" not in compiled[-1]
@@ -77,4 +80,3 @@ def test_derivations(test_environment: Environment):
         assert len(path) == 2, path
         resolved = test.resolve()
         assert resolved is not None
-

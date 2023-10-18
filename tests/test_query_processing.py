@@ -53,7 +53,7 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
         "products_join_revenue_at_local_product_id_local_order_id_at_local_product_id_local_category_id"
-        }
+    }
 
 
 def test_get_datasource_for_filter(test_environment, test_environment_graph):

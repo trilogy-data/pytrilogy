@@ -33,12 +33,16 @@ from preql.core.processing.nodes.base_node import concept_list_to_grain
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
-def throw_helpful_error(mandatory_concepts:list[Concept], optional_concepts:List[Concept]):
+
+def throw_helpful_error(
+    mandatory_concepts: list[Concept], optional_concepts: List[Concept]
+):
     error_msg_required = [c.address for c in mandatory_concepts]
     error_msg_optional = [c.address for c in optional_concepts]
     raise ValueError(
         f"Could not find any way to associate required concepts {error_msg_required} and optional {error_msg_optional}"
     )
+
 
 def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, WindowItem):
@@ -343,7 +347,7 @@ def source_concepts(
                 )
                 if not candidates:
                     # terminal state one - no optionas to discard
-                    throw_helpful_error(mandatory_concepts, optional_concepts)      
+                    throw_helpful_error(mandatory_concepts, optional_concepts)
                 for x in reversed(range(0, len(candidates) + 1)):
                     for combo in combinations(candidates, x):
                         new_mandatory = mandatory_concepts + list(combo)

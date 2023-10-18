@@ -36,7 +36,7 @@ class StaticSelectNode(StrategyNode):
         environment: Environment,
         g,
         datasource: QueryDatasource,
-        depth:Optional[int] = 0
+        depth: int = 0,
     ):
         super().__init__(
             mandatory_concepts,
@@ -45,7 +45,7 @@ class StaticSelectNode(StrategyNode):
             g,
             whole_grain=True,
             parents=[],
-            depth=depth
+            depth=depth,
         )
         self.datasource = datasource
 
@@ -67,7 +67,7 @@ class SelectNode(StrategyNode):
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
-        depth:Optional[int] = 0
+        depth: int = 0,
     ):
         super().__init__(
             mandatory_concepts,
@@ -76,7 +76,7 @@ class SelectNode(StrategyNode):
             g,
             whole_grain=whole_grain,
             parents=parents,
-            depth=depth
+            depth=depth,
         )
 
     def resolve_joins_pass(self, all_concepts) -> Optional[QueryDatasource]:
@@ -155,11 +155,11 @@ class SelectNode(StrategyNode):
             datasources=datasources,
             joins=join_paths,
         )
-        logger.info(f'{self.logging_prefix}{LOGGER_PREFIX} Found joined source from {[d.address for d in datasources]}')
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} Found joined source from {[d.address for d in datasources]}"
+        )
         return output
 
-
-                
     # def resolve_join(self) -> Optional[QueryDatasource]:
     #     for x in reversed(range(1, len(self.optional_concepts) + 1)):
     #         for combo in combinations(self.optional_concepts, x):
@@ -172,11 +172,11 @@ class SelectNode(StrategyNode):
     #             ds = self.resolve_joins_pass(all_concepts)
     #             if ds:
     #                 return ds
-        
+
     #     ds = self.resolve_joins_pass(self.mandatory_concepts)
     #     if ds:
     #         return ds
-    
+
     def resolve_as_many_as_possible(self) -> Optional[QueryDatasource]:
         ds = None
         for x in reversed(range(1, len(self.optional_concepts) + 1)):
@@ -196,15 +196,14 @@ class SelectNode(StrategyNode):
         ds = self.resolve_from_raw_datasources(self.mandatory_concepts)
 
         if ds:
-            return ds 
+            return ds
         joins = self.resolve_joins_pass(self.mandatory_concepts)
         if joins:
             return joins
+        return None
 
-               
     def resolve_from_raw_datasources(self, all_concepts) -> Optional[QueryDatasource]:
         for datasource in self.environment.datasources.values():
-
             all_found = True
             for raw_concept in all_concepts:
                 # look for connection to abstract grain
@@ -231,28 +230,27 @@ class SelectNode(StrategyNode):
                 except nx.exception.NetworkXNoPath:
                     all_found = False
                     break
-                #2023-10-18 - more strict condition then below
+                # 2023-10-18 - more strict condition then below
                 if len(path) != 2:
                     all_found = False
                     break
                 if (
-                    len(
-                        [p for p in path if self.g.nodes[p]["type"] == "datasource"]
-                    )
+                    len([p for p in path if self.g.nodes[p]["type"] == "datasource"])
                     != 1
                 ):
                     all_found = False
                     break
             if all_found:
                 # keep all concepts on the output, until we get to a node which requires reduction
-                logger.info(f'{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address}')
-            
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address}"
+                )
+
                 return QueryDatasource(
                     input_concepts=unique(all_concepts, "address"),
                     output_concepts=unique(all_concepts, "address"),
                     source_map={
-                        concept.address: {datasource}
-                        for concept in all_concepts
+                        concept.address: {datasource} for concept in all_concepts
                     },
                     datasources=[datasource],
                     grain=datasource.grain,

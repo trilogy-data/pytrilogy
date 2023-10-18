@@ -54,7 +54,7 @@ class StrategyNode:
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         partial_concepts: List[Concept] | None = None,
-        depth: Optional[int] = 0,
+        depth: int = 0,
     ):
         self.mandatory_concepts = mandatory_concepts
         self.optional_concepts = deepcopy(optional_concepts)
@@ -67,9 +67,9 @@ class StrategyNode:
         self.depth = depth
 
     @property
-    def logging_prefix(self)->str:
+    def logging_prefix(self) -> str:
         return "\t" * self.depth
-    
+
     @property
     def all_concepts(self) -> list[Concept]:
         return unique(

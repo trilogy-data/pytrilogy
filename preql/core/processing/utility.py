@@ -83,8 +83,11 @@ def calculate_graph_relevance(
             continue
         # if it's an aggregate up to an arbitrary grain, it can be joined in later
         # and can be ignored in subgraph
-        if concept.purpose == Purpose.METRIC and len(concept.grain.components) == 0:
-            continue
+        if concept.purpose == Purpose.METRIC:
+            if not concept.grain:
+                continue
+            if len(concept.grain.components) == 0:
+                continue
         if concept.grain and len(concept.grain.components) > 0:
             relevance += 1
             continue
