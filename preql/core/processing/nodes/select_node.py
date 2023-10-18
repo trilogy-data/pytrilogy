@@ -36,6 +36,7 @@ class StaticSelectNode(StrategyNode):
         environment: Environment,
         g,
         datasource: QueryDatasource,
+        depth:Optional[int] = 0
     ):
         super().__init__(
             mandatory_concepts,
@@ -44,6 +45,7 @@ class StaticSelectNode(StrategyNode):
             g,
             whole_grain=True,
             parents=[],
+            depth=depth
         )
         self.datasource = datasource
 
@@ -65,6 +67,7 @@ class SelectNode(StrategyNode):
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
+        depth:Optional[int] = 0
     ):
         super().__init__(
             mandatory_concepts,
@@ -73,48 +76,8 @@ class SelectNode(StrategyNode):
             g,
             whole_grain=whole_grain,
             parents=parents,
+            depth=depth
         )
-
-    def __repr__(self):
-        concepts = self.all_concepts
-        contents = ",".join([c.address for c in concepts])
-        return f"{self.__class__.__name__}<{contents}>"
-
-    def resolve_direct_select(self):
-        for datasource in self.environment.datasources.values():
-            all_found = True
-            for raw_concept in self.all_concepts:
-                if not raw_concept.grain.components:
-                    target = concept_to_node(raw_concept.with_default_grain())
-                else:
-                    target = concept_to_node(raw_concept)
-                try:
-                    path = nx.shortest_path(
-                        self.g,
-                        source=datasource_to_node(datasource),
-                        target=target,
-                    )
-
-                except nx.exception.NetworkXNoPath:
-                    all_found = False
-                    break
-                # if it's not a two node hop, not a direct select
-                if len(path) != 2:
-                    all_found = False
-                    break
-            if all_found:
-                # keep all concepts on the output, until we get to a node which requires reduction
-                return QueryDatasource(
-                    input_concepts=unique(self.all_concepts, "address"),
-                    output_concepts=unique(self.all_concepts, "address"),
-                    source_map={
-                        concept.address: {datasource} for concept in self.all_concepts
-                    },
-                    datasources=[datasource],
-                    grain=datasource.grain,
-                    joins=[],
-                )
-        return None
 
     def resolve_joins_pass(self, all_concepts) -> Optional[QueryDatasource]:
         all_input_concepts = [*all_concepts]
@@ -166,7 +129,9 @@ class SelectNode(StrategyNode):
 
             join_paths += new_joins
             source_map[source_concept.address].add(self.g.nodes[root]["datasource"])
-            # ensure we add in all keys required for joins as inputs
+            # if source_concept.with_grain(self.g.nodes[root]["datasource"].grain) not in self.g.nodes[root]["datasource"].output_concepts:
+            #     raise NotImplementedError(f"need to inject in dynamic discovery node to support getting {source_concept.address} from {root}")
+            # # ensure we add in all keys required for joins as inputs
             # even if they are not selected out
             for join in new_joins:
                 for jconcept in join.concepts:
@@ -190,98 +155,109 @@ class SelectNode(StrategyNode):
             datasources=datasources,
             joins=join_paths,
         )
+        logger.info(f'{self.logging_prefix}{LOGGER_PREFIX} Found joined source from {[d.address for d in datasources]}')
         return output
 
-    def resolve_join(self) -> QueryDatasource:
+
+                
+    # def resolve_join(self) -> Optional[QueryDatasource]:
+    #     for x in reversed(range(1, len(self.optional_concepts) + 1)):
+    #         for combo in combinations(self.optional_concepts, x):
+    #             all_concepts = self.mandatory_concepts + list(combo)
+    #             required = [c.address for c in all_concepts]
+    #             logger.info(
+    #                 f"{self.logging_prefix}{LOGGER_PREFIX} Attempting to resolve joins to reach"
+    #                 f" {','.join(required)}"
+    #             )
+    #             ds = self.resolve_joins_pass(all_concepts)
+    #             if ds:
+    #                 return ds
+        
+    #     ds = self.resolve_joins_pass(self.mandatory_concepts)
+    #     if ds:
+    #         return ds
+    
+    def resolve_as_many_as_possible(self) -> Optional[QueryDatasource]:
+        ds = None
         for x in reversed(range(1, len(self.optional_concepts) + 1)):
             for combo in combinations(self.optional_concepts, x):
                 all_concepts = self.mandatory_concepts + list(combo)
                 required = [c.address for c in all_concepts]
                 logger.info(
-                    f"{LOGGER_PREFIX} Attempting to resolve joins to reach"
-                    f" {','.join(required)}"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} Attempting to resolve select to reach"
+                    f" {','.join(required)}, have {len(self.optional_concepts)} optional concept, pass {x}"
                 )
-                ds = self.resolve_joins_pass(all_concepts)
+                ds = self.resolve_from_raw_datasources(all_concepts)
                 if ds:
                     return ds
-        required = [c.address for c in self.mandatory_concepts]
-        raise ValueError(
-            f"Could not find any way to associate required concepts {required}"
-        )
+                joins = self.resolve_joins_pass(all_concepts)
+                if joins:
+                    return joins
+        ds = self.resolve_from_raw_datasources(self.mandatory_concepts)
 
-    def resolve_from_raw_datasources(self) -> Optional[QueryDatasource]:
-        whole_grain = True
-        # TODO evaluate above
-        if whole_grain:
-            valid_matches = ["all"]
-        else:
-            valid_matches = ["all", "partial"]
-        all_concepts = self.mandatory_concepts + self.optional_concepts
-        # 2023-03-30 strategy is not currently used
-        # but keeping it here for future use
-        for strategy in valid_matches[:1]:
-            for datasource in self.environment.datasources.values():
-                # whole grain determines
-                # if we can get a partial grain match
-                # such as joining through a table with a PK to get properties
-                # sometimes we need a source with all grain keys, in which case we
-                # force this not to match
+        if ds:
+            return ds 
+        joins = self.resolve_joins_pass(self.mandatory_concepts)
+        if joins:
+            return joins
 
-                # if strategy == "partial":
-                #     if not datasource.grain.issubset(grain):
-                #         continue
-                # else:
-                #     # either an exact match
-                #     # or it's a key on the table
-                #     if not datasource.grain == grain:
-                #         continue
-                all_found = True
-                for raw_concept in all_concepts:
-                    # look for connection to abstract grain
-                    req_concept = raw_concept.with_default_grain()
-                    try:
-                        path = nx.shortest_path(
-                            self.g,
-                            source=datasource_to_node(datasource),
-                            target=concept_to_node(req_concept),
-                        )
-                    except nx.NodeNotFound as e:
-                        candidates = [
-                            datasource_to_node(datasource),
-                            concept_to_node(req_concept),
-                        ]
-                        for candidate in candidates:
-                            try:
-                                self.g.nodes[candidate]
-                            except KeyError:
-                                raise SyntaxError(
-                                    "Could not find node for {}".format(candidate)
-                                )
-                        raise e
-                    except nx.exception.NetworkXNoPath:
-                        all_found = False
-                        break
-                    if (
-                        len(
-                            [p for p in path if self.g.nodes[p]["type"] == "datasource"]
-                        )
-                        != 1
-                    ):
-                        all_found = False
-                        break
-                if all_found:
-                    # keep all concepts on the output, until we get to a node which requires reduction
-                    return QueryDatasource(
-                        input_concepts=unique(all_concepts, "address"),
-                        output_concepts=unique(self.all_concepts, "address"),
-                        source_map={
-                            concept.address: {datasource}
-                            for concept in self.all_concepts
-                        },
-                        datasources=[datasource],
-                        grain=datasource.grain,
-                        joins=[],
+               
+    def resolve_from_raw_datasources(self, all_concepts) -> Optional[QueryDatasource]:
+        for datasource in self.environment.datasources.values():
+
+            all_found = True
+            for raw_concept in all_concepts:
+                # look for connection to abstract grain
+                req_concept = raw_concept.with_default_grain()
+                try:
+                    path = nx.shortest_path(
+                        self.g,
+                        source=datasource_to_node(datasource),
+                        target=concept_to_node(req_concept),
                     )
+                except nx.NodeNotFound as e:
+                    candidates = [
+                        datasource_to_node(datasource),
+                        concept_to_node(req_concept),
+                    ]
+                    for candidate in candidates:
+                        try:
+                            self.g.nodes[candidate]
+                        except KeyError:
+                            raise SyntaxError(
+                                "Could not find node for {}".format(candidate)
+                            )
+                    raise e
+                except nx.exception.NetworkXNoPath:
+                    all_found = False
+                    break
+                #2023-10-18 - more strict condition then below
+                if len(path) != 2:
+                    all_found = False
+                    break
+                if (
+                    len(
+                        [p for p in path if self.g.nodes[p]["type"] == "datasource"]
+                    )
+                    != 1
+                ):
+                    all_found = False
+                    break
+            if all_found:
+                # keep all concepts on the output, until we get to a node which requires reduction
+                logger.info(f'{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address}')
+            
+                return QueryDatasource(
+                    input_concepts=unique(all_concepts, "address"),
+                    output_concepts=unique(all_concepts, "address"),
+                    source_map={
+                        concept.address: {datasource}
+                        for concept in all_concepts
+                    },
+                    datasources=[datasource],
+                    grain=datasource.grain,
+                    joins=[],
+                )
         return None
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
@@ -305,9 +281,20 @@ class SelectNode(StrategyNode):
         if all([c.purpose == Purpose.CONSTANT for c in self.all_concepts]):
             return self.resolve_from_constant_datasources()
         # otherwise, look if there is a datasource in the graph
-        raw = self.resolve_from_raw_datasources()
-
+        # raw = self.resolve_raw_select()
+        # # raw = self.resolve_direct_select()
+        # if raw:
+        #     return raw
+        # if we don't have a select, see if we can join
+        # but don't do transformations, as we should get a separate select for this
+        # if all([x.lineage is None for x in self.all_concepts]):
+        # joins = self.resolve_join()
+        # if joins:
+        #     return joins
+        raw = self.resolve_as_many_as_possible()
         if raw:
             return raw
-        # if we don't have a select, see if we can join
-        return self.resolve_join()
+        required = [c.address for c in self.mandatory_concepts]
+        raise ValueError(
+            f"Could not find any way to associate required concepts {required}"
+        )

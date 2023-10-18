@@ -67,6 +67,10 @@ class StrategyNode:
         self.depth = depth
 
     @property
+    def logging_prefix(self)->str:
+        return "\t" * self.depth
+    
+    @property
     def all_concepts(self) -> list[Concept]:
         return unique(
             deepcopy(self.mandatory_concepts + self.optional_concepts), "address"
@@ -74,7 +78,7 @@ class StrategyNode:
 
     def __repr__(self):
         concepts = self.all_concepts
-        contents = ",".join([c.address for c in concepts])
+        contents = ",".join(sorted([c.address for c in concepts]))
         return f"{self.__class__.__name__}<{contents}>"
 
     def _resolve(self) -> QueryDatasource:

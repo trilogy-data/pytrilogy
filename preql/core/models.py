@@ -1273,6 +1273,19 @@ class Environment:
     working_path: str = field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = field(default_factory=EnvironmentOptions)
 
+    @property
+    def materialized_concepts(self)->List[Concept]:
+        output = []
+        for concept in self.concepts.values():
+            found = False
+            for datasource in self.datasources.values():
+                if concept.address in [x.address for x in datasource.output_concepts]:
+                    found = True
+                    break
+            if found:
+                output.append(concept)
+        return output
+
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing: Concept = self.concepts.get(lookup)  # type: ignore
         if not existing:
