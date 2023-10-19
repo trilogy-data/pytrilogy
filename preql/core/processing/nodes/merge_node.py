@@ -45,7 +45,7 @@ class MergeNode(StrategyNode):
         self.force_join_type = force_join_type
 
     def _resolve(self):
-        local_prefix = "\t" * self.depth
+        "\t" * self.depth
         parent_sources = [p.resolve() for p in self.parents]
         merged = {}
         for source in parent_sources:
