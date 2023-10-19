@@ -10,3 +10,7 @@ class UndefinedConceptException(Exception):
 
 class InvalidSyntaxException(Exception):
     pass
+
+
+class NoDatasourceException(Exception):
+    pass
