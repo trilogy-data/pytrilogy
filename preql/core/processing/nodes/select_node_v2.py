@@ -62,7 +62,7 @@ class SelectNode(StrategyNode):
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
-        depth: int = 0
+        depth: int = 0,
     ):
         super().__init__(
             mandatory_concepts,

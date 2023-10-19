@@ -23,12 +23,12 @@ from preql.core.processing.nodes import (
     StrategyNode,
 )
 from preql.core.processing.nodes.base_node import concept_list_to_grain
-from preql.core.exceptions import NoDatasourceException
 from preql.core.processing.node_generators import (
     gen_filter_node,
     gen_window_node,
     gen_group_node,
     gen_basic_node,
+    gen_select_node,
 )
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
@@ -234,27 +234,13 @@ def source_concepts(
             else:
                 raise ValueError(f"Unknown lineage type {concept.derivation}")
         else:
-            # if you're not having to find a calculate concept, don't search for it
-            # select nodes won't be able to find anything with lineage in the graph
-            basic_inputs = [
-                x for x in local_optional if x in environment.materialized_concepts
-            ]
-            # unless it's been materialized
-            # in which case we do want them to look for it
-            # basic_inputs += [x for x in local_optional if x in environment.materialized_concepts and x not in basic_inputs]
-            logger.info(
-                f"{local_prefix}{LOGGER_PREFIX} looking for a basic select node for {concept.address} with optional"
-                f" {[c.address for c in basic_inputs]}"
+            # if there's no lineage, we can go ahead and try to source the concept
+            # from a table or set of tables via a join
+            stack.append(
+                gen_select_node(
+                    concept, local_optional, environment, g, depth, source_concepts
+                )
             )
-            candidate = SelectNode(
-                [concept], basic_inputs, environment, g, depth=depth + 1
-            )
-            try:
-                candidate.resolve()
-                stack.append(candidate)
-            except NoDatasourceException:
-                raise
-            # stack.append(SelectNode([concept], local_optional, environment, g, depth=depth+1))
 
         for node in stack:
             for concept in node.resolve().output_concepts:
