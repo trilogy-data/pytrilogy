@@ -3,6 +3,7 @@ markers = [
     "adventureworks",
     "adventureworks_execution",
 ]
+log_cli_level="INFO"
 
 [tool.ruff]
 # Allow lines to be as long as 200 characters.

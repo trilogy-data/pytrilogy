@@ -25,6 +25,7 @@ class GroupNode(StrategyNode):
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
+        depth: int = 0,
     ):
         super().__init__(
             mandatory_concepts,
@@ -33,6 +34,7 @@ class GroupNode(StrategyNode):
             g,
             whole_grain=whole_grain,
             parents=parents,
+            depth=depth,
         )
 
     def _resolve(self) -> QueryDatasource:

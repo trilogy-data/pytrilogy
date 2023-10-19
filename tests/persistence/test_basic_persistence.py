@@ -8,6 +8,7 @@ from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 
+
 TEST_DIALECTS: list[BaseDialect] = [
     BaseDialect(),
     BigqueryDialect(),
@@ -35,10 +36,16 @@ def test_derivations(test_environment: Environment):
         for statement in parsed[1:]:
             processed = process_auto(test_environment, statement)
             compiled.append(dialect.compile_statement(processed))
+            # force add since we didn't run it
             if isinstance(processed, ProcessedQueryPersist):
                 test_environment.add_datasource(processed.datasource)
+        assert (
+            test_environment.concepts["test_upper_case_2"]
+            in test_environment.materialized_concepts
+        )
         assert len(compiled) == 2
-        # force add since we didn't run it
+        print(compiled[-1])
+        assert "CASE" not in compiled[-1]
 
         concept = test_environment.concepts["test_upper_case_2"]
         assert concept.purpose == Purpose.KEY
@@ -71,6 +78,5 @@ def test_derivations(test_environment: Environment):
             target=concept_to_node(concept.with_default_grain()),
         )
         assert len(path) == 2, path
-        resolved = test.resolve_direct_select()
+        resolved = test.resolve()
         assert resolved is not None
-        assert "CASE" not in compiled[-1]

@@ -29,7 +29,7 @@ class MergeNode(StrategyNode):
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
         partial_concepts: Optional[List] = None,
-        depth: Optional[int] = 0,
+        depth: int = 0,
     ):
         super().__init__(
             mandatory_concepts,
@@ -45,11 +45,13 @@ class MergeNode(StrategyNode):
         self.force_join_type = force_join_type
 
     def _resolve(self):
-        local_prefix = "\t" * self.depth
         parent_sources = [p.resolve() for p in self.parents]
         merged = {}
         for source in parent_sources:
             if source.full_name in merged:
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} merging two nodes with {source.full_name}"
+                )
                 merged[source.full_name] = merged[source.full_name] + source
             else:
                 merged[source.full_name] = source
@@ -61,7 +63,7 @@ class MergeNode(StrategyNode):
                 [c.address for c in self.all_concepts]
             ):
                 logger.info(
-                    f"{local_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
                     " outputs as this merge node, dropping merge node "
                 )
                 return final
@@ -69,17 +71,28 @@ class MergeNode(StrategyNode):
         for dataset in final_datasets:
             output_set = set([c.address for c in dataset.output_concepts])
             if all([c.address in output_set for c in self.all_concepts]):
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} Merge node not required as one"
+                    " parent node has all required output properties"
+                )
                 return dataset
 
         grain = Grain()
         for source in final_datasets:
             grain += source.grain
         # only finally, join between them for unique values
-        dataset_list = sorted(
+        dataset_list: List[QueryDatasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
         if not dataset_list:
             raise SyntaxError("Empty merge node")
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
+        )
+        for item in dataset_list:
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} for {item.full_name}"
+            )
         base = dataset_list[0]
         joins = []
         all_concepts = unique(

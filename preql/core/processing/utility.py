@@ -69,7 +69,9 @@ def parse_path_to_matches(
 def calculate_graph_relevance(
     g: nx.DiGraph, subset_nodes: set[str], concepts: set[Concept]
 ) -> int:
-    """Calculate the relevance of each node in a graph"""
+    """Calculate the relevance of each node in a graph
+    Relevance is used to prune irrelevant nodes from the graph
+    """
     relevance = 0
     for node in g.nodes:
         if node not in subset_nodes:
@@ -79,8 +81,19 @@ def calculate_graph_relevance(
         concept = [x for x in concepts if x.address == node].pop()
         if concept.purpose == Purpose.CONSTANT:
             continue
+        # if it's an aggregate up to an arbitrary grain, it can be joined in later
+        # and can be ignored in subgraph
+        if concept.purpose == Purpose.METRIC:
+            if not concept.grain:
+                continue
+            if len(concept.grain.components) == 0:
+                continue
         if concept.grain and len(concept.grain.components) > 0:
             relevance += 1
+            continue
+        # Added 2023-10-18 since we seemed to be strangely dropping things
+        relevance += 1
+
     return relevance
 
 

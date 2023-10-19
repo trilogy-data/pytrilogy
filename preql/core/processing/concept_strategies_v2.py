@@ -34,6 +34,16 @@ from preql.core.processing.nodes.base_node import concept_list_to_grain
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
+def throw_helpful_error(
+    mandatory_concepts: list[Concept], optional_concepts: List[Concept]
+):
+    error_msg_required = [c.address for c in mandatory_concepts]
+    error_msg_optional = [c.address for c in optional_concepts]
+    raise ValueError(
+        f"Could not find any way to associate required concepts {error_msg_required} and optional {error_msg_optional}"
+    )
+
+
 def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, WindowItem):
         raise ValueError
@@ -103,9 +113,12 @@ def source_concepts(
             environment,
             g,
             parents=[],
+            depth=depth,
         )
 
-        resolved = test.resolve_direct_select()
+        resolved = test.resolve_from_raw_datasources(
+            mandatory_concepts + optional_concepts
+        )
         if resolved:
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {len(mandatory_concepts+optional_concepts)} concepts, returning static selection"
@@ -116,6 +129,7 @@ def source_concepts(
                 environment,
                 g,
                 datasource=resolved,
+                depth=depth,
             )
     except Exception as e:
         logger.info(
@@ -181,7 +195,6 @@ def source_concepts(
                     concept
                 )
 
-                # SelectNode( parents = [])
                 stack.append(
                     MergeNode(
                         [concept],
@@ -250,7 +263,11 @@ def source_concepts(
                     )
                 )
             elif concept.derivation == PurposeLineage.CONSTANT:
-                stack.append(SelectNode([concept], [], environment, g, parents=[]))
+                stack.append(
+                    SelectNode(
+                        [concept], [], environment, g, parents=[], depth=depth + 1
+                    )
+                )
             elif concept.derivation == PurposeLineage.BASIC:
                 # directly select out a basic derivation
                 parent_concepts = resolve_function_parent_concepts(concept)
@@ -273,13 +290,28 @@ def source_concepts(
                                 depth=depth + 1,
                             )
                         ],
+                        depth=depth + 1,
                     )
                 )
             else:
                 raise ValueError(f"Unknown lineage type {concept.derivation}")
         else:
-            basic_inputs = [x for x in local_optional if x.lineage is None]
-            stack.append(SelectNode([concept], basic_inputs, environment, g))
+            # if you're not having to find a calculate concept, don't search for it
+            # select nodes won't be able to find anything with lineage in the graph
+            basic_inputs = [
+                x for x in local_optional if x in environment.materialized_concepts
+            ]
+            # unless it's been materialized
+            # in which case we do want them to look for it
+            # basic_inputs += [x for x in local_optional if x in environment.materialized_concepts and x not in basic_inputs]
+            logger.info(
+                f"{local_prefix}{LOGGER_PREFIX} looking for a basic select node for {concept.address} with optional"
+                f" {[c.address for c in basic_inputs]}"
+            )
+            stack.append(
+                SelectNode([concept], basic_inputs, environment, g, depth=depth + 1)
+            )
+            # stack.append(SelectNode([concept], local_optional, environment, g, depth=depth+1))
 
         for node in stack:
             for concept in node.resolve().output_concepts:
@@ -295,10 +327,13 @@ def source_concepts(
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
                 f" {[n for n in stack]}"
-                " checking for convergence"
+                " checking for single connected graph"
             )
 
             graph_count, graphs = get_disconnected_components(found_map)
+            logger.info(
+                f"{local_prefix}{LOGGER_PREFIX} Graph analysis: {graph_count} subgraphs found"
+            )
             if graph_count > 1:
                 candidates = [
                     x
@@ -310,8 +345,10 @@ def source_concepts(
                     f"{local_prefix}{LOGGER_PREFIX} fetched nodes are not a connected graph - have {graph_count} as {graphs},"
                     f"rerunning with more mandatory concepts than {[c.address for c in mandatory_concepts]} from {candidates}"
                 )
-
-                for x in range(1, len(candidates) + 1):
+                if not candidates:
+                    # terminal state one - no optionas to discard
+                    throw_helpful_error(mandatory_concepts, optional_concepts)
+                for x in reversed(range(0, len(candidates) + 1)):
                     for combo in combinations(candidates, x):
                         new_mandatory = mandatory_concepts + list(combo)
                         logger.info(
@@ -328,17 +365,24 @@ def source_concepts(
                             )
                         except ValueError:
                             continue
-                required = [c.address for c in mandatory_concepts]
-                raise ValueError(
-                    f"Could not find any way to associate required concepts {required}"
-                )
+                # terminal state two - have gone through all options
+                throw_helpful_error(mandatory_concepts, optional_concepts)
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."
             )
-
-    return MergeNode(
-        mandatory_concepts, optional_concepts, environment, g, parents=stack
+    output = MergeNode(
+        mandatory_concepts,
+        optional_concepts,
+        environment,
+        g,
+        parents=stack,
+        depth=depth,
     )
+
+    # ensure we can resolve our final merge
+    output.resolve()
+
+    return output
 
 
 def source_query_concepts(
