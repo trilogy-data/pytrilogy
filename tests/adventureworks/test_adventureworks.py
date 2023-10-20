@@ -89,7 +89,7 @@ def test_query_datasources(environment: Environment):
     ).resolve()
 
     assert (
-        "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number"
+        "customers_at_customer_customer_id_join_fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
         in customer_datasource.identifier
     )
 
@@ -118,7 +118,10 @@ def test_query_datasources(environment: Environment):
     # assert concept_to_node(sales.with_grain) in list(environment_graph.neighbors(datasource_to_node(fact_internet_sales)))
     # assert (concept_to_node(sales),concept_to_node(total_sales), ) in environment_graph.edges()
 
-    default_fact = "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number"
+    default_fact = (
+        "customers_at_customer_customer_id_join_fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
+        "_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number"
+    )
     for concept in test.output_components:
         datasource = source_concepts(
             [concept], test.grain.components_copy, environment, environment_graph
@@ -135,13 +138,14 @@ def test_query_datasources(environment: Environment):
         elif concept.name == "total_sales_amount":
             assert (
                 datasource.identifier
-                == "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"  # noqa: E501
+                == "customers_at_customer_customer_id_join_fact_internet_sales_at_internet_sales_order_line_"
+                "number_internet_sales_order_number_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
             )
         elif concept.name == "region":
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
         elif concept.name == "first_name":
             assert datasource.identifier.startswith(
-                "customers_join_fact_internet_sales_at_customer_customer_id_internet_sales_order_line_number"
+                "customers_at_customer_customer_id_join_fact_internet_sales_at_internet"
             )
         else:
             raise ValueError(concept)
@@ -184,7 +188,10 @@ def test_two_properties(environment: Environment):
 
     recurse_datasource(customer_datasource)
 
-    expected_identifier = "customers_join_order_dates_join_fact_internet_sales_at_customer_customer_id_dates_order_key_internet_sales_order_line_number_internet_sales_order_number"
+    expected_identifier = (
+        "customers_at_customer_customer_id_join_order_dates_at_dates_order_key_join_fact_"
+        "internet_sales_at_internet_sales_order_line_number_internet_sales_order_number_at_customer_customer_id_dates_order_key_internet_sales_order_line_number_internet_sales_order_number"
+    )
     assert customer_datasource.identifier == expected_identifier
 
     order_date_datasource = source_concepts(

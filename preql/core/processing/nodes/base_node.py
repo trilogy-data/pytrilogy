@@ -165,7 +165,7 @@ class NodeJoin:
 
     @property
     def unique_id(self) -> str:
-        return self.left_node + self.right_node + self.join_type.value
+        return str(self.left_node) + str(self.right_node) + self.join_type.value
 
     def __str__(self):
         return (

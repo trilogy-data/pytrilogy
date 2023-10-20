@@ -19,6 +19,7 @@ def gen_static_select_node(
     for datasource in environment.datasources.values():
         all_found = True
         for raw_concept in all_concepts:
+            path = []
             if raw_concept.grain and not raw_concept.grain.components:
                 target = concept_to_node(raw_concept.with_default_grain())
             else:
