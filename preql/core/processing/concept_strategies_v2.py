@@ -207,10 +207,11 @@ def source_concepts(
         else:
             # if there's no lineage, we can go ahead and try to source the concept
             # from a table or set of tables via a join
-            selectable = [x for x in local_optional if not x.lineage]
+            # 2023-10-20 - open it up to ANYTHING here
+            # selectable = [x for x in local_optional if not x.lineage]
             stack.append(
                 gen_select_node(
-                    concept, selectable, environment, g, depth, source_concepts
+                    concept, local_optional, environment, g, depth, source_concepts
                 )
             )
 
