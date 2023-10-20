@@ -1,7 +1,12 @@
 from datetime import datetime
+import networkx as nx
+from preql.core.env_processor import generate_graph
 
 
 def test_basic_query(duckdb_engine, expected_results):
+    graph = generate_graph(duckdb_engine.environment)
+
+    list(nx.neighbors(graph, "c~local.count@Grain<local.item>"))
     results = duckdb_engine.execute_text("""select total_count;""")[0].fetchall()
     assert results[0].total_count == expected_results["total_count"]
 

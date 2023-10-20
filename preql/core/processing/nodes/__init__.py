@@ -1,9 +1,9 @@
 from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode
-from .select_node import SelectNode, StaticSelectNode
+from .select_node_v2 import SelectNode, StaticSelectNode
 from .window_node import WindowNode
-from .base_node import StrategyNode
+from .base_node import StrategyNode, NodeJoin
 
 __all__ = [
     "FilterNode",
@@ -13,4 +13,5 @@ __all__ = [
     "StaticSelectNode",
     "WindowNode",
     "StrategyNode",
+    "NodeJoin",
 ]

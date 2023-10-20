@@ -10,7 +10,6 @@ def generate_graph(
     # add all parsed concepts
     for _, concept in environment.concepts.items():
         g.add_node(concept)
-        g.add_node(concept)
         # if we have sources, recursively add them
         if concept.sources:
             node_name = concept_to_node(concept)

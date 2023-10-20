@@ -10,7 +10,11 @@ from preql.core.models import (
     SourceType,
 )
 from preql.utility import unique
-from preql.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
+from preql.core.processing.nodes.base_node import (
+    StrategyNode,
+    resolve_concept_map,
+    NodeJoin,
+)
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
@@ -26,6 +30,7 @@ class MergeNode(StrategyNode):
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
+        node_joins: List[NodeJoin] | None = None,
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
         partial_concepts: Optional[List] = None,
@@ -43,6 +48,56 @@ class MergeNode(StrategyNode):
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
+        self.node_joins = node_joins
+
+    def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
+        joins = []
+        for join in node_joins:
+            joins.append(
+                BaseJoin(
+                    left_datasource=join.left_node.resolve(),
+                    right_datasource=join.right_node.resolve(),
+                    join_type=join.join_type,
+                    concepts=join.concepts,
+                )
+            )
+        return joins
+
+    def create_inferred_joins(self, dataset_list, grain: Grain):
+        base = dataset_list[0]
+        joins = []
+        all_concepts = unique(
+            self.mandatory_concepts + self.optional_concepts, "address"
+        )
+
+        join_concepts = self.join_concepts or all_concepts
+
+        if dataset_list[1:]:
+            for right_value in dataset_list[1:]:
+                if not grain.components:
+                    joins.append(
+                        BaseJoin(
+                            left_datasource=base,
+                            right_datasource=right_value,
+                            join_type=self.force_join_type
+                            if self.force_join_type
+                            else JoinType.FULL,
+                            concepts=[],
+                        )
+                    )
+                    continue
+                joins.append(
+                    BaseJoin(
+                        left_datasource=base,
+                        right_datasource=right_value,
+                        join_type=self.force_join_type
+                        if self.force_join_type
+                        else JoinType.LEFT_OUTER,
+                        concepts=join_concepts,
+                        filter_to_mutual=True,
+                    )
+                )
+        return joins
 
     def _resolve(self):
         parent_sources = [p.resolve() for p in self.parents]
@@ -93,39 +148,11 @@ class MergeNode(StrategyNode):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} for {item.full_name}"
             )
-        base = dataset_list[0]
-        joins = []
-        all_concepts = unique(
-            self.mandatory_concepts + self.optional_concepts, "address"
-        )
 
-        join_concepts = self.join_concepts or all_concepts
-
-        if dataset_list[1:]:
-            for right_value in dataset_list[1:]:
-                if not grain.components:
-                    joins.append(
-                        BaseJoin(
-                            left_datasource=base,
-                            right_datasource=right_value,
-                            join_type=self.force_join_type
-                            if self.force_join_type
-                            else JoinType.FULL,
-                            concepts=[],
-                        )
-                    )
-                    continue
-                joins.append(
-                    BaseJoin(
-                        left_datasource=base,
-                        right_datasource=right_value,
-                        join_type=self.force_join_type
-                        if self.force_join_type
-                        else JoinType.LEFT_OUTER,
-                        concepts=join_concepts,
-                        filter_to_mutual=True,
-                    )
-                )
+        if not self.node_joins:
+            joins = self.create_inferred_joins(dataset_list, grain)
+        else:
+            joins = self.translate_node_joins(self.node_joins)
         input_concepts = []
         for p in parent_sources:
             input_concepts += p.output_concepts
