@@ -211,7 +211,7 @@ def source_concepts(
             # selectable = [x for x in local_optional if not x.lineage]
             stack.append(
                 gen_select_node(
-                    concept, local_optional, environment, g, depth, source_concepts
+                    concept, selectable, environment, g, depth, source_concepts
                 )
             )
 
