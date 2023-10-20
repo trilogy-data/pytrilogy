@@ -9,11 +9,7 @@ from preql.core.models import (
     Environment,
 )
 from typing import Set
-from preql.core.processing.nodes import (
-    StrategyNode,
-    SelectNode,
-    MergeNode,
-)
+from preql.core.processing.nodes import StrategyNode, SelectNode, MergeNode, NodeJoin
 from preql.core.exceptions import NoDatasourceException
 from preql.core.models import (
     BaseJoin,
@@ -47,6 +43,8 @@ def gen_select_node_from_table(
         for raw_concept in all_concepts:
             # look for connection to abstract grain
             req_concept = raw_concept.with_default_grain()
+            if concept_to_node(req_concept) not in g.nodes:
+                raise ValueError(f"concept {req_concept} not found in graph")
             try:
                 path = nx.shortest_path(
                     g,
@@ -70,9 +68,11 @@ def gen_select_node_from_table(
                 all_found = False
                 break
             # 2023-10-18 - more strict condition then below
-            if len(path) != 2:
-                all_found = False
-                break
+            # 2023-10-20 - we need this to get through abstract concepts
+            # but we may want to add a filter to avoid using this for anything with lineage
+            # if len(path) != 2:
+            #     all_found = False
+            #     break
             if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
                 all_found = False
                 break
@@ -89,7 +89,11 @@ def gen_select_node_from_table(
 
 
 def gen_select_node_from_join(
-    all_concepts: List[Concept], g, environment: Environment, depth: int, source_concepts
+    all_concepts: List[Concept],
+    g,
+    environment: Environment,
+    depth: int,
+    source_concepts,
 ) -> Optional[MergeNode]:
     all_input_concepts = [*all_concepts]
 
@@ -99,7 +103,6 @@ def gen_select_node_from_join(
         paths = {}
         for bitem in all_concepts:
             item = bitem.with_default_grain()
-
             try:
                 path = nx.shortest_path(
                     g,
@@ -149,19 +152,35 @@ def gen_select_node_from_join(
         [g.nodes[key]["datasource"] for key in all_datasets],
         key=lambda x: x.full_name,
     )
-    parent_nodes:List[StrategyNode] = []
+    parent_nodes: List[StrategyNode] = []
+    ds_to_node_map = {}
     for datasource in datasources:
         if datasource.output_concepts == all_concepts:
-            raise SyntaxError('This would result in infinite recursion, each source should be partial')
-        parent_nodes.append(
-            source_concepts(
-                datasource.output_concepts,
-                [],
-                environment,
-                g,
-                depth=depth + 1,
+            raise SyntaxError(
+                "This would result in infinite recursion, each source should be partial"
+            )
+        node = source_concepts(
+            datasource.output_concepts,
+            [],
+            environment,
+            g,
+            depth=depth + 1,
+        )
+        parent_nodes.append(node)
+        ds_to_node_map[datasource.identifier] = node
+
+    final_joins = []
+    for join in join_paths:
+        final_joins.append(
+            NodeJoin(
+                left_node=ds_to_node_map[join.left_datasource.identifier],
+                right_node=ds_to_node_map[join.right_datasource.identifier],
+                concepts=join.concepts,
+                join_type=join.join_type,
+                filter_to_mutual=join.filter_to_mutual,
             )
         )
+
     return MergeNode(
         mandatory_concepts=all_concepts,
         optional_concepts=[],
@@ -169,6 +188,7 @@ def gen_select_node_from_join(
         g=g,
         parents=parent_nodes,
         depth=depth,
+        node_joins=final_joins,
     )
 
 

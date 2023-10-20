@@ -16,7 +16,6 @@ from preql.core.processing.utility import (
 )
 from preql.utility import unique
 from preql.core.processing.nodes import (
-    StaticSelectNode,
     SelectNode,
     MergeNode,
     GroupNode,
@@ -29,6 +28,7 @@ from preql.core.processing.node_generators import (
     gen_group_node,
     gen_basic_node,
     gen_select_node,
+    gen_static_select_node,
 )
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
@@ -73,35 +73,6 @@ def get_local_optional(optional_concepts, mandatory_concepts, concept):
 
     # reduce search space to actual grain
     return concept_list_to_grain(local_optional_staging, []).components_copy
-
-
-def find_direct_select(
-    mandatory_concepts,
-    optional_concepts,
-    environment,
-    g,
-    depth,
-):
-    test = SelectNode(
-        mandatory_concepts + optional_concepts,
-        [],
-        environment,
-        g,
-        parents=[],
-        depth=depth,
-    )
-
-    resolved = test.resolve_from_raw_datasources(mandatory_concepts + optional_concepts)
-    if resolved:
-        return StaticSelectNode(
-            mandatory_concepts + optional_concepts,
-            [],
-            environment,
-            g,
-            datasource=resolved,
-            depth=depth,
-        )
-    return None
 
 
 def recurse_or_fail(
@@ -166,8 +137,8 @@ def source_concepts(
         )
     # may be able to directly find everything we need
     try:
-        matched = find_direct_select(
-            mandatory_concepts, optional_concepts, environment, g, depth
+        matched = gen_static_select_node(
+            mandatory_concepts + optional_concepts, environment, g, depth
         )
         if matched:
             logger.info(
@@ -236,9 +207,10 @@ def source_concepts(
         else:
             # if there's no lineage, we can go ahead and try to source the concept
             # from a table or set of tables via a join
+            selectable = [x for x in local_optional if not x.lineage]
             stack.append(
                 gen_select_node(
-                    concept, local_optional, environment, g, depth, source_concepts
+                    concept, selectable, environment, g, depth, source_concepts
                 )
             )
 

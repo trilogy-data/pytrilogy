@@ -103,9 +103,9 @@ class SelectNode(StrategyNode):
                     all_found = False
                     break
                 # 2023-10-18 - more strict condition then below
-                if len(path) != 2:
-                    all_found = False
-                    break
+                # if len(path) != 2:
+                #     all_found = False
+                #     break
                 if (
                     len([p for p in path if self.g.nodes[p]["type"] == "datasource"])
                     != 1

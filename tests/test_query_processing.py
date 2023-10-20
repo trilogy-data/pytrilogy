@@ -52,7 +52,7 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
 
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
-        "products_join_revenue_at_local_product_id_local_order_id_at_local_product_id_local_category_id"
+        "products_at_local_product_id_join_revenue_at_local_order_id_at_local_product_id_local_order_id_at_local_product_id_local_category_id"
     }
 
 
@@ -122,7 +122,7 @@ def test_join_aggregate(test_environment, test_environment_graph):
     ).resolve()
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
-        "products_join_revenue_at_local_product_id_local_order_id"
+        "products_at_local_product_id_join_revenue_at_local_order_id_at_local_product_id_local_order_id"
     }
 
 

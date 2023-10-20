@@ -10,8 +10,9 @@ from preql.core.models import (
     Concept,
     Environment,
 )
-from preql.core.enums import Purpose
+from preql.core.enums import Purpose, JoinType
 from preql.utility import unique
+from dataclasses import dataclass
 
 
 def concept_list_to_grain(
@@ -117,3 +118,58 @@ class StrategyNode:
         qds = self._resolve()
         self.resolution_cache = qds
         return qds
+
+
+@dataclass
+class NodeJoin:
+    left_node: StrategyNode
+    right_node: StrategyNode
+    concepts: List[Concept]
+    join_type: JoinType
+    filter_to_mutual: bool = False
+
+    def __post_init__(self):
+        final_concepts = []
+        for concept in self.concepts:
+            include = True
+            for ds in [self.left_node, self.right_node]:
+                if concept.address not in [c.address for c in ds.all_concepts]:
+                    if self.filter_to_mutual:
+                        include = False
+                    else:
+                        raise SyntaxError(
+                            f"Invalid join, missing {concept} on {str(ds)}, have"
+                            f" {[c.address for c in ds.all_concepts]}"
+                        )
+            if include:
+                final_concepts.append(concept)
+        if not final_concepts and self.concepts:
+            # if one datasource only has constants
+            # we can join on 1=1
+            for ds in [self.left_node, self.right_node]:
+                if all([c.purpose == Purpose.CONSTANT for c in ds.all_concepts]):
+                    self.concepts = []
+                    return
+
+            left_keys = [c.address for c in self.left_node.all_concepts]
+            right_keys = [c.address for c in self.right_node.all_concepts]
+            match_concepts = [c.address for c in self.concepts]
+            raise SyntaxError(
+                "No mutual join keys found between"
+                f" {self.left_node} and"
+                f" {self.right_node}, left_keys {left_keys},"
+                f" right_keys {right_keys},"
+                f" provided join concepts {match_concepts}"
+            )
+        self.concepts = final_concepts
+
+    @property
+    def unique_id(self) -> str:
+        return self.left_node + self.right_node + self.join_type.value
+
+    def __str__(self):
+        return (
+            f"{self.join_type.value} JOIN {self.left_node} and"
+            f" {self.right_node} on"
+            f" {','.join([str(k) for k in self.concepts])}"
+        )
