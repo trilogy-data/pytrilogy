@@ -10,6 +10,7 @@ from preql.core.models import (
 )
 from typing import Set
 from preql.core.processing.nodes import (
+    StrategyNode,
     SelectNode,
     MergeNode,
 )
@@ -84,7 +85,7 @@ def gen_select_node_from_table(
                 parents=[],
                 depth=depth,
             )
-        return None
+    return None
 
 
 def gen_select_node_from_join(
@@ -148,11 +149,11 @@ def gen_select_node_from_join(
         [g.nodes[key]["datasource"] for key in all_datasets],
         key=lambda x: x.full_name,
     )
-    parents = []
+    parent_nodes:List[StrategyNode] = []
     for datasource in datasources:
         if datasource.output_concepts == all_concepts:
             raise SyntaxError('This would result in infinite recursion, each source should be partial')
-        parents.append(
+        parent_nodes.append(
             source_concepts(
                 datasource.output_concepts,
                 [],
@@ -166,7 +167,7 @@ def gen_select_node_from_join(
         optional_concepts=[],
         environment=environment,
         g=g,
-        parents=parents,
+        parents=parent_nodes,
         depth=depth,
     )
 
