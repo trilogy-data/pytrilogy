@@ -1,0 +1,97 @@
+WITH 
+rhash_2276340501907096 as (
+SELECT
+    orders_orders.`order_id` as `orders_id`,
+    orders_orders.`user_id` as `users_id`,
+    orders_orders.`status` as `orders_status`,
+    orders_orders.`gender` as `orders_gender`,
+    orders_orders.`created_at` as `orders_created_at`,
+    orders_orders.`returned_at` as `orders_returned_at`,
+    orders_orders.`shipped_at` as `orders_shipped_at`,
+    orders_orders.`delivered_at` as `orders_delivered_at`,
+    orders_orders.`num_of_item` as `orders_num_of_item`
+FROM
+    bigquery-public-data.thelook_ecommerce.orders as orders_orders
+),
+rhash_2481058820957911 as (
+SELECT
+    order_items_order_items.`id` as `order_items_id`,
+    order_items_order_items.`order_id` as `orders_id`,
+    order_items_order_items.`user_id` as `users_id`,
+    order_items_order_items.`product_id` as `products_id`,
+    order_items_order_items.`inventory_item_id` as `inventory_items_id`,
+    order_items_order_items.`status` as `order_items_status`,
+    order_items_order_items.`created_at` as `order_items_created_at`,
+    order_items_order_items.`shipped_at` as `order_items_shipped_at`,
+    order_items_order_items.`delivered_at` as `order_items_delivered_at`,
+    order_items_order_items.`returned_at` as `order_items_returned_at`,
+    order_items_order_items.`sale_price` as `order_items_sale_price`
+FROM
+    bigquery-public-data.thelook_ecommerce.order_items as order_items_order_items
+),
+rhash_731481919920004 as (
+SELECT
+    rhash_2276340501907096.`orders_created_at` as `orders_created_at`,
+    rhash_2481058820957911.`order_items_sale_price` as `order_items_sale_price`,
+    rhash_2276340501907096.`orders_num_of_item` as `orders_num_of_item`,
+    rhash_2481058820957911.`order_items_status` as `order_items_status`
+FROM
+    rhash_2481058820957911 as rhash_2481058820957911
+
+LEFT OUTER JOIN rhash_2276340501907096 on rhash_2481058820957911.`orders_id` = rhash_2276340501907096.`orders_id`
+
+),
+rhash_7254377763789713 as (
+SELECT
+    EXTRACT(MONTH from rhash_731481919920004.`orders_created_at`) as `orders_created_at_month`,
+    rhash_731481919920004.`order_items_sale_price` as `order_items_sale_price`,
+    rhash_731481919920004.`orders_num_of_item` as `orders_num_of_item`,
+    (rhash_731481919920004.`order_items_sale_price` * rhash_731481919920004.`orders_num_of_item`) as `order_items_revenue`,
+    rhash_731481919920004.`order_items_status` as `order_items_status`
+FROM
+    rhash_731481919920004 as rhash_731481919920004
+),
+rhash_5631951102311789 as (
+SELECT
+    (rhash_7254377763789713.`order_items_sale_price` * rhash_7254377763789713.`orders_num_of_item`) as `order_items_revenue`,
+    rhash_7254377763789713.`orders_created_at_month` as `orders_created_at_month`
+FROM
+    rhash_7254377763789713 as rhash_7254377763789713
+),
+rhash_5483500680794703 as (
+SELECT
+    rhash_7254377763789713.`order_items_revenue` as `order_items_bookable_revenue`,
+    rhash_7254377763789713.`order_items_revenue` as `order_items_revenue`
+FROM
+    rhash_7254377763789713 as rhash_7254377763789713
+WHERE
+    rhash_7254377763789713.`order_items_status` in ['Shipped']
+GROUP BY 
+    rhash_7254377763789713.`order_items_revenue`,
+    rhash_7254377763789713.`order_items_revenue`),
+rhash_2377844421244770 as (
+SELECT
+    rhash_5483500680794703.`order_items_bookable_revenue` as `order_items_bookable_revenue`,
+    rhash_5631951102311789.`orders_created_at_month` as `orders_created_at_month`
+FROM
+    rhash_5483500680794703 as rhash_5483500680794703
+
+INNER JOIN rhash_5631951102311789 on rhash_5483500680794703.`order_items_revenue` = rhash_5631951102311789.`order_items_revenue`
+
+),
+rhash_5758561880058295 as (
+SELECT
+    sum(rhash_2377844421244770.`order_items_bookable_revenue`) as `revenue`,
+    rhash_2377844421244770.`orders_created_at_month` as `orders_created_at_month`
+FROM
+    rhash_2377844421244770 as rhash_2377844421244770
+GROUP BY 
+    rhash_2377844421244770.`orders_created_at_month`)
+SELECT
+    rhash_5758561880058295.`orders_created_at_month`,
+    rhash_5758561880058295.`revenue`
+FROM
+    rhash_5758561880058295
+
+ORDER BY 
+    rhash_5758561880058295.orders_created_at_month desc
