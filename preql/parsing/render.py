@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose, DataType, ConceptSource
+from preql.core.enums import Purpose, DataType, ConceptSource, DatePart
 from preql.core.models import (
     Address,
     Query,
@@ -141,6 +141,10 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: DataType):
+        return arg.value
+    
+    @to_string.register
+    def _(self, arg:DatePart):
         return arg.value
 
     @to_string.register
