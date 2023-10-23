@@ -24,6 +24,7 @@ from preql.core.enums import (
     Purpose,
     WindowOrder,
     WindowType,
+    DatePart,
 )
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from preql.core.functions import Count, CountDistinct, Max, Min, Split, IndexAccess
@@ -161,21 +162,21 @@ grammar = r"""
     where: "WHERE"i (expr | conditional)
     
     expr_reference: IDENTIFIER
+
+    !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
     
-    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" | "is"i | "in"i )
+    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" | "is"i  )
     
-    comparison: expr COMPARISON_OPERATOR expr
+    comparison: (expr COMPARISON_OPERATOR expr) | (expr array_comparison expr_tuple)
     
     expr_tuple: "("  (expr ",")* expr ","?  ")"
 
     //indexing into an expression is a function
     index_access: expr "[" int_lit "]"
-    
-    in_comparison: expr "in" expr_tuple
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fcast | fcase | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | in_comparison | comparison | literal |  expr_reference | index_access | parenthetical
+    expr: window_item | filter_item | fcast | fcase | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
     
     // functions
     
@@ -232,9 +233,11 @@ grammar = r"""
     fquarter: "quarter"i  "(" expr ")"
     fyear: "year"i "(" expr ")"
     
+    DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i
+    fdate_trunc: "date_trunc"i "(" expr "," DATE_PART ")"
     fdate_part: "date_part"i "(" expr ")"
     
-    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part
+    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
     // base language constructs
     IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -276,7 +279,11 @@ grammar = r"""
     %ignore WS
 """  # noqa: E501
 
-PARSER = Lark(grammar, start="start", propagate_positions=True)
+PARSER = Lark(
+    grammar,
+    start="start",
+    propagate_positions=True,
+)
 
 
 def parse_concept_reference(
@@ -441,6 +448,9 @@ class ParseToObjects(Transformer):
     def TYPE(self, args) -> DataType:
         return DataType(args.lower())
 
+    def array_comparison(self, args) -> ComparisonOperator:
+        return ComparisonOperator([x.value.lower() for x in args])
+
     def COMPARISON_OPERATOR(self, args) -> ComparisonOperator:
         return ComparisonOperator(args)
 
@@ -556,7 +566,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        if isinstance(args[2], WindowItem):
+        elif isinstance(args[2], WindowItem):
             window_item: WindowItem = args[2]
             if purpose == Purpose.PROPERTY:
                 keys = [window_item.content]
@@ -577,7 +587,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        if isinstance(args[2], AggregateWrapper):
+        elif isinstance(args[2], AggregateWrapper):
             parent: AggregateWrapper = args[2]
             aggfunction: Function = parent.function
             concept = Concept(
@@ -595,7 +605,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        if isinstance(args[2], (int, float, str, bool)):
+        elif isinstance(args[2], (int, float, str, bool)):
             const_function: Function = Function(
                 operator=FunctionType.CONSTANT,
                 output_datatype=arg_to_datatype(args[2]),
@@ -616,7 +626,7 @@ class ParseToObjects(Transformer):
             self.environment.add_concept(concept, meta=meta)
             return concept
 
-        if isinstance(args[2], Function):
+        elif isinstance(args[2], Function):
             function: Function = args[2]
             # if purpose != function.output_purpose:
             #     raise SyntaxError(f'Invalid output purpose assigned {purpose}')
@@ -781,7 +791,7 @@ class ParseToObjects(Transformer):
         return Limit(count=int(args[0].value))
 
     def ORDERING(self, args):
-        return Ordering(args)
+        return Ordering(args.lower())
 
     def order_list(self, args):
         return [OrderItem(expr=x, order=y) for x, y in zip(args[::2], args[1::2])]
@@ -924,14 +934,10 @@ class ParseToObjects(Transformer):
         return Comparison(left=args[0], right=args[2], operator=args[1])
 
     def expr_tuple(self, args):
-        return tuple(args)
+        return Parenthetical(content=args)
 
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
-
-    def in_comparison(self, args):
-        # x in (a,b,c)
-        return Comparison(left=args[0], right=args[1], operator=ComparisonOperator.IN)
 
     def conditional(self, args):
         return Conditional(left=args[0], right=args[2], operator=args[1])
@@ -1141,6 +1147,29 @@ class ParseToObjects(Transformer):
                 DataType.STRING,
             },
             arg_count=1,
+        )
+
+    def DATE_PART(self, args):
+        return DatePart(args.value)
+
+    @v_args(meta=True)
+    def fdate_trunc(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Function(
+            operator=FunctionType.DATE_TRUNCATE,
+            arguments=args,
+            output_datatype=DataType.DATE,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs=[
+                {
+                    DataType.DATE,
+                    DataType.TIMESTAMP,
+                    DataType.DATETIME,
+                    DataType.STRING,
+                },
+                {DataType.DATE_PART},
+            ],
+            arg_count=2,
         )
 
     @v_args(meta=True)

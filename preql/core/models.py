@@ -35,6 +35,7 @@ from preql.core.enums import (
     SourceType,
     WindowType,
     ConceptSource,
+    DatePart,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -339,6 +340,7 @@ class Function(BaseModel):
                 [int, DataType.INTEGER],
                 [float, DataType.FLOAT],
                 [bool, DataType.BOOL],
+                [DatePart, DataType.DATE_PART],
             ]:
                 if isinstance(arg, ptype) and dtype in valid_inputs[idx]:
                     # attempt to exit early to avoid checking all types

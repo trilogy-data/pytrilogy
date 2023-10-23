@@ -88,6 +88,7 @@ def test_date_functions(test_environment):
         month(order_timestamp) -> order_month,
         quarter(order_timestamp) -> order_quarter,
         year(order_timestamp) -> order_year,
+        date_trunc(order_timestamp, month) -> order_month_trunc,
     ;
     
     

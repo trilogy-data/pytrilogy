@@ -4,7 +4,7 @@ from jinja2 import Template
 from preql.utility import string_to_hash
 
 from preql.constants import CONFIG, logger
-from preql.core.enums import Purpose, DataType, FunctionType, WindowType
+from preql.core.enums import Purpose, DataType, FunctionType, WindowType, DatePart
 from preql.core.models import (
     Concept,
     CTE,
@@ -101,6 +101,7 @@ FUNCTION_MAP = {
     FunctionType.LOWER: lambda x: f"LOWER({x[0]}) ",
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
+    FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
     FunctionType.DATE: lambda x: f"date({x[0]})",
     FunctionType.DATETIME: lambda x: f"datetime({x[0]})",
     FunctionType.TIMESTAMP: lambda x: f"timestamp({x[0]})",
@@ -198,7 +199,12 @@ class BaseDialect:
             if order_item.expr.address in [a.address for a in cte.output_columns]
         ]
         if not matched_ctes:
-            raise ValueError(f"No source found for concept {order_item.expr}")
+            all_outputs = set()
+            for cte in ctes:
+                all_outputs.update([a.address for a in cte.output_columns])
+            raise ValueError(
+                f"No source found for concept {order_item.expr}, have {all_outputs}"
+            )
         selected = matched_ctes[0]
         return (
             f"{selected.name}.{order_item.expr.safe_address} {order_item.order.value}"
@@ -363,8 +369,10 @@ class BaseDialect:
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, list):
-            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+            return f"{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
         elif isinstance(e, DataType):
+            return str(e.value)
+        elif isinstance(e, DatePart):
             return str(e.value)
         raise ValueError(f"Unable to render type {type(e)} {e}")
 

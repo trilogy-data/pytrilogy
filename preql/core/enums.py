@@ -49,6 +49,7 @@ class DataType(Enum):
     DATETIME = "datetime"
     TIMESTAMP = "timestamp"
     ARRAY = "array"
+    DATE_PART = "date_part"
 
     # GRANULAR
     UNIX_SECONDS = "unix_seconds"
@@ -177,6 +178,7 @@ class ComparisonOperator(Enum):
     LTE = "<="
     NE = "!="
     IN = "in"
+    NOT_IN = "not in"
     # TODO: deprecate for contains?
     LIKE = "like"
     ILIKE = "ilike"
@@ -184,8 +186,14 @@ class ComparisonOperator(Enum):
 
     @classmethod
     def _missing_(cls, value):
-        if value == "is":
+        if value == ["not", "in"]:
+            return ComparisonOperator.NOT_IN
+        if value == ["in"]:
+            return ComparisonOperator.IN
+        if str(value).lower() == "is":
             return ComparisonOperator.EQ
+        if str(value).lower() == "in":
+            return ComparisonOperator.IN
         if str(value).lower() == "like":
             return ComparisonOperator.LIKE
         if str(value).lower() == "ilike":
@@ -193,6 +201,14 @@ class ComparisonOperator(Enum):
         if str(value).lower() == "contains":
             return ComparisonOperator.CONTAINS
         return super()._missing_(value)
+
+
+class DatePart(Enum):
+    MONTH = "month"
+    YEAR = "year"
+    WEEK = "week"
+    DAY = "day"
+    QUARTER = "quarter"
 
 
 class SourceType(Enum):

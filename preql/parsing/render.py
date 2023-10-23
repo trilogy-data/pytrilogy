@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE
-from preql.core.enums import Purpose, DataType, ConceptSource
+from preql.core.enums import Purpose, DataType, ConceptSource, DatePart
 from preql.core.models import (
     Address,
     Query,
@@ -26,6 +26,7 @@ from preql.core.models import (
     CaseElse,
     CaseWhen,
     Import,
+    Parenthetical
 )
 
 
@@ -138,9 +139,17 @@ class Renderer:
     @to_string.register
     def _(self, arg: "CaseElse"):
         return f"""ELSE {self.to_string(arg.expr)}"""
+    @to_string.register
 
+    def _(self, arg: "Parenthetical"):
+        return f"""({self.to_string(arg.content)})"""
+    
     @to_string.register
     def _(self, arg: DataType):
+        return arg.value
+    
+    @to_string.register
+    def _(self, arg:DatePart):
         return arg.value
 
     @to_string.register
