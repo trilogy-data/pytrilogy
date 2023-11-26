@@ -9,6 +9,7 @@ from preql.core.models import (
     QueryDatasource,
     SourceType,
 )
+from preql.core.enums import Purpose
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import (
     StrategyNode,
@@ -63,7 +64,7 @@ class MergeNode(StrategyNode):
             )
         return joins
 
-    def create_inferred_joins(self, dataset_list, grain: Grain):
+    def create_inferred_joins(self, dataset_list: List[QueryDatasource], grain: Grain):
         base = dataset_list[0]
         joins = []
         all_concepts = unique(
@@ -75,6 +76,20 @@ class MergeNode(StrategyNode):
         if dataset_list[1:]:
             for right_value in dataset_list[1:]:
                 if not grain.components:
+                    joins.append(
+                        BaseJoin(
+                            left_datasource=base,
+                            right_datasource=right_value,
+                            join_type=self.force_join_type
+                            if self.force_join_type
+                            else JoinType.FULL,
+                            concepts=[],
+                        )
+                    )
+
+                if all(
+                    [c.purpose == Purpose.CONSTANT for c in right_value.output_concepts]
+                ):
                     joins.append(
                         BaseJoin(
                             left_datasource=base,

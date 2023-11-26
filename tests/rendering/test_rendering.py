@@ -16,7 +16,7 @@ def test_basic_query(test_environment):
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
         order_by=OrderBy(
-            [
+            items=[
                 OrderItem(
                     expr=test_environment.concepts["order_id"],
                     order=Ordering.ASCENDING,
@@ -55,7 +55,7 @@ def test_full_query(test_environment):
             ),
         ),
         order_by=OrderBy(
-            [
+            items=[
                 OrderItem(
                     expr=test_environment.concepts["order_id"],
                     order=Ordering.ASCENDING,

@@ -26,7 +26,7 @@ from preql.core.models import (
     CaseElse,
     CaseWhen,
     Import,
-    Parenthetical
+    Parenthetical,
 )
 
 
@@ -139,17 +139,17 @@ class Renderer:
     @to_string.register
     def _(self, arg: "CaseElse"):
         return f"""ELSE {self.to_string(arg.expr)}"""
-    @to_string.register
 
+    @to_string.register
     def _(self, arg: "Parenthetical"):
         return f"""({self.to_string(arg.content)})"""
-    
+
     @to_string.register
     def _(self, arg: DataType):
         return arg.value
-    
+
     @to_string.register
-    def _(self, arg:DatePart):
+    def _(self, arg: DatePart):
         return arg.value
 
     @to_string.register

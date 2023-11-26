@@ -5,6 +5,8 @@ logger = getLogger("preql")
 
 DEFAULT_NAMESPACE = "local"
 
+ENV_CACHE_NAME = ".preql_cache.json"
+
 
 # TODO: support loading from environments
 @dataclass

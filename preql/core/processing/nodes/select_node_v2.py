@@ -156,3 +156,9 @@ class SelectNode(StrategyNode):
         raise NoDatasourceException(
             f"Could not find any way to associate required concepts {required}"
         )
+
+
+class ConstantNode(SelectNode):
+    """Represents a constant value."""
+
+    pass

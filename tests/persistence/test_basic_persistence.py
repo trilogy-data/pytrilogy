@@ -7,7 +7,12 @@ from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
-
+from preql.core.processing.nodes.select_node_v2 import SelectNode
+from preql.core.env_processor import (
+    generate_graph,
+    datasource_to_node,
+    concept_to_node,
+)
 
 TEST_DIALECTS: list[BaseDialect] = [
     BaseDialect(),
@@ -51,13 +56,6 @@ def test_derivations(test_environment: Environment):
         assert concept.purpose == Purpose.KEY
         assert test_environment.datasources["bool_is_upper_name"].grain == Grain(
             components=[concept]
-        )
-
-        from preql.core.processing.nodes.select_node import SelectNode
-        from preql.core.env_processor import (
-            generate_graph,
-            datasource_to_node,
-            concept_to_node,
         )
 
         g = generate_graph(test_environment)
