@@ -865,7 +865,8 @@ class BaseJoin(BaseModel):
     join_type: JoinType
     filter_to_mutual: bool = False
 
-    def __post_init__(self):
+    def __init__(self, **data: Any):
+        super().__init__(**data)
         if self.left_datasource.full_name == self.right_datasource.full_name:
             raise SyntaxError(
                 f"Cannot join a dataself to itself, joining {self.left_datasource} and"
