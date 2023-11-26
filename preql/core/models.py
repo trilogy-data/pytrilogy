@@ -890,7 +890,12 @@ class BaseJoin(BaseModel):
             # if one datasource only has constants
             # we can join on 1=1
             for ds in [self.left_datasource, self.right_datasource]:
+                # constant can be joined at 1=1
                 if all([c.purpose == Purpose.CONSTANT for c in ds.output_concepts]):
+                    self.concepts = []
+                    return
+                # if everything is at abstract grain, we can skip joins
+                if all([c.grain == Grain() for c in ds.output_concepts]):
                     self.concepts = []
                     return
 
