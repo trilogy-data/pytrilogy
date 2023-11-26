@@ -5,7 +5,12 @@ from preql.core.models import CTE, Grain, QueryDatasource, Conditional
 def test_cte_merge(test_environment, test_environment_graph):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
-    output_map = {c.address: {datasource,} for c in outputs}
+    output_map = {
+        c.address: {
+            datasource,
+        }
+        for c in outputs
+    }
     a = CTE(
         name="test",
         output_columns=[outputs[0]],
@@ -18,7 +23,7 @@ def test_cte_merge(test_environment, test_environment_graph):
             joins=[],
             source_map=output_map,
         ),
-        source_map={c.address:datasource.identifier for c in outputs},
+        source_map={c.address: datasource.identifier for c in outputs},
     )
     b = CTE(
         name="testb",
@@ -32,7 +37,7 @@ def test_cte_merge(test_environment, test_environment_graph):
             joins=[],
             source_map=output_map,
         ),
-        source_map={c.address:datasource.identifier for c in outputs},
+        source_map={c.address: datasource.identifier for c in outputs},
     )
 
     merged = a + b

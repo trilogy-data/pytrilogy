@@ -277,7 +277,6 @@ class ColumnAssignment(BaseModel):
         # )
 
 
-
 class Statement(BaseModel):
     pass
 
@@ -547,6 +546,7 @@ class OrderItem(BaseModel):
     def output(self):
         return self.expr.output
 
+
 class OrderBy(BaseModel):
     items: List[OrderItem]
 
@@ -646,22 +646,21 @@ class Address(BaseModel):
 class Query(BaseModel):
     text: str
 
+
 def safe_concept(v):
     if isinstance(v, dict):
         return Concept.parse_obj(v)
     return v
 
-class Grain(BaseModel):
 
+class Grain(BaseModel):
     nested: bool = False
     components: List[Concept] = Field(default_factory=list)
 
     @validator("components", pre=True, always=True)
-    def component_nest(cls, v , values: dict[str, object]):
+    def component_nest(cls, v, values: dict[str, object]):
         if not values.get("nested", False):
-            v = [
-                safe_concept(c).with_default_grain() for c in v
-            ]
+            v = [safe_concept(c).with_default_grain() for c in v]
         v = unique(v, "address")
         return v
 
@@ -726,7 +725,6 @@ class Grain(BaseModel):
             return self.__add__(other)
 
 
-
 class GrainWindow(BaseModel):
     window: Window
     sort_concepts: List[Concept]
@@ -738,10 +736,12 @@ class GrainWindow(BaseModel):
             + f":{str(self.window)}>"
         )
 
+
 def safe_grain(v):
     if isinstance(v, dict):
         return Grain.parse_obj(v)
     return v
+
 
 class Datasource(BaseModel):
     identifier: str
@@ -937,11 +937,11 @@ class QueryDatasource(BaseModel):
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
 
-    @validator('input_concepts', always=True, pre=True)
+    @validator("input_concepts", always=True, pre=True)
     def validate_inputs(cls, v):
         return unique(v, "address")
 
-    @validator('output_concepts', always=True, pre=True)
+    @validator("output_concepts", always=True, pre=True)
     def validate_outputs(cls, v):
         return unique(v, "address")
 
@@ -1080,7 +1080,6 @@ class Comment(BaseModel):
     text: str
 
 
-
 class CTE(BaseModel):
     name: str
     source: "QueryDatasource"  # TODO: make recursive
@@ -1094,10 +1093,9 @@ class CTE(BaseModel):
     joins: List["Join"] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
 
-    @validator('output_columns', pre=True, always=True)
+    @validator("output_columns", pre=True, always=True)
     def validate_output_columns(cls, v):
         return unique(v, "address")
-
 
     def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
@@ -1199,7 +1197,6 @@ def merge_ctes(ctes: List[CTE]) -> List[CTE]:
     return final_ctes
 
 
-
 class CompiledCTE(BaseModel):
     name: str
     statement: str
@@ -1264,7 +1261,6 @@ class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
 
 
-
 class Environment(BaseModel):
     concepts: EnvironmentConceptDict[str, Concept] = Field(
         default_factory=EnvironmentConceptDict
@@ -1275,8 +1271,6 @@ class Environment(BaseModel):
     working_path: str = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
 
-    
-
     @classmethod
     def from_cache(cls, path):
         base = cls.parse_file(path)
@@ -1285,10 +1279,9 @@ class Environment(BaseModel):
 
     def to_cache(self):
         path = Path(self.working_path) / ENV_CACHE_NAME
-        with open(path, 'w') as f: 
+        with open(path, "w") as f:
             f.write(self.json())
         return path
-
 
     @property
     def materialized_concepts(self) -> List[Concept]:
@@ -1632,6 +1625,7 @@ class MaterializedDataset(BaseModel):
 # CTE contains procesed query?
 # or CTE references CTE?
 
+
 class ProcessedQuery(BaseModel):
     output_columns: List[Concept]
     ctes: List[CTE]
@@ -1756,6 +1750,7 @@ QueryDatasource.update_forward_refs()
 ProcessedQuery.update_forward_refs()
 ProcessedQueryPersist.update_forward_refs()
 
+
 def arg_to_datatype(arg) -> DataType:
     if isinstance(arg, Function):
         return arg.output_datatype
@@ -1775,4 +1770,3 @@ def arg_to_datatype(arg) -> DataType:
         return arg_to_datatype(arg.content)
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
-

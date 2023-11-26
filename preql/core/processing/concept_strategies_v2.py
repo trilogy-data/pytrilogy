@@ -16,7 +16,7 @@ from preql.core.processing.utility import (
 )
 from preql.utility import unique
 from preql.core.processing.nodes import (
-    SelectNode,
+    ConstantNode,
     MergeNode,
     GroupNode,
     StrategyNode,
@@ -192,7 +192,7 @@ def source_concepts(
                 )
             elif concept.derivation == PurposeLineage.CONSTANT:
                 stack.append(
-                    SelectNode(
+                    ConstantNode(
                         [concept], [], environment, g, parents=[], depth=depth + 1
                     )
                 )

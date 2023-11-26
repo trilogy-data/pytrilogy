@@ -9,17 +9,20 @@ from preql.core.models import (
     Environment,
 )
 from typing import Set
-from preql.core.processing.nodes import StrategyNode, SelectNode, MergeNode, NodeJoin
+from preql.core.processing.nodes import (
+    StrategyNode,
+    SelectNode,
+    StaticSelectNode,
+    MergeNode,
+    NodeJoin,
+)
 from preql.core.exceptions import NoDatasourceException
 from preql.core.models import (
     BaseJoin,
 )
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
-from preql.core.processing.utility import (
-    PathInfo,
-    path_to_joins,
-)
+from preql.core.processing.utility import PathInfo, path_to_joins, JoinType
 
 
 def gen_select_node_from_table(
@@ -171,12 +174,20 @@ def gen_select_node_from_join(
 
     final_joins = []
     for join in join_paths:
+        left = ds_to_node_map[join.left_datasource.identifier]
+        right = ds_to_node_map[join.right_datasource.identifier]
+        if isinstance(left, StaticSelectNode) or isinstance(right, StaticSelectNode):
+            concepts = []
+            join_type = JoinType.FULL
+        else:
+            concepts = join.concepts
+            join_type = join.join_type
         final_joins.append(
             NodeJoin(
-                left_node=ds_to_node_map[join.left_datasource.identifier],
-                right_node=ds_to_node_map[join.right_datasource.identifier],
-                concepts=join.concepts,
-                join_type=join.join_type,
+                left_node=left,
+                right_node=right,
+                concepts=concepts,
+                join_type=join_type,
                 filter_to_mutual=join.filter_to_mutual,
             )
         )

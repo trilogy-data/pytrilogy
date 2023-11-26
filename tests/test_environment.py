@@ -1,9 +1,7 @@
 from preql.core.models import Environment
 
 
-
-def test_environment_serialization(test_environment:Environment):
-
+def test_environment_serialization(test_environment: Environment):
     path = test_environment.to_cache()
 
     test_environment2 = Environment.from_cache(path)
