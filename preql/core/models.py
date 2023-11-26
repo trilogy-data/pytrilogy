@@ -1,7 +1,6 @@
 import difflib
 import os
 from copy import deepcopy
-from dataclasses import dataclass, field
 from typing import (
     Dict,
     MutableMapping,
@@ -17,8 +16,8 @@ from typing import (
 
 from pydantic import BaseModel, validator, Field
 from lark.tree import Meta
-
-from preql.constants import logger, DEFAULT_NAMESPACE
+from pathlib import Path
+from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME
 from preql.core.enums import (
     InfiniteFunctionArgs,
     DataType,
@@ -255,16 +254,14 @@ class Concept(BaseModel):
         return PurposeLineage.BASIC
 
 
-@dataclass
-class RawColumnExpr:
+class RawColumnExpr(BaseModel):
     text: str
 
 
-@dataclass(eq=True)
-class ColumnAssignment:
+class ColumnAssignment(BaseModel):
     alias: str | RawColumnExpr
     concept: Concept
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: List[Modifier] = Field(default_factory=list)
 
     def is_complete(self):
         return Modifier.PARTIAL not in self.modifiers
@@ -280,8 +277,8 @@ class ColumnAssignment:
         # )
 
 
-@dataclass(eq=True, frozen=True)
-class Statement:
+
+class Statement(BaseModel):
     pass
 
 
@@ -383,19 +380,17 @@ class Function(BaseModel):
         return base_grain
 
 
-@dataclass(eq=True)
-class ConceptTransform:
+class ConceptTransform(BaseModel):
     function: Function
     output: Concept
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: List[Modifier] = Field(default_factory=list)
 
     @property
     def input(self) -> List[Concept]:
         return [v for v in self.function.arguments if isinstance(v, Concept)]
 
 
-@dataclass
-class Window:
+class Window(BaseModel):
     count: int
     window_order: WindowOrder
 
@@ -520,10 +515,9 @@ class FilterItem(BaseModel):
         return [self.content] + self.where.concept_arguments
 
 
-@dataclass(eq=True)
-class SelectItem:
+class SelectItem(BaseModel):
     content: Union[Concept, ConceptTransform]
-    modifiers: List[Modifier] = field(default_factory=list)
+    modifiers: List[Modifier] = Field(default_factory=list)
 
     @property
     def output(self) -> Concept:
@@ -553,14 +547,11 @@ class OrderItem(BaseModel):
     def output(self):
         return self.expr.output
 
-
-@dataclass(eq=True, frozen=True)
-class OrderBy:
+class OrderBy(BaseModel):
     items: List[OrderItem]
 
 
-@dataclass(eq=True)
-class Select:
+class Select(BaseModel):
     selection: Sequence[Union[SelectItem, Concept, ConceptTransform]]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
@@ -648,27 +639,31 @@ class Select:
         return Grain(components=unique(output, "address"))
 
 
-@dataclass(eq=True, frozen=True)
-class Address:
+class Address(BaseModel):
     location: str
 
 
-@dataclass(eq=True, frozen=True)
-class Query:
+class Query(BaseModel):
     text: str
 
+def safe_concept(v):
+    if isinstance(v, dict):
+        return Concept.parse_obj(v)
+    return v
 
 class Grain(BaseModel):
-    components: List[Concept] = Field(default_factory=list)
-    nested: bool = False
 
-    def __init__(self, **kwargs):
-        if not kwargs.get("nested", False):
-            kwargs["components"] = [
-                c.with_default_grain() for c in kwargs.get("components", [])
+    nested: bool = False
+    components: List[Concept] = Field(default_factory=list)
+
+    @validator("components", pre=True, always=True)
+    def component_nest(cls, v , values: dict[str, object]):
+        if not values.get("nested", False):
+            v = [
+                safe_concept(c).with_default_grain() for c in v
             ]
-        kwargs["components"] = unique(kwargs["components"], "address")
-        super().__init__(**kwargs)
+        v = unique(v, "address")
+        return v
 
     @property
     def components_copy(self) -> List[Concept]:
@@ -731,8 +726,8 @@ class Grain(BaseModel):
             return self.__add__(other)
 
 
-@dataclass
-class GrainWindow:
+
+class GrainWindow(BaseModel):
     window: Window
     sort_concepts: List[Concept]
 
@@ -743,6 +738,10 @@ class GrainWindow:
             + f":{str(self.window)}>"
         )
 
+def safe_grain(v):
+    if isinstance(v, dict):
+        return Grain.parse_obj(v)
+    return v
 
 class Datasource(BaseModel):
     identifier: str
@@ -770,6 +769,7 @@ class Datasource(BaseModel):
 
     @validator("grain", always=True, pre=True)
     def grain_enforcement(cls, v: Grain, values):
+        v = safe_grain(v)
         if not v or (v and not v.components):
             v = Grain(
                 components=[
@@ -858,8 +858,7 @@ class Datasource(BaseModel):
         return self.address
 
 
-@dataclass
-class BaseJoin:
+class BaseJoin(BaseModel):
     left_datasource: Union[Datasource, "QueryDatasource"]
     right_datasource: Union[Datasource, "QueryDatasource"]
     concepts: List[Concept]
@@ -923,8 +922,7 @@ class BaseJoin:
         )
 
 
-@dataclass(eq=True)
-class QueryDatasource:
+class QueryDatasource(BaseModel):
     input_concepts: List[Concept]
     output_concepts: List[Concept]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]]
@@ -932,24 +930,28 @@ class QueryDatasource:
     grain: Grain
     joins: List[BaseJoin]
     limit: Optional[int] = None
-    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = field(
+    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
         default=None
     )
-    filter_concepts: List[Concept] = field(default_factory=list)
+    filter_concepts: List[Concept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
-    partial_concepts: List[Concept] = field(default_factory=list)
+    partial_concepts: List[Concept] = Field(default_factory=list)
 
-    def __post_init__(self):
-        self.input_concepts = unique(self.input_concepts, "address")
-        self.output_concepts = unique(self.output_concepts, "address")
+    @validator('input_concepts', always=True, pre=True)
+    def validate_inputs(cls, v):
+        return unique(v, "address")
+
+    @validator('output_concepts', always=True, pre=True)
+    def validate_outputs(cls, v):
+        return unique(v, "address")
 
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
 
-    def validate(self):
-        # validate this was successfully built.
-        for concept in self.output_concepts:
-            self.get_alias(concept.with_grain(self.grain))
+    # def validate(cls, values):
+    #     # validate this was successfully built.
+    #     for concept in self.output_concepts:
+    #         self.get_alias(concept.with_grain(self.grain))
 
     def __hash__(self):
         return (self.identifier).__hash__()
@@ -1074,13 +1076,12 @@ class QueryDatasource:
         return self.identifier
 
 
-@dataclass
-class Comment:
+class Comment(BaseModel):
     text: str
 
 
-@dataclass
-class CTE:
+
+class CTE(BaseModel):
     name: str
     source: "QueryDatasource"  # TODO: make recursive
     # output columns are what are selected/grouped by
@@ -1089,12 +1090,14 @@ class CTE:
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
-    parent_ctes: List["CTE"] = field(default_factory=list)
-    joins: List["Join"] = field(default_factory=list)
+    parent_ctes: List["CTE"] = Field(default_factory=list)
+    joins: List["Join"] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
 
-    def __post_init__(self):
-        self.output_columns = unique(self.output_columns, "address")
+    @validator('output_columns', pre=True, always=True)
+    def validate_output_columns(cls, v):
+        return unique(v, "address")
+
 
     def __add__(self, other: "CTE"):
         if not self.grain == other.grain:
@@ -1196,22 +1199,20 @@ def merge_ctes(ctes: List[CTE]) -> List[CTE]:
     return final_ctes
 
 
-@dataclass
-class CompiledCTE:
+
+class CompiledCTE(BaseModel):
     name: str
     statement: str
 
 
-@dataclass
-class JoinKey:
+class JoinKey(BaseModel):
     concept: Concept
 
     def __str__(self):
         return str(self.concept)
 
 
-@dataclass
-class Join:
+class Join(BaseModel):
     left_cte: CTE
     right_cte: CTE
     jointype: JoinType
@@ -1259,21 +1260,35 @@ class Import(BaseModel):
     # environment:"Environment"
 
 
-@dataclass
-class EnvironmentOptions:
+class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
 
 
-@dataclass
-class Environment:
-    concepts: EnvironmentConceptDict[str, Concept] = field(
+
+class Environment(BaseModel):
+    concepts: EnvironmentConceptDict[str, Concept] = Field(
         default_factory=EnvironmentConceptDict
     )
-    datasources: Dict[str, Datasource] = field(default_factory=dict)
-    imports: Dict[str, Import] = field(default_factory=dict)
+    datasources: Dict[str, Datasource] = Field(default_factory=dict)
+    imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
-    working_path: str = field(default_factory=lambda: os.getcwd())
-    environment_config: EnvironmentOptions = field(default_factory=EnvironmentOptions)
+    working_path: str = Field(default_factory=lambda: os.getcwd())
+    environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
+
+    
+
+    @classmethod
+    def from_cache(cls, path):
+        base = cls.parse_file(path)
+        base.concepts = EnvironmentConceptDict(**base.concepts)
+        return base
+
+    def to_cache(self):
+        path = Path(self.working_path) / ENV_CACHE_NAME
+        with open(path, 'w') as f: 
+            f.write(self.json())
+        return path
+
 
     @property
     def materialized_concepts(self) -> List[Concept]:
@@ -1609,16 +1624,15 @@ class WhereClause(BaseModel):
         return Grain(components=list(set(output)))
 
 
-@dataclass
-class MaterializedDataset:
-    address: str
+class MaterializedDataset(BaseModel):
+    address: Address
 
 
 # TODO: combine with CTEs
 # CTE contains procesed query?
 # or CTE references CTE?
-@dataclass
-class ProcessedQuery:
+
+class ProcessedQuery(BaseModel):
     output_columns: List[Concept]
     ctes: List[CTE]
     base: CTE
@@ -1629,20 +1643,17 @@ class ProcessedQuery:
     order_by: Optional[OrderBy] = None
 
 
-@dataclass
-class ProcessedQueryMixin:
+class ProcessedQueryMixin(BaseModel):
     output_to: MaterializedDataset
     datasource: Datasource
     # base:Dataset
 
 
-@dataclass
 class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
     pass
 
 
-@dataclass
-class Limit:
+class Limit(BaseModel):
     count: int
 
 
@@ -1698,6 +1709,19 @@ class Parenthetical(BaseModel):
         return base
 
 
+class Persist(BaseModel):
+    datasource: Datasource
+    select: Select
+
+    @property
+    def identifier(self):
+        return self.datasource.identifier
+
+    @property
+    def address(self):
+        return self.datasource.address
+
+
 Expr = (
     bool
     | int
@@ -1725,7 +1749,12 @@ WhereClause.update_forward_refs()
 Import.update_forward_refs
 CaseWhen.update_forward_refs()
 CaseElse.update_forward_refs()
-
+Select.update_forward_refs()
+CTE.update_forward_refs()
+BaseJoin.update_forward_refs()
+QueryDatasource.update_forward_refs()
+ProcessedQuery.update_forward_refs()
+ProcessedQueryPersist.update_forward_refs()
 
 def arg_to_datatype(arg) -> DataType:
     if isinstance(arg, Function):
@@ -1747,16 +1776,3 @@ def arg_to_datatype(arg) -> DataType:
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
 
-
-@dataclass(eq=True)
-class Persist:
-    datasource: Datasource
-    select: Select
-
-    @property
-    def identifier(self):
-        return self.datasource.identifier
-
-    @property
-    def address(self):
-        return self.datasource.address
