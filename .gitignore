@@ -2,6 +2,8 @@
 
 *.egg-info
 
+node_modules/
+
 dist/
 build/
 venv/
@@ -17,3 +19,8 @@ AdventureWorksDW2019.bak
 *.code-workspace
 
 examples/
+
+.temp
+.cache
+
+.preql
