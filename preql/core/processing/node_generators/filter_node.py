@@ -58,5 +58,6 @@ def gen_filter_node(
         ],
         join_concepts=[immediate_parent],
         force_join_type=JoinType.INNER,
-        partial_concepts=[immediate_parent],
+        # all of these concepts only count as partial
+        partial_concepts=[immediate_parent] + local_optional,
     )

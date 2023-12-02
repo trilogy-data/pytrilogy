@@ -101,6 +101,7 @@ class StrategyNode:
         for source in parent_sources:
             grain += source.grain
             output_concepts += source.grain.components_copy
+        
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=unique(self.all_concepts, "address"),
@@ -110,6 +111,7 @@ class StrategyNode:
             joins=[],
             grain=grain,
             condition=conditional,
+            partial_concepts = self.partial_concepts
         )
 
     def resolve(self) -> QueryDatasource:

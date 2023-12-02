@@ -24,3 +24,6 @@ examples/
 .cache
 
 .preql
+
+.preql_cache
+.preql-cache

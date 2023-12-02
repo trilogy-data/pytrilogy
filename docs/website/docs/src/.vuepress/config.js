@@ -1,5 +1,10 @@
 const { description } = require('../../package')
+import { getDirname, path } from '@vuepress/utils'
 import { defaultTheme } from '@vuepress/theme-default'
+import { registerComponentsPlugin } from '@vuepress/plugin-register-components'
+
+const __dirname = getDirname(import.meta.url)
+
 
  export default {
   /**
@@ -40,8 +45,8 @@ gtag('config', 'G-KK1Z9YZMR9');
     lastUpdated: false,
     navbar: [
       {
-        text: 'Pitch',
-        link: '/pitch/',
+        text: 'Thesis',
+        link: '/thesis/',
       },
       {
         text: 'Concepts',
@@ -72,6 +77,9 @@ gtag('config', 'G-KK1Z9YZMR9');
    * Apply plugins，ref：https://v1.vuepress.vuejs.org/zh/plugin/
    */
   plugins: [
+    registerComponentsPlugin({
+      componentsDir: path.resolve(__dirname, './components'),
+    }),
     '@vuepress/plugin-back-to-top',
     '@vuepress/plugin-medium-zoom',
   ]

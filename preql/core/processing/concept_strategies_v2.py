@@ -83,6 +83,7 @@ def recurse_or_fail(
     mandatory_concepts,
     optional_concepts,
     local_prefix,
+    accept_partial:bool =False
 ):
     candidates = [
         x
@@ -97,7 +98,7 @@ def recurse_or_fail(
     # as we require more
     for x in range(1, len(candidates) + 1):
         for combo in combinations(candidates, x):
-            new_mandatory = mandatory_concepts + list(combo)
+            new_mandatory:List[Concept] = mandatory_concepts + list(combo)
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} Attempting to resolve joins to reach"
                 f" {','.join([str(c) for c in new_mandatory])}"
@@ -109,8 +110,10 @@ def recurse_or_fail(
                     environment=environment,
                     g=g,
                     depth=depth + 1,
+                    accept_partial=accept_partial,
                 )
             except ValueError:
+                print(f'failed to find {[c.address for c in new_mandatory]}')
                 continue
     # terminal state two - have gone through all options
     throw_helpful_error(mandatory_concepts, optional_concepts)
@@ -122,6 +125,7 @@ def source_concepts(
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
     depth: int = 0,
+    accept_partial:bool = False
 ) -> StrategyNode:
     """Mandatory concepts are those which must be included in the output
     Optional concepts may be dropped"""
@@ -155,6 +159,7 @@ def source_concepts(
     # Loop through all possible grains + subgrains
     # Starting with the most grain
     found_addresses: list[str] = []
+    partial_addresses: list[str] = []
     found_concepts: set[Concept] = set()
     found_map = defaultdict(set)
 
@@ -221,11 +226,15 @@ def source_concepts(
                     found_addresses.append(concept.address)
                     found_concepts.add(concept)
                     found_map[str(node)].add(concept)
+                if concept in node.partial_concepts:
+                    partial_addresses.append(concept.address)
+                    found_concepts.add(concept)
+                    found_map[str(node)].add(concept)
         logger.info(
             f"{local_prefix}{LOGGER_PREFIX} finished a loop iteration looking for {[c.address for c in all_concepts]} from"
-            f" {[n for n in stack]}, have {found_addresses}"
+            f" {[n for n in stack]}, have {found_addresses} and partial {partial_addresses}"
         )
-        if all(c.address in found_addresses for c in all_concepts):
+        if all(c.address in found_addresses for c in all_concepts) or ( accept_partial and  all(c.address in found_addresses + partial_addresses) for c in all_concepts):
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
                 f" {[n for n in stack]}"
@@ -249,6 +258,7 @@ def source_concepts(
                     mandatory_concepts,
                     optional_concepts,
                     local_prefix,
+                    accept_partial=True,
                 )
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."

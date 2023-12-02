@@ -59,7 +59,8 @@ class Renderer:
         metrics = []
         # first, keys
         for concept in arg.concepts.values():
-            if concept.namespace != DEFAULT_NAMESPACE:
+            # don't render anything that came from an import
+            if concept.namespace in arg.imports:
                 continue
             if (
                 concept.metadata
@@ -70,7 +71,7 @@ class Renderer:
                 constants.append(concept)
             elif not concept.lineage and concept.purpose == Purpose.KEY:
                 keys.append(concept)
-
+            
             elif not concept.lineage and concept.purpose == Purpose.PROPERTY:
                 if concept.keys:
                     # avoid duplicate declarations
@@ -172,15 +173,19 @@ class Renderer:
             base_description = concept.metadata.description
         else:
             base_description = None
+        if concept.namespace:
+            namespace = f'{concept.namespace}.'
+        else:
+            namespace = ''
         if not concept.lineage:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
-                output = f"{concept.purpose.value} {concept.keys[0].name}.{concept.name} {concept.datatype.value};"
+                output = f"{concept.purpose.value} {namespace}{concept.keys[0].name}.{concept.name} {concept.datatype.value};"
             else:
                 output = (
-                    f"{concept.purpose.value} {concept.name} {concept.datatype.value};"
+                    f"{concept.purpose.value} {namespace}{concept.name} {concept.datatype.value};"
                 )
         else:
-            output = f"{concept.purpose.value} {concept.name} <- {self.to_string(concept.lineage)};"
+            output = f"{concept.purpose.value} {namespace}{concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:
             output += f" # {base_description}"
         return output
