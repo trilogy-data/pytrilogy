@@ -67,21 +67,22 @@ separate it with a semicolon from the query that uses it.
 #### Try answering these questions (click to show)
 
 <ul>
-<Accordian ariaTitle ="Did different classes have different average fares?"  title="Did different classes have different average fares?" >
+<Accordian  title="Did different classes have different average fares?" >
 <SQL query="select passenger.class, avg(passenger.fare)->avg_class_fare;"/>
 </Accordian>
-<Accordian ariaTitle ="Were people in higher classes more likely to survive?"  title="Where people in higher classes more likely to survive?" >
+<Accordian  title="Where people in higher classes more likely to survive?" >
 <SQL query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 select passenger.class, count(survivor)/count(passenger.id)*100->survival_rate;
 "/>
 </Accordian>
-<Accordian ariaTitle ="Were certain ages more likely to survive?"  title="Where certain genders more likely to survive?" >
+<Accordian  title="Were certain ages more likely to survive?" >
 <SQL query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 select 
     cast(passenger.age / 10 as int) * 10 -> passenger_decade, 
-    count(survivor)/count(passenger.id)->survival_rate
+    count(survivor)/count(passenger.id)->survival_rate,
+    count(passenger.id) -> bucket_size
 order by passenger_decade desc
 ;
 "/>
