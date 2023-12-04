@@ -213,6 +213,13 @@ def gen_select_node(
 ) -> MergeNode | SelectNode:
     basic_inputs = [x for x in local_optional if x in environment.materialized_concepts]
     ds = None
+    # first try to get everything
+    ds = gen_select_node_from_table(
+        [concept] + local_optional, g=g, environment=environment, depth=depth
+    )
+    if ds:
+        return ds
+    # then look for joins
     for x in reversed(range(1, len(basic_inputs) + 1)):
         for combo in combinations(basic_inputs, x):
             all_concepts = [concept, *combo]

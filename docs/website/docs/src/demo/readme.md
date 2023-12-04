@@ -26,13 +26,13 @@ metric, and there is a datasource defined that maps these concepts to a table.
 ```sql
 
 key passenger.id int;
-property passenger.age int;
-property passenger.survived bool;
-property passenger.name string;
-property passenger.passenger_class int;
-property passenger.fare float;
-property passenger.cabin string;
-property passenger.embarked bool;
+property passenger.id.age int;
+property passenger.id.survived bool;
+property passenger.id.name string;
+property passenger.id.passenger_class int;
+property passenger.id.fare float;
+property passenger.id.cabin string;
+property passenger.id.embarked bool;
 
 metric passenger.id.count <- count(passenger.id);
 
@@ -56,6 +56,22 @@ address raw_titanic;
 :dependencies = 'query.dependencies'>
 </QueryComponent>
 
+## Sandbox
+
+Now, try writing your own queries in the sandbox below. The following concepts
+will be predefined for you.
+
+Each query is stateless, so if you want to define a new concept in your query,
+separate it with a semicolon from the query that uses it. 
+
+#### Available Concepts
+<div>
+<span class="column-badge" style="margin-right: 5px;" v-for="concept in concepts">
+ <Badge :text="concept" />
+</span>
+</div>
+
+<FreeformQueryComponent/>
 
 <script>
 export default {
@@ -88,7 +104,7 @@ limit 5;`,
             'description': "We can define new concepts that are transformations of existing concepts and reuse them in queries. Here we split the name field on the comma, and take the first element, which is the family name. We then count the number of passengers in each family, and order by that count."
         },
         {
-            'title': 'How many survived?',
+            'title': 'How many survived from each family?',
             'query': `auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
 select 
     passenger.family,
@@ -100,8 +116,25 @@ limit 5;`,
             'description': `While where clauses can be used to filter the output of a query, many common patterns can instead by implemented by creating filtered concepts. Here we create a new concept, surviving_passenger, which is a subset of passenger.id where passenger.survived = 1. We then use this concept to count the number of surviving passengers in each family.`,
             'dependencies':[`property passenger.id.family <- split(passenger.name, ',')[1];`]
 
+        },
+        {
+            'title': 'Familes where everyone survived',
+            'query': `auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
+select 
+    passenger.family,
+    passenger.id.count,
+    count(surviving_passenger) -> surviving_size
+where
+    passenger.id.count>4
+order by
+    passenger.id.count desc
+limit 5;`,
+            'description': `The where clause only has access to the output statements of the select. To filter on the output of a derived metric, we can use a where clause on the select itself. Here we only return large families where at least two people survived. For simple filtering, this is more idiomatic than creating a new concept.`,
+            'dependencies':[`property passenger.id.family <- split(passenger.name, ',')[1];`]
+
         }],
-        fields: ['PassengerId','Survived','Pclass','Name','Sex','Age','SibSp','Parch','Ticket','Fare','Cabin','Embarked']
+        fields: ['PassengerId','Survived','Pclass','Name','Sex','Age','SibSp','Parch','Ticket','Fare','Cabin','Embarked'],
+        concepts: ['passenger.id', 'passenger.age', 'passenger.survived', 'passenger.name', 'passenger.passenger_class', 'passenger.fare', 'passenger.cabin', 'passenger.embarked']
     };
 }
 }
