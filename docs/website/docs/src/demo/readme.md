@@ -70,7 +70,7 @@ separate it with a semicolon from the query that uses it.
 <Accordian  title="Did different classes have different average fares?" >
 <SQL query="select passenger.class, avg(passenger.fare)->avg_class_fare;"/>
 </Accordian>
-<Accordian  title="Where people in higher classes more likely to survive?" >
+<Accordian  title="Were people in higher classes more likely to survive?" >
 <SQL query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 select passenger.class, count(survivor)/count(passenger.id)*100->survival_rate;
