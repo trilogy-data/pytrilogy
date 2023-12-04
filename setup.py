@@ -43,7 +43,7 @@ setuptools.setup(
         "": ["*.tf", "*.jinja", "py.typed"],
     },
     install_requires=install_requires,
-    scripts=["bin/trilogy"],
+    scripts=[],
     classifiers=[
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
