@@ -25,5 +25,5 @@ examples/
 
 .preql
 
-.preql_cache
-.preql-cache
+.preql_cache.json
+.preql-cache.json

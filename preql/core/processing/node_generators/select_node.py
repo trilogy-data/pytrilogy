@@ -46,8 +46,10 @@ def gen_select_node_from_table(
         for raw_concept in all_concepts:
             # look for connection to abstract grain
             req_concept = raw_concept.with_default_grain()
+            # if we don't have a concept in the graph
+            # exit early
             if concept_to_node(req_concept) not in g.nodes:
-                raise ValueError(f"concept {req_concept} not found in graph")
+                return None
             try:
                 path = nx.shortest_path(
                     g,
