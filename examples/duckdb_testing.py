@@ -3,7 +3,7 @@ import pandas as pd
 from preql import Executor, Dialects
 from preql.core.models import Environment
 from sqlalchemy import create_engine, text
-from preql.core.models import Datasource, Concept, ColumnAssignment, ConceptDeclaration
+from preql.core.models import Datasource, Concept, ColumnAssignment, ConceptDeclaration, Grain
 from preql.core.enums import DataType, Purpose
 from os.path import dirname
 from pathlib import PurePath
@@ -11,6 +11,15 @@ from preql import Executor
 from preql.parsing.render import render_query, render_environment, Renderer
 from preql.constants import logger
 from preql.hooks.query_debugger import DebuggingHook
+from preql.core.processing.node_generators import (
+    gen_filter_node,
+    gen_window_node,
+    gen_group_node,
+    gen_basic_node,
+    gen_select_node,
+    gen_static_select_node,
+)
+from preql.core.processing.concept_strategies_v2 import generate_graph
 from logging import StreamHandler
 
 logger.addHandler(StreamHandler())
@@ -26,35 +35,79 @@ def setup_engine()->Executor:
 
 def setup_titanic(env:Environment):
     namespace = 'passenger'
-    id = Concept(name='id', namespace=namespace, datatype=DataType.INTEGER,
-                            purpose=Purpose.KEY)
-    age = Concept(name='age', namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.PROPERTY)
+    id = Concept(
+        name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
+    age = Concept(
+        name="age",
+        namespace=namespace,
+        datatype=DataType.INTEGER,
+        purpose=Purpose.PROPERTY,
+        keys=[id],
+    )
 
-    name = Concept(name='name', namespace=namespace, datatype=DataType.STRING, purpose=Purpose.PROPERTY)
+    name = Concept(
+        name="name",
+        namespace=namespace,
+        datatype=DataType.STRING,
+        purpose=Purpose.PROPERTY,
+        keys=[id],
+    )
 
-    pclass = Concept(name='passenger_class', namespace=namespace, purpose = Purpose.PROPERTY,
-                            datatype=DataType.INTEGER
-                            )
-    survived = Concept(name='survived', namespace=namespace, purpose = Purpose.PROPERTY,
-                            datatype=DataType.BOOL
-                                                                                                                           )
-    fare = Concept(name='fare', namespace=namespace, purpose = Purpose.PROPERTY, datatype=DataType.FLOAT )
-    for x in [id, age, survived, name, pclass, fare]:
+    pclass = Concept(
+        name="passenger_class",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.INTEGER,
+        keys=[id],
+    )
+    survived = Concept(
+        name="survived",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.BOOL,
+        keys=[id],
+    )
+    fare = Concept(
+        name="fare",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.FLOAT,
+        keys=[id],
+    )
+    embarked = Concept(
+        name="embarked",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.INTEGER,
+        keys=[id],
+    )
+    cabin = Concept(
+        name="cabin",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        keys=[id],
+    )
+    for x in [id, age, survived, name, pclass, fare, cabin, embarked]:
         env.add_concept(x)
 
     env.add_datasource(
         Datasource(
-            identifier = 'raw_data',
-            address = 'raw_titanic',
-            columns= [ColumnAssignment(alias='passengerid', concept=id ),
-                    ColumnAssignment(alias='age', concept=age),
-                    ColumnAssignment(alias='survived', concept=survived),
-                    ColumnAssignment(alias='pclass', concept=pclass),
-                    ColumnAssignment(alias='name', concept=name),
-                    ColumnAssignment(alias='fare', concept=fare)]
-
-        ), 
-
+            identifier="raw_data",
+            address="raw_titanic",
+            columns=[
+                ColumnAssignment(alias="passengerid", concept=id),
+                ColumnAssignment(alias="age", concept=age),
+                ColumnAssignment(alias="survived", concept=survived),
+                ColumnAssignment(alias="pclass", concept=pclass),
+                ColumnAssignment(alias="name", concept=name),
+                ColumnAssignment(alias="fare", concept=fare),
+                ColumnAssignment(alias="cabin", concept=cabin),
+                ColumnAssignment(alias="embarked", concept=embarked),
+            ],
+            grain=Grain(components=[id]),
+        ),
     )
     return env
 
@@ -73,15 +126,18 @@ if __name__ == "__main__":
         print(renderer.to_string(ConceptDeclaration(concept=conc)))
 
     executor.environment = env
-    test = '''property passenger.id.family <- split(passenger.name, ',')[1]; 
-auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
-select 
-    passenger.family,
-    passenger.id.count,
-    count(surviving_passenger) -> surviving_size
-order by
-    passenger.id.count desc
-limit 5;'''
+    test = '''key passenger.family <- split(passenger.name, ',')[1];
+
+select passenger.family, avg(passenger.fare) -> avg_fare
+order by avg_fare desc;'''
+    node = gen_select_node(
+        concept =env.concepts['passenger.name'],
+        local_optional = [env.concepts['passenger.age'].with_grain(Grain())],
+        environment=env, 
+                    g = generate_graph(env),
+                    depth = 1,
+                    source_concepts= lambda: 1,)
+    print(node.resolve())
 
     queries = executor.parse_text(test)
     candidate = queries[-1]
@@ -93,5 +149,5 @@ limit 5;'''
     results= executor. execute_text(test)
     for r in results[0]:
         print(r)
-    # print('-------------')
-    # print(render_environment(env))
+    print('-------------')
+    print(render_environment(env))
