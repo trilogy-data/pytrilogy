@@ -13,7 +13,12 @@ from preql.core.processing.node_generators.common import (
 
 
 def gen_basic_node(
-    concept: Concept, local_optional:List[Concept], environment, g, depth:int, source_concepts
+    concept: Concept,
+    local_optional: List[Concept],
+    environment,
+    g,
+    depth: int,
+    source_concepts,
 ):
     parent_concepts = resolve_function_parent_concepts(concept)
     if not parent_concepts:

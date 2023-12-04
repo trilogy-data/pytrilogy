@@ -44,7 +44,9 @@ def throw_helpful_error(
     )
 
 
-def get_priority_concept(all_concepts:List[Concept], found_addresses:List[str]) -> Concept:
+def get_priority_concept(
+    all_concepts: List[Concept], found_addresses: List[str]
+) -> Concept:
     remaining_concept = [c for c in all_concepts if c.address not in found_addresses]
     priority = (
         [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
@@ -237,8 +239,13 @@ def source_concepts(
             f" {[n for n in stack]}, have {found_addresses} and partial {partial_addresses}"
         )
         if all([c.address in found_addresses for c in all_concepts]) or (
-            accept_partial and all([c.address in [found_addresses.union(partial_addresses)]
-            for c in all_concepts ])
+            accept_partial
+            and all(
+                [
+                    c.address in [found_addresses.union(partial_addresses)]
+                    for c in all_concepts
+                ]
+            )
         ):
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
