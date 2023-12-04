@@ -44,7 +44,7 @@ def throw_helpful_error(
     )
 
 
-def get_priority_concept(all_concepts, found_addresses) -> Concept:
+def get_priority_concept(all_concepts:List[Concept], found_addresses:List[str]) -> Concept:
     remaining_concept = [c for c in all_concepts if c.address not in found_addresses]
     priority = (
         [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
@@ -83,6 +83,7 @@ def recurse_or_fail(
     mandatory_concepts,
     optional_concepts,
     local_prefix,
+    accept_partial: bool = False,
 ):
     candidates = [
         x
@@ -97,7 +98,7 @@ def recurse_or_fail(
     # as we require more
     for x in range(1, len(candidates) + 1):
         for combo in combinations(candidates, x):
-            new_mandatory = mandatory_concepts + list(combo)
+            new_mandatory: List[Concept] = mandatory_concepts + list(combo)
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} Attempting to resolve joins to reach"
                 f" {','.join([str(c) for c in new_mandatory])}"
@@ -109,8 +110,10 @@ def recurse_or_fail(
                     environment=environment,
                     g=g,
                     depth=depth + 1,
+                    accept_partial=accept_partial,
                 )
             except ValueError:
+                print(f"failed to find {[c.address for c in new_mandatory]}")
                 continue
     # terminal state two - have gone through all options
     throw_helpful_error(mandatory_concepts, optional_concepts)
@@ -122,6 +125,7 @@ def source_concepts(
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
     depth: int = 0,
+    accept_partial: bool = False,
 ) -> StrategyNode:
     """Mandatory concepts are those which must be included in the output
     Optional concepts may be dropped"""
@@ -154,7 +158,9 @@ def source_concepts(
     # now start the fun portion
     # Loop through all possible grains + subgrains
     # Starting with the most grain
-    found_addresses: list[str] = []
+    found_addresses: set[str] = set()
+    partial_addresses: set[str] = set()
+    non_partial_addresses: set[str] = set()
     found_concepts: set[Concept] = set()
     found_map = defaultdict(set)
 
@@ -164,7 +170,7 @@ def source_concepts(
 
     while not all(c.address in found_addresses for c in all_concepts):
         # pick the concept we're trying to get
-        concept = get_priority_concept(all_concepts, found_addresses)
+        concept = get_priority_concept(all_concepts, list(found_addresses))
 
         # process into a deduped list of optional join concepts to try to pull through
         local_optional = get_local_optional(
@@ -218,14 +224,22 @@ def source_concepts(
         for node in stack:
             for concept in node.resolve().output_concepts:
                 if concept not in node.partial_concepts:
-                    found_addresses.append(concept.address)
+                    found_addresses.add(concept.address)
+                    non_partial_addresses.add(concept.address)
+                    found_concepts.add(concept)
+                    found_map[str(node)].add(concept)
+                if concept in node.partial_concepts:
+                    partial_addresses.add(concept.address)
                     found_concepts.add(concept)
                     found_map[str(node)].add(concept)
         logger.info(
             f"{local_prefix}{LOGGER_PREFIX} finished a loop iteration looking for {[c.address for c in all_concepts]} from"
-            f" {[n for n in stack]}, have {found_addresses}"
+            f" {[n for n in stack]}, have {found_addresses} and partial {partial_addresses}"
         )
-        if all(c.address in found_addresses for c in all_concepts):
+        if all([c.address in found_addresses for c in all_concepts]) or (
+            accept_partial and all([c.address in [found_addresses.union(partial_addresses)]
+            for c in all_concepts ])
+        ):
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
                 f" {[n for n in stack]}"
@@ -249,10 +263,16 @@ def source_concepts(
                     mandatory_concepts,
                     optional_concepts,
                     local_prefix,
+                    accept_partial=True,
                 )
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."
             )
+    partials = [
+        c
+        for c in all_concepts
+        if c.address in partial_addresses and c.address not in non_partial_addresses
+    ]
 
     output = MergeNode(
         mandatory_concepts,
@@ -261,10 +281,12 @@ def source_concepts(
         g,
         parents=stack,
         depth=depth,
+        partial_concepts=partials,
     )
 
     # ensure we can resolve our final merge
     output.resolve()
+
     return output
 
 
@@ -276,4 +298,11 @@ def source_query_concepts(
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
     root = source_concepts(output_concepts, [], environment, g, depth=0)
-    return GroupNode(output_concepts, [], environment, g, parents=[root])
+    return GroupNode(
+        output_concepts,
+        [],
+        environment,
+        g,
+        parents=[root],
+        partial_concepts=root.partial_concepts,
+    )

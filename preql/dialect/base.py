@@ -34,8 +34,8 @@ from preql.utility import unique
 LOGGER_PREFIX = "[RENDERING]"
 
 
-def INVALID_REFERENCE_STRING(x: Any):
-    return f"INVALID_REFERENCE_BUG<{x}>"
+def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
+    return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 
 WINDOW_FUNCTION_MAP = {

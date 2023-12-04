@@ -943,6 +943,14 @@ class QueryDatasource(BaseModel):
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
 
+    @property
+    def non_partial_concept_addresses(self) -> List[str]:
+        return [
+            c.address
+            for c in self.output_concepts
+            if c.address not in [z.address for z in self.partial_concepts]
+        ]
+
     @validator("input_concepts", always=True, pre=True)
     def validate_inputs(cls, v):
         return unique(v, "address")
@@ -950,6 +958,17 @@ class QueryDatasource(BaseModel):
     @validator("output_concepts", always=True, pre=True)
     def validate_outputs(cls, v):
         return unique(v, "address")
+
+    @validator("source_map", always=True, pre=True)
+    def validate_source_map(cls, v):
+        for k, val in v.items():
+            if val:
+                assert len(val) == 1, f"source map {k} has multiple values {len(val)}"
+        return v
+
+    # @validator("partial_concepts", always=True, pre=True)
+    # def validate_partial_concepts(cls, v):
+    #     return unique(v, "address")
 
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -1098,6 +1117,7 @@ class CTE(BaseModel):
     parent_ctes: List["CTE"] = Field(default_factory=list)
     joins: List["Join"] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
+    partial_concepts: List[Concept] = Field(default_factory=list)
 
     @validator("output_columns", pre=True, always=True)
     def validate_output_columns(cls, v):
@@ -1119,6 +1139,9 @@ class CTE(BaseModel):
             self.output_columns + other.output_columns, "address"
         )
         self.joins = unique(self.joins + other.joins, "unique_id")
+        self.partial_concepts = unique(
+            self.partial_concepts + other.partial_concepts, "address"
+        )
         return self
 
     @property
@@ -1188,6 +1211,10 @@ class CTE(BaseModel):
         ):
             return False
         return True
+
+    @property
+    def sourced_concepts(self) -> List[Concept]:
+        return [c for c in self.output_columns if c.address in self.source_map]
 
 
 def merge_ctes(ctes: List[CTE]) -> List[CTE]:

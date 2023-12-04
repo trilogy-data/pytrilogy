@@ -35,11 +35,29 @@ def concept_list_to_grain(
     return Grain(components=candidates)
 
 
-def resolve_concept_map(inputs: List[QueryDatasource]):
+def resolve_concept_map(inputs: List[QueryDatasource], targets: Optional[List[Concept]] = None):
+    targets = targets or []
     concept_map = defaultdict(set)
     for input in inputs:
         for concept in input.output_concepts:
-            concept_map[concept.address].add(input)
+            if concept.address not in input.non_partial_concept_addresses:
+                continue
+            if concept.address not in concept_map:
+                concept_map[concept.address].add(input)
+    for target in targets:
+        if target.lineage and not any(
+            target in input.output_concepts for input in inputs
+        ):
+            # an empty source means it is defined in this CTE
+            concept_map[target.address] = set()
+    if all([target.address in concept_map for target in targets]):
+        return concept_map
+
+    # second loop, include partials
+    for input in inputs:
+        for concept in input.output_concepts:
+            if concept.address not in concept_map:
+                concept_map[concept.address].add(input)
     return concept_map
 
 
@@ -101,15 +119,22 @@ class StrategyNode:
         for source in parent_sources:
             grain += source.grain
             output_concepts += source.grain.components_copy
+        source_map = resolve_concept_map(
+            parent_sources, unique(self.all_concepts, "address")
+        )
+        for c in self.all_concepts:
+            if c.address not in source_map:
+                raise SyntaxError(f"missing EXPORT FOR {c.address}")
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=unique(self.all_concepts, "address"),
             datasources=parent_sources,
             source_type=self.source_type,
-            source_map=resolve_concept_map(parent_sources),
+            source_map=source_map,
             joins=[],
             grain=grain,
             condition=conditional,
+            partial_concepts=self.partial_concepts,
         )
 
     def resolve(self) -> QueryDatasource:

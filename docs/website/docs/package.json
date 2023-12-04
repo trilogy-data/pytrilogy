@@ -1,0 +1,28 @@
+{
+  "name": "preql/trilogy",
+  "version": "0.0.1",
+  "description": "Typed, declarative ETL and query language that compiles to SQL.",
+  "main": "index.js",
+  "authors": {
+    "name": "Ethan",
+    "email": "ethan.dickinson[@]gmail.com"
+  },
+  "repository": "https://github.com/preqldata/pypreql/preql/trilogy",
+  "scripts": {
+    "dev": "vuepress dev src",
+    "build": "vuepress build src"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@vuepress/plugin-prismjs": "^2.0.0-rc.0",
+    "@vuepress/plugin-register-components": "^2.0.0-rc.0",
+    "vuepress": "^2.0.0-rc.0",
+    "vuetable-2": "^2.0.0-beta.4"
+  },
+  "dependencies": {
+    "@highlightjs/vue-plugin": "^2.1.0",
+    "axios": "^1.6.2",
+    "highlight.js": "^11.9.0",
+    "vuetify": "^3.4.4"
+  }
+}
