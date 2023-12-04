@@ -71,7 +71,7 @@ class Renderer:
                 constants.append(concept)
             elif not concept.lineage and concept.purpose == Purpose.KEY:
                 keys.append(concept)
-            
+
             elif not concept.lineage and concept.purpose == Purpose.PROPERTY:
                 if concept.keys:
                     # avoid duplicate declarations
@@ -174,16 +174,14 @@ class Renderer:
         else:
             base_description = None
         if concept.namespace:
-            namespace = f'{concept.namespace}.'
+            namespace = f"{concept.namespace}."
         else:
-            namespace = ''
+            namespace = ""
         if not concept.lineage:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
                 output = f"{concept.purpose.value} {namespace}{concept.keys[0].name}.{concept.name} {concept.datatype.value};"
             else:
-                output = (
-                    f"{concept.purpose.value} {namespace}{concept.name} {concept.datatype.value};"
-                )
+                output = f"{concept.purpose.value} {namespace}{concept.name} {concept.datatype.value};"
         else:
             output = f"{concept.purpose.value} {namespace}{concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:

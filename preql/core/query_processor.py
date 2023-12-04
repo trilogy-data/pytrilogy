@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Union, Set
+from typing import List, Optional
 
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
@@ -16,7 +16,6 @@ from preql.core.models import (
     ProcessedQuery,
     ProcessedQueryPersist,
     QueryDatasource,
-    Datasource,
     BaseJoin,
 )
 
@@ -76,7 +75,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
     ):
-        SLABEL = 'MULTIPLE'
+        SLABEL = "MULTIPLE"
         source_map = {}
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
@@ -111,7 +110,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
             # now populate anything derived in this level
             for k, v in query_datasource.source_map.items():
                 if k not in source_map and not v:
-                    source_map[k] = ''
+                    source_map[k] = ""
                     # source_map[k] = source_map[k].union(v)
                 # print(cte.source.source_map.keys())
                 # print(cte.name)
@@ -121,12 +120,12 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 # for value in cte.sourced_concepts:
                 #     if value.address not in source_map:
                 #         source_map[value.address] = cte.name
-                    # if 'family' in value.address and cte.name == 'rhash_1530274405436111':
-                    #     continue
-                    # if value not in cte.partial_concepts:
-                        
+                # if 'family' in value.address and cte.name == 'rhash_1530274405436111':
+                #     continue
+                # if value not in cte.partial_concepts:
+
     else:
-        SLABEL = 'SINGULAR'
+        SLABEL = "SINGULAR"
         # source is the first datasource of the query datasource
         source = query_datasource.datasources[0]
         # for some reason, we rebuild source map here
@@ -157,13 +156,15 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         # as this set is used as the base for rendering the query
         parent_ctes=children,
         condition=query_datasource.condition,
-        partial_concepts = query_datasource.partial_concepts
+        partial_concepts=query_datasource.partial_concepts,
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
     for x in cte.output_columns:
         if x.address not in cte.source_map:
-            raise ValueError(f"Missing {x.address} in {cte.source_map}, {SLABEL} source map {cte.source.source_map.keys()} ")
+            raise ValueError(
+                f"Missing {x.address} in {cte.source_map}, {SLABEL} source map {cte.source.source_map.keys()} "
+            )
     output.append(cte)
     return output
 

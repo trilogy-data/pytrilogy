@@ -26,8 +26,8 @@ class MergeNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts:List[Concept],
-        optional_concepts:List[Concept],
+        mandatory_concepts: List[Concept],
+        optional_concepts: List[Concept],
         environment,
         g,
         whole_grain: bool = False,
@@ -37,7 +37,7 @@ class MergeNode(StrategyNode):
         force_join_type: Optional[JoinType] = None,
         partial_concepts: Optional[List[Concept]] = None,
         depth: int = 0,
-    ):  
+    ):
         super().__init__(
             mandatory_concepts,
             optional_concepts,
@@ -127,9 +127,9 @@ class MergeNode(StrategyNode):
             else:
                 merged[source.full_name] = source
         # early exit if we can just return the parent
-        final_datasets:List[QueryDatasource] = list(merged.values())
+        final_datasets: List[QueryDatasource] = list(merged.values())
         if len(merged.keys()) == 1:
-            final:QueryDatasource = list(merged.values())[0]
+            final: QueryDatasource = list(merged.values())[0]
             if set([c.address for c in final.output_concepts]) == set(
                 [c.address for c in self.all_concepts]
             ):

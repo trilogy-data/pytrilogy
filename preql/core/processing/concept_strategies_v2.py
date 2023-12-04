@@ -21,7 +21,7 @@ from preql.core.processing.nodes import (
     GroupNode,
     StrategyNode,
 )
-from preql.core.processing.nodes.base_node import concept_list_to_grain, resolve_concept_map
+from preql.core.processing.nodes.base_node import concept_list_to_grain
 from preql.core.processing.node_generators import (
     gen_filter_node,
     gen_window_node,
@@ -83,7 +83,7 @@ def recurse_or_fail(
     mandatory_concepts,
     optional_concepts,
     local_prefix,
-    accept_partial:bool =False
+    accept_partial: bool = False,
 ):
     candidates = [
         x
@@ -98,7 +98,7 @@ def recurse_or_fail(
     # as we require more
     for x in range(1, len(candidates) + 1):
         for combo in combinations(candidates, x):
-            new_mandatory:List[Concept] = mandatory_concepts + list(combo)
+            new_mandatory: List[Concept] = mandatory_concepts + list(combo)
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} Attempting to resolve joins to reach"
                 f" {','.join([str(c) for c in new_mandatory])}"
@@ -113,7 +113,7 @@ def recurse_or_fail(
                     accept_partial=accept_partial,
                 )
             except ValueError:
-                print(f'failed to find {[c.address for c in new_mandatory]}')
+                print(f"failed to find {[c.address for c in new_mandatory]}")
                 continue
     # terminal state two - have gone through all options
     throw_helpful_error(mandatory_concepts, optional_concepts)
@@ -125,7 +125,7 @@ def source_concepts(
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
     depth: int = 0,
-    accept_partial:bool = False
+    accept_partial: bool = False,
 ) -> StrategyNode:
     """Mandatory concepts are those which must be included in the output
     Optional concepts may be dropped"""
@@ -236,7 +236,10 @@ def source_concepts(
             f"{local_prefix}{LOGGER_PREFIX} finished a loop iteration looking for {[c.address for c in all_concepts]} from"
             f" {[n for n in stack]}, have {found_addresses} and partial {partial_addresses}"
         )
-        if all(c.address in found_addresses for c in all_concepts) or ( accept_partial and  all(c.address in found_addresses + partial_addresses) for c in all_concepts):
+        if all(c.address in found_addresses for c in all_concepts) or (
+            accept_partial and all(c.address in found_addresses + partial_addresses)
+            for c in all_concepts
+        ):
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
                 f" {[n for n in stack]}"
@@ -265,9 +268,12 @@ def source_concepts(
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."
             )
-    partials =  [c for c in all_concepts if c.address in partial_addresses 
-                            and c.address not in non_partial_addresses]
-    
+    partials = [
+        c
+        for c in all_concepts
+        if c.address in partial_addresses and c.address not in non_partial_addresses
+    ]
+
     output = MergeNode(
         mandatory_concepts,
         optional_concepts,
@@ -275,7 +281,7 @@ def source_concepts(
         g,
         parents=stack,
         depth=depth,
-        partial_concepts = partials
+        partial_concepts=partials,
     )
 
     # ensure we can resolve our final merge
@@ -292,4 +298,11 @@ def source_query_concepts(
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
     root = source_concepts(output_concepts, [], environment, g, depth=0)
-    return GroupNode(output_concepts, [], environment, g, parents=[root], partial_concepts=root.partial_concepts)
+    return GroupNode(
+        output_concepts,
+        [],
+        environment,
+        g,
+        parents=[root],
+        partial_concepts=root.partial_concepts,
+    )

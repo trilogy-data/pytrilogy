@@ -1,6 +1,5 @@
 from typing import List, Optional
 
-from pydantic import Field
 from preql.constants import logger
 from preql.core.models import Grain, QueryDatasource, SourceType, Concept, Environment
 from preql.utility import unique
@@ -19,14 +18,14 @@ class GroupNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts: List[Concept] ,
-        optional_concepts: List[Concept] ,
-        environment:Environment,
+        mandatory_concepts: List[Concept],
+        optional_concepts: List[Concept],
+        environment: Environment,
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: Optional[List[Concept]] = None
+        partial_concepts: Optional[List[Concept]] = None,
     ):
         super().__init__(
             mandatory_concepts,
@@ -36,7 +35,7 @@ class GroupNode(StrategyNode):
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,
-            partial_concepts=partial_concepts or []
+            partial_concepts=partial_concepts or [],
         )
 
     def _resolve(self) -> QueryDatasource:
