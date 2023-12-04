@@ -13,7 +13,7 @@ from preql.core.models import (
     Environment,
 )
 from preql.utility import unique
-from preql.core.processing.nodes.base_node import StrategyNode
+from preql.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
 from preql.core.exceptions import NoDatasourceException
 
 

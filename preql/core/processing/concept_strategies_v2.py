@@ -21,7 +21,7 @@ from preql.core.processing.nodes import (
     GroupNode,
     StrategyNode,
 )
-from preql.core.processing.nodes.base_node import concept_list_to_grain
+from preql.core.processing.nodes.base_node import concept_list_to_grain, resolve_concept_map
 from preql.core.processing.node_generators import (
     gen_filter_node,
     gen_window_node,
@@ -159,7 +159,8 @@ def source_concepts(
     # Loop through all possible grains + subgrains
     # Starting with the most grain
     found_addresses: list[str] = []
-    partial_addresses: list[str] = []
+    partial_addresses: set[str] = set()
+    non_partial_addresses: set[str] = set()
     found_concepts: set[Concept] = set()
     found_map = defaultdict(set)
 
@@ -224,10 +225,11 @@ def source_concepts(
             for concept in node.resolve().output_concepts:
                 if concept not in node.partial_concepts:
                     found_addresses.append(concept.address)
+                    non_partial_addresses.add(concept.address)
                     found_concepts.add(concept)
                     found_map[str(node)].add(concept)
                 if concept in node.partial_concepts:
-                    partial_addresses.append(concept.address)
+                    partial_addresses.add(concept.address)
                     found_concepts.add(concept)
                     found_map[str(node)].add(concept)
         logger.info(
@@ -263,7 +265,9 @@ def source_concepts(
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."
             )
-
+    partials =  [c for c in all_concepts if c.address in partial_addresses 
+                            and c.address not in non_partial_addresses]
+    
     output = MergeNode(
         mandatory_concepts,
         optional_concepts,
@@ -271,10 +275,12 @@ def source_concepts(
         g,
         parents=stack,
         depth=depth,
+        partial_concepts = partials
     )
 
     # ensure we can resolve our final merge
     output.resolve()
+
     return output
 
 
@@ -286,4 +292,4 @@ def source_query_concepts(
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
     root = source_concepts(output_concepts, [], environment, g, depth=0)
-    return GroupNode(output_concepts, [], environment, g, parents=[root])
+    return GroupNode(output_concepts, [], environment, g, parents=[root], partial_concepts=root.partial_concepts)

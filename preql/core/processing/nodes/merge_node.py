@@ -8,6 +8,7 @@ from preql.core.models import (
     JoinType,
     QueryDatasource,
     SourceType,
+    Concept,
 )
 from preql.core.enums import Purpose
 from preql.utility import unique
@@ -25,8 +26,8 @@ class MergeNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts,
-        optional_concepts,
+        mandatory_concepts:List[Concept],
+        optional_concepts:List[Concept],
         environment,
         g,
         whole_grain: bool = False,
@@ -34,9 +35,9 @@ class MergeNode(StrategyNode):
         node_joins: List[NodeJoin] | None = None,
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
-        partial_concepts: Optional[List] = None,
+        partial_concepts: Optional[List[Concept]] = None,
         depth: int = 0,
-    ):
+    ):  
         super().__init__(
             mandatory_concepts,
             optional_concepts,
@@ -126,9 +127,9 @@ class MergeNode(StrategyNode):
             else:
                 merged[source.full_name] = source
         # early exit if we can just return the parent
-        final_datasets = list(merged.values())
+        final_datasets:List[QueryDatasource] = list(merged.values())
         if len(merged.keys()) == 1:
-            final = list(merged.values())[0]
+            final:QueryDatasource = list(merged.values())[0]
             if set([c.address for c in final.output_concepts]) == set(
                 [c.address for c in self.all_concepts]
             ):
@@ -178,7 +179,8 @@ class MergeNode(StrategyNode):
             output_concepts=outputs,
             datasources=final_datasets,
             source_type=self.source_type,
-            source_map=resolve_concept_map(parent_sources),
+            source_map=resolve_concept_map(parent_sources, outputs),
             joins=joins,
             grain=grain,
+            partial_concepts=self.partial_concepts,
         )

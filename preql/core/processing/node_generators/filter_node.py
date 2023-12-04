@@ -22,7 +22,7 @@ def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Conc
 
 
 def gen_filter_node(
-    concept: Concept, local_optional, environment, g, depth, source_concepts
+    concept: Concept, local_optional:List[Concept], environment, g, depth:int, source_concepts
 ) -> MergeNode:
     immediate_parent, parent_concepts = resolve_filter_parent_concepts(concept)
     return MergeNode(

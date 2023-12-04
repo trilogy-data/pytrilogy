@@ -18,7 +18,7 @@ def setup_engine()->Executor:
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / 'train.csv'
     df = pd.read_csv(csv)
-    output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[DebuggingHook()])
+    output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[])
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
     return output
@@ -37,7 +37,7 @@ def setup_titanic(env:Environment):
                             )
     survived = Concept(name='survived', namespace=namespace, purpose = Purpose.PROPERTY,
                             datatype=DataType.BOOL
-                            )
+                                                                                                                           )
     fare = Concept(name='fare', namespace=namespace, purpose = Purpose.PROPERTY, datatype=DataType.FLOAT )
     for x in [id, age, survived, name, pclass, fare]:
         env.add_concept(x)
@@ -73,7 +73,8 @@ if __name__ == "__main__":
         print(renderer.to_string(ConceptDeclaration(concept=conc)))
 
     executor.environment = env
-    test = '''property passenger.id.family <- split(passenger.name, ',')[1]; auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
+    test = '''property passenger.id.family <- split(passenger.name, ',')[1]; 
+auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
 select 
     passenger.family,
     passenger.id.count,
@@ -81,6 +82,14 @@ select
 order by
     passenger.id.count desc
 limit 5;'''
+
+    queries = executor.parse_text(test)
+    candidate = queries[-1]
+    # alias = candidate.base.get_alias(executor.environment.concepts['passenger.family'])
+    # family_source = [c for c in  candidate.ctes if c.name == candidate.base.source_map['passenger.family']][0]
+
+    # print(family_source.source.source_map.keys())
+
     results= executor. execute_text(test)
     for r in results[0]:
         print(r)

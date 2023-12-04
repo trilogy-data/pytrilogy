@@ -74,7 +74,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert posts.grain == post_grain
 
     assert set(expected_parent.source_map.keys()) == set(
-        ["local.post_id", "local.user_id"]
+        [ 'local.user_post_count', 'local.post_id',   'local.user_id']
     )
 
     assert user_post_count in expected_parent.output_concepts
@@ -95,7 +95,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert isinstance(parent, QueryDatasource)
     assert user_post_count in parent.output_concepts
 
-    assert set(parent.source_map.keys()) == set(["local.post_id", "local.user_id"])
+    assert set(parent.source_map.keys()) == set(["local.user_post_count", "local.post_id", "local.user_id"])
 
     root = parent.datasources[0].datasources[0]
     assert isinstance(root, Datasource)
