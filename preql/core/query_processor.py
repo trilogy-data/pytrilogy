@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Set, Union, Dict
 
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
@@ -16,6 +16,7 @@ from preql.core.models import (
     ProcessedQuery,
     ProcessedQueryPersist,
     QueryDatasource,
+    Datasource,
     BaseJoin,
 )
 
@@ -86,7 +87,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 #     key: item
                 #     for key, item in query_datasource.source_map.items()
                 # }
-                sub_select = {
+                sub_select: Dict[str, Set[Union[Datasource, QueryDatasource]]] = {
                     **{c.address: {datasource} for c in datasource.concepts},
                 }
                 concepts = [
@@ -108,21 +109,10 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     if k not in source_map:
                         source_map[k] = cte.name
             # now populate anything derived in this level
-            for k, v in query_datasource.source_map.items():
-                if k not in source_map and not v:
-                    source_map[k] = ""
-                    # source_map[k] = source_map[k].union(v)
-                # print(cte.source.source_map.keys())
-                # print(cte.name)
-                # print([value.address for value in cte.output_columns])
-                # print([c.address for c in cte.partial_concepts])
-                # print('-----')
-                # for value in cte.sourced_concepts:
-                #     if value.address not in source_map:
-                #         source_map[value.address] = cte.name
-                # if 'family' in value.address and cte.name == 'rhash_1530274405436111':
-                #     continue
-                # if value not in cte.partial_concepts:
+            for qdk, qdv in query_datasource.source_map.items():
+                if qdk not in source_map and not qdv:
+                    # set source to empty, as it must be derived in this element
+                    source_map[qdk] = ""
 
     else:
         SLABEL = "SINGULAR"

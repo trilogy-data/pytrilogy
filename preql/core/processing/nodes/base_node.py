@@ -35,7 +35,7 @@ def concept_list_to_grain(
     return Grain(components=candidates)
 
 
-def resolve_concept_map(inputs: List[QueryDatasource], targets: List[Concept] = None):
+def resolve_concept_map(inputs: List[QueryDatasource], targets: Optional[List[Concept]] = None):
     targets = targets or []
     concept_map = defaultdict(set)
     for input in inputs:

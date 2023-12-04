@@ -44,7 +44,7 @@ def throw_helpful_error(
     )
 
 
-def get_priority_concept(all_concepts, found_addresses) -> Concept:
+def get_priority_concept(all_concepts:List[Concept], found_addresses:List[str]) -> Concept:
     remaining_concept = [c for c in all_concepts if c.address not in found_addresses]
     priority = (
         [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
@@ -158,7 +158,7 @@ def source_concepts(
     # now start the fun portion
     # Loop through all possible grains + subgrains
     # Starting with the most grain
-    found_addresses: list[str] = []
+    found_addresses: set[str] = set()
     partial_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     found_concepts: set[Concept] = set()
@@ -170,7 +170,7 @@ def source_concepts(
 
     while not all(c.address in found_addresses for c in all_concepts):
         # pick the concept we're trying to get
-        concept = get_priority_concept(all_concepts, found_addresses)
+        concept = get_priority_concept(all_concepts, list(found_addresses))
 
         # process into a deduped list of optional join concepts to try to pull through
         local_optional = get_local_optional(
@@ -224,7 +224,7 @@ def source_concepts(
         for node in stack:
             for concept in node.resolve().output_concepts:
                 if concept not in node.partial_concepts:
-                    found_addresses.append(concept.address)
+                    found_addresses.add(concept.address)
                     non_partial_addresses.add(concept.address)
                     found_concepts.add(concept)
                     found_map[str(node)].add(concept)
@@ -236,9 +236,9 @@ def source_concepts(
             f"{local_prefix}{LOGGER_PREFIX} finished a loop iteration looking for {[c.address for c in all_concepts]} from"
             f" {[n for n in stack]}, have {found_addresses} and partial {partial_addresses}"
         )
-        if all(c.address in found_addresses for c in all_concepts) or (
-            accept_partial and all(c.address in found_addresses + partial_addresses)
-            for c in all_concepts
+        if all([c.address in found_addresses for c in all_concepts]) or (
+            accept_partial and all([c.address in [found_addresses.union(partial_addresses)]
+            for c in all_concepts ])
         ):
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
