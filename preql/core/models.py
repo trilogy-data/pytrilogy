@@ -613,7 +613,7 @@ class Select(BaseModel):
             if item.purpose == Purpose.KEY:
                 output.append(item)
         if self.where_clause:
-            for item in self.where_clause.input:
+            for item in self.where_clause.concept_arguments:
                 if item.purpose == Purpose.KEY:
                     output.append(item)
                 # elif item.purpose == Purpose.PROPERTY and item.grain:

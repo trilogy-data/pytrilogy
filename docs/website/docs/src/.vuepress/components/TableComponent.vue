@@ -10,7 +10,7 @@
             </tr>
         </thead>
         <tbody>
-            <tr v-for="item in data" :key='item'>
+            <tr v-for="item in data" :key='item._index'>
                 <td v-for="field in fields" :key='field'>{{ item[field] }}</td>
             </tr>
         </tbody>

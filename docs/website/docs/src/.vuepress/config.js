@@ -1,4 +1,4 @@
-const { description } = require('../../package')
+import { description } from '../../package'
 import { getDirname, path } from '@vuepress/utils'
 import { defaultTheme } from '@vuepress/theme-default'
 import { registerComponentsPlugin } from '@vuepress/plugin-register-components'

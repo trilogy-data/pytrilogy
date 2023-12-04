@@ -72,8 +72,7 @@ export default {
             const joinedString = queries.join(' ');
             try {
                 const response = await axios.post(
-                    "http://localhost:5000/query",
-                    // "https://preql-demo-backend-cz7vx4oxuq-uc.a.run.app/query",
+                    "https://preql-demo-backend-cz7vx4oxuq-uc.a.run.app/query",
                     { 'model': 'titanic', 'query': joinedString }
                 );
                 this.headers = response.data.headers;

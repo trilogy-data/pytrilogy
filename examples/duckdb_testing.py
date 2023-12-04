@@ -126,10 +126,17 @@ if __name__ == "__main__":
         print(renderer.to_string(ConceptDeclaration(concept=conc)))
 
     executor.environment = env
-    test = '''key passenger.family <- split(passenger.name, ',')[1];
-
-select passenger.family, avg(passenger.fare) -> avg_fare
-order by avg_fare desc;'''
+    test = '''property passenger.id.family <- split(passenger.name, ',')[1];
+auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
+select 
+    passenger.family,
+    passenger.id.count,
+    count(surviving_passenger) -> surviving_size
+where
+    passenger.id.count>4
+order by
+    passenger.id.count desc
+limit 5;'''
     node = gen_select_node(
         concept =env.concepts['passenger.name'],
         local_optional = [env.concepts['passenger.age'].with_grain(Grain())],
@@ -141,6 +148,9 @@ order by avg_fare desc;'''
 
     queries = executor.parse_text(test)
     candidate = queries[-1]
+    print(candidate.grain)
+    for z in candidate.output_columns:
+        print(z)
     # alias = candidate.base.get_alias(executor.environment.concepts['passenger.family'])
     # family_source = [c for c in  candidate.ctes if c.name == candidate.base.source_map['passenger.family']][0]
 
@@ -150,4 +160,3 @@ order by avg_fare desc;'''
     for r in results[0]:
         print(r)
     print('-------------')
-    print(render_environment(env))

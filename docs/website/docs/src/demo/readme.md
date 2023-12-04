@@ -29,7 +29,7 @@ key passenger.id int;
 property passenger.id.age int;
 property passenger.id.survived bool;
 property passenger.id.name string;
-property passenger.id.passenger_class int;
+property passenger.id.class int;
 property passenger.id.fare float;
 property passenger.id.cabin string;
 property passenger.id.embarked bool;
@@ -40,7 +40,7 @@ datasource raw_data (
     passengerid:passenger.id, #numeric identifier created for dataset
     age:passenger.age, # age of passenger
     survived:passenger.survived, # 1 = survived, 0 = died
-    pclass:passenger.passenger_class, #class of passenger
+    pclass:passenger.class, #class of passenger
     name:passenger.name, #full name of the passenger
     fare:passenger.fare, # the price paid by passneger
     cabin:passenger.cabin, # the cabin the passenger was in
@@ -64,12 +64,38 @@ will be predefined for you.
 Each query is stateless, so if you want to define a new concept in your query,
 separate it with a semicolon from the query that uses it. 
 
+#### Try answering these questions (click to show)
+
+<ul>
+<Accordian ariaTitle ="Did different classes have different average fares?"  title="Did different classes have different average fares?" >
+<SQL query="select passenger.class, avg(passenger.fare)->avg_class_fare;"/>
+</Accordian>
+<Accordian ariaTitle ="Were people in higher classes more likely to survive?"  title="Where people in higher classes more likely to survive?" >
+<SQL query="
+auto survivor <- filter passenger.id where passenger.survived = 1;
+select passenger.class, count(survivor)/count(passenger.id)*100->survival_rate;
+"/>
+</Accordian>
+<Accordian ariaTitle ="Were certain ages more likely to survive?"  title="Where certain genders more likely to survive?" >
+<SQL query="
+auto survivor <- filter passenger.id where passenger.survived = 1;
+select 
+    cast(passenger.age / 10 as int) * 10 -> passenger_decade, 
+    count(survivor)/count(passenger.id)->survival_rate
+order by passenger_decade desc
+;
+"/>
+</Accordian>
+</ul>
+
 #### Available Concepts
 <div>
 <span class="column-badge" style="margin-right: 5px;" v-for="concept in concepts">
  <Badge :text="concept" />
 </span>
 </div>
+
+
 
 <FreeformQueryComponent/>
 
@@ -134,7 +160,7 @@ limit 5;`,
 
         }],
         fields: ['PassengerId','Survived','Pclass','Name','Sex','Age','SibSp','Parch','Ticket','Fare','Cabin','Embarked'],
-        concepts: ['passenger.id', 'passenger.age', 'passenger.survived', 'passenger.name', 'passenger.passenger_class', 'passenger.fare', 'passenger.cabin', 'passenger.embarked']
+        concepts: ['passenger.id', 'passenger.age', 'passenger.survived', 'passenger.name', 'passenger.class', 'passenger.fare', 'passenger.cabin', 'passenger.embarked']
     };
 }
 }
