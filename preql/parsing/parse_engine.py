@@ -1007,6 +1007,11 @@ class ParseToObjects(Transformer):
     def count(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Count(args)
+    
+    @v_args(meta=True)
+    def fabs(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Abs(args)
 
     @v_args(meta=True)
     def fabs(self, meta, args):
