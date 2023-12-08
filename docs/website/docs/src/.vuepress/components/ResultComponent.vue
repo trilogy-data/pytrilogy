@@ -1,5 +1,5 @@
 <template lang="html">
-    <Tabs :mode="dark">
+    <Tabs>
         <Tab title="Results">
             <TableComponent :data="data" :fields="fields" />
         </Tab>

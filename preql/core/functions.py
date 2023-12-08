@@ -85,3 +85,18 @@ def IndexAccess(args):
         valid_inputs=[DataType.ARRAY, DataType.INTEGER],
         arg_count=2,
     )
+
+def Abs(args) -> Function:
+    return Function(
+        operator=FunctionType.ABS,
+        arguments=args,
+        output_datatype=args[0].datatype,
+        output_purpose=Purpose.PROPERTY,
+        valid_inputs={
+            DataType.INTEGER,
+            DataType.FLOAT,
+            DataType.NUMBER,
+        },
+        arg_count=1
+        # output_grain=Grain(components=arguments),
+    )

@@ -55,7 +55,7 @@ def setup_titanic(env:Environment):
     )
 
     pclass = Concept(
-        name="passenger_class",
+        name="class",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
@@ -89,7 +89,14 @@ def setup_titanic(env:Environment):
         datatype=DataType.STRING,
         keys=[id],
     )
-    for x in [id, age, survived, name, pclass, fare, cabin, embarked]:
+    ticket = Concept(
+        name="ticket",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        keys=[id],
+    )
+    for x in [id, age, survived, name, pclass, fare, cabin, embarked, ticket]:
         env.add_concept(x)
 
     env.add_datasource(
@@ -105,6 +112,7 @@ def setup_titanic(env:Environment):
                 ColumnAssignment(alias="fare", concept=fare),
                 ColumnAssignment(alias="cabin", concept=cabin),
                 ColumnAssignment(alias="embarked", concept=embarked),
+                                ColumnAssignment(alias="ticket", concept=ticket),
             ],
             grain=Grain(components=[id]),
         ),
@@ -120,23 +128,13 @@ if __name__ == "__main__":
     env = Environment()
     model = setup_titanic(env)
     renderer = Renderer()
-    for c, conc in env.concepts.items():
-        print(c)
-
-        print(renderer.to_string(ConceptDeclaration(concept=conc)))
-
     executor.environment = env
     test = '''property passenger.id.family <- split(passenger.name, ',')[1];
-auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
-select 
-    passenger.family,
-    passenger.id.count,
-    count(surviving_passenger) -> surviving_size
-where
-    passenger.id.count>4
-order by
-    passenger.id.count desc
-limit 5;'''
+
+select passenger.name, passenger.class, passenger.family, passenger.cabin,
+passenger.ticket
+where passenger.family = 'Williams';
+'''
     node = gen_select_node(
         concept =env.concepts['passenger.name'],
         local_optional = [env.concepts['passenger.age'].with_grain(Grain())],
@@ -144,7 +142,7 @@ limit 5;'''
                     g = generate_graph(env),
                     depth = 1,
                     source_concepts= lambda: 1,)
-    print(node.resolve())
+    # print(node.resolve())
 
     queries = executor.parse_text(test)
     candidate = queries[-1]

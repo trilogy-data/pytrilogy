@@ -7,13 +7,21 @@
             @keydown.enter.ctrl.exact.prevent="getData"/>
     </div>
 
-    <button class="submit-button" @click="getData" type='submit'>Run (ctrl+enter)</button>
+    <LoadingButton :loading="loading" class="submit-button" v-if="data.length == 0" 
+    @click="getData" type='submit'>Run (ctrl-enter)</LoadingButton>
     <!-- <button v-else @click="show_results = !show_results">Toggle results</button> -->
-    <div v-if="error">{{ error }}</div>
+    <div class = "error" v-if="error">{{ error }}</div>
     <ResultComponent v-else :id="title" :data="data" :fields="headers" :gen_sql="gen_sql" />
 </template>
     
 <style>
+
+.error {
+    background-color: rgba(123, 15, 15, 0.38);
+    margin: 10px;
+    padding: 10px;
+}
+
 /* CSS */
 .submit-button {
     background-color: #c2fbd7;
@@ -44,6 +52,7 @@ import axios from 'axios';
 import ResultComponent from './ResultComponent.vue';
 import hljs from 'highlight.js/lib/core';
 import sql from 'highlight.js/lib/languages/sql';
+import LoadingButton from './LoadingButton.vue';
 import 'highlight.js/styles/github.css';
 hljs.registerLanguage('sql', sql);
 
@@ -56,6 +65,7 @@ export default {
             error: null,
             gen_sql: '',
             user_query: 'select 1 -> one;',
+            loading: false,
 
         };
     },
@@ -91,6 +101,7 @@ export default {
         },
         async getData() {
             this.error = null;
+            this.loading = true;
             // this.highlightSQL();
             let queries = this.dependencies.concat([this.user_query]);
             const joinedString = queries.join(' ');
@@ -102,9 +113,11 @@ export default {
                 this.headers = response.data.headers;
                 this.data = response.data.results;
                 this.gen_sql = response.data.generated_sql;
+                this.loading = false;
             } catch (error) {
+                this.loading = false;
                 if (error.response && error.response.status== 422) {
-                    this.error = error.response.data;
+                    this.error = error.response.data.detail;
                 }
                 else {
                     this.error = error;

@@ -27,7 +27,7 @@ from preql.core.enums import (
     DatePart,
 )
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
-from preql.core.functions import Count, CountDistinct, Max, Min, Split, IndexAccess
+from preql.core.functions import Count, CountDistinct, Max, Min, Split, IndexAccess, Abs
 from preql.core.models import (
     Address,
     AggregateWrapper,
@@ -186,6 +186,7 @@ grammar = r"""
     fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
     fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
     fround: "round"i "(" expr "," expr ")"
+    fabs: "abs"i "(" expr ")"
     
     _math_functions: fadd | fsub | fmul | fdiv | fround
     
@@ -1006,6 +1007,11 @@ class ParseToObjects(Transformer):
     def count(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Count(args)
+    
+    @v_args(meta=True)
+    def fabs(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Abs(args)
 
     @v_args(meta=True)
     def count_distinct(self, meta, args):

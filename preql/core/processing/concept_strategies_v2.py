@@ -101,6 +101,9 @@ def recurse_or_fail(
     for x in range(1, len(candidates) + 1):
         for combo in combinations(candidates, x):
             new_mandatory: List[Concept] = mandatory_concepts + list(combo)
+        
+            if set(x.address for x in new_mandatory) == set(x.address for x in mandatory_concepts):
+                continue
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} Attempting to resolve joins to reach"
                 f" {','.join([str(c) for c in new_mandatory])}"
