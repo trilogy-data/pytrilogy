@@ -115,7 +115,7 @@ class SelectNode(StrategyNode):
             if all_found:
                 # keep all concepts on the output, until we get to a node which requires reduction
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address}"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address} for {[c.address for c in all_concepts]}"
                 )
                 return QueryDatasource(
                     input_concepts=unique(all_concepts, "address"),

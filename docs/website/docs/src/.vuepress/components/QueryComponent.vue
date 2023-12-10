@@ -1,15 +1,14 @@
 <template>
     <h3>{{ title }}</h3>
-    <SQL  :query=query></SQL>
-    <LoadingButton :loading="loading" class="submit-button" v-if="data.length == 0" @click="getData" type='submit'>Run</LoadingButton>
+    <SQL :query=query></SQL>
+    <LoadingButton :loading="loading" class="submit-button" v-if="data.length == 0" @click="getData" type='submit'>Run
+    </LoadingButton>
     <button v-else @click="show_results = !show_results">Toggle results</button>
     <div v-if="error">{{ error }}</div>
-    <ResultComponent v-if="show_results" :id="title"  :data="data" :fields="headers" :gen_sql="gen_sql" />
+    <ResultComponent v-if="show_results" :id="title" :data="data" :fields="headers" :gen_sql="gen_sql" />
 </template>
     
-<style>
-
-</style>
+<style></style>
 <script>
 import axios from 'axios';
 // import TableComponent from './TableComponent.vue';
@@ -41,6 +40,10 @@ export default {
         dependencies: {
             type: Array,
             default: () => [],
+        },
+        model: {
+            type: String,
+            default: 'titanic',
         }
 
     },
@@ -54,7 +57,7 @@ export default {
             try {
                 const response = await axios.post(
                     "https://preql-demo-backend-cz7vx4oxuq-uc.a.run.app/query",
-                    { 'model': 'titanic', 'query': joinedString }
+                    { 'model': this.model, 'query': joinedString }
                 );
                 this.headers = response.data.headers;
                 this.data = response.data.results;
@@ -64,7 +67,6 @@ export default {
             } catch (error) {
                 this.error = error;
                 this.loading = false;
-                console.log(error);
             }
         },
     },

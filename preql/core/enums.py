@@ -110,6 +110,7 @@ class FunctionType(Enum):
     ADD = "add"
     SUBTRACT = "subtract"
     ROUND = "round"
+    ABS = "abs"
 
     # Aggregates
     COUNT = "count"

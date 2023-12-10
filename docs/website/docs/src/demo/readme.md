@@ -34,6 +34,8 @@ property passenger.id.fare float;
 property passenger.id.cabin string;
 property passenger.id.embarked bool;
 
+property passenger.id.family <- split(passenger.name, ',')[1];
+
 metric passenger.id.count <- count(passenger.id);
 
 datasource raw_data (
@@ -68,22 +70,35 @@ separate it with a semicolon from the query that uses it.
 
 <ul>
 <Accordian  title="Did different classes have different average fares?" >
-<SQL query="select passenger.class, avg(passenger.fare)->avg_class_fare;"/>
+<SQL  query="select passenger.class, avg(passenger.fare)->avg_class_fare;"/>
 </Accordian>
 <Accordian  title="Were people in higher classes more likely to survive?" >
-<SQL query="
+<SQL maxWidthScaling=".7" query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 select passenger.class, count(survivor)/count(passenger.id)*100->survival_rate;
 "/>
 </Accordian>
 <Accordian  title="Were certain ages more likely to survive?" >
-<SQL query="
+<SQL maxWidthScaling=".7" query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 select 
     cast(passenger.age / 10 as int) * 10 -> passenger_decade, 
     count(survivor)/count(passenger.id)->survival_rate,
     count(passenger.id) -> bucket_size
 order by passenger_decade desc
+;
+"/>
+</Accordian>
+<Accordian  title="What was the average family survival rate in each class?" >
+<SQL maxWidthScaling=".7" query="
+auto survivor <- filter passenger.id where passenger.survived = 1;
+auto survival_rate <- count(survivor)/count(passenger.id)*100;
+select passenger.family, per_family_survival_rate-> fmaily_survival_rate;
+select 
+    passenger.class,
+    avg(family_survival_rate) -> avg_class_family_survival_rate,
+order by 
+    passenger.class asc
 ;
 "/>
 </Accordian>
@@ -96,9 +111,43 @@ order by passenger_decade desc
 </span>
 </div>
 
-
-
 <FreeformQueryComponent/>
+<!-- 
+## Multiple Tables
+
+You've been able to do some great analysis on the titanic dataset, but now your
+data engineer has gotten excited about someone named Kimball. They've 
+refactored your dataset to normalize it, and now you have the following tables.
+
+- fact_titanic
+- dim_cabin
+- dim_passenger
+- dim_family
+
+Let's see how we can use PreQL to query this new dataset.
+
+<QueryComponent v-for="query in startQueries"  :title='query.title' :query = 'query.query'
+:model = 'titanic_normalized'>
+</QueryComponent>
+
+This should look pretty familiar. What's going on?
+
+
+## The Model
+
+Let's look at our new model.
+
+```sql
+key passenger.id int;
+property passenger.id.age int;
+property passenger.id.survived bool;
+property passenger.id.name string;
+property passenger.id.class int;
+property passenger.id.fare float;
+property passenger.id.cabin string;
+property passenger.id.embarked bool;
+``` 
+-->
 
 <script>
 export default {
@@ -120,7 +169,7 @@ data() {
         }],
         detailQueries: [{
             'title': 'Family Sizing',
-            'query': `property passenger.id.family <- split(passenger.name, ',')[1];
+            'query': `
 
 select 
     passenger.family, 
@@ -152,7 +201,7 @@ select
     passenger.id.count,
     count(surviving_passenger) -> surviving_size
 where
-    passenger.id.count>4
+    passenger.id.count=surviving_size
 order by
     passenger.id.count desc
 limit 5;`,

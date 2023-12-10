@@ -10,13 +10,13 @@ from preql.core.models import (
     SourceType,
     Concept,
 )
-from preql.core.enums import Purpose
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
     NodeJoin,
 )
+from preql.core.processing.utility import get_node_joins
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
@@ -65,52 +65,18 @@ class MergeNode(StrategyNode):
             )
         return joins
 
-    def create_inferred_joins(self, dataset_list: List[QueryDatasource], grain: Grain):
-        base = dataset_list[0]
+    def create_full_joins(self, dataset_list: List[QueryDatasource]):
         joins = []
-        all_concepts = unique(
-            self.mandatory_concepts + self.optional_concepts, "address"
-        )
-
-        join_concepts = self.join_concepts or all_concepts
-
-        if dataset_list[1:]:
-            for right_value in dataset_list[1:]:
-                if not grain.components:
-                    joins.append(
-                        BaseJoin(
-                            left_datasource=base,
-                            right_datasource=right_value,
-                            join_type=self.force_join_type
-                            if self.force_join_type
-                            else JoinType.FULL,
-                            concepts=[],
-                        )
-                    )
-
-                if all(
-                    [c.purpose == Purpose.CONSTANT for c in right_value.output_concepts]
-                ):
-                    joins.append(
-                        BaseJoin(
-                            left_datasource=base,
-                            right_datasource=right_value,
-                            join_type=self.force_join_type
-                            if self.force_join_type
-                            else JoinType.FULL,
-                            concepts=[],
-                        )
-                    )
+        for left_value in dataset_list:
+            for right_value in dataset_list:
+                if left_value.identifier == right_value.identifier:
                     continue
                 joins.append(
                     BaseJoin(
-                        left_datasource=base,
+                        left_datasource=left_value,
                         right_datasource=right_value,
-                        join_type=self.force_join_type
-                        if self.force_join_type
-                        else JoinType.LEFT_OUTER,
-                        concepts=join_concepts,
-                        filter_to_mutual=True,
+                        join_type=JoinType.FULL,
+                        concepts=[],
                     )
                 )
         return joins
@@ -166,7 +132,10 @@ class MergeNode(StrategyNode):
             )
 
         if not self.node_joins:
-            joins = self.create_inferred_joins(dataset_list, grain)
+            if not grain.components:
+                joins = self.create_full_joins(dataset_list)
+            else:
+                joins = get_node_joins(dataset_list)
         else:
             joins = self.translate_node_joins(self.node_joins)
         input_concepts = []

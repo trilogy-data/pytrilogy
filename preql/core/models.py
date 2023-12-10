@@ -203,7 +203,10 @@ class Concept(BaseModel):
             if self.lineage:
                 for item in self.lineage.arguments:
                     if isinstance(item, Concept):
-                        components += item.sources
+                        if item.keys and not all(c in components for c in item.keys):
+                            components += item.sources
+                        else:
+                            components += item.sources
             grain = Grain(components=components)
         elif self.purpose == Purpose.METRIC:
             grain = Grain()
@@ -992,6 +995,8 @@ class QueryDatasource(BaseModel):
     @property
     def full_name(self):
         return self.identifier
+        # raw = '_'.join([c for c in self.source_map])
+        # return raw.replace('.', '_')
 
     @property
     def group_required(self) -> bool:
@@ -1321,8 +1326,16 @@ class Environment(BaseModel):
         output = []
         for concept in self.concepts.values():
             found = False
+            search_concepts = [concept]
+            # basic concepts are effectively materialized
+            # and can be found via join paths
             for datasource in self.datasources.values():
-                if concept.address in [x.address for x in datasource.output_concepts]:
+                if all(
+                    [
+                        c.address in [x.address for x in datasource.output_concepts]
+                        for c in search_concepts
+                    ]
+                ):
                     found = True
                     break
             if found:

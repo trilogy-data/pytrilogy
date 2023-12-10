@@ -1,7 +1,6 @@
 from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
-from preql.utility import string_to_hash
 
 from preql.constants import CONFIG, logger
 from preql.core.enums import Purpose, DataType, FunctionType, WindowType, DatePart
@@ -32,6 +31,86 @@ from preql.hooks.base_hook import BaseHook
 from preql.utility import unique
 
 LOGGER_PREFIX = "[RENDERING]"
+
+CTE_NAMES = """quizzical
+highfalutin
+dynamic
+wakeful
+cheerful
+thoughtful
+cooperative
+questionable
+abundant
+uneven
+yummy
+juicy
+vacuous
+concerned
+young
+sparkling
+abhorrent
+sweltering
+late
+macho
+scrawny
+friendly
+kaput
+divergent
+busy
+charming
+protective
+premium
+puzzled
+waggish
+rambunctious
+puffy
+hard
+fat
+sedate
+yellow
+resonant
+dapper
+courageous
+vast
+cool
+elated
+wary
+bewildered
+level
+wooden
+ceaseless
+tearful
+cloudy
+gullible
+flashy
+trite
+quick
+nondescript
+round
+slow
+spiritual
+brave
+tenuous
+abstracted
+colossal
+sloppy
+obsolete
+elegant
+fabulous
+vivacious
+exuberant
+faithful
+helpless
+odd
+sordid
+blue
+imported
+ugly
+ruthless
+deeply
+eminent""".split(
+    "\n"
+)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -548,8 +627,12 @@ class BaseDialect:
                 f"Invalid reference string found in query: {final}, this should never"
                 " occur. Please report this issue."
             )
+
         if CONFIG.hash_identifiers:
-            for cte in query.ctes:
-                new_name = f"rhash_{string_to_hash(cte.name)}"
+            from random import shuffle
+
+            shuffle(CTE_NAMES)
+            for idx, cte in enumerate(query.ctes):
+                new_name = f"rhash_{CTE_NAMES[idx]}"
                 final = final.replace(cte.name, new_name)
         return final

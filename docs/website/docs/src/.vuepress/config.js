@@ -38,11 +38,12 @@ gtag('config', 'G-KK1Z9YZMR9');
   ],
 
   theme:  defaultTheme({
-    repo: 'https://github.com/preqldata',
+    repo: 'https://github.com/preqldata/pypreql',
     editLinks: false,
-    docsDir: '',
-    editLinkText: '',
+    docsDir: '/docs/website/docs/src',
+    editLinkText: 'Edit this page on GitHub',
     lastUpdated: false,
+    contributors: false,
     navbar: [
       {
         text: 'Thesis',
