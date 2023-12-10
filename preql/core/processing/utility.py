@@ -125,10 +125,7 @@ def get_node_joins(
                         graph.add_edge(node, concept.address)
 
     joins: defaultdict[str, set] = defaultdict(set)
-    seen = set()
     for left in graph.nodes:
-        # skip concepts
-        seen.add(left)
         if graph.nodes[left]["type"] == NodeType.CONCEPT:
             continue
         for cnode in graph.neighbors(left):
@@ -137,9 +134,9 @@ def get_node_joins(
                     # skip concepts
                     if graph.nodes[right]["type"] == NodeType.CONCEPT:
                         continue
-                    if right in seen:
+                    if left == right:
                         continue
-                    identifier = sorted([left, right])
+                    identifier = [left, right]
                     joins["-".join(identifier)].add(cnode)
 
     final_joins_pre: List[BaseJoin] = []
@@ -163,29 +160,38 @@ def get_node_joins(
             )
         )
     final_joins: List[BaseJoin] = []
-    available_aliases = set()
-    eligible = set()
-    not_eligible = set()
-    # find our base join
-    for join in final_joins_pre:
-        eligible.add(join.left_datasource.identifier)
-        not_eligible.add(join.right_datasource.identifier)
-    available_aliases = eligible.difference(not_eligible)
+    available_aliases: set[str] = set()
     while final_joins_pre:
-        new_final_joins_pre = []
+        new_final_joins_pre: List[BaseJoin] = []
         for join in final_joins_pre:
-            if join.left_datasource.identifier in available_aliases:
+            if not available_aliases:
+                final_joins.append(join)
+                available_aliases.add(join.left_datasource.identifier)
+                available_aliases.add(join.right_datasource.identifier)
+            elif join.left_datasource.identifier in available_aliases:
+                # we don't need to join twice
+                # so whatever join we found first, works
+                if join.right_datasource.identifier in available_aliases:
+                    continue
                 final_joins.append(join)
                 available_aliases.add(join.left_datasource.identifier)
                 available_aliases.add(join.right_datasource.identifier)
             else:
                 new_final_joins_pre.append(join)
+        if len(new_final_joins_pre) == len(final_joins_pre):
+            remaining = [
+                join.left_datasource.identifier for join in new_final_joins_pre
+            ]
+            remaining_right = [
+                join.right_datasource.identifier for join in new_final_joins_pre
+            ]
+            raise SyntaxError(
+                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
+            )
         final_joins_pre = new_final_joins_pre
 
     # this is extra validation
-    [
-        x for x in datasources if not x.identifier.startswith(CONSTANT_DATASET)
-    ]
+    [x for x in datasources if not x.identifier.startswith(CONSTANT_DATASET)]
     if len(datasources) > 1:
         for x in datasources:
             found = False
@@ -197,7 +203,7 @@ def get_node_joins(
                     found = True
             if not found:
                 raise SyntaxError(
-                    f"{joins} Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}"
+                    f"Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}"
                 )
     return final_joins
 
