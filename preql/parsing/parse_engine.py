@@ -1014,11 +1014,6 @@ class ParseToObjects(Transformer):
         return Abs(args)
 
     @v_args(meta=True)
-    def fabs(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
-        return Abs(args)
-
-    @v_args(meta=True)
     def count_distinct(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return CountDistinct(args)
