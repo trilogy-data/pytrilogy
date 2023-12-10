@@ -139,9 +139,8 @@ if __name__ == "__main__":
     renderer = Renderer()
     executor.environment = env
     test = '''property passenger.id.family <- split(passenger.name, ',')[1];
-
 auto survivor <- filter passenger.id where passenger.survived = 1;
-auto family_survival_rate <- count(survivor)/count(passenger.id) by passenger.family;
+auto family_survival_rate <- count(survivor) by passenger.family /count(passenger.id) by passenger.family;
 auto family_size <- count(passenger.id) by passenger.family;
 select 
     passenger.class,

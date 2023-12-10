@@ -7,7 +7,7 @@
             @keydown.enter.ctrl.exact.prevent="getData"/>
     </div>
 
-    <LoadingButton :loading="loading" class="submit-button" v-if="data.length == 0" 
+    <LoadingButton :loading="loading" class="submit-button"
     @click="getData" type='submit'>Run (ctrl-enter)</LoadingButton>
     <!-- <button v-else @click="show_results = !show_results">Toggle results</button> -->
     <div class = "error" v-if="error">{{ error }}</div>
