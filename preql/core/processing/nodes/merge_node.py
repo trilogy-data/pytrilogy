@@ -10,7 +10,6 @@ from preql.core.models import (
     SourceType,
     Concept,
 )
-from preql.core.enums import Purpose
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import (
     StrategyNode,
@@ -70,7 +69,7 @@ class MergeNode(StrategyNode):
         joins = []
         for left_value in dataset_list:
             for right_value in dataset_list:
-                if left_value == right_value:
+                if left_value.identifier == right_value.identifier:
                     continue
                 joins.append(
                     BaseJoin(
@@ -78,58 +77,6 @@ class MergeNode(StrategyNode):
                         right_datasource=right_value,
                         join_type=JoinType.FULL,
                         concepts=[],
-                    )
-                )
-        return joins
-
-    def create_inferred_joins(
-        self, dataset_list: List[QueryDatasource], grain: Grain
-    ) -> List[BaseJoin]:
-        base = dataset_list[0]
-        joins = []
-        all_concepts = unique(
-            self.mandatory_concepts + self.optional_concepts, "address"
-        )
-
-        join_concepts = self.join_concepts or all_concepts
-
-        if dataset_list[1:]:
-            for right_value in dataset_list[1:]:
-                if not grain.components:
-                    joins.append(
-                        BaseJoin(
-                            left_datasource=base,
-                            right_datasource=right_value,
-                            join_type=self.force_join_type
-                            if self.force_join_type
-                            else JoinType.FULL,
-                            concepts=[],
-                        )
-                    )
-
-                if all(
-                    [c.purpose == Purpose.CONSTANT for c in right_value.output_concepts]
-                ):
-                    joins.append(
-                        BaseJoin(
-                            left_datasource=base,
-                            right_datasource=right_value,
-                            join_type=self.force_join_type
-                            if self.force_join_type
-                            else JoinType.FULL,
-                            concepts=[],
-                        )
-                    )
-                    continue
-                joins.append(
-                    BaseJoin(
-                        left_datasource=base,
-                        right_datasource=right_value,
-                        join_type=self.force_join_type
-                        if self.force_join_type
-                        else JoinType.LEFT_OUTER,
-                        concepts=join_concepts,
-                        filter_to_mutual=True,
                     )
                 )
         return joins

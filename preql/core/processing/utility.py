@@ -3,8 +3,10 @@ import networkx as nx
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import Datasource, JoinType, BaseJoin, Concept, QueryDatasource
 from preql.core.enums import Purpose
+from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
+from collections import defaultdict
 
 
 class NodeType(Enum):
@@ -113,9 +115,16 @@ def get_node_joins(
             concepts.append(concept)
             graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource.identifier, concept.address)
-    from collections import defaultdict
 
-    joins = defaultdict(set)
+    # add edges for every constant to every datasource
+    for datasource in datasources:
+        for concept in datasource.output_concepts:
+            if concept.purpose == Purpose.CONSTANT:
+                for node in graph.nodes:
+                    if graph.nodes[node]["type"] == NodeType.NODE:
+                        graph.add_edge(node, concept.address)
+
+    joins: defaultdict[str, set] = defaultdict(set)
     seen = set()
     for left in graph.nodes:
         # skip concepts
@@ -137,11 +146,12 @@ def get_node_joins(
     identifier_map = {x.identifier: x for x in datasources}
     for key, join_concepts in joins.items():
         left, right = key.split("-")
-        local_concepts = unique(
+        local_concepts: List[Concept] = unique(
             [c for c in concepts if c.address in join_concepts], "address"
         )
         if all([c.purpose == Purpose.CONSTANT for c in local_concepts]):
             join_type = JoinType.FULL
+            local_concepts = []
         else:
             join_type = JoinType.LEFT_OUTER
         final_joins_pre.append(
@@ -172,16 +182,23 @@ def get_node_joins(
                 new_final_joins_pre.append(join)
         final_joins_pre = new_final_joins_pre
 
-    for x in datasources:
-        found = False
-        for join in final_joins:
-            if (
-                join.left_datasource.identifier == x.identifier
-                or join.right_datasource.identifier == x.identifier
-            ):
-                found = True
-        if not found:
-            raise SyntaxError(f"{joins} Could not find join for {x.identifier}")
+    # this is extra validation
+    [
+        x for x in datasources if not x.identifier.startswith(CONSTANT_DATASET)
+    ]
+    if len(datasources) > 1:
+        for x in datasources:
+            found = False
+            for join in final_joins:
+                if (
+                    join.left_datasource.identifier == x.identifier
+                    or join.right_datasource.identifier == x.identifier
+                ):
+                    found = True
+            if not found:
+                raise SyntaxError(
+                    f"{joins} Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}"
+                )
     return final_joins
 
 

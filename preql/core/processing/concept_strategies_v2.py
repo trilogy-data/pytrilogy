@@ -280,7 +280,7 @@ def source_concepts(
                 f"{local_prefix}{LOGGER_PREFIX} Graph analysis: {graph_count} subgraphs found"
             )
             # if we have too many subgraphs, we need to add more mandatory concepts
-            if graph_count == 1:
+            if graph_count in (0, 1):
                 valid_graph = True
                 logger.info(
                     f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."
