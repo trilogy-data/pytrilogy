@@ -96,7 +96,7 @@ property passenger.id.family <- split(passenger.name, ',')[1];
 auto survivor <- filter passenger.id where passenger.survived = 1;
 SELECT
     passenger.class,
-    avg( count(survivor) / count(passenger.id) by passenger.family ) -> avg_class_family_survival_rate,
+    avg( count(survivor) by passenger.family / count(passenger.id) by passenger.family ) -> avg_class_family_survival_rate,
     avg( count(passenger.id) by passenger.family ) -> avg_class_family_size
 ORDER BY  
     passenger.class asc
