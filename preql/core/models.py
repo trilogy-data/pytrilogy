@@ -1167,12 +1167,7 @@ class CTE(BaseModel):
         # if we have multiple joined CTEs, pick the base
         # as the root
         elif self.joins and len(self.joins) > 0:
-            eligible = set()
-            not_eligible = set()
-            for join in self.joins:
-                eligible.add(join.left_cte.name)
-                not_eligible.add(join.right_cte.name)
-            return eligible.difference(not_eligible).pop()
+            return self.joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         # return self.source_map.values()[0]
