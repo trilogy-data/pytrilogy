@@ -50,6 +50,7 @@ export default {
     text-align: center;
     text-decoration: none;
     transition: all 250ms;
+    vertical-align: middle;
     border: 0;
     font-size: 12px;
     user-select: none;
@@ -80,7 +81,7 @@ button {
 }
 
 .spinner {
-    line-height: 1.00;
+    line-height: .7;
     position: absolute;
     top: 50%;
     left: auto;
@@ -98,7 +99,6 @@ button {
     display: inline-block;
     position: absolute;
     right: 0;
-    top: 0.15rem;
     width: 1rem;
     height: 1rem;
     opacity: 1;

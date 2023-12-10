@@ -63,23 +63,24 @@ address raw_titanic;
 Now, try writing your own queries in the sandbox below. The following concepts
 will be predefined for you.
 
-Each query is stateless, so if you want to define a new concept in your query,
+Each query is stateless, so must contain all dependencies. If you want to define a new concept to 
+use in your query, you must define it in the query and
 separate it with a semicolon from the query that uses it. 
 
-#### Try answering these questions (click to show)
+#### Try answering these questions (click to show a possible answer)
 
 <ul>
 <Accordian  title="Did different classes have different average fares?" >
-<SQL  query="select passenger.class, avg(passenger.fare)->avg_class_fare;"/>
+<SQL  maxWidthScaling=".8"  query="select passenger.class, avg(passenger.fare)->avg_class_fare;"/>
 </Accordian>
 <Accordian  title="Were people in higher classes more likely to survive?" >
-<SQL maxWidthScaling=".7" query="
+<SQL maxWidthScaling=".8" query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 select passenger.class, count(survivor)/count(passenger.id)*100->survival_rate;
 "/>
 </Accordian>
 <Accordian  title="Were certain ages more likely to survive?" >
-<SQL maxWidthScaling=".7" query="
+<SQL maxWidthScaling=".8" query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 select 
     cast(passenger.age / 10 as int) * 10 -> passenger_decade, 
@@ -90,14 +91,14 @@ order by passenger_decade desc
 "/>
 </Accordian>
 <Accordian  title="What was the average family survival rate in each class?" >
-<SQL maxWidthScaling=".7" query="
+<SQL maxWidthScaling=".8" query="
+property passenger.id.family <- split(passenger.name, ',')[1];
 auto survivor <- filter passenger.id where passenger.survived = 1;
-auto survival_rate <- count(survivor)/count(passenger.id)*100;
-select passenger.family, per_family_survival_rate-> fmaily_survival_rate;
-select 
+SELECT
     passenger.class,
-    avg(family_survival_rate) -> avg_class_family_survival_rate,
-order by 
+    avg( count(survivor) / count(passenger.id) by passenger.family ) -> avg_class_family_survival_rate,
+    avg( count(passenger.id) by passenger.family ) -> avg_class_family_size
+ORDER BY  
     passenger.class asc
 ;
 "/>
