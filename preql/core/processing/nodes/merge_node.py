@@ -17,6 +17,7 @@ from preql.core.processing.nodes.base_node import (
     resolve_concept_map,
     NodeJoin,
 )
+from preql.core.processing.utility import get_node_joins
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
@@ -65,7 +66,25 @@ class MergeNode(StrategyNode):
             )
         return joins
 
-    def create_inferred_joins(self, dataset_list: List[QueryDatasource], grain: Grain):
+    def create_full_joins(self, dataset_list: List[QueryDatasource]):
+        joins = []
+        for left_value in dataset_list:
+            for right_value in dataset_list:
+                if left_value == right_value:
+                    continue
+                joins.append(
+                    BaseJoin(
+                        left_datasource=left_value,
+                        right_datasource=right_value,
+                        join_type=JoinType.FULL,
+                        concepts=[],
+                    )
+                )
+        return joins
+
+    def create_inferred_joins(
+        self, dataset_list: List[QueryDatasource], grain: Grain
+    ) -> List[BaseJoin]:
         base = dataset_list[0]
         joins = []
         all_concepts = unique(
@@ -166,7 +185,10 @@ class MergeNode(StrategyNode):
             )
 
         if not self.node_joins:
-            joins = self.create_inferred_joins(dataset_list, grain)
+            if not grain.components:
+                joins = self.create_full_joins(dataset_list)
+            else:
+                joins = get_node_joins(dataset_list)
         else:
             joins = self.translate_node_joins(self.node_joins)
         input_concepts = []

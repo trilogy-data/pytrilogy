@@ -1,9 +1,10 @@
 from typing import List, Optional, Tuple, Dict, TypedDict, Set
 import networkx as nx
 from preql.core.graph_models import ReferenceGraph
-from preql.core.models import Datasource, JoinType, BaseJoin, Concept
+from preql.core.models import Datasource, JoinType, BaseJoin, Concept, QueryDatasource
 from preql.core.enums import Purpose
 from enum import Enum
+from preql.utility import unique
 
 
 class NodeType(Enum):
@@ -95,6 +96,93 @@ def calculate_graph_relevance(
         relevance += 1
 
     return relevance
+
+
+def get_node_joins(
+    datasources: List[QueryDatasource],
+    # concepts:List[Concept],
+) -> List[BaseJoin]:
+    """Find if any of the datasources are not linked"""
+    import networkx as nx
+
+    graph = nx.Graph()
+    concepts: List[Concept] = []
+    for datasource in datasources:
+        graph.add_node(datasource.identifier, type=NodeType.NODE)
+        for concept in datasource.output_concepts:
+            concepts.append(concept)
+            graph.add_node(concept.address, type=NodeType.CONCEPT)
+            graph.add_edge(datasource.identifier, concept.address)
+    from collections import defaultdict
+
+    joins = defaultdict(set)
+    seen = set()
+    for left in graph.nodes:
+        # skip concepts
+        seen.add(left)
+        if graph.nodes[left]["type"] == NodeType.CONCEPT:
+            continue
+        for cnode in graph.neighbors(left):
+            if graph.nodes[cnode]["type"] == NodeType.CONCEPT:
+                for right in graph.neighbors(cnode):
+                    # skip concepts
+                    if graph.nodes[right]["type"] == NodeType.CONCEPT:
+                        continue
+                    if right in seen:
+                        continue
+                    identifier = sorted([left, right])
+                    joins["-".join(identifier)].add(cnode)
+
+    final_joins_pre: List[BaseJoin] = []
+    identifier_map = {x.identifier: x for x in datasources}
+    for key, join_concepts in joins.items():
+        left, right = key.split("-")
+        local_concepts = unique(
+            [c for c in concepts if c.address in join_concepts], "address"
+        )
+        if all([c.purpose == Purpose.CONSTANT for c in local_concepts]):
+            join_type = JoinType.FULL
+        else:
+            join_type = JoinType.LEFT_OUTER
+        final_joins_pre.append(
+            BaseJoin(
+                left_datasource=identifier_map[left],
+                right_datasource=identifier_map[right],
+                join_type=join_type,
+                concepts=local_concepts,
+            )
+        )
+    final_joins: List[BaseJoin] = []
+    available_aliases = set()
+    eligible = set()
+    not_eligible = set()
+    # find our base join
+    for join in final_joins_pre:
+        eligible.add(join.left_datasource.identifier)
+        not_eligible.add(join.right_datasource.identifier)
+    available_aliases = eligible.difference(not_eligible)
+    while final_joins_pre:
+        new_final_joins_pre = []
+        for join in final_joins_pre:
+            if join.left_datasource.identifier in available_aliases:
+                final_joins.append(join)
+                available_aliases.add(join.left_datasource.identifier)
+                available_aliases.add(join.right_datasource.identifier)
+            else:
+                new_final_joins_pre.append(join)
+        final_joins_pre = new_final_joins_pre
+
+    for x in datasources:
+        found = False
+        for join in final_joins:
+            if (
+                join.left_datasource.identifier == x.identifier
+                or join.right_datasource.identifier == x.identifier
+            ):
+                found = True
+        if not found:
+            raise SyntaxError(f"{joins} Could not find join for {x.identifier}")
+    return final_joins
 
 
 def get_disconnected_components(

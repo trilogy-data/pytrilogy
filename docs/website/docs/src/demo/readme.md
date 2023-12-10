@@ -34,6 +34,8 @@ property passenger.id.fare float;
 property passenger.id.cabin string;
 property passenger.id.embarked bool;
 
+property passenger.id.family <- split(passenger.name, ',')[1];
+
 metric passenger.id.count <- count(passenger.id);
 
 datasource raw_data (
@@ -87,18 +89,16 @@ order by passenger_decade desc
 ;
 "/>
 </Accordian>
-<Accordian  title="For each family, how much did their survival rate differ from the average for their class?" >
+<Accordian  title="What was the average family survival rate in each class?" >
 <SQL maxWidthScaling=".7" query="
 auto survivor <- filter passenger.id where passenger.survived = 1;
 auto survival_rate <- count(survivor)/count(passenger.id)*100;
-select passenger.class, per_class_survival_rate-> class_survival_rate;
-select passenger.family, survival_rate->family_survival_rate;
+select passenger.family, per_family_survival_rate-> fmaily_survival_rate;
 select 
-    passenger.family,
-    survival_rate -> family_survival_rate,
-    survival_rate - class_survival_rate -> family_survival_rate_diff
+    passenger.class,
+    avg(family_survival_rate) -> avg_class_family_survival_rate,
 order by 
-    abs(family_survival_rate_diff) desc
+    passenger.class asc
 ;
 "/>
 </Accordian>
@@ -169,7 +169,7 @@ data() {
         }],
         detailQueries: [{
             'title': 'Family Sizing',
-            'query': `property passenger.id.family <- split(passenger.name, ',')[1];
+            'query': `
 
 select 
     passenger.family, 

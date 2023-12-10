@@ -19,10 +19,11 @@ from preql.core.processing.node_generators import (
     gen_select_node,
     gen_static_select_node,
 )
-from preql.core.processing.concept_strategies_v2 import generate_graph
-from logging import StreamHandler
+from preql.core.processing.concept_strategies_v2 import generate_graph,  get_local_optional
+from logging import StreamHandler, DEBUG
 
 logger.addHandler(StreamHandler())
+logger.setLevel(DEBUG)
 def setup_engine()->Executor:
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / 'train.csv'
@@ -44,6 +45,7 @@ def setup_titanic(env:Environment):
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         keys=[id],
+        grain = Grain(components=[id]),
     )
 
     name = Concept(
@@ -52,6 +54,7 @@ def setup_titanic(env:Environment):
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
         keys=[id],
+             grain = Grain(components=[id]),
     )
 
     pclass = Concept(
@@ -60,6 +63,7 @@ def setup_titanic(env:Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=[id],
+             grain = Grain(components=[id]),
     )
     survived = Concept(
         name="survived",
@@ -67,6 +71,7 @@ def setup_titanic(env:Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.BOOL,
         keys=[id],
+             grain = Grain(components=[id]),
     )
     fare = Concept(
         name="fare",
@@ -74,6 +79,7 @@ def setup_titanic(env:Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.FLOAT,
         keys=[id],
+             grain = Grain(components=[id]),
     )
     embarked = Concept(
         name="embarked",
@@ -81,6 +87,7 @@ def setup_titanic(env:Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=[id],
+             grain = Grain(components=[id]),
     )
     cabin = Concept(
         name="cabin",
@@ -88,6 +95,7 @@ def setup_titanic(env:Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=[id],
+             grain = Grain(components=[id]),
     )
     ticket = Concept(
         name="ticket",
@@ -95,6 +103,7 @@ def setup_titanic(env:Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=[id],
+             grain = Grain(components=[id]),
     )
     for x in [id, age, survived, name, pclass, fare, cabin, embarked, ticket]:
         env.add_concept(x)
@@ -131,9 +140,17 @@ if __name__ == "__main__":
     executor.environment = env
     test = '''property passenger.id.family <- split(passenger.name, ',')[1];
 
-select passenger.name, passenger.class, passenger.family, passenger.cabin,
-passenger.ticket
-where passenger.family = 'Williams';
+auto survivor <- filter passenger.id where passenger.survived = 1;
+auto family_survival_rate <- count(survivor)/count(passenger.id) by passenger.family;
+auto family_size <- count(passenger.id) by passenger.family;
+select 
+    passenger.class,
+    avg(family_survival_rate) -> avg_class_family_survival_rate,
+    avg(family_size) -> avg_class_family_size
+order by 
+    passenger.class asc
+;
+
 '''
     node = gen_select_node(
         concept =env.concepts['passenger.name'],
@@ -144,6 +161,13 @@ where passenger.family = 'Williams';
                     source_concepts= lambda: 1,)
     # print(node.resolve())
 
+    # local_opt = local_opts = get_local_optional(
+    #     [env.concepts['passenger.class'],
+    #     env.concepts['local.family_size']],
+    #     [],
+    #     env.concepts['passenger.class'],
+
+    # )
     queries = executor.parse_text(test)
     candidate = queries[-1]
     print(candidate.grain)

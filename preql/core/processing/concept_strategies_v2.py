@@ -4,7 +4,7 @@ from typing import List, Optional
 
 
 from preql.constants import logger
-from preql.core.enums import Purpose, PurposeLineage
+from preql.core.enums import PurposeLineage
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import (
@@ -35,12 +35,14 @@ LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
 def throw_helpful_error(
-    mandatory_concepts: list[Concept], optional_concepts: List[Concept]
+    mandatory_concepts: list[Concept],
+    optional_concepts: List[Concept],
+    extra_msg: Optional[str] = "",
 ):
     error_msg_required = [c.address for c in mandatory_concepts]
     error_msg_optional = [c.address for c in optional_concepts]
     raise ValueError(
-        f"Could not find any way to associate required concepts {error_msg_required} and optional {error_msg_optional}"
+        f"Could not find any way to associate required concepts {error_msg_required} and optional {error_msg_optional}. {extra_msg}"
     )
 
 
@@ -60,7 +62,11 @@ def get_priority_concept(
     return priority[0]
 
 
-def get_local_optional(optional_concepts, mandatory_concepts, concept):
+def get_local_optional(
+    optional_concepts: List[Concept],
+    mandatory_concepts: List[Concept],
+    concept: Concept,
+):
     # we don't  want to look for multiple aggregates at the same time
     # local optional should be relevant keys, but not metrics
     local_optional_staging = unique(
@@ -88,40 +94,50 @@ def recurse_or_fail(
     accept_partial: bool = False,
 ):
     candidates = [
-        x
-        for x in found_concepts
-        if x.purpose in (Purpose.KEY, Purpose.PROPERTY) and x not in mandatory_concepts
+        x for x in found_concepts if x.purpose and x not in mandatory_concepts
     ]
     if not candidates:
         # terminal state one - no options to discard
         throw_helpful_error(mandatory_concepts, optional_concepts)
-    # want to make the minimum amount of new concepts
+    # want to make the miimum amount of new concepts
     # mandatory, as finding a match is less and less likely
     # as we require more
-    for x in range(1, len(candidates) + 1):
+    combos = []
+    for x in range(0, len(candidates) + 1):
         for combo in combinations(candidates, x):
-            new_mandatory: List[Concept] = mandatory_concepts + list(combo)
-        
-            if set(x.address for x in new_mandatory) == set(x.address for x in mandatory_concepts):
-                continue
-            logger.info(
-                f"{local_prefix}{LOGGER_PREFIX} Attempting to resolve joins to reach"
-                f" {','.join([str(c) for c in new_mandatory])}"
+            combos.append(mandatory_concepts + list(combo))
+    attempt = []
+    for new_mandatory in reversed(combos):
+        attempt = new_mandatory
+        if (
+            set(x.address for x in new_mandatory)
+            == set(x.address for x in mandatory_concepts)
+            and not optional_concepts
+        ):
+            continue
+        logger.info(
+            f"{local_prefix}{LOGGER_PREFIX} attempting to modified subset of option concepts"
+            f" {','.join([str(c) for c in new_mandatory])}"
+        )
+        try:
+            return source_concepts(
+                mandatory_concepts=new_mandatory,
+                optional_concepts=optional_concepts,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+                accept_partial=accept_partial,
             )
-            try:
-                return source_concepts(
-                    mandatory_concepts=new_mandatory,
-                    optional_concepts=optional_concepts,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                    accept_partial=accept_partial,
-                )
-            except ValueError:
-                print(f"failed to find {[c.address for c in new_mandatory]}")
-                continue
+        except ValueError:
+            logger.debug(
+                f"failed to find {[c.address for c in new_mandatory]} and optional {[c.address for c in optional_concepts]}"
+            )
+            continue
     # terminal state two - have gone through all options
-    throw_helpful_error(mandatory_concepts, optional_concepts)
+    process_optional = [x.address for x in attempt]
+    throw_helpful_error(
+        mandatory_concepts, optional_concepts, "Last attempt: " + str(process_optional)
+    )
 
 
 def source_concepts(
@@ -172,14 +188,18 @@ def source_concepts(
     logger.info(
         f"{local_prefix}{LOGGER_PREFIX} Beginning sourcing loop for {[str(c) for c in all_concepts]}"
     )
-
-    while not all(c.address in found_addresses for c in all_concepts):
+    attempted_priority_concepts: set[str] = set()
+    valid_graph = False
+    while not valid_graph:
         # pick the concept we're trying to get
-        concept = get_priority_concept(all_concepts, list(found_addresses))
-
+        concept = get_priority_concept(all_concepts, list(attempted_priority_concepts))
+        attempted_priority_concepts.add(concept.address)
         # process into a deduped list of optional join concepts to try to pull through
         local_optional = get_local_optional(
             optional_concepts, mandatory_concepts, concept
+        )
+        logger.info(
+            f"{local_prefix}{LOGGER_PREFIX} For {concept.address}, have local optional {[str(c) for c in local_optional]}"
         )
 
         if concept.lineage:
@@ -260,7 +280,14 @@ def source_concepts(
                 f"{local_prefix}{LOGGER_PREFIX} Graph analysis: {graph_count} subgraphs found"
             )
             # if we have too many subgraphs, we need to add more mandatory concepts
-            if graph_count > 1:
+            if graph_count == 1:
+                valid_graph = True
+                logger.info(
+                    f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."
+                )
+            elif graph_count > 1 and all(
+                [c.address in attempted_priority_concepts for c in all_concepts]
+            ):
                 logger.info(
                     f"{local_prefix}{LOGGER_PREFIX} fetched nodes are not a connected graph - have {graph_count} as {graphs},"
                     f"rerunning with more mandatory concepts"
@@ -275,9 +302,7 @@ def source_concepts(
                     local_prefix,
                     accept_partial=True,
                 )
-            logger.info(
-                f"{local_prefix}{LOGGER_PREFIX} One fully connected subgraph returned, sourcing {[c.address for c in mandatory_concepts]} successful."
-            )
+
     partials = [
         c
         for c in all_concepts

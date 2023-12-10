@@ -1,16 +1,16 @@
 <template>
-    <div :style="inputStyles"  class="pre-wrapper language-sql">
+    <div :style="inputStyles" class="pre-wrapper language-sql">
         <button class="copy-button" @click="copyToClipboard">
-      Copy
-    </button>
-        <pre  class="language-sql" data-ext="sql"><code  ref="sqlRef"
+            Copy
+        </button>
+        <pre class="language-sql" data-ext="sql"><code  ref="sqlRef"
         class="hljs language-sql" >{{ query }}</code></pre>
     </div>
 </template>
 
 <style scoped>
 .copy-button {
-/* minimal, right aligned */
+    /* minimal, right aligned */
     border-radius: 100px;
     opacity: 1;
     color: gray;
@@ -29,6 +29,7 @@
     margin: 10px;
 
 }
+
 .pre-wrapper {
     overflow: auto;
 }
@@ -50,11 +51,11 @@ export default {
     name: 'SQL',
     // Your component options here
     data() {
-    const { width, height } = useWindowSize();
-    return {
-      windowWidth: width,
-      windowHeight: height,
-    };
+        const { width, height } = useWindowSize();
+        return {
+            windowWidth: width,
+            windowHeight: height,
+        };
 
     },
     props: {
@@ -68,11 +69,11 @@ export default {
         this.highlightSQL()
     },
     computed: {
-         maxWidth() {
-            return this.windowWidth < 600 ?this.windowWidth*1 *this.maxWidthScaling: this.windowWidth*.6 *this.maxWidthScaling
+        maxWidth() {
+            return this.windowWidth < 600 ? this.windowWidth * 1 * this.maxWidthScaling : this.windowWidth * .6 * this.maxWidthScaling
         },
         fontsize() {
-            return this.windowWidth < 600 ? .7: 1
+            return this.windowWidth < 600 ? .7 : 1
         },
         inputStyles() {
             return {
@@ -91,34 +92,34 @@ export default {
             }
         },
         copyToClipboard() {
-      const textArea = document.createElement('textarea');
-      textArea.value = this.query;
+            const textArea = document.createElement('textarea');
+            textArea.value = this.query;
 
-      // Set the textarea to be invisible
-      textArea.style.position = 'fixed';
-      textArea.style.top = '0';
-      textArea.style.left = '0';
-      textArea.style.width = '2em';
-      textArea.style.height = '2em';
-      textArea.style.padding = '0';
-      textArea.style.border = 'none';
-      textArea.style.outline = 'none';
-      textArea.style.boxShadow = 'none';
-      textArea.style.background = 'transparent';
+            // Set the textarea to be invisible
+            textArea.style.position = 'fixed';
+            textArea.style.top = '0';
+            textArea.style.left = '0';
+            textArea.style.width = '2em';
+            textArea.style.height = '2em';
+            textArea.style.padding = '0';
+            textArea.style.border = 'none';
+            textArea.style.outline = 'none';
+            textArea.style.boxShadow = 'none';
+            textArea.style.background = 'transparent';
 
-      document.body.appendChild(textArea);
-      textArea.select();
+            document.body.appendChild(textArea);
+            textArea.select();
 
-      try {
-        const successful = document.execCommand('copy');
-        const message = successful ? 'Text copied!' : 'Unable to copy text.';
-        console.log(message);
-      } catch (err) {
-        console.error('Failed to copy:', err);
-      }
+            try {
+                const successful = document.execCommand('copy');
+                const message = successful ? 'Text copied!' : 'Unable to copy text.';
+                console.log(message);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
 
-      document.body.removeChild(textArea);
-    }
+            document.body.removeChild(textArea);
+        }
     },
 }
 </script>

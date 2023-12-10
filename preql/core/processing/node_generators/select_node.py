@@ -23,6 +23,7 @@ from preql.core.models import (
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
 from preql.core.processing.utility import PathInfo, path_to_joins, JoinType
+from preql.constants import logger
 
 
 def gen_select_node_from_table(
@@ -93,6 +94,9 @@ def gen_select_node_from_table(
     return None
 
 
+LOGGER_PREFIX = "[GEN_SELECT_NODE_FROM_JOIN_VERBOSE]"
+
+
 def gen_select_node_from_join(
     all_concepts: List[Concept],
     g,
@@ -115,14 +119,18 @@ def gen_select_node_from_join(
                     target=concept_to_node(item),
                 )
                 paths[concept_to_node(item)] = path
-            except nx.exception.NodeNotFound:
+            except nx.exception.NodeNotFound as e:
                 # TODO: support Verbose logging mode configuration and reenable these
-                # logger.debug(f'{LOGGER_PREFIX} could not find node for {item.address}')
+                logger.debug(
+                    f"{LOGGER_PREFIX} could not find node for {item.address} with {item.grain} and {item.lineage}: {str(e)}"
+                )
                 all_found = False
 
                 continue
             except nx.exception.NetworkXNoPath:
-                # logger.debug(f'{LOGGER_PREFIX} could not get to {item.address} at {item.grain} from {datasource}')
+                logger.debug(
+                    f"{LOGGER_PREFIX} could not get to {item.address} at {item.grain} from {datasource}"
+                )
                 all_found = False
                 continue
         if all_found:
@@ -216,6 +224,10 @@ def gen_select_node(
     basic_inputs = [x for x in local_optional if x in environment.materialized_concepts]
     ds = None
     # first try to get everything
+    all_concepts_base = [concept] + local_optional
+    logger.info(
+        f"GEN SELECT NODE HAS {[c.address for c in all_concepts_base]} and {[c.address for c in basic_inputs]}"
+    )
     ds = gen_select_node_from_table(
         [concept] + local_optional, g=g, environment=environment, depth=depth
     )

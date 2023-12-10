@@ -81,10 +81,11 @@ def IndexAccess(args):
         # TODO: THIS IS WRONG - figure out how to get at array types
         output_datatype=DataType.STRING,
         # force this to a key
-        output_purpose=Purpose.KEY,
+        output_purpose=Purpose.PROPERTY,
         valid_inputs=[DataType.ARRAY, DataType.INTEGER],
         arg_count=2,
     )
+
 
 def Abs(args) -> Function:
     return Function(

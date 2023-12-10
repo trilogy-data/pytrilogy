@@ -1,7 +1,7 @@
 <template>
     <h3>{{ title }}</h3>
     <div class="language-sql">
-        <textarea ref="sql" v-model="user_query"
+        <textarea class="entry" ref="sql" v-model="user_query"
         rows = "5"
         placeholder="select 1 -> one;"
             @keydown.enter.ctrl.exact.prevent="getData"/>
@@ -15,6 +15,10 @@
 </template>
     
 <style>
+
+.entry {
+    max-width:95%;
+}
 
 .error {
     background-color: rgba(123, 15, 15, 0.38);
