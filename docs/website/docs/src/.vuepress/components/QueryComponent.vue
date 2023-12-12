@@ -15,6 +15,7 @@ import axios from 'axios';
 import ResultComponent from './ResultComponent.vue';
 import LoadingButton from './LoadingButton.vue';
 import SQL from './SQL.vue'
+import { API_URL } from './constants';
 
 export default {
     data() {
@@ -56,7 +57,7 @@ export default {
             const joinedString = queries.join(' ');
             try {
                 const response = await axios.post(
-                    "https://preql-demo-backend-cz7vx4oxuq-uc.a.run.app/query",
+                    `${API_URL}/query`,
                     { 'model': this.model, 'query': joinedString }
                 );
                 this.headers = response.data.headers;

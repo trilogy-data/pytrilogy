@@ -221,7 +221,11 @@ def gen_select_node(
     depth: int,
     source_concepts,
 ) -> MergeNode | SelectNode:
-    basic_inputs = [x for x in local_optional if x in environment.materialized_concepts]
+    basic_inputs = [
+        x
+        for x in local_optional
+        if x.address in [z.address for z in environment.materialized_concepts]
+    ]
     ds = None
     # first try to get everything
     all_concepts_base = [concept] + local_optional

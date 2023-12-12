@@ -41,6 +41,7 @@ import sql from 'highlight.js/lib/languages/sql';
 import 'highlight.js/styles/github.css';
 import { useWindowSize } from 'vue-window-size';
 
+
 hljs.registerLanguage('sql', sql);
 
 import { ref, onMounted } from 'vue'
