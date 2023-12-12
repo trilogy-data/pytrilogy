@@ -6,7 +6,7 @@ import { registerComponentsPlugin } from '@vuepress/plugin-register-components'
 const __dirname = getDirname(import.meta.url)
 
 
- export default {
+export default {
   /**
    * Ref：https://v1.vuepress.vuejs.org/config/#title
    */
@@ -28,7 +28,7 @@ const __dirname = getDirname(import.meta.url)
     ['script', {
       async: true,
       src: 'https://www.googletagmanager.com/gtag/js?id=G-KK1Z9YZMR9'
-  }],
+    }],
     ['script', {}, `window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
@@ -37,7 +37,7 @@ gtag('config', 'G-KK1Z9YZMR9');
 `],
   ],
 
-  theme:  defaultTheme({
+  theme: defaultTheme({
     repo: 'https://github.com/preqldata/pypreql',
     editLinks: false,
     docsDir: '/docs/website/docs/src',

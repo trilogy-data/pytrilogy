@@ -58,6 +58,7 @@ import hljs from 'highlight.js/lib/core';
 import sql from 'highlight.js/lib/languages/sql';
 import LoadingButton from './LoadingButton.vue';
 import 'highlight.js/styles/github.css';
+import { API_URL } from './constants';
 hljs.registerLanguage('sql', sql);
 
 export default {
@@ -111,7 +112,7 @@ export default {
             const joinedString = queries.join(' ');
             try {
                 const response = await axios.post(
-                    "https://preql-demo-backend-cz7vx4oxuq-uc.a.run.app/query",
+                    `${API_URL}/query`,
                     { 'model': 'titanic', 'query': joinedString }
                 );
                 this.headers = response.data.headers;

@@ -1326,16 +1326,10 @@ class Environment(BaseModel):
         output = []
         for concept in self.concepts.values():
             found = False
-            search_concepts = [concept]
             # basic concepts are effectively materialized
             # and can be found via join paths
             for datasource in self.datasources.values():
-                if all(
-                    [
-                        c.address in [x.address for x in datasource.output_concepts]
-                        for c in search_concepts
-                    ]
-                ):
+                if concept.address in [x.address for x in datasource.output_concepts]:
                     found = True
                     break
             if found:

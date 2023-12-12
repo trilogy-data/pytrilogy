@@ -29,6 +29,8 @@ from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
 from preql.hooks.base_hook import BaseHook
 from preql.utility import unique
+from random import shuffle
+from math import ceil
 
 LOGGER_PREFIX = "[RENDERING]"
 
@@ -65,7 +67,6 @@ waggish
 rambunctious
 puffy
 hard
-fat
 sedate
 yellow
 resonant
@@ -108,9 +109,117 @@ imported
 ugly
 ruthless
 deeply
-eminent""".split(
+eminent
+badger
+barracuda
+bear
+boa
+cheetah
+chimpanzee
+civet
+cobra
+cougar
+coyote
+crocodile
+dingo
+eagle
+eel
+fossa
+fox
+human
+jackal
+jaguar
+komodo
+leopard
+lion
+lynx
+mamba
+mandrill
+marlin
+monitor
+ocelot
+osprey
+owl
+petrel
+python
+ray
+salamander
+serval
+shark
+skua
+tiger
+viper
+wolf
+wolverine
+albatross
+avocet
+budgie
+canary
+chick
+chickadee
+chicken
+cockatiel
+cockatoo
+coot
+covey
+crow
+cuckoo
+darter
+dove
+duck
+eagle
+falcon
+finch
+flamingo
+fowl
+goldfinch
+goose
+grouse
+hawk
+heron
+jackdaw
+jay
+kestrel
+lark
+loon
+macaw
+magpie
+martin
+osprey
+ostrich
+owl
+parakeet
+parrot
+pelican
+penguin
+pigeon
+pintail
+puffin
+quail
+quetzal
+rail
+raven
+razorbill
+rhea
+rook
+shrike
+skylark
+snipe
+sparrow
+starling
+stork
+swallow
+swift
+tanager
+thrush
+toucan
+turkey
+vulture
+warbler""".split(
     "\n"
 )
+
+CTE_NAMES = list(set(CTE_NAMES))
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -629,10 +738,14 @@ class BaseDialect:
             )
 
         if CONFIG.hash_identifiers:
-            from random import shuffle
-
             shuffle(CTE_NAMES)
             for idx, cte in enumerate(query.ctes):
-                new_name = f"rhash_{CTE_NAMES[idx]}"
+                suffix = ""
+                if idx > len(CTE_NAMES):
+                    int = ceil(len(CTE_NAMES) / idx)
+                    suffix = f"_{int}"
+                # find the remainder from the len
+                lookup = idx % len(CTE_NAMES)
+                new_name = f"{CTE_NAMES[lookup]}{suffix}"
                 final = final.replace(cte.name, new_name)
         return final

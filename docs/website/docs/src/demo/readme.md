@@ -33,8 +33,7 @@ property passenger.id.class int;
 property passenger.id.fare float;
 property passenger.id.cabin string;
 property passenger.id.embarked bool;
-
-property passenger.id.family <- split(passenger.name, ',')[1];
+property passenger.id.last_name <- split(passenger.name,',')[1];
 
 metric passenger.id.count <- count(passenger.id);
 
@@ -90,14 +89,13 @@ order by passenger_decade desc
 ;
 "/>
 </Accordian>
-<Accordian  title="What was the average family survival rate in each class?" >
+<Accordian  title="What was the average family (assume one last name is one family) survival rate in each class?" >
 <SQL maxWidthScaling=".8" query="
-property passenger.id.family <- split(passenger.name, ',')[1];
 auto survivor <- filter passenger.id where passenger.survived = 1;
 SELECT
     passenger.class,
-    avg( count(survivor) by passenger.family / count(passenger.id) by passenger.family ) -> avg_class_family_survival_rate,
-    avg( count(passenger.id) by passenger.family ) -> avg_class_family_size
+    avg( count(survivor) by passenger.last_name / count(passenger.id) by passenger.last_name ) -> avg_class_family_survival_rate,
+    avg( count(passenger.id) by passenger.last_name ) -> avg_class_family_size
 ORDER BY  
     passenger.class asc
 ;
@@ -123,7 +121,6 @@ refactored your dataset to normalize it, and now you have the following tables.
 - fact_titanic
 - dim_cabin
 - dim_passenger
-- dim_family
 
 Let's see how we can use PreQL to query this new dataset.
 
@@ -169,11 +166,9 @@ data() {
             'description': `As we have a aggregate defined already, we can query that directly, or create a derived metric directly in the query. Both passenger.id.count and passenger_count_alt will be the same here.`
         }],
         detailQueries: [{
-            'title': 'Family Sizing',
-            'query': `
-
-select 
-    passenger.family, 
+            'title': 'Family Sizing (By Last Name)',
+            'query': `select 
+    passenger.last_name, 
     passenger.id.count
 order by 
     passenger.id.count desc
@@ -198,7 +193,7 @@ limit 5;`,
             'title': 'Familes where everyone survived',
             'query': `auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
 select 
-    passenger.family,
+    passenger.last_name,
     passenger.id.count,
     count(surviving_passenger) -> surviving_size
 where
