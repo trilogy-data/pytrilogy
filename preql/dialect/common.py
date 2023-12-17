@@ -1,11 +1,14 @@
-from preql.core.models import Join
+from preql.core.models import Join, InstantiatedUnnestJoin
 
 
-def render_join(join: Join, quote_character: str = '"') -> str:
+def render_join(join: Join | InstantiatedUnnestJoin, render_function) -> str:
     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
+    if isinstance(join, InstantiatedUnnestJoin):
+        return f'{render_function(join.concept, join.cte)} AS {join.alias}'
+
     base_joinkeys = [
-        f"{join.left_cte.name}.{quote_character}{key.concept.safe_address}{quote_character} ="
-        f" {join.right_cte.name}.{quote_character}{key.concept.safe_address}{quote_character}"
+        f"{join.left_cte.name}.{render_function(key.concept, join.left_cte)} ="
+        f" {join.right_cte.name}.{render_function(key.concept, join.right_cte)}"
         for key in join.joinkeys
     ]
     if not base_joinkeys:

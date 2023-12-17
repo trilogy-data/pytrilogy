@@ -80,6 +80,7 @@ export default {
     props: {
         query: String,
         title: String,
+        model: String,
         dependencies: {
             type: Array,
             default: () => [],
@@ -113,7 +114,7 @@ export default {
             try {
                 const response = await axios.post(
                     `${API_URL}/query`,
-                    { 'model': 'titanic', 'query': joinedString }
+                    { 'model': this.model, 'query': joinedString }
                 );
                 this.headers = response.data.headers;
                 this.data = response.data.results;
