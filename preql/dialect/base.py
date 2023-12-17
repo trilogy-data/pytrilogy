@@ -2,7 +2,7 @@ from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
 
-from preql.constants import CONFIG, logger
+from preql.constants import CONFIG, logger, MagicConstants
 from preql.core.enums import Purpose, DataType, FunctionType, WindowType, DatePart
 from preql.core.models import (
     Concept,
@@ -304,6 +304,7 @@ FUNCTION_MAP = {
     FunctionType.YEAR: lambda x: f"year({x[0]})",
     # string types
     FunctionType.CONCAT: lambda x: f"concat({','.join(x)})",
+    FunctionType.UNNEST: lambda x: f"unnest({x[0]})"
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -562,6 +563,9 @@ class BaseDialect:
             return str(e.value)
         elif isinstance(e, DatePart):
             return str(e.value)
+        elif isinstance(e, MagicConstants):
+            if e == MagicConstants.NULL:
+                return 'null'
         raise ValueError(f"Unable to render type {type(e)} {e}")
 
     def render_cte(self, cte: CTE):
@@ -577,7 +581,7 @@ class BaseDialect:
                 grain=cte.grain,
                 limit=None,
                 joins=[
-                    render_join(join, self.QUOTE_CHARACTER)
+                    render_join(join, self.render_expr)
                     for join in (cte.joins or [])
                 ],
                 where=self.render_expr(cte.condition, cte)

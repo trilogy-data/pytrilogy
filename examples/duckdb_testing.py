@@ -138,27 +138,16 @@ if __name__ == "__main__":
     model = setup_titanic(env)
     renderer = Renderer()
     executor.environment = env
-    test = '''property passenger.id.family <- split(passenger.name, ',')[1];
-auto survivor <- filter passenger.id where passenger.survived = 1;
-auto family_survival_rate <- count(survivor) by passenger.family /count(passenger.id) by passenger.family;
-auto family_size <- count(passenger.id) by passenger.family;
+    test = '''
 select 
-    passenger.class,
-    avg(family_survival_rate) -> avg_class_family_survival_rate,
-    avg(family_size) -> avg_class_family_size
-order by 
-    passenger.class asc
+unnest(split(passenger.cabin, ' '))-> split_cabins, 
+    passenger.cabin,
+    passenger.name,
+where 
+    passenger.cabin is not null
 ;
 
 '''
-    node = gen_select_node(
-        concept =env.concepts['passenger.name'],
-        local_optional = [env.concepts['passenger.age'].with_grain(Grain())],
-        environment=env, 
-                    g = generate_graph(env),
-                    depth = 1,
-                    source_concepts= lambda: 1,)
-    # print(node.resolve())
 
     # local_opt = local_opts = get_local_optional(
     #     [env.concepts['passenger.class'],
@@ -168,16 +157,23 @@ order by
 
     # )
     queries = executor.parse_text(test)
-    candidate = queries[-1]
-    print(candidate.grain)
-    for z in candidate.output_columns:
-        print(z)
-    # alias = candidate.base.get_alias(executor.environment.concepts['passenger.family'])
-    # family_source = [c for c in  candidate.ctes if c.name == candidate.base.source_map['passenger.family']][0]
 
     # print(family_source.source.source_map.keys())
-
+#     results = executor.execute_raw_sql("""WITH tmp as (SELECT
+#     SPLIT(local_raw_data."cabin", ' ') as "passenger_cabin",
+#     local_raw_data."name" as "passenger_name"
+# FROM
+#     raw_titanic as local_raw_data
+#                                        where cabin is not null)
+#     select
+#         passenger_name,
+#         z.passenger_cabin
+#     from tmp
+#     CROSS JOIN unnest(passenger_cabin) as z 
+#     order by z.passenger_cabin desc
+#                              """)
     results= executor. execute_text(test)
     for r in results[0]:
         print(r)
     print('-------------')
+    

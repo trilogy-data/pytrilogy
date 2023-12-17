@@ -29,6 +29,7 @@ from preql.core.processing.node_generators import (
     gen_basic_node,
     gen_select_node,
     gen_static_select_node,
+    gen_unnest_node,
 )
 
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
@@ -54,6 +55,7 @@ def get_priority_concept(
         [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.FILTER]
+        + [c for c in remaining_concept if c.derivation == PurposeLineage.UNNEST]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.BASIC]
         + [c for c in remaining_concept if not c.lineage]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.CONSTANT]
@@ -212,6 +214,12 @@ def source_concepts(
             elif concept.derivation == PurposeLineage.FILTER:
                 stack.append(
                     gen_filter_node(
+                        concept, local_optional, environment, g, depth, source_concepts
+                    )
+                )
+            elif concept.derivation == PurposeLineage.UNNEST:
+                stack.append(
+                    gen_unnest_node(
                         concept, local_optional, environment, g, depth, source_concepts
                     )
                 )

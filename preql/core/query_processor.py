@@ -11,6 +11,7 @@ from preql.core.models import (
     Select,
     CTE,
     Join,
+    UnnestJoin,
     JoinKey,
     MaterializedDataset,
     ProcessedQuery,
@@ -18,6 +19,7 @@ from preql.core.models import (
     QueryDatasource,
     Datasource,
     BaseJoin,
+    InstantiatedUnnestJoin
 )
 
 from preql.utility import string_to_hash, unique
@@ -26,11 +28,16 @@ from preql.constants import logger
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
-
-def base_join_to_join(base_join: BaseJoin, ctes: List[CTE]) -> Join:
+def base_join_to_join(base_join: BaseJoin | UnnestJoin, ctes: List[CTE]) -> Join | InstantiatedUnnestJoin:
     """This function converts joins at the datasource level
     to joins at the CTE level"""
-
+    if isinstance(base_join, UnnestJoin ):
+        cte = None
+        for cte in ctes:
+            for key, value in cte.source_map.items():
+                if key == base_join.concept:
+                    cte = value
+        return InstantiatedUnnestJoin(concept=base_join.concept, alias=base_join.alias, cte=cte)
     left_ctes = [
         cte
         for cte in ctes
@@ -243,27 +250,7 @@ def process_query(
 
     final_ctes = list(seen.values())
 
-    # for cte in others:
-    #     # we do the with_grain here to fix an issue
-    #     # where a query with a grain of properties has the components of the grain
-    #     # with the default key grain rather than the grain of the select
-    #     # TODO - evaluate if we can fix this in select definition
-    #     joinkeys = [
-    #         JoinKey(c)
-    #         for c in statement.grain.components
-    #         if c.with_grain(cte.grain) in cte.output_columns
-    #         and c.with_grain(base.grain) in base.output_columns
-    #         and cte.grain.issubset(statement.grain)
-    #     ]
-    #     if joinkeys:
-    #         joins.append(
-    #             Join(
-    #                 left_cte=base,
-    #                 right_cte=cte,
-    #                 joinkeys=joinkeys,
-    #                 jointype=JoinType.LEFT_OUTER,
-    #             )
-    #         )
+
     return ProcessedQuery(
         order_by=statement.order_by,
         grain=statement.grain,

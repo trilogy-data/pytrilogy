@@ -28,6 +28,7 @@ class PurposeLineage(Enum):
     AGGREGATE = "aggregate"
     FILTER = "filter"
     CONSTANT = "constant"
+    UNNEST = "unnest"
 
 
 class Modifier(Enum):
@@ -92,6 +93,9 @@ class WindowOrder(Enum):
 
 
 class FunctionType(Enum):
+    # structural
+    UNNEST = "unnest"
+
     # Generic
     CASE = "case"
     CAST = "cast"
@@ -175,6 +179,8 @@ class ComparisonOperator(Enum):
     LT = "<"
     GT = ">"
     EQ = "="
+    IS = "is"
+    IS_NOT = "is not"
     GTE = ">="
     LTE = "<="
     NE = "!="
@@ -185,23 +191,20 @@ class ComparisonOperator(Enum):
     ILIKE = "ilike"
     CONTAINS = "contains"
 
+
     @classmethod
     def _missing_(cls, value):
-        if value == ["not", "in"]:
-            return ComparisonOperator.NOT_IN
-        if value == ["in"]:
-            return ComparisonOperator.IN
-        if str(value).lower() == "is":
-            return ComparisonOperator.EQ
-        if str(value).lower() == "in":
-            return ComparisonOperator.IN
-        if str(value).lower() == "like":
-            return ComparisonOperator.LIKE
-        if str(value).lower() == "ilike":
-            return ComparisonOperator.ILIKE
-        if str(value).lower() == "contains":
-            return ComparisonOperator.CONTAINS
-        return super()._missing_(value)
+        if ' ' in str(value):
+            value =str(value).split()
+        if isinstance(value, list):
+            processed = [str(v).lower() for v in value]
+            if processed == ["not", "in"]:
+                return ComparisonOperator.NOT_IN
+            if processed == ["is", "not"]:
+                return ComparisonOperator.IS_NOT
+            if value == ["in"]:
+                return ComparisonOperator.IN
+        return super()._missing_(str(value).lower())
 
 
 class DatePart(Enum):
@@ -217,3 +220,4 @@ class SourceType(Enum):
     SELECT = "select"
     GROUP = "group"
     WINDOW = "window"
+    UNNEST = "unnest"

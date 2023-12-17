@@ -1,6 +1,6 @@
 from os.path import dirname, join
 from typing import List, Optional, Tuple, Union
-
+from re import IGNORECASE
 from lark import Lark, Transformer, v_args
 from lark.exceptions import (
     UnexpectedCharacters,
@@ -12,7 +12,7 @@ from lark.exceptions import (
 from lark.tree import Meta
 from pydantic import ValidationError
 
-from preql.constants import DEFAULT_NAMESPACE
+from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE
 from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -27,7 +27,7 @@ from preql.core.enums import (
     DatePart,
 )
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
-from preql.core.functions import Count, CountDistinct, Max, Min, Split, IndexAccess, Abs
+from preql.core.functions import Count, CountDistinct, Max, Min, Split, IndexAccess, Abs, Unnest
 from preql.core.models import (
     Address,
     AggregateWrapper,
@@ -118,7 +118,7 @@ grammar = r"""
     
     // user_id where state = Mexico
     filter_item: "filter"i IDENTIFIER where
-    
+
     // rank/lag/lead
     WINDOW_TYPE: ("rank"i|"lag"i|"lead"i)  /[\s]+/
     
@@ -164,19 +164,21 @@ grammar = r"""
     expr_reference: IDENTIFIER
 
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
+
+    COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<" | "!="  )
     
-    COMPARISON_OPERATOR: ("=" | ">" | "<" | ">=" | "<" | "!=" | "is"i  )
-    
-    comparison: (expr COMPARISON_OPERATOR expr) | (expr array_comparison expr_tuple)
+    comparison: (expr COMPARISON_OPERATOR expr) | (expr array_comparison expr_tuple) 
     
     expr_tuple: "("  (expr ",")* expr ","?  ")"
 
+    //unnesting is a function
+    unnest: "UNNEST"i "(" expr ")"
     //indexing into an expression is a function
     index_access: expr "[" int_lit "]"
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fcast | fcase | aggregate_functions | len | _string_functions | _math_functions | concat | _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
+    expr: window_item | filter_item |  fcast | fcase | aggregate_functions | len | unnest | _string_functions | _math_functions | concat | _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
     
     // functions
     
@@ -256,8 +258,10 @@ grammar = r"""
     float_lit: /[0-9]+\.[0-9]+/
     
     !bool_lit: "True"i | "False"i
+
+    !null_lit: "null"i
     
-    literal: _string_lit | int_lit | float_lit | bool_lit
+    literal: _string_lit | int_lit | float_lit | bool_lit | null_lit
 
     MODIFIER: "Optional"i | "Partial"i
     
@@ -284,6 +288,7 @@ PARSER = Lark(
     grammar,
     start="start",
     propagate_positions=True,
+    g_regex_flags=IGNORECASE
 )
 
 
@@ -924,7 +929,10 @@ class ParseToObjects(Transformer):
 
     def bool_lit(self, args):
         return args[0].capitalize() == "True"
-
+    
+    def null_lit(self, args):
+        return NULL_VALUE
+    
     def float_lit(self, args):
         return float(args[0])
 
@@ -974,6 +982,7 @@ class ParseToObjects(Transformer):
         concept = self.environment.concepts[args[1]]
         return WindowItem(type=type, content=concept, over=over, order_by=order_by)
 
+
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
         string_concept, where = args
@@ -1002,7 +1011,12 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-
+    
+    @v_args(meta=True)
+    def unnest(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Unnest(args)
+    
     @v_args(meta=True)
     def count(self, meta, args):
         args = self.process_function_args(args, meta=meta)
