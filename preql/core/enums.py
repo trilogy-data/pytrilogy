@@ -5,6 +5,11 @@ from typing import Union
 InfiniteFunctionArgs = -1
 
 
+class UnnestMode(Enum):
+    DIRECT = "direct"
+    CROSS_APPLY = "cross_apply"
+
+
 class ConceptSource(Enum):
     MANUAL = "manual"
     AUTO_DERIVED = "auto_derived"
@@ -191,11 +196,10 @@ class ComparisonOperator(Enum):
     ILIKE = "ilike"
     CONTAINS = "contains"
 
-
     @classmethod
     def _missing_(cls, value):
-        if ' ' in str(value):
-            value =str(value).split()
+        if not isinstance(value, list) and " " in str(value):
+            value = str(value).split()
         if isinstance(value, list):
             processed = [str(v).lower() for v in value]
             if processed == ["not", "in"]:

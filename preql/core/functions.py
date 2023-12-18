@@ -2,20 +2,18 @@ from preql.core.models import Function, Concept
 from preql.core.enums import FunctionType, DataType, Purpose
 
 
-def Unnest(args:list[Concept]) -> Function:
+def Unnest(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.UNNEST,
         arguments=args,
         output_datatype=args[0].datatype,
         output_purpose=Purpose.KEY,
         arg_count=1,
-        valid_inputs={
-            DataType.ARRAY
-        },
+        valid_inputs={DataType.ARRAY},
     )
 
 
-def Count(args:list[Concept]) -> Function:
+def Count(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.COUNT,
         arguments=args,
@@ -25,7 +23,7 @@ def Count(args:list[Concept]) -> Function:
     )
 
 
-def CountDistinct(args:list[Concept]) -> Function:
+def CountDistinct(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.COUNT_DISTINCT,
         arguments=args,
@@ -35,7 +33,7 @@ def CountDistinct(args:list[Concept]) -> Function:
     )
 
 
-def Max(args:list[Concept]) -> Function:
+def Max(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.MAX,
         arguments=args,
@@ -54,7 +52,7 @@ def Max(args:list[Concept]) -> Function:
     )
 
 
-def Min(args:list[Concept]) -> Function:
+def Min(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.MIN,
         arguments=args,
@@ -73,7 +71,7 @@ def Min(args:list[Concept]) -> Function:
     )
 
 
-def Split(args:list[Concept]) -> Function:
+def Split(args: list[Concept]) -> Function:
     # TODO: overload this for non-string types?
     return Function(
         operator=FunctionType.SPLIT,
@@ -86,7 +84,7 @@ def Split(args:list[Concept]) -> Function:
     )
 
 
-def IndexAccess(args:list[Concept]):
+def IndexAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.INDEX_ACCESS,
         arguments=args,
@@ -95,12 +93,12 @@ def IndexAccess(args:list[Concept]):
         output_datatype=DataType.STRING,
         # force this to a key
         output_purpose=Purpose.PROPERTY,
-        valid_inputs=[DataType.ARRAY, DataType.INTEGER],
+        valid_inputs={DataType.ARRAY, DataType.INTEGER},
         arg_count=2,
     )
 
 
-def Abs(args:list[Concept]) -> Function:
+def Abs(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.ABS,
         arguments=args,

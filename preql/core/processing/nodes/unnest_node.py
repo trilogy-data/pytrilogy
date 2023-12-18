@@ -1,9 +1,14 @@
 from typing import List
 
 
-from preql.core.models import QueryDatasource, SourceType, Concept, Grain, BaseJoin, UnnestJoin
+from preql.core.models import (
+    QueryDatasource,
+    SourceType,
+    Concept,
+    UnnestJoin,
+)
 from preql.core.processing.nodes.base_node import StrategyNode
-from preql.core.enums import JoinType
+
 
 class UnnestNode(StrategyNode):
     """Unnest nodes represent an expansion of an array or other
@@ -14,7 +19,7 @@ class UnnestNode(StrategyNode):
 
     def __init__(
         self,
-        unnest_concept:Concept,
+        unnest_concept: Concept,
         optional_concepts: List[Concept],
         environment,
         g,
@@ -37,9 +42,12 @@ class UnnestNode(StrategyNode):
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
 
-        unnest = UnnestJoin(concept=self.unnest_concept, alias=f'unnest_{self.unnest_concept.address.replace(".", "_ ")}')
+        unnest = UnnestJoin(
+            concept=self.unnest_concept,
+            alias=f'unnest_{self.unnest_concept.address.replace(".", "_")}',
+        )
         base.joins.append(unnest)
-            
-        # raise SyntaxError(base)
-        base.source_map[self.unnest_concept.address] = unnest
+
+        base.source_map[self.unnest_concept.address] = {unnest}
+        base.join_derived_concepts = [self.unnest_concept]
         return base

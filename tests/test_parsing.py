@@ -1,5 +1,5 @@
 from preql.core.enums import DataType, Purpose
-from preql.core.models import Parenthetical
+from preql.core.models import Parenthetical, ProcessedQuery
 
 from preql.parsing.parse_engine import (
     argument_to_purpose,
@@ -7,6 +7,7 @@ from preql.parsing.parse_engine import (
     arg_to_datatype,
     parse_text,
 )
+from preql.constants import MagicConstants
 from preql.dialect.base import BaseDialect
 
 
@@ -29,7 +30,7 @@ def test_not_in():
     _, parsed = parse_text(
         "const order_id <- 4; SELECT order_id  WHERE order_id NOT IN (1,2,3);"
     )
-    query = parsed[-1]
+    query: ProcessedQuery = parsed[-1]
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
@@ -38,6 +39,17 @@ def test_not_in():
     assert right.content[0] == 1
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "( 1,2,3 )".strip()
+
+
+def test_is_not_null():
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  WHERE order_id is not null;"
+    )
+    query = parsed[-1]
+    right = query.where_clause.conditional.right
+    assert isinstance(right, MagicConstants), type(right)
+    rendered = BaseDialect().render_expr(right)
+    assert rendered == "null"
 
 
 def test_sort():

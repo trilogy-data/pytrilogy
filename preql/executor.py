@@ -5,7 +5,13 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine, CursorResult
 
 from preql.constants import logger
-from preql.core.models import Environment, ProcessedQuery, ProcessedQueryPersist
+from preql.core.models import (
+    Environment,
+    ProcessedQuery,
+    ProcessedQueryPersist,
+    Select,
+    Persist,
+)
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
@@ -61,8 +67,9 @@ class Executor(object):
     def generate_sql(self, command: str) -> List[str]:
         """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
+        generatable = [x for x in parsed if isinstance(x, (Select, Persist))]
         sql = self.generator.generate_queries(
-            self.environment, parsed, hooks=self.hooks
+            self.environment, generatable, hooks=self.hooks
         )
         output = []
         for statement in sql:
@@ -73,8 +80,9 @@ class Executor(object):
     def parse_text(self, command: str) -> List[ProcessedQuery | ProcessedQueryPersist]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
+        generatable = [x for x in parsed if isinstance(x, (Select, Persist))]
         sql = self.generator.generate_queries(
-            self.environment, parsed, hooks=self.hooks
+            self.environment, generatable, hooks=self.hooks
         )
         return sql
 
