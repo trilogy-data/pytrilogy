@@ -4,6 +4,7 @@ This titanic demo is a simple example of how PreQL syntax works.
 It uses the common titanic dataset, a single table with the following fields
 about passengers.
 
+
 <div>
 <span class="column-badge" style="margin-right: 5px;" v-for="field in fields">
  <Badge :text="field" />
@@ -12,17 +13,26 @@ about passengers.
 
 ## Our First Queries
 
+
+::: tip
+For basic queries, PreQL should be almost identical to SQL. When in doubt, try the SQL syntax! This demo uses in-memory DuckDB, but the principles will be the same for a database such as Postgres,
+Bigquery, or Snowflake - and PreQL will adjust syntax automatically to match.
+:::
+
 <QueryComponent v-for="query in startQueries"  :title='query.title' :query = 'query.query'
 model='titanic'>
 </QueryComponent>
 
 ## The Model
 
-Those queries could run because we have a model defined already; we'll dig into this more later.
+Those queries could run because we have a *model* defined already; we'll dig into this more later.
 For now, just note that each concept is declared with a type, we have one derived
 metric, and there is a datasource defined that maps these concepts to a table.
 
-(In memory in DuckDB for this demo, but in a real system this would be a database)
+::: tip
+A model describes the relationships between PreQL concepts and the underlying data. It is a contract that can be used to generate queries.
+:::
+
 
 ```sql
 
@@ -53,6 +63,13 @@ address raw_titanic;
 ```
 
 ## Derived Concepts and Filtering
+
+
+::: tip
+We'll use 'last_name' as a rough family identifier in these queries; if you explore in the sandbox
+you'll find that's not quite right, but it's good enough for now. 
+:::
+
 
 <QueryComponent v-for="query in detailQueries"  :title='query.title' :query = 'query.query'
 :dependencies = 'query.dependencies'>
@@ -105,7 +122,7 @@ ORDER BY
 </ul>
 
 #### Available Concepts
-<div>
+<div style="margin-top: 5px;">
 <span class="column-badge" style="margin-right: 5px;" v-for="concept in concepts">
  <Badge :text="concept" />
 </span>
@@ -187,13 +204,45 @@ We've also changed the datasource definitions to point to the new tables.
 But as a consumer - you haven't needed to change a thing. We are still encoding the same logical concepts,
 and the semantic relations between them have not changed. 
 
-This illustrates the power of separating the query language from the data model. The data model expresses a contract that can be evolved independently of the underlying materialized database tables, enabling transparent refactoring, aggregation, and remodeling to reflect the changing needs of the business.
+This is the convenience of separating the query language from the data model. The data model expresses a contract that can be evolved independently of the underlying materialized database tables, enabling transparent refactoring, aggregation, and remodeling to reflect the changing needs of the business.
 
 ## Sandbox Two
 
 Try querying the new model in the sandbox below. 
 
 <FreeformQueryComponent model='titanic_normalized' />
+
+## Saving Results / ETL
+
+Imagine you want to create tables or save the outputs of a query to power a dashboard. 
+
+Preql supports this through the `persist` keyword. 
+
+This keyword is used to signify that any table created by preql is effectively a _cache_ of a 
+given output. You've already defined canonical sources; if we copy that data into a new table
+it's only valid until the sources change. 
+
+In base PreQL, this can be used to create or update a table, such
+as on powering a dashboard.
+
+::: tip
+PreQL asserts that a warehouse will have a number
+of roots that contain core definitions, and a number of caches derived from them that are refreshed
+on some cadence. Note however that if your sources are not incremental, these caches _are_ the source
+of truth for a point in time value!
+:::
+
+The first query here shows a persist command; the second shows how the generated query
+will reference the persisted value. 
+
+<QueryComponent v-for="query in etlQueries"  :title='query.title' :query = 'query.query'
+model = 'titanic' :dependencies='query.dependencies'> 
+</QueryComponent>
+
+::: tip
+PreQLT is a superset of PreQL under development that adds additional keywords to support ETL workflows
+and integrates closely with DBT to support a full data warehouse workflow.
+:::
 
 <script>
 export default {
@@ -253,10 +302,26 @@ limit 5;`,
             'dependencies':[]
 
         }],
+        etlQueries: [{
+            'title': 'Basic Persist',
+            'query': `
+property split_cabin <- unnest(split(passenger.cabin, ' '));
+persist cabin_info into dim_cabins from 
+select 
+    passenger.id, 
+    split_cabin;`,
+'description': "Create a dim table."
+        },
+        {
+            'title': 'Query Our Persisted Table',
+            'query': `select split_cabin;`,
+            'description': `As we have persisted into a new table, our query will now reference this.`,
+            'dependencies': [`property split_cabin <- unnest(split(passenger.cabin, ' '));
+persist cabin_info into dim_cabins from select passenger.id, split_cabin;`]
+        }],
         fields: ['PassengerId','Survived','Pclass','Name','Sex','Age','SibSp','Parch','Ticket','Fare','Cabin','Embarked'],
         concepts: ['passenger.id', 'passenger.age', 'passenger.survived', 'passenger.name', 'passenger.class', 'passenger.fare', 'passenger.cabin', 'passenger.embarked']
     };
 }
 }
 </script>
-

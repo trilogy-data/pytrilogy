@@ -139,14 +139,9 @@ if __name__ == "__main__":
     renderer = Renderer()
     executor.environment = env
     test = '''
-property passenger.id.non_null_cabin <- filter passenger.cabin where passenger.cabin is not null;
+persist cabin_info into dim_cabins from select passenger.id, unnest(split(passenger.cabin, ' '))-> split_cabin;
 select 
-    unnest(split(passenger.non_null_cabin, ' '))-> split_cabins, 
-    passenger.cabin,
-    passenger.name,
-order by split_cabins asc
-limit 120
-;
+    split_cabin;
 
 '''
 
@@ -176,9 +171,10 @@ limit 120
 #     order by z.passenger_cabin desc
 #                              """)
     print(rendered[0])
-    results= executor.execute_raw_sql(
-        rendered[0] )
+    results= executor.execute_text(
+        test )
     for r in results:
-        print(r)
+        for z in r.fetchall():
+            print(r)
     print('-------------')
     

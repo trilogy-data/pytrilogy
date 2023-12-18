@@ -32,6 +32,8 @@
 
 .pre-wrapper {
     overflow: auto;
+    margin-bottom: 5px;
+    margin-top: 5px
 }
 </style>
 
