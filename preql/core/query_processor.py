@@ -35,19 +35,7 @@ def base_join_to_join(
     """This function converts joins at the datasource level
     to joins at the CTE level"""
     if isinstance(base_join, UnnestJoin):
-        # raise SyntaxError([cte.name for cte in ctes])
-        cte: Optional[CTE] = None
-        for check_cte in ctes:
-            for key, value in check_cte.source_map.items():
-                if key == base_join.concept:
-                    cte = check_cte
-                    break
-        if not cte:
-            raise ValueError(f"Could not find CTE for {base_join.concept}")
-        assert cte
-        return InstantiatedUnnestJoin(
-            concept=base_join.concept, alias=base_join.alias, cte=check_cte
-        )
+        return InstantiatedUnnestJoin(concept=base_join.concept, alias=base_join.alias)
     left_ctes = [
         cte
         for cte in ctes
@@ -132,9 +120,13 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
             if qdk not in source_map and not qdv:
                 # set source to empty, as it must be derived in this element
                 source_map[qdk] = ""
-            elif qdk not in source_map and isinstance(qdv, UnnestJoin):
+            elif (
+                qdk not in source_map
+                and len(qdv) == 1
+                and isinstance(list(qdv)[0], UnnestJoin)
+            ):
                 # this is a derived element
-                source_map[qdk] = qdv.alias
+                source_map[qdk] = list(qdv)[0].alias
             elif qdk not in source_map:
                 raise ValueError(
                     f"Missing {qdk} in {source_map}, {SLABEL} source map {query_datasource.source_map.keys()} "

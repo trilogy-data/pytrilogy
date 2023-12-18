@@ -872,11 +872,13 @@ class UnnestJoin(BaseModel):
     concept: Concept
     alias: str = "unnest"
 
+    def __hash__(self):
+        return (self.alias + self.concept.address).__hash__()
+
 
 class InstantiatedUnnestJoin(BaseModel):
     concept: Concept
     alias: str = "unnest"
-    cte: "CTE"
 
 
 class BaseJoin(BaseModel):
