@@ -27,7 +27,16 @@ from preql.core.enums import (
     DatePart,
 )
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
-from preql.core.functions import Count, CountDistinct, Max, Min, Split, IndexAccess, Abs, Unnest
+from preql.core.functions import (
+    Count,
+    CountDistinct,
+    Max,
+    Min,
+    Split,
+    IndexAccess,
+    Abs,
+    Unnest,
+)
 from preql.core.models import (
     Address,
     AggregateWrapper,
@@ -61,6 +70,7 @@ from preql.core.models import (
     WindowItemOver,
     RawColumnExpr,
     arg_to_datatype,
+    ListWrapper,
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
@@ -256,12 +266,14 @@ grammar = r"""
     int_lit: /[0-9]+/
     
     float_lit: /[0-9]+\.[0-9]+/
+
+    array_lit: "[" (literal ",")* literal ","? "]"
     
     !bool_lit: "True"i | "False"i
 
     !null_lit: "null"i
     
-    literal: _string_lit | int_lit | float_lit | bool_lit | null_lit
+    literal: _string_lit | int_lit | float_lit | bool_lit | null_lit | array_lit
 
     MODIFIER: "Optional"i | "Partial"i
     
@@ -285,10 +297,7 @@ grammar = r"""
 """  # noqa: E501
 
 PARSER = Lark(
-    grammar,
-    start="start",
-    propagate_positions=True,
-    g_regex_flags=IGNORECASE
+    grammar, start="start", propagate_positions=True, g_regex_flags=IGNORECASE
 )
 
 
@@ -335,7 +344,7 @@ def argument_to_purpose(arg) -> Purpose:
         return argument_to_purpose(arg.content)
     elif isinstance(arg, Concept):
         return arg.purpose
-    elif isinstance(arg, (int, float, str, bool)):
+    elif isinstance(arg, (int, float, str, bool, list)):
         return Purpose.CONSTANT
     elif isinstance(arg, DataType):
         return Purpose.CONSTANT
@@ -611,7 +620,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        elif isinstance(args[2], (int, float, str, bool)):
+        elif isinstance(args[2], (int, float, str, bool, list)):
             const_function: Function = Function(
                 operator=FunctionType.CONSTANT,
                 output_datatype=arg_to_datatype(args[2]),
@@ -929,12 +938,15 @@ class ParseToObjects(Transformer):
 
     def bool_lit(self, args):
         return args[0].capitalize() == "True"
-    
+
     def null_lit(self, args):
         return NULL_VALUE
-    
+
     def float_lit(self, args):
         return float(args[0])
+
+    def array_lit(self, args):
+        return ListWrapper(args)
 
     def literal(self, args):
         return args[0]
@@ -982,7 +994,6 @@ class ParseToObjects(Transformer):
         concept = self.environment.concepts[args[1]]
         return WindowItem(type=type, content=concept, over=over, order_by=order_by)
 
-
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
         string_concept, where = args
@@ -1011,12 +1022,12 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-    
+
     @v_args(meta=True)
     def unnest(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Unnest(args)
-    
+
     @v_args(meta=True)
     def count(self, meta, args):
         args = self.process_function_args(args, meta=meta)
@@ -1463,7 +1474,7 @@ def unpack_visit_error(e: VisitError):
 
 def parse_text(
     text: str, environment: Optional[Environment] = None
-) -> Tuple[Environment, List]:
+) -> Tuple[Environment, List[Datasource | Import | Select | Persist | None]]:
     environment = environment or Environment(datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
     try:

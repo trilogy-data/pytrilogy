@@ -253,9 +253,11 @@ class Concept(BaseModel):
             and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return PurposeLineage.AGGREGATE
-        elif (      self.lineage
+        elif (
+            self.lineage
             and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNNEST):
+            and self.lineage.operator == FunctionType.UNNEST
+        ):
             return PurposeLineage.UNNEST
         elif self.purpose == Purpose.CONSTANT:
             return PurposeLineage.CONSTANT
@@ -865,14 +867,17 @@ class Datasource(BaseModel):
             return self.address.location
         return self.address
 
+
 class UnnestJoin(BaseModel):
-    concept:Concept
-    alias: str = 'unnest'
+    concept: Concept
+    alias: str = "unnest"
+
 
 class InstantiatedUnnestJoin(BaseModel):
-    concept:Concept
-    alias: str = 'unnest'  
-    cte:"CTE"
+    concept: Concept
+    alias: str = "unnest"
+    cte: "CTE"
+
 
 class BaseJoin(BaseModel):
     left_datasource: Union[Datasource, "QueryDatasource"]
@@ -950,7 +955,7 @@ class QueryDatasource(BaseModel):
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
     datasources: Sequence[Union[Datasource, "QueryDatasource"]]
     grain: Grain
-    joins: List[BaseJoin]
+    joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
         default=None
@@ -958,6 +963,7 @@ class QueryDatasource(BaseModel):
     filter_concepts: List[Concept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
+    join_derived_concepts: List[Concept] = Field(default_factory=list)
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
@@ -1136,6 +1142,7 @@ class CTE(BaseModel):
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
+    join_derived_concepts: List[Concept] = Field(default_factory=list)
 
     @validator("output_columns", pre=True, always=True)
     def validate_output_columns(cls, v):
@@ -1160,6 +1167,9 @@ class CTE(BaseModel):
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
+        self.join_derived_concepts = unique(
+            self.join_derived_concepts + other.join_derived_concepts, "address"
+        )
         return self
 
     @property
@@ -1173,7 +1183,9 @@ class CTE(BaseModel):
     @property
     def base_name(self) -> str:
         # if this cte selects from a single datasource, select right from it
-        valid_joins = [join for join in self.joins if isinstance(join, Join)]
+        valid_joins: List[Join] = [
+            join for join in self.joins if isinstance(join, Join)
+        ]
         if len(self.source.datasources) == 1 and isinstance(
             self.source.datasources[0], Datasource
         ):
@@ -1181,7 +1193,7 @@ class CTE(BaseModel):
         # if we have multiple joined CTEs, pick the base
         # as the root
         elif valid_joins and len(valid_joins) > 0:
-            return self.joins[0].left_cte.name
+            return valid_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         # return self.source_map.values()[0]
@@ -1455,7 +1467,6 @@ class Comparison(BaseModel):
         "Comparison",
         "Parenthetical",
         MagicConstants,
-        
     ]
     right: Union[
         int,
@@ -1809,6 +1820,11 @@ ProcessedQuery.update_forward_refs()
 ProcessedQueryPersist.update_forward_refs()
 InstantiatedUnnestJoin.update_forward_refs()
 
+
+class ListWrapper(list):
+    pass
+
+
 def arg_to_datatype(arg) -> DataType:
     if isinstance(arg, Function):
         return arg.output_datatype
@@ -1822,6 +1838,8 @@ def arg_to_datatype(arg) -> DataType:
         return DataType.STRING
     elif isinstance(arg, float):
         return DataType.FLOAT
+    elif isinstance(arg, ListWrapper):
+        return DataType.ARRAY
     elif isinstance(arg, AggregateWrapper):
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):

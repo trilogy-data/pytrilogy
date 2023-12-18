@@ -19,7 +19,7 @@ from preql.core.models import (
     QueryDatasource,
     Datasource,
     BaseJoin,
-    InstantiatedUnnestJoin
+    InstantiatedUnnestJoin,
 )
 
 from preql.utility import string_to_hash, unique
@@ -28,16 +28,26 @@ from preql.constants import logger
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
-def base_join_to_join(base_join: BaseJoin | UnnestJoin, ctes: List[CTE]) -> Join | InstantiatedUnnestJoin:
+
+def base_join_to_join(
+    base_join: BaseJoin | UnnestJoin, ctes: List[CTE]
+) -> Join | InstantiatedUnnestJoin:
     """This function converts joins at the datasource level
     to joins at the CTE level"""
-    if isinstance(base_join, UnnestJoin ):
-        cte = None
-        for cte in ctes:
-            for key, value in cte.source_map.items():
+    if isinstance(base_join, UnnestJoin):
+        # raise SyntaxError([cte.name for cte in ctes])
+        cte: Optional[CTE] = None
+        for check_cte in ctes:
+            for key, value in check_cte.source_map.items():
                 if key == base_join.concept:
-                    cte = value
-        return InstantiatedUnnestJoin(concept=base_join.concept, alias=base_join.alias, cte=cte)
+                    cte = check_cte
+                    break
+        if not cte:
+            raise ValueError(f"Could not find CTE for {base_join.concept}")
+        assert cte
+        return InstantiatedUnnestJoin(
+            concept=base_join.concept, alias=base_join.alias, cte=check_cte
+        )
     left_ctes = [
         cte
         for cte in ctes
@@ -79,7 +89,7 @@ def base_join_to_join(base_join: BaseJoin | UnnestJoin, ctes: List[CTE]) -> Join
 def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     int_id = string_to_hash(query_datasource.full_name)
     output = []
-    children = []
+    parents = []
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
     ):
@@ -94,7 +104,9 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 #     key: item
                 #     for key, item in query_datasource.source_map.items()
                 # }
-                sub_select: Dict[str, Set[Union[Datasource, QueryDatasource]]] = {
+                sub_select: Dict[
+                    str, Set[Union[Datasource, QueryDatasource, UnnestJoin]]
+                ] = {
                     **{c.address: {datasource} for c in datasource.concepts},
                 }
                 concepts = [
@@ -110,16 +122,23 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     joins=[],
                 )
             sub_cte = datasource_to_ctes(sub_datasource)
-            children += sub_cte
+            parents += sub_cte
             for cte in sub_cte:
                 for k, v in cte.source_map.items():
                     if k not in source_map:
                         source_map[k] = cte.name
-            # now populate anything derived in this level
-            for qdk, qdv in query_datasource.source_map.items():
-                if qdk not in source_map and not qdv:
-                    # set source to empty, as it must be derived in this element
-                    source_map[qdk] = ""
+        # now populate anything derived in this level
+        for qdk, qdv in query_datasource.source_map.items():
+            if qdk not in source_map and not qdv:
+                # set source to empty, as it must be derived in this element
+                source_map[qdk] = ""
+            elif qdk not in source_map and isinstance(qdv, UnnestJoin):
+                # this is a derived element
+                source_map[qdk] = qdv.alias
+            elif qdk not in source_map:
+                raise ValueError(
+                    f"Missing {qdk} in {source_map}, {SLABEL} source map {query_datasource.source_map.keys()} "
+                )
 
     else:
         SLABEL = "SINGULAR"
@@ -146,14 +165,15 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         source_map=source_map,
         # related columns include all referenced columns, such as filtering
         # related_columns=datasource.concepts,
-        joins=[base_join_to_join(join, children) for join in query_datasource.joins],
+        joins=[base_join_to_join(join, parents) for join in query_datasource.joins],
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
         # we restrict parent_ctes to one level
         # as this set is used as the base for rendering the query
-        parent_ctes=children,
+        parent_ctes=parents,
         condition=query_datasource.condition,
         partial_concepts=query_datasource.partial_concepts,
+        join_derived_concepts=query_datasource.join_derived_concepts,
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
@@ -249,7 +269,6 @@ def process_query(
             seen[cte.name] = seen[cte.name] + cte
 
     final_ctes = list(seen.values())
-
 
     return ProcessedQuery(
         order_by=statement.order_by,

@@ -1,17 +1,10 @@
-from typing import List, Tuple
+from typing import List
 
 
-from preql.core.enums import JoinType
-from preql.core.models import (
-    Concept,
-)
-from preql.utility import unique
+from preql.core.models import Concept, Function
 from preql.core.processing.nodes import (
     UnnestNode,
-    MergeNode,
 )
-
-
 
 
 def gen_unnest_node(
@@ -22,17 +15,22 @@ def gen_unnest_node(
     depth: int,
     source_concepts,
 ) -> UnnestNode:
+    arguments = []
+    if isinstance(concept.lineage, Function):
+        arguments = concept.lineage.concept_arguments
     return UnnestNode(
         concept,
         local_optional,
         environment,
         g,
-        parents= [source_concepts(  # this fetches the parent + join keys
+        parents=[
+            source_concepts(  # this fetches the parent + join keys
                 # to then connect to the rest of the query
-                concept.lineage.concept_arguments,
+                arguments,
                 local_optional,
                 environment,
                 g,
                 depth=depth + 1,
-            )]
+            )
+        ],
     )

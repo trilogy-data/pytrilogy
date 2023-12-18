@@ -139,15 +139,18 @@ if __name__ == "__main__":
     renderer = Renderer()
     executor.environment = env
     test = '''
+property passenger.id.non_null_cabin <- filter passenger.cabin where passenger.cabin is not null;
 select 
-unnest(split(passenger.cabin, ' '))-> split_cabins, 
+    unnest(split(passenger.non_null_cabin, ' '))-> split_cabins, 
     passenger.cabin,
     passenger.name,
-where 
-    passenger.cabin is not null
+order by split_cabins asc
+limit 120
 ;
 
 '''
+
+
 
     # local_opt = local_opts = get_local_optional(
     #     [env.concepts['passenger.class'],
@@ -157,7 +160,7 @@ where
 
     # )
     queries = executor.parse_text(test)
-
+    rendered = executor.generate_sql(test)
     # print(family_source.source.source_map.keys())
 #     results = executor.execute_raw_sql("""WITH tmp as (SELECT
 #     SPLIT(local_raw_data."cabin", ' ') as "passenger_cabin",
@@ -172,8 +175,10 @@ where
 #     CROSS JOIN unnest(passenger_cabin) as z 
 #     order by z.passenger_cabin desc
 #                              """)
-    results= executor. execute_text(test)
-    for r in results[0]:
+    print(rendered[0])
+    results= executor.execute_raw_sql(
+        rendered[0] )
+    for r in results:
         print(r)
     print('-------------')
     
