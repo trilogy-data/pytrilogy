@@ -2,8 +2,14 @@ from typing import List, Union, Optional, Dict, Any
 
 from jinja2 import Template
 
-from preql.constants import CONFIG, logger
-from preql.core.enums import Purpose, DataType, FunctionType, WindowType, DatePart
+from preql.constants import CONFIG, logger, MagicConstants
+from preql.core.enums import (
+    Purpose,
+    DataType,
+    FunctionType,
+    WindowType,
+    DatePart,
+)
 from preql.core.models import (
     Concept,
     CTE,
@@ -24,6 +30,7 @@ from preql.core.models import (
     Persist,
     Environment,
     RawColumnExpr,
+    ListWrapper,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -31,6 +38,7 @@ from preql.hooks.base_hook import BaseHook
 from preql.utility import unique
 from random import shuffle
 from math import ceil
+from preql.core.enums import UnnestMode
 
 LOGGER_PREFIX = "[RENDERING]"
 
@@ -269,6 +277,7 @@ FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
     # complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
+    FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
     # math
     FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
     FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",
@@ -328,7 +337,7 @@ TOP {{ limit }}{% endif %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 {% if base %}FROM
     {{ base }}{% endif %}{% if joins %}{% for join in joins %}
-{{ join }}{% endfor %}{% endif %}
+    {{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
 {% endif %}{%- if group_by %}GROUP BY {% for group in group_by %}
@@ -379,6 +388,7 @@ class BaseDialect:
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = GENERIC_SQL_TEMPLATE
     DATATYPE_MAP = DATATYPE_MAP
+    UNNEST_MODE = UnnestMode.CROSS_APPLY
 
     def render_order_item(self, order_item: OrderItem, ctes: List[CTE]) -> str:
         matched_ctes = [
@@ -430,7 +440,7 @@ class BaseDialect:
                 if cte.group_to_grain:
                     rval = f"{self.FUNCTION_MAP[c.lineage.function.operator](args)}"
                 else:
-                    logger.info(
+                    logger.debug(
                         f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at"
                         " target grain"
                     )
@@ -504,7 +514,9 @@ class BaseDialect:
             DataType,
             Function,
             Parenthetical,
-            AggregateWrapper
+            AggregateWrapper,
+            MagicConstants,
+            ListWrapper,
             # FilterItem
         ],
         cte: Optional[CTE] = None,
@@ -538,6 +550,7 @@ class BaseDialect:
                 return self.FUNCTION_MAP[e.operator](
                     [self.render_expr(z, cte=cte, cte_map=cte_map) for z in e.arguments]
                 )
+
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](
                 [self.render_expr(z, cte=cte, cte_map=cte_map) for z in e.arguments]
             )
@@ -556,29 +569,59 @@ class BaseDialect:
             return f"'{e}'"
         elif isinstance(e, (int, float)):
             return str(e)
+        elif isinstance(e, ListWrapper):
+            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         elif isinstance(e, list):
             return f"{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
         elif isinstance(e, DataType):
             return str(e.value)
         elif isinstance(e, DatePart):
             return str(e.value)
+        elif isinstance(e, MagicConstants):
+            if e == MagicConstants.NULL:
+                return "null"
         raise ValueError(f"Unable to render type {type(e)} {e}")
 
     def render_cte(self, cte: CTE):
+        if self.UNNEST_MODE == UnnestMode.CROSS_APPLY:
+            # for a cross apply, derviation happens in the join
+            # so we only use the alias to select
+            select_columns = [
+                self.render_concept_sql(c, cte)
+                for c in cte.output_columns
+                if c.address not in [y.address for y in cte.join_derived_concepts]
+            ] + [
+                f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+                for c in cte.join_derived_concepts
+            ]
+        else:
+            # otherwse, assume we are unnesting directly in the select
+            select_columns = [
+                self.render_concept_sql(c, cte) for c in cte.output_columns
+            ]
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
-                select_columns=[
-                    self.render_concept_sql(c, cte) for c in cte.output_columns
-                ],
+                select_columns=select_columns,
                 base=f"{cte.base_name} as {cte.base_alias}"
                 if cte.render_from_clause
                 else None,
                 grain=cte.grain,
                 limit=None,
+                # some joins may not need to be rendered
                 joins=[
-                    render_join(join, self.QUOTE_CHARACTER)
-                    for join in (cte.joins or [])
+                    j
+                    for j in [
+                        render_join(
+                            join,
+                            self.QUOTE_CHARACTER,
+                            self.render_concept_sql,
+                            cte,
+                            self.UNNEST_MODE,
+                        )
+                        for join in (cte.joins or [])
+                    ]
+                    if j
                 ],
                 where=self.render_expr(cte.condition, cte)
                 if cte.condition
@@ -715,7 +758,9 @@ class BaseDialect:
             else None,
             select_columns=sorted_select,
             base=query.base.name,
-            joins=[render_join(join, self.QUOTE_CHARACTER) for join in query.joins],
+            joins=[
+                render_join(join, self.QUOTE_CHARACTER, None) for join in query.joins
+            ],
             ctes=compiled_ctes,
             limit=query.limit,
             # move up to CTEs

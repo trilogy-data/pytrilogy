@@ -17,7 +17,7 @@ from typing import (
 from pydantic import BaseModel, validator, Field
 from lark.tree import Meta
 from pathlib import Path
-from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME
+from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
 from preql.core.enums import (
     InfiniteFunctionArgs,
     DataType,
@@ -246,12 +246,19 @@ class Concept(BaseModel):
             return PurposeLineage.FILTER
         elif self.lineage and isinstance(self.lineage, AggregateWrapper):
             return PurposeLineage.AGGREGATE
+
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
             and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return PurposeLineage.AGGREGATE
+        elif (
+            self.lineage
+            and isinstance(self.lineage, Function)
+            and self.lineage.operator == FunctionType.UNNEST
+        ):
+            return PurposeLineage.UNNEST
         elif self.purpose == Purpose.CONSTANT:
             return PurposeLineage.CONSTANT
         return PurposeLineage.BASIC
@@ -861,6 +868,19 @@ class Datasource(BaseModel):
         return self.address
 
 
+class UnnestJoin(BaseModel):
+    concept: Concept
+    alias: str = "unnest"
+
+    def __hash__(self):
+        return (self.alias + self.concept.address).__hash__()
+
+
+class InstantiatedUnnestJoin(BaseModel):
+    concept: Concept
+    alias: str = "unnest"
+
+
 class BaseJoin(BaseModel):
     left_datasource: Union[Datasource, "QueryDatasource"]
     right_datasource: Union[Datasource, "QueryDatasource"]
@@ -934,10 +954,10 @@ class BaseJoin(BaseModel):
 class QueryDatasource(BaseModel):
     input_concepts: List[Concept]
     output_concepts: List[Concept]
-    source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]]
+    source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
     datasources: Sequence[Union[Datasource, "QueryDatasource"]]
     grain: Grain
-    joins: List[BaseJoin]
+    joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
         default=None
@@ -945,6 +965,7 @@ class QueryDatasource(BaseModel):
     filter_concepts: List[Concept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
+    join_derived_concepts: List[Concept] = Field(default_factory=list)
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
@@ -1120,9 +1141,10 @@ class CTE(BaseModel):
     base: bool = False
     group_to_grain: bool = False
     parent_ctes: List["CTE"] = Field(default_factory=list)
-    joins: List["Join"] = Field(default_factory=list)
+    joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
+    join_derived_concepts: List[Concept] = Field(default_factory=list)
 
     @validator("output_columns", pre=True, always=True)
     def validate_output_columns(cls, v):
@@ -1147,6 +1169,9 @@ class CTE(BaseModel):
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
+        self.join_derived_concepts = unique(
+            self.join_derived_concepts + other.join_derived_concepts, "address"
+        )
         return self
 
     @property
@@ -1160,14 +1185,17 @@ class CTE(BaseModel):
     @property
     def base_name(self) -> str:
         # if this cte selects from a single datasource, select right from it
+        valid_joins: List[Join] = [
+            join for join in self.joins if isinstance(join, Join)
+        ]
         if len(self.source.datasources) == 1 and isinstance(
             self.source.datasources[0], Datasource
         ):
             return self.source.datasources[0].safe_location
         # if we have multiple joined CTEs, pick the base
         # as the root
-        elif self.joins and len(self.joins) > 0:
-            return self.joins[0].left_cte.name
+        elif valid_joins and len(valid_joins) > 0:
+            return valid_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         # return self.source_map.values()[0]
@@ -1181,14 +1209,15 @@ class CTE(BaseModel):
 
     @property
     def base_alias(self) -> str:
+        relevant_joins = [j for j in self.joins if isinstance(j, Join)]
         if len(self.source.datasources) == 1 and isinstance(
             self.source.datasources[0], Datasource
         ):
             # if isinstance(self.source.datasources[0], QueryDatasource) and self.relevant_base_ctes:
             #     return self.relevant_base_ctes[0].name
             return self.source.datasources[0].full_name.replace(".", "_")
-        if self.joins:
-            return self.joins[0].left_cte.name
+        if relevant_joins:
+            return relevant_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         elif self.parent_ctes:
@@ -1439,6 +1468,7 @@ class Comparison(BaseModel):
         DataType,
         "Comparison",
         "Parenthetical",
+        MagicConstants,
     ]
     right: Union[
         int,
@@ -1452,6 +1482,7 @@ class Comparison(BaseModel):
         DataType,
         "Comparison",
         "Parenthetical",
+        MagicConstants,
     ]
     operator: ComparisonOperator
 
@@ -1789,6 +1820,11 @@ BaseJoin.update_forward_refs()
 QueryDatasource.update_forward_refs()
 ProcessedQuery.update_forward_refs()
 ProcessedQueryPersist.update_forward_refs()
+InstantiatedUnnestJoin.update_forward_refs()
+
+
+class ListWrapper(list):
+    pass
 
 
 def arg_to_datatype(arg) -> DataType:
@@ -1804,6 +1840,8 @@ def arg_to_datatype(arg) -> DataType:
         return DataType.STRING
     elif isinstance(arg, float):
         return DataType.FLOAT
+    elif isinstance(arg, ListWrapper):
+        return DataType.ARRAY
     elif isinstance(arg, AggregateWrapper):
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):

@@ -4,6 +4,7 @@ from .merge_node import MergeNode
 from .select_node_v2 import SelectNode, StaticSelectNode, ConstantNode
 from .window_node import WindowNode
 from .base_node import StrategyNode, NodeJoin
+from .unnest_node import UnnestNode
 
 __all__ = [
     "FilterNode",
@@ -15,4 +16,5 @@ __all__ = [
     "StrategyNode",
     "NodeJoin",
     "ConstantNode",
+    "UnnestNode",
 ]

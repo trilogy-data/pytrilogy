@@ -81,9 +81,9 @@ class MergeNode(StrategyNode):
                 )
         return joins
 
-    def _resolve(self):
+    def _resolve(self) -> QueryDatasource:
         parent_sources = [p.resolve() for p in self.parents]
-        merged = {}
+        merged: dict[str, QueryDatasource] = {}
         for source in parent_sources:
             if source.full_name in merged:
                 logger.info(
