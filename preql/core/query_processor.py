@@ -126,7 +126,9 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 and isinstance(list(qdv)[0], UnnestJoin)
             ):
                 # this is a derived element
-                ujoin:UnnestJoin = [x for x in list(qdv) if isinstance(x, UnnestJoin)][0]
+                ujoin: UnnestJoin = [x for x in list(qdv) if isinstance(x, UnnestJoin)][
+                    0
+                ]
                 source_map[qdk] = ujoin.alias
             elif qdk not in source_map:
                 raise ValueError(
