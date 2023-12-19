@@ -4,3 +4,4 @@ duckdb
 duckdb-engine
 mypy
 ruff
+pandas
