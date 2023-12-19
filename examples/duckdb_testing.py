@@ -139,9 +139,10 @@ if __name__ == "__main__":
     renderer = Renderer()
     executor.environment = env
     test = '''
-persist cabin_info into dim_cabins from select passenger.id, unnest(split(passenger.cabin, ' '))-> split_cabin;
+property passenger.id.split_cabin <- unnest(split(passenger.cabin, ' '));
+persist cabin_info into dim_cabins from select passenger.id, passenger.split_cabin;
 select 
-    split_cabin;
+    passenger.split_cabin;
 
 '''
 
@@ -155,6 +156,8 @@ select
 
     # )
     queries = executor.parse_text(test)
+
+
     rendered = executor.generate_sql(test)
     # print(family_source.source.source_map.keys())
 #     results = executor.execute_raw_sql("""WITH tmp as (SELECT
@@ -170,11 +173,25 @@ select
 #     CROSS JOIN unnest(passenger_cabin) as z 
 #     order by z.passenger_cabin desc
 #                              """)
-    print(rendered[0])
+    print(rendered[-1])
+    executor.execute_text(test)
+#     results= executor.execute_text(
+#    ''' select 
+#     passenger.split_cabin;'''
+#  )
+    
+    for x, v in executor.environment.datasources.items():
+        print(x)
+        print(v.grain)
+        print([str(z) for z in v.output_concepts])
+    del executor.environment.datasources['raw_data']
     results= executor.execute_text(
-        test )
+   ''' select
+   passenger.id,
+    passenger.split_cabin;'''
+ )
     for r in results:
         for z in r.fetchall():
-            print(r)
+            print(z)
     print('-------------')
     

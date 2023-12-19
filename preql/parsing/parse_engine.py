@@ -862,7 +862,8 @@ class ParseToObjects(Transformer):
         else:
             grain = None
         columns = [
-            ColumnAssignment(alias=c.name, concept=c) for c in select.output_components
+            # TODO: replace hardcoded replacement here
+            ColumnAssignment(alias=c.address.replace('.','_'), concept=c) for c in select.output_components
         ]
         new_datasource = Datasource(
             identifier=identifier,
