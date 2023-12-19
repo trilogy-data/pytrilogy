@@ -34,7 +34,14 @@ def gen_static_select_node(
             except nx.exception.NetworkXNoPath:
                 all_found = False
             # if it's not a two node hop, not a direct select
-            if len(path) != 2:
+            if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
+                all_found = False
+                break
+            for node in path:
+                if g.nodes[node]["type"] == "datasource":
+                    continue
+                if g.nodes[node]["concept"].address == raw_concept.address:
+                    continue
                 all_found = False
                 break
         if all_found:
