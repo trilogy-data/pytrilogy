@@ -131,9 +131,6 @@ if __name__ == "__main__":
     test = '''
 property passenger.id.split_cabin <- unnest(split(passenger.cabin, ' '));
 persist cabin_info into dim_cabins from select passenger.id, passenger.split_cabin;
-select 
-    passenger.split_cabin;
-
 '''
 
 
@@ -174,14 +171,14 @@ select
         print(x)
         print(v.grain)
         print([str(z) for z in v.output_concepts])
-    del executor.environment.datasources['raw_data']
+    # del executor.environment.datasources['raw_data']
     results= executor.execute_text(
    ''' select
    passenger.id,
     passenger.split_cabin;'''
  )
     for r in results:
-        for z in r.fetchall():
+        for z in r.fetchall()[:5]:
             print(z)
     print('-------------')
     

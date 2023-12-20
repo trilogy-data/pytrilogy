@@ -305,19 +305,19 @@ limit 5;`,
         etlQueries: [{
             'title': 'Basic Persist',
             'query': `
-property split_cabin <- unnest(split(passenger.cabin, ' '));
+property passenger.id.split_cabin <- unnest(split(passenger.cabin, ' '));
 persist cabin_info into dim_cabins from 
 select 
     passenger.id, 
-    split_cabin;`,
+    passenger.split_cabin;`,
 'description': "Create a dim table."
         },
         {
             'title': 'Query Our Persisted Table',
-            'query': `select split_cabin;`,
+            'query': `select passenger.id, passenger.split_cabin;`,
             'description': `As we have persisted into a new table, our query will now reference this.`,
-            'dependencies': [`property split_cabin <- unnest(split(passenger.cabin, ' '));
-persist cabin_info into dim_cabins from select passenger.id, split_cabin;`]
+            'dependencies': [`property passenger.id.split_cabin <- unnest(split(passenger.cabin, ' '));
+persist cabin_info into dim_cabins from select passenger.id, passenger.split_cabin;`]
         }],
         fields: ['PassengerId','Survived','Pclass','Name','Sex','Age','SibSp','Parch','Ticket','Fare','Cabin','Embarked'],
         concepts: ['passenger.id', 'passenger.age', 'passenger.survived', 'passenger.name', 'passenger.class', 'passenger.fare', 'passenger.cabin', 'passenger.embarked']
