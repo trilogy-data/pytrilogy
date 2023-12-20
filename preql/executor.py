@@ -57,7 +57,9 @@ class Executor(object):
             raise ValueError(f"Unsupported dialect {self.dialect}")
         self.connection = self.engine.connect()
 
-    def execute_query(self, query: ProcessedQuery | ProcessedQueryPersist) -> CursorResult:
+    def execute_query(
+        self, query: ProcessedQuery | ProcessedQueryPersist
+    ) -> CursorResult:
         """Run parsed preql query"""
         sql = self.generator.compile_statement(query)
         # connection = self.engine.connect()
