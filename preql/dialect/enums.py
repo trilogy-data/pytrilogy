@@ -1,6 +1,5 @@
 from enum import Enum
 from typing import List, TYPE_CHECKING
-import logging
 
 if TYPE_CHECKING:
     from preql.hooks.base_hook import BaseHook
