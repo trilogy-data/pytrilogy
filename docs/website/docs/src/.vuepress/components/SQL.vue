@@ -73,14 +73,21 @@ export default {
     },
     computed: {
         maxWidth() {
-            return this.windowWidth < 600 ? this.windowWidth * 1 * this.maxWidthScaling : this.windowWidth * .6 * this.maxWidthScaling
+            if (this.windowHeight === 0 || this.windowWidth === 0) {
+                return '100%'
+            }
+            let px = this.windowWidth < 600 ? this.windowWidth * 1 * this.maxWidthScaling : this.windowWidth * .6 * this.maxWidthScaling 
+            return px + 'px'
         },
         fontsize() {
+            if (this.windowHeight === 0 || this.windowWidth === 0) {
+                return 1
+            }
             return this.windowWidth < 600 ? .7 : 1
         },
         inputStyles() {
             return {
-                'max-width': this.maxWidth + 'px',
+                'max-width': this.maxWidth,
                 'font-size': this.fontsize + 'rem',
                 'text-align': 'center',
             }
