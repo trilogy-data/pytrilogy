@@ -43,7 +43,7 @@ class Dialects(Enum):
             import importlib
             spec = importlib.util.find_spec("psycopg2")
             if spec is None:
-                raise ImportError("postgres driver not installed, installed extra postgres dependencies.")
+                raise ImportError(f"postgres driver not installed, installed extra postgres dependencies")
             from sqlalchemy import create_engine
             from preql.dialect.config import PostgresConfig
 
