@@ -56,8 +56,6 @@ class Executor(object):
             from preql.dialect.postgres import PostgresDialect
 
             self.generator = PostgresDialect()
-
-
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
         self.connection = self.engine.connect()
