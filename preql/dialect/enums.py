@@ -7,8 +7,7 @@ if TYPE_CHECKING:
     from preql import Executor, Environment
 
 from preql.dialect.config import DialectConfig
-
-logger = logging.getLogger(__name__)
+from preql.constants import logger
 
 class Dialects(Enum):
     BIGQUERY = "bigquery"
@@ -43,7 +42,7 @@ class Dialects(Enum):
             import importlib
             spec = importlib.util.find_spec("psycopg2")
             if spec is None:
-                raise ImportError("postgres driver not installed, installed extra postgres dependencies")
+                raise ImportError("postgres driver not installed. python -m pip install pypreql[postgres]")
             from sqlalchemy import create_engine
             from preql.dialect.config import PostgresConfig
 
