@@ -43,6 +43,7 @@ setuptools.setup(
         "": ["*.tf", "*.jinja", "py.typed"],
     },
     install_requires=install_requires,
+    extras_require={"postgres": ["psycopg2-binary"]},
     scripts=[],
     classifiers=[
         "Programming Language :: Python",

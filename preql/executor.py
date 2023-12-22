@@ -52,7 +52,10 @@ class Executor(object):
             from preql.dialect.presto import TrinoDialect
 
             self.generator = TrinoDialect()
+        elif self.dialect == Dialects.POSTGRES:
+            from preql.dialect.postgres import PostgresDialect
 
+            self.generator = PostgresDialect()
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
         self.connection = self.engine.connect()
