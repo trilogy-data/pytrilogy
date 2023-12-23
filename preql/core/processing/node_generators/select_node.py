@@ -12,7 +12,6 @@ from typing import Set
 from preql.core.processing.nodes import (
     StrategyNode,
     SelectNode,
-    StaticSelectNode,
     MergeNode,
     NodeJoin,
 )
@@ -22,7 +21,7 @@ from preql.core.models import (
 )
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
-from preql.core.processing.utility import PathInfo, path_to_joins, JoinType
+from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.constants import logger
 
 
@@ -186,12 +185,8 @@ def gen_select_node_from_join(
     for join in join_paths:
         left = ds_to_node_map[join.left_datasource.identifier]
         right = ds_to_node_map[join.right_datasource.identifier]
-        if isinstance(left, StaticSelectNode) or isinstance(right, StaticSelectNode):
-            concepts = []
-            join_type = JoinType.FULL
-        else:
-            concepts = join.concepts
-            join_type = join.join_type
+        concepts = join.concepts
+        join_type = join.join_type
         final_joins.append(
             NodeJoin(
                 left_node=left,
@@ -227,11 +222,6 @@ def gen_select_node(
         if x.address in [z.address for z in environment.materialized_concepts]
     ]
     ds = None
-    # first try to get everything
-    all_concepts_base = [concept] + local_optional
-    logger.info(
-        f"GEN SELECT NODE HAS {[c.address for c in all_concepts_base]} and {[c.address for c in basic_inputs]}"
-    )
     ds = gen_select_node_from_table(
         [concept] + local_optional, g=g, environment=environment, depth=depth
     )

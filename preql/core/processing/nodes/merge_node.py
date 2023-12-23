@@ -133,10 +133,19 @@ class MergeNode(StrategyNode):
 
         if not self.node_joins:
             if not grain.components:
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} no grain components, doing full join"
+                )
                 joins = self.create_full_joins(dataset_list)
             else:
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins"
+                )
                 joins = get_node_joins(dataset_list)
         else:
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins"
+            )
             joins = self.translate_node_joins(self.node_joins)
         input_concepts = []
         for p in parent_sources:

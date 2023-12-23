@@ -21,6 +21,8 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
 
 
 class StaticSelectNode(StrategyNode):
+    """Static select nodes."""
+
     source_type = SourceType.SELECT
 
     def __init__(
