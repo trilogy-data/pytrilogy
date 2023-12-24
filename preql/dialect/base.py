@@ -272,6 +272,7 @@ def render_case(args):
 FUNCTION_MAP = {
     # generic types
     FunctionType.CONSTANT: lambda x: f"{x[0]}",
+    FunctionType.COALESCE: lambda x: f"coalesce({','.join(x)})",
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
     FunctionType.CASE: lambda x: render_case(x),
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",

@@ -16,6 +16,12 @@ class Dialects(Enum):
     TRINO = "trino"
     POSTGRES = "postgres"
 
+    @classmethod
+    def _missing_(cls, value):
+        if value == 'duckdb':
+            return cls.DUCK_DB
+        return super()._missing_(value)
+
     def default_engine(self, conf=None):
         if self == Dialects.BIGQUERY:
             from sqlalchemy import create_engine

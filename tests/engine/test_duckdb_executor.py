@@ -71,3 +71,15 @@ const unnest_array <- unnest(array);
     """
     )[0].fetchall()
     assert [x.unnest_array for x in results] == [1, 2, 3]
+
+
+def test_partial(duckdb_engine: Executor, expected_results):
+    results = duckdb_engine.execute_text(
+        """select item, sum(discount_value)-> total_discount
+        order by item desc;
+    """
+    )[0].fetchall()
+    assert len(results) == 2
+
+
+

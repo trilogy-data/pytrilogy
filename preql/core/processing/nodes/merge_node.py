@@ -106,11 +106,10 @@ class MergeNode(StrategyNode):
                 return final
         # if we have multiple candidates, see if one is good enough
         for dataset in final_datasets:
-            output_set = set([c.address for c in dataset.output_concepts])
+            output_set = set([c.address for c in dataset.output_concepts if c not in dataset.partial_concepts])
             if all([c.address in output_set for c in self.all_concepts]):
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} Merge node not required as one"
-                    " parent node has all required output properties"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} Merge node not required as parent node {dataset.identifier} {dataset.source_type} has all required output properties with partial {[c.address for c in dataset.partial_concepts]}"
                 )
                 return dataset
 

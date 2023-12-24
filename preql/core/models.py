@@ -89,8 +89,10 @@ class Concept(BaseModel):
     keys: Optional[List["Concept"]] = None
     grain: Optional["Grain"] = Field(default=None)
 
+    
     def __hash__(self):
         return hash(str(self))
+
 
     @validator("lineage")
     def lineage_validator(cls, v):
@@ -110,18 +112,6 @@ class Concept(BaseModel):
         if not v:
             return DEFAULT_NAMESPACE
         return v
-
-    def with_namespace(self, namespace: str) -> "Concept":
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace) if self.grain else None,
-            namespace=namespace,
-            keys=self.keys,
-        )
 
     @validator("grain", pre=True, always=True)
     def parse_grain(cls, v, values):
@@ -179,7 +169,18 @@ class Concept(BaseModel):
     @property
     def grain_components(self) -> List["Concept"]:
         return self.grain.components_copy if self.grain else []
-
+    
+    def with_namespace(self, namespace: str) -> "Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
+            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            namespace=namespace,
+            keys=self.keys,
+        )
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         return self.__class__(
             name=self.name,
@@ -273,7 +274,8 @@ class ColumnAssignment(BaseModel):
     concept: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
-    def is_complete(self):
+    @property
+    def is_complete(self)->bool:
         return Modifier.PARTIAL not in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
@@ -302,6 +304,7 @@ class Function(BaseModel):
     def __str__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
 
+
     @property
     def datatype(self):
         return self.output_datatype
@@ -328,18 +331,20 @@ class Function(BaseModel):
             return v
         for idx, arg in enumerate(v):
             if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
-                raise TypeError(
-                    f"Invalid input datatype {arg.datatype} passed into"
-                    f" {operator_name} from concept {arg.name}"
-                )
+                if arg.datatype != DataType.UNKNOWN:
+                    raise TypeError(
+                        f"Invalid input datatype {arg.datatype} passed into"
+                        f" {operator_name} from concept {arg.name}"
+                    )
             if (
                 isinstance(arg, Function)
                 and arg.output_datatype not in valid_inputs[idx]
             ):
-                raise TypeError(
-                    f"Invalid input datatype {arg.output_datatype} passed into"
-                    f" {operator_name} from function {arg.operator.name}"
-                )
+                if arg.output_datatype != DataType.UNKNOWN:
+                    raise TypeError(
+                        f"Invalid input datatype {arg.output_datatype} passed into"
+                        f" {operator_name} from function {arg.operator.name}"
+                    )
             # check constants
             for ptype, dtype in [
                 [str, DataType.STRING],
@@ -666,6 +671,7 @@ def safe_concept(v):
 class Grain(BaseModel):
     nested: bool = False
     components: List[Concept] = Field(default_factory=list)
+
 
     @validator("components", pre=True, always=True)
     def component_nest(cls, v, values: dict[str, object]):
@@ -1292,8 +1298,82 @@ class Join(BaseModel):
             f" {self.right_cte.name} on {','.join([str(k) for k in self.joinkeys])}"
         )
 
+class UndefinedConcept(Concept):
+    name:str
+    environment: "Environment"
+    line_no: int | None = None
+    datatype=DataType.UNKNOWN
+    purpose = Purpose.AUTO
+
+
+    def with_namespace(self, namespace: str) -> "UndefinedConcept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
+            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            namespace=namespace,
+            keys=self.keys,
+            environment=self.environment,
+            line_no=self.line_no
+        )
+    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain,
+            namespace=self.namespace,
+            keys=self.keys,
+                        environment=self.environment,
+            line_no=self.line_no
+        )
+
+    def with_default_grain(self) -> "Concept":
+        if self.purpose == Purpose.KEY:
+            # we need to make this abstract
+            grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
+        elif self.purpose == Purpose.PROPERTY:
+            components = []
+            if self.keys:
+                components = self.keys
+            if self.lineage:
+                for item in self.lineage.arguments:
+                    if isinstance(item, Concept):
+                        if item.keys and not all(c in components for c in item.keys):
+                            components += item.sources
+                        else:
+                            components += item.sources
+            grain = Grain(components=components)
+        elif self.purpose == Purpose.METRIC:
+            grain = Grain()
+        else:
+            grain = self.grain  # type: ignore
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain,
+            keys=self.keys,
+            namespace=self.namespace,
+            environment=self.environment,
+            line_no=self.line_no
+        )
+
 
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
+        self.undefined:dict[str, UnicodeEncodeError] = {}
+        self.fail_on_missing:bool = False
+
     def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
 
@@ -1302,6 +1382,11 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
             return super(EnvironmentConceptDict, self).__getitem__(key)
 
         except KeyError:
+            if not self.fail_on_missing:
+                undefined = UndefinedConcept(name=key, line_no=line_no, environment=self)
+                self.undefined[key] = undefined
+                return undefined
+            
             matches = self._find_similar_concepts(key)
             message = f"undefined concept: {key}."
             if matches:
@@ -1335,7 +1420,7 @@ class Environment(BaseModel):
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
-    working_path: str = Field(default_factory=lambda: os.getcwd())
+    working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
 
     @classmethod
@@ -1821,7 +1906,7 @@ QueryDatasource.update_forward_refs()
 ProcessedQuery.update_forward_refs()
 ProcessedQueryPersist.update_forward_refs()
 InstantiatedUnnestJoin.update_forward_refs()
-
+UndefinedConcept.update_forward_refs()
 
 class ListWrapper(list):
     pass

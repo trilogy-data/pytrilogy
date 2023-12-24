@@ -9,7 +9,8 @@ from lark.exceptions import (
     UnexpectedToken,
     VisitError,
 )
-from lark.tree import Meta
+from lark.tree import Meta,  _Leaf_T, Tree
+from lark.visitors import _Return_T
 from pydantic import ValidationError
 
 from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE
@@ -36,6 +37,8 @@ from preql.core.functions import (
     IndexAccess,
     Abs,
     Unnest,
+    Coalesce,
+    function_args_to_output_purpose
 )
 from preql.core.models import (
     Address,
@@ -188,7 +191,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item |  fcast | fcase | aggregate_functions | len | unnest | _string_functions | _math_functions | concat | _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
+    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
     
     // functions
     
@@ -205,10 +208,13 @@ grammar = r"""
     //generic
     fcast: "cast"i "(" expr "AS"i TYPE ")"
     concat: "concat"i "(" (expr ",")* expr ")"
+    fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fcase_when: "WHEN"i comparison "THEN"i expr
     fcase_else: "ELSE"i expr
     fcase: "CASE"i (fcase_when)* (fcase_else)? "END"i
     len: "len"i "(" expr ")"
+
+    _generic_functions: fcast | concat | fcoalesce | fcase | len 
     
     //string
     like: "like"i "(" expr "," _string_lit ")"
@@ -335,45 +341,32 @@ def unwrap_transformation(
         )
 
 
-def argument_to_purpose(arg) -> Purpose:
-    if isinstance(arg, Function):
-        return arg.output_purpose
-    elif isinstance(arg, AggregateWrapper):
-        return arg.function.output_purpose
-    elif isinstance(arg, Parenthetical):
-        return argument_to_purpose(arg.content)
-    elif isinstance(arg, Concept):
-        return arg.purpose
-    elif isinstance(arg, (int, float, str, bool, list)):
-        return Purpose.CONSTANT
-    elif isinstance(arg, DataType):
-        return Purpose.CONSTANT
-    else:
-        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
-
-
-def function_args_to_output_purpose(args) -> Purpose:
-    has_metric = False
-    has_non_constant = False
-    for arg in args:
-        purpose = argument_to_purpose(arg)
-        if purpose == Purpose.METRIC:
-            has_metric = True
-        if purpose != Purpose.CONSTANT:
-            has_non_constant = True
-    if not has_non_constant:
-        return Purpose.CONSTANT
-    if has_metric:
-        return Purpose.METRIC
-    return Purpose.PROPERTY
-
-
 class ParseToObjects(Transformer):
-    def __init__(self, visit_tokens, text, environment: Environment):
+    def __init__(self, visit_tokens, text, environment: Environment, parse_address:str | None = None,
+                 parsed: dict | None = None
+                 ):
         Transformer.__init__(self, visit_tokens)
         self.text = text
         self.environment: Environment = environment
+        self.imported = set()
+        self.parse_address = parse_address or 'root'
+        self.parsed:dict[str, ParseToObjects] = parsed if parsed else {}
+        # we do a second pass to pick up circular dependencies
+        # after initial parsing
+        self.pass_count = 1
 
+    def hydrate_missing(self):
+        self.pass_count = 2
+        for k, v in self.parsed.items():
+            if v.pass_count == 2:
+                continue
+            v.hydrate_missing()
+        self.environment.concepts.fail_on_missing = True
+        reparsed = self.transform(PARSER.parse(self.text))
+        self.environment.concepts.undefined = {}
+        return reparsed
+        
+ 
     def process_function_args(self, args, meta: Meta):
         final = []
         for arg in args:
@@ -487,7 +480,7 @@ class ParseToObjects(Transformer):
         return ColumnAssignment(
             alias=args[0],
             modifiers=modifiers,
-            concept=self.environment.concepts[concept[0]],
+            concept=self.environment.concepts.__getitem__(key=concept[0], line_no=meta.line),
         )
 
     def _TERMINATOR(self, args):
@@ -817,25 +810,31 @@ class ParseToObjects(Transformer):
     def over_list(self, args):
         return [self.environment.concepts[x] for x in args]
 
-    def import_statement(self, args):
+    def import_statement(self, args:list[str]):
         alias = args[-1]
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
-
-        try:
-            with open(target, "r", encoding="utf-8") as f:
-                text = f.read()
-            nparser = ParseToObjects(
-                visit_tokens=True,
-                text=text,
-                environment=Environment(working_path=dirname(target), namespace=alias),
-            )
-            nparser.transform(PARSER.parse(text))
-        except Exception as e:
-            raise ImportError(
-                f"Unable to import file {dirname(target)}, parsing error: {e}"
-            )
+        self.imported.add(target)
+        if target in self.parsed:
+            nparser = self.parsed[target]
+        else:
+            try:
+                with open(target, "r", encoding="utf-8") as f:
+                    text = f.read()
+                nparser = ParseToObjects(
+                    visit_tokens=True,
+                    text=text,
+                    environment=Environment(working_path=dirname(target), namespace=alias, ),
+                    parse_address = target,
+                    parsed = {**self.parsed, **{self.parse_address:self}},
+                )
+                nparser.transform(PARSER.parse(text))
+                self.parsed[target] = nparser
+            except Exception as e:
+                raise ImportError(
+                    f"Unable to import file {dirname(target)}, parsing error: {e}"
+                )
 
         for key, concept in nparser.environment.concepts.items():
             self.environment.concepts[f"{alias}.{key}"] = concept
@@ -904,7 +903,7 @@ class ParseToObjects(Transformer):
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_grain(output.grain)
-                self.environment.concepts[new_concept.name] = new_concept
+                self.environment.concepts[new_concept.address] = new_concept
                 item.content.output = new_concept
             # elif isinstance(item.content, Concept):
             #     # new_concept = item.content.with_grain(output.grain)
@@ -1024,6 +1023,11 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
+    
+    @v_args(meta=True)
+    def fcoalesce(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Coalesce(args)
 
     @v_args(meta=True)
     def unnest(self, meta, args):
@@ -1039,6 +1043,7 @@ class ParseToObjects(Transformer):
     def fabs(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Abs(args)
+
 
     @v_args(meta=True)
     def count_distinct(self, meta, args):
@@ -1479,8 +1484,12 @@ def parse_text(
 ) -> Tuple[Environment, List[Datasource | Import | Select | Persist | None]]:
     environment = environment or Environment(datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
+
     try:
-        output = [v for v in parser.transform(PARSER.parse(text)) if v]
+        parser.transform(PARSER.parse(text))
+        # handle circular dependencies
+        pass_two = parser.hydrate_missing()
+        output = [v for v in pass_two if v]
     except VisitError as e:
         unpack_visit_error(e)
         # this will never be reached

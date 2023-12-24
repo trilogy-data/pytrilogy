@@ -195,3 +195,18 @@ def test_split_and_index_function(test_environment):
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
+
+def test_coalesce(test_environment):
+    declarations = """
+    constant test_string <- 'abc_def';
+
+    
+    select
+        coalesce(test_string, 'test')->coalesce_string,
+        coalesce(null, 'test')->coalesce_null,
+        coalesce(null, null, test_string)->coalesce_null_null,
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(process_query(test_environment, select))

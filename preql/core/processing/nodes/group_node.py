@@ -78,4 +78,5 @@ class GroupNode(StrategyNode):
             source_map=resolve_concept_map(parent_sources, unique(outputs, "address")),
             joins=[],
             grain=grain,
+            partial_concepts=self.partial_concepts,
         )

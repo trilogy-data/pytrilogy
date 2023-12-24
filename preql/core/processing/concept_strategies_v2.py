@@ -48,9 +48,9 @@ def throw_helpful_error(
 
 
 def get_priority_concept(
-    all_concepts: List[Concept], found_addresses: List[str]
+    all_concepts: List[Concept], attempted_addresses: List[str]
 ) -> Concept:
-    remaining_concept = [c for c in all_concepts if c.address not in found_addresses]
+    remaining_concept = [c for c in all_concepts if c.address not in attempted_addresses]
     priority = (
         [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW]
@@ -60,7 +60,8 @@ def get_priority_concept(
         + [c for c in remaining_concept if not c.lineage]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.CONSTANT]
     )
-    # concept: Concept = priority[0]
+    if not priority:
+        raise ValueError(f'Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}')
     return priority[0]
 
 
@@ -167,9 +168,9 @@ def source_concepts(
         matched = gen_static_select_node(
             mandatory_concepts + optional_concepts, environment, g, depth
         )
-        if matched:
+        if matched and (accept_partial or len(matched.partial_concepts) == 0):
             logger.info(
-                f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {len(mandatory_concepts+optional_concepts)} concepts, returning static selection"
+                f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {len(mandatory_concepts+optional_concepts)} concepts and partial {len(matched.partial_concepts)}, returning."
             )
             return matched
     except Exception as e:
@@ -250,9 +251,10 @@ def source_concepts(
             # selectable = [x for x in local_optional if not x.lineage]
             stack.append(
                 gen_select_node(
-                    concept, local_optional, environment, g, depth, source_concepts
+                    concept, local_optional, environment, g, depth, source_concepts, accept_partial=accept_partial
                 )
             )
+            logger.info(f'DEBUG got select node back with partial concepts {[c. address for c in stack[-1].partial_concepts]}')
 
         for node in stack:
             for concept in node.resolve().output_concepts:
