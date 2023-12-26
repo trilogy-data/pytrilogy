@@ -1235,6 +1235,14 @@ class CTE(BaseModel):
             f"Error: alias not found looking for alias for concept {concept}"
         )
         for cte in [self] + self.parent_ctes:
+            if concept in cte.partial_concepts:
+                continue
+            try:
+                return cte.source.get_alias(concept)
+            except ValueError as e:
+                if not error:
+                    error = e
+        for cte in [self] + self.parent_ctes:
             try:
                 return cte.source.get_alias(concept)
             except ValueError as e:

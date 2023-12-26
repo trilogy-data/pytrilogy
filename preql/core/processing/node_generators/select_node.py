@@ -86,13 +86,22 @@ def gen_select_node_from_table(
             if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
                 all_found = False
                 break
+            for node in path:
+                if g.nodes[node]["type"] == "datasource":
+                    continue
+                if g.nodes[node]["concept"].address == raw_concept.address:
+                    continue
+                all_found = False
+                break
+
+
         if all_found:
 
-            partial_concepts =  [c.concept for c in datasource.columns if not c.is_complete]
+            partial_concepts =  [c.concept for c in datasource.columns if not c.is_complete and c.concept.address in [x.address for x in all_concepts]]
             if not accept_partial and partial_concepts:
                 continue
             return SelectNode(
-                mandatory_concepts=all_concepts,
+                mandatory_concepts=[c.concept for c in datasource.columns],
                 optional_concepts=[],
                 environment=environment,
                 g=g,
@@ -141,7 +150,7 @@ def gen_select_node_from_join(
                 all_found = False
                 continue
         if all_found:
-            partial = [c.concept for c in datasource.columns if not c.is_complete]
+            partial = [c.concept for c in datasource.columns if not c.is_complete and c.concept.address in [x.address for x in all_concepts]]
             if partial and not accept_partial:
                 continue
             join_candidates.append({"paths": paths, "datasource": datasource})

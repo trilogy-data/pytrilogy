@@ -83,6 +83,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     ):
         SLABEL = "MULTIPLE"
         source_map = {}
+        all_new_ctes:List[CTE] = []
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
                 sub_datasource = datasource
@@ -108,19 +109,15 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     grain=datasource.grain,
                     datasources=[datasource],
                     joins=[],
+                    partial_concepts = [x.concept for x in datasource.columns if not x.is_complete]
                 )
             sub_cte = datasource_to_ctes(sub_datasource)
             parents += sub_cte
-            for cte in sub_cte:
-                for k, v in cte.source_map.items():
-                    if k not in source_map:
-                        source_map[k] = cte.name
+            all_new_ctes += sub_cte
+            
         # now populate anything derived in this level
         for qdk, qdv in query_datasource.source_map.items():
-            if qdk not in source_map and not qdv:
-                # set source to empty, as it must be derived in this element
-                source_map[qdk] = ""
-            elif (
+            if (
                 qdk not in source_map
                 and len(qdv) == 1
                 and isinstance(list(qdv)[0], UnnestJoin)
@@ -130,7 +127,28 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     0
                 ]
                 source_map[qdk] = ujoin.alias
-            elif qdk not in source_map:
+
+            else:
+                for cte in all_new_ctes:
+                    output_address = [x.address for x in cte.output_columns]
+                    if qdk in output_address:
+                        if qdk in [x.address for x in cte.partial_concepts]:
+                            continue
+                        if qdk not in source_map:
+                            source_map[qdk] = cte.name
+                            break
+                # now do a pass that accepts partials
+                # TODO: move this into a second loop by first creationg all sub sourcdes
+                # then loop through this
+                for cte in all_new_ctes:
+                    output_address = [x.address for x in cte.output_columns]
+                    if qdk in output_address:
+                        if qdk not in source_map:
+                            source_map[qdk] = cte.name
+            if qdk not in source_map and not qdv:
+                # set source to empty, as it must be derived in this element
+                source_map[qdk] = ""
+            if qdk not in source_map:
                 raise ValueError(
                     f"Missing {qdk} in {source_map}, {SLABEL} source map {query_datasource.source_map.keys()} "
                 )

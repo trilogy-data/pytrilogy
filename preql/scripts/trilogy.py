@@ -32,6 +32,7 @@ def main(input, dialect:str):
     print(f'Executing {len(queries)} statements...')
     for idx, query in enumerate(queries):
         lstart = datetime.now()
+        print(exec.generator.compile_statement(query))
         results = exec.execute_statement(query)
         end = datetime.now()
         print(f'Statement {idx+1} of {len(queries)} done, duration: {end-lstart}.')

@@ -170,7 +170,7 @@ def source_concepts(
         )
         if matched and (accept_partial or len(matched.partial_concepts) == 0):
             logger.info(
-                f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {len(mandatory_concepts+optional_concepts)} concepts and partial {len(matched.partial_concepts)}, returning."
+                f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in mandatory_concepts + optional_concepts]} concepts and {accept_partial} partial {len(matched.partial_concepts)}, returning."
             )
             return matched
     except Exception as e:
@@ -254,8 +254,6 @@ def source_concepts(
                     concept, local_optional, environment, g, depth, source_concepts, accept_partial=accept_partial
                 )
             )
-            logger.info(f'DEBUG got select node back with partial concepts {[c. address for c in stack[-1].partial_concepts]}')
-
         for node in stack:
             for concept in node.resolve().output_concepts:
                 if concept not in node.partial_concepts:

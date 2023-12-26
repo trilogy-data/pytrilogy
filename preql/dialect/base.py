@@ -412,14 +412,13 @@ class BaseDialect:
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
-            f"{LOGGER_PREFIX} [{c.address}] Attempting rendering on"
-            f" {cte.name} alias={alias}"
+            f"{LOGGER_PREFIX} [{c.address}] beginning rendering"
         )
 
         if (c.lineage and check_lineage(c, cte)) and not cte.source_map.get(
             c.address, ""
-        ).startswith("cte"):
-            logger.debug(f"{LOGGER_PREFIX} [{c.address}] rendering lineage concept")
+        ).startswith('cte'):
+            logger.debug(f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing")
             if isinstance(c.lineage, WindowItem):
                 # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
                 self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
@@ -479,7 +478,7 @@ class BaseDialect:
 
         else:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address"
+                f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address "
                 f" for {c.address}"
             )
             if not cte.source_map.get(c.address, None):

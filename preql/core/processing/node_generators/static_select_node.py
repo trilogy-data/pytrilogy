@@ -19,7 +19,8 @@ def gen_static_select_node(
 ) -> StaticSelectNode | None:
     for datasource in environment.datasources.values():
         all_found = True
-        for raw_concept in all_concepts:
+        for raw_concept in unique(all_concepts, 'address'):
+
             path = []
             if raw_concept.grain and not raw_concept.grain.components:
                 target = concept_to_node(raw_concept.with_default_grain())
@@ -31,7 +32,6 @@ def gen_static_select_node(
                     source=datasource_to_node(datasource),
                     target=target,
                 )
-
             except nx.exception.NetworkXNoPath:
                 all_found = False
             # if it's not a two node hop, not a direct select
@@ -61,6 +61,7 @@ def gen_static_select_node(
                     datasources=[datasource],
                     grain=datasource.grain,
                     joins=[],
+                    partial_concepts=[c.concept for c in datasource.columns if not c.is_complete]
                 ),
                 depth=depth,
                 partial_concepts = [c.concept for c in datasource.columns if not c.is_complete]

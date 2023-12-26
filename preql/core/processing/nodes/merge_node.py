@@ -150,7 +150,9 @@ class MergeNode(StrategyNode):
         for p in parent_sources:
             input_concepts += p.output_concepts
         outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
-
+        cmap = resolve_concept_map(parent_sources, outputs)
+        logged = {k:[l.name for l in z] for k, z in cmap.items()}
+        logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} concept map {logged}")
         return QueryDatasource(
             input_concepts=unique(input_concepts, "address"),
             output_concepts=outputs,

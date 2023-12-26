@@ -37,14 +37,14 @@ def concept_list_to_grain(
 
 def resolve_concept_map(
     inputs: List[QueryDatasource], targets: Optional[List[Concept]] = None
-):
+)->dict[str, set[QueryDatasource]]:
     targets = targets or []
     concept_map = defaultdict(set)
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
-            if concept.address not in concept_map:
+            if len(concept_map.get(concept.address, [])) == 0:
                 concept_map[concept.address].add(input)
     for target in targets:
         if target.lineage and not any(
@@ -52,7 +52,7 @@ def resolve_concept_map(
         ):
             # an empty source means it is defined in this CTE
             concept_map[target.address] = set()
-    if all([target.address in concept_map for target in targets]):
+    if all([target.address in concept_map and len(concept_map[target.address])>0 for target in targets]):
         return concept_map
 
     # second loop, include partials
