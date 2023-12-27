@@ -5,7 +5,6 @@ from sys import path
 nb_path = os.path.abspath("")
 path.insert(0, nb_path)
 
-
 from preql import Executor, Environment  # noqa
 from preql.dialect.enums import Dialects  # noqa
 from datetime import datetime  # noqa
