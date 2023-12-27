@@ -20,7 +20,8 @@ class UnnestNode(StrategyNode):
     def __init__(
         self,
         unnest_concept: Concept,
-        optional_concepts: List[Concept],
+        input_concepts: List[Concept],
+        output_concepts: List[Concept],
         environment,
         g,
         whole_grain: bool = False,
@@ -28,10 +29,10 @@ class UnnestNode(StrategyNode):
         depth: int = 0,
     ):
         super().__init__(
-            [unnest_concept],
-            optional_concepts,
-            environment,
-            g,
+            input_concepts=input_concepts,
+            output_concepts=output_concepts,
+            environment=environment,
+            g=g,
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,

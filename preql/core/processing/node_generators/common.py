@@ -1,12 +1,8 @@
-from typing import List
+from typing import List, Tuple
 
 
 from preql.core.enums import PurposeLineage
-from preql.core.models import (
-    Concept,
-    Function,
-    AggregateWrapper,
-)
+from preql.core.models import Concept, Function, AggregateWrapper, FilterItem
 from preql.utility import unique
 
 
@@ -23,3 +19,11 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     # TODO: handle basic lineage chains?
 
     return unique(concept.lineage.concept_arguments, "address")
+
+
+def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Concept]]:
+    if not isinstance(concept.lineage, FilterItem):
+        raise ValueError
+    base = [concept.lineage.content]
+    base += concept.lineage.where.concept_arguments
+    return concept.lineage.content, unique(base, "address")

@@ -60,6 +60,11 @@ class Executor(object):
             raise ValueError(f"Unsupported dialect {self.dialect}")
         self.connection = self.engine.connect()
 
+    def execute_statement(self, statement) -> Optional[CursorResult]:
+        if not isinstance(statement, (ProcessedQuery, ProcessedQueryPersist)):
+            return None
+        return self.execute_query(statement)
+
     def execute_query(
         self, query: ProcessedQuery | ProcessedQueryPersist
     ) -> CursorResult:

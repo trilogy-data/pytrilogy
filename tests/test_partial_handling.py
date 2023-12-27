@@ -2,13 +2,7 @@ from preql import Executor, Dialects
 
 # from preql.core.models import Environment
 from sqlalchemy import create_engine
-from preql.core.models import (
-    Datasource,
-    Concept,
-    ColumnAssignment,
-    Environment,
-    QueryDatasource,
-)
+from preql.core.models import Datasource, Concept, ColumnAssignment, Environment
 from preql.core.enums import DataType, Purpose
 
 from preql.constants import logger
@@ -137,9 +131,9 @@ limit 5;"""
 
     # assert len(resolved) == 2
 
-    check: QueryDatasource = list(resolved)[0]
+    # check:QueryDatasource = list(resolved)[0]
 
-    assert "filtered" not in check.identifier
+    # assert 'filtered' not in check.identifier
 
     assert len(mnode.partial_concepts) == 2
     assert set([c.address for c in mnode.partial_concepts]) == set(

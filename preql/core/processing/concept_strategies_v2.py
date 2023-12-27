@@ -48,9 +48,11 @@ def throw_helpful_error(
 
 
 def get_priority_concept(
-    all_concepts: List[Concept], found_addresses: List[str]
+    all_concepts: List[Concept], attempted_addresses: List[str]
 ) -> Concept:
-    remaining_concept = [c for c in all_concepts if c.address not in found_addresses]
+    remaining_concept = [
+        c for c in all_concepts if c.address not in attempted_addresses
+    ]
     priority = (
         [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW]
@@ -60,7 +62,10 @@ def get_priority_concept(
         + [c for c in remaining_concept if not c.lineage]
         + [c for c in remaining_concept if c.derivation == PurposeLineage.CONSTANT]
     )
-    # concept: Concept = priority[0]
+    if not priority:
+        raise ValueError(
+            f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}"
+        )
     return priority[0]
 
 
@@ -163,20 +168,15 @@ def source_concepts(
             f"Cannot source empty concept inputs, had {mandatory_concepts} and {optional_concepts}"
         )
     # may be able to directly find everything we need
-    try:
-        matched = gen_static_select_node(
-            mandatory_concepts + optional_concepts, environment, g, depth
-        )
-        if matched:
-            logger.info(
-                f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {len(mandatory_concepts+optional_concepts)} concepts, returning static selection"
-            )
-            return matched
-    except Exception as e:
+    matched = gen_static_select_node(
+        mandatory_concepts + optional_concepts, environment, g, depth
+    )
+    if matched and (accept_partial or len(matched.partial_concepts) == 0):
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} error with finding constant source: {str(e)}"
+            f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in mandatory_concepts + optional_concepts]} "
+            f"concepts and {accept_partial} partial {len(matched.partial_concepts)}, returning."
         )
-        pass
+        return matched
 
     # now start the fun portion
     # Loop through all possible grains + subgrains
@@ -232,7 +232,12 @@ def source_concepts(
             elif concept.derivation == PurposeLineage.CONSTANT:
                 stack.append(
                     ConstantNode(
-                        [concept], [], environment, g, parents=[], depth=depth + 1
+                        input_concepts=[],
+                        output_concepts=[concept],
+                        environment=environment,
+                        g=g,
+                        parents=[],
+                        depth=depth + 1,
                     )
                 )
             elif concept.derivation == PurposeLineage.BASIC:
@@ -250,21 +255,25 @@ def source_concepts(
             # selectable = [x for x in local_optional if not x.lineage]
             stack.append(
                 gen_select_node(
-                    concept, local_optional, environment, g, depth, source_concepts
+                    concept,
+                    local_optional,
+                    environment,
+                    g,
+                    depth,
+                    accept_partial=accept_partial,
                 )
             )
-
         for node in stack:
             for concept in node.resolve().output_concepts:
+                found_concepts.add(concept)
+                found_map[str(node)].add(concept)
+
                 if concept not in node.partial_concepts:
                     found_addresses.add(concept.address)
                     non_partial_addresses.add(concept.address)
-                    found_concepts.add(concept)
-                    found_map[str(node)].add(concept)
                 if concept in node.partial_concepts:
                     partial_addresses.add(concept.address)
-                    found_concepts.add(concept)
-                    found_map[str(node)].add(concept)
+
         logger.info(
             f"{local_prefix}{LOGGER_PREFIX} finished a loop iteration looking for {[c.address for c in all_concepts]} from"
             f" {[n for n in stack]}, have {found_addresses} and partial {partial_addresses}"
@@ -318,10 +327,10 @@ def source_concepts(
     ]
 
     output = MergeNode(
-        mandatory_concepts,
-        optional_concepts,
-        environment,
-        g,
+        input_concepts=mandatory_concepts + optional_concepts,
+        output_concepts=mandatory_concepts + optional_concepts,
+        environment=environment,
+        g=g,
         parents=stack,
         depth=depth,
         partial_concepts=partials,
@@ -342,10 +351,10 @@ def source_query_concepts(
         raise ValueError(f"No output concepts provided {output_concepts}")
     root = source_concepts(output_concepts, [], environment, g, depth=0)
     return GroupNode(
-        output_concepts,
-        [],
-        environment,
-        g,
+        output_concepts=output_concepts,
+        input_concepts=output_concepts,
+        environment=environment,
+        g=g,
         parents=[root],
         partial_concepts=root.partial_concepts,
     )

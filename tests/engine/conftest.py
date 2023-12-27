@@ -20,7 +20,8 @@ def environment():
 def duckdb_model(environment):
     text = """
 key item string;
-key value float;
+property item.value float;
+property item.discount_value float;
 key count int;
 key store_id int;
 
@@ -36,9 +37,18 @@ datasource fact_items (
     value:value,
     count:count,
     )
-    grain (item)
+    grain (item, store_id)
     address items
 ;
+
+datasource fact_discount (
+    item:Partial[item],
+    value:discount_value,
+    )
+    grain (item)
+    address items_extra_discount
+;
+
 
 """
     environment, statements = parse(text, environment=environment)
@@ -64,6 +74,20 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         )
         connection.commit()
         # validate connection
+        connection.execute(text("select 1")).one_or_none()
+
+        connection.execute(
+            text(
+                "CREATE TABLE items_extra_discount(item VARCHAR, value DECIMAL(10,2) )"
+            )
+        )
+
+        connection.commit()
+        # insert extra items
+        connection.execute(
+            text("INSERT INTO items_extra_discount VALUES ('jeans', -10.0)")
+        )
+        connection.commit()
         connection.execute(text("select 1")).one_or_none()
 
     executor = Executor(

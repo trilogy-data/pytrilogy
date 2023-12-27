@@ -2,11 +2,13 @@ from collections import defaultdict
 from itertools import combinations
 from typing import List, Optional
 
-
 from preql.core.enums import Purpose
 from preql.core.models import (
     Concept,
     Environment,
+    BaseJoin,
+    QueryDatasource,
+    Datasource,
 )
 from typing import Set
 from preql.core.processing.nodes import (
@@ -16,29 +18,37 @@ from preql.core.processing.nodes import (
     NodeJoin,
 )
 from preql.core.exceptions import NoDatasourceException
-from preql.core.models import (
-    BaseJoin,
-)
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
 from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.constants import logger
+from preql.core.processing.nodes import StaticSelectNode
+from preql.utility import unique
+
+
+LOGGER_PREFIX = "[GEN_SELECT_NODE_FROM_JOIN_VERBOSE]"
 
 
 def gen_select_node_from_table(
-    all_concepts: List[Concept], g, environment: Environment, depth: int
+    all_concepts: List[Concept],
+    g: nx.DiGraph,
+    environment: Environment,
+    depth: int,
+    accept_partial: bool = False,
 ) -> Optional[SelectNode]:
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
         return SelectNode(
-            mandatory_concepts=all_concepts,
-            optional_concepts=[],
+            output_concepts=all_concepts,
+            input_concepts=[],
             environment=environment,
             g=g,
             parents=[],
             depth=depth,
+            # no partial for constants
+            partial_concepts=[],
         )
     # otherwise, we need to look for a table
     for datasource in environment.datasources.values():
@@ -81,27 +91,43 @@ def gen_select_node_from_table(
             if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
                 all_found = False
                 break
+            for node in path:
+                if g.nodes[node]["type"] == "datasource":
+                    continue
+                if g.nodes[node]["concept"].address == raw_concept.address:
+                    continue
+                all_found = False
+                break
+
         if all_found:
+            partial_concepts = [
+                c.concept
+                for c in datasource.columns
+                if not c.is_complete
+                and c.concept.address in [x.address for x in all_concepts]
+            ]
+            if not accept_partial and partial_concepts:
+                continue
             return SelectNode(
-                mandatory_concepts=all_concepts,
-                optional_concepts=[],
+                input_concepts=[c.concept for c in datasource.columns],
+                output_concepts=all_concepts,
                 environment=environment,
                 g=g,
                 parents=[],
                 depth=depth,
+                partial_concepts=[
+                    c.concept for c in datasource.columns if not c.is_complete
+                ],
             )
     return None
 
 
-LOGGER_PREFIX = "[GEN_SELECT_NODE_FROM_JOIN_VERBOSE]"
-
-
 def gen_select_node_from_join(
     all_concepts: List[Concept],
-    g,
+    g: nx.DiGraph,
     environment: Environment,
     depth: int,
-    source_concepts,
+    accept_partial: bool = False,
 ) -> Optional[MergeNode]:
     all_input_concepts = [*all_concepts]
 
@@ -128,11 +154,19 @@ def gen_select_node_from_join(
                 continue
             except nx.exception.NetworkXNoPath:
                 logger.debug(
-                    f"{LOGGER_PREFIX} could not get to {item.address} at {item.grain} from {datasource}"
+                    f"{LOGGER_PREFIX} could not get to {concept_to_node(item)} from {datasource_to_node(datasource)}"
                 )
                 all_found = False
                 continue
         if all_found:
+            partial = [
+                c.concept
+                for c in datasource.columns
+                if not c.is_complete
+                and c.concept.address in [x.address for x in all_concepts]
+            ]
+            if partial and not accept_partial:
+                continue
             join_candidates.append({"paths": paths, "datasource": datasource})
     join_candidates.sort(key=lambda x: sum([len(v) for v in x["paths"].values()]))
     if not join_candidates:
@@ -160,23 +194,35 @@ def gen_select_node_from_join(
                 source_map[jconcept.address].add(join.left_datasource)
                 source_map[jconcept.address].add(join.right_datasource)
                 all_input_concepts.append(jconcept)
-    datasources = sorted(
+    datasources: List[Datasource] = sorted(
         [g.nodes[key]["datasource"] for key in all_datasets],
         key=lambda x: x.full_name,
     )
     parent_nodes: List[StrategyNode] = []
     ds_to_node_map = {}
     for datasource in datasources:
-        if datasource.output_concepts == all_concepts:
-            raise SyntaxError(
-                "This would result in infinite recursion, each source should be partial"
-            )
-        node = source_concepts(
-            datasource.output_concepts,
-            [],
-            environment,
-            g,
-            depth=depth + 1,
+        partial = [x for x in datasource.partial_concepts if x in all_concepts]
+        local_all: List[Concept] = datasource.output_concepts
+        node = StaticSelectNode(
+            input_concepts=local_all,
+            output_concepts=local_all,
+            environment=environment,
+            g=g,
+            datasource=QueryDatasource(
+                input_concepts=unique(local_all, "address"),
+                output_concepts=unique(local_all, "address"),
+                source_map={concept.address: {datasource} for concept in local_all},
+                datasources=[datasource],
+                grain=datasource.grain,
+                joins=[],
+                partial_concepts=[
+                    c.concept for c in datasource.columns if not c.is_complete
+                ],
+            ),
+            depth=depth,
+            partial_concepts=[
+                c.concept for c in datasource.columns if not c.is_complete
+            ],
         )
         parent_nodes.append(node)
         ds_to_node_map[datasource.identifier] = node
@@ -196,15 +242,22 @@ def gen_select_node_from_join(
                 filter_to_mutual=join.filter_to_mutual,
             )
         )
-
+    all_partial = [
+        c
+        for c in all_concepts
+        if all(
+            [c.address in [x.address for x in p.partial_concepts] for p in parent_nodes]
+        )
+    ]
     return MergeNode(
-        mandatory_concepts=all_concepts,
-        optional_concepts=[],
+        input_concepts=all_input_concepts,
+        output_concepts=all_concepts,
         environment=environment,
         g=g,
         parents=parent_nodes,
         depth=depth,
         node_joins=final_joins,
+        partial_concepts=all_partial,
     )
 
 
@@ -214,7 +267,7 @@ def gen_select_node(
     environment: Environment,
     g,
     depth: int,
-    source_concepts,
+    accept_partial: bool = False,
 ) -> MergeNode | SelectNode:
     basic_inputs = [
         x
@@ -223,7 +276,11 @@ def gen_select_node(
     ]
     ds = None
     ds = gen_select_node_from_table(
-        [concept] + local_optional, g=g, environment=environment, depth=depth
+        [concept] + local_optional,
+        g=g,
+        environment=environment,
+        depth=depth,
+        accept_partial=accept_partial,
     )
     if ds:
         return ds
@@ -232,7 +289,11 @@ def gen_select_node(
         for combo in combinations(basic_inputs, x):
             all_concepts = [concept, *combo]
             ds = gen_select_node_from_table(
-                all_concepts, g=g, environment=environment, depth=depth
+                all_concepts,
+                g=g,
+                environment=environment,
+                depth=depth,
+                accept_partial=accept_partial,
             )
             if ds:
                 return ds
@@ -241,12 +302,16 @@ def gen_select_node(
                 g=g,
                 environment=environment,
                 depth=depth,
-                source_concepts=source_concepts,
+                accept_partial=accept_partial,
             )
             if joins:
                 return joins
     ds = gen_select_node_from_table(
-        [concept], g=g, environment=environment, depth=depth
+        [concept],
+        g=g,
+        environment=environment,
+        depth=depth,
+        accept_partial=accept_partial,
     )
     if not ds:
         raise NoDatasourceException(f"No datasource exists for {concept}")

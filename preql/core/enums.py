@@ -60,6 +60,9 @@ class DataType(Enum):
     # GRANULAR
     UNIX_SECONDS = "unix_seconds"
 
+    # PARSING
+    UNKNOWN = "unknown"
+
 
 @dataclass
 class ArrayType:
@@ -106,6 +109,7 @@ class FunctionType(Enum):
     CAST = "cast"
     CONCAT = "concat"
     CONSTANT = "constant"
+    COALESCE = "coalesce"
 
     # COMPLEX
     INDEX_ACCESS = "index_access"

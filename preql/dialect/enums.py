@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 from preql.dialect.config import DialectConfig
 from preql.constants import logger
 
+
 class Dialects(Enum):
     BIGQUERY = "bigquery"
     SQL_SERVER = "sql_server"
@@ -15,6 +16,12 @@ class Dialects(Enum):
     PRESTO = "presto"
     TRINO = "trino"
     POSTGRES = "postgres"
+
+    @classmethod
+    def _missing_(cls, value):
+        if value == "duckdb":
+            return cls.DUCK_DB
+        return super()._missing_(value)
 
     def default_engine(self, conf=None):
         if self == Dialects.BIGQUERY:
@@ -37,11 +44,16 @@ class Dialects(Enum):
 
             return create_engine(r"duckdb:///:memory:", future=True)
         elif self == Dialects.POSTGRES:
-            logger.warn("WARN: Using experimental postgres dialect. Most functionality will not work.")
+            logger.warn(
+                "WARN: Using experimental postgres dialect. Most functionality will not work."
+            )
             import importlib
+
             spec = importlib.util.find_spec("psycopg2")
             if spec is None:
-                raise ImportError("postgres driver not installed. python -m pip install pypreql[postgres]")
+                raise ImportError(
+                    "postgres driver not installed. python -m pip install pypreql[postgres]"
+                )
             from sqlalchemy import create_engine
             from preql.dialect.config import PostgresConfig
 
@@ -55,8 +67,11 @@ class Dialects(Enum):
             )
 
     def default_executor(
-        self, environment: "Environment", 
-        hooks: List["BaseHook"] | None = None, conf: DialectConfig | None = None) -> "Executor":
+        self,
+        environment: "Environment",
+        hooks: List["BaseHook"] | None = None,
+        conf: DialectConfig | None = None,
+    ) -> "Executor":
         from preql import Executor
 
         return Executor(

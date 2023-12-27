@@ -111,18 +111,6 @@ class Concept(BaseModel):
             return DEFAULT_NAMESPACE
         return v
 
-    def with_namespace(self, namespace: str) -> "Concept":
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace) if self.grain else None,
-            namespace=namespace,
-            keys=self.keys,
-        )
-
     @validator("grain", pre=True, always=True)
     def parse_grain(cls, v, values):
         # this is silly - rethink how we do grains
@@ -138,6 +126,8 @@ class Concept(BaseModel):
                     )
                 ]
             )
+        elif isinstance(values["lineage"], AggregateWrapper) and values["lineage"].by:
+            v = Grain(components=values["lineage"].by)
         elif not v:
             v = Grain(components=[])
         elif isinstance(v, Concept):
@@ -153,7 +143,7 @@ class Concept(BaseModel):
             and self.purpose == other.purpose
             and self.namespace == other.namespace
             and self.grain == other.grain
-            and self.keys == other.keys
+            # and self.keys == other.keys
         )
 
     def __str__(self):
@@ -179,6 +169,18 @@ class Concept(BaseModel):
     @property
     def grain_components(self) -> List["Concept"]:
         return self.grain.components_copy if self.grain else []
+
+    def with_namespace(self, namespace: str) -> "Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
+            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            namespace=namespace,
+            keys=self.keys,
+        )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         return self.__class__(
@@ -273,7 +275,8 @@ class ColumnAssignment(BaseModel):
     concept: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
-    def is_complete(self):
+    @property
+    def is_complete(self) -> bool:
         return Modifier.PARTIAL not in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
@@ -328,18 +331,20 @@ class Function(BaseModel):
             return v
         for idx, arg in enumerate(v):
             if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
-                raise TypeError(
-                    f"Invalid input datatype {arg.datatype} passed into"
-                    f" {operator_name} from concept {arg.name}"
-                )
+                if arg.datatype != DataType.UNKNOWN:
+                    raise TypeError(
+                        f"Invalid input datatype {arg.datatype} passed into"
+                        f" {operator_name} from concept {arg.name}"
+                    )
             if (
                 isinstance(arg, Function)
                 and arg.output_datatype not in valid_inputs[idx]
             ):
-                raise TypeError(
-                    f"Invalid input datatype {arg.output_datatype} passed into"
-                    f" {operator_name} from function {arg.operator.name}"
-                )
+                if arg.output_datatype != DataType.UNKNOWN:
+                    raise TypeError(
+                        f"Invalid input datatype {arg.output_datatype} passed into"
+                        f" {operator_name} from function {arg.operator.name}"
+                    )
             # check constants
             for ptype, dtype in [
                 [str, DataType.STRING],
@@ -841,7 +846,7 @@ class Datasource(BaseModel):
         # if concept.lineage:
         # #     return None
         for x in self.columns:
-            if x.concept.with_grain(concept.grain) == concept:
+            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
                 if use_raw_name:
                     return x.alias
                 return concept.safe_address
@@ -984,10 +989,20 @@ class QueryDatasource(BaseModel):
         return unique(v, "address")
 
     @validator("source_map", always=True, pre=True)
-    def validate_source_map(cls, v):
+    def validate_source_map(cls, v, values):
+        expected = {c.address for c in values["output_concepts"]}.union(
+            c.address for c in values["input_concepts"]
+        )
+        seen = set()
         for k, val in v.items():
             if val:
-                assert len(val) == 1, f"source map {k} has multiple values {len(val)}"
+                if len(val) != 1:
+                    raise SyntaxError(f"source map {k} has multiple values {len(val)}")
+            seen.add(k)
+        if seen != expected:
+            raise SyntaxError(
+                f"source map has mismatched values: seen {seen},  expected: {expected}"
+            )
         return v
 
     # @validator("partial_concepts", always=True, pre=True)
@@ -1151,13 +1166,16 @@ class CTE(BaseModel):
         return unique(v, "address")
 
     def __add__(self, other: "CTE"):
+        logger.info('Merging two copies of CTE "%s"', self.name)
         if not self.grain == other.grain:
             error = (
                 "Attempting to merge two ctes of different grains"
                 f" {self.name} {other.name} grains {self.grain} {other.grain}"
             )
             raise ValueError(error)
-
+        self.partial_concepts = unique(
+            self.partial_concepts + other.partial_concepts, "address"
+        )
         self.parent_ctes = merge_ctes(self.parent_ctes + other.parent_ctes)
 
         self.source_map = {**self.source_map, **other.source_map}
@@ -1171,6 +1189,11 @@ class CTE(BaseModel):
         )
         self.join_derived_concepts = unique(
             self.join_derived_concepts + other.join_derived_concepts, "address"
+        )
+
+        self.source.source_map = {**self.source.source_map, **other.source.source_map}
+        self.source.output_concepts = unique(
+            self.source.output_concepts + other.source.output_concepts, "address"
         )
         return self
 
@@ -1225,16 +1248,13 @@ class CTE(BaseModel):
         return self.name
 
     def get_alias(self, concept: Concept) -> str:
-        error = ValueError(
-            f"Error: alias not found looking for alias for concept {concept}"
-        )
-        for cte in [self] + self.parent_ctes:
-            try:
-                return cte.source.get_alias(concept)
-            except ValueError as e:
-                if not error:
-                    error = e
-        return "INVALID_ALIAS"
+        for cte in self.parent_ctes:
+            if concept.address in [x.address for x in cte.output_columns]:
+                return concept.safe_address
+        try:
+            return self.source.get_alias(concept)
+        except ValueError as e:
+            return f"INVALID_ALIAS: {str(e)}"
 
     @property
     def render_from_clause(self) -> bool:
@@ -1293,15 +1313,102 @@ class Join(BaseModel):
         )
 
 
+class UndefinedConcept(Concept):
+    name: str
+    environment: "EnvironmentConceptDict"
+    line_no: int | None = None
+    datatype = DataType.UNKNOWN
+    purpose = Purpose.AUTO
+
+    def with_namespace(self, namespace: str) -> "UndefinedConcept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
+            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            namespace=namespace,
+            keys=self.keys,
+            environment=self.environment,
+            line_no=self.line_no,
+        )
+
+    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain,
+            namespace=self.namespace,
+            keys=self.keys,
+            environment=self.environment,
+            line_no=self.line_no,
+        )
+
+    def with_default_grain(self) -> "Concept":
+        if self.purpose == Purpose.KEY:
+            # we need to make this abstract
+            grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
+        elif self.purpose == Purpose.PROPERTY:
+            components = []
+            if self.keys:
+                components = self.keys
+            if self.lineage:
+                for item in self.lineage.arguments:
+                    if isinstance(item, Concept):
+                        if item.keys and not all(c in components for c in item.keys):
+                            components += item.sources
+                        else:
+                            components += item.sources
+            grain = Grain(components=components)
+        elif self.purpose == Purpose.METRIC:
+            grain = Grain()
+        else:
+            grain = self.grain  # type: ignore
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain,
+            keys=self.keys,
+            namespace=self.namespace,
+            environment=self.environment,
+            line_no=self.line_no,
+        )
+
+
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
+        self.undefined: dict[str, UndefinedConcept] = {}
+        self.fail_on_missing: bool = False
+
     def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
 
-    def __getitem__(self, key, line_no: int | None = None) -> Concept:
+    def __getitem__(
+        self, key, line_no: int | None = None
+    ) -> Concept | UndefinedConcept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
 
         except KeyError:
+            if not self.fail_on_missing:
+                undefined = UndefinedConcept(
+                    name=key,
+                    line_no=line_no,
+                    environment=self,
+                    datatype=DataType.UNKNOWN,
+                    purpose=Purpose.AUTO,
+                )
+                self.undefined[key] = undefined
+                return undefined
+
             matches = self._find_similar_concepts(key)
             message = f"undefined concept: {key}."
             if matches:
@@ -1335,7 +1442,7 @@ class Environment(BaseModel):
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
-    working_path: str = Field(default_factory=lambda: os.getcwd())
+    working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
 
     @classmethod
@@ -1630,7 +1737,7 @@ class Conditional(BaseModel):
 
 class AggregateWrapper(BaseModel):
     function: Function
-    by: List[Concept] | None
+    by: List[Concept] = Field(default_factory=list)
 
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
@@ -1642,7 +1749,7 @@ class AggregateWrapper(BaseModel):
 
     @property
     def concept_arguments(self) -> List[Concept]:
-        return self.function.concept_arguments
+        return self.function.concept_arguments + self.by
 
     @property
     def output_datatype(self):
@@ -1659,7 +1766,7 @@ class AggregateWrapper(BaseModel):
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
         return AggregateWrapper(
             function=self.function.with_namespace(namespace),
-            by=[c.with_namespace(namespace) for c in self.by] if self.by else None,
+            by=[c.with_namespace(namespace) for c in self.by] if self.by else [],
         )
 
 
@@ -1821,6 +1928,7 @@ QueryDatasource.update_forward_refs()
 ProcessedQuery.update_forward_refs()
 ProcessedQueryPersist.update_forward_refs()
 InstantiatedUnnestJoin.update_forward_refs()
+UndefinedConcept.update_forward_refs()
 
 
 class ListWrapper(list):

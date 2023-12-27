@@ -4,5 +4,5 @@ import so_concepts.user as user;
 import so_concepts.answer as answer;
 import so_concepts.user_metrics as user_metrics;
 import so_concepts.tag as tag;
-
+import so_concepts.circular as circular;
 

@@ -7,7 +7,7 @@ from preql.executor import Executor
 def test_basic_query(duckdb_engine: Executor, expected_results):
     graph = generate_graph(duckdb_engine.environment)
 
-    list(nx.neighbors(graph, "c~local.count@Grain<local.item>"))
+    list(nx.neighbors(graph, "c~local.count@Grain<local.item,local.store_id>"))
     results = duckdb_engine.execute_text("""select total_count;""")[0].fetchall()
     assert results[0].total_count == expected_results["total_count"]
 
@@ -71,3 +71,12 @@ const unnest_array <- unnest(array);
     """
     )[0].fetchall()
     assert [x.unnest_array for x in results] == [1, 2, 3]
+
+
+def test_partial(duckdb_engine: Executor, expected_results):
+    results = duckdb_engine.execute_text(
+        """select item, sum(discount_value)-> total_discount
+        order by item desc;
+    """
+    )[0].fetchall()
+    assert len(results) == 2

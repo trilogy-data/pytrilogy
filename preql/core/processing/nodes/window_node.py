@@ -3,6 +3,7 @@ from typing import List
 
 from preql.core.models import (
     SourceType,
+    Concept,
 )
 from preql.core.processing.nodes.base_node import StrategyNode
 
@@ -12,8 +13,8 @@ class WindowNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts,
-        optional_concepts,
+        input_concepts: List[Concept],
+        output_concepts: List[Concept],
         environment,
         g,
         whole_grain: bool = False,
@@ -21,10 +22,10 @@ class WindowNode(StrategyNode):
         depth: int = 0,
     ):
         super().__init__(
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
+            input_concepts=input_concepts,
+            output_concepts=output_concepts,
+            environment=environment,
+            g=g,
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,

@@ -19,10 +19,11 @@ def gen_unnest_node(
     if isinstance(concept.lineage, Function):
         arguments = concept.lineage.concept_arguments
     return UnnestNode(
-        concept,
-        local_optional,
-        environment,
-        g,
+        unnest_concept=concept,
+        input_concepts=arguments + local_optional,
+        output_concepts=[concept] + local_optional,
+        environment=environment,
+        g=g,
         parents=[
             source_concepts(  # this fetches the parent + join keys
                 # to then connect to the rest of the query

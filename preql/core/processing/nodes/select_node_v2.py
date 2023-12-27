@@ -11,6 +11,7 @@ from preql.core.models import (
     QueryDatasource,
     SourceType,
     Environment,
+    Concept,
 )
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import StrategyNode
@@ -27,21 +28,23 @@ class StaticSelectNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts,
-        optional_concepts,
+        input_concepts: List[Concept],
+        output_concepts: List[Concept],
         environment: Environment,
         g,
         datasource: QueryDatasource,
         depth: int = 0,
+        partial_concepts: List[Concept] | None = None,
     ):
         super().__init__(
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
+            input_concepts=input_concepts,
+            output_concepts=output_concepts,
+            environment=environment,
+            g=g,
             whole_grain=True,
             parents=[],
             depth=depth,
+            partial_concepts=partial_concepts,
         )
         self.datasource = datasource
 
@@ -58,22 +61,24 @@ class SelectNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts,
-        optional_concepts,
+        input_concepts: List[Concept],
+        output_concepts: List[Concept],
         environment: Environment,
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
+        partial_concepts: List[Concept] | None = None,
     ):
         super().__init__(
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
+            input_concepts=input_concepts,
+            output_concepts=output_concepts,
+            environment=environment,
+            g=g,
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,
+            partial_concepts=partial_concepts,
         )
 
     def resolve_from_raw_datasources(self, all_concepts) -> Optional[QueryDatasource]:
@@ -115,6 +120,12 @@ class SelectNode(StrategyNode):
                     all_found = False
                     break
             if all_found:
+                # partial_concepts = [c.concept for c in datasource.columns if not c.is_complete]
+                # if any([c not in partial_concepts for c in all_concepts]):
+                #     logger.info(
+                #     f"{self.logging_prefix}{LOGGER_PREFIX} skipp direct select from {datasource.address} for due to partial concepts {[c.address for c in partial_concepts]}"
+                # )
+                #     continue
                 # keep all concepts on the output, until we get to a node which requires reduction
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address} for {[c.address for c in all_concepts]}"
@@ -128,6 +139,9 @@ class SelectNode(StrategyNode):
                     datasources=[datasource],
                     grain=datasource.grain,
                     joins=[],
+                    partial_concepts=[
+                        c.concept for c in datasource.columns if not c.is_complete
+                    ],
                 )
         return None
 
@@ -136,12 +150,13 @@ class SelectNode(StrategyNode):
             identifier=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
         return QueryDatasource(
-            input_concepts=unique(self.all_concepts, "address"),
+            input_concepts=[],
             output_concepts=unique(self.all_concepts, "address"),
-            source_map={concept.address: {datasource} for concept in self.all_concepts},
+            source_map={concept.address: set() for concept in self.all_concepts},
             datasources=[datasource],
             grain=datasource.grain,
             joins=[],
+            partial_concepts=[],
         )
 
     def _resolve(self) -> QueryDatasource:

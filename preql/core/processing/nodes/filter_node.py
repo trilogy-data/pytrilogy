@@ -1,7 +1,15 @@
 from typing import List
 
 
-from preql.core.models import QueryDatasource, SourceType, Concept, Grain
+from preql.core.models import (
+    QueryDatasource,
+    SourceType,
+    Concept,
+    Grain,
+    Conditional,
+    Comparison,
+    Parenthetical,
+)
 from preql.core.processing.nodes.base_node import StrategyNode
 
 
@@ -18,29 +26,28 @@ class FilterNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts: List[Concept],
-        optional_concepts: List[Concept],
+        input_concepts: List[Concept],
+        output_concepts: List[Concept],
         environment,
         g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
+        conditions: Conditional | Comparison | Parenthetical | None = None,
     ):
         super().__init__(
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
+            output_concepts=output_concepts,
+            environment=environment,
+            g=g,
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,
+            input_concepts=input_concepts,
+            conditions=conditions,
         )
-        assert not optional_concepts, "Filter nodes cannot have optional concepts"
 
     def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
-        # [c for c in self.mandatory_concepts if isinstance(c.lineage, FilterItem)]
-        base.source_map = {key: value for key, value in base.source_map.items()}
-        base.grain = Grain(components=self.mandatory_concepts)
+        base.grain = Grain(components=self.output_concepts)
         return base

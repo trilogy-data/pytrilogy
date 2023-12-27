@@ -21,7 +21,7 @@ def test_cte_merge(test_environment, test_environment_graph):
             datasources=[datasource],
             grain=Grain(),
             joins=[],
-            source_map=output_map,
+            source_map={outputs[0].address: {datasource}},
         ),
         source_map={c.address: datasource.identifier for c in outputs},
     )

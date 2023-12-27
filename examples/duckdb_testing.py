@@ -331,9 +331,9 @@ if __name__ == "__main__":
     renderer = Renderer()
     executor.environment = env
     test = '''
-select passenger.class,
-passenger.id.count;'''
-
+const test <- 1;
+select test
+limit 5;'''
 
 
     # local_opt = local_opts = get_local_optional(
@@ -343,10 +343,10 @@ passenger.id.count;'''
     #     env.concepts['passenger.class'],
 
     # )
-    queries = executor.parse_text(test)
+    # queries = executor.parse_text(test)
 
 
-    rendered = executor.generate_sql(test)
+    # rendered = executor.generate_sql(test)
     # print(family_source.source.source_map.keys())
 #     results = executor.execute_raw_sql("""WITH tmp as (SELECT
 #     SPLIT(local_raw_data."cabin", ' ') as "passenger_cabin",
@@ -361,7 +361,6 @@ passenger.id.count;'''
 #     CROSS JOIN unnest(passenger_cabin) as z 
 #     order by z.passenger_cabin desc
 #                              """)
-    print(rendered[-1])
     results = executor.execute_text(test)
     for row in results[0]:
         print(row)

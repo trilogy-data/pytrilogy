@@ -1,1 +1,1 @@
-CONSTANT_DATASET = "preql_internal_constant_dataset"
+CONSTANT_DATASET: str = "preql_internal_constant_dataset"

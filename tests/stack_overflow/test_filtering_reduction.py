@@ -14,6 +14,7 @@ import so_concepts.answer as answer;
 import so_concepts.user_metrics as user_metrics;
 import so_concepts.tag as tag;
 
+
 SELECT
     tag.name,
     question.count,

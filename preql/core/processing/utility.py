@@ -3,7 +3,6 @@ import networkx as nx
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import Datasource, JoinType, BaseJoin, Concept, QueryDatasource
 from preql.core.enums import Purpose
-from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
@@ -125,9 +124,13 @@ def get_node_joins(
                         graph.add_edge(node, concept.address)
 
     joins: defaultdict[str, set] = defaultdict(set)
-    for left in graph.nodes:
-        if graph.nodes[left]["type"] == NodeType.CONCEPT:
-            continue
+    identifier_map = {x.identifier: x for x in datasources}
+
+    node_list = sorted(
+        [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
+        key=lambda x: len(identifier_map[x].partial_concepts),
+    )
+    for left in node_list:
         for cnode in graph.neighbors(left):
             if graph.nodes[cnode]["type"] == NodeType.CONCEPT:
                 for right in graph.neighbors(cnode):
@@ -140,7 +143,7 @@ def get_node_joins(
                     joins["-".join(identifier)].add(cnode)
 
     final_joins_pre: List[BaseJoin] = []
-    identifier_map = {x.identifier: x for x in datasources}
+
     for key, join_concepts in joins.items():
         left, right = key.split("-")
         local_concepts: List[Concept] = unique(
@@ -191,7 +194,6 @@ def get_node_joins(
         final_joins_pre = new_final_joins_pre
 
     # this is extra validation
-    [x for x in datasources if not x.identifier.startswith(CONSTANT_DATASET)]
     if len(datasources) > 1:
         for x in datasources:
             found = False

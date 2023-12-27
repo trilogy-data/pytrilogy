@@ -1,9 +1,7 @@
 from preql.core.enums import DataType, Purpose
 from preql.core.models import Parenthetical, ProcessedQuery
-
+from preql.core.functions import argument_to_purpose, function_args_to_output_purpose
 from preql.parsing.parse_engine import (
-    argument_to_purpose,
-    function_args_to_output_purpose,
     arg_to_datatype,
     parse_text,
 )
