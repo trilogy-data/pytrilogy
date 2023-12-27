@@ -1176,6 +1176,7 @@ class CTE(BaseModel):
             error = (
                 "Attempting to merge two ctes with different partiality"
                 f" {self.name} {other.name} grains {self.grain} {other.grain}"
+                f" {len(self.partial_concepts)} vs {len(other.partial_concepts)}"
             )
             raise ValueError(error)
         self.parent_ctes = merge_ctes(self.parent_ctes + other.parent_ctes)

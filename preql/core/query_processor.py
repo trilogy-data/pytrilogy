@@ -138,7 +138,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     output_address = [
                         x.address
                         for x in cte.output_columns
-                        if x not in cte.partial_concepts
+                        if x.address not in [z.address for z in cte.partial_concepts]
                     ]
                     if qdk in output_address:
                         if qdk not in source_map:

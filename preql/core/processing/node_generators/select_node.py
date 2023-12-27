@@ -23,6 +23,14 @@ import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
 from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.constants import logger
+from preql.core.processing.nodes import StaticSelectNode
+import networkx as nx
+from preql.core.graph_models import concept_to_node, datasource_to_node
+from preql.core.models import (
+    QueryDatasource,
+    Environment,
+)
+from preql.utility import unique
 
 
 LOGGER_PREFIX = "[GEN_SELECT_NODE_FROM_JOIN_VERBOSE]"
@@ -154,7 +162,7 @@ def gen_select_node_from_join(
                 continue
             except nx.exception.NetworkXNoPath:
                 logger.debug(
-                    f"{LOGGER_PREFIX} could not get to {item.address} at {item.grain} from {datasource}"
+                    f"{LOGGER_PREFIX} could not get to {concept_to_node(item)} from {datasource_to_node(datasource)}"
                 )
                 all_found = False
                 continue
@@ -201,20 +209,36 @@ def gen_select_node_from_join(
     parent_nodes: List[StrategyNode] = []
     ds_to_node_map = {}
     for datasource in datasources:
-        if datasource.output_concepts == all_concepts and accept_partial:
+        if set([x.address for x in datasource.output_concepts]) == set([z.address for z in all_concepts]):
             raise SyntaxError(
-                "Fatal: This would result in infinite recursion, each join componet source should be partial. This error should never be reached in normal usage."
+                "Fatal: This would result in infinite recursion, each join component source should be partial. This error should never be reached in normal usage."
             )
         partial = [x for x in datasource.partial_concepts if x in all_concepts]
 
-        node = source_concepts(
-            datasource.output_concepts,
-            [],
-            environment,
-            g,
-            depth=depth + 1,
-            accept_partial=len(partial) > 0,
-        )
+        local_all = datasource.output_concepts
+        node = StaticSelectNode(
+                input_concepts=local_all,
+                output_concepts=local_all,
+                environment=environment,
+                g=g,
+                datasource=QueryDatasource(
+                    input_concepts=unique(local_all, "address"),
+                    output_concepts=unique(local_all, "address"),
+                    source_map={
+                        concept.address: {datasource} for concept in local_all
+                    },
+                    datasources=[datasource],
+                    grain=datasource.grain,
+                    joins=[],
+                    partial_concepts=[
+                        c.concept for c in datasource.columns if not c.is_complete
+                    ],
+                ),
+                depth=depth,
+                partial_concepts=[
+                    c.concept for c in datasource.columns if not c.is_complete
+                ],
+            )
         parent_nodes.append(node)
         ds_to_node_map[datasource.identifier] = node
 
@@ -295,11 +319,13 @@ def gen_select_node(
                 environment=environment,
                 depth=depth,
                 source_concepts=source_concepts,
+                accept_partial=accept_partial,
             )
             if joins:
                 return joins
     ds = gen_select_node_from_table(
-        [concept], g=g, environment=environment, depth=depth
+        [concept], g=g, environment=environment, depth=depth,
+        accept_partial=accept_partial
     )
     if not ds:
         raise NoDatasourceException(f"No datasource exists for {concept}")

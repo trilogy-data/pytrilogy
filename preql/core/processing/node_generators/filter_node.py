@@ -60,8 +60,6 @@ def gen_filter_node(
             filter_node,
             enrich_node,
         ],
-        join_concepts=[immediate_parent],
-        force_join_type=JoinType.INNER,
         node_joins=[
             NodeJoin(
                 left_node=filter_node,
