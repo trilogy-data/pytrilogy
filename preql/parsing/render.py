@@ -161,13 +161,13 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Address"):
         return f"address {arg.location}"
-    
+
     @to_string.register
     def _(self, arg: "MagicConstants"):
         if arg == MagicConstants.NULL:
-            return 'null'
+            return "null"
         return arg.value
-    
+
     @to_string.register
     def _(self, arg: "ColumnAssignment"):
         return f"{arg.alias}:{self.to_string(arg.concept)}"

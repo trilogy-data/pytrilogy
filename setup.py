@@ -43,9 +43,13 @@ setuptools.setup(
         "": ["*.tf", "*.jinja", "py.typed"],
     },
     install_requires=install_requires,
-    extras_require={"postgres": ["psycopg2-binary"], "bigquery": ["sqlalchemy-bigquery"], "duckdb": ["duckdb-engine"]},
-    entry_points = {
-        'console_scripts': ['trilogy=preql.scripts.trilogy:main'],
+    extras_require={
+        "postgres": ["psycopg2-binary"],
+        "bigquery": ["sqlalchemy-bigquery"],
+        "duckdb": ["duckdb-engine"],
+    },
+    entry_points={
+        "console_scripts": ["trilogy=preql.scripts.trilogy:main"],
     },
     classifiers=[
         "Programming Language :: Python",

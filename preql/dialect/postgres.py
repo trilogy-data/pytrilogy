@@ -51,6 +51,7 @@ LIMIT {{ limit }}{% endif %}
 
 MAX_IDENTIFIER_LENGTH = 50
 
+
 class PostgresDialect(BaseDialect):
     WINDOW_FUNCTION_MAP = {**BaseDialect.WINDOW_FUNCTION_MAP, **WINDOW_FUNCTION_MAP}
     FUNCTION_MAP = {**BaseDialect.FUNCTION_MAP, **FUNCTION_MAP}
@@ -59,4 +60,4 @@ class PostgresDialect(BaseDialect):
         **FUNCTION_GRAIN_MATCH_MAP,
     }
     QUOTE_CHARACTER = '"'
-    SQL_TEMPLATE = PG_SQL_TEMPLATE 
+    SQL_TEMPLATE = PG_SQL_TEMPLATE

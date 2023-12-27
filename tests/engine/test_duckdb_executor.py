@@ -80,6 +80,3 @@ def test_partial(duckdb_engine: Executor, expected_results):
     """
     )[0].fetchall()
     assert len(results) == 2
-
-
-

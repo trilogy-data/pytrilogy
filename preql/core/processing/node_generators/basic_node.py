@@ -26,10 +26,10 @@ def gen_basic_node(
             f"concept {concept} has basic lineage {concept.derivation} {type(concept.lineage)} but no parents!"
         )
     return SelectNode(
-        [concept],
-        local_optional,
-        environment,
-        g,
+        input_concepts=parent_concepts + local_optional,
+        output_concepts=[concept] + local_optional,
+        environment=environment,
+        g=g,
         parents=[
             source_concepts(
                 parent_concepts,
@@ -39,5 +39,5 @@ def gen_basic_node(
                 depth=depth + 1,
             )
         ],
-        depth=depth + 1,
+        depth=depth,
     )

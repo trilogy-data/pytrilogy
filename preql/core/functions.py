@@ -1,7 +1,14 @@
-from preql.core.models import Function, Concept, AggregateWrapper, Parenthetical, arg_to_datatype
+from preql.core.models import (
+    Function,
+    Concept,
+    AggregateWrapper,
+    Parenthetical,
+    arg_to_datatype,
+)
 from preql.core.enums import FunctionType, DataType, Purpose
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
+
 
 def argument_to_purpose(arg) -> Purpose:
     if isinstance(arg, Function):
@@ -20,7 +27,6 @@ def argument_to_purpose(arg) -> Purpose:
         return Purpose.CONSTANT
     else:
         raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
-
 
 
 def function_args_to_output_purpose(args) -> Purpose:
@@ -115,7 +121,7 @@ def Split(args: list[Concept]) -> Function:
         arguments=args,
         # first arg sets properties
         output_datatype=DataType.ARRAY,
-        output_purpose= function_args_to_output_purpose(args),
+        output_purpose=function_args_to_output_purpose(args),
         valid_inputs={DataType.STRING},
         arg_count=2,
     )
@@ -140,7 +146,7 @@ def Abs(args: list[Concept]) -> Function:
         operator=FunctionType.ABS,
         arguments=args,
         output_datatype=args[0].datatype,
-        output_purpose= function_args_to_output_purpose(args),
+        output_purpose=function_args_to_output_purpose(args),
         valid_inputs={
             DataType.INTEGER,
             DataType.FLOAT,
@@ -150,15 +156,18 @@ def Abs(args: list[Concept]) -> Function:
         # output_grain=Grain(components=arguments),
     )
 
+
 def Coalesce(args: list[Concept]) -> Function:
     non_null = [x for x in args if not x == MagicConstants.NULL]
     if not len(set(arg_to_datatype(x) for x in non_null if x)) == 1:
-        raise InvalidSyntaxException(f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)}")
+        raise InvalidSyntaxException(
+            f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)}"
+        )
     return Function(
         operator=FunctionType.COALESCE,
         arguments=args,
         output_datatype=arg_to_datatype(non_null[0]),
-        output_purpose= function_args_to_output_purpose(non_null),
+        output_purpose=function_args_to_output_purpose(non_null),
         arg_count=-1
         # output_grain=Grain(components=arguments),
     )

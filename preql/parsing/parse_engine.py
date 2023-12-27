@@ -9,8 +9,7 @@ from lark.exceptions import (
     UnexpectedToken,
     VisitError,
 )
-from lark.tree import Meta,  _Leaf_T, Tree
-from lark.visitors import _Return_T
+from lark.tree import Meta
 from pydantic import ValidationError
 
 from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE
@@ -38,7 +37,7 @@ from preql.core.functions import (
     Abs,
     Unnest,
     Coalesce,
-    function_args_to_output_purpose
+    function_args_to_output_purpose,
 )
 from preql.core.models import (
     Address,
@@ -342,15 +341,20 @@ def unwrap_transformation(
 
 
 class ParseToObjects(Transformer):
-    def __init__(self, visit_tokens, text, environment: Environment, parse_address:str | None = None,
-                 parsed: dict | None = None
-                 ):
+    def __init__(
+        self,
+        visit_tokens,
+        text,
+        environment: Environment,
+        parse_address: str | None = None,
+        parsed: dict | None = None,
+    ):
         Transformer.__init__(self, visit_tokens)
         self.text = text
         self.environment: Environment = environment
         self.imported = set()
-        self.parse_address = parse_address or 'root'
-        self.parsed:dict[str, ParseToObjects] = parsed if parsed else {}
+        self.parse_address = parse_address or "root"
+        self.parsed: dict[str, ParseToObjects] = parsed if parsed else {}
         # we do a second pass to pick up circular dependencies
         # after initial parsing
         self.pass_count = 1
@@ -365,8 +369,7 @@ class ParseToObjects(Transformer):
         reparsed = self.transform(PARSER.parse(self.text))
         self.environment.concepts.undefined = {}
         return reparsed
-        
- 
+
     def process_function_args(self, args, meta: Meta):
         final = []
         for arg in args:
@@ -480,7 +483,9 @@ class ParseToObjects(Transformer):
         return ColumnAssignment(
             alias=args[0],
             modifiers=modifiers,
-            concept=self.environment.concepts.__getitem__(key=concept[0], line_no=meta.line),
+            concept=self.environment.concepts.__getitem__(
+                key=concept[0], line_no=meta.line
+            ),
         )
 
     def _TERMINATOR(self, args):
@@ -810,7 +815,7 @@ class ParseToObjects(Transformer):
     def over_list(self, args):
         return [self.environment.concepts[x] for x in args]
 
-    def import_statement(self, args:list[str]):
+    def import_statement(self, args: list[str]):
         alias = args[-1]
         path = args[0].split(".")
 
@@ -825,9 +830,12 @@ class ParseToObjects(Transformer):
                 nparser = ParseToObjects(
                     visit_tokens=True,
                     text=text,
-                    environment=Environment(working_path=dirname(target), namespace=alias, ),
-                    parse_address = target,
-                    parsed = {**self.parsed, **{self.parse_address:self}},
+                    environment=Environment(
+                        working_path=dirname(target),
+                        namespace=alias,
+                    ),
+                    parse_address=target,
+                    parsed={**self.parsed, **{self.parse_address: self}},
                 )
                 nparser.transform(PARSER.parse(text))
                 self.parsed[target] = nparser
@@ -1023,7 +1031,7 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-    
+
     @v_args(meta=True)
     def fcoalesce(self, meta, args):
         args = self.process_function_args(args, meta=meta)
@@ -1043,7 +1051,6 @@ class ParseToObjects(Transformer):
     def fabs(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Abs(args)
-
 
     @v_args(meta=True)
     def count_distinct(self, meta, args):

@@ -26,8 +26,8 @@ class MergeNode(StrategyNode):
 
     def __init__(
         self,
-        mandatory_concepts: List[Concept],
-        optional_concepts: List[Concept],
+        input_concepts: List[Concept],
+        output_concepts: List[Concept],
         environment,
         g,
         whole_grain: bool = False,
@@ -39,14 +39,14 @@ class MergeNode(StrategyNode):
         depth: int = 0,
     ):
         super().__init__(
-            mandatory_concepts,
-            optional_concepts,
-            environment,
-            g,
+            input_concepts=input_concepts,
+            output_concepts=output_concepts,
+            environment=environment,
+            g=g,
             whole_grain=whole_grain,
             parents=parents,
-            partial_concepts=partial_concepts,
             depth=depth,
+            partial_concepts=partial_concepts,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
@@ -97,7 +97,7 @@ class MergeNode(StrategyNode):
         if len(merged.keys()) == 1:
             final: QueryDatasource = list(merged.values())[0]
             if set([c.address for c in final.output_concepts]) == set(
-                [c.address for c in self.all_concepts]
+                [c.address for c in self.output_concepts]
             ):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
@@ -106,7 +106,13 @@ class MergeNode(StrategyNode):
                 return final
         # if we have multiple candidates, see if one is good enough
         for dataset in final_datasets:
-            output_set = set([c.address for c in dataset.output_concepts if c not in dataset.partial_concepts])
+            output_set = set(
+                [
+                    c.address
+                    for c in dataset.output_concepts
+                    if c not in dataset.partial_concepts
+                ]
+            )
             if all([c.address in output_set for c in self.all_concepts]):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Merge node not required as parent node {dataset.identifier} {dataset.source_type} has all required output properties with partial {[c.address for c in dataset.partial_concepts]}"
@@ -146,19 +152,14 @@ class MergeNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins"
             )
             joins = self.translate_node_joins(self.node_joins)
-        input_concepts = []
-        for p in parent_sources:
-            input_concepts += p.output_concepts
-        outputs = unique(self.mandatory_concepts + self.optional_concepts, "address")
-        cmap = resolve_concept_map(parent_sources, outputs)
-        logged = {k:[l.name for l in z] for k, z in cmap.items()}
-        logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} concept map {logged}")
         return QueryDatasource(
-            input_concepts=unique(input_concepts, "address"),
-            output_concepts=outputs,
+            input_concepts=unique(self.input_concepts, "address"),
+            output_concepts=unique(self.output_concepts, "address"),
             datasources=final_datasets,
             source_type=self.source_type,
-            source_map=resolve_concept_map(parent_sources, outputs),
+            source_map=resolve_concept_map(
+                parent_sources, self.output_concepts, self.input_concepts
+            ),
             joins=joins,
             grain=grain,
             partial_concepts=self.partial_concepts,

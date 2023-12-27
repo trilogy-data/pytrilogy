@@ -63,6 +63,7 @@ class DataType(Enum):
     # PARSING
     UNKNOWN = "unknown"
 
+
 @dataclass
 class ArrayType:
     type: Union["ArrayType", "MapType", DataType]

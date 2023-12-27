@@ -41,6 +41,7 @@ order by
 CIRC_QUERY = """import so_concepts.circular as c1;
 import so_concepts.circular_dep as c2;"""
 
+
 def test_select():
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     rendered = render_environment(env)
@@ -48,12 +49,14 @@ def test_select():
 
 
 def test_circular():
-    env, parsed = parse(CIRC_QUERY, environment=Environment(working_path=dirname(__file__)))
+    env, parsed = parse(
+        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
+    )
     # raise ValueError(env.concepts.keys())
-    assert env.concepts['c1.id'] 
-    assert env.concepts['c2.id']
-    assert env.concepts['c1.c2.id'] == env.concepts['c2.id']
-    assert env.concepts['c2.c1.id'] == env.concepts['c1.id']
+    assert env.concepts["c1.id"]
+    assert env.concepts["c2.id"]
+    assert env.concepts["c1.c2.id"] == env.concepts["c2.id"]
+    assert env.concepts["c2.c1.id"] == env.concepts["c1.id"]
     validated = False
     for n, datasource in env.datasources.items():
         for z in datasource.columns:
@@ -73,11 +76,11 @@ def test_circular():
     assert validated
 
 
-
-
 def test_partial():
-    env, parsed = parse(CIRC_QUERY, environment=Environment(working_path=dirname(__file__)))
+    env, parsed = parse(
+        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
+    )
     # raise ValueError(env.concepts.keys())
-    p_candidate = [ c for c in env.datasources['c1.posts'].columns if c.alias == 'id2' ]
+    p_candidate = [c for c in env.datasources["c1.posts"].columns if c.alias == "id2"]
     assert Modifier.PARTIAL in p_candidate[0].modifiers
     assert p_candidate[0].is_complete is False

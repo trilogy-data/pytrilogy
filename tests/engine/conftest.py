@@ -76,7 +76,6 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         # validate connection
         connection.execute(text("select 1")).one_or_none()
 
-
         connection.execute(
             text(
                 "CREATE TABLE items_extra_discount(item VARCHAR, value DECIMAL(10,2) )"
@@ -86,9 +85,7 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         connection.commit()
         # insert extra items
         connection.execute(
-            text(
-                "INSERT INTO items_extra_discount VALUES ('jeans', -10.0)"
-            )
+            text("INSERT INTO items_extra_discount VALUES ('jeans', -10.0)")
         )
         connection.commit()
         connection.execute(text("select 1")).one_or_none()

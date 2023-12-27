@@ -196,6 +196,7 @@ def test_split_and_index_function(test_environment):
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 
+
 def test_coalesce(test_environment):
     declarations = """
     constant test_string <- 'abc_def';

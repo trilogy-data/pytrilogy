@@ -36,198 +36,9 @@ from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
 from preql.hooks.base_hook import BaseHook
 from preql.utility import unique
-from random import shuffle
-from math import ceil
 from preql.core.enums import UnnestMode
 
 LOGGER_PREFIX = "[RENDERING]"
-
-CTE_NAMES = """quizzical
-highfalutin
-dynamic
-wakeful
-cheerful
-thoughtful
-cooperative
-questionable
-abundant
-uneven
-yummy
-juicy
-vacuous
-concerned
-young
-sparkling
-abhorrent
-sweltering
-late
-macho
-scrawny
-friendly
-kaput
-divergent
-busy
-charming
-protective
-premium
-puzzled
-waggish
-rambunctious
-puffy
-hard
-sedate
-yellow
-resonant
-dapper
-courageous
-vast
-cool
-elated
-wary
-bewildered
-level
-wooden
-ceaseless
-tearful
-cloudy
-gullible
-flashy
-trite
-quick
-nondescript
-round
-slow
-spiritual
-brave
-tenuous
-abstracted
-colossal
-sloppy
-obsolete
-elegant
-fabulous
-vivacious
-exuberant
-faithful
-helpless
-odd
-sordid
-blue
-imported
-ugly
-ruthless
-deeply
-eminent
-badger
-barracuda
-bear
-boa
-cheetah
-chimpanzee
-civet
-cobra
-cougar
-coyote
-crocodile
-dingo
-eagle
-eel
-fossa
-fox
-human
-jackal
-jaguar
-komodo
-leopard
-lion
-lynx
-mamba
-mandrill
-marlin
-monitor
-ocelot
-osprey
-owl
-petrel
-python
-ray
-salamander
-serval
-shark
-skua
-tiger
-viper
-wolf
-wolverine
-albatross
-avocet
-budgie
-canary
-chick
-chickadee
-chicken
-cockatiel
-cockatoo
-coot
-covey
-crow
-cuckoo
-darter
-dove
-duck
-eagle
-falcon
-finch
-flamingo
-fowl
-goldfinch
-goose
-grouse
-hawk
-heron
-jackdaw
-jay
-kestrel
-lark
-loon
-macaw
-magpie
-martin
-osprey
-ostrich
-owl
-parakeet
-parrot
-pelican
-penguin
-pigeon
-pintail
-puffin
-quail
-quetzal
-rail
-raven
-razorbill
-rhea
-rook
-shrike
-skylark
-snipe
-sparrow
-starling
-stork
-swallow
-swift
-tanager
-thrush
-toucan
-turkey
-vulture
-warbler""".split(
-    "\n"
-)
-
-CTE_NAMES = list(set(CTE_NAMES))
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -412,13 +223,13 @@ class BaseDialect:
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
-            f"{LOGGER_PREFIX} [{c.address}] beginning rendering"
+            f"{LOGGER_PREFIX} [{c.address}] Starting rendering loop on cte: {cte.name}"
         )
 
-        if (c.lineage and check_lineage(c, cte)) and not cte.source_map.get(
-            c.address, ""
-        ).startswith('cte'):
-            logger.debug(f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing")
+        if c.lineage and cte.source_map.get(c.address, "") == "":
+            logger.debug(
+                f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"
+            )
             if isinstance(c.lineage, WindowItem):
                 # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
                 self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
@@ -453,44 +264,19 @@ class BaseDialect:
                 if cte.group_to_grain:
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
                 else:
-                    logger.info(
-                        f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at"
-                        " target grain"
+                    logger.debug(
+                        f"{LOGGER_PREFIX} [{c.address}] ignoring optimazable aggregate function, at grain so optimizing"
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.operator](args)}"
-        # else if it's complex, just reference it from the source
-        elif c.lineage:
-            logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] Complex reference falling back to"
-                " source address"
-            )
-            if not cte.source_map.get(c.address, None):
-                logger.debug(
-                    f"{LOGGER_PREFIX} [{c.address}] Cannot render from {cte.name}, have"
-                    f" {cte.source_map.keys()} only"
-                )
-            missing = [
-                sub_c.address
-                for sub_c in c.lineage.concept_arguments
-                if isinstance(sub_c, Concept) and sub_c not in cte.source_map
-            ]
-            rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING(f'Missing complex sources {missing}, have {cte.source_map.keys()}'))}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-
         else:
             logger.debug(
-                f"{LOGGER_PREFIX} [{c.address}] Basic reference, using source address "
-                f" for {c.address}"
+                f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}"
             )
-            if not cte.source_map.get(c.address, None):
-                logger.debug(
-                    f"{LOGGER_PREFIX} [{c.address}] Cannot render {c.address} from"
-                    f" {cte.name}, have {cte.source_map.keys()} only"
-                )
             raw_content = cte.get_alias(c)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
             else:
-                rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing basic reference'))}.{safe_quote(raw_content, self.QUOTE_CHARACTER)}"
+                rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}.{safe_quote(raw_content, self.QUOTE_CHARACTER)}"
 
         if alias:
             return (
@@ -782,15 +568,4 @@ class BaseDialect:
                 " occur. Please report this issue."
             )
 
-        if CONFIG.hash_identifiers:
-            shuffle(CTE_NAMES)
-            for idx, cte in enumerate(query.ctes):
-                suffix = ""
-                if idx > len(CTE_NAMES):
-                    int = ceil(len(CTE_NAMES) / idx)
-                    suffix = f"_{int}"
-                # find the remainder from the len
-                lookup = idx % len(CTE_NAMES)
-                new_name = f"{CTE_NAMES[lookup]}{suffix}"
-                final = final.replace(cte.name, new_name)
         return final

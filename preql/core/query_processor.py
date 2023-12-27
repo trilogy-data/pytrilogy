@@ -4,7 +4,7 @@ from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
 
 from preql.core.processing.concept_strategies_v2 import source_query_concepts
-
+from preql.constants import CONFIG
 from preql.core.models import (
     Environment,
     Persist,
@@ -25,6 +25,9 @@ from preql.core.models import (
 from preql.utility import string_to_hash, unique
 from preql.hooks.base_hook import BaseHook
 from preql.constants import logger
+from random import shuffle
+from preql.core.ergonomics import CTE_NAMES
+from math import ceil
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -83,7 +86,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
     ):
         SLABEL = "MULTIPLE"
         source_map = {}
-        all_new_ctes:List[CTE] = []
+        all_new_ctes: List[CTE] = []
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
                 sub_datasource = datasource
@@ -109,12 +112,14 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                     grain=datasource.grain,
                     datasources=[datasource],
                     joins=[],
-                    partial_concepts = [x.concept for x in datasource.columns if not x.is_complete]
+                    partial_concepts=[
+                        x.concept for x in datasource.columns if not x.is_complete
+                    ],
                 )
             sub_cte = datasource_to_ctes(sub_datasource)
             parents += sub_cte
             all_new_ctes += sub_cte
-            
+
         # now populate anything derived in this level
         for qdk, qdv in query_datasource.source_map.items():
             if (
@@ -130,10 +135,12 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
 
             else:
                 for cte in all_new_ctes:
-                    output_address = [x.address for x in cte.output_columns]
+                    output_address = [
+                        x.address
+                        for x in cte.output_columns
+                        if x not in cte.partial_concepts
+                    ]
                     if qdk in output_address:
-                        if qdk in [x.address for x in cte.partial_concepts]:
-                            continue
                         if qdk not in source_map:
                             source_map[qdk] = cte.name
                             break
@@ -270,7 +277,7 @@ def process_query(
     root_cte = datasource_to_ctes(root_datasource)[0]
     for hook in hooks:
         hook.process_root_cte(root_cte)
-    raw_ctes = list(reversed(flatten_ctes(root_cte)))
+    raw_ctes: List[CTE] = list(reversed(flatten_ctes(root_cte)))
     seen = dict()
     # we can have duplicate CTEs at this point
     # so merge them together
@@ -280,9 +287,36 @@ def process_query(
         else:
             # merge them up
             seen[cte.name] = seen[cte.name] + cte
+    for cte in raw_ctes:
+        cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
+    final_ctes: List[CTE] = list(seen.values())
 
-    final_ctes = list(seen.values())
+    mapping = {}
 
+    # this makes debugging a lot easier
+    if CONFIG.hash_identifiers:
+        shuffle(CTE_NAMES)
+        for idx, cte in enumerate(final_ctes):
+            suffix = ""
+            if idx > len(CTE_NAMES):
+                int = ceil(len(CTE_NAMES) / idx)
+                suffix = f"_{int}"
+            # find the remainder from the len
+            lookup = idx % len(CTE_NAMES)
+            new_name = f"{CTE_NAMES[lookup]}{suffix}"
+            mapping[cte.name] = new_name
+            cte.name = new_name
+        for cte in final_ctes:
+            for k, v in cte.source_map.items():
+                cte.source_map[k] = mapping.get(v, v)
+            for join in cte.joins:
+                if isinstance(join, Join):
+                    join.left_cte.name = mapping.get(
+                        join.left_cte.name, join.left_cte.name
+                    )
+                    join.right_cte.name = mapping.get(
+                        join.right_cte.name, join.right_cte.name
+                    )
     return ProcessedQuery(
         order_by=statement.order_by,
         grain=statement.grain,

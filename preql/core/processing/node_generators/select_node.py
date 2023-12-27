@@ -29,21 +29,25 @@ LOGGER_PREFIX = "[GEN_SELECT_NODE_FROM_JOIN_VERBOSE]"
 
 
 def gen_select_node_from_table(
-    all_concepts: List[Concept], g, environment: Environment, depth: int, accept_partial:bool = False
+    all_concepts: List[Concept],
+    g,
+    environment: Environment,
+    depth: int,
+    accept_partial: bool = False,
 ) -> Optional[SelectNode]:
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
         return SelectNode(
-            mandatory_concepts=all_concepts,
-            optional_concepts=[],
+            output_concepts=all_concepts,
+            input_concepts=[],
             environment=environment,
             g=g,
             parents=[],
             depth=depth,
             # no partial for constants
-            partial_concepts=[]
+            partial_concepts=[],
         )
     # otherwise, we need to look for a table
     for datasource in environment.datasources.values():
@@ -94,20 +98,25 @@ def gen_select_node_from_table(
                 all_found = False
                 break
 
-
         if all_found:
-
-            partial_concepts =  [c.concept for c in datasource.columns if not c.is_complete and c.concept.address in [x.address for x in all_concepts]]
+            partial_concepts = [
+                c.concept
+                for c in datasource.columns
+                if not c.is_complete
+                and c.concept.address in [x.address for x in all_concepts]
+            ]
             if not accept_partial and partial_concepts:
                 continue
             return SelectNode(
-                mandatory_concepts=[c.concept for c in datasource.columns],
-                optional_concepts=[],
+                input_concepts=[c.concept for c in datasource.columns],
+                output_concepts=all_concepts,
                 environment=environment,
                 g=g,
                 parents=[],
                 depth=depth,
-                partial_concepts = [c.concept for c in datasource.columns if not c.is_complete]
+                partial_concepts=[
+                    c.concept for c in datasource.columns if not c.is_complete
+                ],
             )
     return None
 
@@ -118,7 +127,7 @@ def gen_select_node_from_join(
     environment: Environment,
     depth: int,
     source_concepts,
-    accept_partial:bool = False
+    accept_partial: bool = False,
 ) -> Optional[MergeNode]:
     all_input_concepts = [*all_concepts]
 
@@ -150,7 +159,12 @@ def gen_select_node_from_join(
                 all_found = False
                 continue
         if all_found:
-            partial = [c.concept for c in datasource.columns if not c.is_complete and c.concept.address in [x.address for x in all_concepts]]
+            partial = [
+                c.concept
+                for c in datasource.columns
+                if not c.is_complete
+                and c.concept.address in [x.address for x in all_concepts]
+            ]
             if partial and not accept_partial:
                 continue
             join_candidates.append({"paths": paths, "datasource": datasource})
@@ -189,7 +203,7 @@ def gen_select_node_from_join(
     for datasource in datasources:
         if datasource.output_concepts == all_concepts and accept_partial:
             raise SyntaxError(
-                "This would result in infinite recursion, each source should be partial"
+                "Fatal: This would result in infinite recursion, each join componet source should be partial. This error should never be reached in normal usage."
             )
         partial = [x for x in datasource.partial_concepts if x in all_concepts]
 
@@ -199,7 +213,7 @@ def gen_select_node_from_join(
             environment,
             g,
             depth=depth + 1,
-            accept_partial=len(partial)>0
+            accept_partial=len(partial) > 0,
         )
         parent_nodes.append(node)
         ds_to_node_map[datasource.identifier] = node
@@ -219,15 +233,22 @@ def gen_select_node_from_join(
                 filter_to_mutual=join.filter_to_mutual,
             )
         )
-    
+    all_partial = [
+        c
+        for c in all_concepts
+        if all(
+            [c.address in [x.address for x in p.partial_concepts] for p in parent_nodes]
+        )
+    ]
     return MergeNode(
-        mandatory_concepts=all_concepts,
-        optional_concepts=[],
+        input_concepts=all_input_concepts,
+        output_concepts=all_concepts,
         environment=environment,
         g=g,
         parents=parent_nodes,
         depth=depth,
         node_joins=final_joins,
+        partial_concepts=all_partial,
     )
 
 
@@ -238,7 +259,7 @@ def gen_select_node(
     g,
     depth: int,
     source_concepts,
-    accept_partial:bool = False
+    accept_partial: bool = False,
 ) -> MergeNode | SelectNode:
     basic_inputs = [
         x
@@ -247,8 +268,11 @@ def gen_select_node(
     ]
     ds = None
     ds = gen_select_node_from_table(
-        [concept] + local_optional, g=g, environment=environment, depth=depth,
-        accept_partial=accept_partial
+        [concept] + local_optional,
+        g=g,
+        environment=environment,
+        depth=depth,
+        accept_partial=accept_partial,
     )
     if ds:
         return ds
@@ -257,8 +281,11 @@ def gen_select_node(
         for combo in combinations(basic_inputs, x):
             all_concepts = [concept, *combo]
             ds = gen_select_node_from_table(
-                all_concepts, g=g, environment=environment, depth=depth,
-                accept_partial=accept_partial
+                all_concepts,
+                g=g,
+                environment=environment,
+                depth=depth,
+                accept_partial=accept_partial,
             )
             if ds:
                 return ds

@@ -28,10 +28,10 @@ def gen_window_node(
 ) -> WindowNode:
     parent_concepts = resolve_window_parent_concepts(concept)
     return WindowNode(
-        [concept],
-        local_optional,
-        environment,
-        g,
+        input_concepts=parent_concepts + local_optional,
+        output_concepts=[concept] + local_optional,
+        environment=environment,
+        g=g,
         parents=[
             source_concepts(
                 parent_concepts,
