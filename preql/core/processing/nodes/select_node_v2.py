@@ -34,7 +34,7 @@ class StaticSelectNode(StrategyNode):
         g,
         datasource: QueryDatasource,
         depth: int = 0,
-        partial_concepts: List[Concept] = None,
+        partial_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -68,7 +68,7 @@ class SelectNode(StrategyNode):
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: List[Concept] = None,
+        partial_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -150,9 +150,9 @@ class SelectNode(StrategyNode):
             identifier=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
         return QueryDatasource(
-            input_concepts=unique(self.all_concepts, "address"),
+            input_concepts=[],
             output_concepts=unique(self.all_concepts, "address"),
-            source_map={concept.address: {datasource} for concept in self.all_concepts},
+            source_map={concept.address: set() for concept in self.all_concepts},
             datasources=[datasource],
             grain=datasource.grain,
             joins=[],

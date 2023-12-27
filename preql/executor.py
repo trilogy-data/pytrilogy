@@ -62,7 +62,7 @@ class Executor(object):
 
     def execute_statement(self, statement) -> Optional[CursorResult]:
         if not isinstance(statement, (ProcessedQuery, ProcessedQueryPersist)):
-            return
+            return None
         return self.execute_query(statement)
 
     def execute_query(

@@ -3,7 +3,6 @@ import networkx as nx
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import Datasource, JoinType, BaseJoin, Concept, QueryDatasource
 from preql.core.enums import Purpose
-from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
@@ -195,7 +194,6 @@ def get_node_joins(
         final_joins_pre = new_final_joins_pre
 
     # this is extra validation
-    [x for x in datasources if not x.identifier.startswith(CONSTANT_DATASET)]
     if len(datasources) > 1:
         for x in datasources:
             found = False

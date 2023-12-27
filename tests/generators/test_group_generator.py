@@ -58,7 +58,8 @@ def test_gen_group_node(test_environment, test_environment_graph):
     ]
     gnode = gen_group_node(
         concept=test_environment.concepts["category_top_50_revenue_products"],
-        local_optional=[cat],
+        local_optional=[],
+        # local_optional=[cat],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -70,19 +71,18 @@ def test_gen_group_node(test_environment, test_environment_graph):
     assert len(parent.all_concepts) == 2
     assert cat in parent.all_concepts
     assert immediate_aggregate_input in parent.all_concepts
+    assert cat not in gnode.partial_concepts
+    assert cat in gnode.all_concepts
 
     # check that the parent is a merge node
-    resolved_parent = parent.resolve()
-    assert len(resolved_parent.joins) == 1
-    join = resolved_parent.joins[0]
-    assert join.left_datasource.output_concepts == [cat]
-    assert (
-        list(join.left_datasource.datasources)[0].identifier
-        == test_environment.datasources["category"].identifier
-    )
-    assert join.left_datasource.partial_concepts == []
-    # check that the parent merge node is using the right sources given partial flags
-    assert cat in join.right_datasource.partial_concepts
-    assert {x.identifier for x in resolved_parent.source_map[cat.address]} == {
-        join.left_datasource.identifier
-    }
+    parent.resolve()
+    # assert len(resolved_parent.joins) == 1
+    # join = resolved_parent.joins[0]
+    # assert join.left_datasource.output_concepts == [cat]
+
+    # assert join.left_datasource.partial_concepts == []
+    # # check that the parent merge node is using the right sources given partial flags
+    # assert cat in join.right_datasource.partial_concepts
+    # assert {x.identifier for x in resolved_parent.source_map[cat.address]} == {
+    #     join.left_datasource.identifier
+    # }

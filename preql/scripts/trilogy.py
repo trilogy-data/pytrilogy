@@ -1,15 +1,16 @@
 from click import command, Path, argument, option
 import os
-
-nb_path = os.path.abspath("")
 from sys import path
 
+nb_path = os.path.abspath("")
 path.insert(0, nb_path)
-from preql import Executor, Environment
-from preql.dialect.enums import Dialects
-from datetime import datetime
-from pathlib import Path as PathlibPath
-from preql.hooks.query_debugger import DebuggingHook
+
+
+from preql import Executor, Environment  # noqa
+from preql.dialect.enums import Dialects  # noqa
+from datetime import datetime  # noqa
+from pathlib import Path as PathlibPath  # noqa
+from preql.hooks.query_debugger import DebuggingHook  # noqa
 
 
 def print_tabulate(q, tabulate):

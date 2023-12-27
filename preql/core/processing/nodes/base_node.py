@@ -9,6 +9,10 @@ from preql.core.models import (
     Concept,
     Environment,
     Conditional,
+    UnnestJoin,
+    Datasource,
+    Comparison,
+    Parenthetical,
 )
 from preql.core.enums import Purpose, JoinType
 from preql.utility import unique
@@ -37,11 +41,13 @@ def concept_list_to_grain(
 
 def resolve_concept_map(
     inputs: List[QueryDatasource],
-    targets: Optional[List[Concept]] = None,
-    inherited_inputs: Optional[List[Concept]] = None,
-) -> dict[str, set[QueryDatasource]]:
+    targets: List[Concept],
+    inherited_inputs: List[Concept],
+) -> dict[str, set[Datasource | QueryDatasource | UnnestJoin]]:
     targets = targets or []
-    concept_map = defaultdict(set)
+    concept_map: dict[
+        str, set[Datasource | QueryDatasource | UnnestJoin]
+    ] = defaultdict(set)
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
@@ -79,7 +85,7 @@ class StrategyNode:
         parents: List["StrategyNode"] | None = None,
         partial_concepts: List[Concept] | None = None,
         depth: int = 0,
-        conditions: Conditional | None = None,
+        conditions: Conditional | Comparison | Parenthetical | None = None,
     ):
         self.input_concepts = input_concepts or []
         self.output_concepts = output_concepts

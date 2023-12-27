@@ -143,7 +143,7 @@ class Concept(BaseModel):
             and self.purpose == other.purpose
             and self.namespace == other.namespace
             and self.grain == other.grain
-            and self.keys == other.keys
+            # and self.keys == other.keys
         )
 
     def __str__(self):
@@ -846,7 +846,7 @@ class Datasource(BaseModel):
         # if concept.lineage:
         # #     return None
         for x in self.columns:
-            if x.concept.with_grain(concept.grain) == concept:
+            if x.concept == concept or x.concept.with_grain(concept.grain) == concept:
                 if use_raw_name:
                     return x.alias
                 return concept.safe_address
@@ -1166,19 +1166,16 @@ class CTE(BaseModel):
         return unique(v, "address")
 
     def __add__(self, other: "CTE"):
+        logger.info('Merging two copies of CTE "%s"', self.name)
         if not self.grain == other.grain:
             error = (
                 "Attempting to merge two ctes of different grains"
                 f" {self.name} {other.name} grains {self.grain} {other.grain}"
             )
             raise ValueError(error)
-        if not self.partial_concepts == other.partial_concepts:
-            error = (
-                "Attempting to merge two ctes with different partiality"
-                f" {self.name} {other.name} grains {self.grain} {other.grain}"
-                f" {len(self.partial_concepts)} vs {len(other.partial_concepts)}"
-            )
-            raise ValueError(error)
+        self.partial_concepts = unique(
+            self.partial_concepts + other.partial_concepts, "address"
+        )
         self.parent_ctes = merge_ctes(self.parent_ctes + other.parent_ctes)
 
         self.source_map = {**self.source_map, **other.source_map}
@@ -1256,8 +1253,8 @@ class CTE(BaseModel):
                 return concept.safe_address
         try:
             return self.source.get_alias(concept)
-        except ValueError:
-            return "INVALID_ALIAS"
+        except ValueError as e:
+            return f"INVALID_ALIAS: {str(e)}"
 
     @property
     def render_from_clause(self) -> bool:
@@ -1318,7 +1315,7 @@ class Join(BaseModel):
 
 class UndefinedConcept(Concept):
     name: str
-    environment: "Environment"
+    environment: "EnvironmentConceptDict"
     line_no: int | None = None
     datatype = DataType.UNKNOWN
     purpose = Purpose.AUTO
@@ -1388,20 +1385,26 @@ class UndefinedConcept(Concept):
 class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
-        self.undefined: dict[str, UnicodeEncodeError] = {}
+        self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = False
 
     def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
 
-    def __getitem__(self, key, line_no: int | None = None) -> Concept:
+    def __getitem__(
+        self, key, line_no: int | None = None
+    ) -> Concept | UndefinedConcept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
 
         except KeyError:
             if not self.fail_on_missing:
                 undefined = UndefinedConcept(
-                    name=key, line_no=line_no, environment=self
+                    name=key,
+                    line_no=line_no,
+                    environment=self,
+                    datatype=DataType.UNKNOWN,
+                    purpose=Purpose.AUTO,
                 )
                 self.undefined[key] = undefined
                 return undefined

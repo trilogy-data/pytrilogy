@@ -331,14 +331,8 @@ if __name__ == "__main__":
     renderer = Renderer()
     executor.environment = env
     test = '''
-property passenger.id.family <- split(passenger.name, ',')[1]; 
-auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
-select 
-    passenger.family,
-    passenger.id.count,
-    count(surviving_passenger) -> surviving_size
-order by
-    passenger.id.count desc
+const test <- 1;
+select test
 limit 5;'''
 
 

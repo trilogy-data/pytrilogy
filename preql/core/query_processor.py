@@ -2,9 +2,9 @@ from typing import List, Optional, Set, Union, Dict
 
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
-
+from preql.core.constants import CONSTANT_DATASET
 from preql.core.processing.concept_strategies_v2 import source_query_concepts
-from preql.constants import CONFIG
+from preql.constants import CONFIG, DEFAULT_NAMESPACE
 from preql.core.models import (
     Environment,
     Persist,
@@ -127,11 +127,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
                 and len(qdv) == 1
                 and isinstance(list(qdv)[0], UnnestJoin)
             ):
-                # this is a derived element
-                ujoin: UnnestJoin = [x for x in list(qdv) if isinstance(x, UnnestJoin)][
-                    0
-                ]
-                source_map[qdk] = ujoin.alias
+                source_map[qdk] = ""
 
             else:
                 for cte in all_new_ctes:
@@ -164,12 +160,13 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
         SLABEL = "SINGULAR"
         # source is the first datasource of the query datasource
         source = query_datasource.datasources[0]
-        # for some reason, we rebuild source map here
-        # source_map = {
-        #     concept.address: source.full_name
-        #     for concept in query_datasource.output_concepts
-        # }
-        source_map = {k: source.full_name for k in query_datasource.source_map}
+        # this is required to ensure that constant datasets
+        # render properly on initial access; since they have
+        # no actual source
+        if source.full_name == DEFAULT_NAMESPACE + "_" + CONSTANT_DATASET:
+            source_map = {k: "" for k in query_datasource.source_map}
+        else:
+            source_map = {k: source.full_name for k in query_datasource.source_map}
     human_id = (
         query_datasource.full_name.replace("<", "").replace(">", "").replace(",", "_")
     )

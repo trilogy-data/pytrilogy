@@ -5,6 +5,7 @@ from preql.core.enums import JoinType
 from preql.core.models import (
     Concept,
     Environment,
+    FilterItem,
 )
 from preql.core.processing.nodes import (
     FilterNode,
@@ -40,7 +41,9 @@ def gen_filter_node(
                 depth=depth + 1,
             )
         ],
-        conditions=concept.lineage.where.conditional,
+        conditions=concept.lineage.where.conditional
+        if isinstance(concept.lineage, FilterItem)
+        else None,
     )
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

@@ -173,7 +173,8 @@ def source_concepts(
     )
     if matched and (accept_partial or len(matched.partial_concepts) == 0):
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in mandatory_concepts + optional_concepts]} concepts and {accept_partial} partial {len(matched.partial_concepts)}, returning."
+            f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in mandatory_concepts + optional_concepts]} "
+            f"concepts and {accept_partial} partial {len(matched.partial_concepts)}, returning."
         )
         return matched
 
@@ -259,7 +260,6 @@ def source_concepts(
                     environment,
                     g,
                     depth,
-                    source_concepts,
                     accept_partial=accept_partial,
                 )
             )

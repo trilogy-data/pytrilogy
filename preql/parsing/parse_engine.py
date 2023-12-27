@@ -352,7 +352,7 @@ class ParseToObjects(Transformer):
         Transformer.__init__(self, visit_tokens)
         self.text = text
         self.environment: Environment = environment
-        self.imported = set()
+        self.imported: set[str] = set()
         self.parse_address = parse_address or "root"
         self.parsed: dict[str, ParseToObjects] = parsed if parsed else {}
         # we do a second pass to pick up circular dependencies
@@ -483,7 +483,7 @@ class ParseToObjects(Transformer):
         return ColumnAssignment(
             alias=args[0],
             modifiers=modifiers,
-            concept=self.environment.concepts.__getitem__(
+            concept=self.environment.concepts.__getitem__(  # type: ignore
                 key=concept[0], line_no=meta.line
             ),
         )

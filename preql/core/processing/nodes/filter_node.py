@@ -1,7 +1,15 @@
 from typing import List
 
 
-from preql.core.models import QueryDatasource, SourceType, Concept, Grain, Conditional
+from preql.core.models import (
+    QueryDatasource,
+    SourceType,
+    Concept,
+    Grain,
+    Conditional,
+    Comparison,
+    Parenthetical,
+)
 from preql.core.processing.nodes.base_node import StrategyNode
 
 
@@ -25,7 +33,7 @@ class FilterNode(StrategyNode):
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        conditions: Conditional | None = None,
+        conditions: Conditional | Comparison | Parenthetical | None = None,
     ):
         super().__init__(
             output_concepts=output_concepts,

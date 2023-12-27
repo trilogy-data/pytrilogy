@@ -1,5 +1,4 @@
 from preql.core.processing.concept_strategies_v2 import GroupNode, gen_select_node
-from preql.core.processing.concept_strategies_v2 import source_concepts
 
 
 def test_group_node(test_environment, test_environment_graph):
@@ -18,7 +17,6 @@ def test_group_node(test_environment, test_environment_graph):
                 environment=test_environment,
                 g=test_environment_graph,
                 depth=0,
-                source_concepts=source_concepts,
             )
         ],
     )
