@@ -171,3 +171,26 @@ def Coalesce(args: list[Concept]) -> Function:
         arg_count=-1
         # output_grain=Grain(components=arguments),
     )
+
+
+def CurrentDate(args: list[Concept]) -> Function:
+    return Function(
+        operator=FunctionType.CURRENT_DATE,
+        arguments=args,
+        output_datatype=DataType.DATE,
+        output_purpose=Purpose.CONSTANT,
+        arg_count=0
+        # output_grain=Grain(components=arguments),
+    )
+
+
+
+def CurrentDatetime(args: list[Concept]) -> Function:
+    return Function(
+        operator=FunctionType.CURRENT_DATETIME,
+        arguments=args,
+        output_datatype=DataType.DATE,
+        output_purpose=Purpose.CONSTANT,
+        arg_count=0
+        # output_grain=Grain(components=arguments),
+    )
