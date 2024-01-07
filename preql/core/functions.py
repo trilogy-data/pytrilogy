@@ -184,6 +184,7 @@ def CurrentDate(args: list[Concept]) -> Function:
     )
 
 
+
 def CurrentDatetime(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.CURRENT_DATETIME,
