@@ -38,6 +38,8 @@ from preql.core.functions import (
     Unnest,
     Coalesce,
     function_args_to_output_purpose,
+    CurrentDate,
+    CurrentDatetime
 )
 from preql.core.models import (
     Address,
@@ -190,7 +192,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
+    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
     
     // functions
     
@@ -214,6 +216,12 @@ grammar = r"""
     len: "len"i "(" expr ")"
 
     _generic_functions: fcast | concat | fcoalesce | fcase | len 
+
+    //constant
+    fcurrent_date: "current_date"i "(" ")"
+    fcurrent_datetime: "current_datetime"i "(" ")"
+
+    _constant_functions: fcurrent_date | fcurrent_datetime
     
     //string
     like: "like"i "(" expr "," _string_lit ")"
@@ -1452,7 +1460,17 @@ class ParseToObjects(Transformer):
     def fcase_else(self, meta, args) -> CaseElse:
         args = self.process_function_args(args, meta=meta)
         return CaseElse(expr=args[0])
-
+    
+    @v_args(meta=True)
+    def fcurrent_date(self, meta, args) -> CurrentDate:
+        args = self.process_function_args(args, meta=meta)
+        return CurrentDate(args)
+    
+    @v_args(meta=True)
+    def fcurrent_datetime(self, meta, args) -> CurrentDatetime:
+        args = self.process_function_args(args, meta=meta)
+        return CurrentDatetime(args)
+     
     def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
         datatypes = set()
         for arg in args:

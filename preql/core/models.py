@@ -758,12 +758,18 @@ def safe_grain(v):
     return v
 
 
+class DatasourceMetadata(BaseModel):
+    freshness_concept: Concept | None
+    partition_fields: List[Concept] = Field(default_factory=list)
+
+
 class Datasource(BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
     grain: Grain = Field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
+    metadata: DatasourceMetadata = Field(default_factory=lambda: DatasourceMetadata())
 
     def add_column(self, concept: Concept, alias: str, modifiers=None):
         self.columns.append(

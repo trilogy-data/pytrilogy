@@ -125,6 +125,10 @@ FUNCTION_MAP = {
     FunctionType.YEAR: lambda x: f"year({x[0]})",
     # string types
     FunctionType.CONCAT: lambda x: f"concat({','.join(x)})",
+
+    # constant types
+    FunctionType.CURRENT_DATE: lambda x: f"current_date()",
+    FunctionType.CURRENT_DATETIME: lambda x: f"current_datetime()",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
