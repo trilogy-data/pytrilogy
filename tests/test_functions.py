@@ -213,6 +213,7 @@ def test_coalesce(test_environment):
         dialect.compile_statement(process_query(test_environment, select))
 
 
+
 def test_constants(test_environment):
     declarations = """
     const current_date <- current_date();

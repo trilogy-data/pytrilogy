@@ -39,7 +39,7 @@ from preql.core.functions import (
     Coalesce,
     function_args_to_output_purpose,
     CurrentDate,
-    CurrentDatetime,
+    CurrentDatetime
 )
 from preql.core.models import (
     Address,
@@ -1460,17 +1460,17 @@ class ParseToObjects(Transformer):
     def fcase_else(self, meta, args) -> CaseElse:
         args = self.process_function_args(args, meta=meta)
         return CaseElse(expr=args[0])
-
+    
     @v_args(meta=True)
-    def fcurrent_date(self, meta, args):
+    def fcurrent_date(self, meta, args) -> CurrentDate:
         args = self.process_function_args(args, meta=meta)
         return CurrentDate(args)
-
+    
     @v_args(meta=True)
-    def fcurrent_datetime(self, meta, args):
+    def fcurrent_datetime(self, meta, args) -> CurrentDatetime:
         args = self.process_function_args(args, meta=meta)
         return CurrentDatetime(args)
-
+     
     def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
         datatypes = set()
         for arg in args:

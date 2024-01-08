@@ -769,9 +769,7 @@ class Datasource(BaseModel):
     address: Union[Address, str]
     grain: Grain = Field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
-    metadata: DatasourceMetadata = Field(
-        default_factory=lambda: DatasourceMetadata(freshness_concept=None)
-    )
+    metadata: DatasourceMetadata = Field(default_factory=lambda: DatasourceMetadata())
 
     def add_column(self, concept: Concept, alias: str, modifiers=None):
         self.columns.append(
