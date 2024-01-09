@@ -161,9 +161,7 @@ def get_node_joins(
         else:
             join_type = JoinType.LEFT_OUTER
             # remove any constants if other join keys exist
-            local_concepts = [
-                c for c in local_concepts if c.purpose != Purpose.CONSTANT
-            ]
+            local_concepts = [c for c in local_concepts if c.purpose != Purpose.CONSTANT]
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],
