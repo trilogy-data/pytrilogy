@@ -150,10 +150,13 @@ def get_node_joins(
             [c for c in concepts if c.address in join_concepts], "address"
         )
         if all([c.purpose == Purpose.CONSTANT for c in local_concepts]):
+            # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []
         else:
             join_type = JoinType.LEFT_OUTER
+            # remove any constants if other join keys exist
+            local_concepts = [c for c in local_concepts if c.purpose != Purpose.CONSTANT]
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],

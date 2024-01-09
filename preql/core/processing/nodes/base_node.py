@@ -29,8 +29,9 @@ def concept_list_to_grain(
         ):
             candidates.append(x)
         # TODO: figure out how to avoid this?
-        elif x.purpose == Purpose.CONSTANT:
-            candidates.append(x)
+        # 2024-01-08 - removing as this shouldn't be required
+        # elif x.purpose == Purpose.CONSTANT:
+        #     candidates.append(x)
         elif x.purpose == Purpose.METRIC:
             # metrics that were previously calculated must be included in grain
             if any([x in parent.output_concepts for parent in parent_sources]):
