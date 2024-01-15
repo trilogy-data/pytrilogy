@@ -23,6 +23,8 @@ FUNCTION_MAP = {
     ),
     ## Duckdb indexes from 1, not 0
     FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
+    # datetime is aliased
+    FunctionType.CURRENT_DATETIME: lambda x: "datetime(get_current_timestamp())",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate

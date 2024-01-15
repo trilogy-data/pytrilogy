@@ -162,6 +162,10 @@ class FunctionType(Enum):
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"
 
+    # CONSTANTS
+    CURRENT_DATE = "current_date"
+    CURRENT_DATETIME = "current_datetime"
+
 
 class FunctionClass(Enum):
     AGGREGATE_FUNCTIONS = [

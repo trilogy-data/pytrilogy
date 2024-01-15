@@ -3,6 +3,7 @@ import networkx as nx
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import Datasource, JoinType, BaseJoin, Concept, QueryDatasource
 from preql.core.enums import Purpose
+from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
@@ -128,9 +129,13 @@ def get_node_joins(
 
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
-        key=lambda x: len(identifier_map[x].partial_concepts),
+        key=lambda x: -len(identifier_map[x].partial_concepts),
     )
     for left in node_list:
+        # the constant dataset is a special case
+        # and can never be on the left of a join
+        if left == CONSTANT_DATASET:
+            continue
         for cnode in graph.neighbors(left):
             if graph.nodes[cnode]["type"] == NodeType.CONCEPT:
                 for right in graph.neighbors(cnode):
@@ -150,10 +155,15 @@ def get_node_joins(
             [c for c in concepts if c.address in join_concepts], "address"
         )
         if all([c.purpose == Purpose.CONSTANT for c in local_concepts]):
+            # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []
         else:
             join_type = JoinType.LEFT_OUTER
+            # remove any constants if other join keys exist
+            local_concepts = [
+                c for c in local_concepts if c.purpose != Purpose.CONSTANT
+            ]
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],

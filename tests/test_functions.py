@@ -211,3 +211,18 @@ def test_coalesce(test_environment):
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
+
+
+def test_constants(test_environment):
+    declarations = """
+    const current_date <- current_date();
+    const current_datetime <- current_datetime();
+    
+    select
+        current_date,
+        current_datetime,
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: Select = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(process_query(test_environment, select))
