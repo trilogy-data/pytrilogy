@@ -769,7 +769,9 @@ class Datasource(BaseModel):
     address: Union[Address, str]
     grain: Grain = Field(default_factory=lambda: Grain(components=[]))
     namespace: Optional[str] = ""
-    metadata: DatasourceMetadata = Field(default_factory=lambda: DatasourceMetadata())
+    metadata: DatasourceMetadata = Field(
+        default_factory=lambda: DatasourceMetadata(freshness_concept=None)
+    )
 
     def add_column(self, concept: Concept, alias: str, modifiers=None):
         self.columns.append(
@@ -1089,6 +1091,7 @@ class QueryDatasource(BaseModel):
             datasources=list(merged_datasources.values()),
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
+            # joins = self.joins,
             condition=self.condition + other.condition
             if (self.condition or other.condition)
             else None,

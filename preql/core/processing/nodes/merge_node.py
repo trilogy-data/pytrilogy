@@ -67,9 +67,12 @@ class MergeNode(StrategyNode):
 
     def create_full_joins(self, dataset_list: List[QueryDatasource]):
         joins = []
+        seen = set()
         for left_value in dataset_list:
             for right_value in dataset_list:
                 if left_value.identifier == right_value.identifier:
+                    continue
+                if left_value.identifier in seen and right_value.identifier in seen:
                     continue
                 joins.append(
                     BaseJoin(
@@ -79,6 +82,8 @@ class MergeNode(StrategyNode):
                         concepts=[],
                     )
                 )
+                seen.add(left_value.identifier)
+                seen.add(right_value.identifier)
         return joins
 
     def _resolve(self) -> QueryDatasource:
