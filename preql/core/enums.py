@@ -233,3 +233,7 @@ class SourceType(Enum):
     GROUP = "group"
     WINDOW = "window"
     UNNEST = "unnest"
+
+class ShowCategory(Enum):
+    MODELS = "models"
+    CONCEPTS = "concepts"

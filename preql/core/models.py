@@ -35,6 +35,7 @@ from preql.core.enums import (
     WindowType,
     ConceptSource,
     DatePart,
+    ShowCategory,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -1092,9 +1093,11 @@ class QueryDatasource(BaseModel):
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
             # joins = self.joins,
-            condition=self.condition + other.condition
-            if (self.condition or other.condition)
-            else None,
+            condition=(
+                self.condition + other.condition
+                if (self.condition or other.condition)
+                else None
+            ),
             source_type=self.source_type,
         )
 
@@ -1396,6 +1399,12 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
         super().__init__(self, *args, **kwargs)
         self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = False
+        self.populate_default_concepts()
+
+    def populate_default_concepts(self):
+        from preql.core.internal import DEFAULT_CONCEPTS
+        for concept in DEFAULT_CONCEPTS.values():
+            self[concept.address] = concept
 
     def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
@@ -1419,7 +1428,7 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
                 return undefined
 
             matches = self._find_similar_concepts(key)
-            message = f"undefined concept: {key}."
+            message = f"Undefined concept: {key}."
             if matches:
                 message += f" Suggestions: {matches}"
 
@@ -1623,12 +1632,20 @@ class Comparison(BaseModel):
 
     def with_namespace(self, namespace: str):
         return Comparison(
-            left=self.left.with_namespace(namespace)
-            if isinstance(self.left, (Concept, Function, Conditional, Parenthetical))
-            else self.left,
-            right=self.right.with_namespace(namespace)
-            if isinstance(self.right, (Concept, Function, Conditional, Parenthetical))
-            else self.right,
+            left=(
+                self.left.with_namespace(namespace)
+                if isinstance(
+                    self.left, (Concept, Function, Conditional, Parenthetical)
+                )
+                else self.left
+            ),
+            right=(
+                self.right.with_namespace(namespace)
+                if isinstance(
+                    self.right, (Concept, Function, Conditional, Parenthetical)
+                )
+                else self.right
+            ),
             operator=self.operator,
         )
 
@@ -1708,12 +1725,20 @@ class Conditional(BaseModel):
 
     def with_namespace(self, namespace: str):
         return Conditional(
-            left=self.left.with_namespace(namespace)
-            if isinstance(self.left, (Concept, Comparison, Conditional, Parenthetical))
-            else self.left,
-            right=self.right.with_namespace(namespace)
-            if isinstance(self.right, (Concept, Comparison, Conditional, Parenthetical))
-            else self.right,
+            left=(
+                self.left.with_namespace(namespace)
+                if isinstance(
+                    self.left, (Concept, Comparison, Conditional, Parenthetical)
+                )
+                else self.left
+            ),
+            right=(
+                self.right.with_namespace(namespace)
+                if isinstance(
+                    self.right, (Concept, Comparison, Conditional, Parenthetical)
+                )
+                else self.right
+            ),
             operator=self.operator,
         )
 
@@ -1834,6 +1859,11 @@ class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
     pass
 
 
+class ProcessedShowStatement(BaseModel):
+    output_columns: List[Concept]
+    output_values: List[Union[Concept, Datasource, ProcessedQuery]]
+
+
 class Limit(BaseModel):
     count: int
 
@@ -1866,9 +1896,11 @@ class Parenthetical(BaseModel):
 
     def with_namespace(self, namespace: str):
         return Parenthetical(
-            content=self.content.with_namespace(namespace)
-            if hasattr(self.content, "with_namespace")
-            else self.content
+            content=(
+                self.content.with_namespace(namespace)
+                if hasattr(self.content, "with_namespace")
+                else self.content
+            )
         )
 
     @property
@@ -1901,6 +1933,10 @@ class Persist(BaseModel):
     @property
     def address(self):
         return self.datasource.address
+
+
+class ShowStatement(BaseModel):
+    content: Select | Persist | ShowCategory
 
 
 Expr = (

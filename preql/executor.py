@@ -8,14 +8,31 @@ from preql.constants import logger
 from preql.core.models import (
     Environment,
     ProcessedQuery,
+    ProcessedShowStatement,
     ProcessedQueryPersist,
     Select,
     Persist,
+    ShowStatement,
+    Concept,
 )
 from preql.dialect.base import BaseDialect
 from preql.dialect.enums import Dialects
 from preql.parser import parse_text
 from preql.hooks.base_hook import BaseHook
+
+from dataclasses import dataclass
+
+@dataclass
+class MockResult:
+    values:list[any]
+
+
+    def fetchall(self):
+        return self.values
+
+def generate_result_set(columns: List[Concept], output_data:list[any])->MockResult:
+    names = [x.address.replace(".", "_") for x in columns]
+    return MockResult(values=[dict(zip(names, [row])) for row in output_data])
 
 
 class Executor(object):
@@ -66,7 +83,7 @@ class Executor(object):
         return self.execute_query(statement)
 
     def execute_query(
-        self, query: ProcessedQuery | ProcessedQueryPersist
+        self, query: ProcessedQuery | ProcessedQueryPersist | ShowStatement
     ) -> CursorResult:
         """Run parsed preql query"""
         sql = self.generator.compile_statement(query)
@@ -89,10 +106,14 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
-    def parse_text(self, command: str) -> List[ProcessedQuery | ProcessedQueryPersist]:
+    def parse_text(
+        self, command: str
+    ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
-        generatable = [x for x in parsed if isinstance(x, (Select, Persist))]
+        generatable = [
+            x for x in parsed if isinstance(x, (Select, Persist, ShowStatement))
+        ]
         sql = self.generator.generate_queries(
             self.environment, generatable, hooks=self.hooks
         )
@@ -100,7 +121,7 @@ class Executor(object):
 
     def execute_raw_sql(self, command: str) -> CursorResult:
         """Run a command against the raw underlying
-        execution engine."""
+        execution engine"""
         return self.connection.execute(text(command))
 
     def execute_text(self, command: str) -> List[CursorResult]:
@@ -109,8 +130,20 @@ class Executor(object):
         output = []
         # connection = self.engine.connect()
         for statement in sql:
+            if isinstance(statement, ProcessedShowStatement):
+                output.append(
+                    generate_result_set(
+                        statement.output_columns,
+                        [
+                            self.generator.compile_statement(x)
+                            for x in statement.output_values
+                        ],
+                    )
+                )
+                continue
             compiled_sql = self.generator.compile_statement(statement)
             logger.debug(compiled_sql)
+
             output.append(self.connection.execute(text(compiled_sql)))
             # generalize post-run success hooks
             if isinstance(statement, ProcessedQueryPersist):

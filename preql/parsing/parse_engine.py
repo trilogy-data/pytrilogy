@@ -25,6 +25,7 @@ from preql.core.enums import (
     WindowOrder,
     WindowType,
     DatePart,
+    ShowCategory,
 )
 from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from preql.core.functions import (
@@ -75,12 +76,13 @@ from preql.core.models import (
     RawColumnExpr,
     arg_to_datatype,
     ListWrapper,
+    ShowStatement
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
 
 grammar = r"""
-    !start: ( block | show |comment )*
+    !start: ( block | show | comment )*
     block: statement _TERMINATOR comment?
     ?statement: concept
     | datasource
@@ -298,11 +300,12 @@ grammar = r"""
     AUTO: "AUTO"i 
 
     // meta functions
-    SHOW: "show"i
     CONCEPTS: "CONCEPTS"i
     DATASOURCES: "DATASOURCES"i
 
-    show: SHOW (CONCEPTS | DATASOURCES)
+    show_category: CONCEPTS | DATASOURCES
+
+    show: "show"i ( show_category | select | persist) _TERMINATOR
 
     %import common.WS_INLINE -> _WHITESPACE
     %import common.WS
@@ -310,6 +313,7 @@ grammar = r"""
 """  # noqa: E501
 
 PARSER = Lark(
+    
     grammar, start="start", propagate_positions=True, g_regex_flags=IGNORECASE
 )
 
@@ -860,12 +864,12 @@ class ParseToObjects(Transformer):
         return None
 
     @v_args(meta=True)
+    def show_category(self, meta: Meta, args) -> ShowCategory:
+        return ShowCategory(args[0])
+    
+    @v_args(meta=True)
     def show(self, meta: Meta, args) -> Select:
-        raise NotImplementedError("TODO: let users query current model values")
-        output = Select(
-            selection=SelectItem(), where_clause=None, limit=None, order_by=None
-        )
-        return output
+        return ShowStatement(content=args[0])
 
     @v_args(meta=True)
     def persist(self, meta: Meta, args) -> Persist:
@@ -1506,7 +1510,7 @@ def unpack_visit_error(e: VisitError):
 
 def parse_text(
     text: str, environment: Optional[Environment] = None
-) -> Tuple[Environment, List[Datasource | Import | Select | Persist | None]]:
+) -> Tuple[Environment, List[Datasource | Import | Select | Persist | ShowStatement | None]]:
     environment = environment or Environment(datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
 

@@ -2,6 +2,7 @@ from datetime import datetime
 import networkx as nx
 from preql.core.env_processor import generate_graph
 from preql.executor import Executor
+from preql.core.models import ShowStatement
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -80,3 +81,26 @@ def test_partial(duckdb_engine: Executor, expected_results):
     """
     )[0].fetchall()
     assert len(results) == 2
+
+
+def test_show(duckdb_engine: Executor, expected_results):
+    test = """show 
+select
+    item, 
+    sum(discount_value)-> total_discount
+order by item desc;
+    """
+
+    from preql.parser import parse_text
+
+    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+
+    assert len(parsed_0) == 1
+    assert isinstance(parsed_0[0], ShowStatement)
+
+    parsed = duckdb_engine.parse_text(test)
+
+    assert len(parsed) == 1
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert 'local_fact_items."item" as "item"' in results[0]
