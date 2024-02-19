@@ -1403,6 +1403,7 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
 
     def populate_default_concepts(self):
         from preql.core.internal import DEFAULT_CONCEPTS
+
         for concept in DEFAULT_CONCEPTS.values():
             self[concept.address] = concept
 

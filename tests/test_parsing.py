@@ -89,11 +89,13 @@ def test_argument_to_purpose(test_environment):
     )
 
 
-
 def test_show(test_environment):
     _, parsed = parse_text(
         "const order_id <- 4; SHOW SELECT order_id  WHERE order_id is not null;"
     )
     query = parsed[-1]
     assert isinstance(query, ShowStatement)
-    assert query.content.output_components[0].address == test_environment.concepts["order_id"].address
+    assert (
+        query.content.output_components[0].address
+        == test_environment.concepts["order_id"].address
+    )

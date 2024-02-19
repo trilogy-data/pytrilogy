@@ -22,15 +22,16 @@ from preql.hooks.base_hook import BaseHook
 
 from dataclasses import dataclass
 
+
 @dataclass
 class MockResult:
-    values:list[any]
-
+    values: list[any]
 
     def fetchall(self):
         return self.values
 
-def generate_result_set(columns: List[Concept], output_data:list[any])->MockResult:
+
+def generate_result_set(columns: List[Concept], output_data: list[any]) -> MockResult:
     names = [x.address.replace(".", "_") for x in columns]
     return MockResult(values=[dict(zip(names, [row])) for row in output_data])
 

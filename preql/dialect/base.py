@@ -488,7 +488,9 @@ class BaseDialect:
                     output.append(
                         ProcessedShowStatement(
                             output_columns=[
-                                environment.concepts[DEFAULT_CONCEPTS["query_text"].address]
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ]
                             ],
                             output_values=[
                                 process_query(
@@ -508,9 +510,9 @@ class BaseDialect:
         output_addresses = [c.address for c in query.output_columns]
         for c in query.base.output_columns:
             if c.address not in selected and c.address in output_addresses:
-                select_columns[c.address] = (
-                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                )
+                select_columns[
+                    c.address
+                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                 cte_output_map[c.address] = query.base
                 selected.add(c.address)
         if not all([x in selected for x in output_addresses]):

@@ -234,6 +234,7 @@ class SourceType(Enum):
     WINDOW = "window"
     UNNEST = "unnest"
 
+
 class ShowCategory(Enum):
     MODELS = "models"
     CONCEPTS = "concepts"
