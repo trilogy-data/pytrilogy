@@ -1,6 +1,6 @@
 from enum import Enum
-from dataclasses import dataclass
 from typing import Union
+from pydantic import BaseModel
 
 InfiniteFunctionArgs = -1
 
@@ -64,13 +64,13 @@ class DataType(Enum):
     UNKNOWN = "unknown"
 
 
-@dataclass
-class ArrayType:
+
+class ArrayType(BaseModel):
     type: Union["ArrayType", "MapType", DataType]
 
 
-@dataclass
-class MapType:
+
+class MapType(BaseModel):
     key_type: DataType
     content_type: Union["ArrayType", DataType]
 

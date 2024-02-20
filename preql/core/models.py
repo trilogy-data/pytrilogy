@@ -127,7 +127,11 @@ class Concept(BaseModel):
                     )
                 ]
             )
-        elif isinstance(values["lineage"], AggregateWrapper) and values["lineage"].by:
+        elif (
+            "lineage" in values
+            and isinstance(values["lineage"], AggregateWrapper)
+            and values["lineage"].by
+        ):
             v = Grain(components=values["lineage"].by)
         elif not v:
             v = Grain(components=[])
@@ -301,7 +305,20 @@ class Function(BaseModel):
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
-    arguments: List[Any]
+    arguments: List[
+        Union[
+            Concept,
+            "AggregateWrapper",
+            "Function",
+            int,
+            float,
+            str,
+            DataType,
+            "Parenthetical",
+            "CaseWhen",
+            "CaseElse",
+        ]
+    ]
 
     def __str__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -1468,6 +1485,7 @@ class Environment(BaseModel):
     def from_cache(cls, path):
         base = cls.parse_file(path)
         base.concepts = EnvironmentConceptDict(**base.concepts)
+
         return base
 
     def to_cache(self):
@@ -1524,6 +1542,10 @@ class Environment(BaseModel):
             new = Environment(namespace=namespace)
             new.parse(input)
             for key, concept in new.concepts.items():
+                if not isinstance(concept, Concept):
+                    raise SyntaxError(
+                        f"Parsed environment {namespace} has invalid concept {type(concept)}"
+                    )
                 self.concepts[f"{namespace}.{key}"] = concept
             for key, datasource in new.datasources.items():
                 self.datasources[f"{namespace}.{key}"] = datasource
@@ -1975,6 +1997,7 @@ ProcessedQuery.update_forward_refs()
 ProcessedQueryPersist.update_forward_refs()
 InstantiatedUnnestJoin.update_forward_refs()
 UndefinedConcept.update_forward_refs()
+Function.update_forward_refs()
 
 
 class ListWrapper(list):
