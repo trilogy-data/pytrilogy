@@ -30,7 +30,7 @@ SELECT
     year
 where
     year = 1950
-
+order by name_count.sum desc
 LIMIT 100;"""
 )
 
