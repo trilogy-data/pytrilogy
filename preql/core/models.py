@@ -1,3 +1,4 @@
+from __future__ import annotations
 import difflib
 import os
 from copy import deepcopy
@@ -13,8 +14,21 @@ from typing import (
     Sequence,
     ValuesView,
 )
+from pydantic_core import core_schema
+from typing import Callable
+from dataclasses import dataclass
+from typing import Annotated
+from pydantic import Field, TypeAdapter, ValidationError
 
-from pydantic import BaseModel, validator, Field, ConfigDict, validator
+from pydantic.functional_validators import PlainValidator, WrapValidator
+from pydantic import (
+    BaseModel,
+    ValidationError,
+    ValidationInfo,
+    ValidatorFunctionWrapHandler,
+)
+
+from pydantic import BaseModel, validator, Field, ConfigDict, validator, field_validator, ValidationInfo
 from pydantic.functional_validators import FieldValidatorModes 
 from lark.tree import Meta
 from pathlib import Path
@@ -76,11 +90,20 @@ class Metadata(BaseModel):
     """Metadata container object.
     TODO: support arbitrary tags"""
 
-    description: Optional[str]
-    line_number: Optional[int]
+    description: Optional[str] = None
+    line_number: Optional[int] = None
     concept_source: ConceptSource = ConceptSource.MANUAL
 
+def lineage_validator(v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo)->Union[Function, WindowItem, FilterItem, AggregateWrapper]:
+    if v and not isinstance(
+        v, (Function, WindowItem, FilterItem, AggregateWrapper)
+    ):
+        raise ValueError(v)
+    return v
 
+def empty_grain()->Grain:
+    return Grain(components=[])
+        
 class Concept(BaseModel):
     name: str
     datatype: DataType
@@ -89,37 +112,35 @@ class Concept(BaseModel):
         default_factory=lambda: Metadata(description=None, line_number=None)
     )
     lineage: Optional[
-        Union["Function", "WindowItem", "FilterItem", "AggregateWrapper"]
+        Union[Function, WindowItem, FilterItem, AggregateWrapper]
     ] = None
+    # lineage: Annotated[Optional[
+    #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
+    # ], WrapValidator(lineage_validator)] = None
     namespace: Optional[str] = ""
     keys: Optional[List["Concept"]] = None
-    grain: Optional["Grain"] = Field(default=None)
+    grain: "Grain" = Field(default_factory=empty_grain)
 
     def __hash__(self):
         return hash(str(self))
 
-    @validator("lineage")
-    def lineage_validator(cls, v):
-        if v and not isinstance(
-            v, (Function, WindowItem, FilterItem, AggregateWrapper)
-        ):
-            raise ValueError(v)
-        return v
 
     @validator("metadata")
     def metadata_validation(cls, v):
         v = v or Metadata()
         return v
-
+# 
     @validator("namespace")
     def namespace_enforcement(cls, v):
         if not v:
             return DEFAULT_NAMESPACE
         return v
 
-    @validator("grain")
-    def parse_grain(cls, v, values):
+    @field_validator("grain")
+    @classmethod
+    def parse_grain(cls, v, info: ValidationInfo)->Grain:
         # this is silly - rethink how we do grains
+        values = info.data
         if not v and values.get("purpose", None) == Purpose.KEY:
             v = Grain(
                 components=[
@@ -142,6 +163,8 @@ class Concept(BaseModel):
             v = Grain(components=[])
         elif isinstance(v, Concept):
             v = Grain(components=[v])
+        if not v:
+            raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
         return v
 
     def __eq__(self, other: object):
@@ -275,6 +298,78 @@ class Concept(BaseModel):
             return PurposeLineage.CONSTANT
         return PurposeLineage.BASIC
 
+
+
+class Grain(BaseModel):
+    nested: bool = False
+    components: List[Concept] = Field(default_factory=list)
+
+    @validator("components")
+    def component_nest(cls, v, values: dict[str, object]):
+        if not values.get("nested", False):
+            v = [safe_concept(c).with_default_grain() for c in v]
+        v = unique(v, "address")
+        return v
+
+    @property
+    def components_copy(self) -> List[Concept]:
+        return deepcopy(self.components)
+
+    def __str__(self):
+        if self.abstract:
+            return "Grain<Abstract>"
+        return "Grain<" + ",".join([c.address for c in self.components]) + ">"
+
+    def with_namespace(self, namespace: str) -> "Grain":
+        return Grain(
+            components=[c.with_namespace(namespace) for c in self.components],
+            nested=self.nested,
+        )
+
+    @property
+    def abstract(self):
+        return not self.components
+
+    @property
+    def set(self):
+        return set([c.address for c in self.components_copy])
+
+    def __eq__(self, other: object):
+        if not isinstance(other, Grain):
+            return False
+        return self.set == other.set
+
+    def issubset(self, other: "Grain"):
+        return self.set.issubset(other.set)
+
+    def isdisjoint(self, other: "Grain"):
+        return self.set.isdisjoint(other.set)
+
+    def intersection(self, other: "Grain") -> "Grain":
+        intersection = self.set.intersection(other.set)
+        components = [i for i in self.components if i.name in intersection]
+        return Grain(components=components)
+
+    def __add__(self, other: "Grain") -> "Grain":
+        components = []
+        for clist in [self.components_copy, other.components_copy]:
+            for component in clist:
+                if component.with_default_grain() in components:
+                    continue
+                components.append(component.with_default_grain())
+        base_components = [c for c in components if c.purpose == Purpose.KEY]
+        for c in components:
+            if c.purpose == Purpose.PROPERTY and not any(
+                [key in base_components for key in (c.keys or [])]
+            ):
+                base_components.append(c)
+        return Grain(components=base_components)
+
+    def __radd__(self, other) -> "Grain":
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 
 class RawColumnExpr(BaseModel):
     text: str
@@ -691,76 +786,6 @@ def safe_concept(v):
     return v
 
 
-class Grain(BaseModel):
-    nested: bool = False
-    components: List[Concept] = Field(default_factory=list)
-
-    @validator("components")
-    def component_nest(cls, v, values: dict[str, object]):
-        if not values.get("nested", False):
-            v = [safe_concept(c).with_default_grain() for c in v]
-        v = unique(v, "address")
-        return v
-
-    @property
-    def components_copy(self) -> List[Concept]:
-        return deepcopy(self.components)
-
-    def __str__(self):
-        if self.abstract:
-            return "Grain<Abstract>"
-        return "Grain<" + ",".join([c.address for c in self.components]) + ">"
-
-    def with_namespace(self, namespace: str) -> "Grain":
-        return Grain(
-            components=[c.with_namespace(namespace) for c in self.components],
-            nested=self.nested,
-        )
-
-    @property
-    def abstract(self):
-        return not self.components
-
-    @property
-    def set(self):
-        return set([c.address for c in self.components_copy])
-
-    def __eq__(self, other: object):
-        if not isinstance(other, Grain):
-            return False
-        return self.set == other.set
-
-    def issubset(self, other: "Grain"):
-        return self.set.issubset(other.set)
-
-    def isdisjoint(self, other: "Grain"):
-        return self.set.isdisjoint(other.set)
-
-    def intersection(self, other: "Grain") -> "Grain":
-        intersection = self.set.intersection(other.set)
-        components = [i for i in self.components if i.name in intersection]
-        return Grain(components=components)
-
-    def __add__(self, other: "Grain") -> "Grain":
-        components = []
-        for clist in [self.components_copy, other.components_copy]:
-            for component in clist:
-                if component.with_default_grain() in components:
-                    continue
-                components.append(component.with_default_grain())
-        base_components = [c for c in components if c.purpose == Purpose.KEY]
-        for c in components:
-            if c.purpose == Purpose.PROPERTY and not any(
-                [key in base_components for key in (c.keys or [])]
-            ):
-                base_components.append(c)
-        return Grain(components=base_components)
-
-    def __radd__(self, other) -> "Grain":
-        if other == 0:
-            return self
-        else:
-            return self.__add__(other)
 
 
 class GrainWindow(BaseModel):
@@ -1416,13 +1441,6 @@ class UndefinedConcept(Concept):
             line_no=self.line_no,
         )
 
-from pydantic_core import core_schema
-from typing import Callable
-from dataclasses import dataclass
-from typing import Annotated
-from pydantic import Field, TypeAdapter, ValidationError
-
-
 
 class EnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs):
@@ -1478,7 +1496,6 @@ class Import(BaseModel):
     # environment: "Environment" | None = None
     # TODO: this might result in a lot of duplication
     # environment:"Environment"
-from pydantic.functional_validators import PlainValidator
 
 class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
@@ -2004,28 +2021,28 @@ Expr = (
 )
 
 
-Concept.update_forward_refs()
-Grain.update_forward_refs()
-WindowItem.update_forward_refs()
-WindowItemOrder.update_forward_refs()
-FilterItem.update_forward_refs()
-Comparison.update_forward_refs()
-Conditional.update_forward_refs()
-Parenthetical.update_forward_refs()
-WhereClause.update_forward_refs()
-Import.update_forward_refs
-CaseWhen.update_forward_refs()
-CaseElse.update_forward_refs()
-Select.update_forward_refs()
-CTE.update_forward_refs()
-BaseJoin.update_forward_refs()
-QueryDatasource.update_forward_refs()
-ProcessedQuery.update_forward_refs()
-ProcessedQueryPersist.update_forward_refs()
-InstantiatedUnnestJoin.update_forward_refs()
-UndefinedConcept.update_forward_refs()
-Function.update_forward_refs()
-
+Concept.model_rebuild()
+Grain.model_rebuild()
+WindowItem.model_rebuild()
+WindowItemOrder.model_rebuild()
+FilterItem.model_rebuild()
+Comparison.model_rebuild()
+Conditional.model_rebuild()
+Parenthetical.model_rebuild()
+WhereClause.model_rebuild()
+Import.model_rebuild()
+CaseWhen.model_rebuild()
+CaseElse.model_rebuild()
+Select.model_rebuild()
+CTE.model_rebuild()
+BaseJoin.model_rebuild()
+QueryDatasource.model_rebuild()
+ProcessedQuery.model_rebuild()
+ProcessedQueryPersist.model_rebuild()
+InstantiatedUnnestJoin.model_rebuild()
+UndefinedConcept.model_rebuild()
+Function.model_rebuild()
+Grain.model_rebuild()
 
 class ListWrapper(list):
     pass
