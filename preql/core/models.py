@@ -297,10 +297,11 @@ class Concept(BaseModel):
 
 class Grain(BaseModel):
     nested: bool = False
-    components: List[Concept] = Field(default_factory=list)
+    components: List[Concept] = Field(default_factory=list, validate_default=True)
 
-    @validator("components")
-    def component_nest(cls, v, values: dict[str, object]):
+    @field_validator("components")
+    def component_nest(cls, v, info: ValidationInfo):
+        values = info.data
         if not values.get("nested", False):
             v = [safe_concept(c).with_default_grain() for c in v]
         v = unique(v, "address")

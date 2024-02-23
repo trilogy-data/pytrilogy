@@ -1499,7 +1499,8 @@ def unpack_visit_error(e: VisitError):
     if isinstance(e.orig_exc, VisitError):
         unpack_visit_error(e.orig_exc)
     if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
-        raise e.orig_exc
+        # raise e.orig_exc
+        raise InvalidSyntaxException(str(e))
     if isinstance(e.orig_exc, ImportError):
         raise e.orig_exc
     elif isinstance(e.orig_exc, ValidationError):
@@ -1530,6 +1531,7 @@ def parse_text(
         UnexpectedInput,
         UnexpectedToken,
         ValidationError,
+        TypeError,
     ) as e:
         raise InvalidSyntaxException(str(e))
 
