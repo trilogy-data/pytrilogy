@@ -394,7 +394,7 @@ class ParseToObjects(Transformer):
                     purpose=arg.output_purpose,
                     lineage=arg,
                     namespace=DEFAULT_NAMESPACE,
-                    grain=None,
+                    grain=Grain(components=[]),
                     keys=None,
                 )
                 # to satisfy mypy, concept will always have metadata
@@ -783,7 +783,7 @@ class ParseToObjects(Transformer):
             purpose=function.output_purpose,
             lineage=function,
             namespace=namespace,
-            grain=grain,
+            grain=Grain(components=[]) if not grain else grain,
             keys=keys,
         )
         if concept.metadata:
@@ -867,7 +867,7 @@ class ParseToObjects(Transformer):
         return ShowCategory(args[0])
 
     @v_args(meta=True)
-    def show(self, meta: Meta, args) -> Select:
+    def show(self, meta: Meta, args) -> ShowStatement:
         return ShowStatement(content=args[0])
 
     @v_args(meta=True)

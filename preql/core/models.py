@@ -15,6 +15,9 @@ from typing import (
     Callable,
     Annotated,
     get_args,
+    Generic,
+    Tuple,
+    Type,
 )
 from pydantic_core import core_schema
 from pydantic.functional_validators import PlainValidator
@@ -86,7 +89,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
-class ListWrapper(UserList):
+class ListWrapper(Generic[VT], UserList):
     """Used to distinguish parsed list objects from other lists"""
 
     @classmethod
@@ -95,7 +98,7 @@ class ListWrapper(UserList):
     ) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
-            schema = handler(List[args])
+            schema = handler(List[args])  # type: ignore
         else:
             schema = handler(List)
         return core_schema.no_info_after_validator_function(cls.validate, schema)
@@ -230,7 +233,9 @@ class Concept(BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            grain=self.grain.with_namespace(namespace)
+            if self.grain
+            else Grain(components=[]),
             namespace=namespace,
             keys=self.keys,
         )
@@ -242,7 +247,7 @@ class Concept(BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain,
+            grain=grain or Grain(components=[]),
             namespace=self.namespace,
             keys=self.keys,
         )
@@ -426,7 +431,7 @@ class Function(BaseModel):
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
-    arguments: List[
+    arguments: Sequence[
         Union[
             Concept,
             "AggregateWrapper",
@@ -491,13 +496,14 @@ class Function(BaseModel):
                         f" {operator_name} from function {arg.operator.name}"
                     )
             # check constants
-            for ptype, dtype in [
-                [str, DataType.STRING],
-                [int, DataType.INTEGER],
-                [float, DataType.FLOAT],
-                [bool, DataType.BOOL],
-                [DatePart, DataType.DATE_PART],
-            ]:
+            comparisons: List[Tuple[Type, DataType]] = [
+                (str, DataType.STRING),
+                (int, DataType.INTEGER),
+                (float, DataType.FLOAT),
+                (bool, DataType.BOOL),
+                (DatePart, DataType.DATE_PART),
+            ]
+            for ptype, dtype in comparisons:
                 if isinstance(arg, ptype) and dtype in valid_inputs[idx]:
                     # attempt to exit early to avoid checking all types
                     break
@@ -1411,7 +1417,9 @@ class UndefinedConcept(Concept):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            grain=self.grain.with_namespace(namespace)
+            if self.grain
+            else Grain(components=[]),
             namespace=namespace,
             keys=self.keys,
             environment=self.environment,
@@ -1425,7 +1433,7 @@ class UndefinedConcept(Concept):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain,
+            grain=grain or Grain(components=[]),
             namespace=self.namespace,
             keys=self.keys,
             environment=self.environment,
@@ -1552,19 +1560,21 @@ class Environment(BaseModel):
     @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:
         with open(path, "r") as f:
-            f = f.read()
-        base = cls.model_validate_json(f)
+            read = f.read()
+        base = cls.model_validate_json(read)
         version = get_version()
         if base.version != version:
             return None
         return base
 
-    def to_cache(self, path: str | Path = None) -> Path:
+    def to_cache(self, path: Optional[str | Path] = None) -> Path:
         if not path:
-            path = Path(self.working_path) / ENV_CACHE_NAME
-        with open(path, "w") as f:
+            ppath = Path(self.working_path) / ENV_CACHE_NAME
+        else:
+            ppath = Path(path)
+        with open(ppath, "w") as f:
             f.write(self.json())
-        return path
+        return ppath
 
     @property
     def materialized_concepts(self) -> List[Concept]:

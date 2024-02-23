@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Dict, Any
+from typing import List, Union, Optional, Dict, Any, Sequence
 
 from jinja2 import Template
 
@@ -309,6 +309,9 @@ class BaseDialect:
             AggregateWrapper,
             MagicConstants,
             ListWrapper,
+            DatePart,
+            CaseWhen,
+            CaseElse
             # FilterItem
         ],
         cte: Optional[CTE] = None,
@@ -462,7 +465,7 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements: List[Select | Persist | ShowStatement],
+        statements: Sequence[Select | Persist | ShowStatement],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
         output: List[
