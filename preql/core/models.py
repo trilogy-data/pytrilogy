@@ -117,9 +117,9 @@ class Concept(BaseModel):
     # lineage: Annotated[Optional[
     #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
     # ], WrapValidator(lineage_validator)] = None
-    namespace: Optional[str] = ""
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[List["Concept"]] = None
-    grain: "Grain" = Field(default_factory=empty_grain)
+    grain: "Grain" = Field(default=None, validate_default=True)
 
     def __hash__(self):
         return hash(str(self))
@@ -129,14 +129,9 @@ class Concept(BaseModel):
     def metadata_validation(cls, v):
         v = v or Metadata()
         return v
-# 
-    @validator("namespace")
-    def namespace_enforcement(cls, v):
-        if not v:
-            return DEFAULT_NAMESPACE
-        return v
+#
 
-    @field_validator("grain")
+    @field_validator("grain", mode='before')
     @classmethod
     def parse_grain(cls, v, info: ValidationInfo)->Grain:
         # this is silly - rethink how we do grains
