@@ -2,7 +2,7 @@ from datetime import datetime
 import networkx as nx
 from preql.core.env_processor import generate_graph
 from preql.executor import Executor
-from preql.core.models import ShowStatement, Concept
+from preql.core.models import ShowStatement
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -67,8 +67,8 @@ def test_unnest(duckdb_engine: Executor, expected_results):
         """const array <- [1,2,3];
     """
     )
-    assert duckdb_engine.environment.concepts["array"].lineage.arguments[0] == [1,2,3]
-    
+    assert duckdb_engine.environment.concepts["array"].lineage.arguments[0] == [1, 2, 3]
+
     results = duckdb_engine.execute_text(
         """const array <- [1,2,3];
 const unnest_array <- unnest(array);

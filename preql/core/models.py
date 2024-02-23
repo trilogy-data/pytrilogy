@@ -4,7 +4,6 @@ import os
 from copy import deepcopy
 from typing import (
     Dict,
-    MutableMapping,
     TypeVar,
     List,
     Optional,
@@ -13,23 +12,20 @@ from typing import (
     Any,
     Sequence,
     ValuesView,
+    Callable,
+    Annotated,
+    get_args,
 )
 from pydantic_core import core_schema
-from typing import Callable
-from dataclasses import dataclass
-from typing import Annotated
-from pydantic import Field, TypeAdapter, ValidationError
-
-from pydantic.functional_validators import PlainValidator, WrapValidator
+from pydantic.functional_validators import PlainValidator
 from pydantic import (
     BaseModel,
-    ValidationError,
+    Field,
+    ConfigDict,
+    field_validator,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
 )
-
-from pydantic import BaseModel, validator, Field, ConfigDict, validator, field_validator, ValidationInfo
-from pydantic.functional_validators import FieldValidatorModes 
 from lark.tree import Meta
 from pathlib import Path
 from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
@@ -54,9 +50,7 @@ from preql.core.enums import (
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
-from typing import Generic
 from collections import UserList
-from typing import Any, get_args, List, Callable
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -64,9 +58,12 @@ KT = TypeVar("KT")
 VT = TypeVar("VT")
 LT = TypeVar("LT")
 
+
 def get_version():
     from preql import __version__
+
     return __version__
+
 
 def get_concept_arguments(expr) -> List["Concept"]:
     output = []
@@ -88,9 +85,9 @@ def get_concept_arguments(expr) -> List["Concept"]:
         output += expr.concept_arguments
     return output
 
+
 class ListWrapper(UserList):
-    '''Used to distinguish parsed list objects from other lists'''
-    pass
+    """Used to distinguish parsed list objects from other lists"""
 
     @classmethod
     def __get_pydantic_core_schema__(
@@ -107,6 +104,7 @@ class ListWrapper(UserList):
     def validate(cls, v):
         return cls(v)
 
+
 class Metadata(BaseModel):
     """Metadata container object.
     TODO: support arbitrary tags"""
@@ -115,27 +113,28 @@ class Metadata(BaseModel):
     line_number: Optional[int] = None
     concept_source: ConceptSource = ConceptSource.MANUAL
 
-def lineage_validator(v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo)->Union[Function, WindowItem, FilterItem, AggregateWrapper]:
-    if v and not isinstance(
-        v, (Function, WindowItem, FilterItem, AggregateWrapper)
-    ):
+
+def lineage_validator(
+    v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
+) -> Union[Function, WindowItem, FilterItem, AggregateWrapper]:
+    if v and not isinstance(v, (Function, WindowItem, FilterItem, AggregateWrapper)):
         raise ValueError(v)
     return v
 
-def empty_grain()->Grain:
+
+def empty_grain() -> Grain:
     return Grain(components=[])
-        
+
+
 class Concept(BaseModel):
     name: str
     datatype: DataType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
-        validate_default=True
+        validate_default=True,
     )
-    lineage: Optional[
-        Union[Function, WindowItem, FilterItem, AggregateWrapper]
-    ] = None
+    lineage: Optional[Union[Function, WindowItem, FilterItem, AggregateWrapper]] = None
     # lineage: Annotated[Optional[
     #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
     # ], WrapValidator(lineage_validator)] = None
@@ -145,12 +144,11 @@ class Concept(BaseModel):
 
     def __hash__(self):
         return hash(str(self))
-    
-    @field_validator("namespace", mode='plain')
+
+    @field_validator("namespace", mode="plain")
     @classmethod
     def namespace_validation(cls, v):
         return v or DEFAULT_NAMESPACE
-
 
     @field_validator("metadata")
     @classmethod
@@ -158,9 +156,9 @@ class Concept(BaseModel):
         v = v or Metadata()
         return v
 
-    @field_validator("grain", mode='before')
+    @field_validator("grain", mode="before")
     @classmethod
-    def parse_grain(cls, v, info: ValidationInfo)->Grain:
+    def parse_grain(cls, v, info: ValidationInfo) -> Grain:
         # this is silly - rethink how we do grains
         values = info.data
         if not v and values.get("purpose", None) == Purpose.KEY:
@@ -321,7 +319,6 @@ class Concept(BaseModel):
         return PurposeLineage.BASIC
 
 
-
 class Grain(BaseModel):
     nested: bool = False
     components: List[Concept] = Field(default_factory=list, validate_default=True)
@@ -394,6 +391,7 @@ class Grain(BaseModel):
         else:
             return self.__add__(other)
 
+
 class RawColumnExpr(BaseModel):
     text: str
 
@@ -458,6 +456,7 @@ class Function(BaseModel):
     @classmethod
     def parse_arguments(cls, v, info: ValidationInfo):
         from preql.parsing.exceptions import ParseError
+
         values = info.data
         arg_count = len(v)
         target_arg_count = values["arg_count"]
@@ -808,12 +807,10 @@ class Query(BaseModel):
     text: str
 
 
-def safe_concept(v):
+def safe_concept(v: Union[Dict, Concept]) -> Concept:
     if isinstance(v, dict):
-        return Concept.parse_obj(v)
+        return Concept.model_validate(v)
     return v
-
-
 
 
 class GrainWindow(BaseModel):
@@ -843,17 +840,19 @@ class Datasource(BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = Field(default_factory=lambda: Grain(components=[]), validate_default=True)
+    grain: Grain = Field(
+        default_factory=lambda: Grain(components=[]), validate_default=True
+    )
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
 
-    @field_validator("namespace", mode='plain')
+    @field_validator("namespace", mode="plain")
     @classmethod
     def namespace_validation(cls, v):
         return v or DEFAULT_NAMESPACE
-    
+
     def add_column(self, concept: Concept, alias: str, modifiers=None):
         self.columns.append(
             ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
@@ -866,9 +865,9 @@ class Datasource(BaseModel):
             v = Address(location=v)
         return v
 
-    @field_validator("grain", mode='plain')
+    @field_validator("grain", mode="plain")
     @classmethod
-    def grain_enforcement(cls, v: Grain, info:ValidationInfo):
+    def grain_enforcement(cls, v: Grain, info: ValidationInfo):
         values = info.data
         v = safe_grain(v)
         if not v or (v and not v.components):
@@ -1097,7 +1096,6 @@ class QueryDatasource(BaseModel):
 
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
-
 
     def __hash__(self):
         return (self.identifier).__hash__()
@@ -1399,12 +1397,12 @@ class Join(BaseModel):
 
 
 class UndefinedConcept(Concept):
-    model_config = ConfigDict(arbitrary_types_allowed=True) 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     environment: "EnvironmentConceptDict"
     line_no: int | None = None
-    datatype:DataType = DataType.UNKNOWN
-    purpose:Purpose = Purpose.AUTO
+    datatype: DataType = DataType.UNKNOWN
+    purpose: Purpose = Purpose.AUTO
 
     def with_namespace(self, namespace: str) -> "UndefinedConcept":
         return self.__class__(
@@ -1523,32 +1521,36 @@ class Import(BaseModel):
     # TODO: this might result in a lot of duplication
     # environment:"Environment"
 
+
 class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
 
-def validate_concepts( v)-> EnvironmentConceptDict:
+
+def validate_concepts(v) -> EnvironmentConceptDict:
     if isinstance(v, EnvironmentConceptDict):
         return v
     elif isinstance(v, dict):
-        return EnvironmentConceptDict(**{x:Concept.model_validate(y) for x,y in v.items()})
+        return EnvironmentConceptDict(
+            **{x: Concept.model_validate(y) for x, y in v.items()}
+        )
     raise ValueError
 
-class Environment(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True, strict=False) 
 
-    concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = Field(
-        default_factory=EnvironmentConceptDict
-    )
+class Environment(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
+
+    concepts: Annotated[
+        EnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=EnvironmentConceptDict)
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
-    
-    
+
     @classmethod
-    def from_cache(cls, path)->Optional["Environment"]:
+    def from_cache(cls, path) -> Optional["Environment"]:
         with open(path, "r") as f:
             f = f.read()
         base = cls.model_validate_json(f)
@@ -1774,14 +1776,12 @@ class CaseWhen(BaseModel):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
 
-
 class CaseElse(BaseModel):
     expr: "Expr"
 
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
-
 
 
 class Conditional(BaseModel):
@@ -1792,7 +1792,6 @@ class Conditional(BaseModel):
         int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
     ]
     operator: BooleanOperator
-
 
     def __add__(self, other) -> "Conditional":
         if other is None:
@@ -1961,8 +1960,6 @@ class Parenthetical(BaseModel):
     # Union[
     #     int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
     # ]
-
-
 
     def __str__(self):
         return self.__repr__()

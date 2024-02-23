@@ -64,10 +64,8 @@ class DataType(Enum):
     UNKNOWN = "unknown"
 
 
-
 class ArrayType(BaseModel):
     type: Union["ArrayType", "MapType", DataType]
-
 
 
 class MapType(BaseModel):
