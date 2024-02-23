@@ -54,12 +54,15 @@ from preql.core.enums import (
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
-
+from typing import Generic
+from collections import UserList
+from typing import Any, get_args, List, Callable
 
 LOGGER_PREFIX = "[MODELS]"
 
 KT = TypeVar("KT")
 VT = TypeVar("VT")
+LT = TypeVar("LT")
 
 def get_version():
     from preql import __version__
@@ -85,6 +88,24 @@ def get_concept_arguments(expr) -> List["Concept"]:
         output += expr.concept_arguments
     return output
 
+class ListWrapper(UserList):
+    '''Used to distinguish parsed list objects from other lists'''
+    pass
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    ) -> core_schema.CoreSchema:
+        args = get_args(source_type)
+        if args:
+            schema = handler(List[args])
+        else:
+            schema = handler(List)
+        return core_schema.no_info_after_validator_function(cls.validate, schema)
+
+    @classmethod
+    def validate(cls, v):
+        return cls(v)
 
 class Metadata(BaseModel):
     """Metadata container object.
@@ -109,7 +130,8 @@ class Concept(BaseModel):
     datatype: DataType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
-        default_factory=lambda: Metadata(description=None, line_number=None)
+        default_factory=lambda: Metadata(description=None, line_number=None),
+        validate_default=True
     )
     lineage: Optional[
         Union[Function, WindowItem, FilterItem, AggregateWrapper]
@@ -123,13 +145,18 @@ class Concept(BaseModel):
 
     def __hash__(self):
         return hash(str(self))
+    
+    @field_validator("namespace", mode='plain')
+    @classmethod
+    def namespace_validation(cls, v):
+        return v or DEFAULT_NAMESPACE
 
 
-    @validator("metadata")
+    @field_validator("metadata")
+    @classmethod
     def metadata_validation(cls, v):
         v = v or Metadata()
         return v
-#
 
     @field_validator("grain", mode='before')
     @classmethod
@@ -410,9 +437,13 @@ class Function(BaseModel):
             float,
             str,
             DataType,
+            DatePart,
             "Parenthetical",
             "CaseWhen",
             "CaseElse",
+            ListWrapper[int],
+            ListWrapper[str],
+            ListWrapper[float],
         ]
     ]
 
@@ -423,14 +454,15 @@ class Function(BaseModel):
     def datatype(self):
         return self.output_datatype
 
-    @validator("arguments")
-    def parse_arguments(cls, v, **kwargs):
+    @field_validator("arguments")
+    @classmethod
+    def parse_arguments(cls, v, info: ValidationInfo):
         from preql.parsing.exceptions import ParseError
-
+        values = info.data
         arg_count = len(v)
-        target_arg_count = kwargs["values"]["arg_count"]
-        operator_name = kwargs["values"]["operator"].name
-        valid_inputs = kwargs["values"]["valid_inputs"]
+        target_arg_count = values["arg_count"]
+        operator_name = values["operator"].name
+        valid_inputs = values["valid_inputs"]
         if not arg_count <= target_arg_count:
             if target_arg_count != InfiniteFunctionArgs:
                 raise ParseError(
@@ -472,7 +504,7 @@ class Function(BaseModel):
                     break
                 elif isinstance(arg, ptype):
                     raise TypeError(
-                        f"Invalid {dtype} constant passed into {operator_name} {arg}"
+                        f"Invalid {dtype} constant passed into {operator_name} {arg}, expecting one of {valid_inputs[idx]}"
                     )
         return v
 
@@ -811,31 +843,33 @@ class Datasource(BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = Field(default_factory=lambda: Grain(components=[]))
-    namespace: Optional[str] = ""
+    grain: Grain = Field(default_factory=lambda: Grain(components=[]), validate_default=True)
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
 
+    @field_validator("namespace", mode='plain')
+    @classmethod
+    def namespace_validation(cls, v):
+        return v or DEFAULT_NAMESPACE
+    
     def add_column(self, concept: Concept, alias: str, modifiers=None):
         self.columns.append(
             ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
         )
 
-    @validator("namespace")
-    def namespace_enforcement(cls, v):
-        if not v:
-            return DEFAULT_NAMESPACE
-        return v
-
-    @validator("address")
+    @field_validator("address")
+    @classmethod
     def address_enforcement(cls, v):
         if isinstance(v, str):
             v = Address(location=v)
         return v
 
-    @validator("grain")
-    def grain_enforcement(cls, v: Grain, values):
+    @field_validator("grain", mode='plain')
+    @classmethod
+    def grain_enforcement(cls, v: Grain, info:ValidationInfo):
+        values = info.data
         v = safe_grain(v)
         if not v or (v and not v.components):
             v = Grain(
@@ -1032,16 +1066,20 @@ class QueryDatasource(BaseModel):
             if c.address not in [z.address for z in self.partial_concepts]
         ]
 
-    @validator("input_concepts")
+    @field_validator("input_concepts")
+    @classmethod
     def validate_inputs(cls, v):
         return unique(v, "address")
 
-    @validator("output_concepts")
+    @field_validator("output_concepts")
+    @classmethod
     def validate_outputs(cls, v):
         return unique(v, "address")
 
-    @validator("source_map")
-    def validate_source_map(cls, v, values):
+    @field_validator("source_map")
+    @classmethod
+    def validate_source_map(cls, v, info=ValidationInfo):
+        values = info.data
         expected = {c.address for c in values["output_concepts"]}.union(
             c.address for c in values["input_concepts"]
         )
@@ -1057,17 +1095,9 @@ class QueryDatasource(BaseModel):
             )
         return v
 
-    # @validator("partial_concepts", always=True, pre=True)
-    # def validate_partial_concepts(cls, v):
-    #     return unique(v, "address")
-
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
 
-    # def validate(cls, values):
-    #     # validate this was successfully built.
-    #     for concept in self.output_concepts:
-    #         self.get_alias(concept.with_grain(self.grain))
 
     def __hash__(self):
         return (self.identifier).__hash__()
@@ -1216,7 +1246,7 @@ class CTE(BaseModel):
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
 
-    @validator("output_columns")
+    @field_validator("output_columns")
     def validate_output_columns(cls, v):
         return unique(v, "address")
 
@@ -1674,9 +1704,6 @@ class Comparison(BaseModel):
     ]
     operator: ComparisonOperator
 
-    class Config:
-        smart_union = True
-
     def __post_init__(self):
         if arg_to_datatype(self.left) != arg_to_datatype(self.right):
             raise ValueError(
@@ -1746,8 +1773,6 @@ class CaseWhen(BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
-    class Config:
-        smart_union = True
 
 
 class CaseElse(BaseModel):
@@ -1757,8 +1782,6 @@ class CaseElse(BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
-    class Config:
-        smart_union = True
 
 
 class Conditional(BaseModel):
@@ -1770,8 +1793,6 @@ class Conditional(BaseModel):
     ]
     operator: BooleanOperator
 
-    class Config:
-        smart_union = True
 
     def __add__(self, other) -> "Conditional":
         if other is None:
@@ -1941,8 +1962,7 @@ class Parenthetical(BaseModel):
     #     int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
     # ]
 
-    class Config:
-        smart_union = True
+
 
     def __str__(self):
         return self.__repr__()
@@ -2039,9 +2059,6 @@ InstantiatedUnnestJoin.model_rebuild()
 UndefinedConcept.model_rebuild()
 Function.model_rebuild()
 Grain.model_rebuild()
-
-class ListWrapper(list):
-    pass
 
 
 def arg_to_datatype(arg) -> DataType:

@@ -629,7 +629,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        elif isinstance(args[2], (int, float, str, bool, list)):
+        elif isinstance(args[2], (int, float, str, bool, ListWrapper)):
             const_function: Function = Function(
                 operator=FunctionType.CONSTANT,
                 output_datatype=arg_to_datatype(args[2]),
@@ -1498,12 +1498,9 @@ def unpack_visit_error(e: VisitError):
     raise nested VisitErrors"""
     if isinstance(e.orig_exc, VisitError):
         unpack_visit_error(e.orig_exc)
-    if isinstance(e.orig_exc, (UndefinedConceptException, TypeError)):
-        # raise e.orig_exc
-        raise InvalidSyntaxException(str(e))
-    if isinstance(e.orig_exc, ImportError):
+    elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
         raise e.orig_exc
-    elif isinstance(e.orig_exc, ValidationError):
+    elif isinstance(e.orig_exc, (ValidationError, TypeError)):
         raise InvalidSyntaxException(str(e.orig_exc))
     raise e
 
