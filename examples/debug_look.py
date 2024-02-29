@@ -1,46 +1,38 @@
+import os
+nb_path = __file__
+from sys import path
+from os.path import dirname
 
+root_path = dirname(dirname(nb_path))
+path.insert(0,  r'C:\Users\ethan\coding_projects\trilogy-public-models')
+path.insert(0,  r'C:\Users\ethan\coding_projects\pypreql')
+print(root_path)
+from preql import Dialects
 from trilogy_public_models import models
-from preql import Executor, Dialects
-from preql.hooks.query_debugger import DebuggingHook
-from preql.core.processing.concept_strategies_v2 import resolve_function_parent_concepts
 
-environment = models['bigquery.thelook_ecommerce']
-executor = Dialects.BIGQUERY.default_executor(environment=environment, hooks=[DebuggingHook()])
-# environment.parse('auto question.answer.count <- count(answer.id) by question.id;')
-# environment.parse('auto question.answer.count.avg <- answer.count/ question.count;')
+env = models["bigquery.usa_names"]
 
-# test = environment.concepts['question.answer.count.avg']
-# # print(test.lineage)
-# print(test.derivation)
-# print(test.lineage.concept_arguments)
-# parents = resolve_function_parent_concepts(environment.concepts['question.answer.count.avg'])
 
-# for x in parents:
-#     print(x)
+print(env.concepts['name_count.sum'])
 
+executor = Dialects.BIGQUERY.default_executor(environment=env)
+
+print(type(executor.environment.concepts['name_count.sum'].lineage.arguments[0]))
 results = executor.execute_text(
-'''key cancelled_orders <- filter orders.id where orders.status = 'Cancelled';
-auto orders.id.cancelled_count <- count(cancelled_orders);
+    """
+
+key vermont_names <- filter name where state = 'VT';
+
 
 SELECT
-    orders.id.cancelled_count / orders.id.count -> cancellation_rate,
-    orders.id.cancelled_count,
-    orders.id.count,
-    orders.created_at.year,
-    users.city,
-WHERE
-    (orders.created_at.year = 2020)
-    and orders.id.count>20
-ORDER BY
-    cancellation_rate desc
-LIMIT 10;''',
-
-
+    vermont_names,
+    name_count.sum,
+    year
+where
+    year = 1950
+order by name_count.sum desc
+LIMIT 100;"""
 )
-for row in results:
-    answers = row.fetchall()
-    for x in answers:
-        print(x)
 
-
-
+for row in results[0].fetchall():
+    print(row)

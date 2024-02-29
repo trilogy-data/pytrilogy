@@ -1,9 +1,9 @@
+from __future__ import annotations
 import difflib
 import os
 from copy import deepcopy
 from typing import (
     Dict,
-    MutableMapping,
     TypeVar,
     List,
     Optional,
@@ -12,9 +12,23 @@ from typing import (
     Any,
     Sequence,
     ValuesView,
+    Callable,
+    Annotated,
+    get_args,
+    Generic,
+    Tuple,
+    Type,
 )
-
-from pydantic import BaseModel, validator, Field
+from pydantic_core import core_schema
+from pydantic.functional_validators import PlainValidator
+from pydantic import (
+    BaseModel,
+    Field,
+    ConfigDict,
+    field_validator,
+    ValidationInfo,
+    ValidatorFunctionWrapHandler,
+)
 from lark.tree import Meta
 from pathlib import Path
 from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
@@ -35,14 +49,23 @@ from preql.core.enums import (
     WindowType,
     ConceptSource,
     DatePart,
+    ShowCategory,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
+from collections import UserList
 
 LOGGER_PREFIX = "[MODELS]"
 
 KT = TypeVar("KT")
 VT = TypeVar("VT")
+LT = TypeVar("LT")
+
+
+def get_version():
+    from preql import __version__
+
+    return __version__
 
 
 def get_concept_arguments(expr) -> List["Concept"]:
@@ -66,13 +89,44 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
+class ListWrapper(Generic[VT], UserList):
+    """Used to distinguish parsed list objects from other lists"""
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    ) -> core_schema.CoreSchema:
+        args = get_args(source_type)
+        if args:
+            schema = handler(List[args])  # type: ignore
+        else:
+            schema = handler(List)
+        return core_schema.no_info_after_validator_function(cls.validate, schema)
+
+    @classmethod
+    def validate(cls, v):
+        return cls(v)
+
+
 class Metadata(BaseModel):
     """Metadata container object.
     TODO: support arbitrary tags"""
 
-    description: Optional[str]
-    line_number: Optional[int]
+    description: Optional[str] = None
+    line_number: Optional[int] = None
     concept_source: ConceptSource = ConceptSource.MANUAL
+
+
+def lineage_validator(
+    v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
+) -> Union[Function, WindowItem, FilterItem, AggregateWrapper]:
+    if v and not isinstance(v, (Function, WindowItem, FilterItem, AggregateWrapper)):
+        raise ValueError(v)
+    return v
+
+
+def empty_grain() -> Grain:
+    return Grain(components=[])
 
 
 class Concept(BaseModel):
@@ -80,40 +134,36 @@ class Concept(BaseModel):
     datatype: DataType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
-        default_factory=lambda: Metadata(description=None, line_number=None)
+        default_factory=lambda: Metadata(description=None, line_number=None),
+        validate_default=True,
     )
-    lineage: Optional[
-        Union["Function", "WindowItem", "FilterItem", "AggregateWrapper"]
-    ] = None
-    namespace: Optional[str] = ""
+    lineage: Optional[Union[Function, WindowItem, FilterItem, AggregateWrapper]] = None
+    # lineage: Annotated[Optional[
+    #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
+    # ], WrapValidator(lineage_validator)] = None
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[List["Concept"]] = None
-    grain: Optional["Grain"] = Field(default=None)
+    grain: "Grain" = Field(default=None, validate_default=True)
 
     def __hash__(self):
         return hash(str(self))
 
-    @validator("lineage")
-    def lineage_validator(cls, v):
-        if v and not isinstance(
-            v, (Function, WindowItem, FilterItem, AggregateWrapper)
-        ):
-            raise ValueError(v)
-        return v
+    @field_validator("namespace", mode="plain")
+    @classmethod
+    def namespace_validation(cls, v):
+        return v or DEFAULT_NAMESPACE
 
-    @validator("metadata")
+    @field_validator("metadata")
+    @classmethod
     def metadata_validation(cls, v):
         v = v or Metadata()
         return v
 
-    @validator("namespace", pre=True, always=True)
-    def namespace_enforcement(cls, v):
-        if not v:
-            return DEFAULT_NAMESPACE
-        return v
-
-    @validator("grain", pre=True, always=True)
-    def parse_grain(cls, v, values):
+    @field_validator("grain", mode="before")
+    @classmethod
+    def parse_grain(cls, v, info: ValidationInfo) -> Grain:
         # this is silly - rethink how we do grains
+        values = info.data
         if not v and values.get("purpose", None) == Purpose.KEY:
             v = Grain(
                 components=[
@@ -126,12 +176,18 @@ class Concept(BaseModel):
                     )
                 ]
             )
-        elif isinstance(values["lineage"], AggregateWrapper) and values["lineage"].by:
+        elif (
+            "lineage" in values
+            and isinstance(values["lineage"], AggregateWrapper)
+            and values["lineage"].by
+        ):
             v = Grain(components=values["lineage"].by)
         elif not v:
             v = Grain(components=[])
         elif isinstance(v, Concept):
             v = Grain(components=[v])
+        if not v:
+            raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
         return v
 
     def __eq__(self, other: object):
@@ -177,7 +233,9 @@ class Concept(BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            grain=self.grain.with_namespace(namespace)
+            if self.grain
+            else Grain(components=[]),
             namespace=namespace,
             keys=self.keys,
         )
@@ -189,7 +247,7 @@ class Concept(BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain,
+            grain=grain or Grain(components=[]),
             namespace=self.namespace,
             keys=self.keys,
         )
@@ -266,6 +324,79 @@ class Concept(BaseModel):
         return PurposeLineage.BASIC
 
 
+class Grain(BaseModel):
+    nested: bool = False
+    components: List[Concept] = Field(default_factory=list, validate_default=True)
+
+    @field_validator("components")
+    def component_nest(cls, v, info: ValidationInfo):
+        values = info.data
+        if not values.get("nested", False):
+            v = [safe_concept(c).with_default_grain() for c in v]
+        v = unique(v, "address")
+        return v
+
+    @property
+    def components_copy(self) -> List[Concept]:
+        return deepcopy(self.components)
+
+    def __str__(self):
+        if self.abstract:
+            return "Grain<Abstract>"
+        return "Grain<" + ",".join([c.address for c in self.components]) + ">"
+
+    def with_namespace(self, namespace: str) -> "Grain":
+        return Grain(
+            components=[c.with_namespace(namespace) for c in self.components],
+            nested=self.nested,
+        )
+
+    @property
+    def abstract(self):
+        return not self.components
+
+    @property
+    def set(self):
+        return set([c.address for c in self.components_copy])
+
+    def __eq__(self, other: object):
+        if not isinstance(other, Grain):
+            return False
+        return self.set == other.set
+
+    def issubset(self, other: "Grain"):
+        return self.set.issubset(other.set)
+
+    def isdisjoint(self, other: "Grain"):
+        return self.set.isdisjoint(other.set)
+
+    def intersection(self, other: "Grain") -> "Grain":
+        intersection = self.set.intersection(other.set)
+        components = [i for i in self.components if i.name in intersection]
+        return Grain(components=components)
+
+    def __add__(self, other: "Grain") -> "Grain":
+        components = []
+        for clist in [self.components_copy, other.components_copy]:
+            for component in clist:
+                if component.with_default_grain() in components:
+                    continue
+                components.append(component.with_default_grain())
+        base_components = [c for c in components if c.purpose == Purpose.KEY]
+        for c in components:
+            if c.purpose == Purpose.PROPERTY and not any(
+                [key in base_components for key in (c.keys or [])]
+            ):
+                base_components.append(c)
+        return Grain(components=base_components)
+
+    def __radd__(self, other) -> "Grain":
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
+
+
 class RawColumnExpr(BaseModel):
     text: str
 
@@ -300,7 +431,24 @@ class Function(BaseModel):
     output_datatype: DataType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
-    arguments: List[Any]
+    arguments: Sequence[
+        Union[
+            Concept,
+            "AggregateWrapper",
+            "Function",
+            int,
+            float,
+            str,
+            DataType,
+            DatePart,
+            "Parenthetical",
+            "CaseWhen",
+            "CaseElse",
+            ListWrapper[int],
+            ListWrapper[str],
+            ListWrapper[float],
+        ]
+    ]
 
     def __str__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -309,14 +457,16 @@ class Function(BaseModel):
     def datatype(self):
         return self.output_datatype
 
-    @validator("arguments", pre=True, always=True)
-    def parse_arguments(cls, v, **kwargs):
+    @field_validator("arguments")
+    @classmethod
+    def parse_arguments(cls, v, info: ValidationInfo):
         from preql.parsing.exceptions import ParseError
 
+        values = info.data
         arg_count = len(v)
-        target_arg_count = kwargs["values"]["arg_count"]
-        operator_name = kwargs["values"]["operator"].name
-        valid_inputs = kwargs["values"]["valid_inputs"]
+        target_arg_count = values["arg_count"]
+        operator_name = values["operator"].name
+        valid_inputs = values["valid_inputs"]
         if not arg_count <= target_arg_count:
             if target_arg_count != InfiniteFunctionArgs:
                 raise ParseError(
@@ -346,19 +496,20 @@ class Function(BaseModel):
                         f" {operator_name} from function {arg.operator.name}"
                     )
             # check constants
-            for ptype, dtype in [
-                [str, DataType.STRING],
-                [int, DataType.INTEGER],
-                [float, DataType.FLOAT],
-                [bool, DataType.BOOL],
-                [DatePart, DataType.DATE_PART],
-            ]:
+            comparisons: List[Tuple[Type, DataType]] = [
+                (str, DataType.STRING),
+                (int, DataType.INTEGER),
+                (float, DataType.FLOAT),
+                (bool, DataType.BOOL),
+                (DatePart, DataType.DATE_PART),
+            ]
+            for ptype, dtype in comparisons:
                 if isinstance(arg, ptype) and dtype in valid_inputs[idx]:
                     # attempt to exit early to avoid checking all types
                     break
                 elif isinstance(arg, ptype):
                     raise TypeError(
-                        f"Invalid {dtype} constant passed into {operator_name} {arg}"
+                        f"Invalid {dtype} constant passed into {operator_name} {arg}, expecting one of {valid_inputs[idx]}"
                     )
         return v
 
@@ -662,82 +813,10 @@ class Query(BaseModel):
     text: str
 
 
-def safe_concept(v):
+def safe_concept(v: Union[Dict, Concept]) -> Concept:
     if isinstance(v, dict):
-        return Concept.parse_obj(v)
+        return Concept.model_validate(v)
     return v
-
-
-class Grain(BaseModel):
-    nested: bool = False
-    components: List[Concept] = Field(default_factory=list)
-
-    @validator("components", pre=True, always=True)
-    def component_nest(cls, v, values: dict[str, object]):
-        if not values.get("nested", False):
-            v = [safe_concept(c).with_default_grain() for c in v]
-        v = unique(v, "address")
-        return v
-
-    @property
-    def components_copy(self) -> List[Concept]:
-        return deepcopy(self.components)
-
-    def __str__(self):
-        if self.abstract:
-            return "Grain<Abstract>"
-        return "Grain<" + ",".join([c.address for c in self.components]) + ">"
-
-    def with_namespace(self, namespace: str) -> "Grain":
-        return Grain(
-            components=[c.with_namespace(namespace) for c in self.components],
-            nested=self.nested,
-        )
-
-    @property
-    def abstract(self):
-        return not self.components
-
-    @property
-    def set(self):
-        return set([c.address for c in self.components_copy])
-
-    def __eq__(self, other: object):
-        if not isinstance(other, Grain):
-            return False
-        return self.set == other.set
-
-    def issubset(self, other: "Grain"):
-        return self.set.issubset(other.set)
-
-    def isdisjoint(self, other: "Grain"):
-        return self.set.isdisjoint(other.set)
-
-    def intersection(self, other: "Grain") -> "Grain":
-        intersection = self.set.intersection(other.set)
-        components = [i for i in self.components if i.name in intersection]
-        return Grain(components=components)
-
-    def __add__(self, other: "Grain") -> "Grain":
-        components = []
-        for clist in [self.components_copy, other.components_copy]:
-            for component in clist:
-                if component.with_default_grain() in components:
-                    continue
-                components.append(component.with_default_grain())
-        base_components = [c for c in components if c.purpose == Purpose.KEY]
-        for c in components:
-            if c.purpose == Purpose.PROPERTY and not any(
-                [key in base_components for key in (c.keys or [])]
-            ):
-                base_components.append(c)
-        return Grain(components=base_components)
-
-    def __radd__(self, other) -> "Grain":
-        if other == 0:
-            return self
-        else:
-            return self.__add__(other)
 
 
 class GrainWindow(BaseModel):
@@ -767,31 +846,35 @@ class Datasource(BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = Field(default_factory=lambda: Grain(components=[]))
-    namespace: Optional[str] = ""
+    grain: Grain = Field(
+        default_factory=lambda: Grain(components=[]), validate_default=True
+    )
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
+
+    @field_validator("namespace", mode="plain")
+    @classmethod
+    def namespace_validation(cls, v):
+        return v or DEFAULT_NAMESPACE
 
     def add_column(self, concept: Concept, alias: str, modifiers=None):
         self.columns.append(
             ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
         )
 
-    @validator("namespace", pre=True, always=True)
-    def namespace_enforcement(cls, v):
-        if not v:
-            return DEFAULT_NAMESPACE
-        return v
-
-    @validator("address", pre=True, always=True)
+    @field_validator("address")
+    @classmethod
     def address_enforcement(cls, v):
         if isinstance(v, str):
             v = Address(location=v)
         return v
 
-    @validator("grain", always=True, pre=True)
-    def grain_enforcement(cls, v: Grain, values):
+    @field_validator("grain", mode="plain")
+    @classmethod
+    def grain_enforcement(cls, v: Grain, info: ValidationInfo):
+        values = info.data
         v = safe_grain(v)
         if not v or (v and not v.components):
             v = Grain(
@@ -988,16 +1071,20 @@ class QueryDatasource(BaseModel):
             if c.address not in [z.address for z in self.partial_concepts]
         ]
 
-    @validator("input_concepts", always=True, pre=True)
+    @field_validator("input_concepts")
+    @classmethod
     def validate_inputs(cls, v):
         return unique(v, "address")
 
-    @validator("output_concepts", always=True, pre=True)
+    @field_validator("output_concepts")
+    @classmethod
     def validate_outputs(cls, v):
         return unique(v, "address")
 
-    @validator("source_map", always=True, pre=True)
-    def validate_source_map(cls, v, values):
+    @field_validator("source_map")
+    @classmethod
+    def validate_source_map(cls, v, info=ValidationInfo):
+        values = info.data
         expected = {c.address for c in values["output_concepts"]}.union(
             c.address for c in values["input_concepts"]
         )
@@ -1013,17 +1100,8 @@ class QueryDatasource(BaseModel):
             )
         return v
 
-    # @validator("partial_concepts", always=True, pre=True)
-    # def validate_partial_concepts(cls, v):
-    #     return unique(v, "address")
-
     def __str__(self):
         return f"{self.identifier}@<{self.grain}>"
-
-    # def validate(cls, values):
-    #     # validate this was successfully built.
-    #     for concept in self.output_concepts:
-    #         self.get_alias(concept.with_grain(self.grain))
 
     def __hash__(self):
         return (self.identifier).__hash__()
@@ -1092,9 +1170,11 @@ class QueryDatasource(BaseModel):
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
             # joins = self.joins,
-            condition=self.condition + other.condition
-            if (self.condition or other.condition)
-            else None,
+            condition=(
+                self.condition + other.condition
+                if (self.condition or other.condition)
+                else None
+            ),
             source_type=self.source_type,
         )
 
@@ -1170,7 +1250,7 @@ class CTE(BaseModel):
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
 
-    @validator("output_columns", pre=True, always=True)
+    @field_validator("output_columns")
     def validate_output_columns(cls, v):
         return unique(v, "address")
 
@@ -1323,11 +1403,12 @@ class Join(BaseModel):
 
 
 class UndefinedConcept(Concept):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     environment: "EnvironmentConceptDict"
     line_no: int | None = None
-    datatype = DataType.UNKNOWN
-    purpose = Purpose.AUTO
+    datatype: DataType = DataType.UNKNOWN
+    purpose: Purpose = Purpose.AUTO
 
     def with_namespace(self, namespace: str) -> "UndefinedConcept":
         return self.__class__(
@@ -1336,7 +1417,9 @@ class UndefinedConcept(Concept):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            grain=self.grain.with_namespace(namespace)
+            if self.grain
+            else Grain(components=[]),
             namespace=namespace,
             keys=self.keys,
             environment=self.environment,
@@ -1350,7 +1433,7 @@ class UndefinedConcept(Concept):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain,
+            grain=grain or Grain(components=[]),
             namespace=self.namespace,
             keys=self.keys,
             environment=self.environment,
@@ -1391,11 +1474,18 @@ class UndefinedConcept(Concept):
         )
 
 
-class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
+class EnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(self, *args, **kwargs)
         self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = False
+        self.populate_default_concepts()
+
+    def populate_default_concepts(self):
+        from preql.core.internal import DEFAULT_CONCEPTS
+
+        for concept in DEFAULT_CONCEPTS.values():
+            self[concept.address] = concept
 
     def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
@@ -1419,7 +1509,7 @@ class EnvironmentConceptDict(dict, MutableMapping[KT, VT]):
                 return undefined
 
             matches = self._find_similar_concepts(key)
-            message = f"undefined concept: {key}."
+            message = f"Undefined concept: {key}."
             if matches:
                 message += f" Suggestions: {matches}"
 
@@ -1444,27 +1534,47 @@ class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
 
 
+def validate_concepts(v) -> EnvironmentConceptDict:
+    if isinstance(v, EnvironmentConceptDict):
+        return v
+    elif isinstance(v, dict):
+        return EnvironmentConceptDict(
+            **{x: Concept.model_validate(y) for x, y in v.items()}
+        )
+    raise ValueError
+
+
 class Environment(BaseModel):
-    concepts: EnvironmentConceptDict[str, Concept] = Field(
-        default_factory=EnvironmentConceptDict
-    )
+    model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
+
+    concepts: Annotated[
+        EnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=EnvironmentConceptDict)
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
+    version: str = Field(default_factory=get_version)
 
     @classmethod
-    def from_cache(cls, path):
-        base = cls.parse_file(path)
-        base.concepts = EnvironmentConceptDict(**base.concepts)
+    def from_cache(cls, path) -> Optional["Environment"]:
+        with open(path, "r") as f:
+            read = f.read()
+        base = cls.model_validate_json(read)
+        version = get_version()
+        if base.version != version:
+            return None
         return base
 
-    def to_cache(self):
-        path = Path(self.working_path) / ENV_CACHE_NAME
-        with open(path, "w") as f:
+    def to_cache(self, path: Optional[str | Path] = None) -> Path:
+        if not path:
+            ppath = Path(self.working_path) / ENV_CACHE_NAME
+        else:
+            ppath = Path(path)
+        with open(ppath, "w") as f:
             f.write(self.json())
-        return path
+        return ppath
 
     @property
     def materialized_concepts(self) -> List[Concept]:
@@ -1514,6 +1624,10 @@ class Environment(BaseModel):
             new = Environment(namespace=namespace)
             new.parse(input)
             for key, concept in new.concepts.items():
+                if not isinstance(concept, Concept):
+                    raise SyntaxError(
+                        f"Parsed environment {namespace} has invalid concept {type(concept)}"
+                    )
                 self.concepts[f"{namespace}.{key}"] = concept
             for key, datasource in new.datasources.items():
                 self.datasources[f"{namespace}.{key}"] = datasource
@@ -1602,9 +1716,6 @@ class Comparison(BaseModel):
     ]
     operator: ComparisonOperator
 
-    class Config:
-        smart_union = True
-
     def __post_init__(self):
         if arg_to_datatype(self.left) != arg_to_datatype(self.right):
             raise ValueError(
@@ -1623,12 +1734,20 @@ class Comparison(BaseModel):
 
     def with_namespace(self, namespace: str):
         return Comparison(
-            left=self.left.with_namespace(namespace)
-            if isinstance(self.left, (Concept, Function, Conditional, Parenthetical))
-            else self.left,
-            right=self.right.with_namespace(namespace)
-            if isinstance(self.right, (Concept, Function, Conditional, Parenthetical))
-            else self.right,
+            left=(
+                self.left.with_namespace(namespace)
+                if isinstance(
+                    self.left, (Concept, Function, Conditional, Parenthetical)
+                )
+                else self.left
+            ),
+            right=(
+                self.right.with_namespace(namespace)
+                if isinstance(
+                    self.right, (Concept, Function, Conditional, Parenthetical)
+                )
+                else self.right
+            ),
             operator=self.operator,
         )
 
@@ -1666,9 +1785,6 @@ class CaseWhen(BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
-    class Config:
-        smart_union = True
-
 
 class CaseElse(BaseModel):
     expr: "Expr"
@@ -1676,9 +1792,6 @@ class CaseElse(BaseModel):
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
-
-    class Config:
-        smart_union = True
 
 
 class Conditional(BaseModel):
@@ -1689,9 +1802,6 @@ class Conditional(BaseModel):
         int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
     ]
     operator: BooleanOperator
-
-    class Config:
-        smart_union = True
 
     def __add__(self, other) -> "Conditional":
         if other is None:
@@ -1708,12 +1818,20 @@ class Conditional(BaseModel):
 
     def with_namespace(self, namespace: str):
         return Conditional(
-            left=self.left.with_namespace(namespace)
-            if isinstance(self.left, (Concept, Comparison, Conditional, Parenthetical))
-            else self.left,
-            right=self.right.with_namespace(namespace)
-            if isinstance(self.right, (Concept, Comparison, Conditional, Parenthetical))
-            else self.right,
+            left=(
+                self.left.with_namespace(namespace)
+                if isinstance(
+                    self.left, (Concept, Comparison, Conditional, Parenthetical)
+                )
+                else self.left
+            ),
+            right=(
+                self.right.with_namespace(namespace)
+                if isinstance(
+                    self.right, (Concept, Comparison, Conditional, Parenthetical)
+                )
+                else self.right
+            ),
             operator=self.operator,
         )
 
@@ -1834,6 +1952,11 @@ class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
     pass
 
 
+class ProcessedShowStatement(BaseModel):
+    output_columns: List[Concept]
+    output_values: List[Union[Concept, Datasource, ProcessedQuery]]
+
+
 class Limit(BaseModel):
     count: int
 
@@ -1847,9 +1970,6 @@ class Parenthetical(BaseModel):
     # Union[
     #     int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
     # ]
-
-    class Config:
-        smart_union = True
 
     def __str__(self):
         return self.__repr__()
@@ -1866,9 +1986,11 @@ class Parenthetical(BaseModel):
 
     def with_namespace(self, namespace: str):
         return Parenthetical(
-            content=self.content.with_namespace(namespace)
-            if hasattr(self.content, "with_namespace")
-            else self.content
+            content=(
+                self.content.with_namespace(namespace)
+                if hasattr(self.content, "with_namespace")
+                else self.content
+            )
         )
 
     @property
@@ -1903,6 +2025,10 @@ class Persist(BaseModel):
         return self.datasource.address
 
 
+class ShowStatement(BaseModel):
+    content: Select | Persist | ShowCategory
+
+
 Expr = (
     bool
     | int
@@ -1918,30 +2044,28 @@ Expr = (
 )
 
 
-Concept.update_forward_refs()
-Grain.update_forward_refs()
-WindowItem.update_forward_refs()
-WindowItemOrder.update_forward_refs()
-FilterItem.update_forward_refs()
-Comparison.update_forward_refs()
-Conditional.update_forward_refs()
-Parenthetical.update_forward_refs()
-WhereClause.update_forward_refs()
-Import.update_forward_refs
-CaseWhen.update_forward_refs()
-CaseElse.update_forward_refs()
-Select.update_forward_refs()
-CTE.update_forward_refs()
-BaseJoin.update_forward_refs()
-QueryDatasource.update_forward_refs()
-ProcessedQuery.update_forward_refs()
-ProcessedQueryPersist.update_forward_refs()
-InstantiatedUnnestJoin.update_forward_refs()
-UndefinedConcept.update_forward_refs()
-
-
-class ListWrapper(list):
-    pass
+Concept.model_rebuild()
+Grain.model_rebuild()
+WindowItem.model_rebuild()
+WindowItemOrder.model_rebuild()
+FilterItem.model_rebuild()
+Comparison.model_rebuild()
+Conditional.model_rebuild()
+Parenthetical.model_rebuild()
+WhereClause.model_rebuild()
+Import.model_rebuild()
+CaseWhen.model_rebuild()
+CaseElse.model_rebuild()
+Select.model_rebuild()
+CTE.model_rebuild()
+BaseJoin.model_rebuild()
+QueryDatasource.model_rebuild()
+ProcessedQuery.model_rebuild()
+ProcessedQueryPersist.model_rebuild()
+InstantiatedUnnestJoin.model_rebuild()
+UndefinedConcept.model_rebuild()
+Function.model_rebuild()
+Grain.model_rebuild()
 
 
 def arg_to_datatype(arg) -> DataType:

@@ -1,8 +1,9 @@
-from typing import List, Union, Optional, Dict, Any
+from typing import List, Union, Optional, Dict, Any, Sequence
 
 from jinja2 import Template
 
 from preql.constants import CONFIG, logger, MagicConstants
+from preql.core.internal import DEFAULT_CONCEPTS
 from preql.core.enums import (
     Purpose,
     DataType,
@@ -15,6 +16,7 @@ from preql.core.models import (
     CTE,
     ProcessedQuery,
     ProcessedQueryPersist,
+    ProcessedShowStatement,
     CompiledCTE,
     Conditional,
     Comparison,
@@ -31,6 +33,7 @@ from preql.core.models import (
     Environment,
     RawColumnExpr,
     ListWrapper,
+    ShowStatement,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -47,25 +50,25 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
 
 WINDOW_FUNCTION_MAP = {
     WindowType.LAG: lambda concept, window, sort: (
-        f"lag({concept}) over (partition by {window} order by {sort} )"
-    )
-    if window
-    else f"lag({concept}) over (order by {sort})",
+        (f"lag({concept}) over (partition by {window} order by {sort} )")
+        if window
+        else f"lag({concept}) over (order by {sort})"
+    ),
     WindowType.LEAD: lambda concept, window, sort: (
-        f"lead({concept}) over (partition by {window} order by {sort})"
-    )
-    if window
-    else f"lead({concept}) over (order by {sort})",
+        (f"lead({concept}) over (partition by {window} order by {sort})")
+        if window
+        else f"lead({concept}) over (order by {sort})"
+    ),
     WindowType.RANK: lambda concept, window, sort: (
-        f"rank() over (partition by {window} order by {sort})"
-    )
-    if window
-    else f"rank() over (order by {sort} )",
+        (f"rank() over (partition by {window} order by {sort})")
+        if window
+        else f"rank() over (order by {sort} )"
+    ),
     WindowType.ROW_NUMBER: lambda concept, window, sort: (
-        f"row_number() over (partition by {window} order by {sort})"
-    )
-    if window
-    else f"row_number() over (order by {sort})",
+        (f"row_number() over (partition by {window} order by {sort})")
+        if window
+        else f"row_number() over (order by {sort})"
+    ),
 }
 
 DATATYPE_MAP = {
@@ -306,6 +309,9 @@ class BaseDialect:
             AggregateWrapper,
             MagicConstants,
             ListWrapper,
+            DatePart,
+            CaseWhen,
+            CaseElse
             # FilterItem
         ],
         cte: Optional[CTE] = None,
@@ -392,9 +398,11 @@ class BaseDialect:
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
                 select_columns=select_columns,
-                base=f"{cte.base_name} as {cte.base_alias}"
-                if cte.render_from_clause
-                else None,
+                base=(
+                    f"{cte.base_name} as {cte.base_alias}"
+                    if cte.render_from_clause
+                    else None
+                ),
                 grain=cte.grain,
                 limit=None,
                 # some joins may not need to be rendered
@@ -412,38 +420,40 @@ class BaseDialect:
                     ]
                     if j
                 ],
-                where=self.render_expr(cte.condition, cte)
-                if cte.condition
-                else None,  # source_map=cte_output_map)
+                where=(
+                    self.render_expr(cte.condition, cte) if cte.condition else None
+                ),  # source_map=cte_output_map)
                 # where=self.render_expr(where_assignment[cte.name], cte)
                 # if cte.name in where_assignment
                 # else None,
-                group_by=[
-                    self.render_concept_sql(c, cte, alias=False)
-                    for c in unique(
-                        cte.grain.components
-                        + [
-                            c
-                            for c in cte.output_columns
-                            if c.purpose == Purpose.PROPERTY
-                            and c not in cte.grain.components
-                        ]
-                        + [
-                            c
-                            for c in cte.output_columns
-                            if c.purpose == Purpose.METRIC
-                            and any(
-                                [
-                                    c.with_grain(cte.grain) in cte.output_columns
-                                    for cte in cte.parent_ctes
-                                ]
-                            )
-                        ],
-                        "address",
-                    )
-                ]
-                if cte.group_to_grain
-                else None,
+                group_by=(
+                    [
+                        self.render_concept_sql(c, cte, alias=False)
+                        for c in unique(
+                            cte.grain.components
+                            + [
+                                c
+                                for c in cte.output_columns
+                                if c.purpose == Purpose.PROPERTY
+                                and c not in cte.grain.components
+                            ]
+                            + [
+                                c
+                                for c in cte.output_columns
+                                if c.purpose == Purpose.METRIC
+                                and any(
+                                    [
+                                        c.with_grain(cte.grain) in cte.output_columns
+                                        for cte in cte.parent_ctes
+                                    ]
+                                )
+                            ],
+                            "address",
+                        )
+                    ]
+                    if cte.group_to_grain
+                    else None
+                ),
             ),
         )
 
@@ -455,10 +465,12 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements: List[Select | Persist],
+        statements: Sequence[Select | Persist | ShowStatement],
         hooks: Optional[List[BaseHook]] = None,
-    ) -> List[ProcessedQuery | ProcessedQueryPersist]:
-        output: List[ProcessedQuery | ProcessedQueryPersist] = []
+    ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
+        output: List[
+            ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+        ] = []
         for statement in statements:
             if isinstance(statement, Persist):
                 if hooks:
@@ -473,7 +485,25 @@ class BaseDialect:
                 output.append(process_query(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
-
+            elif isinstance(statement, ShowStatement):
+                # TODO - encapsulate this a little better
+                if isinstance(statement.content, Select):
+                    output.append(
+                        ProcessedShowStatement(
+                            output_columns=[
+                                environment.concepts[
+                                    DEFAULT_CONCEPTS["query_text"].address
+                                ]
+                            ],
+                            output_values=[
+                                process_query(
+                                    environment, statement.content, hooks=hooks
+                                )
+                            ],
+                        )
+                    )
+                else:
+                    raise NotImplementedError
         return output
 
     def compile_statement(self, query: ProcessedQuery | ProcessedQueryPersist) -> str:
@@ -504,22 +534,6 @@ class BaseDialect:
             if filter.issubset(query_output):
                 output_where = True
                 found = True
-            # we can't push global filters up to CTEs
-            # because they may reference all columns in the output
-            # only some of which are joined
-            # TODO: optimize this?
-            # if not found:
-            #     for cte in output_ctes:
-            #         cte_filter = set([str(z.with_grain()) for z in cte.output_columns])
-            #         if filter.issubset(cte_filter):
-            #             # 2023-01-16 - removing related columns to look at output columns
-            #             # will need to backport pushing where columns into original output search
-            #             # if set([x.name for x in query.where_clause.input]).issubset(
-            #             #     [z.name for z in cte.related_columns]
-            #             # ):
-            #             where_assignment[cte.name] = query.where_clause.conditional
-            #             found = True
-            #             break
 
             if not found:
                 raise NotImplementedError(
@@ -527,14 +541,7 @@ class BaseDialect:
                     f" not a subset of the query output grain {query_output}. Use a"
                     " filtered concept instead."
                 )
-        # 2023-03-31 - this needs to be moved up into query building
-        # for join in query.joins:
-        #
-        #     if (
-        #         join.left_cte.grain.issubset(query.grain)
-        #         and join.left_cte.grain != query.grain
-        #     ):
-        #         join.jointype = JoinType.FULL
+
         compiled_ctes = self.generate_ctes(query, {})
 
         # want to return columns in the order the user wrote
@@ -542,9 +549,9 @@ class BaseDialect:
         for c in query.output_columns:
             sorted_select.append(select_columns[c.address])
         final = self.SQL_TEMPLATE.render(
-            output=query.output_to
-            if isinstance(query, ProcessedQueryPersist)
-            else None,
+            output=(
+                query.output_to if isinstance(query, ProcessedQueryPersist) else None
+            ),
             select_columns=sorted_select,
             base=query.base.name,
             joins=[
@@ -553,16 +560,16 @@ class BaseDialect:
             ctes=compiled_ctes,
             limit=query.limit,
             # move up to CTEs
-            where=self.render_expr(
-                query.where_clause.conditional, cte_map=cte_output_map
-            )
-            if query.where_clause and output_where
-            else None,
-            order_by=[
-                self.render_order_item(i, [query.base]) for i in query.order_by.items
-            ]
-            if query.order_by
-            else None,
+            where=(
+                self.render_expr(query.where_clause.conditional, cte_map=cte_output_map)
+                if query.where_clause and output_where
+                else None
+            ),
+            order_by=(
+                [self.render_order_item(i, [query.base]) for i in query.order_by.items]
+                if query.order_by
+                else None
+            ),
         )
 
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:

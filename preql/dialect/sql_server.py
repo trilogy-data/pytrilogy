@@ -5,7 +5,10 @@ from preql.utility import string_to_hash
 
 
 from preql.core.enums import FunctionType, WindowType
-from preql.core.models import ProcessedQuery
+from preql.core.models import (
+    ProcessedQuery,
+    ProcessedQueryPersist,
+)
 from preql.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -73,7 +76,7 @@ class SqlServerDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
 
-    def compile_statement(self, query: ProcessedQuery) -> str:
+    def compile_statement(self, query: ProcessedQuery | ProcessedQueryPersist) -> str:
         base = super().compile_statement(query)
         for cte in query.ctes:
             if len(cte.name) > MAX_IDENTIFIER_LENGTH:

@@ -6,6 +6,22 @@ The preql language spec itself will be linked from the above repo.
 
 Pypreql can be run locally to parse and execute preql [.preql] models.  
 
+You can try out an interactive demo [here](https://preqldata.dev/).
+
+
+Preql looks like SQL, but doesn't require table references, group by, or joins. It's crafted to be more human-readable and less error-prone than SQL. 
+
+```sql
+SELECT
+    name,
+    name_count.sum
+WHERE 
+    name like '%elvis%'
+ORDER BY
+    name_count.sum desc
+LIMIT 10;
+```
+
 ## Examples
 
 Examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models). 
@@ -58,7 +74,9 @@ python -m pytest ./tests
 
 ## Basic Example
 
-Bigquery, similar to [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console)
+Preql can be run directly in python.
+
+A bigquery example, similar to [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console)
 
 ```python
 
@@ -109,86 +127,14 @@ for row in results:
 
 ## Developing
 
-```sql
-import concepts.internet_sales as internet_sales;
-import concepts.customer as customer;
-import concepts.dates as dates;
-import concepts.sales_territory as sales_territory;
-
-select
-    customer.first_name,
-    customer.last_name,
-    internet_sales.total_order_quantity,
-    internet_sales.total_sales_amount
-order by
-    internet_sales.total_sales_amount desc
-limit 100;
+Clone repository and install requirements
 
 
-select
-    dates.order_date,
-    customer.first_name,
-    internet_sales.total_order_quantity,
-    internet_sales.total_sales_amount
-order by
-    internet_sales.total_sales_amount desc
-limit 100;
-
-
-select
-    internet_sales.order_number,
-    internet_sales.order_line_number,
-    internet_sales.total_sales_amount,
-    sales_territory.region,
-    customer.first_name
-order by
-    internet_sales.order_number desc
-limit 5;
-
-
-```
-
-```sql
-import concepts.internet_sales as internet_sales;
-import concepts.customer as customer;
-import concepts.dates as dates;
-import concepts.sales_territory as sales_territory;
-
-select
-    customer.first_name,
-    customer.last_name,
-    internet_sales.total_order_quantity,
-    internet_sales.total_sales_amount
-order by
-    internet_sales.total_sales_amount desc
-limit 100;
-
-
-select
-    dates.order_date,
-    customer.first_name,
-    internet_sales.total_order_quantity,
-    internet_sales.total_sales_amount
-order by
-    internet_sales.total_sales_amount desc
-limit 100;
-
-
-select
-    internet_sales.order_number,
-    internet_sales.order_line_number,
-    internet_sales.total_sales_amount,
-    sales_territory.region,
-    customer.first_name
-order by
-    internet_sales.order_number desc
-limit 5;
-
-
-```
 
 
 ## Contributing
+
+Please open an issue first to discuss what you would like to change, and then create a PR against that issue.
 
 
 ## Similar in space
