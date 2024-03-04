@@ -24,7 +24,7 @@ To get an overview of the project, read the [README](../README.md) file. Here ar
 
 #### Create a new issue
 
-If you spot a problem with the docs, [search if an issue already exists](https://docs.github.com/en/github/searching-for-information-on-github/searching-on-github/searching-issues-and-pull-requests#search-by-the-title-body-or-comments). If a related issue doesn't exist, you can open a new issue using a relevant [issue form](https://github.com/github/docs/issues/new/choose).
+If you spot a problem with the docs, [search if an issue already exists](https://docs.github.com/en/github/searching-for-information-on-github/searching-on-github/searching-issues-and-pull-requests#search-by-the-title-body-or-comments). If a related issue doesn't exist, you can open a new issue.
 
 #### Solve an issue
 
@@ -36,7 +36,7 @@ Scan through our [existing issues](https://github.com/preqldata/pypreql/issues) 
 Recommend that you work in a virtual environment with requirements from both requirements.txt and requirements-test.txt installed. The latter is necessary to run
 tests (surprise). 
 
-Pypreql is python 3.10+
+Pypreql is python 3.10+.
 
 ## Running Tests
 
