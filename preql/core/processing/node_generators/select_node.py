@@ -242,6 +242,7 @@ def gen_select_node_from_join(
                 filter_to_mutual=join.filter_to_mutual,
             )
         )
+    final_joins = unique(final_joins, "unique_id")
     all_partial = [
         c
         for c in all_concepts
