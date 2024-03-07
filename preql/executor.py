@@ -1,5 +1,5 @@
 from typing import List, Optional, Any
-
+from functools import singledispatchmethod
 from sqlalchemy import text
 from sqlalchemy.engine import Engine, CursorResult
 
@@ -82,7 +82,32 @@ class Executor(object):
             return None
         return self.execute_query(statement)
 
-    def execute_query(
+    @singledispatchmethod
+    def execute_query(self, query) -> CursorResult:
+        raise NotImplementedError("Cannot execute type {}".format(type(query)))
+
+    @execute_query.register
+    def _(self, query: Select | Persist) -> CursorResult:
+
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
+        return self.execute_query(sql[0])
+
+    @execute_query.register
+    def _(self, query: ProcessedShowStatement) -> CursorResult:
+
+        return generate_result_set(
+            query.output_columns,
+            [
+                self.generator.compile_statement(x)
+                for x in query.output_values
+                if isinstance(x, ProcessedQuery)
+            ],
+        )
+
+    @execute_query.register
+    def _(
         self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
     ) -> CursorResult:
         """Run parsed preql query"""
