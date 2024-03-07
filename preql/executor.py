@@ -108,18 +108,8 @@ class Executor(object):
 
     @execute_query.register
     def _(
-        self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+        self, query: ProcessedQuery | ProcessedQueryPersist
     ) -> CursorResult:
-        """Run parsed preql query"""
-        if isinstance(query, ProcessedShowStatement):
-            return generate_result_set(
-                query.output_columns,
-                [
-                    self.generator.compile_statement(x)
-                    for x in query.output_values
-                    if isinstance(x, ProcessedQuery)
-                ],
-            )
         sql = self.generator.compile_statement(query)
         # connection = self.engine.connect()
         output = self.connection.execute(text(sql))
