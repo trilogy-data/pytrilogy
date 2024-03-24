@@ -193,7 +193,8 @@ class NodeJoin:
 
     @property
     def unique_id(self) -> str:
-        return str(self.left_node) + str(self.right_node) + self.join_type.value
+        nodes = sorted([self.left_node, self.right_node], key=lambda x: str(x))
+        return str(nodes) + self.join_type.value
 
     def __str__(self):
         return (
