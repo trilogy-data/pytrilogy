@@ -25,14 +25,20 @@ from dataclasses import dataclass
 @dataclass
 class MockResult:
     values: list[Any]
+    columns: list[str]
 
     def fetchall(self):
         return self.values
 
+    def keys(self):
+        return self.columns
+
 
 def generate_result_set(columns: List[Concept], output_data: list[Any]) -> MockResult:
     names = [x.address.replace(".", "_") for x in columns]
-    return MockResult(values=[dict(zip(names, [row])) for row in output_data])
+    return MockResult(
+        values=[dict(zip(names, [row])) for row in output_data], columns=names
+    )
 
 
 class Executor(object):
@@ -88,7 +94,6 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: Select | Persist) -> CursorResult:
-
         sql = self.generator.generate_queries(
             self.environment, [query], hooks=self.hooks
         )
@@ -96,7 +101,6 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ProcessedShowStatement) -> CursorResult:
-
         return generate_result_set(
             query.output_columns,
             [
@@ -107,9 +111,7 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(
-        self, query: ProcessedQuery | ProcessedQueryPersist
-    ) -> CursorResult:
+    def _(self, query: ProcessedQuery | ProcessedQueryPersist) -> CursorResult:
         sql = self.generator.compile_statement(query)
         # connection = self.engine.connect()
         output = self.connection.execute(text(sql))

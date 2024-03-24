@@ -8,6 +8,36 @@ from preql.core.models import (
 from preql.core.enums import FunctionType, DataType, Purpose
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
+from typing import Optional
+
+
+def create_function_derived_concept(
+    name: str,
+    namespace: str,
+    operator: FunctionType,
+    arguments: list[Concept],
+    output_type: Optional[DataType] = None,
+    output_purpose: Optional[Purpose] = None,
+) -> Concept:
+    purpose = (
+        function_args_to_output_purpose(arguments)
+        if output_purpose is None
+        else output_purpose
+    )
+    output_type = arg_to_datatype(arguments[0]) if output_type is None else output_type
+    return Concept(
+        name=name,
+        namespace=namespace,
+        datatype=output_type,
+        purpose=purpose,
+        lineage=Function(
+            operator=operator,
+            arguments=arguments,
+            output_datatype=output_type,
+            output_purpose=purpose,
+            arg_count=len(arguments),
+        ),
+    )
 
 
 def argument_to_purpose(arg) -> Purpose:
@@ -90,7 +120,7 @@ def Max(args: list[Concept]) -> Function:
             DataType.DATETIME,
             DataType.TIMESTAMP,
         },
-        arg_count=1
+        arg_count=1,
         # output_grain=Grain(components=arguments),
     )
 
@@ -109,7 +139,7 @@ def Min(args: list[Concept]) -> Function:
             DataType.DATETIME,
             DataType.TIMESTAMP,
         },
-        arg_count=1
+        arg_count=1,
         # output_grain=Grain(components=arguments),
     )
 
@@ -152,7 +182,7 @@ def Abs(args: list[Concept]) -> Function:
             DataType.FLOAT,
             DataType.NUMBER,
         },
-        arg_count=1
+        arg_count=1,
         # output_grain=Grain(components=arguments),
     )
 
@@ -168,7 +198,7 @@ def Coalesce(args: list[Concept]) -> Function:
         arguments=args,
         output_datatype=arg_to_datatype(non_null[0]),
         output_purpose=function_args_to_output_purpose(non_null),
-        arg_count=-1
+        arg_count=-1,
         # output_grain=Grain(components=arguments),
     )
 
@@ -179,7 +209,7 @@ def CurrentDate(args: list[Concept]) -> Function:
         arguments=args,
         output_datatype=DataType.DATE,
         output_purpose=Purpose.CONSTANT,
-        arg_count=0
+        arg_count=0,
         # output_grain=Grain(components=arguments),
     )
 
@@ -190,6 +220,6 @@ def CurrentDatetime(args: list[Concept]) -> Function:
         arguments=args,
         output_datatype=DataType.DATE,
         output_purpose=Purpose.CONSTANT,
-        arg_count=0
+        arg_count=0,
         # output_grain=Grain(components=arguments),
     )
