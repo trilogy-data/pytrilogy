@@ -111,7 +111,9 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: ProcessedQuery | ProcessedQueryPersist) -> CursorResult:
+    def _(
+        self, query: ProcessedQuery | ProcessedQueryPersist
+    ) -> CursorResult:
         sql = self.generator.compile_statement(query)
         # connection = self.engine.connect()
         output = self.connection.execute(text(sql))
