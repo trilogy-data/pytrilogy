@@ -1125,10 +1125,10 @@ class QueryDatasource(BaseModel):
         if self.source_type:
             if self.source_type in [SourceType.GROUP, SourceType.FILTER]:
                 return True
-            return False
-        return (
-            False if sum([ds.grain for ds in self.datasources]) == self.grain else True
-        )
+            return (
+                False if sum([ds.grain for ds in self.datasources]) == self.grain else True
+            )
+        return False
 
     def __add__(self, other):
         # these are syntax errors to avoid being caught by current
