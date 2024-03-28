@@ -228,6 +228,7 @@ class DatePart(Enum):
 class SourceType(Enum):
     FILTER = "filter"
     SELECT = "select"
+    DIRECT_SELECT = "direct_select"
     GROUP = "group"
     WINDOW = "window"
     UNNEST = "unnest"

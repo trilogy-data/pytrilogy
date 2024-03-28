@@ -12,6 +12,7 @@ from preql.core.models import (
     SourceType,
     Environment,
     Concept,
+    Grain,
 )
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import StrategyNode
@@ -127,22 +128,25 @@ class SelectNode(StrategyNode):
                 # )
                 #     continue
                 # keep all concepts on the output, until we get to a node which requires reduction
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address} for {[c.address for c in all_concepts]}"
-                )
-                return QueryDatasource(
+
+                node = QueryDatasource(
                     input_concepts=unique(all_concepts, "address"),
                     output_concepts=unique(all_concepts, "address"),
                     source_map={
                         concept.address: {datasource} for concept in all_concepts
                     },
                     datasources=[datasource],
-                    grain=datasource.grain,
+                    grain=Grain(components=[c for c in all_concepts]),
                     joins=[],
                     partial_concepts=[
                         c.concept for c in datasource.columns if not c.is_complete
                     ],
+                    source_type=SourceType.DIRECT_SELECT,
                 )
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address} for {[c.address for c in all_concepts]}. Group by required is {node.group_required}"
+                )
+                return node
         return None
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:

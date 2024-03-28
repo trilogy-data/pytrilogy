@@ -132,7 +132,7 @@ def test_math_functions(test_environment):
     property fixed_order_value<- inflated_order_value / 2;
     property order_sub <- revenue - 2;
     property order_add <- revenue + 2;
-    property order_nested <- revenue*2/2;
+    property order_nested <- revenue * 2/2;
     property rounded <- round(revenue + 2.01,2);
     select
         order_id,

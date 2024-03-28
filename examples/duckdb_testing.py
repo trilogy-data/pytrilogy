@@ -112,7 +112,7 @@ def setup_titanic(env:Environment):
     pclass = Concept(
         name="class",
         namespace=namespace,
-        purpose=Purpose.PROPERTY,
+        purpose=Purpose.KEY,
         datatype=DataType.INTEGER,
         keys=[id],
              grain = Grain(components=[id]),
@@ -325,15 +325,21 @@ def setup_titanic_distributed(env: Environment):
 if __name__ == "__main__": 
     from preql import __version__
     print(__version__)
-    executor = setup_normalized_engine()
+    executor = setup_engine()
     env = Environment()
-    model = setup_titanic_distributed(env)
+    model = setup_titanic(env)
     renderer = Renderer()
     executor.environment = env
     test = '''
-const test <- 1;
-select test
-limit 5;'''
+
+auto survivor <- filter passenger.id where passenger.survived = 1;
+select passenger.class, 
+count(survivor) ->sur, count(passenger.id) ->psur, 
+count(survivor)/count(passenger.id)->raw_rate,
+count(survivor)/count(passenger.id)*100.0->survival_rate,
+136 / 216 ->ex_rate;
+
+'''
 
 
     # local_opt = local_opts = get_local_optional(
