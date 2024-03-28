@@ -268,7 +268,7 @@ grammar = r"""
     _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
     // base language constructs
-    IDENTIFIER : /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
+    IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
     
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
     

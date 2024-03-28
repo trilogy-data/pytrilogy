@@ -152,3 +152,28 @@ select
     passenger.split_cabin;"""
     )
     # confirm we can still get results
+
+
+
+
+
+def test_demo_aggregates():
+    executor = setup_engine()
+    env = Environment()
+    setup_titanic(env)
+    Renderer()
+    executor.environment = env
+    test = """
+auto survivor <- filter passenger.id where passenger.survived = 1;
+select passenger.class, 
+(count(survivor) by passenger.class/count(passenger.id) by passenger.class)*100->survival_rate;
+"""
+
+    executor.parse_text(test)
+
+    executor.generate_sql(test)
+
+    results = executor.execute_text(test)
+
+    for row in results[0]:
+        assert row.survival_rate <100
