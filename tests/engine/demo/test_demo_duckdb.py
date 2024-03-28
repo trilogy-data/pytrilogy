@@ -154,9 +154,6 @@ select
     # confirm we can still get results
 
 
-
-
-
 def test_demo_aggregates():
     executor = setup_engine()
     env = Environment()
@@ -176,4 +173,4 @@ select passenger.class,
     results = executor.execute_text(test)
 
     for row in results[0]:
-        assert row.survival_rate <100
+        assert row.survival_rate < 100

@@ -1125,9 +1125,14 @@ class QueryDatasource(BaseModel):
         if self.source_type:
             if self.source_type in [SourceType.GROUP, SourceType.FILTER]:
                 return True
-            return (
-                False if sum([ds.grain for ds in self.datasources]) == self.grain else True
-            )
+            elif self.source_type == SourceType.DIRECT_SELECT:
+                return (
+                    False
+                    if sum([ds.grain for ds in self.datasources]) == self.grain
+                    else True
+                )
+            else:
+                return all([c in self.grain for c in self.output_concepts])
         return False
 
     def __add__(self, other):

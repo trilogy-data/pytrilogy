@@ -434,8 +434,9 @@ class BaseDialect:
                             + [
                                 c
                                 for c in cte.output_columns
-                                if c.purpose == Purpose.PROPERTY
-                                and c not in cte.grain.components
+                                if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
+                                and c.address
+                                not in [x.address for x in cte.grain.components]
                             ]
                             + [
                                 c
