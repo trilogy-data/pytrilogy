@@ -99,3 +99,22 @@ def test_show(test_environment):
         query.content.output_components[0].address
         == test_environment.concepts["order_id"].address
     )
+
+
+def test_bq_address():
+    _, parsed = parse_text(
+        """key user_pseudo_id int;
+key event_time int;
+property event_time.event_date string;
+
+datasource fundiverse (
+    event_date: event_date,
+    user_pseudo_id: user_pseudo_id,
+    event_time: event_time,
+)
+grain (event_time)
+address `preqldata.analytics_411641820.events_*`
+;"""
+    )
+    query = parsed[-1]
+    assert query.address.location == "`preqldata.analytics_411641820.events_*`"

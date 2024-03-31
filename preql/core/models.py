@@ -233,9 +233,11 @@ class Concept(BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace)
-            if self.grain
-            else Grain(components=[]),
+            grain=(
+                self.grain.with_namespace(namespace)
+                if self.grain
+                else Grain(components=[])
+            ),
             namespace=namespace,
             keys=self.keys,
         )
@@ -1420,9 +1422,11 @@ class UndefinedConcept(Concept):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=self.grain.with_namespace(namespace)
-            if self.grain
-            else Grain(components=[]),
+            grain=(
+                self.grain.with_namespace(namespace)
+                if self.grain
+                else Grain(components=[])
+            ),
             namespace=namespace,
             keys=self.keys,
             environment=self.environment,
@@ -1620,20 +1624,20 @@ class Environment(BaseModel):
             f"Assignment to concept '{lookup}'  is a duplicate declaration;"
         )
 
+    def add_import(self, alias: str, environment: Environment):
+        self.imports[alias] = Import(alias=alias, path=str(environment.working_path))
+        for key, concept in environment.concepts.items():
+            self.concepts[f"{alias}.{key}"] = concept
+        for key, datasource in environment.datasources.items():
+            self.datasources[f"{alias}.{key}"] = datasource
+
     def parse(self, input: str, namespace: str | None = None):
         from preql import parse
 
         if namespace:
             new = Environment(namespace=namespace)
             new.parse(input)
-            for key, concept in new.concepts.items():
-                if not isinstance(concept, Concept):
-                    raise SyntaxError(
-                        f"Parsed environment {namespace} has invalid concept {type(concept)}"
-                    )
-                self.concepts[f"{namespace}.{key}"] = concept
-            for key, datasource in new.datasources.items():
-                self.datasources[f"{namespace}.{key}"] = datasource
+            self.add_import(namespace, new)
             return self
         parse(input, self)
         return self
@@ -1668,24 +1672,33 @@ class Environment(BaseModel):
         return datasource
 
 
-# class Expr(BaseModel):
-#     content: Any
+class LazyEnvironment(Environment):
+    """Variant of environment to defer parsing of a path"""
 
-#     def __init__(self):
-#         raise SyntaxError
+    load_path: Path
+    loaded: bool = False
 
-#     @property
-#     def input(self) -> List[Concept]:
-#         output: List[Concept] = []
-#         return output
+    def __getattribute__(self, name):
+        if name in (
+            "load_path",
+            "loaded",
+            "working_path",
+            "model_config",
+            "model_fields",
+        ) or name.startswith("_"):
+            return super().__getattribute__(name)
+        if not self.loaded:
+            print(f"lazily evaluating load path {self.load_path} to access {name}")
+            from preql import parse
 
-#     @property
-#     def safe_address(self):
-#         return ""
-
-#     @property
-#     def address(self):
-#         return ""
+            env = Environment(working_path=str(self.working_path))
+            with open(self.load_path, "r") as f:
+                parse(f.read(), env)
+            self.loaded = True
+            self.datasources = env.datasources
+            self.concepts = env.concepts
+            self.imports = env.imports
+        return super().__getattribute__(name)
 
 
 class Comparison(BaseModel):
