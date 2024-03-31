@@ -22,10 +22,6 @@ def gen_basic_node(
     source_concepts,
 ):
     parent_concepts = resolve_function_parent_concepts(concept)
-    if not parent_concepts:
-        raise ValueError(
-            f"concept {concept} has basic lineage {concept.derivation} {type(concept.lineage)} but no parents!"
-        )
     output_concepts = [concept] + local_optional
     partials = []
     parents: List[StrategyNode] = [
