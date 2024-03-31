@@ -110,7 +110,7 @@ grammar = r"""
     
     grain_clause: "grain" "(" column_list ")"
     
-    address: "address" IDENTIFIER
+    address: "address" ADDRESS
     
     query: "query" MULTILINE_STRING
     
@@ -269,7 +269,8 @@ grammar = r"""
     
     // base language constructs
     IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
-    
+    ADDRESS: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*/ | /`[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*`/
+
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
     
     DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
@@ -456,6 +457,9 @@ class ParseToObjects(Transformer):
         return Metadata(**pairs)
 
     def IDENTIFIER(self, args) -> str:
+        return args.value
+
+    def ADDRESS(self, args) -> str:
         return args.value
 
     def STRING_CHARS(self, args) -> str:
