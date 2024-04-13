@@ -444,7 +444,7 @@ class Function(BaseModel):
             DataType,
             DatePart,
             "Parenthetical",
-            "CaseWhen",
+            CaseWhen,
             "CaseElse",
             ListWrapper[int],
             ListWrapper[str],
@@ -1804,6 +1804,8 @@ class CaseWhen(BaseModel):
 
 class CaseElse(BaseModel):
     expr: "Expr"
+    # this ensures that it's easily differentiable from CaseWhen
+    discrimant: ComparisonOperator = ComparisonOperator.ELSE
 
     @property
     def concept_arguments(self):
