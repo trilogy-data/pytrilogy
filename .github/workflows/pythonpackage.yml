@@ -42,4 +42,7 @@ jobs:
           pip install pytest-cov
           # disable active adventureworks queries unless we get docker configured
           pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
-          codecov --token=${{ secrets.CODECOV_TOKEN }}
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }} # required
