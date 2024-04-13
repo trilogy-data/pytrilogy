@@ -520,6 +520,9 @@ class ParseToObjects(Transformer):
     def CONST(self, args) -> Purpose:
         return Purpose.CONSTANT
     
+    def CONSTANT(self, args) -> Purpose:
+        return Purpose.CONSTANT
+    
     def PROPERTY(self, args):
         return Purpose.PROPERTY
 

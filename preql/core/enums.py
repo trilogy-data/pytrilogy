@@ -26,6 +26,11 @@ class Purpose(Enum):
     METRIC = "metric"
     AUTO = "auto"
 
+    @classmethod
+    def _missing_(cls, value):
+        if value == "constant":
+            return Purpose.CONSTANT
+        return super().__missing__(value)
 
 class PurposeLineage(Enum):
     BASIC = "basic"
