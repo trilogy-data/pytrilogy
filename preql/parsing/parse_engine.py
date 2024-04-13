@@ -99,7 +99,7 @@ grammar = r"""
     //customer_id.property first_name STRING;
     concept_property_declaration: PROPERTY IDENTIFIER TYPE metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | AUTO ) IDENTIFIER "<" "-" expr
+    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
