@@ -545,8 +545,6 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
-    
-
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
