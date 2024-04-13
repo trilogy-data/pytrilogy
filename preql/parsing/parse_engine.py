@@ -99,7 +99,7 @@ grammar = r"""
     //customer_id.property first_name STRING;
     concept_property_declaration: PROPERTY IDENTIFIER TYPE metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | PROPERTY | CONST | AUTO ) IDENTIFIER "<" "-" expr
+    concept_derivation:  (PURPOSE | AUTO ) IDENTIFIER "<" "-" expr
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
@@ -295,7 +295,7 @@ grammar = r"""
     
     TYPE: "string"i | "number"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i 
     
-    PURPOSE:  "key"i | "metric"i
+    PURPOSE:  "key"i | "metric"i | "const"i | "constant"i
     PROPERTY: "property"i
     CONST: "const"i | "constant"i
     AUTO: "AUTO"i 
@@ -470,6 +470,8 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
+    
+
 
     def TYPE(self, args) -> DataType:
         return DataType(args.lower())
@@ -511,7 +513,13 @@ class ParseToObjects(Transformer):
 
     def PURPOSE(self, args) -> Purpose:
         return Purpose(args.value)
-
+    
+    def AUTO(self, args) -> Purpose:
+        return Purpose.AUTO
+    
+    def CONST(self, args) -> Purpose:
+        return Purpose.CONSTANT
+    
     def PROPERTY(self, args):
         return Purpose.PROPERTY
 
