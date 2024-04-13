@@ -470,8 +470,6 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
-    
-
 
     def TYPE(self, args) -> DataType:
         return DataType(args.lower())
@@ -513,16 +511,16 @@ class ParseToObjects(Transformer):
 
     def PURPOSE(self, args) -> Purpose:
         return Purpose(args.value)
-    
+
     def AUTO(self, args) -> Purpose:
         return Purpose.AUTO
-    
+
     def CONST(self, args) -> Purpose:
         return Purpose.CONSTANT
-    
+
     def CONSTANT(self, args) -> Purpose:
         return Purpose.CONSTANT
-    
+
     def PROPERTY(self, args):
         return Purpose.PROPERTY
 

@@ -32,6 +32,7 @@ class Purpose(Enum):
             return Purpose.CONSTANT
         return super().__missing__(value)
 
+
 class PurposeLineage(Enum):
     BASIC = "basic"
     WINDOW = "window"
