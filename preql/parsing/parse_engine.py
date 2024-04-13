@@ -470,6 +470,8 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
+    
+
 
     def TYPE(self, args) -> DataType:
         return DataType(args.lower())
