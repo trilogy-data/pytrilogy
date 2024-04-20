@@ -4,6 +4,7 @@ from preql.core.models import (
     AggregateWrapper,
     Parenthetical,
     arg_to_datatype,
+    WindowItem
 )
 from preql.core.enums import FunctionType, DataType, Purpose
 from preql.core.exceptions import InvalidSyntaxException
@@ -47,6 +48,8 @@ def argument_to_purpose(arg) -> Purpose:
         return arg.function.output_purpose
     elif isinstance(arg, Parenthetical):
         return argument_to_purpose(arg.content)
+    elif isinstance(arg, WindowItem):
+        return Purpose.PROPERTY
     elif isinstance(arg, Concept):
         return arg.purpose
     elif isinstance(arg, (int, float, str, bool, list)):
@@ -56,7 +59,7 @@ def argument_to_purpose(arg) -> Purpose:
     elif isinstance(arg, MagicConstants):
         return Purpose.CONSTANT
     else:
-        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+        raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
 
 
 def function_args_to_output_purpose(args) -> Purpose:

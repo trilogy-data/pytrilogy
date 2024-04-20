@@ -48,27 +48,27 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 
+def window_factory(string: str, include_concept: bool = False) -> callable:
+    def render_window(concept: str, window: str, sort: str) -> str:
+        if not include_concept:
+            concept = ""
+        if window and sort:
+            return f"{string}({concept}) over (partition by {window} order by {sort} )"
+        elif window:
+            return f"{string}({concept}) over (partition by {window})"
+        elif sort:
+            return f"{string}({concept}) over (order by {sort} )"
+        else:
+            return f"{string}({concept}) over ()"
+
+    return render_window
+
+
 WINDOW_FUNCTION_MAP = {
-    WindowType.LAG: lambda concept, window, sort: (
-        (f"lag({concept}) over (partition by {window} order by {sort} )")
-        if window
-        else f"lag({concept}) over (order by {sort})"
-    ),
-    WindowType.LEAD: lambda concept, window, sort: (
-        (f"lead({concept}) over (partition by {window} order by {sort})")
-        if window
-        else f"lead({concept}) over (order by {sort})"
-    ),
-    WindowType.RANK: lambda concept, window, sort: (
-        (f"rank() over (partition by {window} order by {sort})")
-        if window
-        else f"rank() over (order by {sort} )"
-    ),
-    WindowType.ROW_NUMBER: lambda concept, window, sort: (
-        (f"row_number() over (partition by {window} order by {sort})")
-        if window
-        else f"row_number() over (order by {sort})"
-    ),
+    WindowType.LAG: window_factory("lag", include_concept=True),
+    WindowType.LEAD: window_factory("lead", include_concept=True),
+    WindowType.RANK: window_factory("rank"),
+    WindowType.ROW_NUMBER: window_factory("row_number"),
 }
 
 DATATYPE_MAP = {
@@ -311,7 +311,7 @@ class BaseDialect:
             ListWrapper,
             DatePart,
             CaseWhen,
-            CaseElse
+            CaseElse,
             # FilterItem
         ],
         cte: Optional[CTE] = None,
@@ -514,9 +514,9 @@ class BaseDialect:
         output_addresses = [c.address for c in query.output_columns]
         for c in query.base.output_columns:
             if c.address not in selected and c.address in output_addresses:
-                select_columns[
-                    c.address
-                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                select_columns[c.address] = (
+                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                )
                 cte_output_map[c.address] = query.base
                 selected.add(c.address)
         if not all([x in selected for x in output_addresses]):

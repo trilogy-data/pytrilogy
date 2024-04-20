@@ -97,6 +97,10 @@ class WindowType(Enum):
     RANK = "rank"
     LAG = "lag"
     LEAD = "lead"
+    SUM = "sum"
+    MAX = "max"
+    MIN = "min"
+    AVG = "avg"
 
 
 class WindowOrder(Enum):

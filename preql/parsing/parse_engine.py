@@ -136,7 +136,7 @@ grammar = r"""
     filter_item: "filter"i IDENTIFIER where
 
     // rank/lag/lead
-    WINDOW_TYPE: ("rank"i|"lag"i|"lead"i)  /[\s]+/
+    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i)  /[\s]+/
     
     window_item: WINDOW_TYPE (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
     
@@ -149,7 +149,8 @@ grammar = r"""
     select_list:  ( select_item "," )* select_item ","?
     
     //  count(post_id) -> post_count
-    select_transform : expr "-" ">" IDENTIFIER metadata?
+    _assignment: ("-" ">") | "as"
+    select_transform : expr _assignment IDENTIFIER metadata?
     
     metadata: "metadata" "(" IDENTIFIER "=" _string_lit ")"
     
@@ -404,6 +405,21 @@ class ParseToObjects(Transformer):
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
             elif isinstance(arg, FilterItem):
+                id_hash = string_to_hash(str(arg))
+                concept = Concept(
+                    name=f"_anon_function_input_{id_hash}",
+                    datatype=arg.content.datatype,
+                    purpose=arg.content.purpose,
+                    lineage=arg,
+                    # filters are implicitly at the grain of the base item
+                    grain=Grain(components=[arg.output]),
+                    namespace=DEFAULT_NAMESPACE,
+                )
+                if concept.metadata:
+                    concept.metadata.line_number = meta.line
+                self.environment.add_concept(concept, meta=meta)
+                final.append(concept)
+            elif isinstance(arg, WindowItem):
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
                     name=f"_anon_function_input_{id_hash}",

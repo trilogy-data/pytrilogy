@@ -438,6 +438,7 @@ class Function(BaseModel):
             Concept,
             "AggregateWrapper",
             "Function",
+            # "WindowItem",
             int,
             float,
             str,
@@ -2105,5 +2106,9 @@ def arg_to_datatype(arg) -> DataType:
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):
         return arg_to_datatype(arg.content)
+    elif isinstance(arg, WindowItem):
+        if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
+            return DataType.INTEGER
+        return arg_to_datatype(arg.content)
     else:
-        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+        raise ValueError(f"Cannot parse arg type for {arg} of type {type(arg)}")
