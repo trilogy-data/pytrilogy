@@ -1142,6 +1142,7 @@ class ParseToObjects(Transformer):
         return Comparison(left=args[0], right=args[2], operator=args[1])
 
     def expr_tuple(self, args):
+
         return Parenthetical(content=args)
 
     def parenthetical(self, args):
