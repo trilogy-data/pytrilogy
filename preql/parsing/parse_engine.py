@@ -284,7 +284,7 @@ grammar = r"""
     
     float_lit: /[0-9]+\.[0-9]+/
 
-    array_lit: "[" (literal ",")* literal ","? "]"
+    array_lit: "[" (literal ",")* literal ","? "]"()
     
     !bool_lit: "True"i | "False"i
 
@@ -294,7 +294,7 @@ grammar = r"""
 
     MODIFIER: "Optional"i | "Partial"i
     
-    TYPE: "string"i | "number"i | "map"i | "list"i | "any"i | "int"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i 
+    TYPE: "string"i | "number"i | "numeric"i | "map"i | "list"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i 
     
     PURPOSE:  "key"i | "metric"i | "const"i | "constant"i
     PROPERTY: "property"i
@@ -600,8 +600,13 @@ class ParseToObjects(Transformer):
         lookup, namespace, name, parent_concept = parse_concept_reference(
             name, self.environment, purpose
         )
-        if isinstance(args[2], FilterItem):
-            filter_item: FilterItem = args[2]
+
+        source_value = args[2]
+        while isinstance(source_value, Parenthetical):
+            source_value = source_value.content
+
+        if isinstance(source_value, FilterItem):
+            filter_item: FilterItem = source_value
             concept = Concept(
                 name=name,
                 datatype=filter_item.content.datatype,
@@ -619,8 +624,8 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        elif isinstance(args[2], WindowItem):
-            window_item: WindowItem = args[2]
+        elif isinstance(source_value, WindowItem):
+            window_item: WindowItem = source_value
             if purpose == Purpose.PROPERTY:
                 keys = [window_item.content]
             else:
@@ -640,8 +645,8 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        elif isinstance(args[2], AggregateWrapper):
-            parent: AggregateWrapper = args[2]
+        elif isinstance(source_value, AggregateWrapper):
+            parent: AggregateWrapper = source_value
             aggfunction: Function = parent.function
             concept = Concept(
                 name=name,
@@ -658,12 +663,12 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        elif isinstance(args[2], (int, float, str, bool, ListWrapper)):
+        elif isinstance(source_value, (int, float, str, bool, ListWrapper)):
             const_function: Function = Function(
                 operator=FunctionType.CONSTANT,
-                output_datatype=arg_to_datatype(args[2]),
+                output_datatype=arg_to_datatype(source_value),
                 output_purpose=Purpose.CONSTANT,
-                arguments=[args[2]],
+                arguments=[source_value],
             )
             concept = Concept(
                 name=name,
@@ -679,8 +684,8 @@ class ParseToObjects(Transformer):
             self.environment.add_concept(concept, meta=meta)
             return concept
 
-        elif isinstance(args[2], Function):
-            function: Function = args[2]
+        elif isinstance(source_value, Function):
+            function: Function = source_value
             # if purpose != function.output_purpose:
             #     raise SyntaxError(f'Invalid output purpose assigned {purpose}')
             concept = Concept(
@@ -699,6 +704,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
+        
         raise SyntaxError(
             f"Received invalid type {type(args[2])} {args[2]} as input to select"
             " transform"
@@ -1004,6 +1010,7 @@ class ParseToObjects(Transformer):
         return Comparison(left=args[0], right=args[2], operator=args[1])
 
     def expr_tuple(self, args):
+
         return Parenthetical(content=args)
 
     def parenthetical(self, args):

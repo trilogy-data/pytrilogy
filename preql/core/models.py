@@ -2054,6 +2054,7 @@ Expr = (
     | str
     | float
     | list
+    | WindowItem
     | Concept
     | Comparison
     | Conditional

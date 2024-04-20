@@ -237,8 +237,6 @@ class BaseDialect:
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"
             )
             if isinstance(c.lineage, WindowItem):
-                # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
-                self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
                 rendered_order_components = [
                     f"{self.render_concept_sql(x.expr, cte, alias=False)} {x.order.value}"
                     for x in c.lineage.order_by
@@ -325,6 +323,15 @@ class BaseDialect:
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
             return f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
+        elif isinstance(e, WindowItem):
+            rendered_order_components = [
+                f"{self.render_expr(x.expr, cte, cte_map=cte_map)} {x.order.value}"
+                for x in e.order_by
+            ]
+            rendered_over_components = [
+                self.render_expr(x, cte, cte_map=cte_map) for x in e.over
+            ]
+            return f"{self.WINDOW_FUNCTION_MAP[e.lineage.type](concept = self.render_expr(e.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
         elif isinstance(e, Parenthetical):
             # conditions need to be nested in parentheses
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
@@ -375,7 +382,8 @@ class BaseDialect:
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"
-        raise ValueError(f"Unable to render type {type(e)} {e}")
+        else:
+            raise ValueError(f"Unable to render type {type(e)} {e}")
 
     def render_cte(self, cte: CTE):
         if self.UNNEST_MODE == UnnestMode.CROSS_APPLY:
