@@ -35,6 +35,7 @@ from preql.core.functions import (
     Min,
     Split,
     IndexAccess,
+    AttrAccess,
     Abs,
     Unnest,
     Coalesce,
@@ -192,10 +193,11 @@ grammar = r"""
     unnest: "UNNEST"i "(" expr ")"
     //indexing into an expression is a function
     index_access: expr "[" int_lit "]"
+    attr_access: expr  "[" _string_lit "]"
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions | comparison | literal |  expr_reference  | index_access | parenthetical
+    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions | comparison | literal |  expr_reference  | index_access | attr_access | parenthetical
     
     // functions
     
@@ -293,8 +295,12 @@ grammar = r"""
     literal: _string_lit | int_lit | float_lit | bool_lit | null_lit | array_lit
 
     MODIFIER: "Optional"i | "Partial"i
+
+    STRUCT_TYPE: "struct" "<" (TYPE ",")* TYPE ","? ">" 
+
+    ARRAY_TYPE: "array" "<" TYPE ">"
     
-    TYPE: "string"i | "number"i | "numeric"i | "map"i | "list"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i 
+    TYPE: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | COMPLEX_TYPE | ARRAY_TYPE
     
     PURPOSE:  "key"i | "metric"i | "const"i | "constant"i
     PROPERTY: "property"i
@@ -388,6 +394,8 @@ class ParseToObjects(Transformer):
         for arg in args:
             # if a function has an anonymous function argument
             # create an implicit concept
+            while isinstance(arg, Parenthetical):
+                arg = arg.content
             if isinstance(arg, Function):
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
@@ -1078,7 +1086,12 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-
+    
+    @v_args(meta=True)
+    def attr_access(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return AttrAccess(args)
+    
     @v_args(meta=True)
     def fcoalesce(self, meta, args):
         args = self.process_function_args(args, meta=meta)

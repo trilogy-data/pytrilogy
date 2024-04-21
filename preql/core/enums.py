@@ -8,6 +8,7 @@ InfiniteFunctionArgs = -1
 class UnnestMode(Enum):
     DIRECT = "direct"
     CROSS_APPLY = "cross_apply"
+    CROSS_JOIN = "cross_join"
 
 
 class ConceptSource(Enum):
@@ -123,6 +124,7 @@ class FunctionType(Enum):
 
     # COMPLEX
     INDEX_ACCESS = "index_access"
+    ATTR_ACCESS = "attr_access"
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"

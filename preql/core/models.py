@@ -308,7 +308,6 @@ class Concept(BaseModel):
             return PurposeLineage.FILTER
         elif self.lineage and isinstance(self.lineage, AggregateWrapper):
             return PurposeLineage.AGGREGATE
-
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -637,7 +636,7 @@ class FilterItem(BaseModel):
     where: "WhereClause"
 
     def __str__(self):
-        return f"<{str(self.content)} {str(self.where)}>"
+        return f"<Filter: {str(self.content)} where {str(self.where)}>"
 
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem(
@@ -1126,7 +1125,9 @@ class QueryDatasource(BaseModel):
     @property
     def group_required(self) -> bool:
         if self.source_type:
-            if self.source_type in [SourceType.GROUP, SourceType.FILTER]:
+            if self.source_type in [SourceType.FILTER,]:
+                return False
+            elif self.source_type in [SourceType.GROUP,]:
                 return True
             elif self.source_type == SourceType.DIRECT_SELECT:
                 return (
@@ -2055,6 +2056,7 @@ Expr = (
     | float
     | list
     | WindowItem
+    | FilterItem
     | Concept
     | Comparison
     | Conditional

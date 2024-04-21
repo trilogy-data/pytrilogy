@@ -131,6 +131,7 @@ FUNCTION_MAP = {
     # constant types
     FunctionType.CURRENT_DATE: lambda x: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x: "current_datetime()",
+    FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -310,6 +311,8 @@ class BaseDialect:
             DatePart,
             CaseWhen,
             CaseElse,
+            WindowItem,
+            FilterItem,
             # FilterItem
         ],
         cte: Optional[CTE] = None,
@@ -331,7 +334,9 @@ class BaseDialect:
             rendered_over_components = [
                 self.render_expr(x, cte, cte_map=cte_map) for x in e.over
             ]
-            return f"{self.WINDOW_FUNCTION_MAP[e.lineage.type](concept = self.render_expr(e.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
+            return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
+        elif isinstance(e, FilterItem):
+            return f"{self.render_expr(e.content, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Parenthetical):
             # conditions need to be nested in parentheses
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
@@ -386,7 +391,7 @@ class BaseDialect:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
     def render_cte(self, cte: CTE):
-        if self.UNNEST_MODE == UnnestMode.CROSS_APPLY:
+        if self.UNNEST_MODE in (UnnestMode.CROSS_APPLY, UnnestMode.CROSS_JOIN):
             # for a cross apply, derviation happens in the join
             # so we only use the alias to select
             select_columns = [
