@@ -1221,7 +1221,12 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-
+    
+    @v_args(meta=True)
+    def attr_access(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return AttrAccess(args)
+    
     @v_args(meta=True)
     def attr_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
