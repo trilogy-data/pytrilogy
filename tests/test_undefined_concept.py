@@ -1,6 +1,6 @@
-from preql.core.enums import DataType, Purpose
+from preql.core.enums import Purpose
 from preql.core.exceptions import UndefinedConceptException
-from preql.core.models import EnvironmentConceptDict, Concept
+from preql.core.models import DataType, EnvironmentConceptDict, Concept
 from preql.parser import parse
 
 

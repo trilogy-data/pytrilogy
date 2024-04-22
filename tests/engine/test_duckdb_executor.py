@@ -67,7 +67,9 @@ def test_unnest(duckdb_engine: Executor, expected_results):
         """const array <- [1,2,3];
     """
     )
-    assert duckdb_engine.environment.concepts["array"].lineage.arguments[0] == [1, 2, 3]
+    array = duckdb_engine.environment.concepts["array"]
+    assert array.lineage
+    assert array.lineage.arguments[0] == [1, 2, 3]
 
     results = duckdb_engine.execute_text(
         """const array <- [1,2,3];

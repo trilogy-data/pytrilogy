@@ -2,8 +2,14 @@ from preql import Executor, Dialects
 
 # from preql.core.models import Environment
 from sqlalchemy import create_engine
-from preql.core.models import Datasource, Concept, ColumnAssignment, Environment
-from preql.core.enums import DataType, Purpose
+from preql.core.models import (
+    DataType,
+    Datasource,
+    Concept,
+    ColumnAssignment,
+    Environment,
+)
+from preql.core.enums import Purpose
 
 from preql.constants import logger
 

@@ -520,7 +520,11 @@ class BaseDialect:
                     raise NotImplementedError
         return output
 
-    def compile_statement(self, query: ProcessedQuery | ProcessedQueryPersist) -> str:
+    def compile_statement(
+        self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+    ) -> str:
+        if isinstance(query, ProcessedShowStatement):
+            return ";\n".join([str(x) for x in query.output_values])
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()

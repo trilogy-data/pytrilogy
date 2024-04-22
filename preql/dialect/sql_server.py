@@ -8,6 +8,7 @@ from preql.core.enums import FunctionType, WindowType
 from preql.core.models import (
     ProcessedQuery,
     ProcessedQueryPersist,
+    ProcessedShowStatement,
 )
 from preql.dialect.base import BaseDialect
 
@@ -76,10 +77,13 @@ class SqlServerDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = TSQL_TEMPLATE
 
-    def compile_statement(self, query: ProcessedQuery | ProcessedQueryPersist) -> str:
+    def compile_statement(
+        self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+    ) -> str:
         base = super().compile_statement(query)
-        for cte in query.ctes:
-            if len(cte.name) > MAX_IDENTIFIER_LENGTH:
-                new_name = f"rhash_{string_to_hash(cte.name)}"
-                base = base.replace(cte.name, new_name)
+        if isinstance(base, (ProcessedQuery, ProcessedQueryPersist)):
+            for cte in query.ctes:
+                if len(cte.name) > MAX_IDENTIFIER_LENGTH:
+                    new_name = f"rhash_{string_to_hash(cte.name)}"
+                    base = base.replace(cte.name, new_name)
         return base
