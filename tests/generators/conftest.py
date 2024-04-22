@@ -5,7 +5,6 @@ from pytest import fixture
 from preql import Environment
 from preql.constants import logger as base_logger
 from preql.core.enums import (
-    DataType,
     Purpose,
     FunctionType,
     ComparisonOperator,
@@ -18,6 +17,7 @@ from preql.core.models import AggregateWrapper
 
 from preql.core.models import (
     Concept,
+    DataType,
     Datasource,
     ColumnAssignment,
     Function,

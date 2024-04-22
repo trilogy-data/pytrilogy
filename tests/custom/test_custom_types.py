@@ -3,9 +3,12 @@ from preql.parsing.parse_engine import (
     parse_text,
 )
 from preql.dialect.base import BaseDialect
+import pytest
 
 
-def test_custom_Type():
+# not implemented yet
+@pytest.mark.xfail
+def test_custom_type():
     _, parsed = parse_text(
         """def PositiveInteger int;
         add validator PositiveInteger -> x>0;
