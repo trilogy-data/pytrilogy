@@ -6,7 +6,7 @@ from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
 
 
-def test_select():
+def test_select() -> None:
     declarations = """
 key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");
@@ -68,3 +68,64 @@ limit 100
 
     generator = BigqueryDialect()
     generator.compile_statement(query)
+
+
+def test_rank_by():
+    declarations = """
+key user_id int metadata(description="the description");
+property user_id.display_name string metadata(description="The display name ");
+property user_id.country string metadata(description="User provided description");
+
+
+key post_id int;
+metric post_count <-count(post_id);
+
+property user_country_rank <- rank user_id over country;
+
+property rank_derived <- 100 + row_number user_id over country;
+
+datasource posts (
+    user_id: user_id,
+    id: post_id
+    )
+    grain (post_id)
+    address bigquery-public-data.stackoverflow.post_history
+;
+
+
+datasource users (
+    id: user_id,
+    display_name: display_name,
+    about_me: country,
+    )
+    grain (user_id)
+    address bigquery-public-data.stackoverflow.users
+;
+
+
+select
+    user_id,
+    user_country_rank,
+    rank_derived,
+    post_count
+where 
+    user_country_rank<10
+limit 100
+;
+
+
+    """
+    env, parsed = parse(declarations)
+    select: Select = parsed[-1]
+
+    assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
+
+    get_query_datasources(environment=env, statement=select)
+    # raise ValueError
+
+    query = process_query(statement=select, environment=env)
+    query.ctes[0]
+
+    generator = BigqueryDialect()
+    compiled = generator.compile_statement(query)
+    assert "rank() over (partition" in compiled

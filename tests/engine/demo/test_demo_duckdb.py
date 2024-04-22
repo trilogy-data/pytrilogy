@@ -7,8 +7,9 @@ from preql.core.models import (
     Concept,
     ColumnAssignment,
     Grain,
+    DataType,
 )
-from preql.core.enums import DataType, Purpose
+from preql.core.enums import Purpose
 from os.path import dirname
 from pathlib import PurePath
 from preql.parsing.render import Renderer

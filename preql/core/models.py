@@ -2,6 +2,7 @@ from __future__ import annotations
 import difflib
 import os
 from copy import deepcopy
+from enum import Enum
 from typing import (
     Dict,
     TypeVar,
@@ -34,7 +35,6 @@ from pathlib import Path
 from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
 from preql.core.enums import (
     InfiniteFunctionArgs,
-    DataType,
     Purpose,
     JoinType,
     Ordering,
@@ -89,6 +89,75 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
+ALL_TYPES = Union["DataType", "MapType", "ListType", "StructType", "Concept"]
+
+
+class DataType(Enum):
+    # PRIMITIVES
+    STRING = "string"
+    BOOL = "bool"
+    MAP = "map"
+    LIST = "list"
+    NUMBER = "number"
+    FLOAT = "float"
+    NUMERIC = "numeric"
+    INTEGER = "int"
+    BIGINT = "bigint"
+    DATE = "date"
+    DATETIME = "datetime"
+    TIMESTAMP = "timestamp"
+    ARRAY = "array"
+    DATE_PART = "date_part"
+    STRUCT = "struct"
+
+    # GRANULAR
+    UNIX_SECONDS = "unix_seconds"
+
+    # PARSING
+    UNKNOWN = "unknown"
+
+    @property
+    def data_type(self):
+        return self
+
+
+class ListType(BaseModel):
+    type: ALL_TYPES
+
+    @property
+    def data_type(self):
+        return DataType.LIST
+
+    @property
+    def value(self):
+        return self.data_type.value
+
+
+class MapType(BaseModel):
+    key_type: DataType
+    content_type: ALL_TYPES
+
+    @property
+    def data_type(self):
+        return DataType.MAP
+
+    @property
+    def value(self):
+        return self.data_type.value
+
+
+class StructType(BaseModel):
+    fields: List[ALL_TYPES]
+
+    @property
+    def data_type(self):
+        return DataType.STRUCT
+
+    @property
+    def value(self):
+        return self.data_type.value
+
+
 class ListWrapper(Generic[VT], UserList):
     """Used to distinguish parsed list objects from other lists"""
 
@@ -131,7 +200,7 @@ def empty_grain() -> Grain:
 
 class Concept(BaseModel):
     name: str
-    datatype: DataType
+    datatype: DataType | ListType | StructType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
@@ -308,7 +377,6 @@ class Concept(BaseModel):
             return PurposeLineage.FILTER
         elif self.lineage and isinstance(self.lineage, AggregateWrapper):
             return PurposeLineage.AGGREGATE
-
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -430,7 +498,7 @@ class Statement(BaseModel):
 class Function(BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType
+    output_datatype: DataType | ListType | StructType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
     arguments: Sequence[
@@ -438,6 +506,7 @@ class Function(BaseModel):
             Concept,
             "AggregateWrapper",
             "Function",
+            # "WindowItem",
             int,
             float,
             str,
@@ -482,7 +551,10 @@ class Function(BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
-            if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
+            if (
+                isinstance(arg, Concept)
+                and arg.datatype.data_type not in valid_inputs[idx]
+            ):
                 if arg.datatype != DataType.UNKNOWN:
                     raise TypeError(
                         f"Invalid input datatype {arg.datatype} passed into"
@@ -636,7 +708,7 @@ class FilterItem(BaseModel):
     where: "WhereClause"
 
     def __str__(self):
-        return f"<{str(self.content)} {str(self.where)}>"
+        return f"<Filter: {str(self.content)} where {str(self.where)}>"
 
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem(
@@ -1125,7 +1197,13 @@ class QueryDatasource(BaseModel):
     @property
     def group_required(self) -> bool:
         if self.source_type:
-            if self.source_type in [SourceType.GROUP, SourceType.FILTER]:
+            if self.source_type in [
+                SourceType.FILTER,
+            ]:
+                return False
+            elif self.source_type in [
+                SourceType.GROUP,
+            ]:
                 return True
             elif self.source_type == SourceType.DIRECT_SELECT:
                 return (
@@ -1558,6 +1636,8 @@ class Environment(BaseModel):
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
+    functions: Dict[str, Function] = Field(default_factory=dict)
+    data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
@@ -2053,6 +2133,8 @@ Expr = (
     | str
     | float
     | list
+    | WindowItem
+    | FilterItem
     | Concept
     | Comparison
     | Conditional
@@ -2086,7 +2168,7 @@ Function.model_rebuild()
 Grain.model_rebuild()
 
 
-def arg_to_datatype(arg) -> DataType:
+def arg_to_datatype(arg) -> DataType | ListType | StructType:
     if isinstance(arg, Function):
         return arg.output_datatype
     elif isinstance(arg, Concept):
@@ -2105,5 +2187,9 @@ def arg_to_datatype(arg) -> DataType:
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):
         return arg_to_datatype(arg.content)
+    elif isinstance(arg, WindowItem):
+        if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
+            return DataType.INTEGER
+        return arg_to_datatype(arg.content)
     else:
-        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+        raise ValueError(f"Cannot parse arg type for {arg} of type {type(arg)}")

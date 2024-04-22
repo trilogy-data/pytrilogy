@@ -5,7 +5,6 @@ from pytest import fixture
 from preql import Environment
 from preql.constants import logger as base_logger
 from preql.core.enums import (
-    DataType,
     Purpose,
     FunctionType,
     ComparisonOperator,
@@ -15,6 +14,7 @@ from preql.core.env_processor import generate_graph
 from preql.core.functions import Count, CountDistinct, Max, Min
 from preql.core.models import (
     Concept,
+    DataType,
     Datasource,
     ColumnAssignment,
     Function,

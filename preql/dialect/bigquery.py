@@ -2,7 +2,7 @@ from typing import Mapping, Callable, Any
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType, WindowType
+from preql.core.enums import FunctionType, WindowType, UnnestMode
 from preql.dialect.base import BaseDialect
 
 
@@ -76,3 +76,4 @@ class BigqueryDialect(BaseDialect):
     }
     QUOTE_CHARACTER = "`"
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
+    UNNEST_MODE = UnnestMode.CROSS_JOIN

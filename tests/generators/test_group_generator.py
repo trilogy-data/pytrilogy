@@ -5,16 +5,17 @@ from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from preql.core.processing.nodes import MergeNode
-from preql.core.models import Environment
+from preql.core.models import Environment, AggregateWrapper
 from preql.core.enums import PurposeLineage
 
 
 def test_gen_group_node_parents(test_environment: Environment, test_environment_graph):
     comp = test_environment.concepts["category_top_50_revenue_products"]
     assert comp.derivation == PurposeLineage.AGGREGATE
-
+    assert comp.lineage
     assert test_environment.concepts["category_id"] in comp.lineage.concept_arguments
     assert comp.grain.components == [test_environment.concepts["category_id"]]
+    assert isinstance(comp.lineage, AggregateWrapper)
     assert comp.lineage.by == [test_environment.concepts["category_id"]]
     parents = resolve_function_parent_concepts(comp)
     # parents should be both the value and the category

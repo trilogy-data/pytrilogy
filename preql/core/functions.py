@@ -4,8 +4,12 @@ from preql.core.models import (
     AggregateWrapper,
     Parenthetical,
     arg_to_datatype,
+    WindowItem,
+    DataType,
+    ListType,
+    StructType,
 )
-from preql.core.enums import FunctionType, DataType, Purpose
+from preql.core.enums import FunctionType, Purpose
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
 from typing import Optional
@@ -16,7 +20,7 @@ def create_function_derived_concept(
     namespace: str,
     operator: FunctionType,
     arguments: list[Concept],
-    output_type: Optional[DataType] = None,
+    output_type: Optional[DataType | ListType | StructType] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
     purpose = (
@@ -47,6 +51,8 @@ def argument_to_purpose(arg) -> Purpose:
         return arg.function.output_purpose
     elif isinstance(arg, Parenthetical):
         return argument_to_purpose(arg.content)
+    elif isinstance(arg, WindowItem):
+        return Purpose.PROPERTY
     elif isinstance(arg, Concept):
         return arg.purpose
     elif isinstance(arg, (int, float, str, bool, list)):
@@ -56,7 +62,7 @@ def argument_to_purpose(arg) -> Purpose:
     elif isinstance(arg, MagicConstants):
         return Purpose.CONSTANT
     else:
-        raise ValueError(f"Cannot parse arg type for {arg} type {type(arg)}")
+        raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
 
 
 def function_args_to_output_purpose(args) -> Purpose:
@@ -82,7 +88,7 @@ def Unnest(args: list[Concept]) -> Function:
         output_datatype=args[0].datatype,
         output_purpose=Purpose.KEY,
         arg_count=1,
-        valid_inputs={DataType.ARRAY},
+        valid_inputs={DataType.ARRAY, DataType.LIST},
     )
 
 
@@ -164,9 +170,31 @@ def IndexAccess(args: list[Concept]):
         # first arg sets properties
         # TODO: THIS IS WRONG - figure out how to get at array types
         output_datatype=DataType.STRING,
-        # force this to a key
         output_purpose=Purpose.PROPERTY,
-        valid_inputs={DataType.ARRAY, DataType.INTEGER},
+        valid_inputs=[
+            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {
+                DataType.INTEGER,
+            },
+        ],
+        arg_count=2,
+    )
+
+
+def AttrAccess(args: list[Concept]):
+    return Function(
+        operator=FunctionType.ATTR_ACCESS,
+        arguments=args,
+        # first arg sets properties
+        # TODO: THIS IS WRONG - figure out how to get at array types
+        output_datatype=DataType.STRING,
+        output_purpose=Purpose.PROPERTY,
+        valid_inputs=[
+            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {
+                DataType.STRING,
+            },
+        ],
         arg_count=2,
     )
 

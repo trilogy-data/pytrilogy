@@ -11,6 +11,7 @@ def test_gen_filter_node_parents(test_environment: Environment, test_environment
     comp = test_environment.concepts["products_with_revenue_over_50"]
     assert comp.derivation == PurposeLineage.FILTER
 
+    assert comp.lineage
     assert test_environment.concepts["product_id"] in comp.lineage.concept_arguments
     assert test_environment.concepts["total_revenue"] in comp.lineage.concept_arguments
     filtered, parents = resolve_filter_parent_concepts(comp)

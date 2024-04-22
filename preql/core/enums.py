@@ -1,6 +1,4 @@
 from enum import Enum
-from typing import Union
-from pydantic import BaseModel
 
 InfiniteFunctionArgs = -1
 
@@ -8,6 +6,7 @@ InfiniteFunctionArgs = -1
 class UnnestMode(Enum):
     DIRECT = "direct"
     CROSS_APPLY = "cross_apply"
+    CROSS_JOIN = "cross_join"
 
 
 class ConceptSource(Enum):
@@ -48,37 +47,6 @@ class Modifier(Enum):
     HIDDEN = "Hidden"
 
 
-class DataType(Enum):
-    # PRIMITIVES
-    STRING = "string"
-    BOOL = "bool"
-    MAP = "map"
-    LIST = "list"
-    NUMBER = "number"
-    FLOAT = "float"
-    INTEGER = "int"
-    DATE = "date"
-    DATETIME = "datetime"
-    TIMESTAMP = "timestamp"
-    ARRAY = "array"
-    DATE_PART = "date_part"
-
-    # GRANULAR
-    UNIX_SECONDS = "unix_seconds"
-
-    # PARSING
-    UNKNOWN = "unknown"
-
-
-class ArrayType(BaseModel):
-    type: Union["ArrayType", "MapType", DataType]
-
-
-class MapType(BaseModel):
-    key_type: DataType
-    content_type: Union["ArrayType", DataType]
-
-
 class JoinType(Enum):
     INNER = "inner"
     LEFT_OUTER = "left outer"
@@ -97,6 +65,10 @@ class WindowType(Enum):
     RANK = "rank"
     LAG = "lag"
     LEAD = "lead"
+    SUM = "sum"
+    MAX = "max"
+    MIN = "min"
+    AVG = "avg"
 
 
 class WindowOrder(Enum):
@@ -105,6 +77,9 @@ class WindowOrder(Enum):
 
 
 class FunctionType(Enum):
+    # custom
+    CUSTOM = "custom"
+
     # structural
     UNNEST = "unnest"
 
@@ -117,6 +92,7 @@ class FunctionType(Enum):
 
     # COMPLEX
     INDEX_ACCESS = "index_access"
+    ATTR_ACCESS = "attr_access"
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"

@@ -9,7 +9,7 @@ from preql.dialect.sql_server import SqlServerDialect
 import re
 
 
-def test_aggregate_of_property_function(stackoverflow_environment):
+def test_aggregate_of_property_function(stackoverflow_environment: Environment) -> None:
     env: Environment = stackoverflow_environment
     avg_user_post_count = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
@@ -30,7 +30,7 @@ def test_aggregate_of_property_function(stackoverflow_environment):
     generator.compile_statement(query)
 
 
-def test_aggregate_to_grain(stackoverflow_environment):
+def test_aggregate_to_grain(stackoverflow_environment: Environment):
     env = stackoverflow_environment
     avg_post_length = env.concepts["avg_post_length_by_post_id"]
     user_id = env.concepts["user_id"]

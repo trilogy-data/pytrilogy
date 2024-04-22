@@ -5,7 +5,7 @@ from preql.hooks.query_debugger import DebuggingHook
 from preql.parser import parse
 
 
-def test_select():
+def test_select() -> None:
     declarations = """
 key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");

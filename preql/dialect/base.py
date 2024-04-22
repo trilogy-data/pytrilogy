@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Dict, Any, Sequence
+from typing import List, Union, Optional, Dict, Any, Sequence, Callable
 
 from jinja2 import Template
 
@@ -6,12 +6,12 @@ from preql.constants import CONFIG, logger, MagicConstants
 from preql.core.internal import DEFAULT_CONCEPTS
 from preql.core.enums import (
     Purpose,
-    DataType,
     FunctionType,
     WindowType,
     DatePart,
 )
 from preql.core.models import (
+    DataType,
     Concept,
     CTE,
     ProcessedQuery,
@@ -48,27 +48,27 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 
+def window_factory(string: str, include_concept: bool = False) -> Callable:
+    def render_window(concept: str, window: str, sort: str) -> str:
+        if not include_concept:
+            concept = ""
+        if window and sort:
+            return f"{string}({concept}) over (partition by {window} order by {sort} )"
+        elif window:
+            return f"{string}({concept}) over (partition by {window})"
+        elif sort:
+            return f"{string}({concept}) over (order by {sort} )"
+        else:
+            return f"{string}({concept}) over ()"
+
+    return render_window
+
+
 WINDOW_FUNCTION_MAP = {
-    WindowType.LAG: lambda concept, window, sort: (
-        (f"lag({concept}) over (partition by {window} order by {sort} )")
-        if window
-        else f"lag({concept}) over (order by {sort})"
-    ),
-    WindowType.LEAD: lambda concept, window, sort: (
-        (f"lead({concept}) over (partition by {window} order by {sort})")
-        if window
-        else f"lead({concept}) over (order by {sort})"
-    ),
-    WindowType.RANK: lambda concept, window, sort: (
-        (f"rank() over (partition by {window} order by {sort})")
-        if window
-        else f"rank() over (order by {sort} )"
-    ),
-    WindowType.ROW_NUMBER: lambda concept, window, sort: (
-        (f"row_number() over (partition by {window} order by {sort})")
-        if window
-        else f"row_number() over (order by {sort})"
-    ),
+    WindowType.LAG: window_factory("lag", include_concept=True),
+    WindowType.LEAD: window_factory("lead", include_concept=True),
+    WindowType.RANK: window_factory("rank"),
+    WindowType.ROW_NUMBER: window_factory("row_number"),
 }
 
 DATATYPE_MAP = {
@@ -131,6 +131,7 @@ FUNCTION_MAP = {
     # constant types
     FunctionType.CURRENT_DATE: lambda x: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x: "current_datetime()",
+    FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -237,8 +238,6 @@ class BaseDialect:
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"
             )
             if isinstance(c.lineage, WindowItem):
-                # args = [render_concept_sql(v, cte, alias=False) for v in c.lineage.arguments] +[c.lineage.sort_concepts]
-                self.render_concept_sql(c.lineage.arguments[0], cte, alias=False)
                 rendered_order_components = [
                     f"{self.render_concept_sql(x.expr, cte, alias=False)} {x.order.value}"
                     for x in c.lineage.order_by
@@ -311,7 +310,9 @@ class BaseDialect:
             ListWrapper,
             DatePart,
             CaseWhen,
-            CaseElse
+            CaseElse,
+            WindowItem,
+            FilterItem,
             # FilterItem
         ],
         cte: Optional[CTE] = None,
@@ -325,6 +326,17 @@ class BaseDialect:
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
             return f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
+        elif isinstance(e, WindowItem):
+            rendered_order_components = [
+                f"{self.render_expr(x.expr, cte, cte_map=cte_map)} {x.order.value}"
+                for x in e.order_by
+            ]
+            rendered_over_components = [
+                self.render_expr(x, cte, cte_map=cte_map) for x in e.over
+            ]
+            return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
+        elif isinstance(e, FilterItem):
+            return f"{self.render_expr(e.content, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Parenthetical):
             # conditions need to be nested in parentheses
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
@@ -375,10 +387,11 @@ class BaseDialect:
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"
-        raise ValueError(f"Unable to render type {type(e)} {e}")
+        else:
+            raise ValueError(f"Unable to render type {type(e)} {e}")
 
     def render_cte(self, cte: CTE):
-        if self.UNNEST_MODE == UnnestMode.CROSS_APPLY:
+        if self.UNNEST_MODE in (UnnestMode.CROSS_APPLY, UnnestMode.CROSS_JOIN):
             # for a cross apply, derviation happens in the join
             # so we only use the alias to select
             select_columns = [
@@ -507,7 +520,11 @@ class BaseDialect:
                     raise NotImplementedError
         return output
 
-    def compile_statement(self, query: ProcessedQuery | ProcessedQueryPersist) -> str:
+    def compile_statement(
+        self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+    ) -> str:
+        if isinstance(query, ProcessedShowStatement):
+            return ";\n".join([str(x) for x in query.output_values])
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()

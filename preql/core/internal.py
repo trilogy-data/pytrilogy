@@ -1,5 +1,5 @@
-from preql.core.models import Concept
-from preql.core.enums import DataType, Purpose
+from preql.core.models import Concept, DataType
+from preql.core.enums import Purpose
 
 INTERNAL_NAMESPACE = "__preql_internal"
 
