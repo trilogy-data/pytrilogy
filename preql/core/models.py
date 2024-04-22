@@ -89,9 +89,8 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
-
-
 ALL_TYPES = Union["DataType", "MapType", "ListType", "StructType", "Concept"]
+
 
 class DataType(Enum):
     # PRIMITIVES
@@ -129,6 +128,11 @@ class ListType(BaseModel):
     def data_type(self):
         return DataType.LIST
 
+    @property
+    def value(self):
+        return self.data_type.value
+
+
 class MapType(BaseModel):
     key_type: DataType
     content_type: ALL_TYPES
@@ -136,13 +140,23 @@ class MapType(BaseModel):
     @property
     def data_type(self):
         return DataType.MAP
-    
+
+    @property
+    def value(self):
+        return self.data_type.value
+
+
 class StructType(BaseModel):
     fields: List[ALL_TYPES]
 
     @property
     def data_type(self):
         return DataType.STRUCT
+
+    @property
+    def value(self):
+        return self.data_type.value
+
 
 class ListWrapper(Generic[VT], UserList):
     """Used to distinguish parsed list objects from other lists"""
@@ -537,7 +551,10 @@ class Function(BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
-            if isinstance(arg, Concept) and arg.datatype.data_type not in valid_inputs[idx]:
+            if (
+                isinstance(arg, Concept)
+                and arg.datatype.data_type not in valid_inputs[idx]
+            ):
                 if arg.datatype != DataType.UNKNOWN:
                     raise TypeError(
                         f"Invalid input datatype {arg.datatype} passed into"
@@ -1180,9 +1197,13 @@ class QueryDatasource(BaseModel):
     @property
     def group_required(self) -> bool:
         if self.source_type:
-            if self.source_type in [SourceType.FILTER,]:
+            if self.source_type in [
+                SourceType.FILTER,
+            ]:
                 return False
-            elif self.source_type in [SourceType.GROUP,]:
+            elif self.source_type in [
+                SourceType.GROUP,
+            ]:
                 return True
             elif self.source_type == SourceType.DIRECT_SELECT:
                 return (
@@ -1615,8 +1636,8 @@ class Environment(BaseModel):
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
-    functions: Dict[str, Function] = Field(default_factory = dict)
-    data_types: Dict[str, DataType] = Field(default_factory = dict)
+    functions: Dict[str, Function] = Field(default_factory=dict)
+    data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
@@ -2123,7 +2144,6 @@ Expr = (
 )
 
 
-
 Concept.model_rebuild()
 Grain.model_rebuild()
 WindowItem.model_rebuild()
@@ -2148,7 +2168,7 @@ Function.model_rebuild()
 Grain.model_rebuild()
 
 
-def arg_to_datatype(arg) -> DataType:
+def arg_to_datatype(arg) -> DataType | ListType | StructType:
     if isinstance(arg, Function):
         return arg.output_datatype
     elif isinstance(arg, Concept):

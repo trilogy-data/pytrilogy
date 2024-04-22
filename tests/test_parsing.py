@@ -102,9 +102,7 @@ def test_show(test_environment):
 
 
 def test_as_transform(test_environment):
-    _, parsed = parse_text(
-        "const order_id <- 4; SELECT order_id as new_order_id;"
-    )
+    _, parsed = parse_text("const order_id <- 4; SELECT order_id as new_order_id;")
     query = parsed[-1]
     assert isinstance(query, Select)
 

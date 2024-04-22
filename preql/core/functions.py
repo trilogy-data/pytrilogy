@@ -7,9 +7,9 @@ from preql.core.models import (
     WindowItem,
     DataType,
     ListType,
-    StructType
+    StructType,
 )
-from preql.core.enums import FunctionType,  Purpose
+from preql.core.enums import FunctionType, Purpose
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
 from typing import Optional
@@ -171,7 +171,12 @@ def IndexAccess(args: list[Concept]):
         # TODO: THIS IS WRONG - figure out how to get at array types
         output_datatype=DataType.STRING,
         output_purpose=Purpose.PROPERTY,
-        valid_inputs=[{DataType.ARRAY, DataType.LIST, DataType.STRING}, {DataType.INTEGER,}],
+        valid_inputs=[
+            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {
+                DataType.INTEGER,
+            },
+        ],
         arg_count=2,
     )
 
@@ -184,7 +189,12 @@ def AttrAccess(args: list[Concept]):
         # TODO: THIS IS WRONG - figure out how to get at array types
         output_datatype=DataType.STRING,
         output_purpose=Purpose.PROPERTY,
-        valid_inputs=[{DataType.ARRAY, DataType.LIST, DataType.STRING}, {DataType.STRING,}],
+        valid_inputs=[
+            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {
+                DataType.STRING,
+            },
+        ],
         arg_count=2,
     )
 

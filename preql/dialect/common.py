@@ -14,12 +14,13 @@ def render_join(
     if isinstance(join, InstantiatedUnnestJoin):
         if unnest_mode == UnnestMode.DIRECT:
             return None
-        elif unnest_mode == UnnestMode.CROSS_JOIN:
-             return f"CROSS JOIN {render_func(join.concept, cte, False)} as {quote_character}{join.concept.safe_address}{quote_character}"
         if not render_func:
             raise ValueError("must provide a render func to build an unnest joins")
         if not cte:
             raise ValueError("must provide a cte to build an unnest joins")
+        if unnest_mode == UnnestMode.CROSS_JOIN:
+            return f"CROSS JOIN {render_func(join.concept, cte, False)} as {quote_character}{join.concept.safe_address}{quote_character}"
+
         return f"FULL JOIN {render_func(join.concept, cte, False)} as unnest_wrapper({quote_character}{join.concept.safe_address}{quote_character})"
 
     base_joinkeys = [

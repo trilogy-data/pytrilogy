@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE, MagicConstants
-from preql.core.enums import Purpose,  ConceptSource, DatePart
+from preql.core.enums import Purpose, ConceptSource, DatePart
 from preql.core.models import (
     DataType,
     Address,

@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Dict, Any, Sequence
+from typing import List, Union, Optional, Dict, Any, Sequence, Callable
 
 from jinja2 import Template
 
@@ -6,7 +6,6 @@ from preql.constants import CONFIG, logger, MagicConstants
 from preql.core.internal import DEFAULT_CONCEPTS
 from preql.core.enums import (
     Purpose,
-
     FunctionType,
     WindowType,
     DatePart,
@@ -49,7 +48,7 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
 
 
-def window_factory(string: str, include_concept: bool = False) -> callable:
+def window_factory(string: str, include_concept: bool = False) -> Callable:
     def render_window(concept: str, window: str, sort: str) -> str:
         if not include_concept:
             concept = ""
@@ -528,9 +527,9 @@ class BaseDialect:
         output_addresses = [c.address for c in query.output_columns]
         for c in query.base.output_columns:
             if c.address not in selected and c.address in output_addresses:
-                select_columns[c.address] = (
-                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
-                )
+                select_columns[
+                    c.address
+                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                 cte_output_map[c.address] = query.base
                 selected.add(c.address)
         if not all([x in selected for x in output_addresses]):

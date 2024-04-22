@@ -1,6 +1,4 @@
 from enum import Enum
-from typing import Union, List
-from pydantic import BaseModel
 
 InfiniteFunctionArgs = -1
 
@@ -81,7 +79,7 @@ class WindowOrder(Enum):
 class FunctionType(Enum):
     # custom
     CUSTOM = "custom"
-    
+
     # structural
     UNNEST = "unnest"
 

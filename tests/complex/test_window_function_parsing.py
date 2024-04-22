@@ -70,7 +70,6 @@ limit 100
     generator.compile_statement(query)
 
 
-
 def test_rank_by():
     declarations = """
 key user_id int metadata(description="the description");
@@ -129,4 +128,4 @@ limit 100
 
     generator = BigqueryDialect()
     compiled = generator.compile_statement(query)
-    assert 'rank() over (partition' in compiled
+    assert "rank() over (partition" in compiled

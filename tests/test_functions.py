@@ -186,9 +186,6 @@ def test_case_function(test_environment):
         assert test_environment.concepts["test_upper_case"].datatype == DataType.BOOL
 
 
-
-
-
 def test_split_and_index_function(test_environment):
     declarations = """
     constant test_string <- 'abc_def';
