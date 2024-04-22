@@ -508,6 +508,19 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
+    
+    @v_args(meta=True)
+    def struct_type(self, meta: Meta, args) -> StructType:
+        final = []
+        for arg in args:
+            if not isinstance(arg, (DataType, ListType, StructType)):
+                new = self.environment.concepts.__getitem__(  # type: ignore
+                key=arg, line_no=meta.line
+            )
+                final.append(new)
+            else:
+                final.append(arg)
+        return StructType(fields=final)
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
@@ -1034,6 +1047,30 @@ class ParseToObjects(Transformer):
 
     def where(self, args):
         return WhereClause(conditional=args[0])
+     
+    @v_args(meta=True)
+    def function_binding_list(self, meta: Meta, args) -> Concept:
+        return args
+    
+    @v_args(meta=True)
+    def function_binding_item(self, meta: Meta, args) -> Concept:
+        return args
+    
+    @v_args(meta=True)
+    def raw_function(self, meta: Meta, args) -> Concept:
+        print(args)
+        identity = args[0]
+        fargs = args[1]
+        output = args[2]
+        item = Function(
+            operator=FunctionType.SUM,
+            arguments=[x[1] for x in fargs],
+            output_datatype=output,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=len(fargs)+1,
+        )
+        self.environment.functions[identity] = item
+        return item
 
     @v_args(meta=True)
     def function_binding_list(self, meta: Meta, args) -> Concept:
@@ -1153,12 +1190,12 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-    
+
     @v_args(meta=True)
     def attr_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return AttrAccess(args)
-    
+
     @v_args(meta=True)
     def attr_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
