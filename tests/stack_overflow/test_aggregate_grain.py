@@ -36,7 +36,7 @@ order by
  limit 10;"""
 
 
-def test_select():
+def test_select() -> None:
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     select: Select = parsed[-1]
 

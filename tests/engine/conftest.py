@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
 from preql import Executor, Dialects, parse, Environment
-from preql.engine import CustomEngine
+from preql.engine import ExecutionEngine, EngineConnection, EngineResult
 
 ENV_PATH = abspath(__file__)
 
@@ -110,9 +110,33 @@ const pi <-3.14;
     yield environment
 
 
+class PrestoEngineResult(EngineResult):
+    def __init__(self):
+        pass
+
+    def fetchall(self) -> list[tuple]:
+        # hardcoded
+        return [(1,)]
+
+
+class PrestoEngineConnection(EngineConnection):
+    def __init__(self):
+        pass
+
+    def execute(self, statement: str) -> EngineResult:
+        return PrestoEngineResult()
+
+
+class PrestoEngine(ExecutionEngine):
+    pass
+
+    def connect(self) -> EngineConnection:
+        return PrestoEngineConnection()
+
+
 @fixture(scope="session")
 def presto_engine(presto_model) -> Generator[Executor, None, None]:
-    engine = CustomEngine()
+    engine = PrestoEngine()
 
     executor = Executor(
         dialect=Dialects.DUCK_DB, engine=engine, environment=presto_model

@@ -23,13 +23,6 @@ class ExecutionEngine(Protocol):
         pass
 
 
-class CustomEngine(ExecutionEngine):
-    pass
-
-    def connect(self) -> EngineConnection:
-        return EngineConnection()
-
-
 ### Begin default SQLAlchemy implementation
 class SqlAlchemyResult(EngineResult):
     def __init__(self, result: CursorResult):
