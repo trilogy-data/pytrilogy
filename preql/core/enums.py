@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Union
+from typing import Union, List
 from pydantic import BaseModel
 
 InfiniteFunctionArgs = -1
@@ -49,39 +49,6 @@ class Modifier(Enum):
     HIDDEN = "Hidden"
 
 
-class DataType(Enum):
-    # PRIMITIVES
-    STRING = "string"
-    BOOL = "bool"
-    MAP = "map"
-    LIST = "list"
-    NUMBER = "number"
-    FLOAT = "float"
-    NUMERIC = "numeric"
-    INTEGER = "int"
-    BIGINT = "bigint"
-    DATE = "date"
-    DATETIME = "datetime"
-    TIMESTAMP = "timestamp"
-    ARRAY = "array"
-    DATE_PART = "date_part"
-
-    # GRANULAR
-    UNIX_SECONDS = "unix_seconds"
-
-    # PARSING
-    UNKNOWN = "unknown"
-
-
-class ArrayType(BaseModel):
-    type: Union["ArrayType", "MapType", DataType]
-
-
-class MapType(BaseModel):
-    key_type: DataType
-    content_type: Union["ArrayType", DataType]
-
-
 class JoinType(Enum):
     INNER = "inner"
     LEFT_OUTER = "left outer"
@@ -112,6 +79,9 @@ class WindowOrder(Enum):
 
 
 class FunctionType(Enum):
+    # custom
+    CUSTOM = "custom"
+    
     # structural
     UNNEST = "unnest"
 

@@ -16,7 +16,6 @@ from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE
 from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
-    DataType,
     FunctionType,
     InfiniteFunctionArgs,
     Modifier,
@@ -78,6 +77,10 @@ from preql.core.models import (
     arg_to_datatype,
     ListWrapper,
     ShowStatement,
+    DataType,
+    StructType,
+    MapType,
+    ListType,
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
@@ -87,6 +90,7 @@ grammar = r"""
     block: statement _TERMINATOR comment?
     ?statement: concept
     | datasource
+    | function
     | select
     | persist
     | import_statement
@@ -96,9 +100,9 @@ grammar = r"""
     comment:   /#.*(\n|$)/ |  /\/\/.*\n/  
     
     // property display_name string
-    concept_declaration: PURPOSE IDENTIFIER TYPE metadata?
+    concept_declaration: PURPOSE IDENTIFIER data_type metadata?
     //customer_id.property first_name STRING;
-    concept_property_declaration: PROPERTY IDENTIFIER TYPE metadata?
+    concept_property_declaration: PROPERTY IDENTIFIER data_type metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
     
@@ -132,6 +136,13 @@ grammar = r"""
 
     // select statement
     select: "select"i select_list  where? comment* order_by? comment* limit? comment*
+
+    // FUNCTION blocks
+    function: raw_function
+    function_binding_item: IDENTIFIER data_type
+    function_binding_list: (function_binding_item ",")* function_binding_item ","?
+    raw_function: "def" "rawsql"  IDENTIFIER  "("  function_binding_list ")" "-" ">" data_type "as"i MULTILINE_STRING
+
     
     // user_id where state = Mexico
     filter_item: "filter"i IDENTIFIER where
@@ -212,7 +223,7 @@ grammar = r"""
     _math_functions: fadd | fsub | fmul | fdiv | fround
     
     //generic
-    fcast: "cast"i "(" expr "AS"i TYPE ")"
+    fcast: "cast"i "(" expr "AS"i data_type ")"
     concat: "concat"i "(" (expr ",")* expr ")"
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fcase_when: "WHEN"i comparison "THEN"i expr
@@ -296,11 +307,12 @@ grammar = r"""
 
     MODIFIER: "Optional"i | "Partial"i
 
-    STRUCT_TYPE: "struct" "<" (TYPE ",")* TYPE ","? ">" 
+    struct_type: "struct" "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
 
-    ARRAY_TYPE: "array" "<" TYPE ">"
-    
-    TYPE: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | COMPLEX_TYPE | ARRAY_TYPE
+    list_type: "list" "<" data_type ">"
+
+
+    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | struct_type | list_type
     
     PURPOSE:  "key"i | "metric"i | "const"i | "constant"i
     PROPERTY: "property"i
@@ -451,9 +463,11 @@ class ParseToObjects(Transformer):
                     datatype=aggfunction.output_datatype,
                     purpose=aggfunction.output_purpose,
                     lineage=aggfunction,
-                    grain=Grain(components=parent.by)
-                    if parent.by
-                    else aggfunction.output_grain,
+                    grain=(
+                        Grain(components=parent.by)
+                        if parent.by
+                        else aggfunction.output_grain
+                    ),
                     namespace=DEFAULT_NAMESPACE,
                 )
                 if concept.metadata:
@@ -494,9 +508,30 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
+    
+    @v_args(meta=True)
+    def struct_type(self, meta: Meta, args) -> StructType:
+        final = []
+        for arg in args:
+            if not isinstance(arg, (DataType, ListType, StructType)):
+                new = self.environment.concepts.__getitem__(  # type: ignore
+                key=arg, line_no=meta.line
+            )
+                final.append(new)
+            else:
+                final.append(arg)
+        return StructType(fields=final)
 
-    def TYPE(self, args) -> DataType:
-        return DataType(args.lower())
+    def list_type(self, args) -> ListType:
+        return ListType(type=args[0])
+
+    def data_type(self, args) -> DataType | ListType | StructType:
+        resolved = args[0]
+        if isinstance(resolved, StructType):
+            return resolved
+        elif isinstance(resolved, ListType):
+            return resolved
+        return DataType(args[0].lower())
 
     def array_comparison(self, args) -> ComparisonOperator:
         return ComparisonOperator([x.value.lower() for x in args])
@@ -618,9 +653,9 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=filter_item.content.datatype,
-                purpose=purpose
-                if purpose
-                else filter_item.content.purpose,  # filter_item.content.purpose,
+                purpose=(
+                    purpose if purpose else filter_item.content.purpose
+                ),  # filter_item.content.purpose,
                 metadata=metadata,
                 lineage=filter_item,
                 # filters are implicitly at the grain of the base item
@@ -662,9 +697,11 @@ class ParseToObjects(Transformer):
                 purpose=aggfunction.output_purpose,
                 metadata=metadata,
                 lineage=aggfunction,
-                grain=Grain(components=parent.by)
-                if parent.by
-                else aggfunction.output_grain,
+                grain=(
+                    Grain(components=parent.by)
+                    if parent.by
+                    else aggfunction.output_grain
+                ),
                 namespace=namespace,
             )
             if concept.metadata:
@@ -704,15 +741,17 @@ class ParseToObjects(Transformer):
                 lineage=function,
                 grain=function.output_grain,
                 namespace=namespace,
-                keys=[self.environment.concepts[parent_concept]]
-                if parent_concept
-                else None,
+                keys=(
+                    [self.environment.concepts[parent_concept]]
+                    if parent_concept
+                    else None
+                ),
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return concept
-        
+
         raise SyntaxError(
             f"Received invalid type {type(args[2])} {args[2]} as input to select"
             " transform"
@@ -995,7 +1034,36 @@ class ParseToObjects(Transformer):
 
     def where(self, args):
         return WhereClause(conditional=args[0])
+     
+    @v_args(meta=True)
+    def function_binding_list(self, meta: Meta, args) -> Concept:
+        return args
+    
+    @v_args(meta=True)
+    def function_binding_item(self, meta: Meta, args) -> Concept:
+        return args
+    
+    @v_args(meta=True)
+    def raw_function(self, meta: Meta, args) -> Concept:
+        print(args)
+        identity = args[0]
+        fargs = args[1]
+        output = args[2]
+        item = Function(
+            operator=FunctionType.SUM,
+            arguments=[x[1] for x in fargs],
+            output_datatype=output,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=len(fargs)+1,
+        )
+        self.environment.functions[identity] = item
+        return item
 
+    @v_args(meta=True)
+    def function(self, meta: Meta, args) -> Concept:
+
+        return 
+    
     def int_lit(self, args):
         return int(args[0])
 
@@ -1086,12 +1154,12 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-    
+
     @v_args(meta=True)
     def attr_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return AttrAccess(args)
-    
+
     @v_args(meta=True)
     def fcoalesce(self, meta, args):
         args = self.process_function_args(args, meta=meta)
@@ -1125,7 +1193,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
-            arg_count=1
+            arg_count=1,
             # output_grain=Grain(components=arguments),
         )
 
@@ -1140,7 +1208,7 @@ class ParseToObjects(Transformer):
             output_datatype=arg.datatype,
             output_purpose=Purpose.METRIC,
             valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=1
+            arg_count=1,
             # output_grain=Grain(components=arguments),
         )
 
@@ -1180,7 +1248,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.STRING,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            arg_count=99
+            arg_count=99,
             # output_grain=args[0].grain,
         )
 
@@ -1193,7 +1261,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.BOOL,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            arg_count=2
+            arg_count=2,
             # output_grain=Grain(components=args),
         )
 
@@ -1206,7 +1274,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.BOOL,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            arg_count=2
+            arg_count=2,
             # output_grain=Grain(components=args),
         )
 
@@ -1219,7 +1287,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.STRING,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            arg_count=1
+            arg_count=1,
             # output_grain=Grain(components=args),
         )
 
@@ -1232,7 +1300,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.STRING,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            arg_count=1
+            arg_count=1,
             # output_grain=Grain(components=args),
         )
 

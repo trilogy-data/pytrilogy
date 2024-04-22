@@ -1,5 +1,5 @@
-from preql.core.models import Concept, Environment, Function, Metadata
-from preql.core.enums import DataType, Purpose, FunctionType, ConceptSource
+from preql.core.models import DataType, Concept, Environment, Function, Metadata
+from preql.core.enums import Purpose, FunctionType, ConceptSource
 from preql.constants import DEFAULT_NAMESPACE
 
 

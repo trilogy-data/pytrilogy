@@ -2,6 +2,7 @@ from __future__ import annotations
 import difflib
 import os
 from copy import deepcopy
+from enum import Enum
 from typing import (
     Dict,
     TypeVar,
@@ -34,7 +35,6 @@ from pathlib import Path
 from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
 from preql.core.enums import (
     InfiniteFunctionArgs,
-    DataType,
     Purpose,
     JoinType,
     Ordering,
@@ -89,6 +89,61 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
+
+
+ALL_TYPES = Union["DataType", "MapType", "ListType", "StructType", "Concept"]
+
+class DataType(Enum):
+    # PRIMITIVES
+    STRING = "string"
+    BOOL = "bool"
+    MAP = "map"
+    LIST = "list"
+    NUMBER = "number"
+    FLOAT = "float"
+    NUMERIC = "numeric"
+    INTEGER = "int"
+    BIGINT = "bigint"
+    DATE = "date"
+    DATETIME = "datetime"
+    TIMESTAMP = "timestamp"
+    ARRAY = "array"
+    DATE_PART = "date_part"
+    STRUCT = "struct"
+
+    # GRANULAR
+    UNIX_SECONDS = "unix_seconds"
+
+    # PARSING
+    UNKNOWN = "unknown"
+
+    @property
+    def data_type(self):
+        return self
+
+
+class ListType(BaseModel):
+    type: ALL_TYPES
+
+    @property
+    def data_type(self):
+        return DataType.LIST
+
+class MapType(BaseModel):
+    key_type: DataType
+    content_type: ALL_TYPES
+
+    @property
+    def data_type(self):
+        return DataType.MAP
+    
+class StructType(BaseModel):
+    fields: List[ALL_TYPES]
+
+    @property
+    def data_type(self):
+        return DataType.STRUCT
+
 class ListWrapper(Generic[VT], UserList):
     """Used to distinguish parsed list objects from other lists"""
 
@@ -131,7 +186,7 @@ def empty_grain() -> Grain:
 
 class Concept(BaseModel):
     name: str
-    datatype: DataType
+    datatype: DataType | ListType | StructType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
@@ -429,7 +484,7 @@ class Statement(BaseModel):
 class Function(BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType
+    output_datatype: DataType | ListType | StructType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
     arguments: Sequence[
@@ -482,7 +537,7 @@ class Function(BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
-            if isinstance(arg, Concept) and arg.datatype not in valid_inputs[idx]:
+            if isinstance(arg, Concept) and arg.datatype.data_type not in valid_inputs[idx]:
                 if arg.datatype != DataType.UNKNOWN:
                     raise TypeError(
                         f"Invalid input datatype {arg.datatype} passed into"
@@ -1560,6 +1615,8 @@ class Environment(BaseModel):
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
+    functions: Dict[str, Function] = Field(default_factory = dict)
+    data_types: Dict[str, DataType] = Field(default_factory = dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
     namespace: Optional[str] = None
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
@@ -2064,6 +2121,7 @@ Expr = (
     | Function
     | AggregateWrapper
 )
+
 
 
 Concept.model_rebuild()

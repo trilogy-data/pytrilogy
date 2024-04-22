@@ -4,9 +4,12 @@ from preql.core.models import (
     AggregateWrapper,
     Parenthetical,
     arg_to_datatype,
-    WindowItem
+    WindowItem,
+    DataType,
+    ListType,
+    StructType
 )
-from preql.core.enums import FunctionType, DataType, Purpose
+from preql.core.enums import FunctionType,  Purpose
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
 from typing import Optional
@@ -17,7 +20,7 @@ def create_function_derived_concept(
     namespace: str,
     operator: FunctionType,
     arguments: list[Concept],
-    output_type: Optional[DataType] = None,
+    output_type: Optional[DataType | ListType | StructType] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
     purpose = (

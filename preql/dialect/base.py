@@ -6,12 +6,13 @@ from preql.constants import CONFIG, logger, MagicConstants
 from preql.core.internal import DEFAULT_CONCEPTS
 from preql.core.enums import (
     Purpose,
-    DataType,
+
     FunctionType,
     WindowType,
     DatePart,
 )
 from preql.core.models import (
+    DataType,
     Concept,
     CTE,
     ProcessedQuery,
