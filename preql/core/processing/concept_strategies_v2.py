@@ -290,7 +290,7 @@ def source_concepts(
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
                 f" {[n for n in stack]}"
-                " checking for single connected graph"
+                f" checking for single connected graph"
             )
             graph_count, graphs = get_disconnected_components(found_map)
             logger.info(

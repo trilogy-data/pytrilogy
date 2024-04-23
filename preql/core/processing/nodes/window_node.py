@@ -4,8 +4,9 @@ from typing import List
 from preql.core.models import (
     SourceType,
     Concept,
+    Grain
 )
-from preql.core.processing.nodes.base_node import StrategyNode
+from preql.core.processing.nodes.base_node import StrategyNode, QueryDatasource
 
 
 class WindowNode(StrategyNode):
@@ -30,3 +31,8 @@ class WindowNode(StrategyNode):
             parents=parents,
             depth=depth,
         )
+
+    def _resolve(self) -> QueryDatasource:
+        base = super()._resolve()
+        base.grain = Grain(components=self.input_concepts)
+        return base

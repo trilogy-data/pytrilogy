@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple, Dict, TypedDict, Set
 import networkx as nx
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import Datasource, JoinType, BaseJoin, Concept, QueryDatasource
-from preql.core.enums import Purpose
+from preql.core.enums import Purpose, PurposeLineage
 from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
@@ -82,7 +82,7 @@ def calculate_graph_relevance(
         if not g.nodes[node]["type"] == NodeType.CONCEPT:
             continue
         concept = [x for x in concepts if x.address == node].pop()
-        if concept.purpose == Purpose.CONSTANT:
+        if concept.lineage == PurposeLineage.CONSTANT:
             continue
         # if it's an aggregate up to an arbitrary grain, it can be joined in later
         # and can be ignored in subgraph
@@ -154,7 +154,7 @@ def get_node_joins(
         local_concepts: List[Concept] = unique(
             [c for c in concepts if c.address in join_concepts], "address"
         )
-        if all([c.purpose == Purpose.CONSTANT for c in local_concepts]):
+        if all([c.derivation == PurposeLineage.CONSTANT for c in local_concepts]):
             # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []

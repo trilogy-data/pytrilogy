@@ -474,6 +474,26 @@ class ParseToObjects(Transformer):
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
+            elif isinstance(arg, (int, float, str, bool, ListWrapper)):
+                const_function: Function = Function(
+                    operator=FunctionType.CONSTANT,
+                    output_datatype=arg_to_datatype(arg),
+                    output_purpose=Purpose.CONSTANT,
+                    arguments=[arg],
+                )
+                id_hash = string_to_hash(str(arg))
+                concept = Concept(
+                    name=f"_anon_function_input_{id_hash}",
+                    datatype=const_function.output_datatype,
+                    purpose=Purpose.CONSTANT,
+                    lineage=const_function,
+                    grain=const_function.output_grain,
+                    namespace=DEFAULT_NAMESPACE,
+                )
+                if concept.metadata:
+                    concept.metadata.line_number = meta.line
+                self.environment.add_concept(concept, meta=meta)
+                final.append(concept)
             else:
                 final.append(arg)
         return final
