@@ -542,19 +542,6 @@ class ParseToObjects(Transformer):
                 final.append(arg)
         return StructType(fields=final)
 
-    @v_args(meta=True)
-    def struct_type(self, meta: Meta, args) -> StructType:
-        final: list[DataType | MapType | ListType | StructType | Concept] = []
-        for arg in args:
-            if not isinstance(arg, (DataType, ListType, StructType)):
-                new = self.environment.concepts.__getitem__(  # type: ignore
-                    key=arg, line_no=meta.line
-                )
-                final.append(new)
-            else:
-                final.append(arg)
-        return StructType(fields=final)
-
     def list_type(self, args) -> ListType:
         return ListType(type=args[0])
 
@@ -1093,30 +1080,6 @@ class ParseToObjects(Transformer):
         return item
 
     @v_args(meta=True)
-    def function_binding_list(self, meta: Meta, args) -> Concept:
-        return args
-
-    @v_args(meta=True)
-    def function_binding_item(self, meta: Meta, args) -> Concept:
-        return args
-
-    @v_args(meta=True)
-    def raw_function(self, meta: Meta, args) -> Function:
-        print(args)
-        identity = args[0]
-        fargs = args[1]
-        output = args[2]
-        item = Function(
-            operator=FunctionType.SUM,
-            arguments=[x[1] for x in fargs],
-            output_datatype=output,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=len(fargs) + 1,
-        )
-        self.environment.functions[identity] = item
-        return item
-
-    @v_args(meta=True)
     def function(self, meta: Meta, args) -> Function:
         return args[0]
 
@@ -1209,11 +1172,6 @@ class ParseToObjects(Transformer):
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return IndexAccess(args)
-
-    @v_args(meta=True)
-    def attr_access(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
-        return AttrAccess(args)
 
     @v_args(meta=True)
     def attr_access(self, meta, args):
