@@ -65,15 +65,16 @@ class GroupNode(StrategyNode):
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
-            logger.info( f"{LOGGER_PREFIX} Group node has different output than input, forcing group"
-                        f" {[c.address for c in self.input_concepts]}"
-                        " vs"
-                        f" {[c.address for c in self.output_concepts]}"
-                        " and"
-                        f" {comp_grain}"
-                        " vs"
-                        f" {grain}"
-                        )
+            logger.info(
+                f"{LOGGER_PREFIX} Group node has different output than input, forcing group"
+                f" {[c.address for c in self.input_concepts]}"
+                " vs"
+                f" {[c.address for c in self.output_concepts]}"
+                " and"
+                f" {comp_grain}"
+                " vs"
+                f" {grain}"
+            )
             source_type = SourceType.GROUP
         return QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),

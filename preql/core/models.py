@@ -446,7 +446,7 @@ class Grain(BaseModel):
         return Grain(components=components)
 
     def __add__(self, other: "Grain") -> "Grain":
-        components:List[Concept] = []
+        components: List[Concept] = []
         for clist in [self.components_copy, other.components_copy]:
             for component in clist:
                 if component.with_default_grain() in components:
@@ -458,7 +458,10 @@ class Grain(BaseModel):
                 [key in base_components for key in (c.keys or [])]
             ):
                 base_components.append(c)
-            elif c.purpose == Purpose.CONSTANT and not c.derivation == PurposeLineage.CONSTANT:
+            elif (
+                c.purpose == Purpose.CONSTANT
+                and not c.derivation == PurposeLineage.CONSTANT
+            ):
                 base_components.append(c)
         return Grain(components=base_components)
 

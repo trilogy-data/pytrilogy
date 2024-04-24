@@ -22,7 +22,12 @@ from dataclasses import dataclass
 def concept_list_to_grain(
     inputs: List[Concept], parent_sources: List[QueryDatasource]
 ) -> Grain:
-    candidates = [c for c in inputs if c.purpose == Purpose.KEY or (c.purpose == Purpose.CONSTANT and c.lineage != PurposeLineage.CONSTANT)]
+    candidates = [
+        c
+        for c in inputs
+        if c.purpose == Purpose.KEY
+        or (c.purpose == Purpose.CONSTANT and c.lineage != PurposeLineage.CONSTANT)
+    ]
     for x in inputs:
         if x.purpose == Purpose.PROPERTY and not any(
             [key in candidates for key in (x.keys or [])]
@@ -175,7 +180,9 @@ class NodeJoin:
             # if one datasource only has constants
             # we can join on 1=1
             for ds in [self.left_node, self.right_node]:
-                if all([c.derivation == PurposeLineage.CONSTANT for c in ds.all_concepts]):
+                if all(
+                    [c.derivation == PurposeLineage.CONSTANT for c in ds.all_concepts]
+                ):
                     self.concepts = []
                     return
 

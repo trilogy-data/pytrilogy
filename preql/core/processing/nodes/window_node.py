@@ -1,11 +1,7 @@
 from typing import List
 
 
-from preql.core.models import (
-    SourceType,
-    Concept,
-    Grain
-)
+from preql.core.models import SourceType, Concept, Grain
 from preql.core.processing.nodes.base_node import StrategyNode, QueryDatasource
 
 

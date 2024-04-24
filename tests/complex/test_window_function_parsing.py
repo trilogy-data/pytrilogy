@@ -7,6 +7,7 @@ from preql.dialect import duckdb
 from preql.parser import parse
 from preql import Dialects
 
+
 def test_select() -> None:
     declarations = """
 key user_id int metadata(description="the description");
@@ -142,12 +143,10 @@ select x, z
 order by x asc;"""
     env, parsed = parse(declarations)
     select: Select = parsed[-1]
-    x = env.concepts['x']
-    z = env.concepts['z']
+    x = env.concepts["x"]
+    z = env.concepts["z"]
 
-    ds = source_concepts(
-        [z.with_grain(x)], [x], environment=env
-    ).resolve()
+    ds = source_concepts([z.with_grain(x)], [x], environment=env).resolve()
 
     assert x in ds.output_concepts
     assert z in ds.output_concepts
@@ -158,9 +157,8 @@ order by x asc;"""
     generator = duckdb.DuckDBDialect()
     query = process_query(statement=select, environment=env)
     compiled = generator.compile_statement(query)
-    assert 'unnest' in compiled
+    assert "unnest" in compiled
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     results = exec.execute_text(declarations)
     select = results[-1]
-    assert [row.x for row in select] == [1,2,2,3]
-    
+    assert [row.x for row in select] == [1, 2, 2, 3]
