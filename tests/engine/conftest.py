@@ -7,7 +7,7 @@ from sqlalchemy.engine import create_engine
 
 from preql import Executor, Dialects, parse, Environment
 from preql.engine import ExecutionEngine, EngineConnection, EngineResult
-
+from preql.hooks.query_debugger import DebuggingHook
 ENV_PATH = abspath(__file__)
 
 
@@ -91,7 +91,8 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         connection.execute(text("select 1")).one_or_none()
 
     executor = Executor(
-        dialect=Dialects.DUCK_DB, engine=engine, environment=duckdb_model
+        dialect=Dialects.DUCK_DB, engine=engine, environment=duckdb_model,
+         hooks=[DebuggingHook()]
     )
     yield executor
 

@@ -82,7 +82,7 @@ def calculate_graph_relevance(
         if not g.nodes[node]["type"] == NodeType.CONCEPT:
             continue
         concept = [x for x in concepts if x.address == node].pop()
-        if concept.lineage == PurposeLineage.CONSTANT:
+        if concept.derivation == PurposeLineage.CONSTANT:
             continue
         # if it's an aggregate up to an arbitrary grain, it can be joined in later
         # and can be ignored in subgraph

@@ -92,14 +92,14 @@ def get_local_optional(
 
 def recurse_or_fail(
     depth,
-    environment,
+    environment:Environment,
     g,
-    found_concepts,
-    mandatory_concepts,
-    optional_concepts,
+    found_concepts:List[Concept],
+    mandatory_concepts:List[Concept],
+    optional_concepts:List[Concept],
     local_prefix,
     accept_partial: bool = False,
-):
+)-> StrategyNode:
     candidates = [
         x for x in found_concepts if x.purpose and x not in mandatory_concepts
     ]
