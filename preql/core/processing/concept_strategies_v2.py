@@ -248,6 +248,11 @@ def source_concepts(
                     )
                 )
             elif concept.derivation == PurposeLineage.AGGREGATE:
+                # don't push constants up before aggregation
+                # if not required
+                # to avoid constants multiplication changing default aggregation results
+                # ex sum(x) * 2 w/ no grain should return sum(x) * 2, not sum(x*2)
+                # these should always be sourceable independently
                 agg_optional = [
                     x
                     for x in local_optional
@@ -256,10 +261,7 @@ def source_concepts(
                 logger.info(
                     f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {agg_optional}"
                 )
-                # don't push constants up before aggregation
-                # if not required
-                # to avoid constants multiplication changing default aggregation results
-                # ex sum(x) * 2 w/ no grain should return sum(x) * 2, not sum(x*2)
+
                 stack.append(
                     gen_group_node(
                         concept, agg_optional, environment, g, depth, source_concepts
