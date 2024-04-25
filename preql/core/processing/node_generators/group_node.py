@@ -23,10 +23,11 @@ def gen_group_node(
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
+
     if concept.grain and len(concept.grain.components_copy) > 0:
         parent_concepts += concept.grain.components_copy
         output_concepts += concept.grain.components_copy
-    # otherwise, local optional are mandatory
+    # otherwise, local optional can be included
     else:
         parent_concepts += local_optional
         output_concepts += local_optional
@@ -51,4 +52,5 @@ def gen_group_node(
         g=g,
         parents=parents,
         partial_concepts=partials,
+        depth=depth,
     )

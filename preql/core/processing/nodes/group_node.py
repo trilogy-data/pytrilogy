@@ -54,19 +54,19 @@ class GroupNode(StrategyNode):
             # if there is no group by, and inputs equal outputs
             # return the parent
             logger.info(
-                f"{LOGGER_PREFIX} Output of group by node equals input of group by node"
+                f"{self.logging_prefix}{LOGGER_PREFIX} Output of group by node equals input of group by node"
                 f" {[c.address for c in self.output_concepts]}"
             )
             if len(parent_sources) == 1:
                 logger.info(
-                    f"{LOGGER_PREFIX} No group by required, returning parent node"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required, returning parent node"
                 )
                 return parent_sources[0]
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
             logger.info(
-                f"{LOGGER_PREFIX} Group node has different output than input, forcing group"
+                f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different output than input, forcing group"
                 f" {[c.address for c in self.input_concepts]}"
                 " vs"
                 f" {[c.address for c in self.output_concepts]}"

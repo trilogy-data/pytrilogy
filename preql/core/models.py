@@ -881,6 +881,18 @@ class Select(BaseModel):
                 )
             ):
                 output.append(item)
+            if (
+                item.purpose == Purpose.CONSTANT
+                and item.derivation != PurposeLineage.CONSTANT
+                and item.grain
+                and (
+                    not item.grain.components
+                    or not item.grain.issubset(
+                        Grain(components=unique(output, "address"))
+                    )
+                )
+            ):
+                output.append(item)
         return Grain(components=unique(output, "address"))
 
 

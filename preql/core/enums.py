@@ -82,6 +82,7 @@ class FunctionType(Enum):
 
     # structural
     UNNEST = "unnest"
+    ALIAS = "alias"
 
     # Generic
     CASE = "case"

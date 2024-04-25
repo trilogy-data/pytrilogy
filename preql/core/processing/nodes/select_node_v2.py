@@ -82,7 +82,9 @@ class SelectNode(StrategyNode):
             partial_concepts=partial_concepts,
         )
 
-    def resolve_from_raw_datasources(self, all_concepts) -> Optional[QueryDatasource]:
+    def resolve_from_raw_datasources(
+        self, all_concepts: List[Concept]
+    ) -> Optional[QueryDatasource]:
         for datasource in self.environment.datasources.values():
             all_found = True
             for raw_concept in all_concepts:
@@ -128,7 +130,7 @@ class SelectNode(StrategyNode):
                 # )
                 #     continue
                 # keep all concepts on the output, until we get to a node which requires reduction
-
+                target_grain = Grain(components=[c for c in all_concepts])
                 node = QueryDatasource(
                     input_concepts=unique(all_concepts, "address"),
                     output_concepts=unique(all_concepts, "address"),
@@ -136,7 +138,7 @@ class SelectNode(StrategyNode):
                         concept.address: {datasource} for concept in all_concepts
                     },
                     datasources=[datasource],
-                    grain=Grain(components=[c for c in all_concepts]),
+                    grain=target_grain,
                     joins=[],
                     partial_concepts=[
                         c.concept for c in datasource.columns if not c.is_complete
@@ -144,7 +146,8 @@ class SelectNode(StrategyNode):
                     source_type=SourceType.DIRECT_SELECT,
                 )
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address} for {[c.address for c in all_concepts]}. Group by required is {node.group_required}"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address} for {[str(c) for c in all_concepts]}. Group by required is {node.group_required}"
+                    f" grain {target_grain} vs {datasource.grain}"
                 )
                 return node
         return None

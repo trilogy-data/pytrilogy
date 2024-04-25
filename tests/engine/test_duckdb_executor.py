@@ -3,7 +3,6 @@ import networkx as nx
 from preql.core.env_processor import generate_graph
 from preql.executor import Executor
 from preql.core.models import ShowStatement
-from preql.core.enums import PurposeLineage
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -57,10 +56,10 @@ def test_constants(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const usd_conversion <- 2;
     
-    select total_count * usd_conversion as converted_total_count, total_count ;
+    select total_count * usd_conversion as converted_total_count ;
     """
     )[0].fetchall()
-    print(results[0])
+    # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
 

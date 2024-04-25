@@ -1,7 +1,14 @@
 from typing import List, Optional, Tuple, Dict, TypedDict, Set
 import networkx as nx
 from preql.core.graph_models import ReferenceGraph
-from preql.core.models import Datasource, JoinType, BaseJoin, Concept, QueryDatasource
+from preql.core.models import (
+    Datasource,
+    JoinType,
+    BaseJoin,
+    Concept,
+    QueryDatasource,
+    Grain,
+)
 from preql.core.enums import Purpose, PurposeLineage
 from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
@@ -206,6 +213,8 @@ def get_node_joins(
     # this is extra validation
     if len(datasources) > 1:
         for x in datasources:
+            if x.grain == Grain():
+                continue
             found = False
             for join in final_joins:
                 if (
