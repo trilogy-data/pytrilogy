@@ -446,7 +446,7 @@ class Grain(BaseModel):
         return Grain(components=components)
 
     def __add__(self, other: "Grain") -> "Grain":
-        components = []
+        components: List[Concept] = []
         for clist in [self.components_copy, other.components_copy]:
             for component in clist:
                 if component.with_default_grain() in components:
@@ -456,6 +456,11 @@ class Grain(BaseModel):
         for c in components:
             if c.purpose == Purpose.PROPERTY and not any(
                 [key in base_components for key in (c.keys or [])]
+            ):
+                base_components.append(c)
+            elif (
+                c.purpose == Purpose.CONSTANT
+                and not c.derivation == PurposeLineage.CONSTANT
             ):
                 base_components.append(c)
         return Grain(components=base_components)
@@ -867,6 +872,18 @@ class Select(BaseModel):
         for item in self.output_components:
             if (
                 item.purpose == Purpose.PROPERTY
+                and item.grain
+                and (
+                    not item.grain.components
+                    or not item.grain.issubset(
+                        Grain(components=unique(output, "address"))
+                    )
+                )
+            ):
+                output.append(item)
+            if (
+                item.purpose == Purpose.CONSTANT
+                and item.derivation != PurposeLineage.CONSTANT
                 and item.grain
                 and (
                     not item.grain.components

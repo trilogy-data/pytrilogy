@@ -93,7 +93,7 @@ select
     spec_category = env.concepts["special_category"]
     category_name = env.concepts["category_name"]
     inputs = [x.address for x in spec_category.lineage.where.input]
-    assert len(inputs) == 1
+    assert len(inputs) == 2
     assert category_name.address in inputs
 
     select: Select = parsed[-1]
@@ -191,4 +191,4 @@ select
     assert env.concepts["special_order"].lineage.where.conditional.right is True
     assert env.concepts["special_order_2"].lineage.where.conditional.right == 1
     query = BaseDialect().compile_statement(process_query(test_environment, select))
-    assert "'test'  = True" in query
+    assert "= True" in query

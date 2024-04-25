@@ -102,7 +102,8 @@ grammar = r"""
     // property display_name string
     concept_declaration: PURPOSE IDENTIFIER data_type metadata?
     //customer_id.property first_name STRING;
-    concept_property_declaration: PROPERTY IDENTIFIER data_type metadata?
+    //<customer_id,country>.property local_alias STRING
+    concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
     
@@ -110,6 +111,9 @@ grammar = r"""
     
     concept:  concept_declaration | concept_derivation | concept_property_declaration | constant_derivation
     
+    //concept property
+    prop_ident: "<" (IDENTIFIER ",")* IDENTIFIER ","? ">" "." IDENTIFIER
+
     // datasource concepts
     datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
     
@@ -356,12 +360,19 @@ def parse_concept_reference(
 
 
 def unwrap_transformation(
-    input: Union[Function, AggregateWrapper, int, str, float, bool]
+    input: Union[Concept, Function, AggregateWrapper, int, str, float, bool]
 ) -> Function:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
         return input.function
+    elif isinstance(input, Concept):
+        return Function(
+            operator=FunctionType.ALIAS,
+            output_datatype=input.datatype,
+            output_purpose=input.purpose,
+            arguments=[input],
+        )
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -468,6 +479,26 @@ class ParseToObjects(Transformer):
                         if parent.by
                         else aggfunction.output_grain
                     ),
+                    namespace=DEFAULT_NAMESPACE,
+                )
+                if concept.metadata:
+                    concept.metadata.line_number = meta.line
+                self.environment.add_concept(concept, meta=meta)
+                final.append(concept)
+            elif isinstance(arg, (int, float, str, bool, ListWrapper)):
+                const_function: Function = Function(
+                    operator=FunctionType.CONSTANT,
+                    output_datatype=arg_to_datatype(arg),
+                    output_purpose=Purpose.CONSTANT,
+                    arguments=[arg],
+                )
+                id_hash = string_to_hash(str(arg))
+                concept = Concept(
+                    name=f"_anon_function_input_{id_hash}",
+                    datatype=const_function.output_datatype,
+                    purpose=Purpose.CONSTANT,
+                    lineage=const_function,
+                    grain=const_function.output_grain,
                     namespace=DEFAULT_NAMESPACE,
                 )
                 if concept.metadata:
@@ -584,25 +615,40 @@ class ParseToObjects(Transformer):
         return Purpose.PROPERTY
 
     @v_args(meta=True)
+    def prop_ident(self, meta: Meta, args) -> Tuple[List[Concept], str]:
+        return [self.environment.concepts[grain] for grain in args[:-1]], args[-1]
+
+    @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
         if len(args) > 3:
             metadata = args[3]
         else:
             metadata = None
-        if "." not in args[1]:
-            raise ParseError(
-                f"Property declaration {args[1]} must be fully qualified with a parent key"
-            )
-        grain, name = args[1].rsplit(".", 1)
-        parent = self.environment.concepts[grain]
+
+        declaration = args[1]
+        if isinstance(declaration, (tuple)):
+            parents, name = declaration
+            if "." in name:
+                namespace, name = name.split(".", 1)
+            else:
+                namespace = DEFAULT_NAMESPACE
+        else:
+            if "." not in declaration:
+                raise ParseError(
+                    f"Property declaration {args[1]} must be fully qualified with a parent key"
+                )
+            grain, name = declaration.rsplit(".", 1)
+            parent = self.environment.concepts[grain]
+            parents = [parent]
+            namespace = parent.namespace
         concept = Concept(
             name=name,
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
-            grain=Grain(components=[self.environment.concepts[grain]]),
-            namespace=parent.namespace,
-            keys=[parent],
+            grain=Grain(components=parents),
+            namespace=namespace,
+            keys=parents,
         )
         self.environment.add_concept(concept, meta)
         return concept

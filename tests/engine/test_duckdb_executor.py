@@ -56,9 +56,10 @@ def test_constants(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const usd_conversion <- 2;
     
-    select total_count * usd_conversion -> converted_total_count;
+    select total_count * usd_conversion as converted_total_count ;
     """
     )[0].fetchall()
+    # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
 

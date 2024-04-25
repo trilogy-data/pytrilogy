@@ -73,33 +73,45 @@ def get_local_optional(
     optional_concepts: List[Concept],
     mandatory_concepts: List[Concept],
     concept: Concept,
-):
+    local_prefix: str,
+) -> tuple[List[Concept], List[Concept]]:
     # we don't  want to look for multiple aggregates at the same time
-    # local optional should be relevant keys, but not metrics
+    # don't ever push a constant upstream - apply at end
     local_optional_staging = unique(
         [
             x
             for x in optional_concepts + mandatory_concepts
-            if x.address
-            != concept.address  # and #not x.derivation== PurposeLineage.AGGREGATE
+            if x.address != concept.address
+        ],
+        "address",
+    )
+
+    local_mandatory_staging = unique(
+        [
+            x
+            for x in optional_concepts + mandatory_concepts
+            if x.address != concept.address
         ],
         "address",
     )
 
     # reduce search space to actual grain
-    return concept_list_to_grain(local_optional_staging, []).components_copy
+    return (
+        concept_list_to_grain(local_optional_staging, []).components_copy,
+        concept_list_to_grain(local_mandatory_staging, []).components_copy,
+    )
 
 
 def recurse_or_fail(
     depth,
-    environment,
+    environment: Environment,
     g,
-    found_concepts,
-    mandatory_concepts,
-    optional_concepts,
+    found_concepts: set[Concept],
+    mandatory_concepts: List[Concept],
+    optional_concepts: List[Concept],
     local_prefix,
     accept_partial: bool = False,
-):
+) -> StrategyNode:
     candidates = [
         x for x in found_concepts if x.purpose and x not in mandatory_concepts
     ]
@@ -129,7 +141,9 @@ def recurse_or_fail(
         try:
             return source_concepts(
                 mandatory_concepts=new_mandatory,
-                optional_concepts=optional_concepts,
+                optional_concepts=[
+                    x for x in optional_concepts if x not in new_mandatory
+                ],
                 environment=environment,
                 g=g,
                 depth=depth + 1,
@@ -145,6 +159,7 @@ def recurse_or_fail(
     throw_helpful_error(
         mandatory_concepts, optional_concepts, "Last attempt: " + str(process_optional)
     )
+    raise ValueError("Should never get here, for type-hinting")
 
 
 def source_concepts(
@@ -174,7 +189,7 @@ def source_concepts(
     if matched and (accept_partial or len(matched.partial_concepts) == 0):
         logger.info(
             f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in mandatory_concepts + optional_concepts]} "
-            f"concepts and {accept_partial} partial {len(matched.partial_concepts)}, returning."
+            f"concepts and {accept_partial} for partial with partial match {len(matched.partial_concepts)}, returning."
         )
         return matched
 
@@ -197,39 +212,65 @@ def source_concepts(
         concept = get_priority_concept(all_concepts, list(attempted_priority_concepts))
         attempted_priority_concepts.add(concept.address)
         # process into a deduped list of optional join concepts to try to pull through
-        local_optional = get_local_optional(
-            optional_concepts, mandatory_concepts, concept
+        local_optional, local_required = get_local_optional(
+            optional_concepts, mandatory_concepts, concept, local_prefix
         )
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} For {concept.address}, have local optional {[str(c) for c in local_optional]}"
+            f"{local_prefix}{LOGGER_PREFIX} For {concept.address}, have local required {[str(c) for c in local_required]} and optional {[str(c) for c in local_optional]}"
         )
 
         if concept.lineage:
             if concept.derivation == PurposeLineage.WINDOW:
+                logger.info(
+                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating window node"
+                )
                 stack.append(
                     gen_window_node(
                         concept, local_optional, environment, g, depth, source_concepts
                     )
                 )
             elif concept.derivation == PurposeLineage.FILTER:
+                logger.info(
+                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating filter node"
+                )
                 stack.append(
                     gen_filter_node(
                         concept, local_optional, environment, g, depth, source_concepts
                     )
                 )
             elif concept.derivation == PurposeLineage.UNNEST:
+                logger.info(
+                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating unnest node"
+                )
                 stack.append(
                     gen_unnest_node(
                         concept, local_optional, environment, g, depth, source_concepts
                     )
                 )
             elif concept.derivation == PurposeLineage.AGGREGATE:
+                # don't push constants up before aggregation
+                # if not required
+                # to avoid constants multiplication changing default aggregation results
+                # ex sum(x) * 2 w/ no grain should return sum(x) * 2, not sum(x*2)
+                # these should always be sourceable independently
+                agg_optional = [
+                    x
+                    for x in local_optional
+                    if not x.derivation == PurposeLineage.CONSTANT
+                ]
+                logger.info(
+                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {agg_optional}"
+                )
+
                 stack.append(
                     gen_group_node(
-                        concept, local_optional, environment, g, depth, source_concepts
+                        concept, agg_optional, environment, g, depth, source_concepts
                     )
                 )
             elif concept.derivation == PurposeLineage.CONSTANT:
+                logger.info(
+                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating constant node"
+                )
                 stack.append(
                     ConstantNode(
                         input_concepts=[],
@@ -241,6 +282,9 @@ def source_concepts(
                     )
                 )
             elif concept.derivation == PurposeLineage.BASIC:
+                logger.info(
+                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating basic with {[x.address for x in local_optional]}"
+                )
                 stack.append(
                     gen_basic_node(
                         concept, local_optional, environment, g, depth, source_concepts
@@ -290,7 +334,7 @@ def source_concepts(
             logger.info(
                 f"{local_prefix}{LOGGER_PREFIX} have all concepts, have {[c.address for c in all_concepts]} from"
                 f" {[n for n in stack]}"
-                " checking for single connected graph"
+                f" checking for single connected graph"
             )
             graph_count, graphs = get_disconnected_components(found_map)
             logger.info(

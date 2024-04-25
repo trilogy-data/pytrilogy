@@ -1,9 +1,11 @@
-from preql.core.models import Select
-from preql.core.models import WindowItem
+from preql.core.models import Select, WindowItem
+from preql.core.enums import PurposeLineage
 from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import process_query, get_query_datasources
 from preql.dialect.bigquery import BigqueryDialect
+from preql.dialect import duckdb
 from preql.parser import parse
+from preql import Dialects
 
 
 def test_select() -> None:
@@ -129,3 +131,34 @@ limit 100
     generator = BigqueryDialect()
     compiled = generator.compile_statement(query)
     assert "rank() over (partition" in compiled
+
+
+def test_const_by():
+    declarations = """
+const x <- unnest([1,2,2,3]);
+const y <- 5;
+auto z <- rank x order by x desc;
+
+select x, z 
+order by x asc;"""
+    env, parsed = parse(declarations)
+    select: Select = parsed[-1]
+    x = env.concepts["x"]
+    z = env.concepts["z"]
+
+    ds = source_concepts([z.with_grain(x)], [x], environment=env).resolve()
+
+    assert x in ds.output_concepts
+    assert z in ds.output_concepts
+
+    assert x.derivation == PurposeLineage.UNNEST
+    assert z.derivation != PurposeLineage.CONSTANT
+
+    generator = duckdb.DuckDBDialect()
+    query = process_query(statement=select, environment=env)
+    compiled = generator.compile_statement(query)
+    assert "unnest" in compiled
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    results = exec.execute_text(declarations)
+    select = results[-1]
+    assert [row.x for row in select] == [1, 2, 2, 3]

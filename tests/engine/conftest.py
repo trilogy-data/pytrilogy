@@ -7,6 +7,7 @@ from sqlalchemy.engine import create_engine
 
 from preql import Executor, Dialects, parse, Environment
 from preql.engine import ExecutionEngine, EngineConnection, EngineResult
+from preql.hooks.query_debugger import DebuggingHook
 
 ENV_PATH = abspath(__file__)
 
@@ -22,9 +23,11 @@ def duckdb_model(environment):
 key item string;
 property item.value float;
 property item.discount_value float;
-key count int;
 key store_id int;
+property <item, store_id>.count int;
 
+#metric store_total_count <- sum(count) by item, store_id;
+#metric total_count <- sum(store_total_count);
 metric total_count <- sum(count);
 
 metric total_count_per_product <- sum(count) by item;
@@ -91,7 +94,10 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         connection.execute(text("select 1")).one_or_none()
 
     executor = Executor(
-        dialect=Dialects.DUCK_DB, engine=engine, environment=duckdb_model
+        dialect=Dialects.DUCK_DB,
+        engine=engine,
+        environment=duckdb_model,
+        hooks=[DebuggingHook()],
     )
     yield executor
 

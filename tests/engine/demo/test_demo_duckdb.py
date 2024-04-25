@@ -13,6 +13,7 @@ from preql.core.enums import Purpose
 from os.path import dirname
 from pathlib import PurePath
 from preql.parsing.render import Renderer
+from preql.hooks.query_debugger import DebuggingHook
 
 
 def setup_engine() -> Executor:
@@ -20,7 +21,7 @@ def setup_engine() -> Executor:
     csv = PurePath(dirname(__file__)) / "train.csv"
     df = pd.read_csv(csv)
     _ = df
-    output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[])
+    output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[DebuggingHook()])
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
     return output
@@ -163,8 +164,9 @@ def test_demo_aggregates():
     executor.environment = env
     test = """
 auto survivor <- filter passenger.id where passenger.survived = 1;
+const scale <- 100;
 select passenger.class, 
-(count(survivor) by passenger.class/count(passenger.id) by passenger.class)*100->survival_rate;
+(count(survivor) by passenger.class/count(passenger.id) by passenger.class)*scale -> survival_rate;
 """
 
     executor.parse_text(test)
