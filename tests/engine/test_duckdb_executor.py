@@ -3,7 +3,6 @@ import networkx as nx
 from preql.core.env_processor import generate_graph
 from preql.executor import Executor
 from preql.core.models import ShowStatement
-from preql.core.enums import PurposeLineage
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
