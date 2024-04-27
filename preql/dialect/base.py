@@ -9,6 +9,7 @@ from preql.core.enums import (
     FunctionType,
     WindowType,
     DatePart,
+    PurposeLineage,
 )
 from preql.core.models import (
     DataType,
