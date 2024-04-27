@@ -9,6 +9,7 @@ from preql.core.enums import (
     FunctionType,
     WindowType,
     DatePart,
+    PurposeLineage,
 )
 from preql.core.models import (
     DataType,
@@ -86,6 +87,7 @@ def render_case(args):
 FUNCTION_MAP = {
     # generic types
     FunctionType.ALIAS: lambda x: f"{x[0]}",
+    FunctionType.GROUP: lambda x: f"{x[0]}",
     FunctionType.CONSTANT: lambda x: f"{x[0]}",
     FunctionType.COALESCE: lambda x: f"coalesce({','.join(x)})",
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
@@ -115,6 +117,8 @@ FUNCTION_MAP = {
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
+    FunctionType.DATE_PART: lambda x: f"date_part({x[0]},{x[1]})",
+    FunctionType.DATE_ADD: lambda x: f"date_add({x[0]},{x[1]}, {x[2]})",
     FunctionType.DATE: lambda x: f"date({x[0]})",
     FunctionType.DATETIME: lambda x: f"datetime({x[0]})",
     FunctionType.TIMESTAMP: lambda x: f"timestamp({x[0]})",
@@ -529,14 +533,19 @@ class BaseDialect:
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()
-        output_addresses = [c.address for c in query.output_columns]
+        hidden_addresses = [c.address for c in query.hidden_columns]
+        output_addresses = [
+            c.address for c in query.output_columns if c.address not in hidden_addresses
+        ]
+
         for c in query.base.output_columns:
-            if c.address not in selected and c.address in output_addresses:
+            if c.address not in selected:
                 select_columns[
                     c.address
                 ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                 cte_output_map[c.address] = query.base
-                selected.add(c.address)
+                if c.address not in hidden_addresses:
+                    selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
             missing = [x for x in output_addresses if x not in selected]
             raise ValueError(
@@ -548,7 +557,13 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             found = False
-            filter = set([str(x.address) for x in query.where_clause.concept_arguments])
+            filter = set(
+                [
+                    str(x.address)
+                    for x in query.where_clause.concept_arguments
+                    if not x.derivation == PurposeLineage.CONSTANT
+                ]
+            )
             query_output = set([str(z.address) for z in query.output_columns])
             if filter.issubset(query_output):
                 output_where = True
@@ -563,10 +578,10 @@ class BaseDialect:
 
         compiled_ctes = self.generate_ctes(query, {})
 
-        # want to return columns in the order the user wrote
-        sorted_select = []
-        for c in query.output_columns:
-            sorted_select.append(select_columns[c.address])
+        # restort selections by the order they were written in
+        sorted_select: List[str] = []
+        for output_c in output_addresses:
+            sorted_select.append(select_columns[output_c])
         final = self.SQL_TEMPLATE.render(
             output=(
                 query.output_to if isinstance(query, ProcessedQueryPersist) else None

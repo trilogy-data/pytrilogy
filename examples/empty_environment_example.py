@@ -1,10 +1,9 @@
-
-
 from preql import Dialects, Environment
 
 environment = Environment()
 
-environment.parse('''
+environment.parse(
+    """
 
 key name string;
 key gender string;
@@ -22,19 +21,18 @@ datasource usa_names(
 )
 address bigquery-public-data.usa_names.usa_1910_2013;
 
-'''
+"""
 )
 executor = Dialects.BIGQUERY.default_executor(environment=environment)
 
 results = executor.execute_text(
-'''SELECT
+    """SELECT
     name,
     name_count.sum
 order by
     name_count.sum desc
 limit 10;
-'''
-
+"""
 )
 # multiple queries can result from one text batch
 for row in results:
@@ -42,6 +40,3 @@ for row in results:
     answers = row.fetchall()
     for x in answers:
         print(x)
-
-
-

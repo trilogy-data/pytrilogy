@@ -10,6 +10,9 @@ WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
 FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x: f"string_to_array({x[0]}, {x[1]})",
+    FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
+    FunctionType.DATE_ADD: lambda x: f"({x[0]} + INTERVAL '{x[2]} {x[1]}')",
+    FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

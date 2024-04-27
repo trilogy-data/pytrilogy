@@ -117,7 +117,9 @@ def recurse_or_fail(
     ]
     if not candidates:
         # terminal state one - no options to discard
-        throw_helpful_error(mandatory_concepts, optional_concepts)
+        throw_helpful_error(
+            mandatory_concepts, optional_concepts, "No candidates found in iteration"
+        )
     # want to make the miimum amount of new concepts
     # mandatory, as finding a match is less and less likely
     # as we require more
@@ -126,6 +128,10 @@ def recurse_or_fail(
         for combo in combinations(candidates, x):
             combos.append(mandatory_concepts + list(combo))
     attempt = []
+    if depth > 50:
+        throw_helpful_error(
+            mandatory_concepts, optional_concepts, "Recursion violation"
+        )
     for new_mandatory in reversed(combos):
         attempt = new_mandatory
         if (
@@ -353,6 +359,7 @@ def source_concepts(
                     f"{local_prefix}{LOGGER_PREFIX} fetched nodes are not a connected graph - have {graph_count} as {graphs},"
                     f"rerunning with more mandatory concepts"
                 )
+
                 return recurse_or_fail(
                     depth,
                     environment,

@@ -82,13 +82,25 @@ def function_args_to_output_purpose(args) -> Purpose:
 
 
 def Unnest(args: list[Concept]) -> Function:
+    output = arg_to_datatype(args[0])
     return Function(
         operator=FunctionType.UNNEST,
         arguments=args,
-        output_datatype=args[0].datatype,
+        output_datatype=output,
         output_purpose=Purpose.KEY,
         arg_count=1,
         valid_inputs={DataType.ARRAY, DataType.LIST},
+    )
+
+
+def Group(args: list[Concept]) -> Function:
+    output = args[0]
+    return Function(
+        operator=FunctionType.GROUP,
+        arguments=args,
+        output_datatype=output.datatype,
+        output_purpose=output.purpose,
+        arg_count=1,
     )
 
 

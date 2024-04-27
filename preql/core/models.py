@@ -841,7 +841,15 @@ class Select(BaseModel):
         for item in self.selection:
             if isinstance(item, Concept):
                 output.append(item)
-            elif Modifier.HIDDEN not in item.modifiers:
+            else:
+                output.append(item.output)
+        return output
+
+    @property
+    def hidden_components(self) -> List[Concept]:
+        output = []
+        for item in self.selection:
+            if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
                 output.append(item.output)
         return output
 
@@ -2052,6 +2060,7 @@ class ProcessedQuery(BaseModel):
     base: CTE
     joins: List[Join]
     grain: Grain
+    hidden_columns: List[Concept] = Field(default_factory=list)
     limit: Optional[int] = None
     where_clause: Optional[WhereClause] = None
     order_by: Optional[OrderBy] = None

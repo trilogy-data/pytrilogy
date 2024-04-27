@@ -33,5 +33,7 @@ def gen_unnest_node(
                 g,
                 depth=depth + 1,
             )
-        ],
+        ]
+        if (arguments or local_optional)
+        else [],
     )

@@ -324,4 +324,5 @@ def process_query(
         base=root_cte,
         # we no longer do any joins at final level, this should always happen in parent CTEs
         joins=[],
+        hidden_columns=[x for x in statement.hidden_components],
     )

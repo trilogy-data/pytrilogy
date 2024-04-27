@@ -29,7 +29,7 @@ class Purpose(Enum):
     def _missing_(cls, value):
         if value == "constant":
             return Purpose.CONSTANT
-        return super().__missing__(value)
+        return super()._missing_(value)
 
 
 class PurposeLineage(Enum):
@@ -69,6 +69,8 @@ class WindowType(Enum):
     MAX = "max"
     MIN = "min"
     AVG = "avg"
+    COUNT = "count"
+    COUNT_DISTINCT = "count_distinct"
 
 
 class WindowOrder(Enum):
@@ -107,6 +109,10 @@ class FunctionType(Enum):
     ABS = "abs"
 
     # Aggregates
+    ## group is not a real aggregate - it just means group by this + some other set of fields
+    ## but is here as syntax is identical
+    GROUP = "group"
+
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
     SUM = "sum"
@@ -139,6 +145,7 @@ class FunctionType(Enum):
 
     DATE_PART = "date_part"
     DATE_TRUNCATE = "date_truncate"
+    DATE_ADD = "date_add"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"
@@ -156,6 +163,7 @@ class FunctionClass(Enum):
         FunctionType.AVG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
+        FunctionType.GROUP,
     ]
 
 
@@ -207,6 +215,12 @@ class DatePart(Enum):
     WEEK = "week"
     DAY = "day"
     QUARTER = "quarter"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.lower() != value:
+            return DatePart(value.lower())
+        return super()._missing_(value)
 
 
 class SourceType(Enum):

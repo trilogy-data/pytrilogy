@@ -1,8 +1,6 @@
 from trilogy_public_models import models
-from preql import Executor, Dialects
+from preql import Dialects
 from preql.hooks.query_debugger import DebuggingHook, PrintMode
-from preql.core.processing.concept_strategies_v2 import resolve_function_parent_concepts
-from preql.core.models import CTE, QueryDatasource, Grain
 from logging import INFO
 
 environment = models["bigquery.age_of_empires_2"]
