@@ -106,3 +106,4 @@ Please open an issue first to discuss what you would like to change, and then cr
 ## Similar in space
 
 - singleorigin
+- malloy
