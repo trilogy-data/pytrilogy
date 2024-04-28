@@ -95,9 +95,6 @@ for row in results:
 
 Clone repository and install requirements
 
-
-
-
 ## Contributing
 
 Please open an issue first to discuss what you would like to change, and then create a PR against that issue.
