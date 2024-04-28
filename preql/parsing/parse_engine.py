@@ -30,6 +30,7 @@ from preql.core.exceptions import InvalidSyntaxException, UndefinedConceptExcept
 from preql.core.functions import (
     Count,
     CountDistinct,
+    Group,
     Max,
     Min,
     Split,
@@ -152,7 +153,7 @@ grammar = r"""
     filter_item: "filter"i IDENTIFIER where
 
     // rank/lag/lead
-    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i)  /[\s]+/
+    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i)  /[\s]+/
     
     window_item: WINDOW_TYPE (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
     
@@ -160,7 +161,8 @@ grammar = r"""
     
     window_item_order: ("ORDER"i? "BY"i order_list)
     
-    select_item: (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
+    select_hide_modifier: "--"
+    select_item: select_hide_modifier? (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
     
     select_list:  ( select_item "," )* select_item ","?
     
@@ -253,6 +255,7 @@ grammar = r"""
     _string_functions: like | ilike | upper | lower | fsplit
     
     //aggregates
+    fgroup: "group"i "(" expr ")"
     count: "count"i "(" expr ")"
     count_distinct: "count_distinct"i "(" expr ")"
     sum: "sum"i "(" expr ")"
@@ -262,7 +265,7 @@ grammar = r"""
     
     //aggregates can force a grain
     aggregate_over: ("BY"i over_list)
-    aggregate_functions: (count | count_distinct | sum | avg | max | min) aggregate_over?
+    aggregate_functions: (count | count_distinct | sum | avg | max | min | fgroup) aggregate_over?
 
     // date functions
     fdate: "date"i "(" expr ")"
@@ -281,9 +284,10 @@ grammar = r"""
     
     DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i
     fdate_trunc: "date_trunc"i "(" expr "," DATE_PART ")"
-    fdate_part: "date_part"i "(" expr ")"
+    fdate_part: "date_part"i "(" expr "," DATE_PART ")"
+    fdate_add: "date_add"i "(" expr "," DATE_PART "," int_lit ")"
     
-    _date_functions: fdate | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
+    _date_functions: fdate | fdate_add | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
     // base language constructs
     IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -297,7 +301,7 @@ grammar = r"""
     _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
     _string_lit: _single_quote | _double_quote
     
-    int_lit: /[0-9]+/
+    int_lit: "-"? /[0-9]+/
     
     float_lit: /[0-9]+\.[0-9]+/
 
@@ -485,7 +489,7 @@ class ParseToObjects(Transformer):
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
-            elif isinstance(arg, (int, float, str, bool, ListWrapper)):
+            elif isinstance(arg, (ListWrapper,)):
                 const_function: Function = Function(
                     operator=FunctionType.CONSTANT,
                     output_datatype=arg_to_datatype(arg),
@@ -920,8 +924,14 @@ class ParseToObjects(Transformer):
         return ConceptTransform(function=function, output=concept)
 
     @v_args(meta=True)
+    def select_hide_modifier(self, meta: Meta, args) -> Modifier:
+        return Modifier.HIDDEN
+
+    @v_args(meta=True)
     def select_item(self, meta: Meta, args) -> Optional[SelectItem]:
-        args = [arg for arg in args if not isinstance(arg, Comment)]
+        modifiers = [arg for arg in args if isinstance(arg, Modifier)]
+        args = [arg for arg in args if not isinstance(arg, (Modifier, Comment))]
+
         if not args:
             return None
         if len(args) != 1:
@@ -933,7 +943,8 @@ class ParseToObjects(Transformer):
         if isinstance(content, ConceptTransform):
             return SelectItem(content=content)
         return SelectItem(
-            content=self.environment.concepts.__getitem__(content, meta.line)
+            content=self.environment.concepts.__getitem__(content, meta.line),
+            modifiers=modifiers,
         )
 
     def select_list(self, args):
@@ -1220,6 +1231,11 @@ class ParseToObjects(Transformer):
         return Count(args)
 
     @v_args(meta=True)
+    def fgroup(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Group(args)
+
+    @v_args(meta=True)
     def fabs(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Abs(args)
@@ -1387,6 +1403,47 @@ class ParseToObjects(Transformer):
                 {DataType.DATE_PART},
             ],
             arg_count=2,
+        )
+
+    @v_args(meta=True)
+    def fdate_part(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Function(
+            operator=FunctionType.DATE_PART,
+            arguments=args,
+            output_datatype=DataType.DATE,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs=[
+                {
+                    DataType.DATE,
+                    DataType.TIMESTAMP,
+                    DataType.DATETIME,
+                    DataType.STRING,
+                },
+                {DataType.DATE_PART},
+            ],
+            arg_count=2,
+        )
+
+    @v_args(meta=True)
+    def fdate_add(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Function(
+            operator=FunctionType.DATE_ADD,
+            arguments=args,
+            output_datatype=DataType.DATE,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs=[
+                {
+                    DataType.DATE,
+                    DataType.TIMESTAMP,
+                    DataType.DATETIME,
+                    DataType.STRING,
+                },
+                {DataType.DATE_PART},
+                {DataType.INTEGER},
+            ],
+            arg_count=3,
         )
 
     @v_args(meta=True)

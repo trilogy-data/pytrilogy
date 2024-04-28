@@ -93,7 +93,7 @@ select
     spec_category = env.concepts["special_category"]
     category_name = env.concepts["category_name"]
     inputs = [x.address for x in spec_category.lineage.where.input]
-    assert len(inputs) == 2
+    assert len(inputs) == 1
     assert category_name.address in inputs
 
     select: Select = parsed[-1]
