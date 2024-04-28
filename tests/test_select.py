@@ -104,3 +104,25 @@ def test_double_aggregate():
 
     generator = BigqueryDialect()
     generator.compile_statement(query)
+
+
+def test_modifiers():
+    q1 = """
+    const a <- 1;
+    const b <- 2;
+    
+    select
+        a,
+        --b,
+    where b =2
+    ;"""
+    env, parsed = parse(q1)
+    select: Select = parsed[-1]
+    assert select.hidden_components == [env.concepts["b"]]
+    assert select.output_components == [env.concepts["a"], env.concepts["b"]]
+    query = process_query(statement=select, environment=env)
+
+    generator = BigqueryDialect()
+
+    text = generator.compile_statement(query)
+    assert "`b` = 2" in text
