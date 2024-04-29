@@ -28,6 +28,7 @@ from preql.core.models import (
     CaseWhen,
     Import,
     Parenthetical,
+    AggregateWrapper,
 )
 
 
@@ -200,9 +201,11 @@ class Renderer:
         return QUERY_TEMPLATE.render(
             select_columns=[self.to_string(c) for c in arg.selection],
             where=self.to_string(arg.where_clause) if arg.where_clause else None,
-            order_by=[self.to_string(c) for c in arg.order_by.items]
-            if arg.order_by
-            else None,
+            order_by=(
+                [self.to_string(c) for c in arg.order_by.items]
+                if arg.order_by
+                else None
+            ),
             limit=arg.limit,
         )
 
@@ -396,6 +399,12 @@ class Renderer:
     @to_string.register
     def _(self, arg: bool):
         return f"{arg}"
+
+    @to_string.register
+    def _(self, arg: AggregateWrapper):
+        if arg.by:
+            return f"{self.to_string(arg.function)} by {self.to_string(arg.by)}"
+        return f"{self.to_string(arg.function)}"
 
 
 def render_query(query: "Select") -> str:

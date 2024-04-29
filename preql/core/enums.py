@@ -41,6 +41,11 @@ class PurposeLineage(Enum):
     UNNEST = "unnest"
 
 
+class Granularity(Enum):
+    SINGLE_ROW = "single_row"
+    MULTI_ROW = "multi_row"
+
+
 class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"

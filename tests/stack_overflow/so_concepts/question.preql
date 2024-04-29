@@ -9,11 +9,10 @@ property id.comment_count int;
 property id.constant string;
 
 
-metric count <- count( id);
+metric count <- count(id);
 metric avg_length <- avg(length);
-metric total_comment_count <- sum(comment_count);
 
-key top_ids <- filter id where total_comment_count >50;
+key top_ids <- filter id where sum(comment_count) by id >50;
 
 
 datasource posts (

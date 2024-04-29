@@ -50,7 +50,7 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
     assert len(parent.all_concepts) == 2
 
 
-def test_gen_group_node(test_environment, test_environment_graph):
+def test_gen_group_node(test_environment: Environment, test_environment_graph):
     # from preql.core.models import AggregateWrapper
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]

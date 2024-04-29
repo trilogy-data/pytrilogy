@@ -3,6 +3,7 @@ from os.path import dirname
 from preql.core.models import Select, Environment
 from preql.core.query_processor import process_query
 from preql.parser import parse
+from preql.hooks.query_debugger import DebuggingHook
 
 
 def test_filtering_reduction():
@@ -24,9 +25,15 @@ order by
     question.count desc
      limit 10
     ;"""
-    env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
+    env, parsed = parse(
+        QUERY,
+        environment=Environment(working_path=dirname(__file__)),
+    )
     select: Select = parsed[-1]
-    process_query(statement=select, environment=env)
+    # for item in select.selection:
+    #    if item.content
+    #    assert item.content.grain == Grain(components=[env.concepts["tag.name"]])
+    process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 
 
 def test_filtering_reduction_two():

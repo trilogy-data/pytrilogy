@@ -169,10 +169,13 @@ def test_environment():
             content=product_id,
             where=WhereClause(
                 conditional=Comparison(
-                    left=total_revenue, operator=ComparisonOperator.GT, right=50
+                    left=total_revenue.with_grain(product_id),
+                    operator=ComparisonOperator.GT,
+                    right=50,
                 )
             ),
         ),
+        grain=product_id,
     )
 
     category_top_50_revenue_products = Concept(

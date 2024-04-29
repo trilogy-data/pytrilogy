@@ -4,7 +4,7 @@ from typing import List, Optional
 
 
 from preql.constants import logger
-from preql.core.enums import PurposeLineage
+from preql.core.enums import PurposeLineage, Granularity
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
 from preql.core.models import (
@@ -73,33 +73,20 @@ def get_local_optional(
     optional_concepts: List[Concept],
     mandatory_concepts: List[Concept],
     concept: Concept,
-    local_prefix: str,
-) -> tuple[List[Concept], List[Concept]]:
+) -> List[Concept]:
     # we don't  want to look for multiple aggregates at the same time
     # don't ever push a constant upstream - apply at end
     local_optional_staging = unique(
         [
             x
-            for x in optional_concepts + mandatory_concepts
-            if x.address != concept.address
-        ],
-        "address",
-    )
-
-    local_mandatory_staging = unique(
-        [
-            x
-            for x in optional_concepts + mandatory_concepts
+            for x in mandatory_concepts + optional_concepts
             if x.address != concept.address
         ],
         "address",
     )
 
     # reduce search space to actual grain
-    return (
-        concept_list_to_grain(local_optional_staging, []).components_copy,
-        concept_list_to_grain(local_mandatory_staging, []).components_copy,
-    )
+    return concept_list_to_grain(local_optional_staging, []).components_copy
 
 
 def recurse_or_fail(
@@ -218,11 +205,11 @@ def source_concepts(
         concept = get_priority_concept(all_concepts, list(attempted_priority_concepts))
         attempted_priority_concepts.add(concept.address)
         # process into a deduped list of optional join concepts to try to pull through
-        local_optional, local_required = get_local_optional(
-            optional_concepts, mandatory_concepts, concept, local_prefix
+        local_optional = get_local_optional(
+            optional_concepts, mandatory_concepts, concept
         )
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} For {concept.address}, have local required {[str(c) for c in local_required]} and optional {[str(c) for c in local_optional]}"
+            f"{local_prefix}{LOGGER_PREFIX} For {concept.address}, and optional {[str(c) for c in local_optional]}"
         )
 
         if concept.lineage:
@@ -260,12 +247,10 @@ def source_concepts(
                 # ex sum(x) * 2 w/ no grain should return sum(x) * 2, not sum(x*2)
                 # these should always be sourceable independently
                 agg_optional = [
-                    x
-                    for x in local_optional
-                    if not x.derivation == PurposeLineage.CONSTANT
+                    x for x in local_optional if x.granularity != Granularity.SINGLE_ROW
                 ]
                 logger.info(
-                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {agg_optional}"
+                    f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x.address for x in agg_optional]}"
                 )
 
                 stack.append(

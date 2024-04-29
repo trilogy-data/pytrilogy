@@ -125,7 +125,7 @@ select
 
 def test_select_where_attribute(test_environment, logger):
     declarations = """
-property special_order_high_rev <- filter order_id where total_revenue > 1000;
+property special_order_high_rev <- filter order_id where sum(revenue) by order_id > 1000;
 
 
 select

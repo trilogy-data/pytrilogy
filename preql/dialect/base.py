@@ -70,6 +70,9 @@ WINDOW_FUNCTION_MAP = {
     WindowType.LEAD: window_factory("lead", include_concept=True),
     WindowType.RANK: window_factory("rank"),
     WindowType.ROW_NUMBER: window_factory("row_number"),
+    WindowType.SUM: window_factory("sum", include_concept=True),
+    WindowType.COUNT: window_factory("count", include_concept=True),
+    WindowType.AVG: window_factory("avg", include_concept=True),
 }
 
 DATATYPE_MAP = {

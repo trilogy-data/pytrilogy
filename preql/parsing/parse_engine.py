@@ -12,6 +12,7 @@ from lark.exceptions import (
 from lark.tree import Meta
 from pydantic import ValidationError
 
+from preql.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
 from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE
 from preql.core.enums import (
     BooleanOperator,
@@ -200,7 +201,7 @@ grammar = r"""
 
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
 
-    COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<" | "!="  )
+    COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!="  )
     
     comparison: (expr COMPARISON_OPERATOR expr) | (expr array_comparison expr_tuple) 
     
@@ -264,7 +265,8 @@ grammar = r"""
     min: "min"i "(" expr ")"
     
     //aggregates can force a grain
-    aggregate_over: ("BY"i over_list)
+    aggregate_all: "*"
+    aggregate_over: ("BY"i (aggregate_all | over_list))
     aggregate_functions: (count | count_distinct | sum | avg | max | min | fgroup) aggregate_over?
 
     // date functions
@@ -686,7 +688,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         purpose = args[0]
-        if purpose == "auto":
+        if purpose == Purpose.AUTO:
             purpose = None
         name = args[1]
 
@@ -719,17 +721,20 @@ class ParseToObjects(Transformer):
             return concept
         elif isinstance(source_value, WindowItem):
             window_item: WindowItem = source_value
-            if purpose == Purpose.PROPERTY:
+            local_purpose = purpose or function_args_to_output_purpose(
+                [window_item.content]
+            )
+            if local_purpose == Purpose.PROPERTY:
                 keys = [window_item.content]
             else:
                 keys = []
             concept = Concept(
                 name=name,
                 datatype=window_item.content.datatype,
-                purpose=purpose if purpose else window_item.content.purpose,
+                purpose=local_purpose,
                 metadata=metadata,
                 lineage=window_item,
-                # windows are implicitly at the grain of the group by + the original content
+                # windows are implicitly at the grain of the window over the original content
                 grain=Grain(components=window_item.over + [window_item.content.output]),
                 namespace=namespace,
                 keys=keys,
@@ -1199,6 +1204,9 @@ class ParseToObjects(Transformer):
 
     def aggregate_over(self, args):
         return args[0]
+
+    def aggregate_all(self, args):
+        return [self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]]
 
     def aggregate_functions(self, args):
         if len(args) == 2:

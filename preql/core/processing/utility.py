@@ -9,7 +9,7 @@ from preql.core.models import (
     QueryDatasource,
     Grain,
 )
-from preql.core.enums import Purpose, PurposeLineage
+from preql.core.enums import Purpose, PurposeLineage, Granularity
 from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
@@ -89,7 +89,10 @@ def calculate_graph_relevance(
         if not g.nodes[node]["type"] == NodeType.CONCEPT:
             continue
         concept = [x for x in concepts if x.address == node].pop()
-        if concept.derivation == PurposeLineage.CONSTANT:
+
+        # a single row concept can always be crossjoined
+        # therefore a graph with only single row concepts is always relevant
+        if concept.granularity == Granularity.SINGLE_ROW:
             continue
         # if it's an aggregate up to an arbitrary grain, it can be joined in later
         # and can be ignored in subgraph

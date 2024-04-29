@@ -112,6 +112,19 @@ def test_environment():
         ),
     )
 
+    category_name_length_sum = Concept(
+        name="category_name_length_sum",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.METRIC,
+        grain=category_id,
+        lineage=Function(
+            arguments=[category_name_length],
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            operator=FunctionType.SUM,
+        ),
+    )
+
     product_revenue_rank = Concept(
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
@@ -119,8 +132,11 @@ def test_environment():
         lineage=WindowItem(
             type=WindowType.RANK,
             content=product_id,
-            order_by=[OrderItem(expr=total_revenue, order="desc")],
+            order_by=[
+                OrderItem(expr=total_revenue.with_grain(product_id), order="desc")
+            ],
         ),
+        grain=product_id,
     )
     product_revenue_rank_by_category = Concept(
         name="product_revenue_rank_by_category",
@@ -137,12 +153,14 @@ def test_environment():
     products_with_revenue_over_50 = Concept(
         name="products_with_revenue_over_50",
         datatype=DataType.INTEGER,
-        purpose=Purpose.PROPERTY,
+        purpose=Purpose.KEY,
         lineage=FilterItem(
             content=product_id,
             where=WhereClause(
                 conditional=Comparison(
-                    left=total_revenue, operator=ComparisonOperator.GT, right=50
+                    left=total_revenue.with_grain(product_id),
+                    operator=ComparisonOperator.GT,
+                    right=50,
                 )
             ),
         ),
@@ -198,6 +216,7 @@ def test_environment():
         product_revenue_rank,
         product_revenue_rank_by_category,
         products_with_revenue_over_50,
+        category_name_length_sum,
     ]:
         env.add_concept(item)
         # env.concepts[item.name] = item
