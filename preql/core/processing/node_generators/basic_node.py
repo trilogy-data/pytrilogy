@@ -11,7 +11,9 @@ from preql.core.processing.nodes import (
 from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
+from preql.constants import logger
 
+LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
 def gen_basic_node(
     concept: Concept,
@@ -22,6 +24,7 @@ def gen_basic_node(
     source_concepts,
 ):
     parent_concepts = resolve_function_parent_concepts(concept)
+    depth_prefix = "\t" * depth
     if not parent_concepts:
         raise ValueError(
             f"concept {concept} has basic lineage {concept.derivation} {type(concept.lineage)} {str(concept.lineage)}  but no parents!"
@@ -43,6 +46,7 @@ def gen_basic_node(
             continue
         if all(x in source.partial_concepts for source in sources):
             partials.append(x)
+    logger.info(f'{depth_prefix}{LOGGER_PREFIX} Returning basic select node')
     return SelectNode(
         input_concepts=parent_concepts + local_optional,
         output_concepts=output_concepts,

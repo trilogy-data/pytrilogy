@@ -146,6 +146,7 @@ def get_node_joins(
         # and can never be on the left of a join
         if left == CONSTANT_DATASET:
             continue
+    
         for cnode in graph.neighbors(left):
             if graph.nodes[cnode]["type"] == NodeType.CONCEPT:
                 for right in graph.neighbors(cnode):
@@ -214,9 +215,10 @@ def get_node_joins(
         final_joins_pre = new_final_joins_pre
 
     # this is extra validation
-    if len(datasources) > 1:
+    non_single_row_ds = [x for x in datasources if not x.grain.abstract]
+    if len(non_single_row_ds) > 1:
         for x in datasources:
-            if x.grain == Grain():
+            if x.grain.abstract:
                 continue
             found = False
             for join in final_joins:

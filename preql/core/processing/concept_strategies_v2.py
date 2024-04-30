@@ -177,11 +177,11 @@ def source_concepts(
         )
     # may be able to directly find everything we need
     matched = gen_static_select_node(
-        mandatory_concepts + optional_concepts, environment, g, depth
+        all_concepts, environment, g, depth
     )
     if matched and (accept_partial or len(matched.partial_concepts) == 0):
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in mandatory_concepts + optional_concepts]} "
+            f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in all_concepts]} "
             f"concepts and {accept_partial} for partial with partial match {len(matched.partial_concepts)}, returning."
         )
         return matched
@@ -209,7 +209,7 @@ def source_concepts(
             optional_concepts, mandatory_concepts, concept
         )
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} For {concept.address}, and optional {[str(c) for c in local_optional]}"
+            f"{local_prefix}{LOGGER_PREFIX} For {str(concept)}, and optional {[str(c) for c in local_optional]}"
         )
 
         if concept.lineage:

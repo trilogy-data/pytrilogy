@@ -50,6 +50,8 @@ class StaticSelectNode(StrategyNode):
         self.datasource = datasource
 
     def _resolve(self):
+        if self.datasource.grain == Grain():
+            raise NotImplementedError
         return self.datasource
 
 
@@ -130,7 +132,13 @@ class SelectNode(StrategyNode):
                 # )
                 #     continue
                 # keep all concepts on the output, until we get to a node which requires reduction
-                target_grain = Grain(components=[c for c in all_concepts])
+
+                if any([c.grain != datasource.grain for c in all_concepts]):
+                    logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} need to group to select grain")
+                    target_grain = Grain(components=[c for c in all_concepts])
+                else:
+                    logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} all concepts at desired grain {datasource.grain}")
+                    target_grain = datasource.grain
                 node = QueryDatasource(
                     input_concepts=unique(all_concepts, "address"),
                     output_concepts=unique(all_concepts, "address"),
@@ -172,7 +180,9 @@ class SelectNode(StrategyNode):
             return super()._resolve()
 
         if all([c.purpose == Purpose.CONSTANT for c in self.all_concepts]):
+            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource")
             return self.resolve_from_constant_datasources()
+        logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} resolving from raw datasources")
         resolution = self.resolve_from_raw_datasources(self.all_concepts)
         if resolution:
             return resolution

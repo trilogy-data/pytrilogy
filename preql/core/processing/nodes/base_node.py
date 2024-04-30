@@ -73,7 +73,7 @@ def resolve_concept_map(
 
 
 class StrategyNode:
-    source_type = SourceType.SELECT
+    source_type = SourceType.ABSTRACT
 
     def __init__(
         self,

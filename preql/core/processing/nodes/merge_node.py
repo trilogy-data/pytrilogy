@@ -22,7 +22,7 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
 class MergeNode(StrategyNode):
-    source_type = SourceType.SELECT
+    source_type = SourceType.MERGE
 
     def __init__(
         self,

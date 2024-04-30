@@ -33,7 +33,7 @@ from pydantic import (
 from lark.tree import Meta
 from pathlib import Path
 from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
-from preql.core.constants import ALL_ROWS_CONCEPT
+from preql.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from preql.core.enums import (
     InfiniteFunctionArgs,
     Purpose,
@@ -412,6 +412,8 @@ class Concept(BaseModel):
             # there is only one row left and it's fine to cross_join
             if all([x.name == ALL_ROWS_CONCEPT for x in self.grain.components]):
                 return Granularity.SINGLE_ROW
+        elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
+            return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 
 
@@ -433,7 +435,9 @@ class Grain(BaseModel):
 
     def __str__(self):
         if self.abstract:
-            return "Grain<Abstract>"
+            return (
+                "Grain<Abstract" + ",".join([c.address for c in self.components]) + ">"
+            )
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
 
     def with_namespace(self, namespace: str) -> "Grain":
@@ -641,9 +645,8 @@ class Function(BaseModel):
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return base_grain
         # scalars have implicit grain of all arguments
-        # for input in self.concept_arguments:
-        #
-        #     base_grain += input.grain
+        for input in self.concept_arguments:
+            base_grain += input.grain
         return base_grain
 
 
@@ -1693,9 +1696,9 @@ def validate_concepts(v) -> EnvironmentConceptDict:
 class Environment(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
 
-    concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
+    concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
+        Field(default_factory=EnvironmentConceptDict)
+    )
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)

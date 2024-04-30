@@ -6,7 +6,6 @@ from preql.constants import logger
 from logging import StreamHandler, DEBUG
 from preql.core.processing.concept_strategies_v2 import StrategyNode
 
-
 from preql.dialect.bigquery import BigqueryDialect
 
 from enum import Enum
@@ -103,6 +102,7 @@ class DebuggingHook(BaseHook):
         process_datasources: PrintMode | bool = True,
         process_other: bool = True,
     ):
+        
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
         logger.setLevel(level)
@@ -111,10 +111,10 @@ class DebuggingHook(BaseHook):
         self.process_ctes = PrintMode(process_ctes)
         self.process_nodes = PrintMode(process_nodes)
         self.process_datasources = PrintMode(process_datasources)
-        self.process_other = process_other
+        self.process_other = PrintMode(process_other)
 
     def process_select_info(self, select: Select):
-        if self.process_other:
+        if self.process_datasources != PrintMode.OFF:
             print(f"grain: {str(select.grain)}")
 
     def process_root_datasource(self, datasource: QueryDatasource):

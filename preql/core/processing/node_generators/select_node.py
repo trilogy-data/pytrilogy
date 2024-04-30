@@ -130,7 +130,7 @@ def gen_select_node_from_join(
     accept_partial: bool = False,
 ) -> Optional[MergeNode]:
     all_input_concepts = [*all_concepts]
-
+    logging_prefix = "\t" * depth
     join_candidates: List[PathInfo] = []
     for datasource in environment.datasources.values():
         all_found = True
@@ -147,14 +147,14 @@ def gen_select_node_from_join(
             except nx.exception.NodeNotFound as e:
                 # TODO: support Verbose logging mode configuration and reenable these
                 logger.debug(
-                    f"{LOGGER_PREFIX} could not find node for {item.address} with {item.grain} and {item.lineage}: {str(e)}"
+                    f"{LOGGER_PREFIX}{logging_prefix}could not find node for {item.address} with {item.grain} and {item.lineage}: {str(e)}"
                 )
                 all_found = False
 
                 continue
             except nx.exception.NetworkXNoPath:
                 logger.debug(
-                    f"{LOGGER_PREFIX} could not get to {concept_to_node(item)} from {datasource_to_node(datasource)}"
+                    f"{LOGGER_PREFIX}{logging_prefix} could not get to {concept_to_node(item)} from {datasource_to_node(datasource)}"
                 )
                 all_found = False
                 continue
