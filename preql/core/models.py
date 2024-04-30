@@ -1706,9 +1706,9 @@ def validate_concepts(v) -> EnvironmentConceptDict:
 class Environment(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
 
-    concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
+    concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
+        Field(default_factory=EnvironmentConceptDict)
+    )
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)

@@ -15,6 +15,7 @@ from preql.constants import logger
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
+LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
 def gen_basic_node(
     concept: Concept,
