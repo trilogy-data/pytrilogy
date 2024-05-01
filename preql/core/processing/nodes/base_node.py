@@ -121,7 +121,7 @@ class StrategyNode:
         # if conditional:
         #     for condition in conditions[1:]:
         #         conditional += condition
-        grain = Grain()
+        grain = Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
             parent_sources,
             unique(self.output_concepts, "address"),

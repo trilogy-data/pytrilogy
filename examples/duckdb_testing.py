@@ -3,13 +3,14 @@ from preql import Executor, Dialects
 from preql.core.models import Environment
 from sqlalchemy import create_engine
 from preql.core.models import (
+    DataType,
     Datasource,
     Concept,
     Function,
     ColumnAssignment,
     Grain,
 )
-from preql.core.enums import DataType, Purpose, FunctionType
+from preql.core.enums import Purpose, FunctionType
 from os.path import dirname
 from pathlib import PurePath
 from preql import Executor
@@ -25,7 +26,8 @@ logger.setLevel(DEBUG)
 def setup_engine() -> Executor:
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / "train.csv"
-    pd.read_csv(csv)
+    df = pd.read_csv(csv)
+    _ = df
     output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[])
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
@@ -339,6 +341,118 @@ if __name__ == "__main__":
     model = setup_titanic(env)
     renderer = Renderer()
     executor.environment = env
+
+    raw = executor.execute_raw_sql(
+        """ WITH 
+deeply as (
+SELECT
+    local_raw_data."passengerid" as "passenger_id",
+    local_raw_data."pclass" as "passenger_class",
+    local_raw_data."survived" as "passenger_survived"
+FROM
+    raw_titanic as local_raw_data
+),
+eagle as (
+SELECT
+    count(deeply."passenger_id") as "total",
+    deeply."passenger_class" as "passenger_class"
+FROM
+    deeply as deeply
+
+GROUP BY 
+    deeply."passenger_class"),
+dove as (
+SELECT
+    deeply."passenger_id" as "survivor",
+    deeply."passenger_id" as "passenger_id"
+FROM
+    deeply as deeply
+WHERE
+    deeply."passenger_survived" = 1
+),
+vulture as (
+SELECT
+    dove."survivor" as "survivor",
+    dove."passenger_id" as "passenger_id",
+    deeply."passenger_class" as "passenger_class"
+FROM
+    dove as dove
+    INNER JOIN deeply on dove."passenger_id" = deeply."passenger_id"
+),
+sordid as (
+SELECT
+    vulture."survivor" as "survivor",
+    deeply."passenger_class" as "passenger_class"
+FROM
+    vulture as vulture
+    LEFT OUTER JOIN deeply on vulture."passenger_class" = deeply."passenger_class"
+),
+resonant as (
+SELECT
+    count(sordid."survivor") as "survivors",
+    sordid."passenger_class" as "passenger_class"
+FROM
+    sordid as sordid
+
+GROUP BY 
+    sordid."passenger_class"),
+albatross as (
+SELECT
+    resonant."survivors" as "survivors",
+    eagle."total" as "total",
+    resonant."passenger_class" as "passenger_class"
+FROM
+    resonant as resonant
+    LEFT OUTER JOIN eagle on resonant."passenger_class" = eagle."passenger_class"
+),
+cockatiel as (
+SELECT
+    (albatross."survivors" / albatross."total") as "ratio",
+    albatross."passenger_class" as "passenger_class"
+FROM
+    albatross as albatross
+),
+busy as (
+SELECT
+    (cockatiel."ratio" * 100) as "survival_rate",
+    cockatiel."passenger_class" as "passenger_class"
+FROM
+    cockatiel as cockatiel
+)
+SELECT
+    busy."passenger_class",
+    busy."survival_rate"
+FROM
+    busy
+ """
+    )
+
+    extra = """  tearful as (
+   SELECT
+       (divergent."survivors" / divergent."total") as "ratio",
+       divergent."passenger_class" as "passenger_class"
+   FROM
+       divergent as divergent
+   ),
+   barracuda as (
+   SELECT
+       ratio,
+       
+       (tearful."ratio" * 100) as "survival_rate",
+       tearful."passenger_class" as "passenger_class"
+   FROM
+       tearful as tearful
+   )
+   SELECT
+       ratio,
+       barracuda."passenger_class",
+       barracuda."survival_rate"
+   FROM
+       barracuda"""
+
+    for row in raw:
+        print(row)
+    exit(0)
     test = """
 
 auto survivor <- filter passenger.id where passenger.survived = 1;

@@ -176,15 +176,17 @@ def source_concepts(
             f"Cannot source empty concept inputs, had {mandatory_concepts} and {optional_concepts}"
         )
     # may be able to directly find everything we need
-    matched = gen_static_select_node(
-        all_concepts, environment, g, depth
-    )
+    matched = gen_static_select_node(all_concepts, environment, g, depth)
     if matched and (accept_partial or len(matched.partial_concepts) == 0):
         logger.info(
             f"{local_prefix}{LOGGER_PREFIX} found direct select node with all {[x.address for x in all_concepts]} "
             f"concepts and {accept_partial} for partial with partial match {len(matched.partial_concepts)}, returning."
         )
         return matched
+    else:
+        logger.info(
+            f"{local_prefix}{LOGGER_PREFIX} no direct select node available, entering sourcing loop"
+        )
 
     # now start the fun portion
     # Loop through all possible grains + subgrains

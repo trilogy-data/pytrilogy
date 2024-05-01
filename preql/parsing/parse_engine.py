@@ -788,13 +788,16 @@ class ParseToObjects(Transformer):
             function: Function = source_value
             # if purpose != function.output_purpose:
             #     raise SyntaxError(f'Invalid output purpose assigned {purpose}')
+            final_purpose = purpose if purpose else function.output_purpose
             concept = Concept(
                 name=name,
                 datatype=function.output_datatype,
-                purpose=purpose if purpose else function.output_purpose,
+                purpose=final_purpose,
                 metadata=metadata,
                 lineage=function,
-                grain=function.output_grain,
+                grain=function.output_grain
+                if final_purpose != Purpose.KEY
+                else Grain(components=[]),
                 namespace=namespace,
                 keys=(
                     [self.environment.concepts[parent_concept]]

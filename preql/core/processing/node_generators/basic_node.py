@@ -15,6 +15,7 @@ from preql.constants import logger
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
+
 def gen_basic_node(
     concept: Concept,
     local_optional: List[Concept],
@@ -46,7 +47,7 @@ def gen_basic_node(
             continue
         if all(x in source.partial_concepts for source in sources):
             partials.append(x)
-    logger.info(f'{depth_prefix}{LOGGER_PREFIX} Returning basic select node')
+    logger.info(f"{depth_prefix}{LOGGER_PREFIX} Returning basic select node")
     return SelectNode(
         input_concepts=parent_concepts + local_optional,
         output_concepts=output_concepts,

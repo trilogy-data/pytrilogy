@@ -16,12 +16,24 @@ from preql.parsing.render import Renderer
 from preql.hooks.query_debugger import DebuggingHook
 from logging import INFO
 
+
 def setup_engine() -> Executor:
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / "train.csv"
     df = pd.read_csv(csv)
     _ = df
-    output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[DebuggingHook(level=INFO, process_other=False, process_datasources=False, process_ctes=False)])
+    output = Executor(
+        engine=engine,
+        dialect=Dialects.DUCK_DB,
+        hooks=[
+            DebuggingHook(
+                level=INFO,
+                process_other=False,
+                process_datasources=False,
+                process_ctes=False,
+            )
+        ],
+    )
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
     return output
@@ -175,11 +187,11 @@ select
 """
 
     executor.parse_text(test)
-    ratio = env.concepts['ratio']
+    ratio = env.concepts["ratio"]
     assert ratio.purpose == Purpose.METRIC
-    assert env.concepts['ratio'].grain == Grain(components=[env.concepts['passenger.class']])
-
-    executor.generate_sql(test)
+    assert env.concepts["ratio"].grain == Grain(
+        components=[env.concepts["passenger.class"]]
+    )
 
     results = executor.execute_text(test)
 
