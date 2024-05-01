@@ -102,7 +102,6 @@ class DebuggingHook(BaseHook):
         process_datasources: PrintMode | bool = True,
         process_other: bool = True,
     ):
-        
         if not any([isinstance(x, StreamHandler) for x in logger.handlers]):
             logger.addHandler(StreamHandler())
         logger.setLevel(level)
