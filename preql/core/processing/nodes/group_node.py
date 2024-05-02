@@ -71,9 +71,9 @@ class GroupNode(StrategyNode):
                 " vs"
                 f" {[c.address for c in self.output_concepts]}"
                 " and"
-                f" {comp_grain}"
+                f"upstream grain {comp_grain}"
                 " vs"
-                f" {grain}"
+                f"target grain {grain}"
             )
             source_type = SourceType.GROUP
         return QueryDatasource(

@@ -9,7 +9,7 @@ from preql.core.models import (
     ListType,
     StructType,
 )
-from preql.core.enums import FunctionType, Purpose
+from preql.core.enums import FunctionType, Purpose, Granularity
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
 from typing import Optional
@@ -68,13 +68,16 @@ def argument_to_purpose(arg) -> Purpose:
 def function_args_to_output_purpose(args) -> Purpose:
     has_metric = False
     has_non_constant = False
+    has_non_single_row_constant = False
     for arg in args:
         purpose = argument_to_purpose(arg)
         if purpose == Purpose.METRIC:
             has_metric = True
         if purpose != Purpose.CONSTANT:
             has_non_constant = True
-    if not has_non_constant:
+        if isinstance(arg, Concept) and arg.granularity != Granularity.SINGLE_ROW:
+            has_non_single_row_constant = True
+    if not has_non_constant and not has_non_single_row_constant:
         return Purpose.CONSTANT
     if has_metric:
         return Purpose.METRIC

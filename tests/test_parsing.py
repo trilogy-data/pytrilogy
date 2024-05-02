@@ -5,6 +5,7 @@ from preql.core.models import (
     ProcessedQuery,
     ShowStatement,
     Select,
+    Environment,
 )
 from preql.core.functions import argument_to_purpose, function_args_to_output_purpose
 from preql.parsing.parse_engine import (
@@ -74,7 +75,7 @@ def test_arg_to_datatype():
     assert arg_to_datatype("test") == DataType.STRING
 
 
-def test_argument_to_purpose(test_environment):
+def test_argument_to_purpose(test_environment: Environment):
     assert argument_to_purpose(1.00) == Purpose.CONSTANT
     assert argument_to_purpose("test") == Purpose.CONSTANT
     assert argument_to_purpose(test_environment.concepts["order_id"]) == Purpose.KEY
@@ -91,6 +92,11 @@ def test_argument_to_purpose(test_environment):
         function_args_to_output_purpose(
             ["test", 1.00, test_environment.concepts["order_id"]]
         )
+        == Purpose.PROPERTY
+    )
+    unnest_env, parsed = parse_text("const random <- unnest([1,2,3,4]);")
+    assert (
+        function_args_to_output_purpose([unnest_env.concepts["random"]])
         == Purpose.PROPERTY
     )
 

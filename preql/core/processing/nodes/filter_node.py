@@ -5,7 +5,6 @@ from preql.core.models import (
     QueryDatasource,
     SourceType,
     Concept,
-    Grain,
     Conditional,
     Comparison,
     Parenthetical,
@@ -49,5 +48,4 @@ class FilterNode(StrategyNode):
     def _resolve(self) -> QueryDatasource:
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
-        base.grain = Grain(components=self.output_concepts)
         return base

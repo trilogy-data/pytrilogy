@@ -14,7 +14,7 @@ from preql.core.models import (
     Comparison,
     Parenthetical,
 )
-from preql.core.enums import Purpose, JoinType, PurposeLineage
+from preql.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from preql.utility import unique
 from dataclasses import dataclass
 
@@ -22,21 +22,15 @@ from dataclasses import dataclass
 def concept_list_to_grain(
     inputs: List[Concept], parent_sources: List[QueryDatasource]
 ) -> Grain:
-    candidates = [
-        c
-        for c in inputs
-        if c.purpose == Purpose.KEY
-        or (c.purpose == Purpose.CONSTANT and c.lineage != PurposeLineage.CONSTANT)
-    ]
+    candidates = [c for c in inputs if c.purpose == Purpose.KEY]
     for x in inputs:
         if x.purpose == Purpose.PROPERTY and not any(
             [key in candidates for key in (x.keys or [])]
         ):
             candidates.append(x)
-        # TODO: figure out how to avoid this?
-        # 2024-01-08 - removing as this shouldn't be required
-        # elif x.purpose == Purpose.CONSTANT:
-        #     candidates.append(x)
+        elif x.purpose == Purpose.CONSTANT:
+            if not x.granularity == Granularity.SINGLE_ROW:
+                candidates.append(x)
         elif x.purpose == Purpose.METRIC:
             # metrics that were previously calculated must be included in grain
             if any([x in parent.output_concepts for parent in parent_sources]):
@@ -79,7 +73,7 @@ def resolve_concept_map(
 
 
 class StrategyNode:
-    source_type = SourceType.SELECT
+    source_type = SourceType.ABSTRACT
 
     def __init__(
         self,
@@ -127,7 +121,7 @@ class StrategyNode:
         # if conditional:
         #     for condition in conditions[1:]:
         #         conditional += condition
-        grain = Grain()
+        grain = Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
             parent_sources,
             unique(self.output_concepts, "address"),

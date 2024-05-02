@@ -41,6 +41,11 @@ class PurposeLineage(Enum):
     UNNEST = "unnest"
 
 
+class Granularity(Enum):
+    SINGLE_ROW = "single_row"
+    MULTI_ROW = "multi_row"
+
+
 class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"
@@ -226,6 +231,8 @@ class DatePart(Enum):
 class SourceType(Enum):
     FILTER = "filter"
     SELECT = "select"
+    MERGE = "merge"
+    ABSTRACT = "abstract"
     DIRECT_SELECT = "direct_select"
     GROUP = "group"
     WINDOW = "window"

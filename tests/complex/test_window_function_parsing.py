@@ -1,5 +1,5 @@
 from preql.core.models import Select, WindowItem
-from preql.core.enums import PurposeLineage
+from preql.core.enums import PurposeLineage, Granularity, Purpose
 from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import process_query, get_query_datasources
 from preql.dialect.bigquery import BigqueryDialect
@@ -144,7 +144,10 @@ order by x asc;"""
     env, parsed = parse(declarations)
     select: Select = parsed[-1]
     x = env.concepts["x"]
+    assert x.granularity == Granularity.MULTI_ROW
+
     z = env.concepts["z"]
+    assert z.purpose == Purpose.PROPERTY
 
     ds = source_concepts([z.with_grain(x)], [x], environment=env).resolve()
 

@@ -2,7 +2,8 @@ from datetime import datetime
 import networkx as nx
 from preql.core.env_processor import generate_graph
 from preql.executor import Executor
-from preql.core.models import ShowStatement
+from preql.core.models import ShowStatement, Concept
+from preql.core.enums import Purpose, Granularity
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -55,10 +56,23 @@ def test_aggregate_at_grain(duckdb_engine: Executor, expected_results):
 def test_constants(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const usd_conversion <- 2;
+
+    auto converted_total_count <-  total_count * usd_conversion;
     
-    select total_count * usd_conversion as converted_total_count ;
+    select converted_total_count ;
     """
     )[0].fetchall()
+    # expected_results["converted_total_count"]
+    scaled_metric = duckdb_engine.environment.concepts["converted_total_count"]
+    assert scaled_metric.purpose == Purpose.METRIC
+    assert (
+        duckdb_engine.environment.concepts["usd_conversion"].granularity
+        == Granularity.SINGLE_ROW
+    )
+    parent_arg: Concept = [
+        x for x in scaled_metric.lineage.arguments if x.name == "total_count"
+    ][0]
+    assert len(parent_arg.lineage.arguments[0].grain.components) == 2
     # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 

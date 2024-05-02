@@ -1,10 +1,21 @@
-from preql.core.models import Concept, DataType
-from preql.core.enums import Purpose
-
-INTERNAL_NAMESPACE = "__preql_internal"
+from preql.core.models import Concept, DataType, Function
+from preql.core.enums import Purpose, FunctionType
+from preql.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 
 
 DEFAULT_CONCEPTS = {
+    ALL_ROWS_CONCEPT: Concept(
+        name=ALL_ROWS_CONCEPT,
+        namespace=INTERNAL_NAMESPACE,
+        datatype=DataType.INTEGER,
+        purpose=Purpose.CONSTANT,
+        lineage=Function(
+            operator=FunctionType.CONSTANT,
+            arguments=[1],
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.CONSTANT,
+        ),
+    ),
     "concept_name": Concept(
         name="concept_name",
         namespace=INTERNAL_NAMESPACE,

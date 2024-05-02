@@ -1,4 +1,3 @@
-
 nb_path = __file__
 from sys import path
 from os.path import dirname

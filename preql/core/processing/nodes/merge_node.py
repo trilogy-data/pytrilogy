@@ -22,7 +22,7 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
 class MergeNode(StrategyNode):
-    source_type = SourceType.SELECT
+    source_type = SourceType.MERGE
 
     def __init__(
         self,
@@ -158,6 +158,10 @@ class MergeNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins"
             )
             joins = self.translate_node_joins(self.node_joins)
+        for join in joins:
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} final join {join.join_type} {[str(c) for c in join.concepts]}"
+            )
         return QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),

@@ -33,6 +33,7 @@ from pydantic import (
 from lark.tree import Meta
 from pathlib import Path
 from preql.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
+from preql.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from preql.core.enums import (
     InfiniteFunctionArgs,
     Purpose,
@@ -50,6 +51,7 @@ from preql.core.enums import (
     ConceptSource,
     DatePart,
     ShowCategory,
+    Granularity,
 )
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
@@ -228,6 +230,13 @@ class Concept(BaseModel):
         v = v or Metadata()
         return v
 
+    @field_validator("purpose", mode="after")
+    @classmethod
+    def purpose_validation(cls, v):
+        if v == Purpose.AUTO:
+            raise ValueError("Cannot set purpose to AUTO")
+        return v
+
     @field_validator("grain", mode="before")
     @classmethod
     def parse_grain(cls, v, info: ValidationInfo) -> Grain:
@@ -393,6 +402,20 @@ class Concept(BaseModel):
             return PurposeLineage.CONSTANT
         return PurposeLineage.BASIC
 
+    @property
+    def granularity(self) -> Granularity:
+        if self.derivation == PurposeLineage.CONSTANT:
+            # constants are a single row
+            return Granularity.SINGLE_ROW
+        elif self.derivation == PurposeLineage.AGGREGATE:
+            # if it's an aggregate grouped over all rows
+            # there is only one row left and it's fine to cross_join
+            if all([x.name == ALL_ROWS_CONCEPT for x in self.grain.components]):
+                return Granularity.SINGLE_ROW
+        elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
+            return Granularity.SINGLE_ROW
+        return Granularity.MULTI_ROW
+
 
 class Grain(BaseModel):
     nested: bool = False
@@ -412,7 +435,9 @@ class Grain(BaseModel):
 
     def __str__(self):
         if self.abstract:
-            return "Grain<Abstract>"
+            return (
+                "Grain<Abstract" + ",".join([c.address for c in self.components]) + ">"
+            )
         return "Grain<" + ",".join([c.address for c in self.components]) + ">"
 
     def with_namespace(self, namespace: str) -> "Grain":
@@ -423,7 +448,9 @@ class Grain(BaseModel):
 
     @property
     def abstract(self):
-        return not self.components
+        return not self.components or all(
+            [c.name == ALL_ROWS_CONCEPT for c in self.components]
+        )
 
     @property
     def set(self):
@@ -618,9 +645,8 @@ class Function(BaseModel):
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return base_grain
         # scalars have implicit grain of all arguments
-        # for input in self.concept_arguments:
-        #
-        #     base_grain += input.grain
+        for input in self.concept_arguments:
+            base_grain += input.grain
         return base_grain
 
 
@@ -807,13 +833,20 @@ class Select(BaseModel):
 
         return render_query(self)
 
-    def __post_init__(self):
-        final = []
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        final: List[SelectItem] = []
         for item in self.selection:
             if isinstance(item, (Concept, ConceptTransform)):
-                final.append(SelectItem(item))
+                final.append(SelectItem(content=item))
             else:
                 final.append(item)
+        for item in final:
+            if not isinstance(item.content, Concept):
+                continue
+            if item.content.grain == Grain():
+                if item.content.derivation == PurposeLineage.AGGREGATE:
+                    item.content = item.content.with_grain(self.grain)
         self.selection = final
 
     @property
@@ -930,10 +963,15 @@ class GrainWindow(BaseModel):
         )
 
 
-def safe_grain(v):
+def safe_grain(v) -> Grain:
     if isinstance(v, dict):
-        return Grain.parse_obj(v)
-    return v
+        return Grain.model_validate(v)
+    elif isinstance(v, Grain):
+        return v
+    elif not v:
+        return Grain(components=[])
+    else:
+        raise ValueError(f"Invalid input type to safe_grain {type(v)}")
 
 
 class DatasourceMetadata(BaseModel):
@@ -974,16 +1012,17 @@ class Datasource(BaseModel):
     @classmethod
     def grain_enforcement(cls, v: Grain, info: ValidationInfo):
         values = info.data
-        v = safe_grain(v)
-        if not v or (v and not v.components):
-            v = Grain(
+        grain: Grain = safe_grain(v)
+        if not grain.components:
+            columns: List[ColumnAssignment] = values.get("columns", [])
+            grain = Grain(
                 components=[
                     deepcopy(c.concept).with_grain(Grain())
-                    for c in values.get("columns", [])
+                    for c in columns
                     if c.concept.purpose == Purpose.KEY
                 ]
             )
-        return v
+        return grain
 
     def __add__(self, other):
         if not other == self:
@@ -1254,6 +1293,14 @@ class QueryDatasource(BaseModel):
             raise SyntaxError(
                 "can only merge two datasources if the group required flag is the same"
             )
+        if not self.partial_concepts == other.partial_concepts:
+            raise SyntaxError(
+                "can only merge two datasources if the partial concepts are the same"
+            )
+        if not self.join_derived_concepts == other.join_derived_concepts:
+            raise SyntaxError(
+                "can only merge two datasources if the join derived concepts are the same"
+            )
         logger.debug(
             f"{LOGGER_PREFIX} merging {self.name} with"
             f" {[c.address for c in self.output_concepts]} concepts and"
@@ -1284,6 +1331,8 @@ class QueryDatasource(BaseModel):
                 else None
             ),
             source_type=self.source_type,
+            partial_concepts=self.partial_concepts,
+            join_derived_concepts=self.join_derived_concepts,
         )
 
     @property
@@ -1516,7 +1565,7 @@ class UndefinedConcept(Concept):
     environment: "EnvironmentConceptDict"
     line_no: int | None = None
     datatype: DataType = DataType.UNKNOWN
-    purpose: Purpose = Purpose.AUTO
+    purpose: Purpose = Purpose.KEY
 
     def with_namespace(self, namespace: str) -> "UndefinedConcept":
         return self.__class__(
@@ -1613,7 +1662,7 @@ class EnvironmentConceptDict(dict):
                     line_no=line_no,
                     environment=self,
                     datatype=DataType.UNKNOWN,
-                    purpose=Purpose.AUTO,
+                    purpose=Purpose.KEY,
                 )
                 self.undefined[key] = undefined
                 return undefined
@@ -1820,6 +1869,8 @@ class Comparison(BaseModel):
         "Comparison",
         "Parenthetical",
         MagicConstants,
+        WindowItem,
+        AggregateWrapper,
     ]
     right: Union[
         int,
@@ -1834,6 +1885,8 @@ class Comparison(BaseModel):
         "Comparison",
         "Parenthetical",
         MagicConstants,
+        WindowItem,
+        AggregateWrapper,
     ]
     operator: ComparisonOperator
 

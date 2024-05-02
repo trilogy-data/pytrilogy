@@ -25,12 +25,16 @@ def gen_group_node(
     output_concepts = [concept]
 
     if concept.grain and len(concept.grain.components_copy) > 0:
-        parent_concepts += concept.grain.components_copy
-        output_concepts += concept.grain.components_copy
+        grain_components = (
+            concept.grain.components_copy if not concept.grain.abstract else []
+        )
+        parent_concepts += grain_components
+        output_concepts += grain_components
     # otherwise, local optional can be included
     else:
         parent_concepts += local_optional
         output_concepts += local_optional
+
     if parent_concepts:
         parents: List[StrategyNode] = [
             source_concepts(parent_concepts, [], environment, g, depth=depth + 1)

@@ -14,6 +14,7 @@ from os.path import dirname
 from pathlib import PurePath
 from preql.parsing.render import Renderer
 from preql.hooks.query_debugger import DebuggingHook
+from logging import INFO
 
 
 def setup_engine() -> Executor:
@@ -21,7 +22,18 @@ def setup_engine() -> Executor:
     csv = PurePath(dirname(__file__)) / "train.csv"
     df = pd.read_csv(csv)
     _ = df
-    output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[DebuggingHook()])
+    output = Executor(
+        engine=engine,
+        dialect=Dialects.DUCK_DB,
+        hooks=[
+            DebuggingHook(
+                level=INFO,
+                process_other=False,
+                process_datasources=False,
+                process_ctes=False,
+            )
+        ],
+    )
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
     return output
@@ -163,15 +175,23 @@ def test_demo_aggregates():
     Renderer()
     executor.environment = env
     test = """
-auto survivor <- filter passenger.id where passenger.survived = 1;
-const scale <- 100;
-select passenger.class, 
-(count(survivor) by passenger.class/count(passenger.id) by passenger.class)*scale -> survival_rate;
+key survivor <- filter passenger.id where passenger.survived = 1;
+
+auto survivors <- count(survivor) by passenger.class;
+auto total <- count(passenger.id) by passenger.class;
+auto ratio <- survivors/total;
+auto survival_rate <- ratio*100;
+select 
+    passenger.class, 
+    survival_rate;
 """
 
     executor.parse_text(test)
-
-    executor.generate_sql(test)
+    ratio = env.concepts["ratio"]
+    assert ratio.purpose == Purpose.METRIC
+    assert env.concepts["ratio"].grain == Grain(
+        components=[env.concepts["passenger.class"]]
+    )
 
     results = executor.execute_text(test)
 

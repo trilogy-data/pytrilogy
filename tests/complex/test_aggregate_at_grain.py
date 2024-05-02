@@ -1,7 +1,8 @@
-from preql.core.models import Select
+from preql.core.models import Select, Grain
 from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
 from preql.hooks.query_debugger import DebuggingHook
+from preql.core.enums import Granularity
 from preql.parser import parse
 
 
@@ -35,6 +36,42 @@ select
     """
     env, parsed = parse(declarations)
     select: Select = parsed[-1]
+
+    query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
+
+    generator = BigqueryDialect()
+    generator.compile_statement(query)
+
+
+def test_constant_aggregate() -> None:
+    declarations = """
+key user_id int metadata(description="the description");
+key post_id int;
+metric total_posts <- count(post_id) by *;
+auto total_posts_auto <- count(post_id) by *;
+
+
+datasource posts (
+    user_id: user_id,
+    id: post_id
+    )
+    grain (post_id)
+    address bigquery-public-data.stackoverflow.post_history
+;
+
+select
+    user_id,
+    total_posts,
+    total_posts_auto
+;
+    """
+    env, parsed = parse(declarations)
+
+    assert env.concepts["total_posts"].granularity == Granularity.SINGLE_ROW
+    assert env.concepts["total_posts_auto"].granularity == Granularity.SINGLE_ROW
+    select: Select = parsed[-1]
+
+    assert select.grain == Grain(components=[env.concepts["user_id"]])
 
     query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 

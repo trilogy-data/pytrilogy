@@ -50,6 +50,8 @@ class StaticSelectNode(StrategyNode):
         self.datasource = datasource
 
     def _resolve(self):
+        if self.datasource.grain == Grain():
+            raise NotImplementedError
         return self.datasource
 
 
@@ -130,12 +132,26 @@ class SelectNode(StrategyNode):
                 # )
                 #     continue
                 # keep all concepts on the output, until we get to a node which requires reduction
-                target_grain = Grain(components=[c for c in all_concepts])
+
+                if any([c.grain != datasource.grain for c in all_concepts]):
+                    logger.info(
+                        f"{self.logging_prefix}{LOGGER_PREFIX} need to group to select grain"
+                    )
+                    target_grain = Grain(components=[c for c in all_concepts])
+                else:
+                    logger.info(
+                        f"{self.logging_prefix}{LOGGER_PREFIX} all concepts at desired grain {datasource.grain}, including grain in output"
+                    )
+                    target_grain = datasource.grain
+                    # ensure that if this select needs to merge, the grain components are present
+                    all_concepts = all_concepts + datasource.grain.components_copy
+
+                all_concepts_final: List[Concept] = unique(all_concepts, "address")
                 node = QueryDatasource(
-                    input_concepts=unique(all_concepts, "address"),
-                    output_concepts=unique(all_concepts, "address"),
+                    input_concepts=all_concepts_final,
+                    output_concepts=all_concepts_final,
                     source_map={
-                        concept.address: {datasource} for concept in all_concepts
+                        concept.address: {datasource} for concept in all_concepts_final
                     },
                     datasources=[datasource],
                     grain=target_grain,
@@ -170,9 +186,17 @@ class SelectNode(StrategyNode):
         # if we have parent nodes, we do not need to go to a datasource
         if self.parents:
             return super()._resolve()
-
+        resolution: QueryDatasource | None
         if all([c.purpose == Purpose.CONSTANT for c in self.all_concepts]):
-            return self.resolve_from_constant_datasources()
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"
+            )
+            resolution = self.resolve_from_constant_datasources()
+            if resolution:
+                return resolution
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} resolving from raw datasources"
+        )
         resolution = self.resolve_from_raw_datasources(self.all_concepts)
         if resolution:
             return resolution

@@ -1,4 +1,4 @@
-from preql.core.models import Select, QueryDatasource
+from preql.core.models import Select, QueryDatasource, Environment
 from preql.core.processing.concept_strategies_v2 import source_concepts
 from preql.core.query_processor import process_query, get_query_datasources
 
@@ -19,7 +19,9 @@ def test_direct_select(test_environment, test_environment_graph):
     }
 
 
-def test_get_datasource_from_window_function(test_environment, test_environment_graph):
+def test_get_datasource_from_window_function(
+    test_environment: Environment, test_environment_graph
+):
     # test without grouping
     product_rank = test_environment.concepts["product_revenue_rank"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
@@ -56,7 +58,9 @@ def test_get_datasource_from_window_function(test_environment, test_environment_
     }
 
 
-def test_get_datasource_for_filter(test_environment, test_environment_graph):
+def test_get_datasource_for_filter(
+    test_environment: Environment, test_environment_graph
+):
     hi_rev_product = test_environment.concepts["products_with_revenue_over_50"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
@@ -93,12 +97,12 @@ def test_select_output(test_environment, test_environment_graph):
     }
 
 
-def test_basic_aggregate(test_environment, test_environment_graph):
+def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     product = test_environment.concepts["product_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = source_concepts(
-        [total_revenue],
+        [total_revenue.with_grain(product)],
         [product],
         environment=test_environment,
         g=test_environment_graph,
@@ -110,12 +114,12 @@ def test_basic_aggregate(test_environment, test_environment_graph):
     }
 
 
-def test_join_aggregate(test_environment, test_environment_graph):
+def test_join_aggregate(test_environment: Environment, test_environment_graph):
     category_id = test_environment.concepts["category_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = source_concepts(
-        [total_revenue],
+        [total_revenue.with_grain(category_id)],
         [category_id],
         environment=test_environment,
         g=test_environment_graph,
