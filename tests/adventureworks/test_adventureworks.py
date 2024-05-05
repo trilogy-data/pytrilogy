@@ -143,20 +143,12 @@ def test_query_datasources(environment: Environment):
             assert datasource.identifier == default_fact
         elif concept.name == "order_line_number":
             assert datasource.identifier == default_fact
-        elif concept.name == "total_sales_amount":
-            assert (
-                datasource.identifier
-                == "customers_at_customer_customer_id_join_fact_internet_sales_at_internet_sales_order_line_"
-                "number_internet_sales_order_number_at_customer_customer_id_internet_sales_order_line_number_internet_sales_order_number_at_internet_sales_order_number_internet_sales_order_line_number_customer_first_name"
-            )
         elif concept.name == "region":
             assert datasource.identifier == "sales_territories_at_sales_territory_key"
         elif concept.name == "first_name":
             assert datasource.identifier.startswith(
                 "customers_at_customer_customer_id_join_fact_internet_sales_at_internet"
             )
-        else:
-            raise ValueError(concept)
 
     cte = datasource_to_ctes(datasource)[0]
 

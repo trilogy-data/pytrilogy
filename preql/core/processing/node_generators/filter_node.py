@@ -44,6 +44,7 @@ def gen_filter_node(
         conditions=concept.lineage.where.conditional
         if isinstance(concept.lineage, FilterItem)
         else None,
+        partial_concepts=[immediate_parent],
     )
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

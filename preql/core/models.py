@@ -422,12 +422,20 @@ class Grain(BaseModel):
     components: List[Concept] = Field(default_factory=list, validate_default=True)
 
     @field_validator("components")
-    def component_nest(cls, v, info: ValidationInfo):
+    def component_validator(cls, v, info: ValidationInfo):
         values = info.data
         if not values.get("nested", False):
-            v = [safe_concept(c).with_default_grain() for c in v]
-        v = unique(v, "address")
-        return v
+            v2: List[Concept] = [safe_concept(c).with_default_grain() for c in v]
+        else:
+            v2 = unique(v, "address")
+        final = []
+        for sub in v2:
+            if sub.purpose == Purpose.PROPERTY and sub.keys:
+                if all([c in v2 for c in sub.keys]):
+                    continue
+            final.append(sub)
+        v2 = sorted(final, key=lambda x: x.name)
+        return v2
 
     @property
     def components_copy(self) -> List[Concept]:
@@ -457,6 +465,8 @@ class Grain(BaseModel):
         return set([c.address for c in self.components_copy])
 
     def __eq__(self, other: object):
+        if isinstance(other, list):
+            return self.set == set([c.address for c in other])
         if not isinstance(other, Grain):
             return False
         return self.set == other.set
@@ -648,6 +658,18 @@ class Function(BaseModel):
         for input in self.concept_arguments:
             base_grain += input.grain
         return base_grain
+
+    @property
+    def output_keys(self) -> list[Concept]:
+        # aggregates have an abstract grain
+        components = []
+        # scalars have implicit grain of all arguments
+        for input in self.concept_arguments:
+            if input.purpose == Purpose.KEY:
+                components.append(input)
+            elif input.keys:
+                components += input.keys
+        return list(set(components))
 
 
 class ConceptTransform(BaseModel):
@@ -1952,7 +1974,7 @@ class Comparison(BaseModel):
 
 
 class CaseWhen(BaseModel):
-    comparison: Comparison
+    comparison: Conditional | Comparison
     expr: "Expr"
 
     @property
@@ -1972,10 +1994,28 @@ class CaseElse(BaseModel):
 
 class Conditional(BaseModel):
     left: Union[
-        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
+        int,
+        str,
+        float,
+        list,
+        bool,
+        Concept,
+        Comparison,
+        "Conditional",
+        "Parenthetical",
+        Function,
     ]
     right: Union[
-        int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
+        int,
+        str,
+        float,
+        list,
+        bool,
+        Concept,
+        Comparison,
+        "Conditional",
+        "Parenthetical",
+        Function,
     ]
     operator: BooleanOperator
 

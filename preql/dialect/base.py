@@ -96,6 +96,7 @@ FUNCTION_MAP = {
     FunctionType.CAST: lambda x: f"cast({x[0]} as {x[1]})",
     FunctionType.CASE: lambda x: render_case(x),
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
+    FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
     # complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
@@ -105,6 +106,7 @@ FUNCTION_MAP = {
     FunctionType.DIVIDE: lambda x: f"({x[0]} / {x[1]})",
     FunctionType.MULTIPLY: lambda x: f"({x[0]} * {x[1]})",
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
+    FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x: f"count({x[0]})",
@@ -122,6 +124,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
     FunctionType.DATE_PART: lambda x: f"date_part({x[0]},{x[1]})",
     FunctionType.DATE_ADD: lambda x: f"date_add({x[0]},{x[1]}, {x[2]})",
+    FunctionType.DATE_DIFF: lambda x: f"date_diff({x[0]},{x[1]}, {x[2]})",
     FunctionType.DATE: lambda x: f"date({x[0]})",
     FunctionType.DATETIME: lambda x: f"datetime({x[0]})",
     FunctionType.TIMESTAMP: lambda x: f"timestamp({x[0]})",

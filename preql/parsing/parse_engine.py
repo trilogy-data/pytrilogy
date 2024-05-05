@@ -43,6 +43,7 @@ from preql.core.functions import (
     function_args_to_output_purpose,
     CurrentDate,
     CurrentDatetime,
+    IsNull,
 )
 from preql.core.models import (
     Address,
@@ -125,7 +126,7 @@ grammar = r"""
     
     query: "query" MULTILINE_STRING
     
-    concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" )
+    concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" ) | (SHORTHAND_MODIFIER concept_assignment  )
     
     column_assignment: ((IDENTIFIER | raw_column_assignment ) ":" concept_assignment) 
 
@@ -215,7 +216,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions | comparison | literal |  expr_reference  | index_access | attr_access | parenthetical
+    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access | comparison | parenthetical
     
     // functions
     
@@ -224,21 +225,23 @@ grammar = r"""
     fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
     fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
     fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
+    fmod: ( "mod"i "(" expr "," expr ")") | ( expr "%" expr )
     fround: "round"i "(" expr "," expr ")"
     fabs: "abs"i "(" expr ")"
     
-    _math_functions: fadd | fsub | fmul | fdiv | fround
+    _math_functions: fadd | fsub | fmul | fdiv | fround | fmod | fabs
     
     //generic
     fcast: "cast"i "(" expr "AS"i data_type ")"
     concat: "concat"i "(" (expr ",")* expr ")"
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
-    fcase_when: "WHEN"i comparison "THEN"i expr
+    fcase_when: "WHEN"i (expr | conditional) "THEN"i expr
     fcase_else: "ELSE"i expr
     fcase: "CASE"i (fcase_when)* (fcase_else)? "END"i
     len: "len"i "(" expr ")"
+    fnot: "NOT"i expr
 
-    _generic_functions: fcast | concat | fcoalesce | fcase | len 
+    _generic_functions: fcast | concat | fcoalesce | fcase | len | fnot
 
     //constant
     fcurrent_date: "current_date"i "(" ")"
@@ -284,12 +287,13 @@ grammar = r"""
     fquarter: "quarter"i  "(" expr ")"
     fyear: "year"i "(" expr ")"
     
-    DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i
+    DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i | "MINUTE"i | "HOUR"i | "SECOND"i
     fdate_trunc: "date_trunc"i "(" expr "," DATE_PART ")"
     fdate_part: "date_part"i "(" expr "," DATE_PART ")"
     fdate_add: "date_add"i "(" expr "," DATE_PART "," int_lit ")"
+    fdate_diff: "date_diff"i "(" expr "," expr "," DATE_PART ")"
     
-    _date_functions: fdate | fdate_add | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
+    _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
     // base language constructs
     IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -316,6 +320,8 @@ grammar = r"""
     literal: _string_lit | int_lit | float_lit | bool_lit | null_lit | array_lit
 
     MODIFIER: "Optional"i | "Partial"i
+
+    SHORTHAND_MODIFIER: "~"
 
     struct_type: "struct" "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
 
@@ -363,6 +369,25 @@ def parse_concept_reference(
         namespace = environment.namespace or DEFAULT_NAMESPACE
         lookup = name
     return lookup, namespace, name, parent
+
+
+def get_purpose_and_keys(purpose: Purpose | None, args):
+    local_purpose = purpose or function_args_to_output_purpose(args)
+    if local_purpose == Purpose.PROPERTY:
+        keys = concept_list_to_keys(args)
+    else:
+        keys = []
+    return local_purpose, keys
+
+
+def concept_list_to_keys(concepts: List[Concept]) -> List[Concept]:
+    final_keys = []
+    for concept in concepts:
+        if concept.keys:
+            final_keys += concept_list_to_keys(concept.keys)
+        else:
+            final_keys.append(concept)
+    return final_keys
 
 
 def unwrap_transformation(
@@ -605,6 +630,9 @@ class ParseToObjects(Transformer):
     def MODIFIER(self, args) -> Modifier:
         return Modifier(args.value)
 
+    def SHORTHAND_MODIFIER(self, args) -> Modifier:
+        return Modifier(args.value)
+
     def PURPOSE(self, args) -> Purpose:
         return Purpose(args.value)
 
@@ -691,12 +719,11 @@ class ParseToObjects(Transformer):
         if purpose == Purpose.AUTO:
             purpose = None
         name = args[1]
-
         lookup, namespace, name, parent_concept = parse_concept_reference(
             name, self.environment, purpose
         )
-
         source_value = args[2]
+        # we need to strip off every parenthetical to see what is being assigned.
         while isinstance(source_value, Parenthetical):
             source_value = source_value.content
 
@@ -705,14 +732,12 @@ class ParseToObjects(Transformer):
             concept = Concept(
                 name=name,
                 datatype=filter_item.content.datatype,
-                purpose=(
-                    purpose if purpose else filter_item.content.purpose
-                ),  # filter_item.content.purpose,
+                # filters must always define a new key
+                # cannot be a property
+                purpose=Purpose.KEY,
                 metadata=metadata,
                 lineage=filter_item,
-                # filters are implicitly at the grain of the base item
-                # 2023-08-18 - asked why, commented out
-                # grain=Grain(components=[filter_item.output]),
+                # filters always define a new grain
                 namespace=namespace,
             )
             if concept.metadata:
@@ -721,13 +746,13 @@ class ParseToObjects(Transformer):
             return concept
         elif isinstance(source_value, WindowItem):
             window_item: WindowItem = source_value
-            local_purpose = purpose or function_args_to_output_purpose(
-                [window_item.content]
-            )
-            if local_purpose == Purpose.PROPERTY:
-                keys = [window_item.content]
+            local_purpose, keys = get_purpose_and_keys(purpose, [window_item.content])
+            if window_item.order_by:
+                grain = window_item.over + [window_item.content.output]
+                for item in window_item.order_by:
+                    grain += [item.expr.output]
             else:
-                keys = []
+                grain = window_item.over + [window_item.content.output]
             concept = Concept(
                 name=name,
                 datatype=window_item.content.datatype,
@@ -735,7 +760,7 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
                 lineage=window_item,
                 # windows are implicitly at the grain of the window over the original content
-                grain=Grain(components=window_item.over + [window_item.content.output]),
+                grain=Grain(components=grain),
                 namespace=namespace,
                 keys=keys,
             )
@@ -746,10 +771,18 @@ class ParseToObjects(Transformer):
         elif isinstance(source_value, AggregateWrapper):
             parent: AggregateWrapper = source_value
             aggfunction: Function = parent.function
+            local_purpose, keys = get_purpose_and_keys(
+                purpose, parent.by if parent.by else []
+            )
+            # anything grouped to a grain should be a property
+            # at that grain
+            if parent.by:
+                local_purpose = Purpose.METRIC
+
             concept = Concept(
                 name=name,
                 datatype=aggfunction.output_datatype,
-                purpose=aggfunction.output_purpose,
+                purpose=local_purpose,
                 metadata=metadata,
                 lineage=aggfunction,
                 grain=(
@@ -758,6 +791,7 @@ class ParseToObjects(Transformer):
                     else aggfunction.output_grain
                 ),
                 namespace=namespace,
+                keys=keys,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -802,7 +836,7 @@ class ParseToObjects(Transformer):
                 keys=(
                     [self.environment.concepts[parent_concept]]
                     if parent_concept
-                    else None
+                    else function.output_keys
                 ),
             )
             if concept.metadata:
@@ -1458,6 +1492,35 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
+    def fdate_diff(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        purpose = function_args_to_output_purpose(args)
+        if not isinstance(args[-1], DatePart):
+            raise ValueError(
+                "Invalid date diff function, last argument must be a date part"
+            )
+        return Function(
+            operator=FunctionType.DATE_DIFF,
+            arguments=args,
+            output_datatype=DataType.INTEGER,
+            output_purpose=purpose,
+            valid_inputs=[
+                {
+                    DataType.DATE,
+                    DataType.TIMESTAMP,
+                    DataType.DATETIME,
+                },
+                {
+                    DataType.DATE,
+                    DataType.TIMESTAMP,
+                    DataType.DATETIME,
+                },
+                {DataType.DATE_PART},
+            ],
+            arg_count=3,
+        )
+
+    @v_args(meta=True)
     def fdatetime(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Function(
@@ -1668,6 +1731,19 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
+    def fmod(self, meta: Meta, args):
+        output_datatype = arg_to_datatype(args[0])
+        args = self.process_function_args(args, meta=meta)
+        return Function(
+            operator=FunctionType.MOD,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=function_args_to_output_purpose(args),
+            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            arg_count=2,
+        )
+
+    @v_args(meta=True)
     def fround(self, meta, args) -> Function:
         args = self.process_function_args(args, meta=meta)
         output_datatype = arg_to_datatype(args[0])
@@ -1681,6 +1757,24 @@ class ParseToObjects(Transformer):
                 {DataType.INTEGER},
             ],
             arg_count=2,
+        )
+
+    def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
+        datatypes = set()
+        for arg in args:
+            output_datatype = arg_to_datatype(arg.expr)
+            datatypes.add(output_datatype)
+        if not len(datatypes) == 1:
+            raise SyntaxError(
+                f"All case expressions must have the same output datatype, got {datatypes}"
+            )
+        return Function(
+            operator=FunctionType.CASE,
+            arguments=args,
+            output_datatype=datatypes.pop(),
+            output_purpose=Purpose.PROPERTY,
+            # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
+            arg_count=InfiniteFunctionArgs,
         )
 
     @v_args(meta=True)
@@ -1703,23 +1797,10 @@ class ParseToObjects(Transformer):
         args = self.process_function_args(args, meta=meta)
         return CurrentDatetime(args)
 
-    def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
-        datatypes = set()
-        for arg in args:
-            output_datatype = arg_to_datatype(arg.expr)
-            datatypes.add(output_datatype)
-        if not len(datatypes) == 1:
-            raise SyntaxError(
-                f"All case expressions must have the same output datatype, got {datatypes}"
-            )
-        return Function(
-            operator=FunctionType.CASE,
-            arguments=args,
-            output_datatype=datatypes.pop(),
-            output_purpose=Purpose.PROPERTY,
-            # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
-            arg_count=InfiniteFunctionArgs,
-        )
+    @v_args(meta=True)
+    def fnot(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return IsNull(args)
 
 
 def unpack_visit_error(e: VisitError):

@@ -111,11 +111,9 @@ def calculate_graph_relevance(
 
 def get_node_joins(
     datasources: List[QueryDatasource],
+    grain: List[Concept],
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
-    """Find if any of the datasources are not linked"""
-    import networkx as nx
-
     graph = nx.Graph()
     concepts: List[Concept] = []
     for datasource in datasources:
@@ -138,7 +136,10 @@ def get_node_joins(
 
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
-        key=lambda x: -len(identifier_map[x].partial_concepts),
+        # sort so that anything with a partial match on the target is later
+        key=lambda x: len(
+            [x for x in identifier_map[x].partial_concepts if x in grain]
+        ),
     )
     for left in node_list:
         # the constant dataset is a special case

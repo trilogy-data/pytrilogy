@@ -33,6 +33,7 @@ class FilterNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        partial_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             output_concepts=output_concepts,
@@ -43,6 +44,7 @@ class FilterNode(StrategyNode):
             depth=depth,
             input_concepts=input_concepts,
             conditions=conditions,
+            partial_concepts=partial_concepts,
         )
 
     def _resolve(self) -> QueryDatasource:
