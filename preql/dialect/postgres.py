@@ -2,8 +2,26 @@ from typing import Mapping, Callable, Any
 
 from jinja2 import Template
 
-from preql.core.enums import FunctionType, WindowType
+from preql.core.enums import FunctionType, WindowType, DatePart
 from preql.dialect.base import BaseDialect
+
+
+def date_diff(first: str, second: str, grain: DatePart) -> str:
+    grain = DatePart(grain)
+    if grain == DatePart.YEAR:
+        return f"date_part('year', {first}) - date_part('year', {second})"
+    elif grain == DatePart.MONTH:
+        return f"{date_diff(first, second, DatePart.YEAR)} + date_part('month', {first}) - date_part('month', {second})"
+    elif grain == DatePart.DAY:
+        return f"date_part('day', {first} - {second})"
+    elif grain == DatePart.HOUR:
+        return f"{date_diff(first, second, DatePart.DAY)} *24 + date_part('hour', {first} - {second})"
+    elif grain == DatePart.MINUTE:
+        return f"{date_diff(first, second, DatePart.HOUR)} *60 + date_part('minute', {first} - {second})"
+    elif grain == DatePart.SECOND:
+        return f"{date_diff(first, second, DatePart.MINUTE)} *60 + date_part('second', {first} - {second})"
+    else:
+        raise NotImplementedError(f"Date diff not implemented for grain {grain}")
 
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -13,6 +31,8 @@ FUNCTION_MAP = {
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
     FunctionType.DATE_ADD: lambda x: f"({x[0]} + INTERVAL '{x[2]} {x[1]}')",
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
+    FunctionType.DATE_DIFF: lambda x: date_diff(*x),
+    FunctionType.IS_NULL: lambda x: f"{x[0]} IS NULL",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

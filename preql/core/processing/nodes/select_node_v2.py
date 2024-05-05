@@ -125,12 +125,16 @@ class SelectNode(StrategyNode):
                     all_found = False
                     break
             if all_found:
-                # partial_concepts = [c.concept for c in datasource.columns if not c.is_complete]
-                # if any([c not in partial_concepts for c in all_concepts]):
-                #     logger.info(
-                #     f"{self.logging_prefix}{LOGGER_PREFIX} skipp direct select from {datasource.address} for due to partial concepts {[c.address for c in partial_concepts]}"
-                # )
-                #     continue
+                partial_concepts = {
+                    c.concept.address for c in datasource.columns if not c.is_complete
+                }
+                if partial_concepts and any(
+                    [c.address in partial_concepts for c in all_concepts]
+                ):
+                    logger.info(
+                        f"{self.logging_prefix}{LOGGER_PREFIX} skipping direct select from {datasource.address} for due to partial concepts {[c for c in partial_concepts]}"
+                    )
+                    continue
                 # keep all concepts on the output, until we get to a node which requires reduction
 
                 if any([c.grain != datasource.grain for c in all_concepts]):

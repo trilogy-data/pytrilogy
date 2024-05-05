@@ -21,6 +21,42 @@ from preql.core.processing.utility import get_node_joins
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
+def deduplicate_nodes(
+    merged: dict[str, QueryDatasource], logging_prefix: str
+) -> tuple[bool, dict[str, QueryDatasource]]:
+    duplicates = False
+    set_map: dict[str, set[str]] = {}
+    for k, v in merged.items():
+        unique_outputs = [
+            x.address for x in v.output_concepts if x not in v.partial_concepts
+        ]
+        set_map[k] = set(unique_outputs)
+    for k1, v1 in set_map.items():
+        found = False
+        for k2, v2 in set_map.items():
+            if k1 == k2:
+                continue
+            if (
+                v1.issubset(v2)
+                and merged[k1].grain.issubset(merged[k2].grain)
+                and not merged[k2].partial_concepts
+                and not merged[k1].partial_concepts
+            ):
+                og = merged[k1]
+                subset_to = merged[k2]
+                logger.info(
+                    f"{logging_prefix}{LOGGER_PREFIX} extraneous parent node that is subset of another parent node {og.grain.issubset(subset_to.grain)} {og.grain.set} {subset_to.grain.set}"
+                )
+                merged = {k: v for k, v in merged.items() if k != k1}
+                duplicates = True
+                found = True
+                break
+        if found:
+            break
+
+    return duplicates, merged
+
+
 class MergeNode(StrategyNode):
     source_type = SourceType.MERGE
 
@@ -92,13 +128,21 @@ class MergeNode(StrategyNode):
         for source in parent_sources:
             if source.full_name in merged:
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} merging two nodes with {source.full_name}"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} parent node with {source.full_name} into existing"
                 )
                 merged[source.full_name] = merged[source.full_name] + source
             else:
                 merged[source.full_name] = source
+
+        # it's possible that we have more sources than we need
+        duplicates = True
+        while duplicates:
+            duplicates = False
+            duplicates, merged = deduplicate_nodes(merged, self.logging_prefix)
+
         # early exit if we can just return the parent
         final_datasets: List[QueryDatasource] = list(merged.values())
+
         if len(merged.keys()) == 1:
             final: QueryDatasource = list(merged.values())[0]
             if set([c.address for c in final.output_concepts]) == set(
@@ -139,7 +183,7 @@ class MergeNode(StrategyNode):
         )
         for item in dataset_list:
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} for {item.full_name}"
+                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} partial {[x.address for x in item.partial_concepts]} for {item.full_name}"
             )
 
         if not self.node_joins:
@@ -152,7 +196,7 @@ class MergeNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins"
                 )
-                joins = get_node_joins(dataset_list)
+                joins = get_node_joins(dataset_list, grain.components)
         else:
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins"

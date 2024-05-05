@@ -60,7 +60,7 @@ select
     BaseDialect().compile_statement(process_query(test_environment, select))
 
 
-def test_select_where_joins(test_environment, logger):
+def test_select_where_joins(test_environment):
     declarations = """
 
 select
@@ -77,7 +77,7 @@ select
     print(final)
 
 
-def test_select_where_attribute_v2(test_environment, logger):
+def test_select_where_attribute_v2(test_environment):
     declarations = """
 key special_category <- filter category_id where like(category_name, '%special%') is True;
 
@@ -101,7 +101,7 @@ select
     BaseDialect().compile_statement(process_query(test_environment, select))
 
 
-def test_where_debug(test_environment, logger):
+def test_where_debug(test_environment):
     declarations = """
 
 select
@@ -123,7 +123,7 @@ select
 # TODO: determine why this is failing
 
 
-def test_select_where_attribute(test_environment, logger):
+def test_select_where_attribute(test_environment):
     declarations = """
 property special_order_high_rev <- filter order_id where sum(revenue) by order_id > 1000;
 
@@ -142,7 +142,7 @@ select
     print(query)
 
 
-def test_parenthetical(test_environment, logger):
+def test_parenthetical(test_environment):
     declarations = """
 
 
@@ -174,7 +174,7 @@ where
     assert "`order_id` = 1" in query
 
 
-def test_like_filter(test_environment, logger):
+def test_like_filter(test_environment):
     declarations = """
 property special_order <- filter order_id where like(category_name, 'test') = True;
 property special_order_2 <- filter order_id where like(category_name, 'test') = 1;

@@ -1,9 +1,6 @@
-from logging import StreamHandler, DEBUG
-
 from pytest import fixture
 
 from preql import Environment
-from preql.constants import logger as base_logger
 from preql.core.enums import (
     Purpose,
     FunctionType,
@@ -25,12 +22,6 @@ from preql.core.models import (
     WhereClause,
     Comparison,
 )
-
-
-@fixture(scope="session")
-def logger():
-    base_logger.addHandler(StreamHandler())
-    base_logger.setLevel(DEBUG)
 
 
 @fixture(scope="session")

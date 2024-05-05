@@ -9,7 +9,7 @@ from preql.core.models import (
     ListType,
     StructType,
 )
-from preql.core.enums import FunctionType, Purpose, Granularity
+from preql.core.enums import FunctionType, Purpose, Granularity, DatePart
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
 from typing import Optional
@@ -58,6 +58,8 @@ def argument_to_purpose(arg) -> Purpose:
     elif isinstance(arg, (int, float, str, bool, list)):
         return Purpose.CONSTANT
     elif isinstance(arg, DataType):
+        return Purpose.CONSTANT
+    elif isinstance(arg, DatePart):
         return Purpose.CONSTANT
     elif isinstance(arg, MagicConstants):
         return Purpose.CONSTANT
@@ -264,5 +266,16 @@ def CurrentDatetime(args: list[Concept]) -> Function:
         output_datatype=DataType.DATE,
         output_purpose=Purpose.CONSTANT,
         arg_count=0,
+        # output_grain=Grain(components=arguments),
+    )
+
+
+def IsNull(args: list[Concept]) -> Function:
+    return Function(
+        operator=FunctionType.IS_NULL,
+        arguments=args,
+        output_datatype=DataType.BOOL,
+        output_purpose=function_args_to_output_purpose(args),
+        arg_count=1,
         # output_grain=Grain(components=arguments),
     )

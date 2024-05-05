@@ -51,6 +51,13 @@ class Modifier(Enum):
     OPTIONAL = "Optional"
     HIDDEN = "Hidden"
 
+    @classmethod
+    def _missing_(cls, value):
+        strval = str(value)
+        if strval == "~":
+            return Modifier.PARTIAL
+        return super()._missing_(value=strval.capitalize())
+
 
 class JoinType(Enum):
     INNER = "inner"
@@ -97,6 +104,7 @@ class FunctionType(Enum):
     CONCAT = "concat"
     CONSTANT = "constant"
     COALESCE = "coalesce"
+    IS_NULL = "isnull"
 
     # COMPLEX
     INDEX_ACCESS = "index_access"
@@ -110,6 +118,7 @@ class FunctionType(Enum):
     MULTIPLY = "multiply"
     ADD = "add"
     SUBTRACT = "subtract"
+    MOD = "mod"
     ROUND = "round"
     ABS = "abs"
 
@@ -151,6 +160,7 @@ class FunctionType(Enum):
     DATE_PART = "date_part"
     DATE_TRUNCATE = "date_truncate"
     DATE_ADD = "date_add"
+    DATE_DIFF = "date_diff"
 
     # UNIX
     UNIX_TO_TIMESTAMP = "unix_to_timestamp"
@@ -220,6 +230,9 @@ class DatePart(Enum):
     WEEK = "week"
     DAY = "day"
     QUARTER = "quarter"
+    HOUR = "hour"
+    MINUTE = "minute"
+    SECOND = "second"
 
     @classmethod
     def _missing_(cls, value):
