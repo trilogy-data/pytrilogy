@@ -13,4 +13,7 @@ def test_render_query(postgres_engine):
             ten_days_from_now,
             ten_day_diff;"""
     )[0]
-    assert "date_part('day', (current_datetime() + INTERVAL '10 day') - date_part('day', current_datetime()))" in results2
+    assert (
+        "date_part('day', (current_datetime() + INTERVAL '10 day') - date_part('day', current_datetime()))"
+        in results2
+    )
