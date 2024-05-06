@@ -184,3 +184,15 @@ def test_inline_source_derivation(
     assert len(results) == 1
     for row in results:
         assert row.order_year == 1992
+
+
+def test_filtered_project(test_environment: Environment, test_executor: Executor):
+    test_select = """
+
+    SELECT
+        even_product_name
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
