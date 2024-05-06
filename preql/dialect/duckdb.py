@@ -26,7 +26,7 @@ FUNCTION_MAP = {
     # datetime is aliased
     FunctionType.CURRENT_DATETIME: lambda x: "datetime(get_current_timestamp())",
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
-    FunctionType.DATE_ADD: lambda x: f"date_add({x[0]}, INTERVAL {x[1]} {x[2]})",
+    FunctionType.DATE_ADD: lambda x: f"date_add({x[0]}, INTERVAL {x[2]} {x[1]})",
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
     FunctionType.DATE_DIFF: lambda x: f"date_diff('{x[2]}', {x[0]}, '{x[1]}')",
 }
