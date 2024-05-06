@@ -72,13 +72,17 @@ def test_grain(test_environment):
     oid = test_environment.concepts["order_id"]
     pid = test_environment.concepts["product_id"]
     cid = test_environment.concepts["category_id"]
+    cname = test_environment.concepts["category_name"]
 
     x = Grain(components=[oid, pid])
     y = Grain(components=[pid, cid])
     z = Grain(components=[cid])
+    z2 = Grain(components=[cid, cname])
 
     assert x.intersection(y) == Grain(components=[pid])
     assert x.union(y) == Grain(components=[oid, pid, cid])
 
     assert z.isdisjoint(x)
     assert z.issubset(y)
+
+    assert z2 == z, f"Property should be removed from grain ({z.set}) vs {z2.set}"

@@ -88,6 +88,7 @@ def test_environment():
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
         grain=category_id,
+        keys=[category_id],
     )
 
     category_name_length = Concept(
