@@ -24,7 +24,7 @@ FUNCTION_MAP = {
     ## Duckdb indexes from 1, not 0
     FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
     # datetime is aliased
-    FunctionType.CURRENT_DATETIME: lambda x: "datetime(get_current_timestamp())",
+    FunctionType.CURRENT_DATETIME: lambda x: "cast(get_current_timestamp() as datetime)",
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
     FunctionType.DATE_ADD: lambda x: f"date_add({x[0]}, INTERVAL {x[2]} {x[1]})",
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",

@@ -262,3 +262,14 @@ def test_demo_filter():
     results = executor.execute_text(test)[-1].fetchall()
 
     assert results[0].passenger_last_name == "Carter"
+
+
+def test_demo_const():
+    executor = setup_engine(debug_flag=False)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """
+    const right_now <- current_datetime(); select right_now;"""
+
+    results = executor.execute_text(test)[-1].fetchall()
