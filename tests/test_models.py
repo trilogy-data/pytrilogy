@@ -44,11 +44,6 @@ def test_cte_merge(test_environment, test_environment_graph):
     assert merged.output_columns == outputs
 
 
-def test_grain():
-    grains = [Grain()] * 3
-    sum(grains)
-
-
 def test_concept(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[0]
     new = test_concept.with_namespace("test")
@@ -69,3 +64,25 @@ def test_conditional(test_environment, test_environment_graph):
     assert merged.left == condition_a
     assert merged.right == condition_b
     assert merged.operator == BooleanOperator.AND
+
+
+def test_grain(test_environment):
+    grains = [Grain()] * 3
+    sum(grains)
+    oid = test_environment.concepts["order_id"]
+    pid = test_environment.concepts["product_id"]
+    cid = test_environment.concepts["category_id"]
+    cname = test_environment.concepts["category_name"]
+
+    x = Grain(components=[oid, pid])
+    y = Grain(components=[pid, cid])
+    z = Grain(components=[cid])
+    z2 = Grain(components=[cid, cname])
+
+    assert x.intersection(y) == Grain(components=[pid])
+    assert x.union(y) == Grain(components=[oid, pid, cid])
+
+    assert z.isdisjoint(x)
+    assert z.issubset(y)
+
+    assert z2 == z, f"Property should be removed from grain ({z.set}) vs {z2.set}"
