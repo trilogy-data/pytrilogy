@@ -16,6 +16,7 @@ key store_id int;
 key product_id int;
 
 property order_id.order_timestamp datetime;
+property order_id.order_year int;
 property store_id.store_name string;
 property product_id.product_name string;
 
@@ -24,6 +25,7 @@ datasource orders (
     store_id:~store_id,
     product_id:~product_id,
     order_timestamp:order_timestamp,
+    date_part(order_timestamp, year): order_year,
 )
 grain (order_id)
 query '''

@@ -25,6 +25,10 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
     # datetime is aliased
     FunctionType.CURRENT_DATETIME: lambda x: "datetime(get_current_timestamp())",
+    FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
+    FunctionType.DATE_ADD: lambda x: f"date_add({x[0]}, INTERVAL {x[1]} {x[2]})",
+    FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
+    FunctionType.DATE_DIFF: lambda x: f"date_diff('{x[2]}', {x[0]}, '{x[1]}')",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
