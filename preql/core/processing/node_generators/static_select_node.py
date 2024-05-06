@@ -3,6 +3,8 @@ from typing import List
 
 from preql.core.models import (
     Concept,
+    Function,
+    UnnestJoin,
 )
 from preql.core.processing.nodes import StaticSelectNode
 import networkx as nx
@@ -60,39 +62,57 @@ def gen_static_select_node(
     g: Graph,
     depth: int,
     fail_on_no_datasource: bool = False,
+    datasource: Datasource | None = None,
 ) -> StaticSelectNode | None:
-    for datasource in environment.datasources.values():
-        all_found = True
-        for raw_concept in unique(all_concepts, "address"):
-            all_found = source_loop(raw_concept, datasource, g)
-            # break on any failure to find
-            if not all_found:
+    if not datasource:
+        for candidate_datasource in environment.datasources.values():
+            all_found = True
+            for raw_concept in unique(all_concepts, "address"):
+                all_found = source_loop(raw_concept, candidate_datasource, g)
+                # break on any failure to find
+                if not all_found:
+                    break
+            if all_found:
+                datasource = candidate_datasource
                 break
-        if all_found:
-            # keep all concepts on the output, until we get to a node which requires reduction
-            return StaticSelectNode(
-                input_concepts=all_concepts,
-                output_concepts=all_concepts,
-                environment=environment,
-                g=g,
-                datasource=QueryDatasource(
-                    input_concepts=unique(all_concepts, "address"),
-                    output_concepts=unique(all_concepts, "address"),
-                    source_map={
-                        concept.address: {datasource} for concept in all_concepts
-                    },
-                    datasources=[datasource],
-                    grain=datasource.grain,
-                    joins=[],
-                    partial_concepts=[
-                        c.concept for c in datasource.columns if not c.is_complete
-                    ],
-                ),
-                depth=depth,
+    if datasource:
+        # keep all concepts on the output, until we get to a node which requires reduction
+        source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
+            concept.address: {datasource} for concept in all_concepts
+        }
+        derived_concepts = [
+            c
+            for c in datasource.columns
+            if isinstance(c.alias, Function) and c.concept.address in source_map
+        ]
+
+        for c in derived_concepts:
+            if not isinstance(c.alias, Function):
+                continue
+            for x in c.alias.concept_arguments:
+                source_map[x.address] = {datasource}
+        final = unique(all_concepts, "address")
+        return StaticSelectNode(
+            input_concepts=all_concepts,
+            output_concepts=all_concepts,
+            environment=environment,
+            g=g,
+            datasource=QueryDatasource(
+                input_concepts=final,
+                output_concepts=final,
+                source_map=source_map,
+                datasources=[datasource],
+                grain=datasource.grain,
+                joins=[],
                 partial_concepts=[
                     c.concept for c in datasource.columns if not c.is_complete
                 ],
-            )
+            ),
+            depth=depth,
+            partial_concepts=[
+                c.concept for c in datasource.columns if not c.is_complete
+            ],
+        )
     if fail_on_no_datasource:
         datasources = ",\n".join(
             [

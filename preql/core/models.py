@@ -56,6 +56,7 @@ from preql.core.enums import (
 from preql.core.exceptions import UndefinedConceptException
 from preql.utility import unique
 from collections import UserList
+from preql.utility import string_to_hash
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -514,7 +515,7 @@ class RawColumnExpr(BaseModel):
 
 
 class ColumnAssignment(BaseModel):
-    alias: str | RawColumnExpr
+    alias: str | RawColumnExpr | Function
     concept: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
@@ -673,13 +674,31 @@ class Function(BaseModel):
 
 
 class ConceptTransform(BaseModel):
-    function: Function
+    function: Function | FilterItem
     output: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
     @property
     def input(self) -> List[Concept]:
         return [v for v in self.function.arguments if isinstance(v, Concept)]
+
+    def with_filter(self, where: "WhereClause") -> "ConceptTransform":
+        id_hash = string_to_hash(str(where))
+        new_parent_concept = Concept(
+            name=f"_anon_concept_transform_filter_input_{id_hash}",
+            datatype=self.output.datatype,
+            purpose=self.output.purpose,
+            lineage=self.output.lineage,
+            namespace=DEFAULT_NAMESPACE,
+            grain=self.output.grain,
+            keys=self.output.keys,
+        )
+        new_parent = FilterItem(content=new_parent_concept, where=where)
+        self.output.lineage = new_parent
+        return ConceptTransform(
+            function=new_parent,
+            output=self.output,
+        )
 
 
 class Window(BaseModel):
@@ -1091,7 +1110,7 @@ class Datasource(BaseModel):
 
     def get_alias(
         self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
-    ) -> Optional[str | RawColumnExpr]:
+    ) -> Optional[str | RawColumnExpr] | Function:
         # 2022-01-22
         # this logic needs to be refined.
         # if concept.lineage:
@@ -1254,10 +1273,9 @@ class QueryDatasource(BaseModel):
                 if len(val) != 1:
                     raise SyntaxError(f"source map {k} has multiple values {len(val)}")
             seen.add(k)
-        if seen != expected:
-            raise SyntaxError(
-                f"source map has mismatched values: seen {seen},  expected: {expected}"
-            )
+        for x in expected:
+            if x not in seen:
+                raise SyntaxError(f"source map missing {x}")
         return v
 
     def __str__(self):
@@ -1954,12 +1972,16 @@ class Comparison(BaseModel):
             output += [self.left]
         if isinstance(self.left, (Concept, Conditional, Parenthetical)):
             output += self.left.input
+        if isinstance(self.left, FilterItem):
+            output += self.left.concept_arguments
+        if isinstance(self.left, Function):
+            output += self.left.concept_arguments
         if isinstance(self.right, (Concept,)):
             output += [self.right]
         if isinstance(self.right, (Concept, Conditional, Parenthetical)):
             output += self.right.input
-        if isinstance(self.left, Function):
-            output += self.left.concept_arguments
+        if isinstance(self.right, FilterItem):
+            output += self.right.concept_arguments
         if isinstance(self.right, Function):
             output += self.right.concept_arguments
         return output

@@ -135,7 +135,7 @@ class Executor(object):
         return output
 
     def parse_text(
-        self, command: str
+        self, command: str, persist: bool = False
     ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
@@ -145,6 +145,9 @@ class Executor(object):
         sql = self.generator.generate_queries(
             self.environment, generatable, hooks=self.hooks
         )
+        for x in sql:
+            if persist and isinstance(x, ProcessedQueryPersist):
+                self.environment.add_datasource(x.datasource)
         return sql
 
     def execute_raw_sql(self, command: str) -> CursorResult:

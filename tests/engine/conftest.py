@@ -148,3 +148,22 @@ def presto_engine(presto_model) -> Generator[Executor, None, None]:
         dialect=Dialects.DUCK_DB, engine=engine, environment=presto_model
     )
     yield executor
+
+
+class PostgresEngine(ExecutionEngine):
+    """Mock since we won't have the engine available in testing"""
+
+    pass
+
+    def connect(self) -> EngineConnection:
+        return PrestoEngineConnection()
+
+
+@fixture(scope="session")
+def postgres_engine(presto_model) -> Generator[Executor, None, None]:
+    engine = PostgresEngine()
+
+    executor = Executor(
+        dialect=Dialects.POSTGRES, engine=engine, environment=presto_model
+    )
+    yield executor

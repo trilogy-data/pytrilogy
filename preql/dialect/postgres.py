@@ -9,17 +9,17 @@ from preql.dialect.base import BaseDialect
 def date_diff(first: str, second: str, grain: DatePart) -> str:
     grain = DatePart(grain)
     if grain == DatePart.YEAR:
-        return f"date_part('year', {first}) - date_part('year', {second})"
+        return f"date_part('year', {second}) - date_part('year', {first})"
     elif grain == DatePart.MONTH:
-        return f"{date_diff(first, second, DatePart.YEAR)} + date_part('month', {first}) - date_part('month', {second})"
+        return f"12 * {date_diff(first, second, DatePart.YEAR)} + date_part('month', {second}) - date_part('month', {first})"
     elif grain == DatePart.DAY:
-        return f"date_part('day', {first} - {second})"
+        return f"date_part('day', {second} - {first})"
     elif grain == DatePart.HOUR:
-        return f"{date_diff(first, second, DatePart.DAY)} *24 + date_part('hour', {first} - {second})"
+        return f"{date_diff(first, second, DatePart.DAY)} *24 + date_part('hour', {second} - {first})"
     elif grain == DatePart.MINUTE:
-        return f"{date_diff(first, second, DatePart.HOUR)} *60 + date_part('minute', {first} - {second})"
+        return f"{date_diff(first, second, DatePart.HOUR)} *60 + date_part('minute', {second} - {first})"
     elif grain == DatePart.SECOND:
-        return f"{date_diff(first, second, DatePart.MINUTE)} *60 + date_part('second', {first} - {second})"
+        return f"{date_diff(first, second, DatePart.MINUTE)} *60 + date_part('second', {second} - {first})"
     else:
         raise NotImplementedError(f"Date diff not implemented for grain {grain}")
 
@@ -31,7 +31,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc('{x[1]}', {x[0]})",
     FunctionType.DATE_ADD: lambda x: f"({x[0]} + INTERVAL '{x[2]} {x[1]}')",
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
-    FunctionType.DATE_DIFF: lambda x: date_diff(*x),
+    FunctionType.DATE_DIFF: lambda x: date_diff(x[0], x[1], x[2]),
     FunctionType.IS_NULL: lambda x: f"{x[0]} IS NULL",
 }
 
@@ -44,8 +44,8 @@ FUNCTION_GRAIN_MATCH_MAP = {
 
 PG_SQL_TEMPLATE = Template(
     """{%- if output %}
-DROP TABLE IF EXISTS {{ output.address }};
-CREATE TABLE {{ output.address }} AS
+DROP TABLE IF EXISTS {{ output.address.location }};
+CREATE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}

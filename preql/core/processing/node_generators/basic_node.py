@@ -17,6 +17,7 @@ LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
+
 def gen_basic_node(
     concept: Concept,
     local_optional: List[Concept],

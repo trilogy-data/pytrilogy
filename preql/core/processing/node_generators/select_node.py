@@ -7,7 +7,6 @@ from preql.core.models import (
     Concept,
     Environment,
     BaseJoin,
-    QueryDatasource,
     Datasource,
 )
 from typing import Set
@@ -22,7 +21,9 @@ import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
 from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.constants import logger
-from preql.core.processing.nodes import StaticSelectNode
+from preql.core.processing.node_generators.static_select_node import (
+    gen_static_select_node,
+)
 from preql.utility import unique
 
 
@@ -203,27 +204,14 @@ def gen_select_node_from_join(
     for datasource in datasources:
         partial = [x for x in datasource.partial_concepts if x in all_concepts]
         local_all: List[Concept] = datasource.output_concepts
-        node = StaticSelectNode(
-            input_concepts=local_all,
-            output_concepts=local_all,
+        node = gen_static_select_node(
+            unique(local_all, "address"),
             environment=environment,
             g=g,
-            datasource=QueryDatasource(
-                input_concepts=unique(local_all, "address"),
-                output_concepts=unique(local_all, "address"),
-                source_map={concept.address: {datasource} for concept in local_all},
-                datasources=[datasource],
-                grain=datasource.grain,
-                joins=[],
-                partial_concepts=[
-                    c.concept for c in datasource.columns if not c.is_complete
-                ],
-            ),
             depth=depth,
-            partial_concepts=[
-                c.concept for c in datasource.columns if not c.is_complete
-            ],
+            datasource=datasource,
         )
+        assert node
         parent_nodes.append(node)
         ds_to_node_map[datasource.identifier] = node
 
