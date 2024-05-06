@@ -71,14 +71,14 @@ def test_grain(test_environment):
     sum(grains)
     oid = test_environment.concepts["order_id"]
     pid = test_environment.concepts["product_id"]
-    sid = test_environment.concepts["store_id"]
+    cid = test_environment.concepts["category_id"]
 
     x = Grain(components=[oid, pid])
-    y = Grain(components=[pid, sid])
-    z = Grain(components=[sid])
+    y = Grain(components=[pid, cid])
+    z = Grain(components=[cid])
 
     assert x.intersection(y) == Grain(components=[pid])
-    assert x.union(y) == Grain(components=[oid, pid, sid])
+    assert x.union(y) == Grain(components=[oid, pid, cid])
 
     assert z.isdisjoint(x)
     assert z.issubset(y)
