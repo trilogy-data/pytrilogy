@@ -13,6 +13,8 @@ from preql.core.models import (
     Environment,
     Concept,
     Grain,
+    Function,
+    UnnestJoin,
 )
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import StrategyNode
@@ -150,13 +152,27 @@ class SelectNode(StrategyNode):
                     # ensure that if this select needs to merge, the grain components are present
                     all_concepts = all_concepts + datasource.grain.components_copy
 
+                # append in any concepts that are being derived via function at call time
+
                 all_concepts_final: List[Concept] = unique(all_concepts, "address")
+                source_map: dict[
+                    str, set[Datasource | QueryDatasource | UnnestJoin]
+                ] = {concept.address: {datasource} for concept in all_concepts_final}
+
+                derived_concepts = [
+                    c
+                    for c in datasource.columns
+                    if isinstance(c.alias, Function) and c.concept.address in source_map
+                ]
+                for c in derived_concepts:
+                    if not isinstance(c.alias, Function):
+                        continue
+                    for x in c.alias.concept_arguments:
+                        source_map[x.address] = {datasource}
                 node = QueryDatasource(
                     input_concepts=all_concepts_final,
                     output_concepts=all_concepts_final,
-                    source_map={
-                        concept.address: {datasource} for concept in all_concepts_final
-                    },
+                    source_map=source_map,
                     datasources=[datasource],
                     grain=target_grain,
                     joins=[],

@@ -262,7 +262,7 @@ class BaseDialect:
                     for v in c.lineage.function.arguments
                 ]
                 if cte.group_to_grain:
-                    rval = f"{self.FUNCTION_MAP[c.lineage.function.operator](args)}"
+                    rval = self.FUNCTION_MAP[c.lineage.function.operator](args)
                 else:
                     logger.debug(
                         f"{LOGGER_PREFIX} [{c.address}] ignoring aggregate, already at"
@@ -288,6 +288,8 @@ class BaseDialect:
             raw_content = cte.get_alias(c)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
+            elif isinstance(raw_content, Function):
+                rval = self.render_expr(raw_content, cte=cte)
             else:
                 rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}.{safe_quote(raw_content, self.QUOTE_CHARACTER)}"
 

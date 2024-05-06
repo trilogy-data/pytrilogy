@@ -128,7 +128,7 @@ grammar = r"""
     
     concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" ) | (SHORTHAND_MODIFIER concept_assignment  )
     
-    column_assignment: ((IDENTIFIER | raw_column_assignment ) ":" concept_assignment) 
+    column_assignment: ((IDENTIFIER | raw_column_assignment | _static_functions ) ":" concept_assignment) 
 
     raw_column_assignment: "raw" "(" MULTILINE_STRING ")"
     
@@ -295,6 +295,8 @@ grammar = r"""
     
     _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
+    _static_functions: _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions
+
     // base language constructs
     IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
     ADDRESS: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*/ | /`[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*`/
@@ -1102,18 +1104,12 @@ class ParseToObjects(Transformer):
             # so rebuild at this point in the tree
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
+                # where, we need to further filter the derived concept
+                if where:
+                    item.content = item.content.with_filter(where)
                 new_concept = item.content.output.with_grain(output.grain)
                 self.environment.concepts[new_concept.address] = new_concept
                 item.content.output = new_concept
-            # elif isinstance(item.content, Concept):
-            #     # new_concept = item.content.with_grain(output.grain)
-            #     item.content = new_concept
-            # elif isinstance(item.content, WindowItem):
-            #     new_concept = item.content.output.with_grain(output.grain)
-            #     item.content.output = new_concept
-            # else:
-            #     raise ValueError
-
         if order_by:
             for item in order_by.items:
                 if (
