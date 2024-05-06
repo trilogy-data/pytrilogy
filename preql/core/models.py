@@ -370,6 +370,8 @@ class Concept(BaseModel):
             output = []
             for item in self.lineage.arguments:
                 if isinstance(item, Concept):
+                    if item.address == self.address:
+                        raise SyntaxError(f"Concept {self.address} references itself")
                     output.append(item)
                     output += item.sources
             return output
@@ -1970,15 +1972,16 @@ class Comparison(BaseModel):
         output: List[Concept] = []
         if isinstance(self.left, (Concept,)):
             output += [self.left]
-        if isinstance(self.left, (Concept, Conditional, Parenthetical)):
+        if isinstance(self.left, (Conditional, Parenthetical)):
             output += self.left.input
         if isinstance(self.left, FilterItem):
             output += self.left.concept_arguments
         if isinstance(self.left, Function):
             output += self.left.concept_arguments
+
         if isinstance(self.right, (Concept,)):
             output += [self.right]
-        if isinstance(self.right, (Concept, Conditional, Parenthetical)):
+        if isinstance(self.right, (Conditional, Parenthetical)):
             output += self.right.input
         if isinstance(self.right, FilterItem):
             output += self.right.concept_arguments

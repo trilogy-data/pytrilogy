@@ -1105,8 +1105,10 @@ class ParseToObjects(Transformer):
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
                 # where, we need to further filter the derived concept
-                if where:
-                    item.content = item.content.with_filter(where)
+                # 2024-05-06 - this can result in circular references
+                # disabling until we can revisit
+                # if where:
+                #     item.content = item.content.with_filter(where)
                 new_concept = item.content.output.with_grain(output.grain)
                 self.environment.concepts[new_concept.address] = new_concept
                 item.content.output = new_concept

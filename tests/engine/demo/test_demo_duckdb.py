@@ -8,16 +8,16 @@ from preql.core.models import (
     ColumnAssignment,
     Grain,
     DataType,
+    Function,
 )
-from preql.core.enums import Purpose
+from preql.core.enums import Purpose, FunctionType
 from os.path import dirname
 from pathlib import PurePath
-from preql.parsing.render import Renderer
 from preql.hooks.query_debugger import DebuggingHook
 from logging import INFO
 
 
-def setup_engine() -> Executor:
+def setup_engine(debug_flag: bool = True) -> Executor:
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / "train.csv"
     df = pd.read_csv(csv)
@@ -32,7 +32,9 @@ def setup_engine() -> Executor:
                 process_datasources=False,
                 process_ctes=False,
             )
-        ],
+        ]
+        if debug_flag
+        else [],
     )
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
@@ -110,7 +112,42 @@ def setup_titanic(env: Environment):
         keys=[id],
         grain=Grain(components=[id]),
     )
-    for x in [id, age, survived, name, pclass, fare, cabin, embarked, ticket]:
+
+    last_name = Concept(
+        name="last_name",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        keys=[id],
+        lineage=Function(
+            operator=FunctionType.INDEX_ACCESS,
+            arguments=[
+                Function(
+                    operator=FunctionType.SPLIT,
+                    arguments=[name, ","],
+                    output_datatype=DataType.ARRAY,
+                    output_purpose=Purpose.PROPERTY,
+                    arg_count=2,
+                ),
+                1,
+            ],
+            output_datatype=DataType.STRING,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+    )
+    for x in [
+        id,
+        age,
+        survived,
+        name,
+        last_name,
+        pclass,
+        fare,
+        cabin,
+        embarked,
+        ticket,
+    ]:
         env.add_concept(x)
 
     env.add_datasource(
@@ -138,7 +175,6 @@ def test_demo_e2e():
     executor = setup_engine()
     env = Environment()
     setup_titanic(env)
-    Renderer()
     executor.environment = env
     test = """
 property passenger.id.split_cabin <- unnest(split(passenger.cabin, ' '));
@@ -172,7 +208,6 @@ def test_demo_aggregates():
     executor = setup_engine()
     env = Environment()
     setup_titanic(env)
-    Renderer()
     executor.environment = env
     test = """
 key survivor <- filter passenger.id where passenger.survived = 1;
@@ -197,3 +232,33 @@ select
 
     for row in results[0]:
         assert row.survival_rate < 100
+
+
+def test_demo_filter():
+    executor = setup_engine(debug_flag=False)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """
+    auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
+    select     passenger.last_name,    passenger.id.count,   
+      count(surviving_passenger) -> surviving_size
+      where    
+      passenger.id.count=surviving_size
+    order by passenger.id.count desc, passenger.last_name asc
+    limit 5;"""
+
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert results[0].passenger_last_name == "Baclini"
+
+    test = """
+    auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
+    select     passenger.last_name,    passenger.id.count,   
+      count(surviving_passenger) -> surviving_size
+    order by surviving_size desc, passenger.id.count desc
+    limit 5;"""
+
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert results[0].passenger_last_name == "Carter"
