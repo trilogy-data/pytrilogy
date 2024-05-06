@@ -477,12 +477,20 @@ class Grain(BaseModel):
     def issubset(self, other: "Grain"):
         return self.set.issubset(other.set)
 
+    def union(self, other: "Grain"):
+        addresses = self.set.union(other.set)
+
+        return Grain(
+            components=[c for c in self.components if c.address in addresses]
+            + [c for c in other.components if c.address in addresses]
+        )
+
     def isdisjoint(self, other: "Grain"):
         return self.set.isdisjoint(other.set)
 
     def intersection(self, other: "Grain") -> "Grain":
         intersection = self.set.intersection(other.set)
-        components = [i for i in self.components if i.name in intersection]
+        components = [i for i in self.components if i.address in intersection]
         return Grain(components=components)
 
     def __add__(self, other: "Grain") -> "Grain":

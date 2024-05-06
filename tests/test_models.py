@@ -44,11 +44,6 @@ def test_cte_merge(test_environment, test_environment_graph):
     assert merged.output_columns == outputs
 
 
-def test_grain():
-    grains = [Grain()] * 3
-    sum(grains)
-
-
 def test_concept(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[0]
     new = test_concept.with_namespace("test")
@@ -69,3 +64,21 @@ def test_conditional(test_environment, test_environment_graph):
     assert merged.left == condition_a
     assert merged.right == condition_b
     assert merged.operator == BooleanOperator.AND
+
+
+def test_grain(test_environment):
+    grains = [Grain()] * 3
+    sum(grains)
+    oid = test_environment.concepts["order_id"]
+    pid = test_environment.concepts["product_id"]
+    sid = test_environment.concepts["store_id"]
+
+    x = Grain(components=[oid, pid])
+    y = Grain(components=[pid, sid])
+    z = Grain(components=[sid])
+
+    assert x.intersection(y) == Grain(components=[pid])
+    assert x.union(y) == Grain(components=[oid, pid, sid])
+
+    assert z.isdisjoint(x)
+    assert z.issubset(y)
