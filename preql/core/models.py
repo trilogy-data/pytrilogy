@@ -403,7 +403,9 @@ class Concept(BaseModel):
             return PurposeLineage.UNNEST
         elif self.purpose == Purpose.CONSTANT:
             return PurposeLineage.CONSTANT
-        return PurposeLineage.BASIC
+        elif self.lineage and isinstance(self.lineage, Function):
+            return PurposeLineage.BASIC
+        return PurposeLineage.ROOT
 
     @property
     def granularity(self) -> Granularity:
@@ -1251,6 +1253,7 @@ class QueryDatasource(BaseModel):
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
+    force_group: bool = False
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
@@ -1285,7 +1288,9 @@ class QueryDatasource(BaseModel):
             seen.add(k)
         for x in expected:
             if x not in seen:
-                raise SyntaxError(f"source map missing {x}")
+                raise SyntaxError(
+                    f"source map missing {x} on (expected {expected}, have {seen})"
+                )
         return v
 
     def __str__(self):
@@ -1310,6 +1315,8 @@ class QueryDatasource(BaseModel):
 
     @property
     def group_required(self) -> bool:
+        if self.force_group:
+            return True
         if self.source_type:
             if self.source_type in [
                 SourceType.FILTER,
@@ -1383,6 +1390,7 @@ class QueryDatasource(BaseModel):
             source_type=self.source_type,
             partial_concepts=self.partial_concepts,
             join_derived_concepts=self.join_derived_concepts,
+            force_group=self.force_group,
         )
 
     @property

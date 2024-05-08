@@ -39,6 +39,7 @@ class PurposeLineage(Enum):
     FILTER = "filter"
     CONSTANT = "constant"
     UNNEST = "unnest"
+    ROOT = "root"
 
 
 class Granularity(Enum):

@@ -1,6 +1,6 @@
 from preql.core.models import Select, WindowItem
 from preql.core.enums import PurposeLineage, Granularity, Purpose
-from preql.core.processing.concept_strategies_v2 import source_concepts
+from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
 from preql.core.query_processor import process_query, get_query_datasources
 from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect import duckdb
@@ -56,8 +56,11 @@ limit 100
 
     assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
 
-    ds = source_concepts(
-        [env.concepts["post_count"]], [env.concepts["user_id"]], environment=env
+    ds = search_concepts(
+        [env.concepts["post_count"], env.concepts["user_id"]],
+        environment=env,
+        g=generate_graph(env),
+        depth=0,
     ).resolve()
     # ds.validate()
     ds.get_alias(env.concepts["post_count"].with_grain(ds.grain))
@@ -149,7 +152,9 @@ order by x asc;"""
     z = env.concepts["z"]
     assert z.purpose == Purpose.PROPERTY
 
-    ds = source_concepts([z.with_grain(x)], [x], environment=env).resolve()
+    ds = search_concepts(
+        [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0
+    ).resolve()
 
     assert x in ds.output_concepts
     assert z in ds.output_concepts

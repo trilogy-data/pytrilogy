@@ -169,9 +169,16 @@ class MergeNode(StrategyNode):
                 )
                 return dataset
 
-        grain = Grain()
+        pregrain = Grain()
         for source in final_datasets:
-            grain += source.grain
+            pregrain += source.grain
+        grain = Grain(
+            components=[
+                c
+                for c in pregrain.components
+                if c.address in [x.address for x in self.output_concepts]
+            ]
+        )
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
@@ -194,7 +201,7 @@ class MergeNode(StrategyNode):
                 joins = self.create_full_joins(dataset_list)
             else:
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {str(grain)}"
                 )
                 joins = get_node_joins(dataset_list, grain.components)
         else:
@@ -206,6 +213,14 @@ class MergeNode(StrategyNode):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} final join {join.join_type} {[str(c) for c in join.concepts]}"
             )
+
+        if not any([d.grain == grain for d in final_datasets]):
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} no parents include whole grain, assume must group to grain."
+            )
+            force_group = True
+        else:
+            force_group = False
         return QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),
@@ -217,4 +232,5 @@ class MergeNode(StrategyNode):
             joins=joins,
             grain=grain,
             partial_concepts=self.partial_concepts,
+            force_group=force_group,
         )

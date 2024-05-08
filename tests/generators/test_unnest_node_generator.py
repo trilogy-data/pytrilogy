@@ -1,5 +1,5 @@
 from preql.core.processing.node_generators import gen_unnest_node
-from preql.core.processing.concept_strategies_v2 import source_concepts
+from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.models import Environment
 
 
@@ -14,5 +14,5 @@ def test_gen_unnest_node(test_environment, test_environment_graph):
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
-        source_concepts=source_concepts,
+        source_concepts=search_concepts,
     )

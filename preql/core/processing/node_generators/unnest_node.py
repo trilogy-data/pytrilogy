@@ -25,12 +25,10 @@ def gen_unnest_node(
         environment=environment,
         g=g,
         parents=[
-            source_concepts(  # this fetches the parent + join keys
-                # to then connect to the rest of the query
-                arguments,
-                local_optional,
-                environment,
-                g,
+            source_concepts(
+                mandatory_list=arguments + local_optional,
+                environment=environment,
+                g=g,
                 depth=depth + 1,
             )
         ]

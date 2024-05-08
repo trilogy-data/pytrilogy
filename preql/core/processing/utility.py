@@ -119,6 +119,9 @@ def get_node_joins(
     for datasource in datasources:
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
+            # we don't need to join on a concept if all of the keys exist in the grain
+            if concept.keys and all([x in grain for x in concept.keys]):
+                continue
             concepts.append(concept)
             graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource.identifier, concept.address)

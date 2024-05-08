@@ -8,7 +8,7 @@ from preql.utility import unique
 
 def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, (Function, AggregateWrapper)):
-        raise ValueError(f"Concept {concept} is not an aggregate function")
+        raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == PurposeLineage.AGGREGATE:
         if concept.grain:
             return unique(

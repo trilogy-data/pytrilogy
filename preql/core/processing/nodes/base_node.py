@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import List, Optional
 from collections import defaultdict
 
@@ -87,8 +86,10 @@ class StrategyNode:
         depth: int = 0,
         conditions: Conditional | Comparison | Parenthetical | None = None,
     ):
-        self.input_concepts = input_concepts or []
-        self.output_concepts = output_concepts
+        self.input_concepts = (
+            unique(input_concepts, "address") if input_concepts else []
+        )
+        self.output_concepts = unique(output_concepts, "address")
         self.environment = environment
         self.g = g
         self.whole_grain = whole_grain
@@ -104,11 +105,11 @@ class StrategyNode:
 
     @property
     def all_concepts(self) -> list[Concept]:
-        return unique(deepcopy(self.output_concepts), "address")
+        return [*self.output_concepts]
 
     @property
     def all_used_concepts(self) -> list[Concept]:
-        return unique(deepcopy(self.input_concepts), "address")
+        return [*self.input_concepts]
 
     def __repr__(self):
         concepts = self.all_concepts
@@ -123,13 +124,11 @@ class StrategyNode:
         #         conditional += condition
         grain = Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
-            parent_sources,
-            unique(self.output_concepts, "address"),
-            unique(self.input_concepts, "address"),
+            parent_sources, self.output_concepts, self.input_concepts
         )
         return QueryDatasource(
-            input_concepts=unique(self.input_concepts, "address"),
-            output_concepts=unique(self.output_concepts, "address"),
+            input_concepts=self.input_concepts,
+            output_concepts=self.output_concepts,
             datasources=parent_sources,
             source_type=self.source_type,
             source_map=source_map,

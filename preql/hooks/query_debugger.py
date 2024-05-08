@@ -4,7 +4,7 @@ from preql.core.models import QueryDatasource, CTE, Datasource, Select
 from preql.hooks.base_hook import BaseHook
 from preql.constants import logger
 from logging import StreamHandler, DEBUG
-from preql.core.processing.concept_strategies_v2 import StrategyNode
+from preql.core.processing.nodes import StrategyNode
 
 from preql.dialect.bigquery import BigqueryDialect
 

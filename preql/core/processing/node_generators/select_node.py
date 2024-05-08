@@ -68,6 +68,7 @@ def gen_select_node_from_table(
                     target=concept_to_node(req_concept),
                 )
             except nx.NodeNotFound as e:
+                # just to provide better error
                 candidates = [
                     datasource_to_node(datasource),
                     concept_to_node(req_concept),
@@ -148,7 +149,7 @@ def gen_select_node_from_join(
             except nx.exception.NodeNotFound as e:
                 # TODO: support Verbose logging mode configuration and reenable these
                 logger.debug(
-                    f"{LOGGER_PREFIX}{logging_prefix}could not find node for {item.address} with {item.grain} and {item.lineage}: {str(e)}"
+                    f"{LOGGER_PREFIX}{logging_prefix} could not find node for {item.address} with {item.grain} and {item.lineage}: {str(e)}"
                 )
                 all_found = False
 
@@ -257,12 +258,23 @@ def gen_select_node(
     g,
     depth: int,
     accept_partial: bool = False,
-) -> MergeNode | SelectNode:
-    basic_inputs = [
-        x
-        for x in local_optional
+    fail_if_not_found: bool = True,
+) -> MergeNode | SelectNode | None:
+    all_concepts = [concept] + local_optional
+    materialized_addresses = {
+        x.address
+        for x in all_concepts
         if x.address in [z.address for z in environment.materialized_concepts]
-    ]
+    }
+    all_addresses = set([x.address for x in all_concepts])
+
+    if materialized_addresses != all_addresses:
+        logger.info(
+            f"Skipping select node for {concept.address} as it includes non-materialized concepts {materialized_addresses.difference(all_addresses)} {materialized_addresses} {all_addresses}"
+        )
+        if fail_if_not_found:
+            raise NoDatasourceException(f"No datasource exists for {concept}")
+        return None
     ds = None
     ds = gen_select_node_from_table(
         [concept] + local_optional,
@@ -274,8 +286,8 @@ def gen_select_node(
     if ds:
         return ds
     # then look for joins
-    for x in reversed(range(1, len(basic_inputs) + 1)):
-        for combo in combinations(basic_inputs, x):
+    for x in reversed(range(1, len(local_optional) + 1)):
+        for combo in combinations(local_optional, x):
             all_concepts = [concept, *combo]
             ds = gen_select_node_from_table(
                 all_concepts,
@@ -302,6 +314,6 @@ def gen_select_node(
         depth=depth,
         accept_partial=accept_partial,
     )
-    if not ds:
+    if not ds and fail_if_not_found:
         raise NoDatasourceException(f"No datasource exists for {concept}")
     return ds

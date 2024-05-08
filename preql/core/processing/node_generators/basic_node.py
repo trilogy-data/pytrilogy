@@ -36,10 +36,9 @@ def gen_basic_node(
     partials = []
     parents: List[StrategyNode] = [
         source_concepts(
-            parent_concepts,
-            local_optional,
-            environment,
-            g,
+            mandatory_list=parent_concepts + local_optional,
+            environment=environment,
+            g=g,
             depth=depth + 1,
         )
     ]

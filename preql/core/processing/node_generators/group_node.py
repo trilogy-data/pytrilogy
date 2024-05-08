@@ -1,10 +1,11 @@
 from preql.core.models import Concept, Environment
 from preql.utility import unique
-from preql.core.processing.nodes import GroupNode, StrategyNode
+from preql.core.processing.nodes import GroupNode, StrategyNode, MergeNode, NodeJoin
 from typing import List
 from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
+from preql.core.enums import JoinType
 
 
 def gen_group_node(
@@ -30,31 +31,61 @@ def gen_group_node(
         )
         parent_concepts += grain_components
         output_concepts += grain_components
-    # otherwise, local optional can be included
-    else:
-        parent_concepts += local_optional
-        output_concepts += local_optional
 
     if parent_concepts:
+        parent_concepts = unique(parent_concepts, "address")
         parents: List[StrategyNode] = [
-            source_concepts(parent_concepts, [], environment, g, depth=depth + 1)
+            source_concepts(
+                mandatory_list=parent_concepts,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+            )
         ]
     else:
         parents = []
-    partials = []
-    for x in output_concepts:
-        sources = [p for p in parents if x in p.output_concepts]
-        if not sources:
-            continue
-        if all(x in source.partial_concepts for source in sources):
-            partials.append(x)
-    # partials = [x for x in output_concepts if all([x in p.partial_concepts for p in parents if x in p.output_concepts])]
-    return GroupNode(
+
+    # the keys we group by
+    # are what we can use for enrichment
+    group_key_parents = concept.grain.components_copy
+    group_node = GroupNode(
         output_concepts=output_concepts,
         input_concepts=parent_concepts,
         environment=environment,
         g=g,
         parents=parents,
-        partial_concepts=partials,
         depth=depth,
+    )
+
+    # early exit if no optional
+    if not local_optional:
+        return group_node
+
+    enrich_node = source_concepts(  # this fetches the parent + join keys
+        # to then connect to the rest of the query
+        mandatory_list=group_key_parents + local_optional,
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+    )
+    return MergeNode(
+        input_concepts=output_concepts + local_optional,
+        output_concepts=output_concepts + local_optional,
+        environment=environment,
+        g=g,
+        parents=[
+            # this node gets the group
+            group_node,
+            # this node gets enrichment
+            enrich_node,
+        ],
+        node_joins=[
+            NodeJoin(
+                left_node=group_node,
+                right_node=enrich_node,
+                concepts=group_key_parents,
+                filter_to_mutual=False,
+                join_type=JoinType.LEFT_OUTER,
+            )
+        ],
     )
