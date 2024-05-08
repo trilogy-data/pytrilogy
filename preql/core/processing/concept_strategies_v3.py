@@ -215,7 +215,7 @@ def search_concepts(
     environment: Environment,
     depth: int,
     g: ReferenceGraph,
-):
+) -> StrategyNode:
     mandatory_list = unique(mandatory_list, "address")
     all = set(c.address for c in mandatory_list)
     attempted: set[str] = set()

@@ -12,10 +12,8 @@ from preql.core.models import (
     ProcessedQuery,
     ProcessedQueryPersist,
 )
-from preql.core.processing.concept_strategies_v2 import (
-    source_concepts,
-    source_query_concepts,
-)
+
+from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.query_processor import datasource_to_ctes, get_query_datasources
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
@@ -69,10 +67,11 @@ def test_query_datasources(environment: Environment):
     # assert a group up to the first name works
 
     # source query concepts includes extra group by to grain
-    customer_node = source_query_concepts(
+    customer_node = search_concepts(
         [environment.concepts["customer.first_name"]],
-        environment,
-        environment_graph,
+        environment=environment,
+        g=environment_graph,
+        depth=0,
     )
     print_recursive_nodes(customer_node)
     customer_datasource = customer_node.resolve()
