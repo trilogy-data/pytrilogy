@@ -61,7 +61,12 @@ def test_environment():
         lineage=Min([order_id]),
     )
 
-    revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
+    revenue = Concept(
+        name="revenue",
+        datatype=DataType.FLOAT,
+        purpose=Purpose.PROPERTY,
+        keys=[order_id],
+    )
 
     total_revenue = Concept(
         name="total_revenue",

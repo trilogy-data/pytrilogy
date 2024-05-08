@@ -36,7 +36,7 @@ def test_get_datasource_from_window_function(
     # assert datasource.grain == product_rank.grain
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
-        "revenue_at_local_order_id_at_local_product_id"
+        "revenue_at_local_product_id_local_revenue_at_local_product_id"
     }
 
     product_rank_by_category = test_environment.concepts[
@@ -107,7 +107,7 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     datasource = datasource.resolve()
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
-        "revenue_at_local_order_id"
+        "revenue_at_local_product_id_local_revenue"
     }
 
 
@@ -123,7 +123,7 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
     ).resolve()
     assert isinstance(datasource, QueryDatasource)
     assert set([datasource.name for datasource in datasource.datasources]) == {
-        "products_at_local_product_id_join_revenue_at_local_order_id_at_local_order_id_local_product_id"
+        "products_at_local_product_id_join_revenue_at_local_order_id_at_abstract"
     }
 
 
@@ -133,7 +133,7 @@ def test_query_aggregation(test_environment, test_environment_graph):
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 
-    assert {datasource.identifier} == {"revenue_at_local_order_id_at_abstract"}
+    assert {datasource.identifier} == {"revenue_at_local_revenue_at_abstract"}
     check = datasource
     assert len(check.input_concepts) == 1
     assert check.input_concepts[0].name == "revenue"
