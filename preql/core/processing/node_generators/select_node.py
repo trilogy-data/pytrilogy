@@ -149,14 +149,14 @@ def gen_select_node_from_join(
             except nx.exception.NodeNotFound as e:
                 # TODO: support Verbose logging mode configuration and reenable these
                 logger.debug(
-                    f"{LOGGER_PREFIX}{logging_prefix} could not find node for {item.address} with {item.grain} and {item.lineage}: {str(e)}"
+                    f"{logging_prefix}{LOGGER_PREFIX} could not find node for {item.address} with {item.grain} and {item.lineage}: {str(e)}"
                 )
                 all_found = False
 
                 continue
             except nx.exception.NetworkXNoPath:
                 logger.debug(
-                    f"{LOGGER_PREFIX}{logging_prefix} could not get to {concept_to_node(item)} from {datasource_to_node(datasource)}"
+                    f"{logging_prefix}{LOGGER_PREFIX} could not get to {concept_to_node(item)} from {datasource_to_node(datasource)}"
                 )
                 all_found = False
                 continue
@@ -285,28 +285,19 @@ def gen_select_node(
     )
     if ds:
         return ds
-    # then look for joins
-    for x in reversed(range(1, len(local_optional) + 1)):
-        for combo in combinations(local_optional, x):
-            all_concepts = [concept, *combo]
-            ds = gen_select_node_from_table(
-                all_concepts,
-                g=g,
-                environment=environment,
-                depth=depth,
-                accept_partial=accept_partial,
-            )
-            if ds:
-                return ds
-            joins = gen_select_node_from_join(
-                all_concepts,
-                g=g,
-                environment=environment,
-                depth=depth,
-                accept_partial=accept_partial,
-            )
-            if joins:
-                return joins
+    # # then look for joins
+    # for x in reversed(range(1, len(local_optional) + 1)):
+    #     for combo in combinations(local_optional, x):
+    #         all_concepts = [concept, *combo]
+    #         ds = gen_select_node_from_table(
+    #             all_concepts,
+    #             g=g,
+    #             environment=environment,
+    #             depth=depth,
+    #             accept_partial=accept_partial,
+    #         )
+    #         if ds:
+    #             return ds
     ds = gen_select_node_from_table(
         [concept],
         g=g,

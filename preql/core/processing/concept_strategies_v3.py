@@ -30,6 +30,13 @@ from preql.core.processing.node_generators import (
     gen_merge_node,
 )
 
+from enum import Enum
+
+class ValidationResult(Enum):
+    COMPLETE = 1
+    DISCONNECTED = 2
+    INCOMPLETE = 3
+
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
@@ -118,7 +125,7 @@ def generate_node(
     g: ReferenceGraph,
     depth: int,
     source_concepts: Callable,
-    local_prefix: str,
+    accept_partial:bool = False
 ) -> StrategyNode | None:
     candidate = gen_select_node(
         concept, local_optional, environment, g, depth, fail_if_not_found=False
@@ -148,7 +155,7 @@ def generate_node(
             x for x in local_optional if x.granularity != Granularity.SINGLE_ROW
         ]
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x.address for x in agg_optional]}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x.address for x in agg_optional]}"
         )
 
         return gen_group_node(
@@ -156,7 +163,7 @@ def generate_node(
         )
     elif concept.derivation == PurposeLineage.CONSTANT:
         logger.info(
-            f"{local_prefix}{LOGGER_PREFIX} for {concept.address}, generating constant node"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating constant node"
         )
         return ConstantNode(
             input_concepts=[],
@@ -171,24 +178,25 @@ def generate_node(
             concept, local_optional, environment, g, depth, source_concepts
         )
     elif concept.derivation == PurposeLineage.ROOT:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating select node"
+        )
         return gen_select_node(
-            concept, local_optional, environment, g, depth, fail_if_not_found=False
+            concept, local_optional, environment, g, depth, fail_if_not_found=False,
+            accept_partial=accept_partial
         )
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")
 
-
 def validate_stack(
-    stack: List[StrategyNode], concepts: List[Concept]
-) -> tuple[bool, set[str]]:
-    found_concepts = set()
+    stack: List[StrategyNode], concepts: List[Concept], accept_partial:bool = False
+) -> tuple[ ValidationResult, set[str]]:
     found_map = defaultdict(set)
     found_addresses = set()
     non_partial_addresses = set()
     partial_addresses = set()
     for node in stack:
         for concept in node.resolve().output_concepts:
-            found_concepts.add(concept)
             found_map[str(node)].add(concept)
 
             if concept not in node.partial_concepts:
@@ -196,14 +204,17 @@ def validate_stack(
                 non_partial_addresses.add(concept.address)
             if concept in node.partial_concepts:
                 partial_addresses.add(concept.address)
+                if accept_partial:
+                    found_addresses.add(concept.address)
+                    found_map[str(node)].add(concept)
     if not all([c.address in found_addresses for c in concepts]):
-        return False, found_addresses
+        return ValidationResult.INCOMPLETE, found_addresses, {c.address for c in concepts if c.address not in found_addresses}
     graph_count, graphs = get_disconnected_components(found_map)
 
     if graph_count in (0, 1):
-        return True, found_addresses
+        return ValidationResult.COMPLETE, found_addresses, {}
     # if we have too many subgraphs, we need to keep searching
-    return False, found_addresses
+    return ValidationResult.DISCONNECTED, found_addresses, {}
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -215,6 +226,7 @@ def search_concepts(
     environment: Environment,
     depth: int,
     g: ReferenceGraph,
+    accept_partial:bool = False,
 ) -> StrategyNode:
     mandatory_list = unique(mandatory_list, "address")
     all = set(c.address for c in mandatory_list)
@@ -246,7 +258,7 @@ def search_concepts(
                 g,
                 depth + 1,
                 source_concepts=search_concepts,
-                local_prefix="",
+                accept_partial=accept_partial
             )
             if node:
                 stack.append(node)
@@ -263,15 +275,15 @@ def search_concepts(
                     skip.add(priority_concept.address)
                 break
         attempted.add(priority_concept.address)
-        complete, found = validate_stack(stack, mandatory_list)
+        complete, found, missing = validate_stack(stack, mandatory_list, accept_partial)
         # early exit if we have a complete stack with one node
-        if complete and len(stack) == 1:
+        if complete == ValidationResult.COMPLETE and len(stack) == 1:
             break
 
     logger.info(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all - found}), attempted {attempted}"
     )
-    if complete:
+    if complete ==  ValidationResult.COMPLETE:
         output = MergeNode(
             input_concepts=mandatory_list,
             output_concepts=mandatory_list,
@@ -289,7 +301,7 @@ def search_concepts(
         )
         return output
 
-    logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Stack is not connected graph")
+    logger.info(f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Stack is not connected graph, flag for accepting partial addresses is {accept_partial}")
     # see if we can expand our mandatory list by adding join concepts
     expanded = gen_merge_node(
         all_concepts=mandatory_list,
@@ -301,12 +313,20 @@ def search_concepts(
     if expanded:
         expanded.resolve()
         return expanded
+    # if we can't find it after expanding to a merge, then
+    # attempt to accept partials in join paths
+    elif not accept_partial:
+        return search_concepts(
+            mandatory_list=mandatory_list,
+            environment=environment,
+            depth=depth,
+            g=g,
+            accept_partial=True,
+        )
     logger.error(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX}Could not resolve concepts {[c.address for c in mandatory_list]}"
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX}Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {missing}"
     )
-    raise ValueError(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX}Could not resolve concepts {[c.address for c in mandatory_list]}"
-    )
+    return None
 
 
 def source_query_concepts(
@@ -321,6 +341,9 @@ def source_query_concepts(
     root = search_concepts(
         mandatory_list=output_concepts, environment=environment, g=g, depth=0
     )
+
+    if not root:
+        raise ValueError(f"Could not resolve conections between {output_concepts} from environment graph.")
     return GroupNode(
         output_concepts=output_concepts,
         input_concepts=output_concepts,

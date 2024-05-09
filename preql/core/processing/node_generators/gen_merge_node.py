@@ -13,6 +13,9 @@ from preql.core.processing.utility import PathInfo
 from preql.constants import logger
 from preql.utility import unique
 
+LOGGER_PREFIX = "[GEN_MERGE_NODE]"
+
+pad = lambda x: x*'\t'
 
 def gen_merge_node(
     all_concepts: List[Concept],
@@ -57,17 +60,21 @@ def gen_merge_node(
     if not join_candidates:
         return None
     for join_candidate in join_candidates:
-        logger.info("Join candidate: %s", join_candidate["paths"])
+        logger.info(f"{pad(depth)}{LOGGER_PREFIX} Join candidate: {join_candidate['paths']}")
     shortest: PathInfo = join_candidates[0]
     concept_nodes: List[Concept] = []
     # along our path, find all the concepts required
     for key, value in shortest["paths"].items():
         concept_nodes += [g.nodes[v]["concept"] for v in value if v.startswith("c~")]
-    final = unique(concept_nodes, "address")
+    final:List[Concept] = unique(concept_nodes, "address")
+    logger.info([str(c) for c in final])
     if final == all_concepts:
         # no point in recursing
         # if we could not find an answer
+        logger.info(f"{pad(depth)}{LOGGER_PREFIX} No additional join candidates could be found")
         return None
+    new = {c.address for c in final}.difference({c.address for c in all_concepts})
+    logger.info(f"{pad(depth)}{LOGGER_PREFIX} sourcing with new concepts {new}")
     return source_concepts(
         mandatory_list=unique(concept_nodes, "address"),
         environment=environment,
