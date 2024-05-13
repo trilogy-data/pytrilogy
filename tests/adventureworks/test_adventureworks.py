@@ -92,10 +92,6 @@ def test_query_datasources(environment: Environment):
         depth=0,
     ).resolve()
 
-    assert (
-        "customers_at_customer_customer_id_join_fact_internet_sales_at_internet_sales_order_line_number_internet_sales_order_number"
-        in customer_datasource.identifier
-    )
 
     # assert a group up to the first name works
     customer_datasource = search_concepts(

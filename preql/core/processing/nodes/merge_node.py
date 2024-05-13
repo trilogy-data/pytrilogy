@@ -189,8 +189,10 @@ class MergeNode(StrategyNode):
             f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
         )
         for item in dataset_list:
+            logger.info(f'{self.logging_prefix}{LOGGER_PREFIX} for {item.full_name}')
+            logger.info(f'{self.logging_prefix}{LOGGER_PREFIX} partial concepts {[x.address for x in item.partial_concepts]}')
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} partial {[x.address for x in item.partial_concepts]} for {item.full_name}"
+                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address for x in item.output_concepts]} partial {[x.address for x in item.partial_concepts]}"
             )
 
         if not self.node_joins:

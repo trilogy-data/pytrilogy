@@ -17,15 +17,7 @@ def test_group_node(test_environment, test_environment_graph):
         input_concepts=[category, revenue],
         environment=test_environment,
         g=test_environment_graph,
-        parents=[
-            gen_select_node(
-                concept=revenue,
-                local_optional=[category],
-                environment=test_environment,
-                g=test_environment_graph,
-                depth=0,
-            )
-        ],
+        parents=[search_concepts([category, revenue], environment=test_environment, g= test_environment_graph, depth=0)],
     )
     group_node.resolve()
 

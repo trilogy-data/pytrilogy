@@ -14,3 +14,10 @@ class InvalidSyntaxException(Exception):
 
 class NoDatasourceException(Exception):
     pass
+
+
+class AmbiguousRelationshipResolutionException(Exception):
+    def __init__(self, message, parents: List[set[str]]):
+        super().__init__(self, message)
+        self.message = message
+        self.parents = parents

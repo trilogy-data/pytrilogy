@@ -71,8 +71,8 @@ def gen_window_node(
         ],
         node_joins=[
             NodeJoin(
-                left_node=window_node,
-                right_node=enrich_node,
+                left_node=enrich_node,
+                right_node=window_node,
                 concepts=parent_concepts,
                 filter_to_mutual=False,
                 join_type=JoinType.LEFT_OUTER,

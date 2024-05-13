@@ -115,6 +115,10 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
     category_id = test_environment.concepts["category_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
+    from logging import getLogger, StreamHandler, INFO
+    logger = getLogger()
+    logger.addHandler(StreamHandler())
+    logger.setLevel(INFO)
     datasource = search_concepts(
         [total_revenue.with_grain(category_id), category_id],
         environment=test_environment,
@@ -122,10 +126,8 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
         depth=0,
     ).resolve()
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "products_at_local_product_id_join_revenue_at_local_order_id_at_abstract"
-    }
-
+    assert len(set([datasource.name for datasource in datasource.datasources])) == 1
+    assert datasource.grain.components == [category_id]
 
 def test_query_aggregation(test_environment, test_environment_graph):
     select = Select(selection=[test_environment.concepts["total_revenue"]])

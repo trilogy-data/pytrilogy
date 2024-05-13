@@ -179,7 +179,6 @@ class FunctionClass(Enum):
         FunctionType.AVG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
-        FunctionType.GROUP,
     ]
 
 

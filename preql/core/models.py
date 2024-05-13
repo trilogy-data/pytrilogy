@@ -1714,6 +1714,8 @@ class EnvironmentConceptDict(dict):
             return super(EnvironmentConceptDict, self).__getitem__(key)
 
         except KeyError:
+            if '.' in key and key.split('.')[0] == DEFAULT_NAMESPACE:
+                return self.__getitem__(key.split('.')[1], line_no)
             if not self.fail_on_missing:
                 undefined = UndefinedConcept(
                     name=key,

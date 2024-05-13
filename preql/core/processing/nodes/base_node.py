@@ -70,6 +70,14 @@ def resolve_concept_map(
             concept_map[target.address] = set()
     return concept_map
 
+def get_all_parent_partial(all_concepts:List[Concept], parents:List["StrategyNode"]):
+    return [
+        c
+        for c in all_concepts
+        if len([c.address in [x.address for x in p.partial_concepts] for p in parents])>=1 and all(
+            [c.address in [x.address for x in p.partial_concepts] for p in parents]
+        )
+    ]
 
 class StrategyNode:
     source_type = SourceType.ABSTRACT
@@ -95,9 +103,12 @@ class StrategyNode:
         self.whole_grain = whole_grain
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
-        self.partial_concepts = partial_concepts or []
+        self.partial_concepts = partial_concepts or get_all_parent_partial(self.output_concepts, self.parents)
         self.depth = depth
         self.conditions = conditions
+        for parent in self.parents:
+            if not parent:
+                raise SyntaxError("Unresolvable parent")
 
     @property
     def logging_prefix(self) -> str:

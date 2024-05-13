@@ -13,7 +13,7 @@ from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
-
+from preql.constants import logger
 
 class NodeType(Enum):
     CONCEPT = 1
@@ -161,6 +161,9 @@ def get_node_joins(
                     identifier = [left, right]
                     joins["-".join(identifier)].add(cnode)
 
+    logger.info('JOIN DEBUG')
+    logger.info(graph.nodes)
+    logger.info(graph.edges)
     final_joins_pre: List[BaseJoin] = []
 
     for key, join_concepts in joins.items():
@@ -232,7 +235,7 @@ def get_node_joins(
                     found = True
             if not found:
                 raise SyntaxError(
-                    f"Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}"
+                    f"Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}, joins {final_joins}"
                 )
     return final_joins
 

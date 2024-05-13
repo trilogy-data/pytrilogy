@@ -74,6 +74,7 @@ class SelectNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: List[Concept] | None = None,
+        accept_partial: bool = False,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -85,9 +86,10 @@ class SelectNode(StrategyNode):
             depth=depth,
             partial_concepts=partial_concepts,
         )
+        self.accept_partial = accept_partial
 
     def resolve_from_raw_datasources(
-        self, all_concepts: List[Concept]
+        self, all_concepts: List[Concept], accept_partial:bool = False
     ) -> Optional[QueryDatasource]:
         for datasource in self.environment.datasources.values():
             all_found = True
@@ -130,7 +132,7 @@ class SelectNode(StrategyNode):
                 partial_concepts = {
                     c.concept.address for c in datasource.columns if not c.is_complete
                 }
-                if partial_concepts and any(
+                if not accept_partial and partial_concepts and any(
                     [c.address in partial_concepts for c in all_concepts]
                 ):
                     logger.info(
@@ -217,7 +219,7 @@ class SelectNode(StrategyNode):
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} resolving from raw datasources"
         )
-        resolution = self.resolve_from_raw_datasources(self.all_concepts)
+        resolution = self.resolve_from_raw_datasources(self.all_concepts, accept_partial=self.accept_partial)
         if resolution:
             return resolution
         required = [c.address for c in self.all_concepts]

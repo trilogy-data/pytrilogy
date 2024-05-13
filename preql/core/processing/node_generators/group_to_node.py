@@ -8,7 +8,7 @@ from preql.core.processing.node_generators.common import (
 from preql.core.enums import JoinType
 
 
-def gen_group_node(
+def gen_group_to_node(
     concept: Concept,
     local_optional,
     environment: Environment,
@@ -24,16 +24,16 @@ def gen_group_node(
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
-
-    if concept.grain and len(concept.grain.components_copy) > 0:
-        grain_components = (
-            concept.grain.components_copy if not concept.grain.abstract else []
-        )
+    grain_components = [x for x in  (
+                concept.grain.components_copy if not concept.grain.abstract else []
+            ) if x.address != concept.address]
+    
+    if concept.grain and len(grain_components) > 0:
         parent_concepts += grain_components
         output_concepts += grain_components
 
     if parent_concepts:
-        parent_concepts = unique(parent_concepts, "address")
+        parent_concepts = unique([x for x in parent_concepts if x.address != concept.address], "address")
         parents: List[StrategyNode] = [
             source_concepts(
                 mandatory_list=parent_concepts,
@@ -45,9 +45,6 @@ def gen_group_node(
     else:
         parents = []
 
-    # the keys we group by
-    # are what we can use for enrichment
-    group_key_parents = concept.grain.components_copy
 
     group_node = GroupNode(
         output_concepts=output_concepts,
@@ -61,7 +58,10 @@ def gen_group_node(
     # early exit if no optional
     if not local_optional:
         return group_node
-
+    
+    # the keys we group by
+    # are what we can use for enrichment
+    group_key_parents = grain_components
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=group_key_parents + local_optional,
@@ -69,19 +69,27 @@ def gen_group_node(
         g=g,
         depth=depth + 1,
     )
+
+    final_output = unique(output_concepts + local_optional +concept.lineage.concept_arguments , 'address')
     return MergeNode(
-        input_concepts=group_key_parents + local_optional+output_concepts,
-        output_concepts=output_concepts+local_optional,
+        input_concepts=output_concepts + local_optional,
+        output_concepts=final_output,
         environment=environment,
         g=g,
-        parents=[enrich_node, group_node],
+        parents=[
+            # this node gets the group
+            group_node,
+            # this node gets enrichment
+            enrich_node,
+        ],
         node_joins=[
             NodeJoin(
-                left_node=enrich_node,
-                right_node=group_node,
+                left_node=group_node,
+                right_node=enrich_node,
                 concepts=group_key_parents,
                 filter_to_mutual=False,
                 join_type=JoinType.LEFT_OUTER,
             )
         ],
+        partial_concepts = concept.lineage.concept_arguments 
     )
