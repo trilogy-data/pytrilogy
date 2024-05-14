@@ -1,4 +1,4 @@
-from preql.core.models import Select, QueryDatasource, Environment
+from preql.core.models import Select, QueryDatasource, Environment, Grain
 from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.query_processor import process_query, get_query_datasources
 
@@ -35,9 +35,7 @@ def test_get_datasource_from_window_function(
     assert product_rank in datasource.output_concepts
     # assert datasource.grain == product_rank.grain
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "revenue_at_local_product_id_local_revenue_at_local_product_id"
-    }
+    assert datasource.grain.set == Grain(components= [test_environment.concepts['total_revenue']]+ product_rank.grain.components_copy).set
 
     product_rank_by_category = test_environment.concepts[
         "product_revenue_rank_by_category"
@@ -106,9 +104,8 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     )
     datasource = datasource.resolve()
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "revenue_at_local_product_id_local_revenue"
-    }
+    assert datasource.grain == Grain(components=[product])
+
 
 
 def test_join_aggregate(test_environment: Environment, test_environment_graph):
@@ -137,7 +134,7 @@ def test_query_aggregation(test_environment, test_environment_graph):
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 
-    assert {datasource.identifier} == {"revenue_at_local_revenue_at_abstract"}
+    assert {datasource.identifier} == {"revenue_at_local_order_id_local_order_timestamp_local_product_id_at_abstract"}
     check = datasource
     assert len(check.input_concepts) == 1
     assert check.input_concepts[0].name == "revenue"
