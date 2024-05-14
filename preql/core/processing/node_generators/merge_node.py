@@ -16,15 +16,18 @@ from preql.core.exceptions import AmbiguousRelationshipResolutionException
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 
-pad = lambda x: x*'\t'
+def pad(x):
+    return x * "\t"
 
-def reduce_path_concepts(shortest, g)->set[str]:
+
+def reduce_path_concepts(shortest, g) -> set[str]:
     concept_nodes: List[Concept] = []
     # along our path, find all the concepts required
     for key, value in shortest["paths"].items():
         concept_nodes += [g.nodes[v]["concept"] for v in value if v.startswith("c~")]
-    final:List[Concept] = unique(concept_nodes, "address")
+    final: List[Concept] = unique(concept_nodes, "address")
     return set([x.address for x in final])
+
 
 def gen_merge_node(
     all_concepts: List[Concept],
@@ -32,7 +35,7 @@ def gen_merge_node(
     environment: Environment,
     depth: int,
     source_concepts,
-    accept_partial:bool = False
+    accept_partial: bool = False,
 ) -> Optional[MergeNode]:
     join_candidates: List[PathInfo] = []
     # anchor on datasources
@@ -74,20 +77,29 @@ def gen_merge_node(
     if not join_candidates:
         return None
     for join_candidate in join_candidates:
-        logger.info(f"{pad(depth)}{LOGGER_PREFIX} Join candidate: {join_candidate['paths']}")
-    join_additions:List[set[str]] = []
+        logger.info(
+            f"{pad(depth)}{LOGGER_PREFIX} Join candidate: {join_candidate['paths']}"
+        )
+    join_additions: List[set[str]] = []
     for candidate in join_candidates:
         unique = reduce_path_concepts(candidate, g)
         if unique not in join_additions:
             join_additions.append(unique)
-    if not all([x.issubset(y) or y.issubset(x) for x in join_additions for y in join_additions]):
-        raise AmbiguousRelationshipResolutionException(f'Ambiguous concept join resolution - possible paths =  {join_additions}. Include an additional concept to disambiguate', join_additions)
+    if not all(
+        [x.issubset(y) or y.issubset(x) for x in join_additions for y in join_additions]
+    ):
+        raise AmbiguousRelationshipResolutionException(
+            f"Ambiguous concept join resolution - possible paths =  {join_additions}. Include an additional concept to disambiguate",
+            join_additions,
+        )
     shortest = sorted(list(join_additions), key=lambda x: len(x))
     final = [environment.concepts[x] for x in shortest[0]]
-    if final == all_concepts:
+    if set([x.address for x in final]) == set([x.address for x in all_concepts]):
         # no point in recursing
         # if we could not find an answer
-        logger.info(f"{pad(depth)}{LOGGER_PREFIX} No additional join candidates could be found")
+        logger.info(
+            f"{pad(depth)}{LOGGER_PREFIX} No additional join candidates could be found"
+        )
         return None
     new = {c.address for c in final}.difference({c.address for c in all_concepts})
     logger.info(f"{pad(depth)}{LOGGER_PREFIX} sourcing with new concepts {new}")

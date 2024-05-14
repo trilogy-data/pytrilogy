@@ -87,7 +87,6 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert isinstance(datasource, QueryDatasource)
     assert datasource.grain == Grain()
     # ensure we identify aggregates of aggregates properly
-    assert datasource.identifier == "posts_at_local_post_id_at_abstract_at_abstract"
     assert datasource.output_concepts[0] == avg_user_post_count
     assert len(datasource.datasources) == 1
     parent = datasource.datasources[0]

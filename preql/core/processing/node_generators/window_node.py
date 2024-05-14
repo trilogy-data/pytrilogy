@@ -15,6 +15,13 @@ from preql.core.processing.nodes import (
     NodeJoin,
 )
 from preql.core.enums import JoinType
+from preql.constants import logger
+
+LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
+
+
+def padding(x: int):
+    return "\t" * x
 
 
 def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:
@@ -58,6 +65,11 @@ def gen_window_node(
         g=g,
         depth=depth + 1,
     )
+    if not enrich_node:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate window enrichment node for {concept} with optional {local_optional}"
+        )
+        return None
     return MergeNode(
         input_concepts=[concept] + parent_concepts + local_optional,
         output_concepts=[concept] + parent_concepts + local_optional,

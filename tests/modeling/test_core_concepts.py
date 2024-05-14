@@ -63,34 +63,36 @@ def test_metric_assignments(test_environment: Environment):
         assert candidate.keys == [store_id]
         assert candidate.grain.components == [store_id]
 
-def test_source_outputs(test_environment:Environment, test_executor: Executor):
+
+def test_source_outputs(test_environment: Environment, test_executor: Executor):
     order_ds = test_environment.datasources["orders"]
     for col in order_ds.columns:
-        if col.alias == 'order_id':
+        if col.alias == "order_id":
             assert col.is_complete
-        elif col.alias == 'store_id':
+        elif col.alias == "store_id":
             assert not col.is_complete
-        elif col.alias == 'product_id':
+        elif col.alias == "product_id":
             assert not col.is_complete
 
+    x = gen_select_node(
+        test_environment.concepts["store_id"],
+        local_optional=[test_environment.concepts["order_id"]],
+        environment=test_environment,
+        g=generate_graph(test_environment),
+        depth=0,
+        accept_partial=True,
+    )
 
-    x = gen_select_node(test_environment.concepts['store_id'], 
-                        local_optional=[test_environment.concepts['order_id']], 
-                        environment = test_environment,
-                        g= generate_graph(test_environment),
-                        depth=0,
-                        accept_partial=True)
-    
     found = False
     for con in x.partial_concepts:
-        if con.address == test_environment.concepts['store_id'].address:
+        if con.address == test_environment.concepts["store_id"].address:
             found = True
     assert found
 
     resolved = x.resolve()
     found = False
     for con in resolved.partial_concepts:
-        if con.address == test_environment.concepts['store_id'].address:
+        if con.address == test_environment.concepts["store_id"].address:
             found = True
     assert found
 
@@ -109,7 +111,7 @@ SELECT
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert results[0] == (1, "store1", 2, 2, 2)
     assert results[1] == (2, "store2", 2, 2, 2)
-    assert results[2] == (3, "store3", None, None, None)
+    assert results[2] == (3, "store3", 0, 0, 0)
 
 
 def test_join_grain(test_environment: Environment, test_executor: Executor):

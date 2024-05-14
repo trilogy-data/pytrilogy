@@ -1,6 +1,5 @@
 from preql.core.processing.concept_strategies_v3 import (
     GroupNode,
-    gen_select_node,
     search_concepts,
 )
 from preql.core.processing.node_generators import gen_group_node
@@ -17,7 +16,14 @@ def test_group_node(test_environment, test_environment_graph):
         input_concepts=[category, revenue],
         environment=test_environment,
         g=test_environment_graph,
-        parents=[search_concepts([category, revenue], environment=test_environment, g= test_environment_graph, depth=0)],
+        parents=[
+            search_concepts(
+                [category, revenue],
+                environment=test_environment,
+                g=test_environment_graph,
+                depth=0,
+            )
+        ],
     )
     group_node.resolve()
 

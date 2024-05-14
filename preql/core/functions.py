@@ -105,7 +105,7 @@ def Group(args: list[Concept]) -> Function:
         arguments=args,
         output_datatype=output.datatype,
         output_purpose=Purpose.PROPERTY,
-        arg_count=-1
+        arg_count=-1,
     )
 
 

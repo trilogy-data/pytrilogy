@@ -70,8 +70,8 @@ def gen_group_node(
         depth=depth + 1,
     )
     return MergeNode(
-        input_concepts=group_key_parents + local_optional+output_concepts,
-        output_concepts=output_concepts+local_optional,
+        input_concepts=group_key_parents + local_optional + output_concepts,
+        output_concepts=output_concepts + local_optional,
         environment=environment,
         g=g,
         parents=[enrich_node, group_node],

@@ -116,6 +116,7 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     from logging import getLogger, StreamHandler, INFO
+
     logger = getLogger()
     logger.addHandler(StreamHandler())
     logger.setLevel(INFO)
@@ -128,6 +129,7 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
     assert isinstance(datasource, QueryDatasource)
     assert len(set([datasource.name for datasource in datasource.datasources])) == 1
     assert datasource.grain.components == [category_id]
+
 
 def test_query_aggregation(test_environment, test_environment_graph):
     select = Select(selection=[test_environment.concepts["total_revenue"]])

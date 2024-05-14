@@ -1,38 +1,28 @@
-from collections import defaultdict
 from itertools import combinations
 from typing import List, Optional
 
 from preql.core.enums import Purpose
-from preql.core.models import (
-    Concept,
-    Environment,
-    BaseJoin,
-    Datasource,
-)
-from typing import Set
+from preql.core.models import Concept, Environment, Datasource, Grain
 from preql.core.processing.nodes import (
     StrategyNode,
     SelectNode,
     MergeNode,
-    NodeJoin,
 )
 from preql.core.exceptions import NoDatasourceException
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
-from preql.core.processing.utility import PathInfo, path_to_joins
 from preql.constants import logger
-from preql.core.processing.node_generators.static_select_node import (
-    gen_static_select_node,
-)
-from preql.utility import unique
 
 
 LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 
-def padding(x:int):
-    return '\t'*x
+
+def padding(x: int):
+    return "\t" * x
+
 
 def gen_select_node_from_table(
+    target_concept: Concept,
     all_concepts: List[Concept],
     g: nx.DiGraph,
     environment: Environment,
@@ -52,7 +42,10 @@ def gen_select_node_from_table(
             depth=depth,
             # no partial for constants
             partial_concepts=[],
+            force_group=False,
         )
+    candidates: dict[str, Datasource] = {}
+    scores: dict[str, int] = {}
     # otherwise, we need to look for a table
     for datasource in environment.datasources.values():
         all_found = True
@@ -97,7 +90,6 @@ def gen_select_node_from_table(
                 break
             for node in path:
                 if g.nodes[node]["type"] == "datasource":
-                   
                     continue
                 if g.nodes[node]["concept"].address == raw_concept.address:
                     continue
@@ -111,10 +103,16 @@ def gen_select_node_from_table(
                 if not c.is_complete
                 and c.concept.address in [x.address for x in all_concepts]
             ]
-            if not accept_partial and partial_concepts:
+            if not accept_partial and target_concept.address in [
+                c.address for c in partial_concepts
+            ]:
                 continue
-            partial_addresses = [x.concept.address for x in datasource.columns if not x.is_complete]
-            return SelectNode(
+            partial_addresses = [
+                x.concept.address for x in datasource.columns if not x.is_complete
+            ]
+            full_addresses = [x.concept for x in datasource.columns if x.is_complete]
+            target_grain = Grain(components=[c for c in full_addresses])
+            candidate = SelectNode(
                 input_concepts=[c.concept for c in datasource.columns],
                 output_concepts=all_concepts,
                 environment=environment,
@@ -124,11 +122,16 @@ def gen_select_node_from_table(
                 partial_concepts=[
                     c for c in all_concepts if c.address in partial_addresses
                 ],
-                accept_partial=accept_partial
+                accept_partial=accept_partial,
+                datasource=datasource,
+                grain=target_grain,
             )
-    return None
-
-
+            candidates[datasource.identifier] = candidate
+            scores[datasource.identifier] = -len(partial_concepts)
+    if not candidates:
+        return None
+    final = max(candidates, key=lambda x: scores[x])
+    return candidates[final]
 
 
 def gen_select_node(
@@ -139,7 +142,7 @@ def gen_select_node(
     depth: int,
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
-    accept_partial_optional:bool = True,
+    accept_partial_optional: bool = True,
 ) -> MergeNode | SelectNode | None:
     all_concepts = [concept] + local_optional
     materialized_addresses = {
@@ -151,7 +154,8 @@ def gen_select_node(
 
     if materialized_addresses != all_addresses:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Skipping select node for {concept.address} as it includes non-materialized concepts {materialized_addresses.difference(all_addresses)} {materialized_addresses} {all_addresses}"
+            f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
+            f" as it + optional includes non-materialized concepts {materialized_addresses.difference(all_addresses)} {materialized_addresses}"
         )
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")
@@ -160,6 +164,7 @@ def gen_select_node(
 
     # attempt to select all concepts from table
     ds = gen_select_node_from_table(
+        concept,
         [concept] + local_optional,
         g=g,
         environment=environment,
@@ -167,12 +172,16 @@ def gen_select_node(
         accept_partial=accept_partial,
     )
     if ds:
-        logger.info(f'{padding(depth)}{LOGGER_PREFIX} Found select node with all required things')
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Found select node with all required things"
+        )
         return ds
     # if we cannot find a match
-    parents:List[StrategyNode] = []
-    found:List[Concept] = []
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} looking for multiple sources that can satisfy")
+    parents: List[StrategyNode] = []
+    found: List[Concept] = []
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} looking for multiple sources that can satisfy"
+    )
     all_found = False
     for x in reversed(range(1, len(local_optional) + 1)):
         if all_found:
@@ -182,44 +191,54 @@ def gen_select_node(
                 break
             # filter to just the original ones we need to get
             local_combo = [x for x in combo if x not in found]
-            # include core concept as join 
+            # include core concept as join
             all_concepts = [concept, *local_combo]
-            logger.info(f"{padding(depth)}{LOGGER_PREFIX} starting a loop with {[x.address for x in all_concepts]}")
-            
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} starting a loop with {[x.address for x in all_concepts]}"
+            )
+
             ds = gen_select_node_from_table(
+                concept,
                 all_concepts,
                 g=g,
                 environment=environment,
-                depth=depth+1,
+                depth=depth + 1,
                 accept_partial=accept_partial,
             )
             if ds:
-                logger.info(f"{padding(depth)}{LOGGER_PREFIX} found a source with {[x.address for x in all_concepts]}")
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} found a source with {[x.address for x in all_concepts]}"
+                )
                 parents.append(ds)
-                found+=[x for x in ds.output_concepts if x != concept ]
+                found += [x for x in ds.output_concepts if x != concept]
                 if {x.address for x in found} == {c.address for c in local_optional}:
-                    logger.info(f"{padding(depth)}{LOGGER_PREFIX} found all optional {[c.address for c in local_optional]}")
+                    logger.info(
+                        f"{padding(depth)}{LOGGER_PREFIX} found all optional {[c.address for c in local_optional]}"
+                    )
                     all_found = True
     if parents and (all_found or accept_partial_optional):
         all_partial = [
-        c
-        for c in all_concepts
-        if all(
-            [c.address in [x.address for x in p.partial_concepts] for p in parents]
-        )
-    ]
+            c
+            for c in all_concepts
+            if all(
+                [c.address in [x.address for x in p.partial_concepts] for p in parents]
+            )
+        ]
+        if len(parents) == 1:
+            return parents[0]
         return MergeNode(
-            output_concepts = [concept] + found,
-            input_concepts =  [concept] + found ,
+            output_concepts=[concept] + found,
+            input_concepts=[concept] + found,
             environment=environment,
-            g=g, 
+            g=g,
             parents=parents,
             depth=depth,
-            partial_concepts=all_partial
+            partial_concepts=all_partial,
         )
     if not accept_partial_optional:
         return None
     ds = gen_select_node_from_table(
+        concept,
         [concept],
         g=g,
         environment=environment,

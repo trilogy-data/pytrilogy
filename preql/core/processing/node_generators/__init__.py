@@ -17,5 +17,5 @@ __all__ = [
     "gen_static_select_node",
     "gen_unnest_node",
     "gen_merge_node",
-    "gen_group_to_node"
+    "gen_group_to_node",
 ]

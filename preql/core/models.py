@@ -1253,7 +1253,7 @@ class QueryDatasource(BaseModel):
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
-    force_group: bool = False
+    force_group: bool | None = None
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
@@ -1315,8 +1315,10 @@ class QueryDatasource(BaseModel):
 
     @property
     def group_required(self) -> bool:
-        if self.force_group:
+        if self.force_group is True:
             return True
+        if self.force_group is False:
+            return False
         if self.source_type:
             if self.source_type in [
                 SourceType.FILTER,
@@ -1326,12 +1328,6 @@ class QueryDatasource(BaseModel):
                 SourceType.GROUP,
             ]:
                 return True
-            elif self.source_type == SourceType.DIRECT_SELECT:
-                return (
-                    False
-                    if sum([ds.grain for ds in self.datasources]) == self.grain
-                    else True
-                )
         return False
 
     def __add__(self, other):
@@ -1357,6 +1353,10 @@ class QueryDatasource(BaseModel):
         if not self.join_derived_concepts == other.join_derived_concepts:
             raise SyntaxError(
                 "can only merge two datasources if the join derived concepts are the same"
+            )
+        if not self.force_group == other.force_group:
+            raise SyntaxError(
+                "can only merge two datasources if the force_group flag is the same"
             )
         logger.debug(
             f"{LOGGER_PREFIX} merging {self.name} with"
@@ -1714,8 +1714,8 @@ class EnvironmentConceptDict(dict):
             return super(EnvironmentConceptDict, self).__getitem__(key)
 
         except KeyError:
-            if '.' in key and key.split('.')[0] == DEFAULT_NAMESPACE:
-                return self.__getitem__(key.split('.')[1], line_no)
+            if "." in key and key.split(".")[0] == DEFAULT_NAMESPACE:
+                return self.__getitem__(key.split(".")[1], line_no)
             if not self.fail_on_missing:
                 undefined = UndefinedConcept(
                     name=key,

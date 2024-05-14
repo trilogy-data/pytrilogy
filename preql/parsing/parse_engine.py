@@ -668,7 +668,7 @@ class ParseToObjects(Transformer):
             if "." in name:
                 namespace, name = name.split(".", 1)
             else:
-                namespace = DEFAULT_NAMESPACE
+                namespace = self.environment.namespace or DEFAULT_NAMESPACE
         else:
             if "." not in declaration:
                 raise ParseError(
@@ -1277,9 +1277,9 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fgroup(self, meta, args):
         if len(args) == 2:
-            args =self.process_function_args([args[0]]+args[1], meta=meta)
+            args = self.process_function_args([args[0]] + args[1], meta=meta)
         else:
-            args =self.process_function_args([args[0]], meta=meta)
+            args = self.process_function_args([args[0]], meta=meta)
         return Group(args)
 
     @v_args(meta=True)

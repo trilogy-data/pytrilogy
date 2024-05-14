@@ -20,7 +20,7 @@ property order_id.order_timestamp datetime;
 property order_id.order_year int;
 property store_id.store_name string;
 property product_id.product_name string;
-property <store_id, product_id>.inv_qty int;
+property <wh_id, product_id>.inv_qty int;
 
 datasource orders (
     order_id:order_id,
@@ -85,7 +85,7 @@ select 2, 'product2'
 datasource inventory (
     wh_id:wh_id,
     product_id:product_id,
-    quantity:inv_qty,
+    inv_qty:inv_qty,
 )
 grain (wh_id, product_id)
 query '''

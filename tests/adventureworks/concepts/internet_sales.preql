@@ -4,21 +4,23 @@ import sales_territory as sales_territory;
 
 key order_number string;
 key order_line_number int;
-property order_line_number.order_quantity int;
-property order_line_number.sales_amount float;
-metric total_sales_amount <-sum(sales_amount);
-metric total_order_quantity <-sum(order_quantity);
+property <order_line_number, order_number>.order_quantity int;
+property <order_line_number, order_number>.sales_amount float;
+property total_sales_amount_debug <- group(sales_amount) by order_line_number, order_number;
+
+metric total_sales_amount <-sum(group(sales_amount) by order_line_number, order_number);
+metric total_order_quantity <-sum(group(order_quantity) by order_line_number, order_number);
 
 datasource fact_internet_sales (
     salesOrderLineNumber:order_line_number,
     salesOrderNumber:order_number,
-    customerKey:customer.customer_id,
-    salesTerritorykey:sales_territory.key,
+    customerKey:~customer.customer_id,
+    salesTerritorykey:~sales_territory.key,
     orderQuantity:order_quantity,
     salesAmount:sales_amount,
-    orderDateKey:dates.order_key,
-    shipDateKey:dates.ship_key,
-    dueDateKey:dates.due_key
+    orderDateKey:~dates.order_key,
+    shipDateKey:~dates.ship_key,
+    dueDateKey:~dates.due_key
     )
     grain (order_line_number, order_number )
     address AdventureWorksDW2019.dbo.factInternetSales

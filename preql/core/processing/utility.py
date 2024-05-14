@@ -13,7 +13,7 @@ from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
-from preql.constants import logger
+
 
 class NodeType(Enum):
     CONCEPT = 1
@@ -161,9 +161,6 @@ def get_node_joins(
                     identifier = [left, right]
                     joins["-".join(identifier)].add(cnode)
 
-    logger.info('JOIN DEBUG')
-    logger.info(graph.nodes)
-    logger.info(graph.edges)
     final_joins_pre: List[BaseJoin] = []
 
     for key, join_concepts in joins.items():
@@ -175,6 +172,16 @@ def get_node_joins(
             # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []
+        elif any(
+            [
+                c.address in [x.address for x in identifier_map[left].partial_concepts]
+                for c in local_concepts
+            ]
+        ):
+            join_type = JoinType.FULL
+            local_concepts = [
+                c for c in local_concepts if c.purpose != Purpose.CONSTANT
+            ]
         else:
             join_type = JoinType.LEFT_OUTER
             # remove any constants if other join keys exist

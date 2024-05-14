@@ -1,11 +1,9 @@
 from typing import List, Optional
 
-import networkx as nx
 
 from preql.constants import logger
 from preql.core.constants import CONSTANT_DATASET
 from preql.core.enums import Purpose
-from preql.core.graph_models import concept_to_node, datasource_to_node
 from preql.core.models import (
     Datasource,
     QueryDatasource,
@@ -75,6 +73,9 @@ class SelectNode(StrategyNode):
         depth: int = 0,
         partial_concepts: List[Concept] | None = None,
         accept_partial: bool = False,
+        datasource: Optional[Datasource] = None,
+        grain: Optional[Grain] = None,
+        force_group: bool = False,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -85,110 +86,51 @@ class SelectNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            force_group=force_group,
+            grain=grain,
         )
         self.accept_partial = accept_partial
+        self.datasource = datasource
 
-    def resolve_from_raw_datasources(
-        self, all_concepts: List[Concept], accept_partial:bool = False
-    ) -> Optional[QueryDatasource]:
-        for datasource in self.environment.datasources.values():
-            all_found = True
-            for raw_concept in all_concepts:
-                # look for connection to abstract grain
-                req_concept = raw_concept.with_default_grain()
-                try:
-                    path = nx.shortest_path(
-                        self.g,
-                        source=datasource_to_node(datasource),
-                        target=concept_to_node(req_concept),
-                    )
-                except nx.NodeNotFound as e:
-                    candidates = [
-                        datasource_to_node(datasource),
-                        concept_to_node(req_concept),
-                    ]
-                    for candidate in candidates:
-                        try:
-                            self.g.nodes[candidate]
-                        except KeyError:
-                            raise SyntaxError(
-                                "Could not find node for {}".format(candidate)
-                            )
-                    raise e
-                except nx.exception.NetworkXNoPath:
-                    all_found = False
-                    break
-                # 2023-10-18 - more strict condition then below
-                # if len(path) != 2:
-                #     all_found = False
-                #     break
-                if (
-                    len([p for p in path if self.g.nodes[p]["type"] == "datasource"])
-                    != 1
-                ):
-                    all_found = False
-                    break
-            if all_found:
-                partial_concepts = {
-                    c.concept.address for c in datasource.columns if not c.is_complete
-                }
-                if not accept_partial and partial_concepts and any(
-                    [c.address in partial_concepts for c in all_concepts]
-                ):
-                    logger.info(
-                        f"{self.logging_prefix}{LOGGER_PREFIX} skipping direct select from {datasource.address} for due to partial concepts {[c for c in partial_concepts]}"
-                    )
-                    continue
-                # keep all concepts on the output, until we get to a node which requires reduction
+    def resolve_from_provided_datasource(
+        self,
+    ):
+        datasource = self.datasource
+        all_concepts_final: List[Concept] = unique(self.all_concepts, "address")
+        source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
+            concept.address: {datasource} for concept in self.input_concepts
+        }
 
-                if any([c.grain != datasource.grain for c in all_concepts]):
-                    logger.info(
-                        f"{self.logging_prefix}{LOGGER_PREFIX} need to group to select grain"
-                    )
-                    target_grain = Grain(components=[c for c in all_concepts])
-                else:
-                    logger.info(
-                        f"{self.logging_prefix}{LOGGER_PREFIX} all concepts at desired grain {datasource.grain}, including grain in output"
-                    )
-                    target_grain = datasource.grain
-                    # ensure that if this select needs to merge, the grain components are present
-                    all_concepts = all_concepts + datasource.grain.components_copy
-
-                # append in any concepts that are being derived via function at call time
-
-                all_concepts_final: List[Concept] = unique(all_concepts, "address")
-                source_map: dict[
-                    str, set[Datasource | QueryDatasource | UnnestJoin]
-                ] = {concept.address: {datasource} for concept in all_concepts_final}
-
-                derived_concepts = [
-                    c
-                    for c in datasource.columns
-                    if isinstance(c.alias, Function) and c.concept.address in source_map
-                ]
-                for c in derived_concepts:
-                    if not isinstance(c.alias, Function):
-                        continue
-                    for x in c.alias.concept_arguments:
-                        source_map[x.address] = {datasource}
-                node = QueryDatasource(
-                    input_concepts=all_concepts_final,
-                    output_concepts=all_concepts_final,
-                    source_map=source_map,
-                    datasources=[datasource],
-                    grain=target_grain,
-                    joins=[],
-                    partial_concepts=[
-                        c.concept for c in datasource.columns if not c.is_complete
-                    ],
-                    source_type=SourceType.DIRECT_SELECT,
-                )
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} found direct select from {datasource.address} for {[str(c) for c in all_concepts]}. Group by required is {node.group_required}"
-                    f" grain {target_grain} vs {datasource.grain}"
-                )
-                return node
-        return None
+        derived_concepts = [
+            c
+            for c in datasource.columns
+            if isinstance(c.alias, Function) and c.concept.address in source_map
+        ]
+        for c in derived_concepts:
+            if not isinstance(c.alias, Function):
+                continue
+            for x in c.alias.concept_arguments:
+                source_map[x.address] = {datasource}
+            # ensure that if this select needs to merge, the grain components are present
+            all_concepts_final = all_concepts_final + datasource.grain.components_copy
+        source_grain = datasource.grain
+        if self.grain != source_grain:
+            force_group = True
+        else:
+            force_group = False
+        return QueryDatasource(
+            input_concepts=self.input_concepts,
+            output_concepts=all_concepts_final,
+            source_map=source_map,
+            datasources=[datasource],
+            grain=self.grain,
+            joins=[],
+            partial_concepts=[
+                c.concept for c in datasource.columns if not c.is_complete
+            ],
+            source_type=SourceType.DIRECT_SELECT,
+            force_group=force_group,
+        )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
         datasource = Datasource(
@@ -216,12 +158,10 @@ class SelectNode(StrategyNode):
             resolution = self.resolve_from_constant_datasources()
             if resolution:
                 return resolution
-        logger.info(
-            f"{self.logging_prefix}{LOGGER_PREFIX} resolving from raw datasources"
-        )
-        resolution = self.resolve_from_raw_datasources(self.all_concepts, accept_partial=self.accept_partial)
-        if resolution:
-            return resolution
+        if self.datasource:
+            resolution = self.resolve_from_provided_datasource()
+            if resolution:
+                return resolution
         required = [c.address for c in self.all_concepts]
         raise NoDatasourceException(
             f"Could not find any way to associate required concepts {required}"

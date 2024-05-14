@@ -14,12 +14,15 @@ SELECT
 ;"""
 
     _, statements = parse(test_select, test_environment)
-    statement = statements[-1]
+    statements[-1]
 
     with pytest.raises(AmbiguousRelationshipResolutionException):
-        results = list(test_executor.execute_text(test_select)[0].fetchall())
+        list(test_executor.execute_text(test_select)[0].fetchall())
 
-def test_ambiguous_error_with_forced_join(test_environment: Environment, test_executor: Executor):
+
+def test_ambiguous_error_with_forced_join(
+    test_environment: Environment, test_executor: Executor
+):
     # check we can resolve it
     test_select = """
 property store_by_warehouse <- group(store_id) by wh_id;
@@ -27,10 +30,16 @@ property store_by_order <- group(store_id) by order_id;
 """
 
     _, statements = parse(test_select, test_environment)
-    grouped = test_environment.concepts['store_by_warehouse']
+    grouped = test_environment.concepts["store_by_warehouse"]
     assert grouped.purpose == Purpose.PROPERTY
-    assert grouped.lineage.arguments == [test_environment.concepts['store_id'], test_environment.concepts['wh_id']]
-    assert grouped.grain.components == [test_environment.concepts['store_id'],test_environment.concepts['wh_id']]
+    assert grouped.lineage.arguments == [
+        test_environment.concepts["store_id"],
+        test_environment.concepts["wh_id"],
+    ]
+    assert grouped.grain.components == [
+        test_environment.concepts["store_id"],
+        test_environment.concepts["wh_id"],
+    ]
     test_select = """
 SELECT
     store_by_warehouse,
@@ -44,7 +53,9 @@ SELECT
     assert len(results) == 3
 
 
-def test_ambiguous_error_with_forced_join_order(test_environment: Environment, test_executor: Executor):
+def test_ambiguous_error_with_forced_join_order(
+    test_environment: Environment, test_executor: Executor
+):
     # check we can resolve it
     test_select = """
 property store_by_warehouse <- group(store_id) by wh_id;
@@ -52,9 +63,14 @@ property store_by_order <- group(store_id) by order_id;
 """
 
     _, statements = parse(test_select, test_environment)
-    grouped = test_environment.concepts['store_by_order']
+    grouped = test_environment.concepts["store_by_order"]
     assert grouped.purpose == Purpose.PROPERTY
-    target_grain = Grain(components=[test_environment.concepts['store_id'], test_environment.concepts['order_id']])
+    target_grain = Grain(
+        components=[
+            test_environment.concepts["store_id"],
+            test_environment.concepts["order_id"],
+        ]
+    )
     assert Grain(components=grouped.lineage.arguments) == target_grain
     assert grouped.grain == target_grain
     test_select = """
