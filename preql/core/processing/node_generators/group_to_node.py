@@ -1,4 +1,4 @@
-from preql.core.models import Concept, Environment
+from preql.core.models import Concept, Environment, Function
 from preql.core.processing.nodes import GroupNode, StrategyNode, MergeNode, NodeJoin
 from typing import List
 from preql.core.enums import JoinType
@@ -21,6 +21,8 @@ def gen_group_to_node(
     source_concepts,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
+    if not isinstance(concept.lineage, Function):
+        raise SyntaxError("Group to should have function lineage")
     parent_concepts: List[Concept] = concept.lineage.concept_arguments
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
@@ -81,5 +83,5 @@ def gen_group_to_node(
         ],
         whole_grain=True,
         depth=depth,
-        partial_concepts = group_node.partial_concepts
+        partial_concepts=group_node.partial_concepts,
     )

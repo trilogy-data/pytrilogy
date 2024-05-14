@@ -16,6 +16,7 @@ from preql.core.exceptions import AmbiguousRelationshipResolutionException
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 
+
 def pad(x):
     return x * "\t"
 

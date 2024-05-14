@@ -2,7 +2,7 @@ from itertools import combinations
 from typing import List, Optional
 
 from preql.core.enums import Purpose
-from preql.core.models import Concept, Environment, Datasource, Grain
+from preql.core.models import Concept, Environment, Grain
 from preql.core.processing.nodes import (
     StrategyNode,
     SelectNode,
@@ -44,7 +44,7 @@ def gen_select_node_from_table(
             partial_concepts=[],
             force_group=False,
         )
-    candidates: dict[str, Datasource] = {}
+    candidates: dict[str, SelectNode] = {}
     scores: dict[str, int] = {}
     # otherwise, we need to look for a table
     for datasource in environment.datasources.values():
@@ -64,16 +64,16 @@ def gen_select_node_from_table(
                 )
             except nx.NodeNotFound as e:
                 # just to provide better error
-                candidates = [
+                ncandidates = [
                     datasource_to_node(datasource),
                     concept_to_node(req_concept),
                 ]
-                for candidate in candidates:
+                for ncandidate in ncandidates:
                     try:
-                        g.nodes[candidate]
+                        g.nodes[ncandidate]
                     except KeyError:
                         raise SyntaxError(
-                            "Could not find node for {}".format(candidate)
+                            "Could not find node for {}".format(ncandidate)
                         )
                 raise e
             except nx.exception.NetworkXNoPath:
@@ -143,7 +143,7 @@ def gen_select_node(
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
     accept_partial_optional: bool = True,
-) -> MergeNode | SelectNode | None:
+) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
     materialized_addresses = {
         x.address

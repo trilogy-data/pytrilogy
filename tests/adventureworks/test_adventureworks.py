@@ -20,6 +20,7 @@ from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 from preql.core.processing.nodes import GroupNode, MergeNode, SelectNode
 
+
 @pytest.mark.adventureworks
 def test_parsing(environment: Environment):
     with open(
@@ -107,7 +108,6 @@ def test_query_datasources(environment: Environment):
         environment=environment, graph=environment_graph, statement=test
     )
 
-
     cte = datasource_to_ctes(datasource)[0]
 
     assert {c.address for c in cte.output_columns} == {
@@ -125,7 +125,7 @@ def recurse_datasource(parent: QueryDatasource, depth=0):
             recurse_datasource(x, depth + 1)
 
 
-def list_to_address(clist: list[Concept])->set[str]:
+def list_to_address(clist: list[Concept]) -> set[str]:
     return set([c.address for c in clist])
 
 
@@ -148,9 +148,11 @@ def test_two_properties(environment: Environment):
         depth=0,
     ).resolve()
 
-    assert list_to_address(customer_datasource.output_concepts).issuperset(list_to_address(
-        [environment.concepts["customer.first_name"]] + test.grain.components_copy
-    ))
+    assert list_to_address(customer_datasource.output_concepts).issuperset(
+        list_to_address(
+            [environment.concepts["customer.first_name"]] + test.grain.components_copy
+        )
+    )
 
     order_date_datasource = search_concepts(
         [environment.concepts["dates.order_date"]] + test.grain.components_copy,
@@ -159,8 +161,10 @@ def test_two_properties(environment: Environment):
         depth=0,
     ).resolve()
 
-    assert (
-        list_to_address(order_date_datasource.output_concepts).issuperset(list_to_address([environment.concepts["dates.order_date"]] + test.grain.components_copy))
+    assert list_to_address(order_date_datasource.output_concepts).issuperset(
+        list_to_address(
+            [environment.concepts["dates.order_date"]] + test.grain.components_copy
+        )
     )
 
     get_query_datasources(
@@ -168,56 +172,81 @@ def test_two_properties(environment: Environment):
     )
 
 
-
 @pytest.mark.adventureworks
 def test_grain(environment: Environment):
-    from preql.core.processing.node_generators import gen_group_to_node
     from preql.core.processing.concept_strategies_v3 import search_concepts
+
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     environment_graph = generate_graph(environment)
-    test = search_concepts([environment.concepts['dates.order_date'],
-                          environment.concepts['dates.order_key']],
-                          environment=environment, depth =0,
-                          g= environment_graph,
-                        )
+    test = search_concepts(
+        [
+            environment.concepts["dates.order_date"],
+            environment.concepts["dates.order_key"],
+        ],
+        environment=environment,
+        depth=0,
+        g=environment_graph,
+    )
     assert isinstance(test, SelectNode)
     assert len(test.parents) == 0
-    assert test.grain.set == Grain(components =[environment.concepts['dates.order_key']]).set
-    assert environment.datasources['dates.order_dates'].grain.set  == Grain(components = [environment.concepts['dates.order_key']]).set
+    assert (
+        test.grain.set
+        == Grain(components=[environment.concepts["dates.order_key"]]).set
+    )
+    assert (
+        environment.datasources["dates.order_dates"].grain.set
+        == Grain(components=[environment.concepts["dates.order_key"]]).set
+    )
     resolved = test.resolve()
-    assert resolved.grain == Grain(components =[environment.concepts['dates.order_key']])
+    assert resolved.grain == Grain(components=[environment.concepts["dates.order_key"]])
     assert test.grain == resolved.grain
-    assert resolved.group_required == False
+    assert resolved.group_required is False
+
 
 @pytest.mark.adventureworks
 def test_group_to_grain(environment: Environment):
-    from preql.core.processing.node_generators import gen_group_to_node
     from preql.core.processing.concept_strategies_v3 import search_concepts
+
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     environment_graph = generate_graph(environment)
-    assert len(environment.concepts['internet_sales.total_sales_amount_debug'].grain.components) == 2
-    test = search_concepts([environment.concepts['internet_sales.total_sales_amount_debug'],
-                          environment.concepts['dates.order_date']],
-                          environment=environment, depth =0,
-                          g= environment_graph,
-                        )
+    assert (
+        len(
+            environment.concepts[
+                "internet_sales.total_sales_amount_debug"
+            ].grain.components
+        )
+        == 2
+    )
+    test = search_concepts(
+        [
+            environment.concepts["internet_sales.total_sales_amount_debug"],
+            environment.concepts["dates.order_date"],
+        ],
+        environment=environment,
+        depth=0,
+        g=environment_graph,
+    )
     assert isinstance(test, MergeNode)
-    assert test.whole_grain == True
+    assert test.whole_grain is True
     assert len(test.parents) == 2
     resolved = test.resolve()
-    group_parent = [x for x in test.parents if isinstance(x, GroupNode)][0]
-    merge_node = [x for x in test.parents if isinstance(x, MergeNode)][0]
+    [x for x in test.parents if isinstance(x, GroupNode)][0]
+    [x for x in test.parents if isinstance(x, MergeNode)][0]
 
-    assert resolved.grain == Grain(concepts = [environment.concepts['internet_sales.order_number'],
-                                           environment.concepts['internet_sales.order_line_number']])
+    assert resolved.grain == Grain(
+        concepts=[
+            environment.concepts["internet_sales.order_number"],
+            environment.concepts["internet_sales.order_line_number"],
+        ]
+    )
     assert resolved.force_group is False
     assert resolved.group_required is False
 
@@ -226,25 +255,34 @@ def test_group_to_grain(environment: Environment):
 def test_two_properties_query(environment: Environment):
     from preql.core.processing.node_generators import gen_group_node
     from preql.core.processing.concept_strategies_v3 import search_concepts
+
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     environment_graph = generate_graph(environment)
-    assert len(environment.concepts['internet_sales.total_sales_amount_debug'].grain.components) == 2
-    test = gen_group_node(environment.concepts['total_sales_amount_debug_2'],
-                          local_optional = [environment.concepts['dates.order_date']],
-                          environment=environment, depth =0,
-                          g= environment_graph,
-                          source_concepts = search_concepts)
+    assert (
+        len(
+            environment.concepts[
+                "internet_sales.total_sales_amount_debug"
+            ].grain.components
+        )
+        == 2
+    )
+    test = gen_group_node(
+        environment.concepts["total_sales_amount_debug_2"],
+        local_optional=[environment.concepts["dates.order_date"]],
+        environment=environment,
+        depth=0,
+        g=environment_graph,
+        source_concepts=search_concepts,
+    )
 
     test: Select = statements[-3]
     generator = SqlServerDialect()
     sql2 = generator.generate_queries(environment, [test])
-    compiled = generator.compile_statement(sql2[0])
-
-    
+    generator.compile_statement(sql2[0])
 
 
 @pytest.mark.adventureworks_execution

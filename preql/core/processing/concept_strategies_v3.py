@@ -219,9 +219,9 @@ def validate_stack(
     stack: List[StrategyNode], concepts: List[Concept], accept_partial: bool = False
 ) -> tuple[ValidationResult, set[str], set[str], set[str]]:
     found_map = defaultdict(set)
-    found_addresses = set()
-    non_partial_addresses = set()
-    partial_addresses = set()
+    found_addresses: set[str] = set()
+    non_partial_addresses: set[str] = set()
+    partial_addresses: set[str] = set()
     for node in stack:
         for concept in node.resolve().output_concepts:
             found_map[str(node)].add(concept)
@@ -244,11 +244,10 @@ def validate_stack(
             partial_addresses,
         )
     graph_count, graphs = get_disconnected_components(found_map)
-
     if graph_count in (0, 1):
-        return ValidationResult.COMPLETE, found_addresses, {}, partial_addresses
+        return ValidationResult.COMPLETE, found_addresses, set(), partial_addresses
     # if we have too many subgraphs, we need to keep searching
-    return ValidationResult.DISCONNECTED, found_addresses, {}, partial_addresses
+    return ValidationResult.DISCONNECTED, found_addresses, set(), partial_addresses
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -261,7 +260,7 @@ def search_concepts(
     depth: int,
     g: ReferenceGraph,
     accept_partial: bool = False,
-) -> StrategyNode:
+) -> StrategyNode | None:
     mandatory_list = unique(mandatory_list, "address")
     all_mandatory = set(c.address for c in mandatory_list)
     attempted: set[str] = set()
@@ -269,7 +268,7 @@ def search_concepts(
     found: set[str] = set()
     skip: set[str] = set()
     stack: List[StrategyNode] = []
-    complete = False
+    complete = ValidationResult.INCOMPLETE
 
     while attempted != all_mandatory:
         priority_concept = get_priority_concept(mandatory_list, attempted)

@@ -38,7 +38,7 @@ def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:
 
 def gen_window_node(
     concept: Concept, local_optional, environment, g, depth, source_concepts
-) -> WindowNode | MergeNode:
+) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
     window_node = WindowNode(
         input_concepts=parent_concepts,

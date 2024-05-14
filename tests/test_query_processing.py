@@ -35,7 +35,13 @@ def test_get_datasource_from_window_function(
     assert product_rank in datasource.output_concepts
     # assert datasource.grain == product_rank.grain
     assert isinstance(datasource, QueryDatasource)
-    assert datasource.grain.set == Grain(components= [test_environment.concepts['total_revenue']]+ product_rank.grain.components_copy).set
+    assert (
+        datasource.grain.set
+        == Grain(
+            components=[test_environment.concepts["total_revenue"]]
+            + product_rank.grain.components_copy
+        ).set
+    )
 
     product_rank_by_category = test_environment.concepts[
         "product_revenue_rank_by_category"
@@ -107,7 +113,6 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     assert datasource.grain == Grain(components=[product])
 
 
-
 def test_join_aggregate(test_environment: Environment, test_environment_graph):
     category_id = test_environment.concepts["category_id"]
     total_revenue = test_environment.concepts["total_revenue"]
@@ -134,7 +139,9 @@ def test_query_aggregation(test_environment, test_environment_graph):
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 
-    assert {datasource.identifier} == {"revenue_at_local_order_id_local_order_timestamp_local_product_id_at_abstract"}
+    assert {datasource.identifier} == {
+        "revenue_at_local_order_id_local_order_timestamp_local_product_id_at_abstract"
+    }
     check = datasource
     assert len(check.input_concepts) == 1
     assert check.input_concepts[0].name == "revenue"
