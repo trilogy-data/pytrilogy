@@ -9,6 +9,10 @@ from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
+from logging import INFO
+from preql.constants import logger
+
+logger.setLevel(INFO)
 
 TEST_DIALECTS = [BaseDialect(), BigqueryDialect(), DuckDBDialect(), SqlServerDialect()]
 
@@ -133,15 +137,15 @@ def test_math_functions(test_environment):
     property fixed_order_value<- inflated_order_value / 2;
     property order_sub <- revenue - 2;
     property order_add <- revenue + 2;
-    property order_nested <- revenue * 2/2;
-    property rounded <- round(revenue + 2.01,2);
+    property order_id.order_nested <- revenue * 2/2;
+    property order_id.rounded <- round(revenue + 2.01,2);
     select
         order_id,
         inflated_order_value,
+        order_nested,
         fixed_order_value,
         order_sub,
         order_add,
-        order_nested,
         rounded
     ;"""
     env, parsed = parse(declarations, environment=test_environment)

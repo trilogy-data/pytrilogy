@@ -119,6 +119,9 @@ def get_node_joins(
     for datasource in datasources:
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
+            # we don't need to join on a concept if all of the keys exist in the grain
+            if concept.keys and all([x in grain for x in concept.keys]):
+                continue
             concepts.append(concept)
             graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource.identifier, concept.address)
@@ -169,6 +172,16 @@ def get_node_joins(
             # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []
+        elif any(
+            [
+                c.address in [x.address for x in identifier_map[left].partial_concepts]
+                for c in local_concepts
+            ]
+        ):
+            join_type = JoinType.FULL
+            local_concepts = [
+                c for c in local_concepts if c.purpose != Purpose.CONSTANT
+            ]
         else:
             join_type = JoinType.LEFT_OUTER
             # remove any constants if other join keys exist
@@ -229,7 +242,7 @@ def get_node_joins(
                     found = True
             if not found:
                 raise SyntaxError(
-                    f"Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}"
+                    f"Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}, joins {final_joins}"
                 )
     return final_joins
 

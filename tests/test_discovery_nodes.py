@@ -1,7 +1,6 @@
-from preql.core.processing.concept_strategies_v2 import (
+from preql.core.processing.concept_strategies_v3 import (
     GroupNode,
-    gen_select_node,
-    source_concepts,
+    search_concepts,
 )
 from preql.core.processing.node_generators import gen_group_node
 from preql.core.models import Environment, Grain
@@ -18,9 +17,8 @@ def test_group_node(test_environment, test_environment_graph):
         environment=test_environment,
         g=test_environment_graph,
         parents=[
-            gen_select_node(
-                concept=revenue,
-                local_optional=[category],
+            search_concepts(
+                [category, revenue],
                 environment=test_environment,
                 g=test_environment_graph,
                 depth=0,
@@ -38,7 +36,7 @@ def test_group_node_property(test_environment: Environment, test_environment_gra
         local_optional=[],
         environment=test_environment,
         g=test_environment_graph,
-        source_concepts=source_concepts,
+        source_concepts=search_concepts,
         depth=0,
     )
     input_concept = group_node.parents[0].output_concepts[0]
@@ -59,7 +57,7 @@ def test_group_node_property_all(test_environment: Environment, test_environment
         local_optional=[],
         environment=test_environment,
         g=test_environment_graph,
-        source_concepts=source_concepts,
+        source_concepts=search_concepts,
         depth=0,
     )
     input_concept = group_node.parents[0].output_concepts[0]

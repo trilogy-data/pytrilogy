@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import List, Optional
 from collections import defaultdict
 
@@ -72,6 +71,16 @@ def resolve_concept_map(
     return concept_map
 
 
+def get_all_parent_partial(all_concepts: List[Concept], parents: List["StrategyNode"]):
+    return [
+        c
+        for c in all_concepts
+        if len([c.address in [x.address for x in p.partial_concepts] for p in parents])
+        >= 1
+        and all([c.address in [x.address for x in p.partial_concepts] for p in parents])
+    ]
+
+
 class StrategyNode:
     source_type = SourceType.ABSTRACT
 
@@ -86,17 +95,28 @@ class StrategyNode:
         partial_concepts: List[Concept] | None = None,
         depth: int = 0,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        force_group: bool | None = None,
+        grain: Optional[Grain] = None,
     ):
-        self.input_concepts = input_concepts or []
-        self.output_concepts = output_concepts
+        self.input_concepts: List[Concept] = (
+            unique(input_concepts, "address") if input_concepts else []
+        )
+        self.output_concepts: List[Concept] = unique(output_concepts, "address")
         self.environment = environment
         self.g = g
         self.whole_grain = whole_grain
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
-        self.partial_concepts = partial_concepts or []
+        self.partial_concepts = partial_concepts or get_all_parent_partial(
+            self.output_concepts, self.parents
+        )
         self.depth = depth
         self.conditions = conditions
+        self.grain = grain
+        self.force_group = force_group
+        for parent in self.parents:
+            if not parent:
+                raise SyntaxError("Unresolvable parent")
 
     @property
     def logging_prefix(self) -> str:
@@ -104,11 +124,11 @@ class StrategyNode:
 
     @property
     def all_concepts(self) -> list[Concept]:
-        return unique(deepcopy(self.output_concepts), "address")
+        return [*self.output_concepts]
 
     @property
     def all_used_concepts(self) -> list[Concept]:
-        return unique(deepcopy(self.input_concepts), "address")
+        return [*self.input_concepts]
 
     def __repr__(self):
         concepts = self.all_concepts
@@ -123,13 +143,11 @@ class StrategyNode:
         #         conditional += condition
         grain = Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
-            parent_sources,
-            unique(self.output_concepts, "address"),
-            unique(self.input_concepts, "address"),
+            parent_sources, self.output_concepts, self.input_concepts
         )
         return QueryDatasource(
-            input_concepts=unique(self.input_concepts, "address"),
-            output_concepts=unique(self.output_concepts, "address"),
+            input_concepts=self.input_concepts,
+            output_concepts=self.output_concepts,
             datasources=parent_sources,
             source_type=self.source_type,
             source_map=source_map,

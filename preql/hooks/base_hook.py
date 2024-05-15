@@ -1,5 +1,5 @@
 from preql.core.models import QueryDatasource, CTE, Select, Persist
-from preql.core.processing.concept_strategies_v2 import StrategyNode
+from preql.core.processing.nodes import StrategyNode
 
 
 class BaseHook:

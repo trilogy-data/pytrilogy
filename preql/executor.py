@@ -119,7 +119,21 @@ class Executor(object):
             self.environment.add_datasource(query.datasource)
         return output
 
-    def generate_sql(self, command: str) -> List[str]:
+    @singledispatchmethod
+    def generate_sql(self, command: ProcessedQuery | str) -> str:
+        raise NotImplementedError(
+            "Cannot generate sql for type {}".format(type(command))
+        )
+
+    @generate_sql.register  # type: ignore
+    def _(self, command: ProcessedQuery) -> List[str]:
+        output = []
+        compiled_sql = self.generator.compile_statement(command)
+        output.append(compiled_sql)
+        return output
+
+    @generate_sql.register  # type: ignore
+    def _(self, command: str) -> List[str]:
         """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
         generatable = [x for x in parsed if isinstance(x, (Select, Persist))]

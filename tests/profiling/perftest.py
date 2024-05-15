@@ -1,4 +1,16 @@
-from pytest import fixture
+from cProfile import Profile
+from pstats import SortKey, Stats
+from preql.core.models import Select
+from preql import parse
+
+# from preql.compiler import compile
+
+from preql.core.models import DataType
+from preql.core.query_processor import process_query
+from preql.dialect.base import BaseDialect
+from preql.dialect.bigquery import BigqueryDialect
+from preql.dialect.duckdb import DuckDBDialect
+from preql.dialect.sql_server import SqlServerDialect
 
 from preql import Environment
 from preql.core.enums import (
@@ -7,11 +19,9 @@ from preql.core.enums import (
     ComparisonOperator,
     WindowType,
 )
-from preql.core.env_processor import generate_graph
 from preql.core.functions import Count, CountDistinct, Max, Min
 from preql.core.models import (
     Concept,
-    DataType,
     Datasource,
     ColumnAssignment,
     Function,
@@ -24,8 +34,7 @@ from preql.core.models import (
 )
 
 
-@fixture(scope="session")
-def test_environment():
+def gen_environment():
     env = Environment()
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
@@ -61,12 +70,7 @@ def test_environment():
         lineage=Min([order_id]),
     )
 
-    revenue = Concept(
-        name="revenue",
-        datatype=DataType.FLOAT,
-        purpose=Purpose.PROPERTY,
-        keys=[order_id],
-    )
+    revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
 
     total_revenue = Concept(
         name="total_revenue",
@@ -217,9 +221,43 @@ def test_environment():
     ]:
         env.add_concept(item)
         # env.concepts[item.name] = item
-    yield env
+    return env
 
 
-@fixture(scope="session")
-def test_environment_graph(test_environment):
-    yield generate_graph(test_environment)
+TEST_DIALECTS = [BaseDialect(), BigqueryDialect(), DuckDBDialect(), SqlServerDialect()]
+
+
+def date_functions():
+    environment = gen_environment()
+    declarations = """
+
+    select
+        order_id,
+        date(order_timestamp) -> order_date,
+        datetime(order_timestamp) -> order_timestamp_datetime,
+        timestamp(order_timestamp) -> order_timestamp_dos,
+        second(order_timestamp) -> order_second,
+        minute(order_timestamp) -> order_minute,
+        hour(order_timestamp) -> order_hour,
+        day(order_timestamp) -> order_day,
+        week(order_timestamp) -> order_week,
+        month(order_timestamp) -> order_month,
+        quarter(order_timestamp) -> order_quarter,
+        year(order_timestamp) -> order_year,
+        date_trunc(order_timestamp, month) -> order_month_trunc,
+        date_part(order_timestamp, month) -> order_month_part,
+        date_add(order_timestamp, month, 1) -> one_month_post_order,
+    ;
+    
+    
+        """
+    env, parsed = parse(declarations, environment=environment)
+    select: Select = parsed[-1]
+
+    BigqueryDialect().compile_statement(process_query(environment, select))
+
+
+if __name__ == "__main__":
+    with Profile() as profile:
+        date_functions()
+        (Stats(profile).strip_dirs().sort_stats(SortKey.CALLS).print_stats(25))

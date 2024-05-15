@@ -39,6 +39,7 @@ class PurposeLineage(Enum):
     FILTER = "filter"
     CONSTANT = "constant"
     UNNEST = "unnest"
+    ROOT = "root"
 
 
 class Granularity(Enum):
@@ -178,7 +179,6 @@ class FunctionClass(Enum):
         FunctionType.AVG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
-        FunctionType.GROUP,
     ]
 
 

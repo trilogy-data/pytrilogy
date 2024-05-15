@@ -3,12 +3,15 @@ import concepts.customer as customer;
 import concepts.dates as dates;
 import concepts.sales_territory as sales_territory;
 
+metric total_sales_amount_debug_2 <- sum(internet_sales.total_sales_amount_debug) by dates.order_date;
 
+# customer.first_name,
+#   internet_sales.total_order_quantity,
 
 select
     dates.order_date,
-    customer.first_name,
-    internet_sales.total_order_quantity,
+
+  
     internet_sales.total_sales_amount
 order by
     internet_sales.total_sales_amount desc

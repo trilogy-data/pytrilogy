@@ -216,7 +216,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access | comparison | parenthetical
+    expr: window_item | filter_item | fgroup | aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access | comparison | parenthetical
     
     // functions
     
@@ -258,8 +258,9 @@ grammar = r"""
     
     _string_functions: like | ilike | upper | lower | fsplit
     
+    // special aggregate
+    fgroup: "group"i "(" expr ")" aggregate_over?
     //aggregates
-    fgroup: "group"i "(" expr ")"
     count: "count"i "(" expr ")"
     count_distinct: "count_distinct"i "(" expr ")"
     sum: "sum"i "(" expr ")"
@@ -270,7 +271,7 @@ grammar = r"""
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min | fgroup) aggregate_over?
+    aggregate_functions: (count | count_distinct | sum | avg | max | min) aggregate_over?
 
     // date functions
     fdate: "date"i "(" expr ")"
@@ -667,7 +668,7 @@ class ParseToObjects(Transformer):
             if "." in name:
                 namespace, name = name.split(".", 1)
             else:
-                namespace = DEFAULT_NAMESPACE
+                namespace = self.environment.namespace or DEFAULT_NAMESPACE
         else:
             if "." not in declaration:
                 raise ParseError(
@@ -1275,7 +1276,10 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fgroup(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        if len(args) == 2:
+            args = self.process_function_args([args[0]] + args[1], meta=meta)
+        else:
+            args = self.process_function_args([args[0]], meta=meta)
         return Group(args)
 
     @v_args(meta=True)

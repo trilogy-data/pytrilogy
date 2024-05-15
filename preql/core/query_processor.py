@@ -3,7 +3,7 @@ from typing import List, Optional, Set, Union, Dict
 from preql.core.env_processor import generate_graph
 from preql.core.graph_models import ReferenceGraph
 from preql.core.constants import CONSTANT_DATASET
-from preql.core.processing.concept_strategies_v2 import source_query_concepts
+from preql.core.processing.concept_strategies_v3 import source_query_concepts
 from preql.constants import CONFIG, DEFAULT_NAMESPACE
 from preql.core.models import (
     Environment,

@@ -15,8 +15,6 @@ from preql.constants import logger
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
-LOGGER_PREFIX = "[GEN_BASIC_NODE]"
-
 
 def gen_basic_node(
     concept: Concept,
@@ -34,15 +32,19 @@ def gen_basic_node(
         )
     output_concepts = [concept] + local_optional
     partials = []
-    parents: List[StrategyNode] = [
-        source_concepts(
-            parent_concepts,
-            local_optional,
-            environment,
-            g,
-            depth=depth + 1,
+
+    enriched = source_concepts(
+        mandatory_list=parent_concepts + local_optional,
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+    )
+    if not enriched:
+        logger.info(
+            f"{depth_prefix}{LOGGER_PREFIX} Could not find enrichment node for {concept} with local_optional {local_optional}"
         )
-    ]
+        return None
+    parents: List[StrategyNode] = [enriched]
     for x in output_concepts:
         sources = [p for p in parents if x in p.output_concepts]
         if not sources:

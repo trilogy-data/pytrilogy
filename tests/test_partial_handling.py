@@ -16,7 +16,7 @@ from preql.constants import logger
 from logging import StreamHandler
 from preql.core.query_processor import generate_graph
 from preql.core.processing.nodes import MergeNode
-from preql.core.processing.concept_strategies_v2 import source_concepts
+from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.processing.node_generators import (
     gen_filter_node,
 )
@@ -109,7 +109,12 @@ limit 5;"""
     id = env.concepts["passenger.id"]
     g = generate_graph(env)
     filtered_node = gen_filter_node(
-        env.concepts["surviving_passenger"], [family], env, g, 0, source_concepts
+        env.concepts["surviving_passenger"],
+        [family],
+        environment=env,
+        g=g,
+        depth=0,
+        source_concepts=search_concepts,
     )
     assert len(filtered_node.partial_concepts) == 2
     assert set([c.address for c in filtered_node.partial_concepts]) == set(
@@ -126,8 +131,8 @@ limit 5;"""
     )
 
     # check at the source level
-    sourced = source_concepts(
-        [family, env.concepts["surviving_passenger"]], [], env, g, depth=0
+    sourced = search_concepts(
+        [family, env.concepts["surviving_passenger"]], environment=env, g=g, depth=0
     )
     assert isinstance(sourced, MergeNode)
     assert len(sourced.parents) == 2

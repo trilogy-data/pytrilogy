@@ -34,10 +34,9 @@ def gen_filter_node(
         g=g,
         parents=[
             source_concepts(
-                parent_concepts,
-                [],
-                environment,
-                g,
+                mandatory_list=parent_concepts,
+                environment=environment,
+                g=g,
                 depth=depth + 1,
             )
         ],
@@ -48,10 +47,9 @@ def gen_filter_node(
     )
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        [immediate_parent],
-        local_optional,
-        environment,
-        g,
+        mandatory_list=[immediate_parent] + local_optional,
+        environment=environment,
+        g=g,
         depth=depth + 1,
     )
     return MergeNode(

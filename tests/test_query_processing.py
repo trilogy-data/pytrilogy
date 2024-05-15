@@ -1,16 +1,16 @@
-from preql.core.models import Select, QueryDatasource, Environment
-from preql.core.processing.concept_strategies_v2 import source_concepts
+from preql.core.models import Select, QueryDatasource, Environment, Grain
+from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.query_processor import process_query, get_query_datasources
 
 
 def test_direct_select(test_environment, test_environment_graph):
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
-    datasource = source_concepts(
-        [product],
-        product.grain.components_copy,
+    datasource = search_concepts(
+        [product] + product.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
+        depth=0,
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
@@ -26,28 +26,32 @@ def test_get_datasource_from_window_function(
     product_rank = test_environment.concepts["product_revenue_rank"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     # assert product_rank.grain.components[0] == test_environment.concepts['name']
-    datasource = source_concepts(
-        [product_rank],
-        product_rank.grain.components_copy,
+    datasource = search_concepts(
+        [product_rank] + product_rank.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
+        depth=0,
     ).resolve()
     assert product_rank in datasource.output_concepts
     # assert datasource.grain == product_rank.grain
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "revenue_at_local_order_id_at_local_product_id"
-    }
+    assert (
+        datasource.grain.set
+        == Grain(
+            components=[test_environment.concepts["total_revenue"]]
+            + product_rank.grain.components_copy
+        ).set
+    )
 
     product_rank_by_category = test_environment.concepts[
         "product_revenue_rank_by_category"
     ]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
-    datasource = source_concepts(
-        [product_rank_by_category],
-        product_rank_by_category.grain.components_copy,
+    datasource = search_concepts(
+        [product_rank_by_category] + product_rank_by_category.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
+        depth=0,
     ).resolve()
     assert product_rank_by_category in datasource.output_concepts
     # assert datasource.grain == product_rank_by_category.grain
@@ -66,11 +70,11 @@ def test_get_datasource_for_filter(
         "revenue",
         "product_id",
     }
-    datasource = source_concepts(
-        [hi_rev_product],
-        hi_rev_product.grain.components_copy,
+    datasource = search_concepts(
+        [hi_rev_product] + hi_rev_product.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
+        depth=0,
     )
     datasource = datasource.resolve()
     assert isinstance(datasource, QueryDatasource)
@@ -81,11 +85,11 @@ def test_select_output(test_environment, test_environment_graph):
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
-    datasource = source_concepts(
-        [product],
-        product.grain.components_copy,
+    datasource = search_concepts(
+        [product] + product.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
+        depth=0,
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
@@ -98,33 +102,35 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     product = test_environment.concepts["product_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
-    datasource = source_concepts(
-        [total_revenue.with_grain(product)],
-        [product],
+    datasource = search_concepts(
+        [total_revenue.with_grain(product), product],
         environment=test_environment,
         g=test_environment_graph,
+        depth=0,
     )
     datasource = datasource.resolve()
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "revenue_at_local_order_id"
-    }
+    assert datasource.grain == Grain(components=[product])
 
 
 def test_join_aggregate(test_environment: Environment, test_environment_graph):
     category_id = test_environment.concepts["category_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
-    datasource = source_concepts(
-        [total_revenue.with_grain(category_id)],
-        [category_id],
+    from logging import getLogger, StreamHandler, INFO
+
+    logger = getLogger()
+    logger.addHandler(StreamHandler())
+    logger.setLevel(INFO)
+    datasource = search_concepts(
+        [total_revenue.with_grain(category_id), category_id],
         environment=test_environment,
         g=test_environment_graph,
+        depth=0,
     ).resolve()
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {
-        "products_at_local_product_id_join_revenue_at_local_order_id_at_local_order_id_local_product_id"
-    }
+    assert len(set([datasource.name for datasource in datasource.datasources])) == 1
+    assert datasource.grain.components == [category_id]
 
 
 def test_query_aggregation(test_environment, test_environment_graph):
@@ -133,7 +139,9 @@ def test_query_aggregation(test_environment, test_environment_graph):
         environment=test_environment, graph=test_environment_graph, statement=select
     )
 
-    assert {datasource.identifier} == {"revenue_at_local_order_id_at_abstract"}
+    assert {datasource.identifier} == {
+        "revenue_at_local_order_id_local_order_timestamp_local_product_id_at_abstract"
+    }
     check = datasource
     assert len(check.input_concepts) == 1
     assert check.input_concepts[0].name == "revenue"

@@ -3,7 +3,7 @@
 
 # from preql.compiler import compile
 from preql.core.models import Select, Grain, Datasource, QueryDatasource, Environment
-from preql.core.processing.concept_strategies_v2 import source_concepts
+from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
 from preql.core.query_processor import process_query, datasource_to_ctes
 from preql.dialect.sql_server import SqlServerDialect
 import re
@@ -65,24 +65,28 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
 
     assert posts.grain == post_grain
 
-    expected_parent = source_concepts(
-        [user_post_count], [env.concepts["user_id"]], env, None
+    expected_parent = search_concepts(
+        [user_post_count, env.concepts["user_id"]],
+        environment=env,
+        depth=0,
+        g=generate_graph(env),
     ).resolve()
 
     assert posts.grain == post_grain
 
     assert set(expected_parent.source_map.keys()) == set(
-        ["local.user_post_count", "local.post_id", "local.user_id"]
+        ["local.user_post_count", "local.user_id"]
     )
 
     assert user_post_count in expected_parent.output_concepts
 
-    datasource = source_concepts([avg_user_post_count], [], env, None).resolve()
+    datasource = search_concepts(
+        [avg_user_post_count], environment=env, depth=0, g=generate_graph(env)
+    ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
     assert datasource.grain == Grain()
     # ensure we identify aggregates of aggregates properly
-    assert datasource.identifier == "posts_at_local_post_id_at_abstract_at_abstract"
     assert datasource.output_concepts[0] == avg_user_post_count
     assert len(datasource.datasources) == 1
     parent = datasource.datasources[0]

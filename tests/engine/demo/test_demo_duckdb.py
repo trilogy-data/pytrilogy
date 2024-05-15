@@ -272,4 +272,4 @@ def test_demo_const():
     test = """
     const right_now <- current_datetime(); select right_now;"""
 
-    results = executor.execute_text(test)[-1].fetchall()
+    executor.execute_text(test)[-1].fetchall()

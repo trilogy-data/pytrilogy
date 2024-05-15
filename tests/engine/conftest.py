@@ -30,8 +30,8 @@ property <item, store_id>.count int;
 #metric total_count <- sum(store_total_count);
 metric total_count <- sum(count);
 
-metric total_count_per_product <- sum(count) by item;
 
+metric total_count_per_product <- sum(sum(count) by item, store_id) by item;
 metric avg_count_per_product <- avg(total_count_per_product);
 
 datasource fact_items (
