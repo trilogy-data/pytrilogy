@@ -2,13 +2,17 @@
 
 pypreql is an experimental implementation of the [PreQL/Trilogy](https://github.com/preqldata) (prequel trilogy) language, a variant on SQL intended to embrace the best features of SQL while fixing common pain points.
 
-Preql looks like SQL, but doesn't require table references, group by, or joins. It's crafted by data professionals to be more human-readable and less error-prone than SQL, and is perfect for a modern data company that just can't quit SQL but wants less pain, including compatability with common tools such as DBT through a rich extension ecosystem.
+Preql looks like SQL, but doesn't require table references, group by, or joins. It's crafted by data professionals to be more human-readable and less error-prone than SQL.
+
+It's perfect for a modern data company that just can't quit SQL, but wants less pain.
+
+Provides a rich extension ecosystem to integrate with other tools like DBT.
 
 The Preql language spec itself will be linked from the above repo. 
 
 Pypreql can be run locally to parse and execute preql [.preql] models.  
 
-You can try out an interactive demo [here](https://preqldata.dev/).
+You can try out an interactive demo [here](https://preqldata.dev/demo).
 
 
 Preql looks like this:
@@ -37,12 +41,11 @@ The current Preql implementation supports compiling to 3 backend SQL flavors:
 - DuckDB
 
 
-
 ## Basic Example
 
 Preql can be run directly in python.
 
-A bigquery example, similar to [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console)
+A bigquery example, similar to bigquery [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console)
 
 ```python
 
@@ -93,7 +96,7 @@ for row in results:
 
 ## Developing
 
-Clone repository and install requirements
+Clone repository and install requirements.txt and requirements-test.txt.
 
 ## Contributing
 
