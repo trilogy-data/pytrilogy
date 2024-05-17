@@ -149,8 +149,8 @@ def gen_select_node(
     }
     if not target_grain:
         target_grain = Grain()
-        for x in all_concepts:
-            target_grain += x.grain
+        for ac in all_concepts:
+            target_grain += ac.grain
     if materialized_addresses != all_addresses:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
@@ -228,7 +228,11 @@ def gen_select_node(
             candidate = parents[0]
             candidate.depth += 1
             source_grain = candidate.grain
-            if not source_grain.issubset(target_grain):
+            if (
+                target_grain
+                and source_grain
+                and not source_grain.issubset(target_grain)
+            ):
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} datasource grain {source_grain} does not match target grain {target_grain} for select, adding group node"
                 )
