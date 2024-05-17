@@ -279,3 +279,28 @@ def IsNull(args: list[Concept]) -> Function:
         arg_count=1,
         # output_grain=Grain(components=arguments),
     )
+
+
+def StrPos(args: list[Concept]) -> Function:
+    return Function(
+        operator=FunctionType.STRPOS,
+        arguments=args,
+        output_datatype=DataType.INTEGER,
+        output_purpose=function_args_to_output_purpose(args),
+        arg_count=2,
+        valid_inputs=[
+            {DataType.STRING},
+            {DataType.STRING},
+        ],
+    )
+
+
+def SubString(args: list[Concept]) -> Function:
+    return Function(
+        operator=FunctionType.SUBSTRING,
+        arguments=args,
+        output_datatype=DataType.STRING,
+        output_purpose=function_args_to_output_purpose(args),
+        arg_count=3,
+        valid_inputs=[{DataType.STRING}, {DataType.INTEGER}, {DataType.INTEGER}],
+    )

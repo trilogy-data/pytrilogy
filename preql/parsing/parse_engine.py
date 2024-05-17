@@ -44,6 +44,8 @@ from preql.core.functions import (
     CurrentDate,
     CurrentDatetime,
     IsNull,
+    SubString,
+    StrPos,
 )
 from preql.core.models import (
     Address,
@@ -255,8 +257,10 @@ grammar = r"""
     upper: "upper"i "(" expr ")"
     lower: "lower"i "(" expr ")"    
     fsplit: "split"i "(" expr "," _string_lit ")"
+    fstrpos: "strpos"i "(" expr "," expr ")"
+    fsubstring: "substring"i "(" expr "," expr "," expr ")"
     
-    _string_functions: like | ilike | upper | lower | fsplit
+    _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring
     
     // special aggregate
     fgroup: "group"i "(" expr ")" aggregate_over?
@@ -1397,6 +1401,16 @@ class ParseToObjects(Transformer):
             arg_count=1,
             # output_grain=Grain(components=args),
         )
+
+    @v_args(meta=True)
+    def fstrpos(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return StrPos(args)
+
+    @v_args(meta=True)
+    def fsubstring(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return SubString(args)
 
     @v_args(meta=True)
     def lower(self, meta, args):

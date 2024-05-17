@@ -159,10 +159,15 @@ def test_string_functions(test_environment):
     property test_name <- concat(category_name, '_test');
     property upper_name <- upper(category_name);
     property lower_name <- lower(category_name);
+    property substring_name <- substring(category_name, 1, 3);
+    property strpos_name <- strpos(category_name, 'a');
+
     select
         test_name,
         upper_name,
-        lower_name
+        lower_name,
+        substring_name,
+        strpos_name,
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: Select = parsed[-1]
