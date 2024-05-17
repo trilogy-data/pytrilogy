@@ -24,14 +24,16 @@ def gen_unnest_node(
         output_concepts=[concept] + local_optional,
         environment=environment,
         g=g,
-        parents=[
-            source_concepts(
-                mandatory_list=arguments + local_optional,
-                environment=environment,
-                g=g,
-                depth=depth + 1,
-            )
-        ]
-        if (arguments or local_optional)
-        else [],
+        parents=(
+            [
+                source_concepts(
+                    mandatory_list=arguments + local_optional,
+                    environment=environment,
+                    g=g,
+                    depth=depth + 1,
+                )
+            ]
+            if (arguments or local_optional)
+            else []
+        ),
     )

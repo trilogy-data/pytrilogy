@@ -5,7 +5,15 @@ from typing import List
 from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
+
 from preql.core.enums import JoinType
+from preql.constants import logger
+
+LOGGER_PREFIX = "[GEN_GROUP_NODE]"
+
+
+def padding(x: int):
+    return "\t" * x
 
 
 def gen_group_node(
@@ -66,6 +74,9 @@ def gen_group_node(
     if set([x.address for x in local_optional]).issubset(
         set([y.address for y in parent_concepts])
     ):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
+        )
         return group_node
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

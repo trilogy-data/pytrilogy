@@ -547,9 +547,9 @@ class BaseDialect:
 
         for c in query.base.output_columns:
             if c.address not in selected:
-                select_columns[
-                    c.address
-                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                select_columns[c.address] = (
+                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                )
                 cte_output_map[c.address] = query.base
                 if c.address not in hidden_addresses:
                     selected.add(c.address)

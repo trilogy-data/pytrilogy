@@ -238,7 +238,7 @@ def gen_select_node(
                 )
                 return GroupNode(
                     output_concepts=candidate.output_concepts,
-                    input_concepts=candidate.input_concepts,
+                    input_concepts=candidate.output_concepts,
                     environment=environment,
                     g=g,
                     parents=[candidate],

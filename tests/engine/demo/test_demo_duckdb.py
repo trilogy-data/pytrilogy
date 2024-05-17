@@ -25,16 +25,18 @@ def setup_engine(debug_flag: bool = True) -> Executor:
     output = Executor(
         engine=engine,
         dialect=Dialects.DUCK_DB,
-        hooks=[
-            DebuggingHook(
-                level=INFO,
-                process_other=False,
-                process_datasources=False,
-                process_ctes=False,
-            )
-        ]
-        if debug_flag
-        else [],
+        hooks=(
+            [
+                DebuggingHook(
+                    level=INFO,
+                    process_other=False,
+                    process_datasources=False,
+                    process_ctes=False,
+                )
+            ]
+            if debug_flag
+            else []
+        ),
     )
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")

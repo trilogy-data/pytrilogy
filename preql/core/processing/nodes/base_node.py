@@ -44,9 +44,9 @@ def resolve_concept_map(
     inherited_inputs: List[Concept],
 ) -> dict[str, set[Datasource | QueryDatasource | UnnestJoin]]:
     targets = targets or []
-    concept_map: dict[
-        str, set[Datasource | QueryDatasource | UnnestJoin]
-    ] = defaultdict(set)
+    concept_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = (
+        defaultdict(set)
+    )
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:

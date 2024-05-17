@@ -836,9 +836,11 @@ class ParseToObjects(Transformer):
                 purpose=final_purpose,
                 metadata=metadata,
                 lineage=function,
-                grain=function.output_grain
-                if final_purpose != Purpose.KEY
-                else Grain(components=[]),
+                grain=(
+                    function.output_grain
+                    if final_purpose != Purpose.KEY
+                    else Grain(components=[])
+                ),
                 namespace=namespace,
                 keys=(
                     [self.environment.concepts[parent_concept]]
