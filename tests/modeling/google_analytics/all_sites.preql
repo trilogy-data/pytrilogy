@@ -1,0 +1,23 @@
+import generic as generic;
+
+key user_pseudo_id int;
+key _row_id int;
+property _row_id.page_location string;
+property _row_id.page_title string;
+metric event_count <- count(_row_id);
+
+datasource pypreql(
+    raw('''(cast(event_timestamp as numeric) * 10000) + (row_number() over (partition by user_pseudo_id order by generic.event_timestamp))'''): _row_id,
+    raw('''PARSE_DATE('%Y%m%d', suffix)'''): generic.event_date,
+    user_pseudo_id: user_pseudo_id,
+    event_timestamp: generic.event_timestamp,
+    site:generic.site_name,
+    raw('''(SELECT `value`.`string_value` FROM UNNEST(event_params) WHERE `key` = 'page_location' LIMIT 1)'''): page_location,
+    raw('''(SELECT `value`.`string_value` FROM UNNEST(event_params) WHERE `key` = 'page_title' LIMIT 1)'''): page_title, 
+)
+grain (_row_id)
+query '''
+SELECT *, _TABLE_SUFFIX suffix, 'pypreql' site from `preqldata.analytics_417320071.events_*`
+UNION ALL
+SELECT *, _TABLE_SUFFIX suffix, 'fundiverse' site from `preqldata.analytics_411641820.events_*`'''
+;

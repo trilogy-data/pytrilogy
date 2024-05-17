@@ -47,49 +47,70 @@ def get_priority_concept(
         c for c in all_concepts if c.address not in attempted_addresses
     ]
     priority = (
+        # find anything that needs no joins first, so we can exit early
+        [
+            c
+            for c in remaining_concept
+            if c.derivation == PurposeLineage.CONSTANT
+            and c.granularity == Granularity.SINGLE_ROW
+        ]
+        +
+        # then aggregates to remove them from scope, as they cannot get partials
         [
             c
             for c in remaining_concept
             if c.derivation == PurposeLineage.AGGREGATE
             and not c.granularity == Granularity.SINGLE_ROW
         ]
+        # then windows to remove them from scope, as they cannot get partials
         + [
             c
             for c in remaining_concept
             if c.derivation == PurposeLineage.WINDOW
             and not c.granularity == Granularity.SINGLE_ROW
         ]
+        # then filters to remove them from scope, also cannot get partials
         + [
             c
             for c in remaining_concept
             if c.derivation == PurposeLineage.FILTER
             and not c.granularity == Granularity.SINGLE_ROW
         ]
+        # unnests are weird?
         + [
             c
             for c in remaining_concept
             if c.derivation == PurposeLineage.UNNEST
             and not c.granularity == Granularity.SINGLE_ROW
         ]
+        # we should be home-free here
         + [
             c
             for c in remaining_concept
             if c.derivation == PurposeLineage.BASIC
             and not c.granularity == Granularity.SINGLE_ROW
         ]
+        # finally our plain selects
         + [
             c
             for c in remaining_concept
             if c.derivation == PurposeLineage.ROOT
             and not c.granularity == Granularity.SINGLE_ROW
         ]
+        # and any non-single row constants
         + [
             c
             for c in remaining_concept
             if c.derivation == PurposeLineage.CONSTANT
             and not c.granularity == Granularity.SINGLE_ROW
         ]
-        + [c for c in remaining_concept if c.granularity == Granularity.SINGLE_ROW]
+        # catch all
+        + [
+            c
+            for c in remaining_concept
+            if c.derivation != PurposeLineage.CONSTANT
+            and c.granularity == Granularity.SINGLE_ROW
+        ]
     )
     if not priority:
         raise ValueError(

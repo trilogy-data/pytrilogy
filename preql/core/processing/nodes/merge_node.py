@@ -74,6 +74,7 @@ class MergeNode(StrategyNode):
         partial_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
         depth: int = 0,
+        grain: Grain | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -85,6 +86,7 @@ class MergeNode(StrategyNode):
             depth=depth,
             partial_concepts=partial_concepts,
             force_group=force_group,
+            grain=grain,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type

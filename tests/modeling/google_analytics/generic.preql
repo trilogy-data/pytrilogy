@@ -1,0 +1,6 @@
+key event_time int;
+key event_date date;
+key event_date string;
+key event_timestamp int;
+key site_name string;
+

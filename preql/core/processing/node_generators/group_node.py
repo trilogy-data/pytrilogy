@@ -10,7 +10,7 @@ from preql.core.enums import JoinType
 
 def gen_group_node(
     concept: Concept,
-    local_optional,
+    local_optional: List[Concept],
     environment: Environment,
     g,
     depth: int,
@@ -62,6 +62,11 @@ def gen_group_node(
     if not local_optional:
         return group_node
 
+    # exit early if enrichment is irrelevant.
+    if set([x.address for x in local_optional]).issubset(
+        set([y.address for y in parent_concepts])
+    ):
+        return group_node
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=group_key_parents + local_optional,

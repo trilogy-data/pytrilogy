@@ -250,6 +250,7 @@ class SourceType(Enum):
     GROUP = "group"
     WINDOW = "window"
     UNNEST = "unnest"
+    CONSTANT = "constant"
 
 
 class ShowCategory(Enum):
