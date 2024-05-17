@@ -3,11 +3,7 @@ from typing import List, Optional
 
 from preql.core.enums import Purpose
 from preql.core.models import Concept, Environment, Grain
-from preql.core.processing.nodes import (
-    StrategyNode,
-    SelectNode,
-    MergeNode,
-)
+from preql.core.processing.nodes import StrategyNode, SelectNode, MergeNode, GroupNode
 from preql.core.exceptions import NoDatasourceException
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
@@ -110,8 +106,7 @@ def gen_select_node_from_table(
             partial_addresses = [
                 x.concept.address for x in datasource.columns if not x.is_complete
             ]
-            full_addresses = [x.concept for x in datasource.columns if x.is_complete]
-            target_grain = Grain(components=[c for c in full_addresses])
+
             candidate = SelectNode(
                 input_concepts=[c.concept for c in datasource.columns],
                 output_concepts=all_concepts,
@@ -124,7 +119,7 @@ def gen_select_node_from_table(
                 ],
                 accept_partial=accept_partial,
                 datasource=datasource,
-                grain=target_grain,
+                grain=datasource.grain,
             )
             candidates[datasource.identifier] = candidate
             scores[datasource.identifier] = -len(partial_concepts)
@@ -143,15 +138,19 @@ def gen_select_node(
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
     accept_partial_optional: bool = True,
+    target_grain: Grain | None = None,
 ) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
+    all_addresses = set([x.address for x in all_concepts])
     materialized_addresses = {
         x.address
         for x in all_concepts
         if x.address in [z.address for z in environment.materialized_concepts]
     }
-    all_addresses = set([x.address for x in all_concepts])
-
+    if not target_grain:
+        target_grain = Grain()
+        for ac in all_concepts:
+            target_grain += ac.grain
     if materialized_addresses != all_addresses:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
@@ -160,7 +159,8 @@ def gen_select_node(
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")
         return None
-    ds = None
+
+    ds: StrategyNode | None = None
 
     # attempt to select all concepts from table
     ds = gen_select_node_from_table(
@@ -225,7 +225,27 @@ def gen_select_node(
             )
         ]
         if len(parents) == 1:
-            return parents[0]
+            candidate = parents[0]
+            candidate.depth += 1
+            source_grain = candidate.grain
+            if (
+                target_grain
+                and source_grain
+                and not source_grain.issubset(target_grain)
+            ):
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} datasource grain {source_grain} does not match target grain {target_grain} for select, adding group node"
+                )
+                return GroupNode(
+                    output_concepts=candidate.output_concepts,
+                    input_concepts=candidate.output_concepts,
+                    environment=environment,
+                    g=g,
+                    parents=[candidate],
+                    depth=depth,
+                    partial_concepts=candidate.partial_concepts,
+                )
+            return candidate
         return MergeNode(
             output_concepts=[concept] + found,
             input_concepts=[concept] + found,
@@ -234,6 +254,7 @@ def gen_select_node(
             parents=parents,
             depth=depth,
             partial_concepts=all_partial,
+            grain=target_grain,
         )
     if not accept_partial_optional:
         return None
@@ -245,6 +266,7 @@ def gen_select_node(
         depth=depth,
         accept_partial=accept_partial,
     )
+
     if not ds and fail_if_not_found:
         raise NoDatasourceException(f"No datasource exists for {concept}")
     return ds

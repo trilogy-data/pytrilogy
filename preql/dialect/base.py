@@ -119,6 +119,8 @@ FUNCTION_MAP = {
     FunctionType.LIKE: lambda x: f" {x[0]} like {x[1]} ",
     FunctionType.UPPER: lambda x: f"UPPER({x[0]}) ",
     FunctionType.LOWER: lambda x: f"LOWER({x[0]}) ",
+    FunctionType.SUBSTRING: lambda x: f"SUBSTRING({x[0]},{x[1]},{x[2]})",
+    FunctionType.STRPOS: lambda x: f"STRPOS({x[0]},{x[1]})",
     # FunctionType.NOT_LIKE: lambda x: f" CASE WHEN {x[0]} like {x[1]} THEN 0 ELSE 1 END",
     # date types
     FunctionType.DATE_TRUNCATE: lambda x: f"date_trunc({x[0]},{x[1]})",
@@ -545,9 +547,9 @@ class BaseDialect:
 
         for c in query.base.output_columns:
             if c.address not in selected:
-                select_columns[
-                    c.address
-                ] = f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                select_columns[c.address] = (
+                    f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
+                )
                 cte_output_map[c.address] = query.base
                 if c.address not in hidden_addresses:
                     selected.add(c.address)

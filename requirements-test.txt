@@ -4,5 +4,6 @@ duckdb
 duckdb-engine
 mypy
 ruff
+black
 pandas
 types-tabulate

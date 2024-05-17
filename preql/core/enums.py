@@ -141,6 +141,8 @@ class FunctionType(Enum):
     ILIKE = "ilike"
     LOWER = "lower"
     UPPER = "upper"
+    SUBSTRING = "substring"
+    STRPOS = "strpos"
 
     # Dates
     DATE = "date"
@@ -250,6 +252,7 @@ class SourceType(Enum):
     GROUP = "group"
     WINDOW = "window"
     UNNEST = "unnest"
+    CONSTANT = "constant"
 
 
 class ShowCategory(Enum):

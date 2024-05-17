@@ -1,0 +1,14 @@
+
+import all_sites as all_sites;
+import generic as generic;
+
+persist page_events into page_events FROM 
+SELECT
+    generic.event_date,
+    all_sites.page_title,
+    all_sites.page_location,
+    count(all_sites.user_pseudo_id)->user_count,
+order by 
+    generic.event_date asc;
+
+
