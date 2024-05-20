@@ -1,9 +1,5 @@
 from preql.core.models import Environment
-from preql.core.enums import Purpose
 from preql import parse, Executor
-from preql.core.processing.node_generators import gen_select_node
-from preql.core.env_processor import generate_graph
-import pytest
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):

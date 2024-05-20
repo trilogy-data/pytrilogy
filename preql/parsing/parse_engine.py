@@ -907,11 +907,11 @@ class ParseToObjects(Transformer):
         return concept
 
     @v_args(meta=True)
-    def concept(self, meta: Meta, args) -> Concept:
+    def concept(self, meta: Meta, args) -> ConceptDeclaration:
         if isinstance(args[0], Concept):
             concept: Concept = args[0]
         else:
-            concept: Concept = args[0].concept
+            concept = args[0].concept
         if concept.metadata:
             concept.metadata.line_number = meta.line
         return ConceptDeclaration(concept=concept)
@@ -1091,7 +1091,11 @@ class ParseToObjects(Transformer):
         else:
             grain = None
         new_datasource = select.to_datasource(
-            namespace=self.environment.namespace,
+            namespace=(
+                self.environment.namespace
+                if self.environment.namespace
+                else DEFAULT_NAMESPACE
+            ),
             identifier=identifier,
             address=Address(location=address),
             grain=grain,

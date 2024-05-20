@@ -698,6 +698,13 @@ class ConceptTransform(BaseModel):
     def input(self) -> List[Concept]:
         return [v for v in self.function.arguments if isinstance(v, Concept)]
 
+    def with_namespace(self, namespace: str) -> "ConceptTransform":
+        return ConceptTransform(
+            function=self.function.with_namespace(namespace),
+            output=self.output.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
+
     def with_filter(self, where: "WhereClause") -> "ConceptTransform":
         id_hash = string_to_hash(str(where))
         new_parent_concept = Concept(
@@ -857,6 +864,12 @@ class SelectItem(BaseModel):
     @property
     def input(self) -> List[Concept]:
         return self.content.input
+
+    def with_namespace(self, namespace: str) -> "SelectItem":
+        return SelectItem(
+            content=self.content.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
 
 
 class OrderItem(BaseModel):
@@ -2317,17 +2330,18 @@ class RowsetItem(BaseModel):
             f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
         )
 
-    def with_namespace(self, namespace: str) -> "FilterItem":
+    def with_namespace(self, namespace: str) -> "RowsetItem":
         return RowsetItem(
             content=self.content.with_namespace(namespace),
-            where=self.where.with_namespace(namespace),
+            where=self.where.with_namespace(namespace) if self.where else None,
             rowset=self.rowset.with_namespace(namespace),
         )
 
     @property
     def arguments(self) -> List[Concept]:
         output = [self.content]
-        output += self.where.input
+        if self.where:
+            output += self.where.input
         return output
 
     @property
@@ -2346,7 +2360,8 @@ class RowsetItem(BaseModel):
     @property
     def input(self) -> List[Concept]:
         base = self.content.input
-        base += self.where.input
+        if self.where:
+            base += self.where.input
         return base
 
     @property
@@ -2359,7 +2374,9 @@ class RowsetItem(BaseModel):
 
     @property
     def concept_arguments(self):
-        return [self.content] + self.where.concept_arguments
+        if self.where:
+            return [self.content] + self.where.concept_arguments
+        return [self.content]
 
 
 class Parenthetical(BaseModel):

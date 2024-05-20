@@ -1,10 +1,6 @@
 from preql.core.models import Concept, Environment, Select, RowsetDerivation, RowsetItem
-from preql.utility import unique
-from preql.core.processing.nodes import GroupNode, StrategyNode, MergeNode, NodeJoin
+from preql.core.processing.nodes import MergeNode, NodeJoin
 from typing import List
-from preql.core.processing.node_generators.common import (
-    resolve_function_parent_concepts,
-)
 
 from preql.core.enums import JoinType
 from preql.constants import logger
@@ -25,7 +21,9 @@ def gen_rowset_node(
     source_concepts,
 ) -> MergeNode | None:
     if not isinstance(concept.lineage, RowsetItem):
-        raise SyntaxError(f'Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}')
+        raise SyntaxError(
+            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
+        )
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivation = lineage.rowset
     select: Select = lineage.rowset.select
