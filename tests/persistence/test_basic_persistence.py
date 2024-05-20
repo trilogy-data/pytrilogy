@@ -85,7 +85,7 @@ def test_derivations():
 
         # test that the full function returns the value
         static = gen_select_node(
-            [test_concept], env, g, depth=0, fail_on_no_datasource=True
+            concept=test_concept, local_optional=[], environment=env, g=g, depth=0
         )
         assert static
 
