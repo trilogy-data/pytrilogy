@@ -86,6 +86,9 @@ from preql.core.models import (
     DataType,
     StructType,
     ListType,
+    ConceptDeclaration,
+    ConceptDerivation,
+    RowsetDerivation,
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
@@ -98,6 +101,7 @@ grammar = r"""
     | function
     | select
     | persist
+    | rowset_derivation
     | import_statement
     
     _TERMINATOR:  ";"i /\s*/
@@ -111,6 +115,8 @@ grammar = r"""
     concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
+
+    rowset_derivation: "rowset" IDENTIFIER "<" "-" select
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
@@ -316,7 +322,7 @@ grammar = r"""
     
     int_lit: "-"? /[0-9]+/
     
-    float_lit: /[0-9]+\.[0-9]+/
+    float_lit: /[0-9]*\.[0-9]+/
 
     array_lit: "[" (literal ",")* literal ","? "]"()
     
@@ -695,7 +701,7 @@ class ParseToObjects(Transformer):
         return concept
 
     @v_args(meta=True)
-    def concept_declaration(self, meta: Meta, args) -> Concept:
+    def concept_declaration(self, meta: Meta, args) -> ConceptDeclaration:
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -714,10 +720,10 @@ class ParseToObjects(Transformer):
         if concept.metadata:
             concept.metadata.line_number = meta.line
         self.environment.add_concept(concept, meta=meta)
-        return concept
+        return ConceptDeclaration(concept=concept)
 
     @v_args(meta=True)
-    def concept_derivation(self, meta: Meta, args) -> Concept:
+    def concept_derivation(self, meta: Meta, args) -> ConceptDerivation:
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -750,7 +756,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return concept
+            return ConceptDerivation(concept=concept)
         elif isinstance(source_value, WindowItem):
             window_item: WindowItem = source_value
             local_purpose, keys = get_purpose_and_keys(purpose, [window_item.content])
@@ -774,7 +780,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return concept
+            return ConceptDerivation(concept=concept)
         elif isinstance(source_value, AggregateWrapper):
             parent: AggregateWrapper = source_value
             aggfunction: Function = parent.function
@@ -803,7 +809,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return concept
+            return ConceptDerivation(concept=concept)
         elif isinstance(source_value, (int, float, str, bool, ListWrapper)):
             const_function: Function = Function(
                 operator=FunctionType.CONSTANT,
@@ -823,7 +829,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return concept
+            return ConceptDerivation(concept=concept)
 
         elif isinstance(source_value, Function):
             function: Function = source_value
@@ -851,12 +857,24 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return concept
+            return ConceptDerivation(concept=concept)
 
         raise SyntaxError(
             f"Received invalid type {type(args[2])} {args[2]} as input to select"
             " transform"
         )
+
+    @v_args(meta=True)
+    def rowset_derivation(self, meta: Meta, args) -> RowsetDerivation:
+        name = args[0]
+        select: Select = args[1]
+        output = RowsetDerivation(name=name, select=select)
+        for new_concept in output.derived_concepts:
+            if new_concept.metadata:
+                new_concept.metadata.line_number = meta.line
+            self.environment.add_concept(new_concept)
+
+        return RowsetDerivation(name=name, select=select)
 
     @v_args(meta=True)
     def constant_derivation(self, meta: Meta, args) -> Concept:
@@ -890,10 +908,13 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> Concept:
-        concept: Concept = args[0]
+        if isinstance(args[0], Concept):
+            concept: Concept = args[0]
+        else:
+            concept: Concept = args[0].concept
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        return args[0]
+        return ConceptDeclaration(concept=concept)
 
     def column_assignment_list(self, args):
         return args
@@ -1069,21 +1090,12 @@ class ParseToObjects(Transformer):
             grain: Grain | None = args[3]
         else:
             grain = None
-        columns = [
-            # TODO: replace hardcoded replacement here
-            ColumnAssignment(alias=c.address.replace(".", "_"), concept=c)
-            for c in select.output_components
-        ]
-        new_datasource = Datasource(
-            identifier=identifier,
-            address=address,
-            grain=grain or select.grain,
-            columns=columns,
+        new_datasource = select.to_datasource(
             namespace=self.environment.namespace,
+            identifier=identifier,
+            address=Address(location=address),
+            grain=grain,
         )
-        for column in columns:
-            column.concept = column.concept.with_grain(new_datasource.grain)
-        # self.environment.add_datasource(new_datasource)
         return Persist(select=select, datasource=new_datasource)
 
     @v_args(meta=True)

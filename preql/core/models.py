@@ -209,7 +209,9 @@ class Concept(BaseModel):
         default_factory=lambda: Metadata(description=None, line_number=None),
         validate_default=True,
     )
-    lineage: Optional[Union[Function, WindowItem, FilterItem, AggregateWrapper]] = None
+    lineage: Optional[
+        Union[Function, WindowItem, FilterItem, AggregateWrapper, RowsetItem]
+    ] = None
     # lineage: Annotated[Optional[
     #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
     # ], WrapValidator(lineage_validator)] = None
@@ -389,6 +391,8 @@ class Concept(BaseModel):
             return PurposeLineage.FILTER
         elif self.lineage and isinstance(self.lineage, AggregateWrapper):
             return PurposeLineage.AGGREGATE
+        elif self.lineage and isinstance(self.lineage, RowsetItem):
+            return PurposeLineage.ROWSET
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -874,9 +878,12 @@ class OrderItem(BaseModel):
 class OrderBy(BaseModel):
     items: List[OrderItem]
 
+    def with_namespace(self, namespace: str) -> "OrderBy":
+        return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
+
 
 class Select(BaseModel):
-    selection: Sequence[Union[SelectItem, Concept, ConceptTransform]]
+    selection: List[Union[SelectItem, Concept, ConceptTransform]]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -945,6 +952,29 @@ class Select(BaseModel):
             self.input_components + self.output_components + self.grain.components_copy
         )
 
+    def to_datasource(
+        self,
+        namespace: str,
+        identifier: str,
+        address: Address,
+        grain: Grain | None = None,
+    ) -> Datasource:
+        columns = [
+            # TODO: replace hardcoded replacement here
+            ColumnAssignment(alias=c.address.replace(".", "_"), concept=c)
+            for c in self.output_components
+        ]
+        new_datasource = Datasource(
+            identifier=identifier,
+            address=address,
+            grain=grain or self.grain,
+            columns=columns,
+            namespace=namespace,
+        )
+        for column in columns:
+            column.concept = column.concept.with_grain(new_datasource.grain)
+        return new_datasource
+
     @property
     def grain(self) -> "Grain":
         output = []
@@ -988,6 +1018,18 @@ class Select(BaseModel):
             ):
                 output.append(item)
         return Grain(components=unique(output, "address"))
+
+    def with_namespace(self, namespace: str) -> "Select":
+        return Select(
+            selection=[c.with_namespace(namespace) for c in self.selection],
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            limit=self.limit,
+        )
 
 
 class Address(BaseModel):
@@ -1692,7 +1734,7 @@ class UndefinedConcept(Concept):
 
 
 class EnvironmentConceptDict(dict):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(self, *args, **kwargs)
         self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = False
@@ -2223,6 +2265,101 @@ class Limit(BaseModel):
 
 class ConceptDeclaration(BaseModel):
     concept: Concept
+
+
+class ConceptDerivation(BaseModel):
+    concept: Concept
+
+
+class RowsetDerivation(BaseModel):
+    name: str
+    select: Select
+
+    @property
+    def derived_concepts(self) -> List[Concept]:
+        output = []
+        for orig_concept in self.select.output_components:
+            new_concept = Concept(
+                name=orig_concept.name,
+                datatype=orig_concept.datatype,
+                purpose=orig_concept.purpose,
+                lineage=RowsetItem(
+                    content=orig_concept, where=self.select.where_clause, rowset=self
+                ),
+                grain=self.select.grain,
+                metadata=orig_concept.metadata,
+                namespace=(
+                    f"{self.name}.{orig_concept.namespace}"
+                    if orig_concept.namespace != DEFAULT_NAMESPACE
+                    else self.name
+                ),
+            )
+            output.append(new_concept)
+        return output
+
+    @property
+    def arguments(self) -> List[Concept]:
+        return self.select.output_components
+
+    def with_namespace(self, namespace: str) -> "RowsetDerivation":
+        return RowsetDerivation(
+            name=self.name, select=self.select.with_namespace(namespace)
+        )
+
+
+class RowsetItem(BaseModel):
+    content: Concept
+    rowset: RowsetDerivation
+    where: Optional["WhereClause"] = None
+
+    def __str__(self):
+        return (
+            f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
+        )
+
+    def with_namespace(self, namespace: str) -> "FilterItem":
+        return RowsetItem(
+            content=self.content.with_namespace(namespace),
+            where=self.where.with_namespace(namespace),
+            rowset=self.rowset.with_namespace(namespace),
+        )
+
+    @property
+    def arguments(self) -> List[Concept]:
+        output = [self.content]
+        output += self.where.input
+        return output
+
+    @property
+    def output(self) -> Concept:
+        if isinstance(self.content, ConceptTransform):
+            return self.content.output
+        return self.content
+
+    @output.setter
+    def output(self, value):
+        if isinstance(self.content, ConceptTransform):
+            self.content.output = value
+        else:
+            self.content = value
+
+    @property
+    def input(self) -> List[Concept]:
+        base = self.content.input
+        base += self.where.input
+        return base
+
+    @property
+    def output_datatype(self):
+        return self.content.datatype
+
+    @property
+    def output_purpose(self):
+        return self.content.purpose
+
+    @property
+    def concept_arguments(self):
+        return [self.content] + self.where.concept_arguments
 
 
 class Parenthetical(BaseModel):

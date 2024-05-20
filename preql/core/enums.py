@@ -23,6 +23,7 @@ class Purpose(Enum):
     KEY = "key"
     PROPERTY = "property"
     METRIC = "metric"
+    ROWSET = "rowset"
     AUTO = "auto"
 
     @classmethod
@@ -40,6 +41,7 @@ class PurposeLineage(Enum):
     CONSTANT = "constant"
     UNNEST = "unnest"
     ROOT = "root"
+    ROWSET = "rowset"
 
 
 class Granularity(Enum):
