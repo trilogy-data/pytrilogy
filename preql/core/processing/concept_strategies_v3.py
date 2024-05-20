@@ -333,6 +333,7 @@ def search_concepts(
                     PurposeLineage.WINDOW,
                     PurposeLineage.BASIC,
                     PurposeLineage.UNNEST,
+                    PurposeLineage.ROWSET,
                 ]:
                     skip.add(priority_concept.address)
                 break
@@ -423,7 +424,7 @@ def search_concepts(
             )
             return partial_search
     logger.error(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {missing}"
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {all_mandatory - found}"
     )
     return None
 
