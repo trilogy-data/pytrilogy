@@ -32,6 +32,7 @@ from preql.core.models import (
     AggregateWrapper,
     Persist,
     ListWrapper,
+    RowsetDerivation,
 )
 from preql.core.enums import Modifier
 
@@ -137,6 +138,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Query"):
         return f"""query {arg.text}"""
+
+    @to_string.register
+    def _(self, arg: RowsetDerivation):
+        return f"""rowset {arg.name} <- {self.to_string(arg.select)}"""
 
     @to_string.register
     def _(self, arg: "CaseWhen"):

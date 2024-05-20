@@ -15,6 +15,7 @@ from preql.core.models import (
     Function,
     Purpose,
     DataType,
+    RowsetDerivation,
 )
 from preql import Environment
 from preql.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
@@ -160,3 +161,28 @@ def test_render_constant(test_environment: Environment):
     )
 
     assert test == "[1, 2, 3, 4]"
+
+
+def test_render_rowset(test_environment: Environment):
+    query = Select(
+        selection=[test_environment.concepts["order_id"]],
+        where_clause=None,
+        order_by=OrderBy(
+            items=[
+                OrderItem(
+                    expr=test_environment.concepts["order_id"],
+                    order=Ordering.ASCENDING,
+                )
+            ]
+        ),
+    )
+    test = Renderer().to_string(RowsetDerivation(select=query, name="test"))
+
+    assert (
+        test
+        == """rowset test <- SELECT
+    order_id,
+ORDER BY
+    order_id asc
+;"""
+    )
