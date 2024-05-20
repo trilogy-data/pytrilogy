@@ -120,7 +120,7 @@ grammar = r"""
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
-    concept:  concept_declaration | concept_derivation | concept_property_declaration | constant_derivation
+    concept:  (concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
     
     //concept property
     prop_ident: "<" (IDENTIFIER ",")* IDENTIFIER ","? ">" "." IDENTIFIER
@@ -558,11 +558,13 @@ class ParseToObjects(Transformer):
 
     def block(self, args):
         output = args[0]
-        if isinstance(output, Concept):
+        if isinstance(output, ConceptDeclaration):
             if len(args) > 1 and isinstance(args[1], Comment):
-                output.metadata.description = (
-                    output.metadata.description or args[1].text.split("#")[1].strip()
+                output.concept.metadata.description = (
+                    output.concept.metadata.description
+                    or args[1].text.split("#")[1].strip()
                 )
+
         return args[0]
 
     def metadata(self, args):
@@ -724,6 +726,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> ConceptDerivation:
+
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -908,6 +911,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> ConceptDeclaration:
+
         if isinstance(args[0], Concept):
             concept: Concept = args[0]
         else:
