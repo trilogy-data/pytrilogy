@@ -13,12 +13,9 @@ from preql.core.processing.utility import PathInfo
 from preql.constants import logger
 from preql.utility import unique
 from preql.core.exceptions import AmbiguousRelationshipResolutionException
+from preql.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
-
-
-def pad(x):
-    return x * "\t"
 
 
 def reduce_path_concepts(shortest, g) -> set[str]:
@@ -79,7 +76,7 @@ def gen_merge_node(
         return None
     for join_candidate in join_candidates:
         logger.info(
-            f"{pad(depth)}{LOGGER_PREFIX} Join candidate: {join_candidate['paths']}"
+            f"{padding(depth)}{LOGGER_PREFIX} Join candidate: {join_candidate['paths']}"
         )
     join_additions: List[set[str]] = []
     for candidate in join_candidates:
@@ -99,11 +96,11 @@ def gen_merge_node(
         # no point in recursing
         # if we could not find an answer
         logger.info(
-            f"{pad(depth)}{LOGGER_PREFIX} No additional join candidates could be found"
+            f"{padding(depth)}{LOGGER_PREFIX} No additional join candidates could be found"
         )
         return None
     new = {c.address for c in final}.difference({c.address for c in all_concepts})
-    logger.info(f"{pad(depth)}{LOGGER_PREFIX} sourcing with new concepts {new}")
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} sourcing with new concepts {new}")
     return source_concepts(
         mandatory_list=final,
         environment=environment,

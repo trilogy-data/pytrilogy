@@ -16,6 +16,8 @@ from preql.core.models import (
     Purpose,
     DataType,
     RowsetDerivation,
+    CaseElse,
+    CaseWhen,
 )
 from preql import Environment
 from preql.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
@@ -186,3 +188,27 @@ ORDER BY
     order_id asc
 ;"""
     )
+
+
+def test_render_case(test_environment: Environment):
+
+    case_else = CaseElse(
+        expr=test_environment.concepts["order_id"],
+    )
+
+    test = Renderer().to_string(case_else)
+    assert test == "ELSE order_id"
+
+    test = Renderer().to_string(case_else)
+    assert test == "ELSE order_id"
+    case_when = CaseWhen(
+        expr=test_environment.concepts["order_id"],
+        comparison=Comparison(
+            left=test_environment.concepts["order_id"],
+            operator=ComparisonOperator.EQ,
+            right=123,
+        ),
+    )
+
+    test = Renderer().to_string(case_when)
+    assert test == "WHEN order_id = 123 THEN order_id"

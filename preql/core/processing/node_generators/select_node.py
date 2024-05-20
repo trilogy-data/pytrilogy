@@ -8,13 +8,9 @@ from preql.core.exceptions import NoDatasourceException
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
 from preql.constants import logger
-
+from preql.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_SELECT_NODE]"
-
-
-def padding(x: int):
-    return "\t" * x
 
 
 def gen_select_node_from_table(

@@ -145,7 +145,9 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "CaseWhen"):
-        return f"""WHEN {arg.comparison} THEN {self.to_string(arg.expr)}"""
+        return (
+            f"""WHEN {self.to_string(arg.comparison)} THEN {self.to_string(arg.expr)}"""
+        )
 
     @to_string.register
     def _(self, arg: "CaseElse"):
