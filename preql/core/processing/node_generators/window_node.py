@@ -16,12 +16,9 @@ from preql.core.processing.nodes import (
 )
 from preql.core.enums import JoinType
 from preql.constants import logger
+from preql.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
-
-
-def padding(x: int):
-    return "\t" * x
 
 
 def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:

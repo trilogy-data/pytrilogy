@@ -35,6 +35,7 @@ from preql.core.models import (
     RawColumnExpr,
     ListWrapper,
     ShowStatement,
+    RowsetItem,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -257,6 +258,8 @@ class BaseDialect:
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
+                rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
+            elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [

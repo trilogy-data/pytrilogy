@@ -156,12 +156,15 @@ class Executor(object):
         generatable = [
             x for x in parsed if isinstance(x, (Select, Persist, ShowStatement))
         ]
-        sql = self.generator.generate_queries(
-            self.environment, generatable, hooks=self.hooks
-        )
-        for x in sql:
+        sql = []
+        while generatable:
+            t = generatable.pop(0)
+            x = self.generator.generate_queries(
+                self.environment, [t], hooks=self.hooks
+            )[0]
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
+            sql.append(x)
         return sql
 
     def execute_raw_sql(self, command: str) -> CursorResult:

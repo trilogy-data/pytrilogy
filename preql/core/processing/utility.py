@@ -25,6 +25,10 @@ class PathInfo(TypedDict):
     datasource: Datasource
 
 
+def padding(x: int) -> str:
+    return "\t" * x
+
+
 def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:
     """Build joins and ensure any required CTEs are also created/tracked"""
     out = []

@@ -26,6 +26,7 @@ from preql.core.processing.node_generators import (
     gen_unnest_node,
     gen_merge_node,
     gen_group_to_node,
+    gen_rowset_node,
 )
 
 from enum import Enum
@@ -54,6 +55,9 @@ def get_priority_concept(
             if c.derivation == PurposeLineage.CONSTANT
             and c.granularity == Granularity.SINGLE_ROW
         ]
+        +
+        # then rowsets to remove them from scope, as they cannot get partials
+        [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
         +
         # then aggregates to remove them from scope, as they cannot get partials
         [
@@ -166,6 +170,10 @@ def generate_node(
 
     if concept.derivation == PurposeLineage.WINDOW:
         return gen_window_node(
+            concept, local_optional, environment, g, depth, source_concepts
+        )
+    elif concept.derivation == PurposeLineage.ROWSET:
+        return gen_rowset_node(
             concept, local_optional, environment, g, depth, source_concepts
         )
     elif concept.derivation == PurposeLineage.FILTER:
@@ -325,6 +333,7 @@ def search_concepts(
                     PurposeLineage.WINDOW,
                     PurposeLineage.BASIC,
                     PurposeLineage.UNNEST,
+                    PurposeLineage.ROWSET,
                 ]:
                     skip.add(priority_concept.address)
                 break
@@ -415,7 +424,7 @@ def search_concepts(
             )
             return partial_search
     logger.error(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {missing}"
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {all_mandatory - found}"
     )
     return None
 

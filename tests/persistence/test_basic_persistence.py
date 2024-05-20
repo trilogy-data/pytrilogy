@@ -8,9 +8,8 @@ from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
 from preql.parser import parse
 from preql.core.processing.nodes.select_node_v2 import SelectNode
-from preql.core.processing.node_generators.static_select_node import (
-    gen_static_select_node,
-    source_loop,
+from preql.core.processing.node_generators import (
+    gen_select_node,
 )
 from preql.core.env_processor import (
     generate_graph,
@@ -84,20 +83,13 @@ def test_derivations():
         )
         assert len(path) == 2, path
 
-        # GraphHook().query_graph_built(g)
-        # test that our known loop returns the value
-        validate = source_loop(
-            test_concept, env.datasources["bool_is_upper_name"], g, fail=True
-        )
-        assert validate is True
-
         # test that the full function returns the value
-        static = gen_static_select_node(
-            [test_concept], env, g, depth=0, fail_on_no_datasource=True
+        static = gen_select_node(
+            concept=test_concept, local_optional=[], environment=env, g=g, depth=0
         )
         assert static
 
-        # test that the renderd SQL didn't need to use a cASE
+        # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]
 
         assert test_concept.purpose == Purpose.KEY

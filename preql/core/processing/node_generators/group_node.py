@@ -8,12 +8,9 @@ from preql.core.processing.node_generators.common import (
 
 from preql.core.enums import JoinType
 from preql.constants import logger
+from preql.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
-
-
-def padding(x: int):
-    return "\t" * x
 
 
 def gen_group_node(

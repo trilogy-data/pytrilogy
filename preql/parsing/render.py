@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from jinja2 import Template
 
 from preql.constants import DEFAULT_NAMESPACE, MagicConstants
-from preql.core.enums import Purpose, ConceptSource, DatePart
+from preql.core.enums import Purpose, ConceptSource, DatePart, FunctionType
 from preql.core.models import (
     DataType,
     Address,
@@ -20,6 +20,7 @@ from preql.core.models import (
     Comparison,
     Environment,
     ConceptDeclaration,
+    ConceptDerivation,
     Datasource,
     WindowItem,
     FilterItem,
@@ -29,8 +30,11 @@ from preql.core.models import (
     Import,
     Parenthetical,
     AggregateWrapper,
+    Persist,
+    ListWrapper,
+    RowsetDerivation,
 )
-
+from preql.core.enums import Modifier
 
 from collections import defaultdict
 
@@ -136,8 +140,14 @@ class Renderer:
         return f"""query {arg.text}"""
 
     @to_string.register
+    def _(self, arg: RowsetDerivation):
+        return f"""rowset {arg.name} <- {self.to_string(arg.select)}"""
+
+    @to_string.register
     def _(self, arg: "CaseWhen"):
-        return f"""WHEN {arg.comparison} THEN {self.to_string(arg.expr)}"""
+        return (
+            f"""WHEN {self.to_string(arg.comparison)} THEN {self.to_string(arg.expr)}"""
+        )
 
     @to_string.register
     def _(self, arg: "CaseElse"):
@@ -152,13 +162,12 @@ class Renderer:
         return arg.value
 
     @to_string.register
-    def _(self, arg: DatePart):
-        return arg.value
+    def _(self, arg: ListWrapper):
+        return "[" + ", ".join([self.to_string(x) for x in arg]) + "]"
 
     @to_string.register
-    def _(self, arg: list):
-        base = ", ".join([self.to_string(x) for x in arg])
-        return f"[{base}]"
+    def _(self, arg: DatePart):
+        return arg.value
 
     @to_string.register
     def _(self, arg: "Address"):
@@ -197,6 +206,25 @@ class Renderer:
         return output
 
     @to_string.register
+    def _(self, arg: ConceptDerivation):
+        # this is identical rendering;
+        return self.to_string(ConceptDeclaration(concept=arg.concept))
+
+    @to_string.register
+    def _(self, arg: Persist):
+        return f"PERSIST {arg.identifier} INTO {arg.address.location} FROM {self.to_string(arg.select)}"
+
+    @to_string.register
+    def _(self, arg: SelectItem):
+        prefixes = []
+        if Modifier.HIDDEN in arg.modifiers:
+            prefixes.append("--")
+        if Modifier.PARTIAL in arg.modifiers:
+            prefixes.append("~")
+        final = "".join(prefixes)
+        return f"{final}{self.to_string(arg.content)}"
+
+    @to_string.register
     def _(self, arg: Select):
         return QUERY_TEMPLATE.render(
             select_columns=[self.to_string(c) for c in arg.selection],
@@ -220,10 +248,6 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Comparison"):
         return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
-
-    @to_string.register
-    def _(self, arg: "SelectItem"):
-        return self.to_string(arg.content)
 
     @to_string.register
     def _(self, arg: "WindowItem"):
@@ -378,11 +402,19 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Function"):
         inputs = ",".join(self.to_string(c) for c in arg.arguments)
+        if arg.operator == FunctionType.CONSTANT:
+            return f"{inputs}"
         return f"{arg.operator.value}({inputs})"
 
     @to_string.register
     def _(self, arg: "OrderItem"):
         return f"{self.to_string(arg.expr)} {arg.order.value}"
+
+    @to_string.register
+    def _(self, arg: AggregateWrapper):
+        if arg.by:
+            return f"{self.to_string(arg.function)} by {self.to_string(arg.by)}"
+        return f"{self.to_string(arg.function)}"
 
     @to_string.register
     def _(self, arg: int):
@@ -401,10 +433,9 @@ class Renderer:
         return f"{arg}"
 
     @to_string.register
-    def _(self, arg: AggregateWrapper):
-        if arg.by:
-            return f"{self.to_string(arg.function)} by {self.to_string(arg.by)}"
-        return f"{self.to_string(arg.function)}"
+    def _(self, arg: list):
+        base = ", ".join([self.to_string(x) for x in arg])
+        return f"[{base}]"
 
 
 def render_query(query: "Select") -> str:

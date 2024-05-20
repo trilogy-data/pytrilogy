@@ -243,4 +243,5 @@ class MergeNode(StrategyNode):
             grain=grain,
             partial_concepts=self.partial_concepts,
             force_group=force_group,
+            condition=self.conditions,
         )

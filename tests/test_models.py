@@ -1,5 +1,13 @@
 from preql.core.enums import BooleanOperator
-from preql.core.models import CTE, Grain, QueryDatasource, Conditional
+from preql.core.models import (
+    CTE,
+    Grain,
+    QueryDatasource,
+    Conditional,
+    Select,
+    Environment,
+    Address,
+)
 
 
 def test_cte_merge(test_environment, test_environment_graph):
@@ -86,3 +94,16 @@ def test_grain(test_environment):
     assert z.issubset(y)
 
     assert z2 == z, f"Property should be removed from grain ({z.set}) vs {z2.set}"
+
+
+def test_select(test_environment: Environment):
+    oid = test_environment.concepts["order_id"]
+    pid = test_environment.concepts["product_id"]
+    cid = test_environment.concepts["category_id"]
+    cname = test_environment.concepts["category_name"]
+    x = Select(selection=[oid, pid, cid, cname])
+    ds = x.to_datasource(
+        test_environment.namespace, "test", address=Address(location="test")
+    )
+
+    assert ds.grain == Grain(components=[oid, pid, cid])
