@@ -690,7 +690,7 @@ class Function(BaseModel):
 
 
 class ConceptTransform(BaseModel):
-    function: Function | FilterItem
+    function: Function | FilterItem | WindowItem
     output: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 

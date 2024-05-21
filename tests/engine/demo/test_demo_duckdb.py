@@ -275,3 +275,35 @@ def test_demo_const():
     const right_now <- current_datetime(); select right_now;"""
 
     executor.execute_text(test)[-1].fetchall()
+
+
+def test_demo_rowset():
+    executor = setup_engine(debug_flag=False)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """rowset survivors<- select 
+    passenger.last_name, 
+    passenger.name,
+    passenger.id, 
+    passenger.survived,
+    passenger.age,  
+where 
+    passenger.survived =1; 
+
+# now we can reference our rowset like any other concept
+select 
+    --survivors.passenger.id,
+    survivors.passenger.name,
+    survivors.passenger.last_name,
+    survivors.passenger.age,
+    --row_number survivors.passenger.id over survivors.passenger.name order by survivors.passenger.age desc -> eldest
+where 
+    eldest = 1
+order by survivors.passenger.name desc
+limit 5;"""
+    # raw = executor.generate_sql(test)
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 5
+    assert len(results[0]) == 3

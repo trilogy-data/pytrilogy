@@ -404,7 +404,7 @@ def concept_list_to_keys(concepts: List[Concept]) -> List[Concept]:
 
 
 def unwrap_transformation(
-    input: Union[Concept, Function, AggregateWrapper, int, str, float, bool]
+    input: Union[FilterItem, Concept, Function, AggregateWrapper, int, str, float, bool]
 ) -> Function:
     if isinstance(input, Function):
         return input
@@ -417,6 +417,10 @@ def unwrap_transformation(
             output_purpose=input.purpose,
             arguments=[input],
         )
+    elif isinstance(input, FilterItem):
+        return input
+    elif isinstance(input, WindowItem):
+        return input
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -1021,7 +1025,7 @@ class ParseToObjects(Transformer):
             )
         content = args[0]
         if isinstance(content, ConceptTransform):
-            return SelectItem(content=content)
+            return SelectItem(content=content, modifiers=modifiers)
         return SelectItem(
             content=self.environment.concepts.__getitem__(content, meta.line),
             modifiers=modifiers,
