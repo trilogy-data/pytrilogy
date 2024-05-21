@@ -22,7 +22,7 @@ from preql.core.models import (
 )
 from preql import Environment
 from preql.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
-from preql.constants import VIRTUAL_CONCEPT_PREFIX
+from preql.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
 
 
 def test_basic_query(test_environment):
@@ -180,7 +180,9 @@ def test_render_rowset(test_environment: Environment):
             ]
         ),
     )
-    test = Renderer().to_string(RowsetDerivation(select=query, name="test"))
+    test = Renderer().to_string(
+        RowsetDerivation(select=query, name="test", namespace=DEFAULT_NAMESPACE)
+    )
 
     assert (
         test
