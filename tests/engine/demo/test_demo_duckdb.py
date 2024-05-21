@@ -278,7 +278,7 @@ def test_demo_const():
 
 
 def test_demo_rowset():
-    executor = setup_engine(debug_flag=False)
+    executor = setup_engine(debug_flag=True)
     env = Environment()
     setup_titanic(env)
     executor.environment = env

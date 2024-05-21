@@ -404,8 +404,8 @@ def concept_list_to_keys(concepts: List[Concept]) -> List[Concept]:
 
 
 def unwrap_transformation(
-    input: Union[FilterItem, Concept, Function, AggregateWrapper, int, str, float, bool]
-) -> Function:
+    input: Union[FilterItem, WindowItem, Concept, Function, AggregateWrapper, int, str, float, bool]
+) -> Function | FilterItem | WindowItem:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):

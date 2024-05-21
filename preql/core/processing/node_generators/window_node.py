@@ -17,6 +17,7 @@ from preql.core.processing.nodes import (
 from preql.core.enums import JoinType
 from preql.constants import logger
 from preql.core.processing.utility import padding
+from preql.core.processing.node_generators.common import concept_to_relevant_joins
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
@@ -82,7 +83,7 @@ def gen_window_node(
             NodeJoin(
                 left_node=enrich_node,
                 right_node=window_node,
-                concepts=parent_concepts,
+                concepts=concept_to_relevant_joins(parent_concepts),
                 filter_to_mutual=False,
                 join_type=JoinType.LEFT_OUTER,
             )
