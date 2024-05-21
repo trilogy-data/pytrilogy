@@ -56,9 +56,6 @@ def get_priority_concept(
             and c.granularity == Granularity.SINGLE_ROW
         ]
         +
-        # then rowsets to remove them from scope, as they cannot get partials
-        [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
-        +
         # then aggregates to remove them from scope, as they cannot get partials
         [
             c
@@ -87,6 +84,9 @@ def get_priority_concept(
             if c.derivation == PurposeLineage.UNNEST
             and not c.granularity == Granularity.SINGLE_ROW
         ]
+        +
+        # then rowsets to remove them from scope, as they cannot get partials
+        [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
         # we should be home-free here
         + [
             c
@@ -172,10 +172,7 @@ def generate_node(
         return gen_window_node(
             concept, local_optional, environment, g, depth, source_concepts
         )
-    elif concept.derivation == PurposeLineage.ROWSET:
-        return gen_rowset_node(
-            concept, local_optional, environment, g, depth, source_concepts
-        )
+
     elif concept.derivation == PurposeLineage.FILTER:
         return gen_filter_node(
             concept, local_optional, environment, g, depth, source_concepts
@@ -199,6 +196,10 @@ def generate_node(
         )
         return gen_group_node(
             concept, agg_optional, environment, g, depth, source_concepts
+        )
+    elif concept.derivation == PurposeLineage.ROWSET:
+        return gen_rowset_node(
+            concept, local_optional, environment, g, depth, source_concepts
         )
     elif concept.derivation == PurposeLineage.CONSTANT:
         logger.info(

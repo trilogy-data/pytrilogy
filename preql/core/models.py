@@ -2287,6 +2287,7 @@ class ConceptDerivation(BaseModel):
 class RowsetDerivation(BaseModel):
     name: str
     select: Select
+    namespace: str
 
     @property
     def derived_concepts(self) -> List[Concept]:
@@ -2303,7 +2304,7 @@ class RowsetDerivation(BaseModel):
                 metadata=orig_concept.metadata,
                 namespace=(
                     f"{self.name}.{orig_concept.namespace}"
-                    if orig_concept.namespace != DEFAULT_NAMESPACE
+                    if orig_concept.namespace != self.namespace
                     else self.name
                 ),
             )
@@ -2316,7 +2317,9 @@ class RowsetDerivation(BaseModel):
 
     def with_namespace(self, namespace: str) -> "RowsetDerivation":
         return RowsetDerivation(
-            name=self.name, select=self.select.with_namespace(namespace)
+            name=self.name,
+            select=self.select.with_namespace(namespace),
+            namespace=namespace,
         )
 
 
