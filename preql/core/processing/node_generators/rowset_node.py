@@ -5,6 +5,7 @@ from typing import List
 from preql.core.enums import JoinType
 from preql.constants import logger
 from preql.core.processing.utility import padding
+from preql.core.processing.node_generators.common import concept_to_relevant_joins
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
@@ -80,7 +81,7 @@ def gen_rowset_node(
             NodeJoin(
                 left_node=enrich_node,
                 right_node=node,
-                concepts=additional_relevant,
+                concepts=concept_to_relevant_joins(additional_relevant),
                 filter_to_mutual=False,
                 join_type=JoinType.LEFT_OUTER,
             )

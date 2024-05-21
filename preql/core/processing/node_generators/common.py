@@ -27,3 +27,14 @@ def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Conc
     base = [concept.lineage.content]
     base += concept.lineage.where.concept_arguments
     return concept.lineage.content, unique(base, "address")
+
+
+def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
+    addresses = [x.address for x in concepts]
+    sub_props = [
+        x.address
+        for x in concepts
+        if x.keys and all([key.address in addresses for key in x.keys])
+    ]
+    final = [c for c in concepts if c.address not in sub_props]
+    return final

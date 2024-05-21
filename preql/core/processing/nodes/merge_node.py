@@ -91,6 +91,10 @@ class MergeNode(StrategyNode):
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
         self.node_joins = node_joins
+        if self.node_joins:
+            test = self.node_joins[0]
+            if len(test.concepts) == 3:
+                raise SyntaxError("FL")
 
     def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
         joins = []
@@ -214,7 +218,7 @@ class MergeNode(StrategyNode):
                 joins = get_node_joins(dataset_list, grain.components)
         else:
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins"
+                f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(self.node_joins)}"
             )
             joins = self.translate_node_joins(self.node_joins)
         for join in joins:

@@ -690,7 +690,7 @@ class Function(BaseModel):
 
 
 class ConceptTransform(BaseModel):
-    function: Function | FilterItem
+    function: Function | FilterItem | WindowItem
     output: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
@@ -2291,7 +2291,8 @@ class RowsetDerivation(BaseModel):
 
     @property
     def derived_concepts(self) -> List[Concept]:
-        output = []
+        output: list[Concept] = []
+        orig: dict[str, Concept] = {}
         for orig_concept in self.select.output_components:
             new_concept = Concept(
                 name=orig_concept.name,
@@ -2307,8 +2308,21 @@ class RowsetDerivation(BaseModel):
                     if orig_concept.namespace != self.namespace
                     else self.name
                 ),
+                keys=orig_concept.keys,
             )
+            orig[orig_concept.address] = new_concept
             output.append(new_concept)
+        # remap everything to the properties of the rowset
+        for x in output:
+            if x.keys:
+                x.keys = [orig[k.address] if k.address in orig else k for k in x.keys]
+        for x in output:
+            x.grain = Grain(
+                components=[
+                    orig[c.address] if c.address in orig else c
+                    for c in x.grain.components_copy
+                ]
+            )
         return output
 
     @property

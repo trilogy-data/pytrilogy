@@ -9,6 +9,7 @@ from preql.core.processing.node_generators.common import (
 from preql.core.enums import JoinType
 from preql.constants import logger
 from preql.core.processing.utility import padding
+from preql.core.processing.node_generators.common import concept_to_relevant_joins
 
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
@@ -92,7 +93,7 @@ def gen_group_node(
             NodeJoin(
                 left_node=enrich_node,
                 right_node=group_node,
-                concepts=group_key_parents,
+                concepts=concept_to_relevant_joins(group_key_parents),
                 filter_to_mutual=False,
                 join_type=JoinType.LEFT_OUTER,
             )
