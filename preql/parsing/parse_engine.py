@@ -13,7 +13,7 @@ from lark.tree import Meta
 from pydantic import ValidationError
 
 from preql.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
-from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE
+from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE, VIRTUAL_CONCEPT_PREFIX
 from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -466,7 +466,7 @@ class ParseToObjects(Transformer):
             if isinstance(arg, Function):
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                    name=f"_anon_function_input_{id_hash}",
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                     datatype=arg.output_datatype,
                     purpose=arg.output_purpose,
                     lineage=arg,
@@ -482,7 +482,7 @@ class ParseToObjects(Transformer):
             elif isinstance(arg, FilterItem):
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                    name=f"_anon_function_input_{id_hash}",
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                     datatype=arg.content.datatype,
                     purpose=arg.content.purpose,
                     lineage=arg,
@@ -497,7 +497,7 @@ class ParseToObjects(Transformer):
             elif isinstance(arg, WindowItem):
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                    name=f"_anon_function_input_{id_hash}",
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                     datatype=arg.content.datatype,
                     purpose=arg.content.purpose,
                     lineage=arg,
@@ -514,7 +514,7 @@ class ParseToObjects(Transformer):
                 aggfunction = arg.function
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                    name=f"_anon_function_input_{id_hash}",
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                     datatype=aggfunction.output_datatype,
                     purpose=aggfunction.output_purpose,
                     lineage=aggfunction,
@@ -538,7 +538,7 @@ class ParseToObjects(Transformer):
                 )
                 id_hash = string_to_hash(str(arg))
                 concept = Concept(
-                    name=f"_anon_function_input_{id_hash}",
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                     datatype=const_function.output_datatype,
                     purpose=Purpose.CONSTANT,
                     lineage=const_function,
@@ -871,13 +871,17 @@ class ParseToObjects(Transformer):
     def rowset_derivation(self, meta: Meta, args) -> RowsetDerivation:
         name = args[0]
         select: Select = args[1]
-        output = RowsetDerivation(name=name, select=select)
+        output = RowsetDerivation(
+            name=name,
+            select=select,
+            namespace=self.environment.namespace or DEFAULT_NAMESPACE,
+        )
         for new_concept in output.derived_concepts:
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
             self.environment.add_concept(new_concept)
 
-        return RowsetDerivation(name=name, select=select)
+        return output
 
     @v_args(meta=True)
     def constant_derivation(self, meta: Meta, args) -> Concept:

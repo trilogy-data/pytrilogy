@@ -37,3 +37,24 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
     assert results[1] == (2, 2, 1)
     assert results[2] == (3, None, None)
     assert results[3] == (4, 4, 2)
+
+
+def test_rowset_with_aggregation(
+    test_environment: Environment, test_executor: Executor
+):
+    test_select = """
+
+    rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
+    SELECT
+        even_orders.store_id,
+        count(even_orders.order_id) -> even_order_count
+    order by 
+        even_order_count desc, 
+        even_orders.store_id asc
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    # assert len(results) == 3
+    assert results[0] == (1, 1)
+    assert results[1] == (2, 1)

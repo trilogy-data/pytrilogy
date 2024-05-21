@@ -2,7 +2,7 @@ from functools import singledispatchmethod
 
 from jinja2 import Template
 
-from preql.constants import DEFAULT_NAMESPACE, MagicConstants
+from preql.constants import DEFAULT_NAMESPACE, MagicConstants, VIRTUAL_CONCEPT_PREFIX
 from preql.core.enums import Purpose, ConceptSource, DatePart, FunctionType
 from preql.core.models import (
     DataType,
@@ -391,6 +391,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "Concept"):
+        if arg.name.startswith(VIRTUAL_CONCEPT_PREFIX):
+            return self.to_string(arg.lineage)
         if arg.namespace == DEFAULT_NAMESPACE:
             return arg.name
         return arg.address

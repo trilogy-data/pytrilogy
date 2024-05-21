@@ -6,6 +6,7 @@ logger = getLogger("preql")
 
 DEFAULT_NAMESPACE = "local"
 
+VIRTUAL_CONCEPT_PREFIX = "_virtual"
 
 ENV_CACHE_NAME = ".preql_cache.json"
 

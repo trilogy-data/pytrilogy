@@ -18,9 +18,11 @@ from preql.core.models import (
     RowsetDerivation,
     CaseElse,
     CaseWhen,
+    Concept,
 )
 from preql import Environment
 from preql.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
+from preql.constants import VIRTUAL_CONCEPT_PREFIX
 
 
 def test_basic_query(test_environment):
@@ -212,3 +214,37 @@ def test_render_case(test_environment: Environment):
 
     test = Renderer().to_string(case_when)
     assert test == "WHEN order_id = 123 THEN order_id"
+
+
+def test_render_anon(test_environment: Environment):
+    test = Renderer().to_string(
+        Concept(
+            name="materialized",
+            purpose=Purpose.CONSTANT,
+            datatype=DataType.INTEGER,
+            lineage=Function(
+                arguments=[[1, 2, 3, 4]],
+                operator=FunctionType.CONSTANT,
+                output_purpose=Purpose.CONSTANT,
+                output_datatype=DataType.ARRAY,
+            ),
+        )
+    )
+
+    assert test == "materialized"
+
+    test = Renderer().to_string(
+        Concept(
+            name=f"{VIRTUAL_CONCEPT_PREFIX}_test",
+            purpose=Purpose.CONSTANT,
+            datatype=DataType.INTEGER,
+            lineage=Function(
+                arguments=[[1, 2, 3, 4]],
+                operator=FunctionType.CONSTANT,
+                output_purpose=Purpose.CONSTANT,
+                output_datatype=DataType.ARRAY,
+            ),
+        )
+    )
+
+    assert test == "[1, 2, 3, 4]"
