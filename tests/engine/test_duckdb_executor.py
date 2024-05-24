@@ -135,7 +135,7 @@ def test_rollback(duckdb_engine: Executor, expected_results):
 
     try:
         _ = duckdb_engine.execute_raw_sql("select abc")
-    except Exception as e:
+    except Exception:
         pass
 
     results = duckdb_engine.execute_raw_sql("select 1")

@@ -135,6 +135,12 @@ class ListType(BaseModel):
     def value(self):
         return self.data_type.value
 
+    @property
+    def value_data_type(self) -> DataType | StructType | MapType | ListType:
+        if isinstance(self.type, Concept):
+            return self.type.datatype
+        return self.type
+
 
 class MapType(BaseModel):
     key_type: DataType
@@ -207,7 +213,7 @@ def empty_grain() -> Grain:
 
 class Concept(BaseModel):
     name: str
-    datatype: DataType | ListType | StructType
+    datatype: DataType | ListType | StructType | MapType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
@@ -561,7 +567,7 @@ class Statement(BaseModel):
 class Function(BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType | ListType | StructType
+    output_datatype: DataType | ListType | StructType | MapType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
     arguments: Sequence[
@@ -601,7 +607,7 @@ class Function(BaseModel):
         target_arg_count = values["arg_count"]
         operator_name = values["operator"].name
         # surface right error
-        if not "valid_inputs" in values:
+        if "valid_inputs" not in values:
             return v
         valid_inputs = values["valid_inputs"]
         if not arg_count <= target_arg_count:
@@ -2508,7 +2514,7 @@ Function.model_rebuild()
 Grain.model_rebuild()
 
 
-def arg_to_datatype(arg) -> DataType | ListType | StructType:
+def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
     if isinstance(arg, Function):
         return arg.output_datatype
     elif isinstance(arg, Concept):

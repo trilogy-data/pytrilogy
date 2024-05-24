@@ -149,7 +149,7 @@ def test_render_concept_declaration(test_environment: Environment):
 
 
 def test_render_list_wrapper(test_environment: Environment):
-    test = Renderer().to_string(ListWrapper([1, 2, 3, 4]))
+    test = Renderer().to_string(ListWrapper([1, 2, 3, 4], type=DataType.INTEGER))
 
     assert test == "[1, 2, 3, 4]"
 
