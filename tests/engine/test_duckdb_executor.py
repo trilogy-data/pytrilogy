@@ -5,6 +5,7 @@ from preql.executor import Executor
 from preql.core.models import ShowStatement, Concept
 from preql.core.enums import Purpose, Granularity
 
+
 def test_basic_query(duckdb_engine: Executor, expected_results):
     graph = generate_graph(duckdb_engine.environment)
 
@@ -133,11 +134,11 @@ order by item desc;
 def test_rollback(duckdb_engine: Executor, expected_results):
 
     try:
-        _ = duckdb_engine.execute_raw_sql('select abc')
+        _ = duckdb_engine.execute_raw_sql("select abc")
     except Exception as e:
         pass
 
-    results = duckdb_engine.execute_raw_sql('select 1')
+    results = duckdb_engine.execute_raw_sql("select 1")
     assert results.fetchall()[0] == (1,)
 
 

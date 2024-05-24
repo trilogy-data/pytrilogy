@@ -164,6 +164,10 @@ class StructType(BaseModel):
 class ListWrapper(Generic[VT], UserList):
     """Used to distinguish parsed list objects from other lists"""
 
+    def __init__(self, *args, type: DataType, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.type = type
+
     @classmethod
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
@@ -177,7 +181,7 @@ class ListWrapper(Generic[VT], UserList):
 
     @classmethod
     def validate(cls, v):
-        return cls(v)
+        return cls(v, type=arg_to_datatype(v[0]))
 
 
 class Metadata(BaseModel):
@@ -596,6 +600,9 @@ class Function(BaseModel):
         arg_count = len(v)
         target_arg_count = values["arg_count"]
         operator_name = values["operator"].name
+        # surface right error
+        if not "valid_inputs" in values:
+            return v
         valid_inputs = values["valid_inputs"]
         if not arg_count <= target_arg_count:
             if target_arg_count != InfiniteFunctionArgs:
@@ -2515,7 +2522,7 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType:
     elif isinstance(arg, float):
         return DataType.FLOAT
     elif isinstance(arg, ListWrapper):
-        return DataType.ARRAY
+        return ListType(type=arg.type)
     elif isinstance(arg, AggregateWrapper):
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):

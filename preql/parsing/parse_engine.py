@@ -404,7 +404,17 @@ def concept_list_to_keys(concepts: List[Concept]) -> List[Concept]:
 
 
 def unwrap_transformation(
-    input: Union[FilterItem, WindowItem, Concept, Function, AggregateWrapper, int, str, float, bool]
+    input: Union[
+        FilterItem,
+        WindowItem,
+        Concept,
+        Function,
+        AggregateWrapper,
+        int,
+        str,
+        float,
+        bool,
+    ]
 ) -> Function | FilterItem | WindowItem:
     if isinstance(input, Function):
         return input
@@ -1208,7 +1218,9 @@ class ParseToObjects(Transformer):
         return float(args[0])
 
     def array_lit(self, args):
-        return ListWrapper(args)
+        types = [arg_to_datatype(arg) for arg in args]
+        assert len(set(types)) == 1
+        return ListWrapper(args, type=types[0])
 
     def literal(self, args):
         return args[0]

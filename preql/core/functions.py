@@ -88,6 +88,8 @@ def function_args_to_output_purpose(args) -> Purpose:
 
 def Unnest(args: list[Concept]) -> Function:
     output = arg_to_datatype(args[0])
+    if isinstance(output, (ListType)):
+        output = output.type
     return Function(
         operator=FunctionType.UNNEST,
         arguments=args,
