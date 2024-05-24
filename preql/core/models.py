@@ -135,6 +135,12 @@ class ListType(BaseModel):
     def value(self):
         return self.data_type.value
 
+    @property
+    def value_data_type(self) -> DataType | StructType | MapType | ListType:
+        if isinstance(self.type, Concept):
+            return self.type.datatype
+        return self.type
+
 
 class MapType(BaseModel):
     key_type: DataType
@@ -164,6 +170,10 @@ class StructType(BaseModel):
 class ListWrapper(Generic[VT], UserList):
     """Used to distinguish parsed list objects from other lists"""
 
+    def __init__(self, *args, type: DataType, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.type = type
+
     @classmethod
     def __get_pydantic_core_schema__(
         cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
@@ -177,7 +187,7 @@ class ListWrapper(Generic[VT], UserList):
 
     @classmethod
     def validate(cls, v):
-        return cls(v)
+        return cls(v, type=arg_to_datatype(v[0]))
 
 
 class Metadata(BaseModel):
@@ -203,7 +213,7 @@ def empty_grain() -> Grain:
 
 class Concept(BaseModel):
     name: str
-    datatype: DataType | ListType | StructType
+    datatype: DataType | ListType | StructType | MapType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
@@ -557,7 +567,7 @@ class Statement(BaseModel):
 class Function(BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType | ListType | StructType
+    output_datatype: DataType | ListType | StructType | MapType
     output_purpose: Purpose
     valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
     arguments: Sequence[
@@ -596,6 +606,9 @@ class Function(BaseModel):
         arg_count = len(v)
         target_arg_count = values["arg_count"]
         operator_name = values["operator"].name
+        # surface right error
+        if "valid_inputs" not in values:
+            return v
         valid_inputs = values["valid_inputs"]
         if not arg_count <= target_arg_count:
             if target_arg_count != InfiniteFunctionArgs:
@@ -2501,7 +2514,7 @@ Function.model_rebuild()
 Grain.model_rebuild()
 
 
-def arg_to_datatype(arg) -> DataType | ListType | StructType:
+def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
     if isinstance(arg, Function):
         return arg.output_datatype
     elif isinstance(arg, Concept):
@@ -2515,7 +2528,7 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType:
     elif isinstance(arg, float):
         return DataType.FLOAT
     elif isinstance(arg, ListWrapper):
-        return DataType.ARRAY
+        return ListType(type=arg.type)
     elif isinstance(arg, AggregateWrapper):
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):

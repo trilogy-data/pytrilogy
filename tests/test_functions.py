@@ -2,7 +2,7 @@
 from pytest import raises
 
 from preql.core.exceptions import InvalidSyntaxException
-from preql.core.models import DataType, Select
+from preql.core.models import DataType, Select, ListType
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.dialect.bigquery import BigqueryDialect
@@ -240,3 +240,16 @@ def test_constants(test_environment):
     select: Select = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
+
+
+def test_unnest(test_environment):
+    declarations = """
+   auto int_list <- [1,2,3,4];
+    auto x <- unnest(int_list);
+    
+    select
+        x
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    assert env.concepts["int_list"].datatype == ListType(type=DataType.INTEGER)
+    assert env.concepts["x"].datatype == DataType.INTEGER

@@ -8,6 +8,7 @@ from preql.core.models import (
     DataType,
     ListType,
     StructType,
+    MapType,
 )
 from preql.core.enums import FunctionType, Purpose, Granularity, DatePart
 from preql.core.exceptions import InvalidSyntaxException
@@ -20,7 +21,7 @@ def create_function_derived_concept(
     namespace: str,
     operator: FunctionType,
     arguments: list[Concept],
-    output_type: Optional[DataType | ListType | StructType] = None,
+    output_type: Optional[DataType | ListType | StructType | MapType] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
     purpose = (
@@ -88,6 +89,8 @@ def function_args_to_output_purpose(args) -> Purpose:
 
 def Unnest(args: list[Concept]) -> Function:
     output = arg_to_datatype(args[0])
+    if isinstance(output, (ListType)):
+        output = output.value_data_type
     return Function(
         operator=FunctionType.UNNEST,
         arguments=args,

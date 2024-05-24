@@ -129,3 +129,28 @@ order by item desc;
     assert (
         'local_fact_items."item" as "item"' in results[0]["__preql_internal_query_text"]
     )
+
+
+def test_rollback(duckdb_engine: Executor, expected_results):
+
+    try:
+        _ = duckdb_engine.execute_raw_sql("select abc")
+    except Exception:
+        pass
+
+    results = duckdb_engine.execute_raw_sql("select 1")
+    assert results.fetchall()[0] == (1,)
+
+
+def test_basic(duckdb_engine: Executor):
+    test = """
+  auto today <- current_datetime();
+  
+  select 
+    date_add(today, day, 1)->tomorrow,
+    date_diff(today, today, day)->zero,
+    date_trunc(today, year) -> current_year 
+  ;
+    """
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results[0]) == 3
