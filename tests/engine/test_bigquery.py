@@ -1,8 +1,6 @@
 from preql import Dialects, Environment
-import pytest
 
 
-@pytest.mark.skip(reason="set up BQ in CI")
 def test_readme():
 
     environment = Environment()
