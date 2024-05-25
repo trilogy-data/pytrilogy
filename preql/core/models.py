@@ -2563,4 +2563,4 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
             return DataType.INTEGER
         return arg_to_datatype(arg.content)
     else:
-        raise ValueError(f"Cannot parse arg type for {arg} of type {type(arg)}")
+        raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

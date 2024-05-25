@@ -4,18 +4,15 @@ pypreql is an experimental implementation of the [PreQL/Trilogy](https://github.
 
 PreQL/Trilogy looks like SQL, but doesn't require table references, group by, or joins directly in queries, shifting some parts of a standard SQL query into a reusable, lightweight semantic binding layer. When you query, it puts the focus on what you want to get, not how you want to get it - you've already done that work once in your data model.
 
-It's perfect for a modern data company that just can't quit SQL, but wants less pain.
-
-Provides a rich extension ecosystem to integrate with other tools like DBT.
-
-The PreQL language spec itself will be linked from the above repo. 
+It's perfect for a modern data company that just can't quit SQL, but wants less pain, with a rich extension ecosystem to integrate with other tools like DBT.
 
 PypreQL can be run locally to parse and execute preql [.preql] models.  
 
-You can try out an interactive demo [here](https://preqldata.dev/demo).
+The PreQL language spec itself will be linked from the above repo. 
 
+You can read more about the project [here](https://preqldata.dev/) and try out an interactive demo on the page an interactive demo [here](https://preqldata.dev/demo). 
 
-PreQL looks like this:
+PreQL looks like like SQL:
 ```sql
 SELECT
     name,
