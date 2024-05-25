@@ -107,6 +107,9 @@ and second the dialect to run.
 > [!TIP]
 > This will only work for basic backends, such as Bigquery with local default credentials; if the backend requires more configuration, the CLI will require additional config arguments.
 
+The CLI can also be used for formatting. PreQL has a default formatting style that should always be adhered to.
+
+`trilogy fmt <path to preql file>`
 
 ## Developing
 
