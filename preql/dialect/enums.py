@@ -16,6 +16,7 @@ class Dialects(Enum):
     PRESTO = "presto"
     TRINO = "trino"
     POSTGRES = "postgres"
+    SNOWFLAKE = "snowflake"
 
     @classmethod
     def _missing_(cls, value):
@@ -43,6 +44,13 @@ class Dialects(Enum):
             from sqlalchemy import create_engine
 
             return create_engine(r"duckdb:///:memory:", future=True)
+        elif self == Dialects.SNOWFLAKE:
+            from sqlalchemy import create_engine
+            from preql.dialect.config import SnowflakeConfig
+
+            if not isinstance(conf, SnowflakeConfig):
+                raise TypeError("Invalid dialect configuration for type postgres")
+            return create_engine(conf.connection_string(), future=True)
         elif self == Dialects.POSTGRES:
             logger.warn(
                 "WARN: Using experimental postgres dialect. Most functionality will not work."
