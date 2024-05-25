@@ -3,9 +3,7 @@ from typing import List
 
 from preql.core.models import Concept, WindowItem, Environment
 from preql.utility import unique
-from preql.core.processing.nodes import (
-    WindowNode,
-)
+from preql.core.processing.nodes import WindowNode, StrategyNode
 from preql.core.processing.nodes import MergeNode
 
 from preql.core.processing.nodes import (
@@ -54,7 +52,7 @@ def gen_window_node(
             )
         ],
     )
-    parents = [window_node]
+    parents: list[StrategyNode] = [window_node]
     if local_optional and not all(
         [
             x.address in [y.address for y in window_node.output_concepts]
