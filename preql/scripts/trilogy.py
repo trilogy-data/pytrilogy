@@ -18,12 +18,15 @@ def print_tabulate(q, tabulate):
 
 
 @command()
-@argument("input", type=Path(exists=True))
+@argument("input", type=Path())
 @argument("dialect", type=str)
 @option("--debug", type=bool, default=False)
 def main(input, dialect: str, debug: bool):
-    with open(input, "r") as f:
-        script = f.read()
+    if PathlibPath(input).exists():
+        with open(input, "r") as f:
+            script = f.read()
+    else:
+        script = input
     edialect = Dialects(dialect)
     inputp = PathlibPath(input)
     directory = inputp.parent

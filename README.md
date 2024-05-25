@@ -29,12 +29,12 @@ LIMIT 10;
 
 ## More Examples
 
-Examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models). 
-This is a good place to start for a basic understanding of the language. 
+Examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models).
+This is a good place to start for more complex examples.
 
 ## Backends
 
-The current Preql implementation supports compiling to 3 backend SQL flavors:
+The current PreQLimplementation supports compiling to 3 backend SQL flavors:
 
 - Bigquery
 - SQL Server
@@ -105,5 +105,10 @@ Please open an issue first to discuss what you would like to change, and then cr
 
 ## Similar in space
 
-- singleorigin
-- malloy
+"Better SQL" has been a popular space. We believe Trilogy/PreQL takes a different approach then the following,
+but all are worth checking out:
+
+
+- [malloy](https://github.com/malloydata/malloy)
+- [preql](https://github.com/erezsh/Preql)
+- [PREQL](https://github.com/PRQL/prql)
