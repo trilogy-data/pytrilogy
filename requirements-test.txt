@@ -7,4 +7,4 @@ ruff
 black
 pandas
 types-tabulate
-bigquery-engine
+sqlalchemy-bigquery
