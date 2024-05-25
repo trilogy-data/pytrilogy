@@ -120,7 +120,7 @@ Please open an issue first to discuss what you would like to change, and then cr
 ## Similar in space
 
 "Better SQL" has been a popular space. We believe Trilogy/PreQL takes a different approach then the following,
-but all are worth checking out:
+but all are worth checking out. Please open PRs/comment for anything missed!
 
 
 - [malloy](https://github.com/malloydata/malloy)

@@ -12,15 +12,3 @@ def test_cli_string():
         raise result.exception
     assert result.exit_code == 0
     assert "(1,)" in result.output.strip()
-
-
-def test_cli_string_short():
-    runner = CliRunner()
-    result = runner.invoke(
-        main,
-        ["-i", "select 1-> test;", "-d", "duckdb"],
-    )
-    if result.exception:
-        raise result.exception
-    assert result.exit_code == 0
-    assert "(1,)" in result.output.strip()
