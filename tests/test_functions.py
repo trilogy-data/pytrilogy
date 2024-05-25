@@ -161,6 +161,8 @@ def test_string_functions(test_environment):
     property lower_name <- lower(category_name);
     property substring_name <- substring(category_name, 1, 3);
     property strpos_name <- strpos(category_name, 'a');
+    property like_name <- like(category_name, 'a%');
+    property like_alt <- category_name like 'a%';
 
     select
         test_name,

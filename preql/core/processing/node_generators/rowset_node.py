@@ -53,6 +53,16 @@ def gen_rowset_node(
     # we need a better API for refreshing a nodes QDS
     node.resolution_cache = node._resolve()
     if not local_optional:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} no enriched required for rowset node; exiting early"
+        )
+        return node
+    if all(
+        [x.address in [y.address for y in node.output_concepts] for x in local_optional]
+    ):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base rowset node; exiting early"
+        )
         return node
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

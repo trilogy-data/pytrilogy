@@ -260,13 +260,14 @@ grammar = r"""
     //string
     like: "like"i "(" expr "," _string_lit ")"
     ilike: "ilike"i "(" expr "," _string_lit ")"
+    alt_like: expr "like"i expr
     upper: "upper"i "(" expr ")"
     lower: "lower"i "(" expr ")"    
     fsplit: "split"i "(" expr "," _string_lit ")"
     fstrpos: "strpos"i "(" expr "," expr ")"
     fsubstring: "substring"i "(" expr "," expr "," expr ")"
     
-    _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring
+    _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring | alt_like
     
     // special aggregate
     fgroup: "group"i "(" expr ")" aggregate_over?
@@ -1175,7 +1176,10 @@ class ParseToObjects(Transformer):
         return Query(text=args[0][3:-3])
 
     def where(self, args):
-        return WhereClause(conditional=args[0])
+        root = args[0]
+        if not isinstance(root, (Comparison, Conditional, Parenthetical)):
+            root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
+        return WhereClause(conditional=root)
 
     @v_args(meta=True)
     def function_binding_list(self, meta: Meta, args) -> Concept:
@@ -1407,6 +1411,19 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def like(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return Function(
+            operator=FunctionType.LIKE,
+            arguments=args,
+            output_datatype=DataType.BOOL,
+            output_purpose=Purpose.PROPERTY,
+            valid_inputs={DataType.STRING},
+            arg_count=2,
+            # output_grain=Grain(components=args),
+        )
+
+    @v_args(meta=True)
+    def alt_like(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         return Function(
             operator=FunctionType.LIKE,

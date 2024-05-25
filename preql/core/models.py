@@ -444,7 +444,9 @@ class Grain(BaseModel):
     def component_validator(cls, v, info: ValidationInfo):
         values = info.data
         if not values.get("nested", False):
-            v2: List[Concept] = [safe_concept(c).with_default_grain() for c in v]
+            v2: List[Concept] = unique(
+                [safe_concept(c).with_default_grain() for c in v], "address"
+            )
         else:
             v2 = unique(v, "address")
         final = []
@@ -1331,6 +1333,18 @@ class QueryDatasource(BaseModel):
             if c.address not in [z.address for z in self.partial_concepts]
         ]
 
+    @field_validator("joins")
+    @classmethod
+    def validate_joins(cls, v):
+        for join in v:
+            if not isinstance(join, BaseJoin):
+                continue
+            if join.left_datasource.identifier == join.right_datasource.identifier:
+                raise SyntaxError(
+                    f"Cannot join a datasource to itself, joining {join.left_datasource}"
+                )
+        return v
+
     @field_validator("input_concepts")
     @classmethod
     def validate_inputs(cls, v):
@@ -1467,12 +1481,13 @@ class QueryDatasource(BaseModel):
         grain = "_".join(
             [str(c.address).replace(".", "_") for c in self.grain.components]
         )
+        # partial = "_".join([str(c.address).replace(".", "_") for c in self.partial_concepts])
         return (
             "_join_".join([d.name for d in self.datasources])
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
+            # + (f"_partial_{partial}" if partial else "")
         )
-        # return #str(abs(hash("from_"+"_with_".join([d.name for d in self.datasources]) + ( f"_at_grain_{grain}" if grain else "" ))))
 
     def get_alias(
         self, concept: Concept, use_raw_name: bool = False, force_alias: bool = False
@@ -1589,7 +1604,17 @@ class CTE(BaseModel):
             return self.source.datasources[0].safe_location
         # if we have multiple joined CTEs, pick the base
         # as the root
+        elif len(self.source.datasources) == 1 and len(self.parent_ctes) == 1:
+            return self.parent_ctes[0].name
         elif valid_joins and len(valid_joins) > 0:
+            candidates = [x.left_cte.name for x in valid_joins]
+            disallowed = [x.right_cte.name for x in valid_joins]
+            try:
+                return [y for y in candidates if y not in disallowed][0]
+            except IndexError:
+                raise SyntaxError(
+                    f"Invalid join configuration {candidates} {disallowed} with all parents {[x.base_name for x in self.parent_ctes]}"
+                )
             return valid_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name

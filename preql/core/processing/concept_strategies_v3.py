@@ -198,6 +198,9 @@ def generate_node(
             concept, agg_optional, environment, g, depth, source_concepts
         )
     elif concept.derivation == PurposeLineage.ROWSET:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating rowset node"
+        )
         return gen_rowset_node(
             concept, local_optional, environment, g, depth, source_concepts
         )

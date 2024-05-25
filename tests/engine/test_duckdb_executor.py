@@ -2,8 +2,9 @@ from datetime import datetime
 import networkx as nx
 from preql.core.env_processor import generate_graph
 from preql.executor import Executor
-from preql.core.models import ShowStatement, Concept
+from preql.core.models import ShowStatement, Concept, Grain
 from preql.core.enums import Purpose, Granularity
+from preql.parser import parse_text
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -114,8 +115,6 @@ select
 order by item desc;
     """
 
-    from preql.parser import parse_text
-
     _, parsed_0 = parse_text(test, duckdb_engine.environment)
 
     assert len(parsed_0) == 1
@@ -154,3 +153,20 @@ def test_basic(duckdb_engine: Executor):
     """
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results[0]) == 3
+
+
+def test_rowset(duckdb_engine: Executor):
+    test = """const x <- unnest([1,2,2,3]);
+const y <- 5;
+auto z <- rank x order by x desc;
+
+rowset my_rowset <- select x, z where z = 1;
+
+select my_rowset.x, my_rowset.z;"""
+    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+    z = duckdb_engine.environment.concepts["z"]
+    x = duckdb_engine.environment.concepts["x"]
+    assert z.grain == Grain(components=[x])
+    assert str(z) == "local.z<local.x>"
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1

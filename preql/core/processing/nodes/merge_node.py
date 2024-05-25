@@ -23,8 +23,9 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 def deduplicate_nodes(
     merged: dict[str, QueryDatasource], logging_prefix: str
-) -> tuple[bool, dict[str, QueryDatasource]]:
+) -> tuple[bool, dict[str, QueryDatasource], set[str]]:
     duplicates = False
+    removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
     for k, v in merged.items():
         unique_outputs = [
@@ -48,13 +49,14 @@ def deduplicate_nodes(
                     f"{logging_prefix}{LOGGER_PREFIX} extraneous parent node that is subset of another parent node {og.grain.issubset(subset_to.grain)} {og.grain.set} {subset_to.grain.set}"
                 )
                 merged = {k: v for k, v in merged.items() if k != k1}
+                removed.add(k1)
                 duplicates = True
                 found = True
                 break
         if found:
             break
 
-    return duplicates, merged
+    return duplicates, merged, removed
 
 
 class MergeNode(StrategyNode):
@@ -92,17 +94,23 @@ class MergeNode(StrategyNode):
         self.force_join_type = force_join_type
         self.node_joins = node_joins
         if self.node_joins:
-            test = self.node_joins[0]
-            if len(test.concepts) == 3:
-                raise SyntaxError("FL")
+            for join in self.node_joins:
+                if join.left_node.resolve().name == join.right_node.resolve().name:
+                    raise SyntaxError(
+                        f"Cannot join node {join.left_node.resolve().name} to itself"
+                    )
 
     def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
         joins = []
         for join in node_joins:
+            left = join.left_node.resolve()
+            right = join.right_node.resolve()
+            if left.full_name == right.full_name:
+                raise SyntaxError(f"Cannot join node {left.full_name} to itself")
             joins.append(
                 BaseJoin(
-                    left_datasource=join.left_node.resolve(),
-                    right_datasource=join.right_node.resolve(),
+                    left_datasource=left,
+                    right_datasource=right,
                     join_type=join.join_type,
                     concepts=join.concepts,
                 )
@@ -133,6 +141,7 @@ class MergeNode(StrategyNode):
     def _resolve(self) -> QueryDatasource:
         parent_sources = [p.resolve() for p in self.parents]
         merged: dict[str, QueryDatasource] = {}
+        final_joins = self.node_joins
         for source in parent_sources:
             if source.full_name in merged:
                 logger.info(
@@ -146,7 +155,15 @@ class MergeNode(StrategyNode):
         duplicates = True
         while duplicates:
             duplicates = False
-            duplicates, merged = deduplicate_nodes(merged, self.logging_prefix)
+            duplicates, merged, removed = deduplicate_nodes(merged, self.logging_prefix)
+            # filter out any removed joins
+            if final_joins:
+                final_joins = [
+                    j
+                    for j in final_joins
+                    if j.left_node.resolve().full_name not in removed
+                    and j.right_node.resolve().full_name not in removed
+                ]
 
         # early exit if we can just return the parent
         final_datasets: List[QueryDatasource] = list(merged.values())

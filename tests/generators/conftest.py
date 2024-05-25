@@ -89,6 +89,17 @@ def test_environment():
     product_id = Concept(
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
+    constant_one = Concept(
+        name="constant_one",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.CONSTANT,
+        lineage=Function(
+            arguments=[1],
+            output_datatype=DataType.ARRAY,
+            output_purpose=Purpose.CONSTANT,
+            operator=FunctionType.CONSTANT,
+        ),
+    )
 
     literal_array = Concept(
         name="literal_array",
@@ -235,6 +246,7 @@ def test_environment():
         env.add_datasource(item)
 
     for item in [
+        constant_one,
         category_id,
         category_name,
         category_name_length,

@@ -39,6 +39,8 @@ def base_join_to_join(
     to joins at the CTE level"""
     if isinstance(base_join, UnnestJoin):
         return InstantiatedUnnestJoin(concept=base_join.concept, alias=base_join.alias)
+    if base_join.left_datasource.identifier == base_join.right_datasource.identifier:
+        raise ValueError(f"Joining on same datasource {base_join}")
     left_ctes = [
         cte
         for cte in ctes

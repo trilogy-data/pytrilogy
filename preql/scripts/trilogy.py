@@ -1,15 +1,10 @@
-from click import command, Path, argument, option
-import os
-from sys import path
-
-nb_path = os.path.abspath("")
-path.insert(0, nb_path)
-
-from preql import Executor, Environment  # noqa
-from preql.dialect.enums import Dialects  # noqa
-from datetime import datetime  # noqa
-from pathlib import Path as PathlibPath  # noqa
-from preql.hooks.query_debugger import DebuggingHook  # noqa
+from click import Path, argument, option, group, pass_context
+from preql import Executor, Environment, parse
+from preql.dialect.enums import Dialects
+from datetime import datetime
+from pathlib import Path as PathlibPath
+from preql.hooks.query_debugger import DebuggingHook
+from preql.parsing.render import Renderer
 
 
 def print_tabulate(q, tabulate):
@@ -17,16 +12,43 @@ def print_tabulate(q, tabulate):
     print(tabulate(result, headers=q.keys(), tablefmt="psql"))
 
 
-@command()
+@group()
+@option("--debug", default=False)
+@pass_context
+def cli(ctx, debug: bool):
+    ctx.ensure_object(dict)
+    ctx.obj["DEBUG"] = debug
+
+
+@cli.command("fmt")
 @argument("input", type=Path(exists=True))
-@argument("dialect", type=str)
-@option("--debug", type=bool, default=False)
-def main(input, dialect: str, debug: bool):
+@pass_context
+def fmt(ctx, input):
+    start = datetime.now()
     with open(input, "r") as f:
         script = f.read()
+
+    _, queries = parse(script)
+    r = Renderer()
+    with open(input, "w") as f:
+        f.write("\n".join([r.to_string(x) for x in queries]))
+    print(f"Completed all in {(datetime.now()-start)}")
+
+
+@cli.command("run")
+@argument("input", type=Path())
+@argument("dialect", type=str)
+@pass_context
+def run(ctx, input, dialect: str):
+    if PathlibPath(input).exists():
+        with open(input, "r") as f:
+            script = f.read()
+    else:
+        script = input
     edialect = Dialects(dialect)
     inputp = PathlibPath(input)
     directory = inputp.parent
+    debug = ctx.obj["DEBUG"]
     exec = Executor(
         dialect=edialect,
         engine=edialect.default_engine(),
@@ -57,4 +79,4 @@ def main(input, dialect: str, debug: bool):
 
 
 if __name__ == "__main__":
-    main()
+    cli()
