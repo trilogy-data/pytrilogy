@@ -2,7 +2,7 @@
 
 pypreql is an experimental implementation of the [PreQL/Trilogy](https://github.com/preqldata) (prequel trilogy) language, a variant on SQL intended to embrace the best features of SQL while fixing common pain points.
 
-Preql looks like SQL, but doesn't require table references, group by, or joins. It's crafted by data professionals to be more human-readable and less error-prone than SQL.
+Preql looks like SQL, but doesn't require table references, group by, or joins. When you query, it puts the focus on what you want to get, not how you want to get it - you've already done that work once in your data model.
 
 It's perfect for a modern data company that just can't quit SQL, but wants less pain.
 
@@ -41,7 +41,7 @@ The current PreQLimplementation supports compiling to 3 backend SQL flavors:
 - DuckDB
 
 
-## Basic Example
+## Basic Example - Python
 
 Preql can be run directly in python.
 
@@ -93,6 +93,20 @@ for row in results:
     for x in answers:
         print(x)
 ```
+
+
+## Basic Example - CLI
+
+Preql can be run through a CLI tool, 'trilogy'.
+
+After installing preql, you can run the trilogy CLI with two required positional arguments; the first the path to a file or a direct command,
+and second the dialect to run.
+
+`trilogy run <cmd or path to preql file> <dialect>`
+
+> [!TIP]
+> This will only work for basic backends, such as Bigquery with local default credentials; if the backend requires more configuration, the CLI will require additional config arguments.
+
 
 ## Developing
 
