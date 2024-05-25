@@ -1,45 +1,54 @@
 ## PreQL/Trilogy
 
-pypreql is an experimental implementation of the [PreQL/Trilogy](https://github.com/preqldata) (prequel trilogy) language, a variant on SQL intended to embrace the best features of SQL while fixing common pain points.
+pypreql is an experimental implementation of the [PreQL/Trilogy](https://github.com/preqldata) (prequel trilogy) language, a modified SQL syntax that compiles to SQL intended to embrace the best features of SQL while fixing common pain points.
 
-Preql looks like SQL, but doesn't require table references, group by, or joins. When you query, it puts the focus on what you want to get, not how you want to get it - you've already done that work once in your data model.
+PreQL/Trilogy looks like SQL, but doesn't require table references, group by, or joins directly in queries, shifting some parts of a standard SQL query into a reusable, lightweight semantic binding layer. When you query, it puts the focus on what you want to get, not how you want to get it - you've already done that work once in your data model.
 
 It's perfect for a modern data company that just can't quit SQL, but wants less pain.
 
 Provides a rich extension ecosystem to integrate with other tools like DBT.
 
-The Preql language spec itself will be linked from the above repo. 
+The PreQL language spec itself will be linked from the above repo. 
 
-Pypreql can be run locally to parse and execute preql [.preql] models.  
+PypreQL can be run locally to parse and execute preql [.preql] models.  
 
 You can try out an interactive demo [here](https://preqldata.dev/demo).
 
 
-Preql looks like this:
+PreQL looks like this:
 ```sql
 SELECT
     name,
-    name_count.sum
+    count(name) as name_count
 WHERE 
-    name like '%elvis%'
+    name='Elvis'
 ORDER BY
-    name_count.sum desc
+    name_count desc
 LIMIT 10;
 ```
+## Goals
+vs SQL, the goals are:
 
-## More Examples
+Preserve:
+- Correctness
+- Accessibility
 
-Examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models).
-This is a good place to start for more complex examples.
+Enhance:
+- Simplicity
+- Understandability
+- Refactoring/mantainability
+- Reusability
+
+Maintain:
+- Acceptable performance
 
 ## Backends
 
-The current PreQLimplementation supports compiling to 3 backend SQL flavors:
+The current PreQL implementation supports compiling to 3 backend SQL flavors:
 
 - Bigquery
 - SQL Server
 - DuckDB
-
 
 ## Basic Example - Python
 
@@ -60,12 +69,12 @@ key name string;
 key gender string;
 key state string;
 key year int;
-key name_count int;
-auto name_count.sum <- sum(name_count);
+key yearly_name_count int; int;
+
 
 datasource usa_names(
     name:name,
-    number:name_count,
+    number:yearly_name_count,
     year:year,
     gender:gender,
     state:state
@@ -79,9 +88,11 @@ executor = Dialects.BIGQUERY.default_executor(environment=environment)
 results = executor.execute_text(
 '''SELECT
     name,
-    name_count.sum
+    sum(yearly_name_count) -> name_count 
+WHERE
+    name = 'Elvis'
 ORDER BY
-    name_count.sum desc
+    name_count desc
 LIMIT 10;
 '''
 
@@ -110,6 +121,13 @@ and second the dialect to run.
 The CLI can also be used for formatting. PreQL has a default formatting style that should always be adhered to.
 
 `trilogy fmt <path to preql file>`
+
+
+## More Examples
+
+Examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models).
+This is a good place to start for more complex examples.
+
 
 ## Developing
 

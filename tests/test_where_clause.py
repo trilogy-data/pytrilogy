@@ -192,3 +192,16 @@ select
     assert env.concepts["special_order_2"].lineage.where.conditional.right == 1
     query = BaseDialect().compile_statement(process_query(test_environment, select))
     assert "= True" in query
+
+
+def test_bare_where(test_environment):
+    declarations = """
+select
+    category_name
+where
+    category_name like '%e%'
+;
+
+
+    """
+    env, parsed = parse(declarations, environment=test_environment)
