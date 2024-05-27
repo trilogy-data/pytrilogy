@@ -41,11 +41,12 @@ Maintain:
 
 ## Backends
 
-The current PreQL implementation supports compiling to 3 backend SQL flavors:
+The current PreQL implementation supports compiling to these SQL flavors:
 
 - Bigquery
 - SQL Server
 - DuckDB
+- Snowflake
 
 ## Basic Example - Python
 
