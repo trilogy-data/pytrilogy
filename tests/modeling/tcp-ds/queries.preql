@@ -1,0 +1,18 @@
+import store_returns as returns;
+
+# query 1
+with ca_2022 as select
+    returns.customer.id,
+    returns.store.id,
+    returns.store.state,
+    returns.return_date.year,
+    sum(returns.return_amount)-> total_returns
+where
+    returns.return_date.year = 2022
+    and returns.store.state = 'CA';
+
+auto avg_store_returns <- avg(ca_2022.total_returns) by  ca_2022.returns.store.id;
+
+select
+    ca_2022.returns.customer.id,
+limit 100;

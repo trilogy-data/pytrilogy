@@ -77,6 +77,6 @@ class SnowflakeDialect(BaseDialect):
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
-    QUOTE_CHARACTER = "`"
+    QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = BQ_SQL_TEMPLATE
     UNNEST_MODE = UnnestMode.CROSS_JOIN

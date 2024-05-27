@@ -1,0 +1,25 @@
+import store as store;
+import customer as customer;
+import date as purchase_date;
+import time as time;
+
+key id int;
+property id.register_id int;
+property id.clerk_id int;
+property id.comment string;
+
+
+datasource s_purchase (
+    purc_purchase_id:id,
+    purc_store_id:store.id,
+    purc_customer_id:customer.id,
+    purc_purchase_date:purchas_date.id,
+    purc_purchase_time:time.id,
+    purc_register_id:register_id,
+    purc_clerk_id:clerk_id,
+    purc_comment:comment
+)
+grain (id)
+address s_purchase;
+
+

@@ -150,7 +150,7 @@ def gen_select_node(
     if materialized_addresses != all_addresses:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
-            f" as it + optional includes non-materialized concepts {materialized_addresses.difference(all_addresses)} {materialized_addresses}"
+            f" as it + optional (looking for all {all_addresses}) includes non-materialized concepts {materialized_addresses.difference(all_addresses)} vs materialized: {materialized_addresses}"
         )
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")

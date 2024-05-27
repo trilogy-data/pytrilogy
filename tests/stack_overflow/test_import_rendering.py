@@ -55,8 +55,6 @@ def test_circular():
     # raise ValueError(env.concepts.keys())
     assert env.concepts["c1.id"]
     assert env.concepts["c2.id"]
-    assert env.concepts["c1.c2.id"] == env.concepts["c2.id"]
-    assert env.concepts["c2.c1.id"] == env.concepts["c1.id"]
     validated = False
     for n, datasource in env.datasources.items():
         for z in datasource.columns:

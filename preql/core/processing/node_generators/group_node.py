@@ -40,14 +40,18 @@ def gen_group_node(
 
     if parent_concepts:
         parent_concepts = unique(parent_concepts, "address")
-        parents: List[StrategyNode] = [
-            source_concepts(
-                mandatory_list=parent_concepts,
-                environment=environment,
-                g=g,
-                depth=depth + 1,
+        parent = source_concepts(
+            mandatory_list=parent_concepts,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+        )
+        if not parent:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} group by node parents unresolvable"
             )
-        ]
+            return None
+        parents: List[StrategyNode] = [parent]
     else:
         parents = []
 
@@ -83,6 +87,11 @@ def gen_group_node(
         g=g,
         depth=depth + 1,
     )
+    if not enrich_node:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} group by node enrichment node unresolvable, returning just group node"
+        )
+        return group_node
     return MergeNode(
         input_concepts=group_key_parents + local_optional + output_concepts,
         output_concepts=output_concepts + local_optional,

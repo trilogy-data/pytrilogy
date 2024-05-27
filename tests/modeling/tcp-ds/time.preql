@@ -1,0 +1,15 @@
+
+
+
+key id int;
+property id.time_string string;
+property id.time int;
+
+
+datasource date(
+    t_time_sk:id,
+    t_time_id: time_string,
+    t_time: time,
+)
+grain (id)
+address time;

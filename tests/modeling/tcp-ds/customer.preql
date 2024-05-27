@@ -1,0 +1,14 @@
+
+
+
+key id int;
+property id.last_name string;
+property id.first_name string;
+
+datasource customers(
+    cust_customer_id:id,
+    cust_last_name:last_name,
+    cust_first_name:first_name
+)
+grain (id)
+address s_customer;

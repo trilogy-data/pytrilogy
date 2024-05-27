@@ -70,7 +70,7 @@ def test_query_datasources(environment: Environment):
 
     # source query concepts includes extra group by to grain
     customer_node = search_concepts(
-        [environment.concepts["customer.first_name"]],
+        [environment.concepts["internet_sales.customer.first_name"]],
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -78,13 +78,16 @@ def test_query_datasources(environment: Environment):
     print_recursive_nodes(customer_node)
     customer_datasource = customer_node.resolve()
 
-    assert customer_datasource.identifier == "customers_at_customer_customer_id"
+    assert (
+        customer_datasource.identifier
+        == "customers_at_internet_sales_customer_customer_id"
+    )
 
     # assert a join before the group by works
     t_grain = Grain(
         components=[
             environment.concepts["internet_sales.order_number"],
-            environment.concepts["customer.first_name"],
+            environment.concepts["internet_sales.customer.first_name"],
         ]
     )
     customer_datasource = search_concepts(
@@ -96,13 +99,16 @@ def test_query_datasources(environment: Environment):
 
     # assert a group up to the first name works
     customer_datasource = search_concepts(
-        [environment.concepts["customer.first_name"]],
+        [environment.concepts["internet_sales.customer.first_name"]],
         environment=environment,
         g=environment_graph,
         depth=0,
     ).resolve()
 
-    assert customer_datasource.identifier == "customers_at_customer_customer_id"
+    assert (
+        customer_datasource.identifier
+        == "customers_at_internet_sales_customer_customer_id"
+    )
 
     datasource = get_query_datasources(
         environment=environment, graph=environment_graph, statement=test
@@ -111,7 +117,7 @@ def test_query_datasources(environment: Environment):
     cte = datasource_to_ctes(datasource)[0]
 
     assert {c.address for c in cte.output_columns} == {
-        "customer.first_name",
+        "internet_sales.customer.first_name",
         "internet_sales.order_line_number",
         "internet_sales.order_number",
         "internet_sales.total_sales_amount",
@@ -142,7 +148,8 @@ def test_two_properties(environment: Environment):
 
     # assert a group up to the first name works
     customer_datasource = search_concepts(
-        [environment.concepts["customer.first_name"]] + test.grain.components_copy,
+        [environment.concepts["internet_sales.customer.first_name"]]
+        + test.grain.components_copy,
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -150,12 +157,14 @@ def test_two_properties(environment: Environment):
 
     assert list_to_address(customer_datasource.output_concepts).issuperset(
         list_to_address(
-            [environment.concepts["customer.first_name"]] + test.grain.components_copy
+            [environment.concepts["internet_sales.customer.first_name"]]
+            + test.grain.components_copy
         )
     )
 
     order_date_datasource = search_concepts(
-        [environment.concepts["dates.order_date"]] + test.grain.components_copy,
+        [environment.concepts["internet_sales.dates.order_date"]]
+        + test.grain.components_copy,
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -163,7 +172,8 @@ def test_two_properties(environment: Environment):
 
     assert list_to_address(order_date_datasource.output_concepts).issuperset(
         list_to_address(
-            [environment.concepts["dates.order_date"]] + test.grain.components_copy
+            [environment.concepts["internet_sales.dates.order_date"]]
+            + test.grain.components_copy
         )
     )
 
@@ -228,7 +238,7 @@ def test_group_to_grain(environment: Environment):
     test = search_concepts(
         [
             environment.concepts["internet_sales.total_sales_amount_debug"],
-            environment.concepts["dates.order_date"],
+            environment.concepts["internet_sales.dates.order_date"],
         ],
         environment=environment,
         depth=0,
@@ -261,6 +271,7 @@ def test_two_properties_query(environment: Environment):
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
+    assert "total_sales_amount_debug_2" in set(list(environment.concepts.keys()))
     environment_graph = generate_graph(environment)
     assert (
         len(
@@ -272,7 +283,7 @@ def test_two_properties_query(environment: Environment):
     )
     test = gen_group_node(
         environment.concepts["total_sales_amount_debug_2"],
-        local_optional=[environment.concepts["dates.order_date"]],
+        local_optional=[environment.concepts["internet_sales.dates.order_date"]],
         environment=environment,
         depth=0,
         g=environment_graph,

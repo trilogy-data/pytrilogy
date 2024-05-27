@@ -9,9 +9,7 @@ metric total_sales_amount_debug_2 <- sum(internet_sales.total_sales_amount_debug
 #   internet_sales.total_order_quantity,
 
 select
-    dates.order_date,
-
-  
+    internet_sales.dates.order_date,
     internet_sales.total_sales_amount
 order by
     internet_sales.total_sales_amount desc
@@ -19,8 +17,8 @@ limit 100;
 
 
 select
-    customer.first_name,
-    customer.last_name,
+    internet_sales.customer.first_name,
+    internet_sales.customer.last_name,
     internet_sales.total_order_quantity,
     internet_sales.total_sales_amount
 order by
@@ -29,7 +27,7 @@ limit 100;
 
 
 select
-    customer.first_name,
+    internet_sales.customer.first_name,
     internet_sales.order_number,
     internet_sales.order_line_number,
     internet_sales.total_sales_amount,

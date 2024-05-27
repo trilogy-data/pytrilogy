@@ -31,6 +31,11 @@ def gen_rowset_node(
         g=g,
         depth=depth + 1,
     )
+    if not node:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
+        )
+        return None
     if select.where_clause:
         node.conditions = select.where_clause.conditional
     enrichment = set([x.address for x in local_optional])
@@ -73,9 +78,10 @@ def gen_rowset_node(
     )
     if not enrich_node:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}"
-        )
-        return None
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node"
+        ),
+        return node
+
     return MergeNode(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
         output_concepts=node.output_concepts + local_optional,

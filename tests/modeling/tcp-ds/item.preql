@@ -1,0 +1,11 @@
+
+key id int;
+
+property id.name string;
+
+datasource items (
+    i_item_sk:id,
+    I_item_id:name,
+)
+grain (id)
+address items;

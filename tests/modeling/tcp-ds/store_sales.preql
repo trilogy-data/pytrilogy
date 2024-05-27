@@ -1,0 +1,13 @@
+import item as item;
+
+key ticket_number int;
+
+
+datasource store_sales (
+    ss_ticket_number:ticket_number,
+    ss_item_sk:~item.id
+
+)
+grain (ticket_number, item.id)
+address store_sales
+;

@@ -329,8 +329,14 @@ class Concept(BaseModel):
                 if self.grain
                 else Grain(components=[])
             ),
-            namespace=namespace,
-            keys=self.keys,
+            namespace=(
+                namespace + "." + self.namespace
+                if self.namespace != DEFAULT_NAMESPACE
+                else namespace
+            ),
+            keys=(
+                [x.with_namespace(namespace) for x in self.keys] if self.keys else None
+            ),
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
@@ -552,14 +558,11 @@ class ColumnAssignment(BaseModel):
         return Modifier.PARTIAL not in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        # this breaks assignments
-        # TODO: figure out why
-        return self
-        # return ColumnAssignment(
-        #     alias=self.alias,
-        #     concept=self.concept.with_namespace(namespace),
-        #     modifiers=self.modifiers,
-        # )
+        return ColumnAssignment(
+            alias=self.alias,
+            concept=self.concept.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
 
 
 class Statement(BaseModel):
@@ -671,6 +674,7 @@ class Function(BaseModel):
             output_datatype=self.output_datatype,
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
+            arg_count=self.arg_count,
         )
 
     @property
@@ -1119,11 +1123,6 @@ class Datasource(BaseModel):
     def namespace_validation(cls, v):
         return v or DEFAULT_NAMESPACE
 
-    def add_column(self, concept: Concept, alias: str, modifiers=None):
-        self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
-        )
-
     @field_validator("address")
     @classmethod
     def address_enforcement(cls, v):
@@ -1147,6 +1146,11 @@ class Datasource(BaseModel):
             )
         return grain
 
+    def add_column(self, concept: Concept, alias: str, modifiers=None):
+        self.columns.append(
+            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
+        )
+
     def __add__(self, other):
         if not other == self:
             raise ValueError(
@@ -1162,9 +1166,14 @@ class Datasource(BaseModel):
         return (self.namespace + self.identifier).__hash__()
 
     def with_namespace(self, namespace: str):
+        new_namespace = (
+            namespace + "." + self.namespace
+            if self.namespace != DEFAULT_NAMESPACE
+            else namespace
+        )
         return Datasource(
             identifier=self.identifier,
-            namespace=namespace,
+            namespace=new_namespace,
             grain=self.grain.with_namespace(namespace),
             address=self.address,
             columns=[c.with_namespace(namespace) for c in self.columns],
@@ -1216,7 +1225,8 @@ class Datasource(BaseModel):
 
     @property
     def full_name(self) -> str:
-        return f"{self.namespace}_{self.identifier}"
+        namespace = self.namespace.replace(".", "_")
+        return f"{namespace}_{self.identifier}"
 
     @property
     def safe_location(self) -> str:
@@ -1809,6 +1819,8 @@ class EnvironmentConceptDict(dict):
         except KeyError:
             if "." in key and key.split(".")[0] == DEFAULT_NAMESPACE:
                 return self.__getitem__(key.split(".")[1], line_no)
+            if DEFAULT_NAMESPACE + "." + key in self:
+                return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
                 undefined = UndefinedConcept(
                     name=key,
@@ -1942,7 +1954,7 @@ class Environment(BaseModel):
         from preql import parse
 
         if namespace:
-            new = Environment(namespace=namespace)
+            new = Environment()
             new.parse(input)
             self.add_import(namespace, new)
             return self
@@ -1958,10 +1970,7 @@ class Environment(BaseModel):
     ):
         if not force:
             self.validate_concept(concept.address, meta=meta)
-        if (
-            concept.namespace == DEFAULT_NAMESPACE
-            or concept.namespace == self.namespace
-        ):
+        if concept.namespace == DEFAULT_NAMESPACE:
             self.concepts[concept.name] = concept
         else:
             self.concepts[concept.address] = concept
@@ -1975,7 +1984,12 @@ class Environment(BaseModel):
         self,
         datasource: Datasource,
     ):
-        self.datasources[datasource.identifier] = datasource
+        if datasource.namespace == DEFAULT_NAMESPACE:
+            self.datasources[datasource.name] = datasource
+            return datasource
+        self.datasources[datasource.namespace + "." + datasource.identifier] = (
+            datasource
+        )
         return datasource
 
 

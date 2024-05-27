@@ -1,0 +1,16 @@
+
+
+
+key id int;
+property id.date_string string;
+property id.date date;
+property id.year int;
+
+datasource date(
+    d_date_sk:id,
+    d_date_id: date_string,
+    d_date: date,
+    d_year: year
+)
+grain (id)
+address date;

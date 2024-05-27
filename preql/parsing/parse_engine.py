@@ -116,7 +116,7 @@ grammar = r"""
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
 
-    rowset_derivation: "rowset" IDENTIFIER "<" "-" select
+    rowset_derivation: ("rowset"i IDENTIFIER "<" "-" select) | ("with"i IDENTIFIER "as"i select)
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
@@ -646,13 +646,10 @@ class ParseToObjects(Transformer):
         while len(concept) > 1:
             modifiers.append(concept[0])
             concept = concept[1]
-        return ColumnAssignment(
-            alias=args[0],
-            modifiers=modifiers,
-            concept=self.environment.concepts.__getitem__(  # type: ignore
-                key=concept[0], line_no=meta.line
-            ),
+        resolved = self.environment.concepts.__getitem__(  # type: ignore
+            key=concept[0], line_no=meta.line
         )
+        return ColumnAssignment(alias=args[0], modifiers=modifiers, concept=resolved)
 
     def _TERMINATOR(self, args):
         return None
@@ -1077,7 +1074,7 @@ class ParseToObjects(Transformer):
                     text=text,
                     environment=Environment(
                         working_path=dirname(target),
-                        namespace=alias,
+                        # namespace=alias,
                     ),
                     parse_address=target,
                     parsed={**self.parsed, **{self.parse_address: self}},
@@ -1090,9 +1087,13 @@ class ParseToObjects(Transformer):
                 )
 
         for key, concept in nparser.environment.concepts.items():
-            self.environment.concepts[f"{alias}.{key}"] = concept
+            # self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(new_namespace)
+            self.environment.add_concept(concept.with_namespace(alias))
+
         for key, datasource in nparser.environment.datasources.items():
-            self.environment.datasources[f"{alias}.{key}"] = datasource
+            self.environment.add_datasource(datasource.with_namespace(alias))
+            # self.environment.datasources[f"{alias}.{key}"] = datasource.with_namespace(new_namespace)
+
         self.environment.imports[alias] = Import(alias=alias, path=args[0])
         return None
 

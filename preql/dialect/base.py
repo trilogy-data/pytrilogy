@@ -234,9 +234,7 @@ class BaseDialect:
                 f"No source found for concept {order_item.expr}, have {all_outputs}"
             )
         selected = matched_ctes[0]
-        return (
-            f"{selected.name}.{order_item.expr.safe_address} {order_item.order.value}"
-        )
+        return f"{selected.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte

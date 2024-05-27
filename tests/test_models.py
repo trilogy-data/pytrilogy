@@ -55,7 +55,11 @@ def test_cte_merge(test_environment, test_environment_graph):
 def test_concept(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[0]
     new = test_concept.with_namespace("test")
-    assert new.namespace == "test"
+    assert (
+        new.namespace == ("test" + "." + test_concept.namespace)
+        if test_concept.namespace != "local"
+        else "test"
+    )
 
 
 def test_conditional(test_environment, test_environment_graph):
