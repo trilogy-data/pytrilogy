@@ -79,7 +79,7 @@ def gen_rowset_node(
     if not enrich_node:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node"
-        ),
+        )
         return node
 
     return MergeNode(

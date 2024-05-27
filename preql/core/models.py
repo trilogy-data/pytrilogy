@@ -331,7 +331,7 @@ class Concept(BaseModel):
             ),
             namespace=(
                 namespace + "." + self.namespace
-                if self.namespace != DEFAULT_NAMESPACE
+                if self.namespace and self.namespace != DEFAULT_NAMESPACE
                 else namespace
             ),
             keys=(
@@ -1168,7 +1168,7 @@ class Datasource(BaseModel):
     def with_namespace(self, namespace: str):
         new_namespace = (
             namespace + "." + self.namespace
-            if self.namespace != DEFAULT_NAMESPACE
+            if self.namespace and self.namespace != DEFAULT_NAMESPACE
             else namespace
         )
         return Datasource(
@@ -1225,7 +1225,9 @@ class Datasource(BaseModel):
 
     @property
     def full_name(self) -> str:
-        namespace = self.namespace.replace(".", "_")
+        if not self.namespace:
+            return self.identifier
+        namespace = self.namespace.replace(".", "_") if self.namespace else ""
         return f"{namespace}_{self.identifier}"
 
     @property
@@ -1985,6 +1987,9 @@ class Environment(BaseModel):
         datasource: Datasource,
     ):
         if datasource.namespace == DEFAULT_NAMESPACE:
+            self.datasources[datasource.name] = datasource
+            return datasource
+        if not datasource.namespace:
             self.datasources[datasource.name] = datasource
             return datasource
         self.datasources[datasource.namespace + "." + datasource.identifier] = (
