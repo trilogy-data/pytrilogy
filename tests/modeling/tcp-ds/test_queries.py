@@ -71,7 +71,7 @@ where
     returns.return_date.year = 2022
     and returns.store.state = 'CA';"""
     )
-    assert "select" in sql
+    assert "SELECT" in sql[-1]
 
 
 if __name__ == "__main__":
