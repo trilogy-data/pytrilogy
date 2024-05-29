@@ -4,8 +4,8 @@ key id int;
 property id.name string;
 
 datasource items (
-    i_item_sk:id,
-    I_item_id:name,
+    I_ITEM_SK: id,
+    I_ITEM_ID: name,
 )
 grain (id)
-address items;
+address SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.item;

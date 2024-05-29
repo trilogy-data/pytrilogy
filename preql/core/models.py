@@ -282,6 +282,9 @@ class Concept(BaseModel):
         return v
 
     def __eq__(self, other: object):
+        if isinstance(other, str):
+            if self.address == str:
+                return True
         if not isinstance(other, Concept):
             return False
         return (

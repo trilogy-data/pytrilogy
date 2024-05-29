@@ -42,85 +42,93 @@ LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
 def get_priority_concept(
-    all_concepts: List[Concept], attempted_addresses: set[str]
+    all_concepts: List[Concept], attempted_addresses: set[str], found_concepts: set[str]
 ) -> Concept:
-    remaining_concept = [
-        c for c in all_concepts if c.address not in attempted_addresses
+    # optimized search for missing concepts
+    pass_one = [
+        c
+        for c in all_concepts
+        if c.address not in attempted_addresses and c.address not in found_concepts
     ]
-    priority = (
-        # find anything that needs no joins first, so we can exit early
-        [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.CONSTANT
-            and c.granularity == Granularity.SINGLE_ROW
-        ]
-        +
-        # then aggregates to remove them from scope, as they cannot get partials
-        [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.AGGREGATE
-            and not c.granularity == Granularity.SINGLE_ROW
-        ]
-        # then windows to remove them from scope, as they cannot get partials
-        + [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.WINDOW
-            and not c.granularity == Granularity.SINGLE_ROW
-        ]
-        # then filters to remove them from scope, also cannot get partials
-        + [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.FILTER
-            and not c.granularity == Granularity.SINGLE_ROW
-        ]
-        # unnests are weird?
-        + [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.UNNEST
-            and not c.granularity == Granularity.SINGLE_ROW
-        ]
-        +
-        # then rowsets to remove them from scope, as they cannot get partials
-        [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
-        # we should be home-free here
-        + [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.BASIC
-            and not c.granularity == Granularity.SINGLE_ROW
-        ]
-        # finally our plain selects
-        + [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.ROOT
-            and not c.granularity == Granularity.SINGLE_ROW
-        ]
-        # and any non-single row constants
-        + [
-            c
-            for c in remaining_concept
-            if c.derivation == PurposeLineage.CONSTANT
-            and not c.granularity == Granularity.SINGLE_ROW
-        ]
-        # catch all
-        + [
-            c
-            for c in remaining_concept
-            if c.derivation != PurposeLineage.CONSTANT
-            and c.granularity == Granularity.SINGLE_ROW
-        ]
-    )
-    if not priority:
-        raise ValueError(
-            f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}"
+    # sometimes we need to scan intermediate concepts to get merge keys, so fall back
+    # to exhaustive search
+    pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
+
+    for remaining_concept in (pass_one, pass_two):
+        priority = (
+            # find anything that needs no joins first, so we can exit early
+            [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.CONSTANT
+                and c.granularity == Granularity.SINGLE_ROW
+            ]
+            +
+            # then aggregates to remove them from scope, as they cannot get partials
+            [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.AGGREGATE
+                and not c.granularity == Granularity.SINGLE_ROW
+            ]
+            # then windows to remove them from scope, as they cannot get partials
+            + [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.WINDOW
+                and not c.granularity == Granularity.SINGLE_ROW
+            ]
+            # then filters to remove them from scope, also cannot get partials
+            + [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.FILTER
+                and not c.granularity == Granularity.SINGLE_ROW
+            ]
+            # unnests are weird?
+            + [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.UNNEST
+                and not c.granularity == Granularity.SINGLE_ROW
+            ]
+            +
+            # then rowsets to remove them from scope, as they cannot get partials
+            [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
+            # we should be home-free here
+            + [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.BASIC
+                and not c.granularity == Granularity.SINGLE_ROW
+            ]
+            # finally our plain selects
+            + [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.ROOT
+                and not c.granularity == Granularity.SINGLE_ROW
+            ]
+            # and any non-single row constants
+            + [
+                c
+                for c in remaining_concept
+                if c.derivation == PurposeLineage.CONSTANT
+                and not c.granularity == Granularity.SINGLE_ROW
+            ]
+            # catch all
+            + [
+                c
+                for c in remaining_concept
+                if c.derivation != PurposeLineage.CONSTANT
+                and c.granularity == Granularity.SINGLE_ROW
+            ]
         )
-    return priority[0]
+        if priority:
+            return priority[0]
+    raise ValueError(
+        f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}"
+    )
 
 
 def generate_candidates_restrictive(
@@ -160,7 +168,7 @@ def generate_node(
         local_optional,
         environment,
         g,
-        depth,
+        depth + 1,
         fail_if_not_found=False,
         accept_partial=accept_partial,
         accept_partial_optional=False,
@@ -170,16 +178,16 @@ def generate_node(
 
     if concept.derivation == PurposeLineage.WINDOW:
         return gen_window_node(
-            concept, local_optional, environment, g, depth, source_concepts
+            concept, local_optional, environment, g, depth + 1, source_concepts
         )
 
     elif concept.derivation == PurposeLineage.FILTER:
         return gen_filter_node(
-            concept, local_optional, environment, g, depth, source_concepts
+            concept, local_optional, environment, g, depth + 1, source_concepts
         )
     elif concept.derivation == PurposeLineage.UNNEST:
         return gen_unnest_node(
-            concept, local_optional, environment, g, depth, source_concepts
+            concept, local_optional, environment, g, depth + 1, source_concepts
         )
     elif concept.derivation == PurposeLineage.AGGREGATE:
         # don't push constants up before aggregation
@@ -195,14 +203,14 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x.address for x in agg_optional]}"
         )
         return gen_group_node(
-            concept, agg_optional, environment, g, depth, source_concepts
+            concept, agg_optional, environment, g, depth + 1, source_concepts
         )
     elif concept.derivation == PurposeLineage.ROWSET:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating rowset node"
         )
         return gen_rowset_node(
-            concept, local_optional, environment, g, depth, source_concepts
+            concept, local_optional, environment, g, depth + 1, source_concepts
         )
     elif concept.derivation == PurposeLineage.CONSTANT:
         logger.info(
@@ -226,10 +234,10 @@ def generate_node(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating group to grain node with {[x.address for x in local_optional]}"
             )
             return gen_group_to_node(
-                concept, local_optional, environment, g, depth, source_concepts
+                concept, local_optional, environment, g, depth + 1, source_concepts
             )
         return gen_basic_node(
-            concept, local_optional, environment, g, depth, source_concepts
+            concept, local_optional, environment, g, depth + 1, source_concepts
         )
     elif concept.derivation == PurposeLineage.ROOT:
         logger.info(
@@ -240,7 +248,7 @@ def generate_node(
             local_optional,
             environment,
             g,
-            depth,
+            depth + 1,
             fail_if_not_found=False,
             accept_partial=accept_partial,
         )
@@ -304,7 +312,9 @@ def search_concepts(
     complete = ValidationResult.INCOMPLETE
 
     while attempted != all_mandatory:
-        priority_concept = get_priority_concept(mandatory_list, attempted)
+        priority_concept = get_priority_concept(
+            mandatory_list, attempted, found_concepts=found
+        )
 
         candidates = [
             c for c in mandatory_list if c.address != priority_concept.address
@@ -315,7 +325,7 @@ def search_concepts(
 
         for list in candidate_lists:
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial} optional {[str(v) for v in list]}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial} optional {[str(v) for v in list]}, exhausted {[str(c) for c in skip]}"
             )
             node = generate_node(
                 priority_concept,
@@ -328,6 +338,7 @@ def search_concepts(
             )
             if node:
                 stack.append(node)
+                node.resolve()
                 found.add(priority_concept.address)
                 # these concepts should not be attempted to be sourced again
                 # as fetching them requires operating on a subset of concepts
@@ -335,9 +346,9 @@ def search_concepts(
                     PurposeLineage.AGGREGATE,
                     PurposeLineage.FILTER,
                     PurposeLineage.WINDOW,
-                    PurposeLineage.BASIC,
                     PurposeLineage.UNNEST,
                     PurposeLineage.ROWSET,
+                    PurposeLineage.BASIC,
                 ]:
                     skip.add(priority_concept.address)
                 break

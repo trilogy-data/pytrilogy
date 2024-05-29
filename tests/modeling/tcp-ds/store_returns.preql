@@ -9,13 +9,13 @@ import customer as customer;
 property <store_sales.ticket_number, item.id>.return_amount float;
 
 datasource store_returns(
-    sr_returned_date_sk:return_date.id,
-    sr_return_time_sk: time.id,
-    sr_item_sk:~ item.id,
-    sr_customer_sk:customer.id,
-    sr_return_amt: return_amount,
-    sr_ticket_number: ~store_sales.ticket_number,
-    sr_store: store.id,
+    SR_RETURNED_DATE_SK: return_date.id,
+    SR_RETURN_TIME_SK: time.id,
+    SR_ITEM_SK: item.id,
+    SR_CUSTOMER_SK: customer.id,
+    SR_RETURN_AMT: return_amount,
+    SR_TICKET_NUMBER: store_sales.ticket_number,
+    SR_STORE_SK: store.id,
 )
 grain (store_sales.ticket_number, item.id)
-address store_returns;
+address SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.store_returns;

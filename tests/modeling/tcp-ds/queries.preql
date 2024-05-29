@@ -1,18 +1,25 @@
+import customer as customer;
+import store as store;
 import store_returns as returns;
 
 # query 1
-with ca_2022 as select
+rowset ca_2022 <-select
     returns.customer.id,
     returns.store.id,
     returns.store.state,
     returns.return_date.year,
     sum(returns.return_amount)-> total_returns
 where
-    returns.return_date.year = 2022
+    returns.return_date.year = 2002
     and returns.store.state = 'CA';
 
-auto avg_store_returns <- avg(ca_2022.total_returns) by  ca_2022.returns.store.id;
+auto avg_store_returns <- avg(ca_2022.total_returns) by ca_2022.returns.store.id;
 
 select
     ca_2022.returns.customer.id,
+    ca_2022.total_returns,
+    avg_store_returns,
+where
+    ca_2022.total_returns > (1.2*avg_store_returns)
+order by ca_2022.total_returns desc
 limit 100;

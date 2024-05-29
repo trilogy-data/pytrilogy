@@ -4,10 +4,10 @@ key ticket_number int;
 
 
 datasource store_sales (
-    ss_ticket_number:ticket_number,
-    ss_item_sk:~item.id
+     SS_TICKET_NUMBER: ticket_number,
+    SS_ITEM_SK: ~item.id
 
 )
 grain (ticket_number, item.id)
-address store_sales
+address SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.store_sales
 ;

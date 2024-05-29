@@ -6,11 +6,10 @@ property id.date_string string;
 property id.date date;
 property id.year int;
 
-datasource date(
-    d_date_sk:id,
-    d_date_id: date_string,
-    d_date: date,
-    d_year: year
+datasource date (
+    D_DATE_SK: id,
+    D_DATE_ID: date_string,
+    raw('''cast("D_YEAR" as int)'''): year
 )
 grain (id)
-address date;
+address SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.date_dim;
