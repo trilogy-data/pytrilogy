@@ -8,13 +8,20 @@ from preql.dialect.base import BaseDialect
 from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
+from preql.dialect.snowflake import SnowflakeDialect
 from preql.parser import parse
 from logging import INFO
 from preql.constants import logger
 
 logger.setLevel(INFO)
 
-TEST_DIALECTS = [BaseDialect(), BigqueryDialect(), DuckDBDialect(), SqlServerDialect()]
+TEST_DIALECTS = [
+    BaseDialect(),
+    BigqueryDialect(),
+    DuckDBDialect(),
+    SqlServerDialect(),
+    SnowflakeDialect(),
+]
 
 
 def test_functions(test_environment):
