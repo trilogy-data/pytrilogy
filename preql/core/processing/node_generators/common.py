@@ -60,12 +60,13 @@ def gen_property_enrichment_node(
     g,
     depth: int,
     source_concepts,
-    log_lambda,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
+        if not x.keys:
+            raise SyntaxError(f"Property {x.address} missing keys in lookup")
         keys = "-".join([y.address for y in x.keys])
-        required_keys[keys].append(x.address)
+        required_keys[keys].add(x.address)
     final_nodes = []
     node_joins = []
     for _k, vs in required_keys.items():
@@ -89,7 +90,7 @@ def gen_property_enrichment_node(
                 join_type=JoinType.LEFT_OUTER,
             )
         )
-    MergeNode(
+    return MergeNode(
         input_concepts=unique(
             base_node.output_concepts
             + extra_properties
@@ -100,6 +101,7 @@ def gen_property_enrichment_node(
         environment=environment,
         g=g,
         parents=[
+            base_node,
             enrich_node,
         ],
         node_joins=node_joins,
@@ -145,7 +147,7 @@ def gen_enrichment_node(
             for x in extra_required
         ):
             log_lambda(
-                f"{str(type(base_node).__name__)} returning property otpmized enrichment node"
+                f"{str(type(base_node).__name__)} returning property optimized enrichment node"
             )
             return gen_property_enrichment_node(
                 base_node,
@@ -154,7 +156,6 @@ def gen_enrichment_node(
                 g,
                 depth,
                 source_concepts,
-                log_lambda,
             )
 
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys

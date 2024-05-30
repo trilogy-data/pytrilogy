@@ -3,7 +3,13 @@ from typing import List, Optional
 
 from preql.core.enums import Purpose
 from preql.core.models import Concept, Environment, Grain
-from preql.core.processing.nodes import StrategyNode, SelectNode, MergeNode, GroupNode
+from preql.core.processing.nodes import (
+    StrategyNode,
+    SelectNode,
+    MergeNode,
+    GroupNode,
+    ConstantNode,
+)
 from preql.core.exceptions import NoDatasourceException
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
@@ -20,12 +26,12 @@ def gen_select_node_from_table(
     environment: Environment,
     depth: int,
     accept_partial: bool = False,
-) -> Optional[SelectNode]:
+) -> Optional[SelectNode | ConstantNode]:
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
-        return SelectNode(
+        return ConstantNode(
             output_concepts=all_concepts,
             input_concepts=[],
             environment=environment,
@@ -227,7 +233,7 @@ def gen_select_node(
         ]
         force_group = False
         for candidate in parents:
-            if not candidate.grain.issubset(target_grain):
+            if candidate.grain and not candidate.grain.issubset(target_grain):
                 force_group = True
         if len(parents) == 1:
             candidate = parents[0]
@@ -240,7 +246,7 @@ def gen_select_node(
                 parents=parents,
                 depth=depth,
                 partial_concepts=all_partial,
-                grain=sum([x.grain for x in parents], Grain()),
+                grain=sum([x.grain for x in parents if x.grain], Grain()),
             )
         candidate.depth += 1
         source_grain = candidate.grain
