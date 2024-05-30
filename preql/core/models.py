@@ -1023,7 +1023,7 @@ class Select(BaseModel):
                 # elif item.purpose == Purpose.PROPERTY and item.grain:
                 #     output += item.grain.components
             # TODO: handle other grain cases
-            # new if block be design
+            # new if block by design
         # add back any purpose that is not at the grain
         # if a query already has the key of the property in the grain
         # we want to group to that grain and ignore the property, which is a derivation

@@ -81,8 +81,8 @@ def gen_property_enrichment_node(
         final_nodes.append(enrich_node)
         node_joins.append(
             NodeJoin(
-                left_node=base_node,
-                right_node=enrich_node,
+                left_node=enrich_node,
+                right_node=base_node,
                 concepts=concept_to_relevant_joins(
                     [environment.concepts[k] for k in ks]
                 ),

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Sequence
 from collections import defaultdict
 
 from preql.core.models import (
@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 
 def concept_list_to_grain(
-    inputs: List[Concept], parent_sources: List[QueryDatasource]
+    inputs: List[Concept], parent_sources: Sequence[QueryDatasource | Datasource]
 ) -> Grain:
     candidates = [c for c in inputs if c.purpose == Purpose.KEY]
     for x in inputs:
