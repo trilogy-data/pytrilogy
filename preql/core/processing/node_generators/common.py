@@ -187,7 +187,11 @@ def gen_enrichment_node(
                 left_node=enrich_node,
                 right_node=base_node,
                 concepts=concept_to_relevant_joins(
-                    [x for x in join_keys if x in enrich_node.output_concepts]
+                    [
+                        x
+                        for x in join_keys
+                        if x.address in [y.address for y in enrich_node.output_concepts]
+                    ]
                 ),
                 filter_to_mutual=False,
                 join_type=JoinType.LEFT_OUTER,

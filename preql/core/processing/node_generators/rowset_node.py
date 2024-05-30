@@ -1,4 +1,11 @@
-from preql.core.models import Concept, Environment, Select, RowsetDerivation, RowsetItem
+from preql.core.models import (
+    Concept,
+    Environment,
+    Select,
+    RowsetDerivation,
+    RowsetItem,
+    Grain,
+)
 from preql.core.processing.nodes import MergeNode, NodeJoin
 from typing import List
 
@@ -55,8 +62,10 @@ def gen_rowset_node(
     if select.where_clause:
         for item in additional_relevant:
             node.partial_concepts.append(item)
+
     # we need a better API for refreshing a nodes QDS
     node.resolution_cache = node._resolve()
+    node.resolution_cache.grain = Grain(components=node.output_concepts)
     if not local_optional:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enriched required for rowset node; exiting early"
