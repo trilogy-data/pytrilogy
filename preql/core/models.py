@@ -937,12 +937,16 @@ class Select(BaseModel):
                 if nitem.content.derivation == PurposeLineage.AGGREGATE:
                     nitem.content = nitem.content.with_grain(self.grain)
 
-    @field_validator("selection", mode="plain")
+    @field_validator("selection", mode="before")
     @classmethod
-    def selectionn(cls, v):
-        if isinstance(v, (Concept, ConceptTransform)):
-            return [SelectItem(content=v)]
-        return v
+    def selection(cls, v):
+        new = []
+        for item in v:
+            if isinstance(item, (Concept, ConceptTransform)):
+                new.append(SelectItem(content=item))
+            else:
+                new.append(item)
+        return new
 
     @property
     def input_components(self) -> List[Concept]:
