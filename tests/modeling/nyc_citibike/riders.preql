@@ -1,0 +1,2 @@
+key gender string; # Gender (unknown, male, female)
+key birth_year int; # Year of Birth

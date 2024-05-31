@@ -80,7 +80,7 @@ def test_query_datasources(environment: Environment):
 
     assert (
         customer_datasource.identifier
-        == "customers_at_internet_sales_customer_customer_id"
+        == "customers_at_internet_sales_customer_first_name"
     )
 
     # assert a join before the group by works
@@ -107,7 +107,7 @@ def test_query_datasources(environment: Environment):
 
     assert (
         customer_datasource.identifier
-        == "customers_at_internet_sales_customer_customer_id"
+        == "customers_at_internet_sales_customer_first_name"
     )
 
     datasource = get_query_datasources(

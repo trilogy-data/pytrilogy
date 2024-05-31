@@ -141,7 +141,7 @@ def test_query_aggregation(test_environment, test_environment_graph):
 
     assert {datasource.identifier} == {"revenue_at_local_order_id_at_abstract"}
     check = datasource
-    assert len(check.input_concepts) == 1
+    assert len(check.input_concepts) == 2
     assert check.input_concepts[0].name == "revenue"
     assert len(check.output_concepts) == 1
     assert check.output_concepts[0].name == "total_revenue"

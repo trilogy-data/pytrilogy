@@ -1,0 +1,17 @@
+
+key id int;
+
+property id.name string;
+
+datasource stores (
+    store_id:id,
+    store_name:name,
+)
+grain (id)
+query '''
+select 1 store_id, 'store1' store_name
+union all
+select 2, 'aspen'
+union all
+select 3, 'aspen'
+''';

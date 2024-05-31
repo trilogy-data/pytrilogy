@@ -1,0 +1,79 @@
+from preql.core.models import Environment, Grain
+from preql import parse, Executor
+
+
+def test_key_fetch_cardinality(test_environment: Environment, test_executor: Executor):
+    # test keys
+    test_select = """
+auto aspen_store <- filter stores.name where stores.name = 'aspen';
+SELECT
+    stores.name,
+    aspen_store
+;"""
+
+    _, statements = parse(test_select, test_environment)
+    select = statements[-1]
+    assert set([x.address for x in select.grain.components]) == {
+        "stores.name",
+        "local.aspen_store",
+    }
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+
+    assert len(results) == 2
+    assert ("store1", None) in results
+    assert ("aspen", "aspen") in results
+
+
+def test_key_count_cardinality(test_environment: Environment, test_executor: Executor):
+    # test keys
+    test_select = """
+SELECT
+    count(stores.name) ->name_count
+;"""
+
+    _, statements = parse(test_select, test_environment)
+    statements[-1]
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+
+    assert results[0] == (3,)
+
+
+def test_filtered_key_count_cardinality(
+    test_environment: Environment, test_executor: Executor
+):
+    # test keys
+    test_select = """
+auto aspen_store <- filter stores.name where stores.name = 'aspen';
+
+SELECT
+    count(stores.name) ->name_count,
+    count(aspen_store) ->aspen_count
+;"""
+
+    _, statements = parse(test_select, test_environment)
+    assert test_environment.concepts["aspen_store"].grain == Grain(
+        components=[test_environment.concepts["stores.id"]]
+    )
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+
+    assert results[0] == (3, 2)
+
+
+def test_aggregates(test_environment: Environment, test_executor: Executor):
+    # test keys
+    test_select = """
+auto aspen_store <- filter stores.name where stores.name = 'aspen';
+
+SELECT
+    sum(qty) -> total_qty
+;"""
+
+    _, statements = parse(test_select, test_environment)
+    statements[-1]
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+
+    assert results[0] == (7,)

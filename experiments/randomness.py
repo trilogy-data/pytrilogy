@@ -1,9 +1,9 @@
-
 from preql import Environment, Dialects
 
 executor = Dialects.DUCK_DB.default_executor(environment=Environment())
 
-results = executor.execute_text("""
+results = executor.execute_text(
+    """
 key user_id int;
 property user_id.name string;
 
@@ -27,7 +27,8 @@ select
     len(name)->name_length
 ;
 
-""")
+"""
+)
 
 
 for rs in results:

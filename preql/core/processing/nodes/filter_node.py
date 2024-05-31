@@ -34,6 +34,7 @@ class FilterNode(StrategyNode):
         depth: int = 0,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         partial_concepts: List[Concept] | None = None,
+        force_group: bool = False,
     ):
         super().__init__(
             output_concepts=output_concepts,
@@ -45,6 +46,7 @@ class FilterNode(StrategyNode):
             input_concepts=input_concepts,
             conditions=conditions,
             partial_concepts=partial_concepts,
+            force_group=force_group,
         )
 
     def _resolve(self) -> QueryDatasource:

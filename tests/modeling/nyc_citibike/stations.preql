@@ -1,0 +1,56 @@
+key id string; # Unique identifier of a station.
+property id.name string;   # Public name of the station.
+property id.short_name string; # Short name or other type of identifier, as used by the data publisher.
+property id.latitude float;  # The latitude of station. The field value must be a valid WGS 84 latitude in decimal degrees format.
+property id.longitude float; # The longitude of station. The field value must be a valid WGS 84 latitude in decimal degrees format.
+property id.region_id int; # ID of the region where station is located.
+property id.rental_method string;
+property id.capacity int; # Number of total docking points installed at this station, both available and unavailable.
+property id.eightd_has_key_dispenser bool; # Eightd_has_key_dispenser
+property id.num_bikes_available int;  # Number of bikes available for rental.
+property id.num_bikes_disabled int;  # Number of disabled bikes at the station.
+property id.num_docks_available int; # Number of docks accepting bike returns.
+property id.num_docks_disabled int; # Number of empty but disabled dock points at the station.
+property id.is_installed bool; # Is the station currently on the street?
+property id.is_renting bool; # Is the station currently renting bikes?
+property id.is_returning bool; # Is the station accepting bike returns?
+property id.eightd_has_available_keys bool; # Eightd_has_available_keys
+property id.last_reported timestamp; # Timestamp indicating the last time this station reported its status to the backend, in NYC local time.
+
+datasource citibike_stations (
+    station_id:id,
+    name:name,
+    short_name:short_name,
+    latitude:latitude,
+    longitude:longitude,
+    region_id:region_id,
+    capacity:capacity,
+    eightd_has_key_dispenser:eightd_has_key_dispenser,
+    num_bikes_available:num_bikes_available,
+    num_bikes_disabled:num_bikes_disabled,
+    num_docks_available:num_docks_available,
+    num_docks_disabled:num_docks_disabled,
+    is_installed:is_installed,
+    is_renting:is_renting,
+    is_returning:is_returning,
+    eightd_has_available_keys:eightd_has_available_keys,
+    last_reported:last_reported
+)
+grain (id)
+address bigquery-public-data.new_york_citibike.citibike_stations;
+
+
+datasource citibike_station_rental_methods(
+    station_id:id,
+    rental_method:rental_method
+)
+query '''
+select
+    station_id,
+    TRIM(rental_method) rental_method
+FROM `bigquery-public-data.new_york_citibike.citibike_stations`
+CROSS JOIN UNNEST(SPLIT(rental_methods, ',')) AS rental_method
+'''
+;
+
+metric count <- count(id);

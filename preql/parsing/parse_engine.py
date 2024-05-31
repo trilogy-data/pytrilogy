@@ -762,11 +762,17 @@ class ParseToObjects(Transformer):
                 datatype=filter_item.content.datatype,
                 # filters must always define a new key
                 # cannot be a property
-                purpose=Purpose.KEY,
+                purpose=filter_item.content.purpose,
                 metadata=metadata,
                 lineage=filter_item,
                 # filters always define a new grain
                 namespace=namespace,
+                keys=filter_item.content.keys,
+                grain=(
+                    filter_item.content.grain
+                    if filter_item.content.purpose == Purpose.PROPERTY
+                    else None
+                ),
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
