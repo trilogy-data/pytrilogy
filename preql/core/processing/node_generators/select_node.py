@@ -25,6 +25,7 @@ def gen_select_node_from_table(
     g: nx.DiGraph,
     environment: Environment,
     depth: int,
+    target_grain: Grain,
     accept_partial: bool = False,
 ) -> Optional[SelectNode | ConstantNode]:
     # if we have only constants
@@ -109,6 +110,21 @@ def gen_select_node_from_table(
                 x.concept.address for x in datasource.columns if not x.is_complete
             ]
 
+            if target_grain and target_grain.issubset(datasource.grain):
+                if all(
+                    [
+                        x.address in [y.address for y in all_concepts]
+                        for x in target_grain.components
+                    ]
+                ):
+                    force_group = False
+                # if we are not returning the grain
+                # we have to group
+                else:
+                    force_group = True
+            else:
+                force_group = True
+
             candidate = SelectNode(
                 input_concepts=[c.concept for c in datasource.columns],
                 output_concepts=all_concepts,
@@ -121,7 +137,8 @@ def gen_select_node_from_table(
                 ],
                 accept_partial=accept_partial,
                 datasource=datasource,
-                grain=datasource.grain,
+                grain=Grain(components=all_concepts),
+                force_group=force_group,
             )
             candidates[datasource.identifier] = candidate
             scores[datasource.identifier] = -len(partial_concepts)
@@ -172,10 +189,11 @@ def gen_select_node(
         environment=environment,
         depth=depth,
         accept_partial=accept_partial,
+        target_grain=target_grain,
     )
     if ds:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Found select node with all required things"
+            f"{padding(depth)}{LOGGER_PREFIX} Found select node with all required things, force group is {ds.force_group}, target grain {target_grain}"
         )
         return ds
     # if we cannot find a match
@@ -203,6 +221,7 @@ def gen_select_node(
                 environment=environment,
                 depth=depth + 1,
                 accept_partial=accept_partial,
+                target_grain=Grain(components=all_concepts),
             )
             if ds:
                 logger.info(
@@ -274,6 +293,7 @@ def gen_select_node(
         environment=environment,
         depth=depth,
         accept_partial=accept_partial,
+        target_grain=Grain(components=[concept]),
     )
 
     if not ds and fail_if_not_found:

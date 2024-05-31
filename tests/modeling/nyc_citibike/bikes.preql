@@ -1,0 +1,7 @@
+
+
+key id int; # the unique identifier of a bike
+
+metric count<-count_distinct(id); # count of unique bikes
+
+

@@ -562,7 +562,11 @@ class ColumnAssignment(BaseModel):
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
         return ColumnAssignment(
-            alias=self.alias,
+            alias=(
+                self.alias.with_namespace(namespace)
+                if isinstance(self.alias, Function)
+                else self.alias
+            ),
             concept=self.concept.with_namespace(namespace),
             modifiers=self.modifiers,
         )
@@ -1891,6 +1895,12 @@ class Environment(BaseModel):
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "Environment":
+        with open(path, "r") as f:
+            read = f.read()
+        return Environment(working_path=Path(path).parent).parse(read)
 
     @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:

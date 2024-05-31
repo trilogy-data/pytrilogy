@@ -254,6 +254,8 @@ class MergeNode(StrategyNode):
 
         if self.whole_grain:
             force_group = False
+        elif self.force_group is False:
+            force_group = False
         elif not any([d.grain.issubset(grain) for d in final_datasets]):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} no parents include , assume must group to grain."

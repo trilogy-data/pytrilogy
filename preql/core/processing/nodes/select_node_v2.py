@@ -129,7 +129,7 @@ class SelectNode(StrategyNode):
             ],
             source_type=SourceType.DIRECT_SELECT,
             # select nodes should never group
-            force_group=False,
+            force_group=self.force_group,
         )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:

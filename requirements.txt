@@ -4,3 +4,4 @@ sqlalchemy<2.0.0
 networkx
 pyodbc
 pydantic
+duckdb-engine

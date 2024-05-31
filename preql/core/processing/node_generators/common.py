@@ -8,6 +8,7 @@ from preql.core.models import (
     AggregateWrapper,
     FilterItem,
     Environment,
+    Grain,
 )
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import StrategyNode
@@ -23,9 +24,18 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, (Function, AggregateWrapper)):
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == PurposeLineage.AGGREGATE:
-        if concept.grain:
+        if not concept.grain.abstract:
             return unique(
                 concept.lineage.concept_arguments + concept.grain.components_copy,
+                "address",
+            )
+        if concept.lineage.arguments:
+            default_grain = Grain()
+            for x in concept.lineage.arguments:
+                if isinstance(x, Concept) and x.grain:
+                    default_grain += x.grain
+            return unique(
+                concept.lineage.concept_arguments + default_grain.components_copy,
                 "address",
             )
         return concept.lineage.concept_arguments
@@ -37,8 +47,11 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
 def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Concept]]:
     if not isinstance(concept.lineage, FilterItem):
         raise ValueError
-    base = [concept.lineage.content]
+    direct_parent = concept.lineage.content
+    base = [direct_parent]
     base += concept.lineage.where.concept_arguments
+    if direct_parent.grain:
+        base += direct_parent.grain.components_copy
     return concept.lineage.content, unique(base, "address")
 
 

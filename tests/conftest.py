@@ -66,6 +66,7 @@ def test_environment():
         datatype=DataType.FLOAT,
         purpose=Purpose.PROPERTY,
         keys=[order_id],
+        grain=Grain(components=[order_id]),
     )
 
     total_revenue = Concept(

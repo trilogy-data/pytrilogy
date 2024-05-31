@@ -67,13 +67,3 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
 
     # check that the parent is a merge node
     parent.resolve()
-    # assert len(resolved_parent.joins) == 1
-    # join = resolved_parent.joins[0]
-    # assert join.left_datasource.output_concepts == [cat]
-
-    # assert join.left_datasource.partial_concepts == []
-    # # check that the parent merge node is using the right sources given partial flags
-    # assert cat in join.right_datasource.partial_concepts
-    # assert {x.identifier for x in resolved_parent.source_map[cat.address]} == {
-    #     join.left_datasource.identifier
-    # }

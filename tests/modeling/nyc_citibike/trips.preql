@@ -1,0 +1,46 @@
+import stations as station;
+import bikes as bike;
+import riders as rider;
+
+key duration int;  # Trip Duration (in seconds)
+key start_time datetime;  # Start Time, in NYC local time
+key stop_time datetime;  # Stop Time, in NYC local time
+key start_station_id int;  # Start Station ID
+property start_station_id.start_station_name string;  # Start Station Name
+property start_station_id.start_station_latitude float; # Start Station Latitude
+property start_station_id.start_station_longitude float;  # Start Station Longitude
+key end_station_id int; # End Station ID
+property end_station_id.end_station_name string; # End Station Name
+property end_station_id.end_station_latitude float;  # End Station Latitude
+property end_station_id.end_station_longitude float; # End Station Longitude
+key user_type string; # User Type (Customer = 24-hour pass or 7-day pass user, Subscriber = Annual Member)
+key customer_plan string; # The name of the plan that determines the rate charged for the trip
+property <start_station_id, end_station_id, start_time, bike.id>.year int; # The year of the trip
+
+# picking an arbitrary row to count off of
+metric count<-count(start_time);
+
+metric total_duration <- sum(duration);
+
+datasource citibike_trips (
+    tripduration:duration,
+    starttime:start_time,
+    stoptime:stop_time,
+    start_station_id:start_station_id,
+    start_station_name:start_station_name,
+    start_station_latitude:start_station_latitude,
+    start_station_longitude:start_station_longitude,
+    end_station_id:end_station_id,
+    end_station_name:end_station_name,
+    end_station_latitude:end_station_latitude,
+    end_station_longitude:end_station_longitude,
+    bikeid:bike.id,
+    usertype:user_type,
+    birth_year:rider.birth_year,
+    gender:rider.gender,
+    customer_plan:customer_plan,
+    year(start_time):year
+)
+grain (start_station_id, end_station_id, start_time, bike.id)
+address bigquery-public-data.new_york_citibike.citibike_trips;
+
