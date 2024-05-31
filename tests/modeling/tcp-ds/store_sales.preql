@@ -1,0 +1,13 @@
+import item as item;
+
+key ticket_number int;
+
+
+datasource store_sales (
+     SS_TICKET_NUMBER: ticket_number,
+    SS_ITEM_SK: ~item.id
+
+)
+grain (ticket_number, item.id)
+address SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.store_sales
+;

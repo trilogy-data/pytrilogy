@@ -68,12 +68,12 @@ class SelectNode(StrategyNode):
         output_concepts: List[Concept],
         environment: Environment,
         g,
+        datasource: Datasource | None = None,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: List[Concept] | None = None,
         accept_partial: bool = False,
-        datasource: Optional[Datasource] = None,
         grain: Optional[Grain] = None,
         force_group: bool = False,
     ):
@@ -94,8 +94,11 @@ class SelectNode(StrategyNode):
 
     def resolve_from_provided_datasource(
         self,
-    ):
-        datasource = self.datasource
+    ) -> QueryDatasource:
+        if not self.datasource:
+            raise ValueError("Datasource not provided")
+        datasource: Datasource = self.datasource
+
         all_concepts_final: List[Concept] = unique(self.all_concepts, "address")
         source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
@@ -119,7 +122,7 @@ class SelectNode(StrategyNode):
             output_concepts=all_concepts_final,
             source_map=source_map,
             datasources=[datasource],
-            grain=self.grain,
+            grain=self.grain or Grain(),
             joins=[],
             partial_concepts=[
                 c.concept for c in datasource.columns if not c.is_complete

@@ -1,0 +1,11 @@
+
+key id int;
+
+property id.name string;
+
+datasource items (
+    I_ITEM_SK: id,
+    I_ITEM_ID: name,
+)
+grain (id)
+address SNOWFLAKE_SAMPLE_DATA.TPCDS_SF10TCL.item;

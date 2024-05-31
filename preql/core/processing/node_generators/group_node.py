@@ -1,15 +1,15 @@
 from preql.core.models import Concept, Environment
 from preql.utility import unique
-from preql.core.processing.nodes import GroupNode, StrategyNode, MergeNode, NodeJoin
+from preql.core.processing.nodes import GroupNode, StrategyNode
 from typing import List
 from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-
-from preql.core.enums import JoinType
 from preql.constants import logger
-from preql.core.processing.utility import padding
-from preql.core.processing.node_generators.common import concept_to_relevant_joins
+from preql.core.processing.utility import padding, create_log_lambda
+from preql.core.processing.node_generators.common import (
+    gen_enrichment_node,
+)
 
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
@@ -39,15 +39,20 @@ def gen_group_node(
         output_concepts += grain_components
 
     if parent_concepts:
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents")
         parent_concepts = unique(parent_concepts, "address")
-        parents: List[StrategyNode] = [
-            source_concepts(
-                mandatory_list=parent_concepts,
-                environment=environment,
-                g=g,
-                depth=depth + 1,
+        parent = source_concepts(
+            mandatory_list=parent_concepts,
+            environment=environment,
+            g=g,
+            depth=depth,
+        )
+        if not parent:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} group by node parents unresolvable"
             )
-        ]
+            return None
+        parents: List[StrategyNode] = [parent]
     else:
         parents = []
 
@@ -67,35 +72,14 @@ def gen_group_node(
     # early exit if no optional
     if not local_optional:
         return group_node
-
-    # exit early if enrichment is irrelevant.
-    if set([x.address for x in local_optional]).issubset(
-        set([y.address for y in parent_concepts])
-    ):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
-        )
-        return group_node
-    enrich_node = source_concepts(  # this fetches the parent + join keys
-        # to then connect to the rest of the query
-        mandatory_list=group_key_parents + local_optional,
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} group node requires enrichment")
+    return gen_enrichment_node(
+        group_node,
+        join_keys=group_key_parents,
+        local_optional=local_optional,
         environment=environment,
         g=g,
-        depth=depth + 1,
-    )
-    return MergeNode(
-        input_concepts=group_key_parents + local_optional + output_concepts,
-        output_concepts=output_concepts + local_optional,
-        environment=environment,
-        g=g,
-        parents=[enrich_node, group_node],
-        node_joins=[
-            NodeJoin(
-                left_node=enrich_node,
-                right_node=group_node,
-                concepts=concept_to_relevant_joins(group_key_parents),
-                filter_to_mutual=False,
-                join_type=JoinType.LEFT_OUTER,
-            )
-        ],
+        depth=depth,
+        source_concepts=source_concepts,
+        log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
     )

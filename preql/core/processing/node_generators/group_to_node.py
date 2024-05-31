@@ -56,6 +56,11 @@ def gen_group_to_node(
         g=g,
         depth=depth + 1,
     )
+    if not enrich_node:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} group by node enrich node, returning group node only."
+        )
+        return group_node
 
     return MergeNode(
         input_concepts=[concept]

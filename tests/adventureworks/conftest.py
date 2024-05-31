@@ -94,4 +94,4 @@ def adventureworks_engine(db_must):
 
 @fixture(scope="session")
 def environment():
-    yield Environment(namespace=dirname(ENV_PATH), working_path=dirname(ENV_PATH))
+    yield Environment(working_path=dirname(ENV_PATH))

@@ -79,6 +79,11 @@ class Executor(object):
             from preql.dialect.postgres import PostgresDialect
 
             self.generator = PostgresDialect()
+        elif self.dialect == Dialects.SNOWFLAKE:
+
+            from preql.dialect.snowflake import SnowflakeDialect
+
+            self.generator = SnowflakeDialect()
         else:
             raise ValueError(f"Unsupported dialect {self.dialect}")
         self.connection = self.engine.connect()

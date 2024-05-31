@@ -170,3 +170,34 @@ select my_rowset.x, my_rowset.z;"""
     assert str(z) == "local.z<local.x>"
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
+
+
+def test_rowset_agg(duckdb_engine: Executor):
+    test = """const x <- unnest([1,2,2,3]);
+const y <- 5;
+auto z <- rank x order by x desc;
+
+rowset my_rowset <- select x, max(z)->max_rank;
+
+select my_rowset.x, my_rowset.max_rank;"""
+    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+    z = duckdb_engine.environment.concepts["z"]
+    x = duckdb_engine.environment.concepts["x"]
+    assert z.grain == Grain(components=[x])
+    assert str(z) == "local.z<local.x>"
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 3
+
+
+def test_default_engine(default_duckdb_engine: Executor):
+    test = """
+  auto today <- current_datetime();
+  
+  select 
+    date_add(today, day, 1)->tomorrow,
+    date_diff(today, today, day)->zero,
+    date_trunc(today, year) -> current_year 
+  ;
+    """
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results[0]) == 3

@@ -65,6 +65,7 @@ class GroupNode(StrategyNode):
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
+
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different output than input, forcing group"
                 f" {[c.address for c in self.input_concepts]}"
@@ -75,6 +76,13 @@ class GroupNode(StrategyNode):
                 " vs"
                 f" target grain {grain}"
             )
+            for parent in parent_sources:
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} Parent node"
+                    f" {[c.address for c in parent.output_concepts]}"
+                    " grain"
+                    f" {parent.grain}"
+                )
             source_type = SourceType.GROUP
         return QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),

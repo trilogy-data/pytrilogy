@@ -282,6 +282,9 @@ class Concept(BaseModel):
         return v
 
     def __eq__(self, other: object):
+        if isinstance(other, str):
+            if self.address == str:
+                return True
         if not isinstance(other, Concept):
             return False
         return (
@@ -329,8 +332,14 @@ class Concept(BaseModel):
                 if self.grain
                 else Grain(components=[])
             ),
-            namespace=namespace,
-            keys=self.keys,
+            namespace=(
+                namespace + "." + self.namespace
+                if self.namespace and self.namespace != DEFAULT_NAMESPACE
+                else namespace
+            ),
+            keys=(
+                [x.with_namespace(namespace) for x in self.keys] if self.keys else None
+            ),
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
@@ -552,14 +561,11 @@ class ColumnAssignment(BaseModel):
         return Modifier.PARTIAL not in self.modifiers
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        # this breaks assignments
-        # TODO: figure out why
-        return self
-        # return ColumnAssignment(
-        #     alias=self.alias,
-        #     concept=self.concept.with_namespace(namespace),
-        #     modifiers=self.modifiers,
-        # )
+        return ColumnAssignment(
+            alias=self.alias,
+            concept=self.concept.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
 
 
 class Statement(BaseModel):
@@ -671,6 +677,7 @@ class Function(BaseModel):
             output_datatype=self.output_datatype,
             output_purpose=self.output_purpose,
             valid_inputs=self.valid_inputs,
+            arg_count=self.arg_count,
         )
 
     @property
@@ -911,7 +918,7 @@ class OrderBy(BaseModel):
 
 
 class Select(BaseModel):
-    selection: List[Union[SelectItem, Concept, ConceptTransform]]
+    selection: List[SelectItem]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -921,21 +928,25 @@ class Select(BaseModel):
 
         return render_query(self)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        final: List[SelectItem] = []
-        for item in self.selection:
-            if isinstance(item, (Concept, ConceptTransform)):
-                final.append(SelectItem(content=item))
-            else:
-                final.append(item)
-        for item in final:
-            if not isinstance(item.content, Concept):
+        for nitem in self.selection:
+            if not isinstance(nitem.content, Concept):
                 continue
-            if item.content.grain == Grain():
-                if item.content.derivation == PurposeLineage.AGGREGATE:
-                    item.content = item.content.with_grain(self.grain)
-        self.selection = final
+            if nitem.content.grain == Grain():
+                if nitem.content.derivation == PurposeLineage.AGGREGATE:
+                    nitem.content = nitem.content.with_grain(self.grain)
+
+    @field_validator("selection", mode="before")
+    @classmethod
+    def selection_validation(cls, v):
+        new = []
+        for item in v:
+            if isinstance(item, (Concept, ConceptTransform)):
+                new.append(SelectItem(content=item))
+            else:
+                new.append(item)
+        return new
 
     @property
     def input_components(self) -> List[Concept]:
@@ -1016,7 +1027,7 @@ class Select(BaseModel):
                 # elif item.purpose == Purpose.PROPERTY and item.grain:
                 #     output += item.grain.components
             # TODO: handle other grain cases
-            # new if block be design
+            # new if block by design
         # add back any purpose that is not at the grain
         # if a query already has the key of the property in the grain
         # we want to group to that grain and ignore the property, which is a derivation
@@ -1119,11 +1130,6 @@ class Datasource(BaseModel):
     def namespace_validation(cls, v):
         return v or DEFAULT_NAMESPACE
 
-    def add_column(self, concept: Concept, alias: str, modifiers=None):
-        self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
-        )
-
     @field_validator("address")
     @classmethod
     def address_enforcement(cls, v):
@@ -1147,6 +1153,11 @@ class Datasource(BaseModel):
             )
         return grain
 
+    def add_column(self, concept: Concept, alias: str, modifiers=None):
+        self.columns.append(
+            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
+        )
+
     def __add__(self, other):
         if not other == self:
             raise ValueError(
@@ -1162,9 +1173,14 @@ class Datasource(BaseModel):
         return (self.namespace + self.identifier).__hash__()
 
     def with_namespace(self, namespace: str):
+        new_namespace = (
+            namespace + "." + self.namespace
+            if self.namespace and self.namespace != DEFAULT_NAMESPACE
+            else namespace
+        )
         return Datasource(
             identifier=self.identifier,
-            namespace=namespace,
+            namespace=new_namespace,
             grain=self.grain.with_namespace(namespace),
             address=self.address,
             columns=[c.with_namespace(namespace) for c in self.columns],
@@ -1216,7 +1232,10 @@ class Datasource(BaseModel):
 
     @property
     def full_name(self) -> str:
-        return f"{self.namespace}_{self.identifier}"
+        if not self.namespace:
+            return self.identifier
+        namespace = self.namespace.replace(".", "_") if self.namespace else ""
+        return f"{namespace}_{self.identifier}"
 
     @property
     def safe_location(self) -> str:
@@ -1809,6 +1828,8 @@ class EnvironmentConceptDict(dict):
         except KeyError:
             if "." in key and key.split(".")[0] == DEFAULT_NAMESPACE:
                 return self.__getitem__(key.split(".")[1], line_no)
+            if DEFAULT_NAMESPACE + "." + key in self:
+                return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
                 undefined = UndefinedConcept(
                     name=key,
@@ -1942,7 +1963,7 @@ class Environment(BaseModel):
         from preql import parse
 
         if namespace:
-            new = Environment(namespace=namespace)
+            new = Environment()
             new.parse(input)
             self.add_import(namespace, new)
             return self
@@ -1958,10 +1979,7 @@ class Environment(BaseModel):
     ):
         if not force:
             self.validate_concept(concept.address, meta=meta)
-        if (
-            concept.namespace == DEFAULT_NAMESPACE
-            or concept.namespace == self.namespace
-        ):
+        if concept.namespace == DEFAULT_NAMESPACE:
             self.concepts[concept.name] = concept
         else:
             self.concepts[concept.address] = concept
@@ -1975,7 +1993,15 @@ class Environment(BaseModel):
         self,
         datasource: Datasource,
     ):
-        self.datasources[datasource.identifier] = datasource
+        if datasource.namespace == DEFAULT_NAMESPACE:
+            self.datasources[datasource.name] = datasource
+            return datasource
+        if not datasource.namespace:
+            self.datasources[datasource.name] = datasource
+            return datasource
+        self.datasources[datasource.namespace + "." + datasource.identifier] = (
+            datasource
+        )
         return datasource
 
 
@@ -2563,4 +2589,4 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
             return DataType.INTEGER
         return arg_to_datatype(arg.content)
     else:
-        raise ValueError(f"Cannot parse arg type for {arg} of type {type(arg)}")
+        raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

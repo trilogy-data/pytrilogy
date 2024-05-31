@@ -17,10 +17,10 @@ import so_concepts.tag as tag;
 
 
 SELECT
-    tag.name,
+    question.tag.name,
     question.count,
 where 
-    user.location = 'Germany'
+    question.user.location = 'Germany'
 order by
     question.count desc
      limit 10
@@ -45,8 +45,10 @@ import so_concepts.answer as answer;
 import so_concepts.user_metrics as user_metrics;
 import so_concepts.tag as tag;
 
+key top_ids <- filter answer.question.id whereanswer.question.comment_count >50;
+
 SELECT
-    question.top_ids,
+    top_ids,
     answer.comment_count
 order
     by answer.comment_count desc

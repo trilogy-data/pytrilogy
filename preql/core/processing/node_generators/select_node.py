@@ -3,7 +3,13 @@ from typing import List, Optional
 
 from preql.core.enums import Purpose
 from preql.core.models import Concept, Environment, Grain
-from preql.core.processing.nodes import StrategyNode, SelectNode, MergeNode, GroupNode
+from preql.core.processing.nodes import (
+    StrategyNode,
+    SelectNode,
+    MergeNode,
+    GroupNode,
+    ConstantNode,
+)
 from preql.core.exceptions import NoDatasourceException
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
@@ -20,12 +26,12 @@ def gen_select_node_from_table(
     environment: Environment,
     depth: int,
     accept_partial: bool = False,
-) -> Optional[SelectNode]:
+) -> Optional[SelectNode | ConstantNode]:
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
-        return SelectNode(
+        return ConstantNode(
             output_concepts=all_concepts,
             input_concepts=[],
             environment=environment,
@@ -150,7 +156,7 @@ def gen_select_node(
     if materialized_addresses != all_addresses:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
-            f" as it + optional includes non-materialized concepts {materialized_addresses.difference(all_addresses)} {materialized_addresses}"
+            f" as it + optional (looking for all {all_addresses}) includes non-materialized concepts {materialized_addresses.difference(all_addresses)} vs materialized: {materialized_addresses}"
         )
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")
@@ -189,9 +195,6 @@ def gen_select_node(
             local_combo = [x for x in combo if x not in found]
             # include core concept as join
             all_concepts = [concept, *local_combo]
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} starting a loop with {[x.address for x in all_concepts]}"
-            )
 
             ds = gen_select_node_from_table(
                 concept,
@@ -213,6 +216,14 @@ def gen_select_node(
                     )
                     all_found = True
     if parents and (all_found or accept_partial_optional):
+        if all_found:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} found all optional {[c.address for c in local_optional]} via joins"
+            )
+        else:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} found some optional {[c.address for c in found]}, returning"
+            )
         all_partial = [
             c
             for c in all_concepts
@@ -220,38 +231,40 @@ def gen_select_node(
                 [c.address in [x.address for x in p.partial_concepts] for p in parents]
             )
         ]
+        force_group = False
+        for candidate in parents:
+            if candidate.grain and not candidate.grain.issubset(target_grain):
+                force_group = True
         if len(parents) == 1:
             candidate = parents[0]
-            candidate.depth += 1
-            source_grain = candidate.grain
-            if (
-                target_grain
-                and source_grain
-                and not source_grain.issubset(target_grain)
-            ):
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} datasource grain {source_grain} does not match target grain {target_grain} for select, adding group node"
-                )
-                return GroupNode(
-                    output_concepts=candidate.output_concepts,
-                    input_concepts=candidate.output_concepts,
-                    environment=environment,
-                    g=g,
-                    parents=[candidate],
-                    depth=depth,
-                    partial_concepts=candidate.partial_concepts,
-                )
-            return candidate
-        return MergeNode(
-            output_concepts=[concept] + found,
-            input_concepts=[concept] + found,
-            environment=environment,
-            g=g,
-            parents=parents,
-            depth=depth,
-            partial_concepts=all_partial,
-            grain=target_grain,
-        )
+        else:
+            candidate = MergeNode(
+                output_concepts=[concept] + found,
+                input_concepts=[concept] + found,
+                environment=environment,
+                g=g,
+                parents=parents,
+                depth=depth,
+                partial_concepts=all_partial,
+                grain=sum([x.grain for x in parents if x.grain], Grain()),
+            )
+        candidate.depth += 1
+        source_grain = candidate.grain
+        if force_group:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} datasource grain {source_grain} does not match target grain {target_grain} for select, adding group node"
+            )
+            return GroupNode(
+                output_concepts=candidate.output_concepts,
+                input_concepts=candidate.output_concepts,
+                environment=environment,
+                g=g,
+                parents=[candidate],
+                depth=depth,
+                partial_concepts=candidate.partial_concepts,
+            )
+        return candidate
+
     if not accept_partial_optional:
         return None
     ds = gen_select_node_from_table(

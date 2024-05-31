@@ -13,6 +13,7 @@ from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
+from logging import Logger
 
 
 class NodeType(Enum):
@@ -27,6 +28,15 @@ class PathInfo(TypedDict):
 
 def padding(x: int) -> str:
     return "\t" * x
+
+
+def create_log_lambda(prefix: str, depth: int, logger: Logger):
+    pad = padding(depth)
+
+    def log_lambda(msg: str):
+        logger.info(f"{pad} {prefix} {msg}")
+
+    return log_lambda
 
 
 def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:

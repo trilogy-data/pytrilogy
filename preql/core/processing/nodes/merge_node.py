@@ -196,13 +196,22 @@ class MergeNode(StrategyNode):
 
         pregrain = Grain()
         for source in final_datasets:
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} Merge node parent has grain {source.grain}"
+            )
             pregrain += source.grain
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} merge node has pre grain {pregrain}"
+        )
         grain = Grain(
             components=[
                 c
                 for c in pregrain.components
                 if c.address in [x.address for x in self.output_concepts]
             ]
+        )
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} final merge node grain {grain}"
         )
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource] = sorted(

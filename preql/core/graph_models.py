@@ -34,9 +34,6 @@ class ReferenceGraph(nx.DiGraph):
             attr["grain"] = node_for_adding.grain
         else:
             node_name = node_for_adding
-
-        if node_name.startswith("c~") and "concept" not in attr.keys():
-            raise ValueError
         super().add_node(node_name, **attr)
 
     def add_edge(self, u_of_edge, v_of_edge, **attr):
@@ -47,6 +44,7 @@ class ReferenceGraph(nx.DiGraph):
                 self.add_node(orig)
         elif isinstance(u_of_edge, Datasource):
             u_of_edge = datasource_to_node(u_of_edge)
+
         if isinstance(v_of_edge, Concept):
             orig = v_of_edge
             v_of_edge = concept_to_node(v_of_edge)

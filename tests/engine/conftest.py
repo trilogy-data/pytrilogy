@@ -7,7 +7,9 @@ from sqlalchemy.engine import create_engine
 
 from preql import Executor, Dialects, parse, Environment
 from preql.engine import ExecutionEngine, EngineConnection, EngineResult
+from preql.dialect.config import SnowflakeConfig
 from preql.hooks.query_debugger import DebuggingHook
+import fakesnow
 
 ENV_PATH = abspath(__file__)
 
@@ -166,4 +168,22 @@ def postgres_engine(presto_model) -> Generator[Executor, None, None]:
     executor = Executor(
         dialect=Dialects.POSTGRES, engine=engine, environment=presto_model
     )
+    yield executor
+
+
+@fixture(scope="session")
+def snowflake_engine(presto_model) -> Generator[Executor, None, None]:
+    with fakesnow.patch():
+        executor = Dialects.SNOWFLAKE.default_executor(
+            environment=presto_model,
+            conf=SnowflakeConfig(
+                account="account", username="user", password="password"
+            ),
+        )
+        yield executor
+
+
+@fixture(scope="session")
+def default_duckdb_engine(presto_model) -> Generator[Executor, None, None]:
+    executor = Dialects.DUCK_DB.default_executor(environment=presto_model)
     yield executor

@@ -1,5 +1,12 @@
-from preql.core.models import Concept, Environment, Select, RowsetDerivation, RowsetItem
+from preql.core.models import (
+    Concept,
+    Environment,
+    Select,
+    RowsetDerivation,
+    RowsetItem,
+)
 from preql.core.processing.nodes import MergeNode, NodeJoin
+from preql.core.processing.nodes.base_node import concept_list_to_grain
 from typing import List
 
 from preql.core.enums import JoinType
@@ -31,6 +38,11 @@ def gen_rowset_node(
         g=g,
         depth=depth + 1,
     )
+    if not node:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
+        )
+        return None
     if select.where_clause:
         node.conditions = select.where_clause.conditional
     enrichment = set([x.address for x in local_optional])
@@ -50,8 +62,15 @@ def gen_rowset_node(
     if select.where_clause:
         for item in additional_relevant:
             node.partial_concepts.append(item)
+
     # we need a better API for refreshing a nodes QDS
     node.resolution_cache = node._resolve()
+
+    # assume grain to be outoput of select
+    # but don't include anything aggregate at this point
+    node.resolution_cache.grain = concept_list_to_grain(
+        node.output_concepts, parent_sources=node.resolution_cache.datasources
+    )
     if not local_optional:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enriched required for rowset node; exiting early"
@@ -73,9 +92,10 @@ def gen_rowset_node(
     )
     if not enrich_node:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}"
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node"
         )
-        return None
+        return node
+
     return MergeNode(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
         output_concepts=node.output_concepts + local_optional,

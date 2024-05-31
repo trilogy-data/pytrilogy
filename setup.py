@@ -47,9 +47,10 @@ setuptools.setup(
         "postgres": ["psycopg2-binary"],
         "bigquery": ["sqlalchemy-bigquery"],
         "duckdb": ["duckdb-engine"],
+        "snowflake": ["snowflake-sqlalchemy"],
     },
     entry_points={
-        "console_scripts": ["trilogy=preql.scripts.trilogy:main"],
+        "console_scripts": ["trilogy=preql.scripts.trilogy:cli"],
     },
     classifiers=[
         "Programming Language :: Python",
