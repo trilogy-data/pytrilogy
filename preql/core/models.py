@@ -939,7 +939,7 @@ class Select(BaseModel):
 
     @field_validator("selection", mode="before")
     @classmethod
-    def selection(cls, v):
+    def selection_validation(cls, v):
         new = []
         for item in v:
             if isinstance(item, (Concept, ConceptTransform)):
