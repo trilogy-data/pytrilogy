@@ -27,3 +27,5 @@ examples/
 
 .preql_cache.json
 .preql-cache.json
+
+.mypy_cache

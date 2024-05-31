@@ -8,3 +8,5 @@ black
 pandas
 types-tabulate
 sqlalchemy-bigquery
+snowflake-sqlalchemy
+fakesnow

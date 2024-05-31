@@ -42,14 +42,19 @@ class Dialects(Enum):
             raise NotImplementedError()
         elif self == Dialects.DUCK_DB:
             from sqlalchemy import create_engine
+            from preql.dialect.config import DuckDBConfig
 
-            return create_engine(r"duckdb:///:memory:", future=True)
+            if not conf:
+                conf = DuckDBConfig()
+            if not isinstance(conf, DuckDBConfig):
+                raise TypeError("Invalid dialect configuration for type duck_db")
+            return create_engine(conf.connection_string(), future=True)
         elif self == Dialects.SNOWFLAKE:
             from sqlalchemy import create_engine
             from preql.dialect.config import SnowflakeConfig
 
             if not isinstance(conf, SnowflakeConfig):
-                raise TypeError("Invalid dialect configuration for type postgres")
+                raise TypeError("Invalid dialect configuration for type snowflake")
             return create_engine(conf.connection_string(), future=True)
         elif self == Dialects.POSTGRES:
             logger.warn(

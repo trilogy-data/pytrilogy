@@ -2,6 +2,16 @@ class DialectConfig:
     pass
 
 
+class DuckDBConfig(DialectConfig):
+    def __init__(self, path: str | None = None):
+        self.path = path
+
+    def connection_string(self) -> str:
+        if not self.path:
+            return "duckdb:///:memory:"
+        return f"duckdb://{self.path}"
+
+
 class PostgresConfig(DialectConfig):
     def __init__(
         self, host: str, port: int, username: str, password: str, database: str

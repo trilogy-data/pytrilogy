@@ -187,3 +187,17 @@ select my_rowset.x, my_rowset.max_rank;"""
     assert str(z) == "local.z<local.x>"
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 3
+
+
+def test_default_engine(default_duckdb_engine: Executor):
+    test = """
+  auto today <- current_datetime();
+  
+  select 
+    date_add(today, day, 1)->tomorrow,
+    date_diff(today, today, day)->zero,
+    date_trunc(today, year) -> current_year 
+  ;
+    """
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results[0]) == 3

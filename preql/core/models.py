@@ -918,7 +918,7 @@ class OrderBy(BaseModel):
 
 
 class Select(BaseModel):
-    selection: List[Union[SelectItem, Concept, ConceptTransform]]
+    selection: List[SelectItem]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -928,21 +928,21 @@ class Select(BaseModel):
 
         return render_query(self)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        final: List[SelectItem] = []
-        for item in self.selection:
-            if isinstance(item, (Concept, ConceptTransform)):
-                final.append(SelectItem(content=item))
-            else:
-                final.append(item)
-        for item in final:
-            if not isinstance(item.content, Concept):
+        for nitem in self.selection:
+            if not isinstance(nitem.content, Concept):
                 continue
-            if item.content.grain == Grain():
-                if item.content.derivation == PurposeLineage.AGGREGATE:
-                    item.content = item.content.with_grain(self.grain)
-        self.selection = final
+            if nitem.content.grain == Grain():
+                if nitem.content.derivation == PurposeLineage.AGGREGATE:
+                    nitem.content = nitem.content.with_grain(self.grain)
+
+    @field_validator("selection", mode="plain")
+    @classmethod
+    def selectionn(cls, v):
+        if isinstance(v, (Concept, ConceptTransform)):
+            return [SelectItem(content=v)]
+        return v
 
     @property
     def input_components(self) -> List[Concept]:
