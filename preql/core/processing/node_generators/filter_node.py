@@ -29,7 +29,7 @@ def gen_filter_node(
     g,
     depth: int,
     source_concepts,
-) -> MergeNode:
+) -> MergeNode | FilterNode | None:
     immediate_parent, parent_concepts = resolve_filter_parent_concepts(concept)
 
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching filter node parents")

@@ -32,7 +32,7 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
         if concept.lineage.arguments:
             default_grain = Grain()
             for x in concept.lineage.arguments:
-                if x.grain:
+                if isinstance(x, Concept) and x.grain:
                     default_grain += x.grain
             return unique(
                 concept.lineage.concept_arguments + default_grain.components_copy,

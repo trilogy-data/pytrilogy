@@ -771,7 +771,7 @@ class ParseToObjects(Transformer):
                 grain=(
                     filter_item.content.grain
                     if filter_item.content.purpose == Purpose.PROPERTY
-                    else None
+                    else Grain()
                 ),
             )
             if concept.metadata:
