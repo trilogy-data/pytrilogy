@@ -46,7 +46,6 @@ setuptools.setup(
     extras_require={
         "postgres": ["psycopg2-binary"],
         "bigquery": ["sqlalchemy-bigquery"],
-        "duckdb": ["duckdb-engine"],
         "snowflake": ["snowflake-sqlalchemy"],
     },
     entry_points={

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from preql.hooks.base_hook import BaseHook
@@ -81,15 +81,15 @@ class Dialects(Enum):
 
     def default_executor(
         self,
-        environment: "Environment",
+        environment: Optional["Environment"] = None,
         hooks: List["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
     ) -> "Executor":
-        from preql import Executor
+        from preql import Executor, Environment
 
         return Executor(
             engine=self.default_engine(conf=conf),
-            environment=environment,
+            environment=environment or Environment(),
             dialect=self,
             hooks=hooks,
         )

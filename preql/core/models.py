@@ -1893,6 +1893,12 @@ class Environment(BaseModel):
     version: str = Field(default_factory=get_version)
 
     @classmethod
+    def from_file(cls, path: str | Path) -> "Environment":
+        with open(path, "r") as f:
+            read = f.read()
+        return Environment(working_path=Path(path)).parse(read)
+
+    @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:
         with open(path, "r") as f:
             read = f.read()
