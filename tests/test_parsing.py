@@ -136,3 +136,25 @@ address `preqldata.analytics_411641820.events_*`
     )
     query = parsed[-1]
     assert query.address.location == "`preqldata.analytics_411641820.events_*`"
+
+
+def test_purpose_and_keys():
+    env, parsed = parse_text(
+        """key id int;
+property id.name string;
+
+auto name_alphabetical <- row_number id order by name asc;
+
+
+select
+    id,
+    name,
+    row_number id order by name asc -> name_alphabetical_2
+    ;
+"""
+    )
+
+    for name in ["name_alphabetical", "name_alphabetical_2"]:
+        assert name in env.concepts
+        assert env.concepts[name].purpose == Purpose.PROPERTY
+        assert env.concepts[name].keys == [env.concepts["id"]]

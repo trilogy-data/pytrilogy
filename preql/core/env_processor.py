@@ -16,7 +16,7 @@ def generate_graph(
             for source in concept.sources:
                 generic = source.with_default_grain()
                 g.add_edge(generic, node_name)
-    for key, dataset in environment.datasources.items():
+    for _, dataset in environment.datasources.items():
         node = datasource_to_node(dataset)
         g.add_node(dataset, type="datasource", datasource=dataset)
         for concept in dataset.concepts:
@@ -27,11 +27,5 @@ def generate_graph(
             # for example, order ID on order product table
             g.add_edge(concept, concept.with_default_grain())
             g.add_edge(concept.with_default_grain(), concept)
-        # TODO: evaluate better way to handle scalar function associations
-        # for _, concept in environment.concepts.items():
-        #     if isinstance(concept.lineage, Function) and concept.lineage.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value:
-        #         if not all([c in dataset.concepts for c in concept.sources]):
-        #             continue
-        #         g.add_edge(dataset, concept.with_grain(dataset.grain))
 
     return g

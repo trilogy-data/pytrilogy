@@ -1,6 +1,5 @@
-from typing import List, Optional, Tuple, Dict, TypedDict, Set
+from typing import List, Tuple, Dict, TypedDict, Set
 import networkx as nx
-from preql.core.graph_models import ReferenceGraph
 from preql.core.models import (
     Datasource,
     JoinType,
@@ -37,56 +36,6 @@ def create_log_lambda(prefix: str, depth: int, logger: Logger):
         logger.info(f"{pad} {prefix} {msg}")
 
     return log_lambda
-
-
-def path_to_joins(input: List[str], g: ReferenceGraph) -> List[BaseJoin]:
-    """Build joins and ensure any required CTEs are also created/tracked"""
-    out = []
-    zipped = parse_path_to_matches(input)
-    for row in zipped:
-        left_ds, right_ds, raw_concepts = row
-        concepts = [g.nodes[concept]["concept"] for concept in raw_concepts]
-        left_value = g.nodes[left_ds]["datasource"]
-        if not right_ds:
-            continue
-        right_value = g.nodes[right_ds]["datasource"]
-        out.append(
-            BaseJoin(
-                left_datasource=left_value,
-                right_datasource=right_value,
-                join_type=JoinType.LEFT_OUTER,
-                concepts=concepts,
-            )
-        )
-    return out
-
-
-def parse_path_to_matches(
-    input: List[str],
-) -> List[Tuple[Optional[str], Optional[str], List[str]]]:
-    """Parse a networkx path to a set of join relations"""
-    left_ds = None
-    right_ds = None
-    concept = None
-    output: List[Tuple[Optional[str], Optional[str], List[str]]] = []
-    while input:
-        ds = None
-        next = input.pop(0)
-        if next.startswith("ds~"):
-            ds = next
-        elif next.startswith("c~"):
-            concept = next
-        if ds and not left_ds:
-            left_ds = ds
-            continue
-        elif ds and concept:
-            right_ds = ds
-            output.append((left_ds, right_ds, [concept]))
-            left_ds = right_ds
-            concept = None
-    if left_ds and concept and not right_ds:
-        output.append((left_ds, None, [concept]))
-    return output
 
 
 def calculate_graph_relevance(

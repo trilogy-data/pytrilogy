@@ -12,6 +12,7 @@ from preql.core.models import (
     Datasource,
     Comparison,
     Parenthetical,
+    LooseConceptList,
 )
 from preql.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from preql.utility import unique
@@ -101,7 +102,10 @@ class StrategyNode:
         self.input_concepts: List[Concept] = (
             unique(input_concepts, "address") if input_concepts else []
         )
+        self.input_lcl = LooseConceptList(self.input_concepts)
         self.output_concepts: List[Concept] = unique(output_concepts, "address")
+        self.output_lcl = LooseConceptList(self.output_concepts)
+
         self.environment = environment
         self.g = g
         self.whole_grain = whole_grain
@@ -110,6 +114,7 @@ class StrategyNode:
         self.partial_concepts = partial_concepts or get_all_parent_partial(
             self.output_concepts, self.parents
         )
+        self.partial_lcl = LooseConceptList(self.partial_concepts)
         self.depth = depth
         self.conditions = conditions
         self.grain = grain

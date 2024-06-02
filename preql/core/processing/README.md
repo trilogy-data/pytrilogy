@@ -7,7 +7,7 @@ The first phase builds an abstract node tree by looping through every combinatio
 output concept and keys in the output query grain and recursively searching for sources.
 
 It will begin with aggregations if those exist, then window functions, then filtration functions,
-and finally look for bare selects.
+rowsets, and finally look for bare selects.
 
 Each type of complex node will generate a new recursive node search for required parents,
 until a set of terminal nodes with base concept selection is reached. 
@@ -17,8 +17,8 @@ if an output node is returned with all required query concepts. If not, the merg
 handle a join between the returned subtrees. If there are not multiple nodes to merge,
 the merge node will simply return the single parent node and prune itself from the graph.
 
-In the second pass, each node is resolved to an abstract CTE. At this phase, CTEs that are
-identical can be merged.
+In the second pass, each node is resolved to an abstract CTE. At this phase, CTEs that 
+reference the same tables, parent CTEs, and filtering can be merged.
 
 Finally, in query rendering each CTE is rendered to a backend appropriate query. The final
 CTE, or the `base`, will contain all required columns for the final output. The last

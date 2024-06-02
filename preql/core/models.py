@@ -381,7 +381,7 @@ class Concept(BaseModel):
             metadata=self.metadata,
             lineage=self.lineage,
             grain=grain,
-            keys=self.keys,
+            keys=[*self.keys] if self.keys else None,
             namespace=self.namespace,
         )
 
@@ -574,6 +574,46 @@ class ColumnAssignment(BaseModel):
 
 class Statement(BaseModel):
     pass
+
+
+class LooseConceptList:
+
+    def __init__(self, concepts: List[Concept]):
+        self.concepts = concepts
+        self.addresses = {s.address for s in self.concepts}
+
+    def __str__(self) -> str:
+        return f"lcl{str(self.addresses)}"
+
+    def __iter__(self):
+        return iter(self.concepts)
+
+    def __eq__(self, other):
+        if not isinstance(other, LooseConceptList):
+            return False
+        return self.addresses == other.addresses
+
+    def issubset(self, other):
+        if not isinstance(other, LooseConceptList):
+            return False
+        return self.addresses.issubset(other.addresses)
+
+    def __contains__(self, other):
+        if isinstance(other, str):
+            return other in self.addresses
+        if not isinstance(other, Concept):
+            return False
+        return other.address in self.addresses
+
+    def difference(self, other):
+        if not isinstance(other, LooseConceptList):
+            return False
+        return self.addresses.difference(other.addresses)
+
+    def isdisjoint(self, other):
+        if not isinstance(other, LooseConceptList):
+            return False
+        return self.addresses.isdisjoint(other.addresses)
 
 
 class Function(BaseModel):
@@ -821,7 +861,7 @@ class WindowItem(BaseModel):
 
     @property
     def output_purpose(self):
-        return self.content.purpose
+        return Purpose.PROPERTY
 
 
 class FilterItem(BaseModel):

@@ -1,3 +1,4 @@
+# source: https://github.com/aaronbassett/Pass-phrase
 CTE_NAMES = """quizzical
 highfalutin
 dynamic

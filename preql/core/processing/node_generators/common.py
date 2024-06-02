@@ -9,6 +9,7 @@ from preql.core.models import (
     FilterItem,
     Environment,
     Grain,
+    LooseConceptList,
 )
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import StrategyNode
@@ -56,13 +57,11 @@ def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Conc
 
 
 def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
-    addresses = [x.address for x in concepts]
-    sub_props = [
-        x.address
-        for x in concepts
-        if x.keys and all([key.address in addresses for key in x.keys])
-    ]
-    final = [c for c in concepts if c.address not in sub_props]
+    addresses = LooseConceptList(concepts)
+    sub_props = LooseConceptList(
+        [x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
+    )
+    final = [c for c in concepts if c not in sub_props]
     return final
 
 
@@ -132,31 +131,24 @@ def gen_enrichment_node(
     log_lambda,
 ):
 
-    if set([x.address for x in local_optional]).issubset(
-        set([y.address for y in base_node.output_concepts])
-    ):
+    local_opts = LooseConceptList(local_optional)
+
+    if local_opts.issubset(LooseConceptList(base_node.output_concepts)):
         log_lambda(
-            f"{str(type(base_node).__name__)} has all optional {[x.address for x in base_node.output_concepts]}, skipping enrichmennt"
+            f"{str(type(base_node).__name__)} has all optional { base_node.output_lcl}, skipping enrichmennt"
         )
         return base_node
     extra_required = [
         x
-        for x in local_optional
-        if x.address not in [y.address for y in base_node.output_concepts]
-        or x.address in [y.address for y in base_node.partial_concepts]
+        for x in local_opts
+        if x not in base_node.output_lcl or x in base_node.partial_lcl
     ]
 
     # property lookup optimization
     # this helps when evaluating a normalized star schema as you only want to lookup the missing properties based on the relevant keys
     if all([x.purpose == Purpose.PROPERTY for x in extra_required]):
         if all(
-            x.keys
-            and all(
-                [
-                    key.address in [y.address for y in base_node.output_concepts]
-                    for key in x.keys
-                ]
-            )
+            x.keys and all([key in base_node.output_lcl for key in x.keys])
             for x in extra_required
         ):
             log_lambda(
@@ -201,11 +193,7 @@ def gen_enrichment_node(
                 left_node=enrich_node,
                 right_node=base_node,
                 concepts=concept_to_relevant_joins(
-                    [
-                        x
-                        for x in join_keys
-                        if x.address in [y.address for y in enrich_node.output_concepts]
-                    ]
+                    [x for x in join_keys if x in enrich_node.output_lcl]
                 ),
                 filter_to_mutual=False,
                 join_type=JoinType.LEFT_OUTER,
