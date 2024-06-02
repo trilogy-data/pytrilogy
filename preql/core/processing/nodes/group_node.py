@@ -72,7 +72,7 @@ class GroupNode(StrategyNode):
                 " vs"
                 f" {[c.address for c in self.output_concepts]}"
                 " and"
-                f" upstream grain {comp_grain}"
+                f" upstream grains {[str(source.grain) for source in parent_sources]}"
                 " vs"
                 f" target grain {grain}"
             )

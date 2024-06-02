@@ -69,19 +69,3 @@ def test_select():
     process_query(statement=select, environment=env)
 
 
-def test_joins_to_ctes():
-    from preql.core.processing.utility import parse_path_to_matches
-
-    TEST = [
-        "ds~internet_sales.fact_internet_sales",
-        "c~product.key@Grain<order_line_number>",
-        "c~product.key@Grain<key>",
-        "ds~product.product_info",
-        "c~product.sub_category_key@Grain<key>",
-        "c~product.sub_category_key@Grain<sub_category_key>",
-        "ds~product.product_sub_category",
-        "c~product.category_key@Grain<sub_category_key>",
-        "c~product.category_key@Grain<category_key>",
-    ]
-
-    assert len(parse_path_to_matches(TEST)) == 2

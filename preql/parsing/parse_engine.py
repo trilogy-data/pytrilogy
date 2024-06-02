@@ -385,7 +385,7 @@ def parse_concept_reference(
     return lookup, namespace, name, parent
 
 
-def get_purpose_and_keys(purpose: Purpose | None, args):
+def get_purpose_and_keys(purpose: Purpose | None, args: list[Concept]):
     local_purpose = purpose or function_args_to_output_purpose(args)
     if local_purpose == Purpose.PROPERTY:
         keys = concept_list_to_keys(args)
@@ -765,7 +765,6 @@ class ParseToObjects(Transformer):
                 purpose=filter_item.content.purpose,
                 metadata=metadata,
                 lineage=filter_item,
-                # filters always define a new grain
                 namespace=namespace,
                 keys=filter_item.content.keys,
                 grain=(
@@ -999,11 +998,10 @@ class ParseToObjects(Transformer):
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
-        # keys are used to pass through derivations
-
         if function.output_purpose == Purpose.PROPERTY:
-            keys = [x for x in function.arguments if isinstance(x, Concept)]
-            grain = Grain(components=keys)
+            pkeys = [x for x in function.arguments if isinstance(x, Concept)]
+            grain = Grain(components=pkeys)
+            keys = grain.components_copy
         else:
             grain = None
             keys = None
@@ -1358,7 +1356,6 @@ class ParseToObjects(Transformer):
             output_datatype=args[0].datatype,
             output_purpose=Purpose.METRIC,
             arg_count=1,
-            # output_grain=Grain(components=arguments),
         )
 
     @v_args(meta=True)
@@ -1373,7 +1370,6 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.METRIC,
             valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=1,
-            # output_grain=Grain(components=arguments),
         )
 
     @v_args(meta=True)
@@ -1426,7 +1422,6 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
             arg_count=2,
-            # output_grain=Grain(components=args),
         )
 
     @v_args(meta=True)
@@ -1439,7 +1434,6 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
             arg_count=2,
-            # output_grain=Grain(components=args),
         )
 
     @v_args(meta=True)
@@ -1452,7 +1446,6 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
             arg_count=2,
-            # output_grain=Grain(components=args),
         )
 
     @v_args(meta=True)
@@ -1465,7 +1458,6 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
             arg_count=1,
-            # output_grain=Grain(components=args),
         )
 
     @v_args(meta=True)
@@ -1488,7 +1480,6 @@ class ParseToObjects(Transformer):
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
             arg_count=1,
-            # output_grain=Grain(components=args),
         )
 
     # date functions
@@ -1577,10 +1568,6 @@ class ParseToObjects(Transformer):
     def fdate_diff(self, meta, args):
         args = self.process_function_args(args, meta=meta)
         purpose = function_args_to_output_purpose(args)
-        if not isinstance(args[-1], DatePart):
-            raise ValueError(
-                "Invalid date diff function, last argument must be a date part"
-            )
         return Function(
             operator=FunctionType.DATE_DIFF,
             arguments=args,
@@ -1821,7 +1808,10 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs=[
+                {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+                {DataType.INTEGER},
+            ],
             arg_count=2,
         )
 

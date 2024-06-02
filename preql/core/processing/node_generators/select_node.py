@@ -2,7 +2,7 @@ from itertools import combinations
 from typing import List, Optional
 
 from preql.core.enums import Purpose
-from preql.core.models import Concept, Environment, Grain
+from preql.core.models import Concept, Environment, Grain, LooseConceptList
 from preql.core.processing.nodes import (
     StrategyNode,
     SelectNode,
@@ -31,6 +31,7 @@ def gen_select_node_from_table(
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
+    all_lcl = LooseConceptList(all_concepts)
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
         return ConstantNode(
             output_concepts=all_concepts,
@@ -99,24 +100,13 @@ def gen_select_node_from_table(
             partial_concepts = [
                 c.concept
                 for c in datasource.columns
-                if not c.is_complete
-                and c.concept.address in [x.address for x in all_concepts]
+                if not c.is_complete and c.concept in all_lcl
             ]
-            if not accept_partial and target_concept.address in [
-                c.address for c in partial_concepts
-            ]:
+            partial_lcl = LooseConceptList(partial_concepts)
+            if not accept_partial and target_concept in partial_lcl:
                 continue
-            partial_addresses = [
-                x.concept.address for x in datasource.columns if not x.is_complete
-            ]
-
             if target_grain and target_grain.issubset(datasource.grain):
-                if all(
-                    [
-                        x.address in [y.address for y in all_concepts]
-                        for x in target_grain.components
-                    ]
-                ):
+                if all([x in all_lcl for x in target_grain.components]):
                     force_group = False
                 # if we are not returning the grain
                 # we have to group
@@ -132,9 +122,7 @@ def gen_select_node_from_table(
                 g=g,
                 parents=[],
                 depth=depth,
-                partial_concepts=[
-                    c for c in all_concepts if c.address in partial_addresses
-                ],
+                partial_concepts=[c for c in all_concepts if c in partial_lcl],
                 accept_partial=accept_partial,
                 datasource=datasource,
                 grain=Grain(components=all_concepts),
@@ -160,20 +148,22 @@ def gen_select_node(
     target_grain: Grain | None = None,
 ) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
-    all_addresses = set([x.address for x in all_concepts])
-    materialized_addresses = {
-        x.address
-        for x in all_concepts
-        if x.address in [z.address for z in environment.materialized_concepts]
-    }
+    all_lcl = LooseConceptList(all_concepts)
+    materialized_lcl = LooseConceptList(
+        [
+            x
+            for x in all_concepts
+            if x.address in [z.address for z in environment.materialized_concepts]
+        ]
+    )
     if not target_grain:
         target_grain = Grain()
         for ac in all_concepts:
             target_grain += ac.grain
-    if materialized_addresses != all_addresses:
+    if materialized_lcl != all_lcl:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
-            f" as it + optional (looking for all {all_addresses}) includes non-materialized concepts {materialized_addresses.difference(all_addresses)} vs materialized: {materialized_addresses}"
+            f" as it + optional (looking for all {all_lcl}) includes non-materialized concepts {materialized_lcl.difference(all_lcl)} vs materialized: {materialized_lcl}"
         )
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")

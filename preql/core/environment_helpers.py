@@ -143,6 +143,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
 
 
 def generate_related_concepts(concept: Concept, environment: Environment):
+    """Auto populate common derived concepts on types"""
     if concept.purpose == Purpose.KEY:
         generate_key_concepts(concept, environment)
     if concept.datatype == DataType.DATE:
