@@ -19,22 +19,27 @@ from preql.core.processing.nodes import (
     NodeJoin,
 )
 from collections import defaultdict
-
+from preql.core.processing.utility import concept_to_relevant_joins
+from copy import deepcopy
 
 def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     if not isinstance(concept.lineage, (Function, AggregateWrapper)):
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == PurposeLineage.AGGREGATE:
         if not concept.grain.abstract:
-            return unique(
-                concept.lineage.concept_arguments + concept.grain.components_copy,
-                "address",
-            )
+            base = concept.lineage.concept_arguments + concept.grain.components_copy
+            for x in base:
+                if isinstance(x, Concept)  and x.purpose == Purpose.PROPERTY and x.keys:
+                    base +=x.keys
+            return unique(base, "address")
+
         if concept.lineage.arguments:
             default_grain = Grain()
             for x in concept.lineage.arguments:
                 if isinstance(x, Concept) and x.grain:
                     default_grain += x.grain
+                elif isinstance(x, Concept) and x.purpose == Purpose.PROPERTY:
+                    default_grain += Grain(components=deepcopy(x.keys))
             return unique(
                 concept.lineage.concept_arguments + default_grain.components_copy,
                 "address",
@@ -56,13 +61,6 @@ def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Conc
     return concept.lineage.content, unique(base, "address")
 
 
-def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
-    addresses = LooseConceptList(concepts)
-    sub_props = LooseConceptList(
-        [x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
-    )
-    final = [c for c in concepts if c not in sub_props]
-    return final
 
 
 def gen_property_enrichment_node(
@@ -106,7 +104,7 @@ def gen_property_enrichment_node(
         input_concepts=unique(
             base_node.output_concepts
             + extra_properties
-            + [environment.concepts[k] for k in required_keys],
+            + [environment.concepts[v] for k, values in required_keys.items() for v in values],
             "address",
         ),
         output_concepts=base_node.output_concepts + extra_properties,

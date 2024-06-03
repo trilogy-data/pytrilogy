@@ -1,7 +1,9 @@
 from click.testing import CliRunner
 from preql.scripts.trilogy import cli
 import os
+from pathlib import Path
 
+path = Path(__file__).parent / "test.db"
 
 def test_cli_string():
     runner = CliRunner()
@@ -33,3 +35,16 @@ def test_cli_fmt_string():
     1->test,;"""
         )
     os.remove("test.sql")
+
+
+
+def test_db_args_string():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["run", "key in int; datasource test_source ( i:in) grain(in) address test; select in;", "duckdb", "--path", str(path)],
+    )
+    if result.exception:
+        raise result.exception
+    assert result.exit_code == 0
+    assert "(42,)" in result.output.strip()

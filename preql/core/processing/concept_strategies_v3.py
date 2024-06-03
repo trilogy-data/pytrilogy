@@ -27,6 +27,7 @@ from preql.core.processing.node_generators import (
     gen_merge_node,
     gen_group_to_node,
     gen_rowset_node,
+    gen_multiselect_node,
 )
 
 from enum import Enum
@@ -207,9 +208,16 @@ def generate_node(
         )
     elif concept.derivation == PurposeLineage.ROWSET:
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating rowset node"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating rowset node with optional {[x.address for x in local_optional]}"
         )
         return gen_rowset_node(
+            concept, local_optional, environment, g, depth + 1, source_concepts
+        )
+    elif concept.derivation == PurposeLineage.MULTISELECT:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating multiselect node with optional {[x.address for x in local_optional]}"
+        )
+        return gen_multiselect_node(
             concept, local_optional, environment, g, depth + 1, source_concepts
         )
     elif concept.derivation == PurposeLineage.CONSTANT:
@@ -349,6 +357,7 @@ def search_concepts(
                     PurposeLineage.UNNEST,
                     PurposeLineage.ROWSET,
                     PurposeLineage.BASIC,
+                    PurposeLineage.MULTISELECT
                 ]:
                     skip.add(priority_concept.address)
                 break

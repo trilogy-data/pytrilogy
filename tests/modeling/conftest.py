@@ -21,6 +21,7 @@ property order_id.order_year int;
 property store_id.store_name string;
 property product_id.product_name string;
 property <store_id, product_id>.inv_qty int;
+property order_id.revenue float;    
 
 datasource orders (
     order_id:order_id,
@@ -28,16 +29,17 @@ datasource orders (
     product_id:~product_id,
     order_timestamp:order_timestamp,
     date_part(order_timestamp, year): order_year,
+    revenue:revenue,
 )
 grain (order_id)
 query '''
-select 1 order_id, 1 store_id, 1 product_id, DATETIME  '1992-09-20 11:30:00.123456789' order_timestamp
+select 1 order_id, 1 store_id, 1 product_id, DATETIME  '1992-09-20 11:30:00.123456789' order_timestamp, 10.00 revenue
 union all
-select 2, 1, 2, DATETIME   '1992-09-20 11:30:00.123456789'
+select 2, 1, 2, DATETIME   '1992-09-20 11:30:00.123456789', 10.0
 union all
-select 3, 2, 1, DATETIME   '1992-09-20 11:30:00.123456789'
+select 3, 2, 1, DATETIME   '1992-09-20 11:30:00.123456789', 5.0
 union all
-select 4, 2, 2, DATETIME   '1992-09-20 11:30:00.123456789'
+select 4, 2, 2, DATETIME   '1992-09-20 11:30:00.123456789', 5.0
 ''';
 
 

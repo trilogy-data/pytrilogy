@@ -7,6 +7,7 @@ from .select_node import gen_select_node
 from .unnest_node import gen_unnest_node
 from .merge_node import gen_merge_node
 from .rowset_node import gen_rowset_node
+from .multiselect_node import gen_multiselect_node
 
 __all__ = [
     "gen_filter_node",
@@ -18,4 +19,5 @@ __all__ = [
     "gen_merge_node",
     "gen_group_to_node",
     "gen_rowset_node",
+    "gen_multiselect_node",
 ]

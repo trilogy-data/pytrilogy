@@ -9,7 +9,7 @@ class DuckDBConfig(DialectConfig):
     def connection_string(self) -> str:
         if not self.path:
             return "duckdb:///:memory:"
-        return f"duckdb://{self.path}"
+        return f"duckdb:///{self.path}"
 
 
 class PostgresConfig(DialectConfig):
@@ -24,6 +24,22 @@ class PostgresConfig(DialectConfig):
 
     def connection_string(self) -> str:
         return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}"
+
+
+
+
+class SQLServerConfig(DialectConfig):
+    def __init__(
+        self, host: str, port: int, username: str, password: str, database: str
+    ):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.database = database
+
+    def connection_string(self) -> str:
+        return f"sqlserver//{self.username}:{self.password}@{self.host}:{self.port}"
 
 
 class SnowflakeConfig(DialectConfig):

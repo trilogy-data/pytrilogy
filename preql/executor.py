@@ -136,7 +136,18 @@ class Executor(object):
         compiled_sql = self.generator.compile_statement(command)
         output.append(compiled_sql)
         return output
-
+    
+    @generate_sql.register  # type: ignore
+    def _(self, command: Select) -> List[str]:
+        output = []
+        sql = self.generator.generate_queries(
+            self.environment, [command], hooks=self.hooks
+        )
+        for statement in sql:
+            compiled_sql = self.generator.compile_statement(statement)
+            output.append(compiled_sql)
+        return output
+    
     @generate_sql.register  # type: ignore
     def _(self, command: str) -> List[str]:
         """generate SQL for execution"""

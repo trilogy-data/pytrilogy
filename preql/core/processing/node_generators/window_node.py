@@ -39,18 +39,23 @@ def gen_window_node(
     source_concepts,
 ) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
+
+    parent_node = source_concepts(
+                mandatory_list=parent_concepts,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+            )
+    if not parent_node:
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
+        return None
     _window_node = WindowNode(
         input_concepts=parent_concepts,
         output_concepts=[concept] + parent_concepts,
         environment=environment,
         g=g,
         parents=[
-            source_concepts(
-                mandatory_list=parent_concepts,
-                environment=environment,
-                g=g,
-                depth=depth + 1,
-            )
+            parent_node,
         ],
     )
     window_node = MergeNode(

@@ -1,4 +1,4 @@
-from preql.core.models import Concept, Environment
+from preql.core.models import Concept, Environment, LooseConceptList
 from preql.utility import unique
 from preql.core.processing.nodes import GroupNode, StrategyNode
 from typing import List
@@ -28,7 +28,7 @@ def gen_group_node(
         resolve_function_parent_concepts(concept), "address"
     )
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} parent_concepts are {[x.address for x in parent_concepts]}"
+        f"{padding(depth)}{LOGGER_PREFIX} parent_concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
@@ -42,7 +42,7 @@ def gen_group_node(
         output_concepts += grain_components
 
     if parent_concepts:
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents")
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(parent_concepts)}")
         parent_concepts = unique(parent_concepts, "address")
         parent = source_concepts(
             mandatory_list=parent_concepts,

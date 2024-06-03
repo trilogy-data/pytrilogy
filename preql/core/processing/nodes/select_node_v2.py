@@ -115,8 +115,7 @@ class SelectNode(StrategyNode):
             for x in c.alias.concept_arguments:
                 source_map[x.address] = {datasource}
             # ensure that if this select needs to merge, the grain components are present
-            all_concepts_final = all_concepts_final + datasource.grain.components_copy
-
+            all_concepts_final = all_concepts_final
         return QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=all_concepts_final,

@@ -9,11 +9,12 @@ from preql.core.models import (
     ListType,
     StructType,
     MapType,
+    ALL_TYPES
 )
 from preql.core.enums import FunctionType, Purpose, Granularity, DatePart
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
-from typing import Optional
+from typing import Optional, Union
 
 
 def create_function_derived_concept(
@@ -80,7 +81,7 @@ def function_args_to_output_purpose(args) -> Purpose:
             has_non_constant = True
         if isinstance(arg, Concept) and arg.granularity != Granularity.SINGLE_ROW:
             has_non_single_row_constant = True
-    if not has_non_constant and not has_non_single_row_constant:
+    if args and not has_non_constant and not has_non_single_row_constant:
         return Purpose.CONSTANT
     if has_metric:
         return Purpose.METRIC
@@ -176,7 +177,7 @@ def Split(args: list[Concept]) -> Function:
         operator=FunctionType.SPLIT,
         arguments=args,
         # first arg sets properties
-        output_datatype=DataType.ARRAY,
+        output_datatype=ListType(type=DataType.STRING),
         output_purpose=function_args_to_output_purpose(args),
         valid_inputs={DataType.STRING},
         arg_count=2,
@@ -187,12 +188,10 @@ def IndexAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.INDEX_ACCESS,
         arguments=args,
-        # first arg sets properties
-        # TODO: THIS IS WRONG - figure out how to get at array types
-        output_datatype=DataType.STRING,
+        output_datatype=args[0].datatype.value_data_type,
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
-            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {DataType.LIST},
             {
                 DataType.INTEGER,
             },
@@ -205,12 +204,10 @@ def AttrAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.ATTR_ACCESS,
         arguments=args,
-        # first arg sets properties
-        # TODO: THIS IS WRONG - figure out how to get at array types
-        output_datatype=DataType.STRING,
+        output_datatype=args[0].field_map[args[1]].datatype, #type: ignore
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
-            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {StructType},
             {
                 DataType.STRING,
             },

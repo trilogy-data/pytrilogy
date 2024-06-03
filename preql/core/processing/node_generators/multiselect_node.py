@@ -4,6 +4,9 @@ from preql.core.models import (
     Select,
     RowsetDerivation,
     RowsetItem,
+    MultiSelect,
+    AlignItem,
+    AlignClause
 )
 from preql.core.processing.nodes import MergeNode, NodeJoin
 from preql.core.processing.nodes.base_node import concept_list_to_grain
@@ -16,8 +19,22 @@ from preql.core.processing.node_generators.common import concept_to_relevant_joi
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
+def extra_align_joins(base:MultiSelect ):
 
-def gen_rowset_node(
+    output = []
+    for align in base.align:
+        output.append(
+            NodeJoin(
+                left_node=base,
+                right_node=align,
+                concepts = align.concepts,
+                join_type=JoinType.FULL
+            )
+        )
+
+            
+
+def gen_multiselect_node(
     concept: Concept,
     local_optional: List[Concept],
     environment: Environment,
@@ -25,30 +42,49 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
 ) -> MergeNode | None:
-    if not isinstance(concept.lineage, RowsetItem):
-        raise SyntaxError(
-            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
+    lineage: MultiSelect= concept.lineage
+
+    base_parents:List[MergeNode] = []
+    for select in lineage.selects:
+        snode: MergeNode = source_concepts(
+            mandatory_list=select.output_components,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
         )
-    lineage: RowsetItem = concept.lineage
-    rowset: RowsetDerivation = lineage.rowset
-    select: Select = lineage.rowset.select
-    node: MergeNode = source_concepts(
-        mandatory_list=select.output_components,
+        if not snode:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
+            )
+            return None
+        if select.where_clause:
+            snode.conditions = select.where_clause.conditional
+        base_parents.append(snode)
+    join_base = base_parents[0]
+    node = MergeNode(
+        input_concepts=[x for y in base_parents for x in y.output_concepts],
+        output_concepts=[x for y in base_parents for x in y.output_concepts],
         environment=environment,
         g=g,
-        depth=depth + 1,
+        depth=depth,
+        parents=base_parents,
+        node_joins = [
+            NodeJoin(
+                left_node=join_base,
+                right_node=outer,
+                concepts = []
+            )
+            for outer in base_parents[1:]
+
+
+        ]
     )
-    if not node:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
-        )
-        return None
-    if select.where_clause:
-        node.conditions = select.where_clause.conditional
+
     enrichment = set([x.address for x in local_optional])
+
     rowset_relevant = [
         x
-        for x in rowset.derived_concepts
+        for x in lineage.derived_concepts
         if x.address == concept.address or x.address in enrichment
     ]
     additional_relevant = [

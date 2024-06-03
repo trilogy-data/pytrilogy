@@ -125,8 +125,13 @@ class DataType(Enum):
 
 
 class ListType(BaseModel):
+    model_config = ConfigDict(frozen=True)
     type: ALL_TYPES
 
+
+    def __str__(self) -> str:
+        return f"ListType<{self.type}>"
+    
     @property
     def data_type(self):
         return DataType.LIST
@@ -140,6 +145,13 @@ class ListType(BaseModel):
         if isinstance(self.type, Concept):
             return self.type.datatype
         return self.type
+
+    @classmethod
+    def of_type(cls, ntype: DataType | ListType | StructType | MapType | Concept):
+        class _(ListType):
+            type:ntype.__class__
+        return _
+
 
 
 class MapType(BaseModel):
@@ -157,6 +169,7 @@ class MapType(BaseModel):
 
 class StructType(BaseModel):
     fields: List[ALL_TYPES]
+    fields_map: Dict[str, Concept] = Field(default_factory=dict)
 
     @property
     def data_type(self):
@@ -220,18 +233,29 @@ class Concept(BaseModel):
         validate_default=True,
     )
     lineage: Optional[
-        Union[Function, WindowItem, FilterItem, AggregateWrapper, RowsetItem]
+        Union[Function, WindowItem, FilterItem, AggregateWrapper, RowsetItem, MultiSelect]
     ] = None
     # lineage: Annotated[Optional[
     #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
     # ], WrapValidator(lineage_validator)] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    keys: Optional[List["Concept"]] = None
+    keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
 
     def __hash__(self):
         return hash(str(self))
 
+    @field_validator("keys", mode="before")
+    @classmethod
+    def keys_validator(cls, v, info: ValidationInfo):
+        if v is None:
+            return v
+        if not isinstance(v, (list, tuple)):
+            raise ValueError(f"Keys must be a list or tuple, got {type(v)}")
+        if isinstance(v, list):
+            return tuple(v)
+        return v
+    
     @field_validator("namespace", mode="plain")
     @classmethod
     def namespace_validation(cls, v):
@@ -337,12 +361,13 @@ class Concept(BaseModel):
                 if self.namespace and self.namespace != DEFAULT_NAMESPACE
                 else namespace
             ),
-            keys=(
-                [x.with_namespace(namespace) for x in self.keys] if self.keys else None
-            ),
+            keys=tuple([x.with_namespace(namespace) for x in self.keys]) if self.keys else None,
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+        if not all([isinstance(x, Concept) for x in self.keys or []]):
+            raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
+        
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -351,7 +376,7 @@ class Concept(BaseModel):
             lineage=self.lineage,
             grain=grain or Grain(components=[]),
             namespace=self.namespace,
-            keys=self.keys,
+            keys=self.keys
         )
 
     def with_default_grain(self) -> "Concept":
@@ -361,7 +386,7 @@ class Concept(BaseModel):
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.keys:
-                components = self.keys
+                components = [*self.keys]
             if self.lineage:
                 for item in self.lineage.arguments:
                     if isinstance(item, Concept):
@@ -381,7 +406,7 @@ class Concept(BaseModel):
             metadata=self.metadata,
             lineage=self.lineage,
             grain=grain,
-            keys=[*self.keys] if self.keys else None,
+            keys=self.keys,
             namespace=self.namespace,
         )
 
@@ -412,6 +437,8 @@ class Concept(BaseModel):
             return PurposeLineage.AGGREGATE
         elif self.lineage and isinstance(self.lineage, RowsetItem):
             return PurposeLineage.ROWSET
+        elif self.lineage and isinstance(self.lineage, MultiSelect):
+            return PurposeLineage.MULTISELECT
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -621,7 +648,7 @@ class Function(BaseModel):
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType
     output_purpose: Purpose
-    valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
+    valid_inputs: Optional[Union[Set[DataType | ListType], List[Set[DataType | ListType]]]] = None
     arguments: Sequence[
         Union[
             Concept,
@@ -632,6 +659,7 @@ class Function(BaseModel):
             float,
             str,
             DataType,
+            ListType,
             DatePart,
             "Parenthetical",
             CaseWhen,
@@ -681,8 +709,8 @@ class Function(BaseModel):
             ):
                 if arg.datatype != DataType.UNKNOWN:
                     raise TypeError(
-                        f"Invalid input datatype {arg.datatype} passed into"
-                        f" {operator_name} from concept {arg.name}"
+                        f"Invalid input datatype {arg.datatype.data_type} passed into position {idx}"
+                        f" for {operator_name} from concept {arg.name}, valid is {valid_inputs[idx]}"
                     )
             if (
                 isinstance(arg, Function)
@@ -756,7 +784,7 @@ class Function(BaseModel):
 
 
 class ConceptTransform(BaseModel):
-    function: Function | FilterItem | WindowItem
+    function: Function | FilterItem | WindowItem | AggregateWrapper
     output: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
@@ -787,6 +815,7 @@ class ConceptTransform(BaseModel):
         return ConceptTransform(
             function=new_parent,
             output=self.output,
+            modifiers= self.modifiers
         )
 
 
@@ -1115,6 +1144,63 @@ class Select(BaseModel):
         )
 
 
+class AlignItem(BaseModel):
+    alias: str
+    concepts: List[Concept]
+
+    def with_namespace(self, namespace: str) -> "AlignItem":
+        return AlignItem(
+            alias=self.alias,
+            concepts=[c.with_namespace(namespace) for c in self.concepts],
+        )
+
+class AlignClause(BaseModel):
+    items: List[AlignItem]
+
+    def with_namespace(self, namespace: str) -> "AlignClause":
+        return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
+    
+    
+    
+class MultiSelect(BaseModel):
+    selects: List[Select]   
+    align: AlignClause
+    namespace:str
+    
+
+    def with_namespace(self, namespace: str) -> "MultiSelect":
+        return MultiSelect(
+            selects=[c.with_namespace(namespace) for c in self.selects],
+            align=self.align.with_namespace(namespace),
+        )
+    
+    @property
+    def grain(self):
+        base = Grain()
+        for select in self.selects:
+            base += select.grain
+        return base
+    
+    @property
+    def derived_concepts(self) -> List[Concept]:
+        output = []
+        for item in self.align.items:
+            datatypes = set([c.datatype for c in item.concepts])
+            if len(datatypes)>1:
+                raise ValueError(f"Datatypes do not align for {item.alias}, have {datatypes}")
+            purposes = set([c.purpose for c in item.concepts])
+            for field in self.align.items:
+                for concept in field.concepts:
+                    output.append(concept)
+            new = Concept(
+                name = item.alias,
+                datatype = datatypes.pop(),
+                purpose = Purpose.KEY,
+                lineage = self,
+                namespace = self.namespace
+            )
+            output.append(new)
+        return output
 class Address(BaseModel):
     location: str
 
@@ -1931,7 +2017,7 @@ class Environment(BaseModel):
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
-    namespace: Optional[str] = None
+    namespace: Optional[str] = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
@@ -2415,7 +2501,7 @@ class RowsetDerivation(BaseModel):
                 lineage=RowsetItem(
                     content=orig_concept, where=self.select.where_clause, rowset=self
                 ),
-                grain=self.select.grain,
+                grain=orig_concept.grain,
                 metadata=orig_concept.metadata,
                 namespace=(
                     f"{self.name}.{orig_concept.namespace}"

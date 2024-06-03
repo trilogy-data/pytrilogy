@@ -48,14 +48,12 @@ class GroupNode(StrategyNode):
 
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if comp_grain == grain and set(
-            [c.address for c in self.output_concepts]
-        ) == set([c.address for c in self.input_concepts]):
+        if comp_grain == grain and self.output_lcl == self.input_lcl:
             # if there is no group by, and inputs equal outputs
             # return the parent
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} Output of group by node equals input of group by node"
-                f" {[c.address for c in self.output_concepts]}"
+                f" {self.output_lcl}"
             )
             if len(parent_sources) == 1:
                 logger.info(
@@ -68,9 +66,9 @@ class GroupNode(StrategyNode):
 
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different output than input, forcing group"
-                f" {[c.address for c in self.input_concepts]}"
+                f" {self.input_lcl}"
                 " vs"
-                f" {[c.address for c in self.output_concepts]}"
+                f" {self.output_lcl}"
                 " and"
                 f" upstream grains {[str(source.grain) for source in parent_sources]}"
                 " vs"
@@ -85,14 +83,14 @@ class GroupNode(StrategyNode):
                 )
             source_type = SourceType.GROUP
         return QueryDatasource(
-            input_concepts=unique(self.input_concepts, "address"),
-            output_concepts=unique(self.output_concepts, "address"),
+            input_concepts=self.input_concepts,
+            output_concepts=self.output_concepts,
             datasources=parent_sources,
             source_type=source_type,
             source_map=resolve_concept_map(
                 parent_sources,
-                targets=unique(self.output_concepts, "address"),
-                inherited_inputs=unique(self.input_concepts, "address"),
+                targets=self.output_concepts,
+                inherited_inputs=self.input_concepts,
             ),
             joins=[],
             grain=grain,

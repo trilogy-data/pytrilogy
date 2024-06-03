@@ -5,10 +5,12 @@ key id int;
 property id.date_string string;
 property id.date date;
 property id.year int;
+property id.day_of_week int;
 
 datasource date (
     D_DATE_SK: id,
     D_DATE_ID: date_string,
+        D_DOW: day_of_week,
     raw('''cast("D_YEAR" as int)'''): year
 )
 grain (id)

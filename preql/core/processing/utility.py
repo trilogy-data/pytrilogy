@@ -6,7 +6,9 @@ from preql.core.models import (
     BaseJoin,
     Concept,
     QueryDatasource,
+    LooseConceptList
 )
+
 from preql.core.enums import Purpose, PurposeLineage, Granularity
 from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
@@ -23,6 +25,14 @@ class NodeType(Enum):
 class PathInfo(TypedDict):
     paths: Dict[str, List[str]]
     datasource: Datasource
+
+def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
+    addresses = LooseConceptList(concepts)
+    sub_props = LooseConceptList(
+        [x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
+    )
+    final = [c for c in concepts if c not in sub_props]
+    return unique(final, 'address')
 
 
 def padding(x: int) -> str:
@@ -156,11 +166,12 @@ def get_node_joins(
                 left_datasource=identifier_map[left],
                 right_datasource=identifier_map[right],
                 join_type=join_type,
-                concepts=local_concepts,
+                concepts=concept_to_relevant_joins(local_concepts),
             )
         )
     final_joins: List[BaseJoin] = []
     available_aliases: set[str] = set()
+    # reorder our joins
     while final_joins_pre:
         new_final_joins_pre: List[BaseJoin] = []
         for join in final_joins_pre:
