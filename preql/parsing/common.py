@@ -11,30 +11,16 @@ from preql.core.models import (
 )
 from typing import List, Tuple
 from preql.core.functions import (
-    Count,
-    CountDistinct,
-    Group,
-    Max,
-    Min,
-    Split,
-    IndexAccess,
-    AttrAccess,
-    Abs,
-    Unnest,
-    Coalesce,
     function_args_to_output_purpose,
-    CurrentDate,
-    CurrentDatetime,
-    IsNull,
-    SubString,
-    StrPos,
     FunctionType,
     arg_to_datatype,
 )
 from preql.utility import unique
 
 
-def get_purpose_and_keys(purpose: Purpose | None, args: list[Concept])->Tuple[Purpose | None, Tuple[Concept]]:
+def get_purpose_and_keys(
+    purpose: Purpose | None, args: list[Concept]
+) -> Tuple[Purpose | None, Tuple[Concept]]:
     local_purpose = purpose or function_args_to_output_purpose(args)
     if local_purpose == Purpose.PROPERTY:
         keys = concept_list_to_keys(args)
@@ -50,11 +36,16 @@ def concept_list_to_keys(concepts: List[Concept]) -> Tuple[Concept]:
             final_keys += concept_list_to_keys(concept.keys)
         elif concept.purpose != Purpose.PROPERTY:
             final_keys.append(concept)
-    return tuple(unique(final_keys, 'address'))
+    return tuple(unique(final_keys, "address"))
 
 
-def constant_to_concept(parent: ListWrapper, name: str, namespace: str,     purpose: Purpose | None = None,
-    metadata: Metadata | None = None,) -> Concept:
+def constant_to_concept(
+    parent: ListWrapper,
+    name: str,
+    namespace: str,
+    purpose: Purpose | None = None,
+    metadata: Metadata | None = None,
+) -> Concept:
     const_function: Function = Function(
         operator=FunctionType.CONSTANT,
         output_datatype=arg_to_datatype(parent),

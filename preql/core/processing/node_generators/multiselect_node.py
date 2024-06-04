@@ -1,38 +1,81 @@
 from preql.core.models import (
     Concept,
     Environment,
-    Select,
-    RowsetDerivation,
-    RowsetItem,
     MultiSelect,
-    AlignItem,
-    AlignClause
 )
 from preql.core.processing.nodes import MergeNode, NodeJoin
-from preql.core.processing.nodes.base_node import concept_list_to_grain
+from preql.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
 from typing import List
 
 from preql.core.enums import JoinType
 from preql.constants import logger
 from preql.core.processing.utility import padding
 from preql.core.processing.node_generators.common import concept_to_relevant_joins
+from collections import defaultdict
+from itertools import combinations
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
-def extra_align_joins(base:MultiSelect ):
 
+def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
+    available_aliases: set[str] = set()
+    final_joins_pre = [*joins]
+    final_joins = []
+    while final_joins_pre:
+        new_final_joins_pre: List[NodeJoin] = []
+        for join in final_joins_pre:
+            if not available_aliases:
+                final_joins.append(join)
+                available_aliases.add(join.left_node)
+                available_aliases.add(join.right_node)
+            elif join.left_node in available_aliases:
+                # we don't need to join twice
+                # so whatever join we found first, works
+                if join.right_node in available_aliases:
+                    continue
+                final_joins.append(join)
+                available_aliases.add(join.left_node)
+                available_aliases.add(join.right_node)
+            else:
+                new_final_joins_pre.append(join)
+        if len(new_final_joins_pre) == len(final_joins_pre):
+            remaining = [join.left_node for join in new_final_joins_pre]
+            remaining_right = [join.right_node for join in new_final_joins_pre]
+            raise SyntaxError(
+                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
+            )
+        final_joins_pre = new_final_joins_pre
+    return final_joins
+
+
+def extra_align_joins(base: MultiSelect, parents: List[StrategyNode]) -> List[NodeJoin]:
+    node_merge_concept_map = defaultdict(list)
     output = []
-    for align in base.align:
+    for align in base.align.items:
+        jc = align.gen_concept(base)
+
+        for node in parents:
+            for item in align.concepts:
+                if item in node.output_concepts:
+                    node_merge_concept_map[node].append(jc)
+
+    for left, right in combinations(node_merge_concept_map.keys(), 2):
+        matched_concepts = [
+            x
+            for x in node_merge_concept_map[left]
+            if x in node_merge_concept_map[right]
+        ]
         output.append(
             NodeJoin(
-                left_node=base,
-                right_node=align,
-                concepts = align.concepts,
-                join_type=JoinType.FULL
+                left_node=left,
+                right_node=right,
+                concepts=matched_concepts,
+                join_type=JoinType.FULL,
             )
         )
 
-            
+    return resolve_join_order(output)
+
 
 def gen_multiselect_node(
     concept: Concept,
@@ -42,9 +85,9 @@ def gen_multiselect_node(
     depth: int,
     source_concepts,
 ) -> MergeNode | None:
-    lineage: MultiSelect= concept.lineage
+    lineage: MultiSelect = concept.lineage
 
-    base_parents:List[MergeNode] = []
+    base_parents: List[MergeNode] = []
     for select in lineage.selects:
         snode: MergeNode = source_concepts(
             mandatory_list=select.output_components,
@@ -59,8 +102,13 @@ def gen_multiselect_node(
             return None
         if select.where_clause:
             snode.conditions = select.where_clause.conditional
+        for x in snode.output_concepts:
+            merge = lineage.get_merge_concept(x)
+            if merge:
+                snode.output_concepts.append(merge)
+            # clear cache so QPS
+            snode.resolution_cache = None
         base_parents.append(snode)
-    join_base = base_parents[0]
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
         output_concepts=[x for y in base_parents for x in y.output_concepts],
@@ -68,16 +116,7 @@ def gen_multiselect_node(
         g=g,
         depth=depth,
         parents=base_parents,
-        node_joins = [
-            NodeJoin(
-                left_node=join_base,
-                right_node=outer,
-                concepts = []
-            )
-            for outer in base_parents[1:]
-
-
-        ]
+        node_joins=extra_align_joins(lineage, base_parents),
     )
 
     enrichment = set([x.address for x in local_optional])

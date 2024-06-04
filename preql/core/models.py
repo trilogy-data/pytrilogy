@@ -29,6 +29,7 @@ from pydantic import (
     field_validator,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
+    computed_field,
 )
 from lark.tree import Meta
 from pathlib import Path
@@ -53,7 +54,7 @@ from preql.core.enums import (
     ShowCategory,
     Granularity,
 )
-from preql.core.exceptions import UndefinedConceptException
+from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.utility import unique
 from collections import UserList
 from preql.utility import string_to_hash
@@ -128,10 +129,9 @@ class ListType(BaseModel):
     model_config = ConfigDict(frozen=True)
     type: ALL_TYPES
 
-
     def __str__(self) -> str:
         return f"ListType<{self.type}>"
-    
+
     @property
     def data_type(self):
         return DataType.LIST
@@ -149,9 +149,9 @@ class ListType(BaseModel):
     @classmethod
     def of_type(cls, ntype: DataType | ListType | StructType | MapType | Concept):
         class _(ListType):
-            type:ntype.__class__
-        return _
+            type: ntype.__class__
 
+        return _
 
 
 class MapType(BaseModel):
@@ -233,7 +233,9 @@ class Concept(BaseModel):
         validate_default=True,
     )
     lineage: Optional[
-        Union[Function, WindowItem, FilterItem, AggregateWrapper, RowsetItem, MultiSelect]
+        Union[
+            Function, WindowItem, FilterItem, AggregateWrapper, RowsetItem, MultiSelect
+        ]
     ] = None
     # lineage: Annotated[Optional[
     #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
@@ -255,7 +257,7 @@ class Concept(BaseModel):
         if isinstance(v, list):
             return tuple(v)
         return v
-    
+
     @field_validator("namespace", mode="plain")
     @classmethod
     def namespace_validation(cls, v):
@@ -361,13 +363,17 @@ class Concept(BaseModel):
                 if self.namespace and self.namespace != DEFAULT_NAMESPACE
                 else namespace
             ),
-            keys=tuple([x.with_namespace(namespace) for x in self.keys]) if self.keys else None,
+            keys=(
+                tuple([x.with_namespace(namespace) for x in self.keys])
+                if self.keys
+                else None
+            ),
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
-        
+
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -376,7 +382,7 @@ class Concept(BaseModel):
             lineage=self.lineage,
             grain=grain or Grain(components=[]),
             namespace=self.namespace,
-            keys=self.keys
+            keys=self.keys,
         )
 
     def with_default_grain(self) -> "Concept":
@@ -609,6 +615,21 @@ class LooseConceptList:
         self.concepts = concepts
         self.addresses = {s.address for s in self.concepts}
 
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    ) -> core_schema.CoreSchema:
+        args = get_args(source_type)
+        if args:
+            schema = handler(List[args])  # type: ignore
+        else:
+            schema = handler(List)
+        return core_schema.no_info_after_validator_function(cls.validate, schema)
+
+    @classmethod
+    def validate(cls, v):
+        return cls(v)
+
     def __str__(self) -> str:
         return f"lcl{str(self.addresses)}"
 
@@ -648,7 +669,9 @@ class Function(BaseModel):
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType
     output_purpose: Purpose
-    valid_inputs: Optional[Union[Set[DataType | ListType], List[Set[DataType | ListType]]]] = None
+    valid_inputs: Optional[
+        Union[Set[DataType | ListType], List[Set[DataType | ListType]]]
+    ] = None
     arguments: Sequence[
         Union[
             Concept,
@@ -813,9 +836,7 @@ class ConceptTransform(BaseModel):
         new_parent = FilterItem(content=new_parent_concept, where=where)
         self.output.lineage = new_parent
         return ConceptTransform(
-            function=new_parent,
-            output=self.output,
-            modifiers= self.modifiers
+            function=new_parent, output=self.output, modifiers=self.modifiers
         )
 
 
@@ -1147,60 +1168,116 @@ class Select(BaseModel):
 class AlignItem(BaseModel):
     alias: str
     concepts: List[Concept]
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+
+    @computed_field
+    @property
+    def concepts_lcl(self) -> LooseConceptList:
+        return LooseConceptList(self.concepts)
 
     def with_namespace(self, namespace: str) -> "AlignItem":
         return AlignItem(
             alias=self.alias,
             concepts=[c.with_namespace(namespace) for c in self.concepts],
+            namespace=namespace,
         )
+
+    def gen_concept(self, parent: MultiSelect):
+        datatypes = set([c.datatype for c in self.concepts])
+        if len(datatypes) > 1:
+            raise InvalidSyntaxException(
+                f"Datatypes do not align for merged statements {self.alias}, have {datatypes}"
+            )
+        new = Concept(
+            name=self.alias,
+            datatype=datatypes.pop(),
+            purpose=Purpose.KEY,
+            lineage=parent,
+            namespace=parent.namespace,
+        )
+        return new
+
 
 class AlignClause(BaseModel):
     items: List[AlignItem]
 
     def with_namespace(self, namespace: str) -> "AlignClause":
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
-    
-    
-    
+
+
 class MultiSelect(BaseModel):
-    selects: List[Select]   
+    selects: List[Select]
     align: AlignClause
-    namespace:str
-    
+    namespace: str
+    where_clause: Optional["WhereClause"] = None
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+
+    def __repr__(self):
+        return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
+
+    @computed_field
+    @property
+    def arguments(self) -> List[Concept]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        return unique(output, "address")
+
+    def get_merge_concept(self, check: Concept):
+        for item in self.align.items:
+            if check in item.concepts_lcl:
+                return item.gen_concept(self)
+        return None
 
     def with_namespace(self, namespace: str) -> "MultiSelect":
         return MultiSelect(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
         )
-    
+
     @property
     def grain(self):
         base = Grain()
         for select in self.selects:
             base += select.grain
         return base
-    
+
+    @computed_field
     @property
     def derived_concepts(self) -> List[Concept]:
         output = []
         for item in self.align.items:
-            datatypes = set([c.datatype for c in item.concepts])
-            if len(datatypes)>1:
-                raise ValueError(f"Datatypes do not align for {item.alias}, have {datatypes}")
-            purposes = set([c.purpose for c in item.concepts])
-            for field in self.align.items:
-                for concept in field.concepts:
-                    output.append(concept)
-            new = Concept(
-                name = item.alias,
-                datatype = datatypes.pop(),
-                purpose = Purpose.KEY,
-                lineage = self,
-                namespace = self.namespace
-            )
-            output.append(new)
+            output.append(item.gen_concept(self))
         return output
+
+    def find_source(self, concept: Concept, cte: CTE):
+        for x in self.align.items:
+            if concept.name == x.alias:
+                for c in x.concepts:
+                    if c.address in cte.output_lcl:
+                        return c
+
+        raise SyntaxError(
+            f"Could not find upstream map for multiselc {str(concept)} on cte ({cte.alias})"
+        )
+
+    @property
+    def output_components(self) -> List[Concept]:
+        output = self.derived_concepts
+        for select in self.selects:
+            output += select.output_components
+        return unique(output, "address")
+
+    @computed_field
+    @property
+    def hidden_components(self) -> List[Concept]:
+        output = []
+        for select in self.selects:
+            output += select.hidden_components
+        return output
+
+
 class Address(BaseModel):
     location: str
 
@@ -1696,6 +1773,11 @@ class CTE(BaseModel):
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def output_lcl(self) -> LooseConceptList:
+        return LooseConceptList(self.output_columns)
 
     @field_validator("output_columns")
     def validate_output_columns(cls, v):
@@ -2489,6 +2571,9 @@ class RowsetDerivation(BaseModel):
     select: Select
     namespace: str
 
+    def __repr__(self):
+        return f"RowsetDerivation<{str(self.select)}>"
+
     @property
     def derived_concepts(self) -> List[Concept]:
         output: list[Concept] = []
@@ -2542,7 +2627,7 @@ class RowsetItem(BaseModel):
     rowset: RowsetDerivation
     where: Optional["WhereClause"] = None
 
-    def __str__(self):
+    def __repr__(self):
         return (
             f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
         )

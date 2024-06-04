@@ -30,7 +30,6 @@ select
     env, parsed = parse(declarations)
 
 
-
 def test_rowset_grain() -> None:
     declarations = """
 key user_id int metadata(description="the description");

@@ -41,11 +41,11 @@ def gen_window_node(
     parent_concepts = resolve_window_parent_concepts(concept)
 
     parent_node = source_concepts(
-                mandatory_list=parent_concepts,
-                environment=environment,
-                g=g,
-                depth=depth + 1,
-            )
+        mandatory_list=parent_concepts,
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+    )
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
         return None

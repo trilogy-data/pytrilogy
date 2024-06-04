@@ -67,5 +67,3 @@ def test_select():
     assert select.grain == Grain(components=[env.concepts["category_name"]])
 
     process_query(statement=select, environment=env)
-
-

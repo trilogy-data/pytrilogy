@@ -94,6 +94,9 @@ def get_priority_concept(
                 and not c.granularity == Granularity.SINGLE_ROW
             ]
             +
+            # then multiselects to remove them from scope
+            [c for c in remaining_concept if c.derivation == PurposeLineage.MULTISELECT]
+            +
             # then rowsets to remove them from scope, as they cannot get partials
             [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
             # we should be home-free here
@@ -357,7 +360,7 @@ def search_concepts(
                     PurposeLineage.UNNEST,
                     PurposeLineage.ROWSET,
                     PurposeLineage.BASIC,
-                    PurposeLineage.MULTISELECT
+                    PurposeLineage.MULTISELECT,
                 ]:
                     skip.add(priority_concept.address)
                 break

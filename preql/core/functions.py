@@ -9,12 +9,11 @@ from preql.core.models import (
     ListType,
     StructType,
     MapType,
-    ALL_TYPES
 )
 from preql.core.enums import FunctionType, Purpose, Granularity, DatePart
 from preql.core.exceptions import InvalidSyntaxException
 from preql.constants import MagicConstants
-from typing import Optional, Union
+from typing import Optional
 
 
 def create_function_derived_concept(
@@ -204,7 +203,7 @@ def AttrAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.ATTR_ACCESS,
         arguments=args,
-        output_datatype=args[0].field_map[args[1]].datatype, #type: ignore
+        output_datatype=args[0].field_map[args[1]].datatype,  # type: ignore
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
             {StructType},

@@ -36,6 +36,7 @@ from preql.core.models import (
     ListWrapper,
     ShowStatement,
     RowsetItem,
+    MultiSelect,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -259,6 +260,8 @@ class BaseDialect:
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
+            elif isinstance(c.lineage, MultiSelect):
+                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
@@ -453,31 +456,36 @@ class BaseDialect:
                 # if cte.name in where_assignment
                 # else None,
                 group_by=(
-                    [
-                        self.render_concept_sql(c, cte, alias=False)
-                        for c in unique(
-                            cte.grain.components
-                            + [
-                                c
-                                for c in cte.output_columns
-                                if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
-                                and c.address
-                                not in [x.address for x in cte.grain.components]
-                            ]
-                            + [
-                                c
-                                for c in cte.output_columns
-                                if c.purpose == Purpose.METRIC
-                                and any(
-                                    [
-                                        c.with_grain(cte.grain) in cte.output_columns
-                                        for cte in cte.parent_ctes
+                    list(
+                        set(
+                            [
+                                self.render_concept_sql(c, cte, alias=False)
+                                for c in unique(
+                                    cte.grain.components
+                                    + [
+                                        c
+                                        for c in cte.output_columns
+                                        if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
+                                        and c.address
+                                        not in [x.address for x in cte.grain.components]
                                     ]
+                                    + [
+                                        c
+                                        for c in cte.output_columns
+                                        if c.purpose == Purpose.METRIC
+                                        and any(
+                                            [
+                                                c.with_grain(cte.grain)
+                                                in cte.output_columns
+                                                for cte in cte.parent_ctes
+                                            ]
+                                        )
+                                    ],
+                                    "address",
                                 )
-                            ],
-                            "address",
+                            ]
                         )
-                    ]
+                    )
                     if cte.group_to_grain
                     else None
                 ),
@@ -492,7 +500,7 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements: Sequence[Select | Persist | ShowStatement],
+        statements: Sequence[Select | MultiSelect | Persist | ShowStatement],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
         output: List[
@@ -512,6 +520,11 @@ class BaseDialect:
                 output.append(process_query(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
+            elif isinstance(statement, MultiSelect):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_multiselect_info(statement)
+                output.append(process_query(environment, statement, hooks=hooks))
             elif isinstance(statement, ShowStatement):
                 # TODO - encapsulate this a little better
                 if isinstance(statement.content, Select):
@@ -531,6 +544,8 @@ class BaseDialect:
                     )
                 else:
                     raise NotImplementedError
+            else:
+                raise NotImplementedError
         return output
 
     def compile_statement(

@@ -26,8 +26,6 @@ class PostgresConfig(DialectConfig):
         return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}"
 
 
-
-
 class SQLServerConfig(DialectConfig):
     def __init__(
         self, host: str, port: int, username: str, password: str, database: str

@@ -42,7 +42,9 @@ def gen_group_node(
         output_concepts += grain_components
 
     if parent_concepts:
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(parent_concepts)}")
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(parent_concepts)}"
+        )
         parent_concepts = unique(parent_concepts, "address")
         parent = source_concepts(
             mandatory_list=parent_concepts,

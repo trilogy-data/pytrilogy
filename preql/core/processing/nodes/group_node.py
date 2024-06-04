@@ -2,7 +2,6 @@ from typing import List, Optional
 
 from preql.constants import logger
 from preql.core.models import Grain, QueryDatasource, SourceType, Concept, Environment
-from preql.utility import unique
 from preql.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,

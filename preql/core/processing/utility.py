@@ -6,7 +6,7 @@ from preql.core.models import (
     BaseJoin,
     Concept,
     QueryDatasource,
-    LooseConceptList
+    LooseConceptList,
 )
 
 from preql.core.enums import Purpose, PurposeLineage, Granularity
@@ -26,13 +26,14 @@ class PathInfo(TypedDict):
     paths: Dict[str, List[str]]
     datasource: Datasource
 
+
 def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
     addresses = LooseConceptList(concepts)
     sub_props = LooseConceptList(
         [x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
     )
     final = [c for c in concepts if c not in sub_props]
-    return unique(final, 'address')
+    return unique(final, "address")
 
 
 def padding(x: int) -> str:
@@ -80,6 +81,41 @@ def calculate_graph_relevance(
         relevance += 1
 
     return relevance
+
+
+def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
+    available_aliases: set[str] = set()
+    final_joins_pre = [*joins]
+    final_joins = []
+    while final_joins_pre:
+        new_final_joins_pre: List[BaseJoin] = []
+        for join in final_joins_pre:
+            if not available_aliases:
+                final_joins.append(join)
+                available_aliases.add(join.left_datasource.identifier)
+                available_aliases.add(join.right_datasource.identifier)
+            elif join.left_datasource.identifier in available_aliases:
+                # we don't need to join twice
+                # so whatever join we found first, works
+                if join.right_datasource.identifier in available_aliases:
+                    continue
+                final_joins.append(join)
+                available_aliases.add(join.left_datasource.identifier)
+                available_aliases.add(join.right_datasource.identifier)
+            else:
+                new_final_joins_pre.append(join)
+        if len(new_final_joins_pre) == len(final_joins_pre):
+            remaining = [
+                join.left_datasource.identifier for join in new_final_joins_pre
+            ]
+            remaining_right = [
+                join.right_datasource.identifier for join in new_final_joins_pre
+            ]
+            raise SyntaxError(
+                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
+            )
+        final_joins_pre = new_final_joins_pre
+    return final_joins
 
 
 def get_node_joins(
@@ -169,37 +205,7 @@ def get_node_joins(
                 concepts=concept_to_relevant_joins(local_concepts),
             )
         )
-    final_joins: List[BaseJoin] = []
-    available_aliases: set[str] = set()
-    # reorder our joins
-    while final_joins_pre:
-        new_final_joins_pre: List[BaseJoin] = []
-        for join in final_joins_pre:
-            if not available_aliases:
-                final_joins.append(join)
-                available_aliases.add(join.left_datasource.identifier)
-                available_aliases.add(join.right_datasource.identifier)
-            elif join.left_datasource.identifier in available_aliases:
-                # we don't need to join twice
-                # so whatever join we found first, works
-                if join.right_datasource.identifier in available_aliases:
-                    continue
-                final_joins.append(join)
-                available_aliases.add(join.left_datasource.identifier)
-                available_aliases.add(join.right_datasource.identifier)
-            else:
-                new_final_joins_pre.append(join)
-        if len(new_final_joins_pre) == len(final_joins_pre):
-            remaining = [
-                join.left_datasource.identifier for join in new_final_joins_pre
-            ]
-            remaining_right = [
-                join.right_datasource.identifier for join in new_final_joins_pre
-            ]
-            raise SyntaxError(
-                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
-            )
-        final_joins_pre = new_final_joins_pre
+    final_joins = resolve_join_order(final_joins_pre)
 
     # this is extra validation
     non_single_row_ds = [x for x in datasources if not x.grain.abstract]

@@ -9,6 +9,7 @@ from preql.core.models import (
     Environment,
     Persist,
     Select,
+    MultiSelect,
     CTE,
     Join,
     UnnestJoin,
@@ -207,7 +208,7 @@ def datasource_to_ctes(query_datasource: QueryDatasource) -> List[CTE]:
 
 def get_query_datasources(
     environment: Environment,
-    statement: Select,
+    statement: Select | MultiSelect,
     graph: Optional[ReferenceGraph] = None,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
@@ -263,7 +264,9 @@ def process_persist(
 
 
 def process_query(
-    environment: Environment, statement: Select, hooks: List[BaseHook] | None = None
+    environment: Environment,
+    statement: Select | MultiSelect,
+    hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:
     hooks = hooks or []
     graph = generate_graph(environment)

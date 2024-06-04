@@ -125,7 +125,9 @@ limit 100
     select: Select = parsed[-1]
 
     assert env.concepts["rank_derived"].keys == (env.concepts["user_id"],)
-    assert concept_to_relevant_joins([env.concepts[x] for x in ['user_id', 'rank_derived']]) == [env.concepts['user_id']]
+    assert concept_to_relevant_joins(
+        [env.concepts[x] for x in ["user_id", "rank_derived"]]
+    ) == [env.concepts["user_id"]]
     assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
 
     get_query_datasources(environment=env, statement=select)

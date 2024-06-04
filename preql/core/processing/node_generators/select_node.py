@@ -105,7 +105,9 @@ def gen_select_node_from_table(
             partial_lcl = LooseConceptList(partial_concepts)
             if not accept_partial and target_concept in partial_lcl:
                 continue
-            logger.info(f"{padding(depth)}{LOGGER_PREFIX} target grain is {str(target_grain)}")
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} target grain is {str(target_grain)}"
+            )
             if target_grain and target_grain.issubset(datasource.grain):
 
                 if all([x in all_lcl for x in target_grain.components]):
@@ -113,13 +115,19 @@ def gen_select_node_from_table(
                 # if we are not returning the grain
                 # we have to group
                 else:
-                    logger.info(f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(all_lcl)}, group to actual grain")
+                    logger.info(
+                        f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(all_lcl)}, group to actual grain"
+                    )
                     force_group = True
             elif all([x in all_lcl for x in datasource.grain.components]):
-                logger.info(f"{padding(depth)}{LOGGER_PREFIX} query output includes all grain components, no reason to group further")
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} query output includes all grain components, no reason to group further"
+                )
                 force_group = False
             else:
-                logger.info(f"{padding(depth)}{LOGGER_PREFIX} target grain is not subset of datasource grain {datasource.grain}, required to group")
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} target grain is not subset of datasource grain {datasource.grain}, required to group"
+                )
                 force_group = True
 
             candidate = SelectNode(
@@ -135,7 +143,9 @@ def gen_select_node_from_table(
                 grain=Grain(components=all_concepts),
                 force_group=force_group,
             )
-            logger.info(f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, returning {candidate.output_lcl}")
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, returning {candidate.output_lcl}"
+            )
             candidates[datasource.identifier] = candidate
             scores[datasource.identifier] = -len(partial_concepts)
     if not candidates:

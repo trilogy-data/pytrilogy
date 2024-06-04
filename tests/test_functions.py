@@ -23,6 +23,7 @@ TEST_DIALECTS = [
     SnowflakeDialect(),
 ]
 
+
 def test_typing():
     x = ListType(type=DataType.INTEGER)
 

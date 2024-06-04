@@ -14,7 +14,7 @@ from preql.parsing.parse_engine import (
 )
 from preql.constants import MagicConstants
 from preql.dialect.base import BaseDialect
-from preql.parsing.common import function_args_to_output_purpose
+
 
 def test_in():
     _, parsed = parse_text(
@@ -160,10 +160,8 @@ select
         assert env.concepts[name].keys == (env.concepts["id"],)
 
 
-
 def test_output_purpose():
-    
-    
+
     env, parsed = parse_text(
         """key id int;
 property id.name string;

@@ -5,6 +5,7 @@ from pathlib import Path
 
 path = Path(__file__).parent / "test.db"
 
+
 def test_cli_string():
     runner = CliRunner()
     result = runner.invoke(
@@ -37,12 +38,17 @@ def test_cli_fmt_string():
     os.remove("test.sql")
 
 
-
 def test_db_args_string():
     runner = CliRunner()
     result = runner.invoke(
         cli,
-        ["run", "key in int; datasource test_source ( i:in) grain(in) address test; select in;", "duckdb", "--path", str(path)],
+        [
+            "run",
+            "key in int; datasource test_source ( i:in) grain(in) address test; select in;",
+            "duckdb",
+            "--path",
+            str(path),
+        ],
     )
     if result.exception:
         raise result.exception

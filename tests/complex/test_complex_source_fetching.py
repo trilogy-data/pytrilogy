@@ -61,7 +61,6 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     avg_user_post_count = env.concepts["avg_user_post_count"]
     user_post_count = env.concepts["user_post_count"]
 
-
     assert user_post_count.purpose == Purpose.METRIC
 
     posts = env.datasources["posts"]

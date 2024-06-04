@@ -13,7 +13,12 @@ from lark.tree import Meta
 from pydantic import ValidationError
 
 from preql.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
-from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE, VIRTUAL_CONCEPT_PREFIX, logger
+from preql.constants import (
+    DEFAULT_NAMESPACE,
+    NULL_VALUE,
+    VIRTUAL_CONCEPT_PREFIX,
+    logger,
+)
 from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -95,7 +100,13 @@ from preql.core.models import (
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
-from preql.parsing.common import agg_wrapper_to_concept, window_item_to_concept, function_to_concept, filter_item_to_concept, get_purpose_and_keys, constant_to_concept
+from preql.parsing.common import (
+    agg_wrapper_to_concept,
+    window_item_to_concept,
+    function_to_concept,
+    filter_item_to_concept,
+    constant_to_concept,
+)
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
 
@@ -160,7 +171,7 @@ grammar = r"""
     select: "select"i select_list  where? comment* order_by? comment* limit? comment*
 
     // multiple_selects
-    multi_select: select ("merge" select)+ "align"i align_clause
+    multi_select: select ("merge" select)+ "align"i align_clause  where? comment* order_by? comment* limit? comment*
 
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)* ","?
 
@@ -399,9 +410,6 @@ def parse_concept_reference(
     return lookup, namespace, name, parent
 
 
-
-
-
 def unwrap_transformation(
     input: Union[
         FilterItem,
@@ -478,7 +486,11 @@ class ParseToObjects(Transformer):
                 arg = arg.content
             if isinstance(arg, Function):
                 id_hash = string_to_hash(str(arg))
-                concept = function_to_concept(arg, name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}", namespace=self.environment.namespace)
+                concept = function_to_concept(
+                    arg,
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
+                    namespace=self.environment.namespace,
+                )
                 # to satisfy mypy, concept will always have metadata
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
@@ -486,14 +498,22 @@ class ParseToObjects(Transformer):
                 final.append(concept)
             elif isinstance(arg, FilterItem):
                 id_hash = string_to_hash(str(arg))
-                concept = filter_item_to_concept(arg, name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}", namespace=self.environment.namespace)
+                concept = filter_item_to_concept(
+                    arg,
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
+                    namespace=self.environment.namespace,
+                )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
             elif isinstance(arg, WindowItem):
                 id_hash = string_to_hash(str(arg))
-                concept = window_item_to_concept(arg, namespace=self.environment.namespace, name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",)
+                concept = window_item_to_concept(
+                    arg,
+                    namespace=self.environment.namespace,
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
+                )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
@@ -501,7 +521,9 @@ class ParseToObjects(Transformer):
             elif isinstance(arg, AggregateWrapper):
                 id_hash = string_to_hash(str(arg))
                 concept = agg_wrapper_to_concept(
-                    arg, namespace=self.environment.namespace, name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}"
+                    arg,
+                    namespace=self.environment.namespace,
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                 )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
@@ -511,7 +533,9 @@ class ParseToObjects(Transformer):
             elif isinstance(arg, (ListWrapper)):
                 id_hash = string_to_hash(str(arg))
                 concept = constant_to_concept(
-                    arg, name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}", namespace=self.environment.namespace
+                    arg,
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
+                    namespace=self.environment.namespace,
                 )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
@@ -709,7 +733,13 @@ class ParseToObjects(Transformer):
             source_value = source_value.content
 
         if isinstance(source_value, FilterItem):
-            concept = filter_item_to_concept(source_value, name=name, namespace=namespace, purpose=purpose, metadata=metadata)
+            concept = filter_item_to_concept(
+                source_value,
+                name=name,
+                namespace=namespace,
+                purpose=purpose,
+                metadata=metadata,
+            )
 
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -717,19 +747,37 @@ class ParseToObjects(Transformer):
             return ConceptDerivation(concept=concept)
         elif isinstance(source_value, WindowItem):
 
-            concept = window_item_to_concept(source_value, name=name, namespace=namespace, purpose=purpose, metadata=metadata)
+            concept = window_item_to_concept(
+                source_value,
+                name=name,
+                namespace=namespace,
+                purpose=purpose,
+                metadata=metadata,
+            )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivation(concept=concept)
         elif isinstance(source_value, AggregateWrapper):
-            concept = agg_wrapper_to_concept(source_value, namespace=namespace, name=name, metadata=metadata, purpose=purpose)
+            concept = agg_wrapper_to_concept(
+                source_value,
+                namespace=namespace,
+                name=name,
+                metadata=metadata,
+                purpose=purpose,
+            )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivation(concept=concept)
         elif isinstance(source_value, CONSTANT_TYPES):
-            concept= constant_to_concept(source_value, name=name, namespace=namespace, purpose=purpose, metadata=metadata)
+            concept = constant_to_concept(
+                source_value,
+                name=name,
+                namespace=namespace,
+                purpose=purpose,
+                metadata=metadata,
+            )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
@@ -780,7 +828,7 @@ class ParseToObjects(Transformer):
         for new_concept in output.derived_concepts:
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
-            logger.info(f'newconcept grain {new_concept.grain}')
+            logger.info(f"newconcept grain {new_concept.grain}")
             self.environment.add_concept(new_concept)
 
         return output
@@ -883,7 +931,7 @@ class ParseToObjects(Transformer):
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
-        
+
         if isinstance(args[0], AggregateWrapper):
             concept = agg_wrapper_to_concept(args[0], namespace=namespace, name=output)
         elif isinstance(args[0], WindowItem):
@@ -1026,25 +1074,51 @@ class ParseToObjects(Transformer):
             grain=grain,
         )
         return Persist(select=select, datasource=new_datasource)
-    
+
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:
-        return AlignItem(alias = args[0], concepts=[self.environment.concepts[arg] for arg in args[1:]])
-    
-    @v_args(meta= True)
+        return AlignItem(
+            alias=args[0],
+            namespace=self.environment.namespace,
+            concepts=[self.environment.concepts[arg] for arg in args[1:]],
+        )
+
+    @v_args(meta=True)
     def align_clause(self, meta: Meta, args) -> AlignClause:
         return AlignClause(items=args)
-    
-    @v_args(meta= True)
+
+    @v_args(meta=True)
     def multi_select(self, meta: Meta, args) -> MultiSelect:
-        selects = args[:-1]
-        align = args[-1]
-        assert isinstance(align, AlignClause)
-        multi = MultiSelect(selects=selects, align=align, namespace=self.environment.namespace)
+        selects = []
+        align: AlignClause | None = None
+        limit: int | None = None
+        order_by: OrderBy | None = None
+        where: WhereClause | None = None
+        for arg in args:
+            if isinstance(arg, Select):
+                selects.append(arg)
+            elif isinstance(arg, Limit):
+                limit = arg.count
+            elif isinstance(arg, OrderBy):
+                order_by = arg
+            elif isinstance(arg, WhereClause):
+                where = arg
+            elif isinstance(arg, AlignClause):
+                align = arg
+
+        assert align
+        assert align is not None
+        multi = MultiSelect(
+            selects=selects,
+            align=align,
+            namespace=self.environment.namespace,
+            where=where,
+            order_by=order_by,
+            limit=limit,
+        )
         for concept in multi.derived_concepts:
             self.environment.add_concept(concept, meta=meta)
         return multi
-    
 
     @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:
