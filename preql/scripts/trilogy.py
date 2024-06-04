@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path as PathlibPath
 from preql.hooks.query_debugger import DebuggingHook
 from preql.parsing.render import Renderer
+from preql.constants import DEFAULT_NAMESPACE
 
 
 def print_tabulate(q, tabulate):
@@ -17,7 +18,7 @@ def pairwise(t):
     return zip(it, it)
 
 
-def extra_to_kwargs(arg_list: list[str]) -> dict[str, str]:
+def extra_to_kwargs(arg_list: list[str]) -> dict[str, str | int]:
     pairs = pairwise(arg_list)
     final = {}
     for k, v in pairs:
@@ -68,7 +69,7 @@ def run(ctx, input, dialect: str, conn_args):
         directory = inputp.parent
     else:
         script = input
-        namespace = None
+        namespace = DEFAULT_NAMESPACE
         directory = PathlibPath.cwd()
     edialect = Dialects(dialect)
 
@@ -77,19 +78,19 @@ def run(ctx, input, dialect: str, conn_args):
     if edialect == Dialects.DUCK_DB:
         from preql.dialect.config import DuckDBConfig
 
-        conf = DuckDBConfig(**conn_dict)
+        conf = DuckDBConfig(**conn_dict)  # type: ignore
     elif edialect == Dialects.SNOWFLAKE:
         from preql.dialect.config import SnowflakeConfig
 
-        conf = SnowflakeConfig(**conn_dict)
+        conf = SnowflakeConfig(**conn_dict)  # type: ignore
     elif edialect == Dialects.SQL_SERVER:
         from preql.dialect.config import SQLServerConfig
 
-        conf = SQLServerConfig(**conn_dict)
+        conf = SQLServerConfig(**conn_dict)  # type: ignore
     elif edialect == Dialects.POSTGRES:
         from preql.dialect.config import PostgresConfig
 
-        conf = PostgresConfig(**conn_dict)
+        conf = PostgresConfig(**conn_dict)  # type: ignore
     else:
         conf = None
     exec = Executor(

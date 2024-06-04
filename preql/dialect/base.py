@@ -12,6 +12,7 @@ from preql.core.enums import (
     PurposeLineage,
 )
 from preql.core.models import (
+    ListType,
     DataType,
     Concept,
     CTE,
@@ -323,7 +324,10 @@ class BaseDialect:
             Parenthetical,
             AggregateWrapper,
             MagicConstants,
-            ListWrapper,
+            ListType,
+            ListWrapper[int],
+            ListWrapper[str],
+            ListWrapper[float],
             DatePart,
             CaseWhen,
             CaseElse,

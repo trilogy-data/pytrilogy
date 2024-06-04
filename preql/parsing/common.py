@@ -19,18 +19,18 @@ from preql.utility import unique
 
 
 def get_purpose_and_keys(
-    purpose: Purpose | None, args: list[Concept]
-) -> Tuple[Purpose | None, Tuple[Concept]]:
+    purpose: Purpose | None, args: Tuple[Concept, ...] | None
+) -> Tuple[Purpose, Tuple[Concept, ...] | None]:
     local_purpose = purpose or function_args_to_output_purpose(args)
-    if local_purpose == Purpose.PROPERTY:
+    if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args)
     else:
-        keys = tuple()
+        keys = None
     return local_purpose, keys
 
 
-def concept_list_to_keys(concepts: List[Concept]) -> Tuple[Concept]:
-    final_keys = []
+def concept_list_to_keys(concepts: Tuple[Concept, ...]) -> Tuple[Concept, ...]:
+    final_keys: List[Concept] = []
     for concept in concepts:
         if concept.keys:
             final_keys += concept_list_to_keys(concept.keys)
@@ -40,7 +40,7 @@ def concept_list_to_keys(concepts: List[Concept]) -> Tuple[Concept]:
 
 
 def constant_to_concept(
-    parent: ListWrapper,
+    parent: ListWrapper | int | float | str,
     name: str,
     namespace: str,
     purpose: Purpose | None = None,
@@ -66,7 +66,7 @@ def constant_to_concept(
 def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
     pkeys = [x for x in parent.arguments if isinstance(x, Concept)]
     grain = Grain(components=pkeys)
-    keys = grain.components_copy
+    keys = tuple(grain.components_copy)
     return Concept(
         name=name,
         datatype=parent.output_datatype,
@@ -109,7 +109,7 @@ def window_item_to_concept(
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
-    local_purpose, keys = get_purpose_and_keys(purpose, [parent.content])
+    local_purpose, keys = get_purpose_and_keys(purpose, (parent.content,))
     if parent.order_by:
         grain = parent.over + [parent.content.output]
         for item in parent.order_by:
@@ -136,7 +136,9 @@ def agg_wrapper_to_concept(
     metadata: Metadata | None = None,
     purpose: Purpose | None = None,
 ) -> Concept:
-    local_purpose, keys = get_purpose_and_keys(purpose, parent.by if parent.by else [])
+    local_purpose, keys = get_purpose_and_keys(
+        Purpose.METRIC, tuple(parent.by) if parent.by else None
+    )
     # anything grouped to a grain should be a property
     # at that grain
     aggfunction = parent.function

@@ -18,7 +18,7 @@ LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
 
 def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
-    available_aliases: set[str] = set()
+    available_aliases: set[StrategyNode] = set()
     final_joins_pre = [*joins]
     final_joins = []
     while final_joins_pre:
@@ -85,9 +85,14 @@ def gen_multiselect_node(
     depth: int,
     source_concepts,
 ) -> MergeNode | None:
+    if not isinstance(concept.lineage, MultiSelect):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
+        )
+        return None
     lineage: MultiSelect = concept.lineage
 
-    base_parents: List[MergeNode] = []
+    base_parents: List[StrategyNode] = []
     for select in lineage.selects:
         snode: MergeNode = source_concepts(
             mandatory_list=select.output_components,

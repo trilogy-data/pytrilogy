@@ -72,6 +72,8 @@ def function_args_to_output_purpose(args) -> Purpose:
     has_metric = False
     has_non_constant = False
     has_non_single_row_constant = False
+    if not args:
+        return Purpose.CONSTANT
     for arg in args:
         purpose = argument_to_purpose(arg)
         if purpose == Purpose.METRIC:
@@ -187,7 +189,11 @@ def IndexAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.INDEX_ACCESS,
         arguments=args,
-        output_datatype=args[0].datatype.value_data_type,
+        output_datatype=(
+            args[0].datatype.value_data_type
+            if isinstance(args[0].datatype, ListType)
+            else args[0].datatype
+        ),
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
             {DataType.LIST},
@@ -206,7 +212,7 @@ def AttrAccess(args: list[Concept]):
         output_datatype=args[0].field_map[args[1]].datatype,  # type: ignore
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
-            {StructType},
+            {DataType.STRUCT},
             {
                 DataType.STRING,
             },

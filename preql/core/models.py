@@ -146,13 +146,6 @@ class ListType(BaseModel):
             return self.type.datatype
         return self.type
 
-    @classmethod
-    def of_type(cls, ntype: DataType | ListType | StructType | MapType | Concept):
-        class _(ListType):
-            type: ntype.__class__
-
-        return _
-
 
 class MapType(BaseModel):
     key_type: DataType
@@ -670,14 +663,16 @@ class Function(BaseModel):
     output_datatype: DataType | ListType | StructType | MapType
     output_purpose: Purpose
     valid_inputs: Optional[
-        Union[Set[DataType | ListType], List[Set[DataType | ListType]]]
+        Union[
+            Set[DataType | ListType | StructType],
+            List[Set[DataType | ListType | StructType]],
+        ]
     ] = None
     arguments: Sequence[
         Union[
             Concept,
             "AggregateWrapper",
             "Function",
-            # "WindowItem",
             int,
             float,
             str,
@@ -1170,7 +1165,7 @@ class AlignItem(BaseModel):
     concepts: List[Concept]
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
 
-    @computed_field
+    @computed_field  # type: ignore
     @property
     def concepts_lcl(self) -> LooseConceptList:
         return LooseConceptList(self.concepts)
@@ -1216,12 +1211,22 @@ class MultiSelect(BaseModel):
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
 
-    @computed_field
+    @computed_field  # type: ignore
     @property
     def arguments(self) -> List[Concept]:
         output = []
         for select in self.selects:
             output += select.input_components
+        return unique(output, "address")
+
+    @computed_field  # type: ignore
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        if self.where_clause:
+            output += self.where_clause.concept_arguments
         return unique(output, "address")
 
     def get_merge_concept(self, check: Concept):
@@ -1234,6 +1239,7 @@ class MultiSelect(BaseModel):
         return MultiSelect(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
+            namespace=namespace,
         )
 
     @property
@@ -1243,7 +1249,7 @@ class MultiSelect(BaseModel):
             base += select.grain
         return base
 
-    @computed_field
+    @computed_field  # type: ignore
     @property
     def derived_concepts(self) -> List[Concept]:
         output = []
@@ -1259,7 +1265,7 @@ class MultiSelect(BaseModel):
                         return c
 
         raise SyntaxError(
-            f"Could not find upstream map for multiselc {str(concept)} on cte ({cte.alias})"
+            f"Could not find upstream map for multiselc {str(concept)} on cte ({cte})"
         )
 
     @property
@@ -1269,7 +1275,7 @@ class MultiSelect(BaseModel):
             output += select.output_components
         return unique(output, "address")
 
-    @computed_field
+    @computed_field  # type: ignore
     @property
     def hidden_components(self) -> List[Concept]:
         output = []
@@ -1774,7 +1780,7 @@ class CTE(BaseModel):
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
 
-    @computed_field
+    @computed_field  # type: ignore
     @property
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(self.output_columns)
@@ -1986,9 +1992,9 @@ class UndefinedConcept(Concept):
             # we need to make this abstract
             grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
         elif self.purpose == Purpose.PROPERTY:
-            components = []
+            components: List[Concept] = []
             if self.keys:
-                components = self.keys
+                components = [*self.keys]
             if self.lineage:
                 for item in self.lineage.arguments:
                     if isinstance(item, Concept):
@@ -2099,7 +2105,7 @@ class Environment(BaseModel):
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
-    namespace: Optional[str] = DEFAULT_NAMESPACE
+    namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
@@ -2600,7 +2606,9 @@ class RowsetDerivation(BaseModel):
         # remap everything to the properties of the rowset
         for x in output:
             if x.keys:
-                x.keys = [orig[k.address] if k.address in orig else k for k in x.keys]
+                x.keys = tuple(
+                    [orig[k.address] if k.address in orig else k for k in x.keys]
+                )
         for x in output:
             x.grain = Grain(
                 components=[

@@ -20,7 +20,6 @@ from preql.core.processing.nodes import (
 )
 from collections import defaultdict
 from preql.core.processing.utility import concept_to_relevant_joins
-from copy import deepcopy
 
 
 def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
@@ -36,11 +35,15 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
 
         if concept.lineage.arguments:
             default_grain = Grain()
-            for x in concept.lineage.arguments:
-                if isinstance(x, Concept) and x.grain:
-                    default_grain += x.grain
-                elif isinstance(x, Concept) and x.purpose == Purpose.PROPERTY:
-                    default_grain += Grain(components=deepcopy(x.keys))
+            for arg in concept.lineage.arguments:
+                if not isinstance(arg, Concept):
+                    continue
+                if arg.grain:
+                    default_grain += arg.grain
+                elif arg.purpose == Purpose.PROPERTY:
+                    default_grain += Grain(
+                        components=list(arg.keys) if arg.keys else []
+                    )
             return unique(
                 concept.lineage.concept_arguments + default_grain.components_copy,
                 "address",

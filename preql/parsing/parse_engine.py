@@ -422,7 +422,7 @@ def unwrap_transformation(
         float,
         bool,
     ]
-) -> Function | FilterItem | WindowItem:
+) -> Function | FilterItem | WindowItem | AggregateWrapper:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
@@ -801,9 +801,9 @@ class ParseToObjects(Transformer):
                 ),
                 namespace=namespace,
                 keys=(
-                    [self.environment.concepts[parent_concept]]
+                    tuple([self.environment.concepts[parent_concept]])
                     if parent_concept
-                    else function.output_keys
+                    else tuple(function.output_keys)
                 ),
             )
             if concept.metadata:
@@ -946,7 +946,7 @@ class ParseToObjects(Transformer):
             if function.output_purpose == Purpose.PROPERTY:
                 pkeys = [x for x in function.arguments if isinstance(x, Concept)]
                 grain = Grain(components=pkeys)
-                keys = grain.components_copy
+                keys = tuple(grain.components_copy)
             else:
                 grain = None
                 keys = None
@@ -1112,7 +1112,7 @@ class ParseToObjects(Transformer):
             selects=selects,
             align=align,
             namespace=self.environment.namespace,
-            where=where,
+            where_clause=where,
             order_by=order_by,
             limit=limit,
         )
