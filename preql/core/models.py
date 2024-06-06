@@ -2574,7 +2574,7 @@ class ConceptDerivation(BaseModel):
 
 class RowsetDerivation(BaseModel):
     name: str
-    select: Select
+    select: Select | MultiSelect
     namespace: str
 
     def __repr__(self):

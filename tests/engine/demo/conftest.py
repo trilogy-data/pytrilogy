@@ -82,6 +82,9 @@ def setup_normalized_engine() -> Executor:
     create_passenger_dimension(output, "passenger")
     create_arbitrary_dimension(output, "pclass", "class")
     create_fact(output, ["passenger"])
+    df2 = pd.read_csv(PurePath(dirname(__file__)) / "richest.csv")
+    _ = df2
+    output.execute_raw_sql("CREATE TABLE rich_info AS SELECT * FROM df2")
     return output
 
 
@@ -116,6 +119,55 @@ def create_function_derived_concept(
         ),
         metadata=metadata,
     )
+
+def setup_richest_environment(env: Environment):
+    namespace = None
+    name = Concept(
+        name="full_name", namespace=namespace, datatype=DataType.STRING, purpose=Purpose.KEY
+    )
+    money = Concept(
+        name="net_worth_1918_dollars", namespace=namespace, datatype = DataType.STRING,
+        purpose = Purpose.PROPERTY, keys=(name,)
+    )
+    last_name = Concept(
+        name="last_name",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        keys=(name,),
+        lineage=Function(
+            operator=FunctionType.INDEX_ACCESS,
+            arguments=[
+                Function(
+                    operator=FunctionType.SPLIT,
+                    arguments=[name, " "],
+                    output_datatype=DataType.ARRAY,
+                    output_purpose=Purpose.PROPERTY,
+                    arg_count=2,
+                ),
+                -1,
+            ],
+            output_datatype=DataType.STRING,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+    )
+    for x in [name, money, last_name]:
+        env.add_concept(x)
+    
+    env.add_datasource(
+        Datasource(
+            identifier="rich_info",
+            address="rich_info",
+            columns=[
+                ColumnAssignment(alias="Name", concept=name),
+                ColumnAssignment(alias="Net Worth 1918 Dollars", concept=money),
+            ],
+        )
+    )
+
+
+
 
 
 def setup_titanic_distributed(env: Environment):
@@ -288,4 +340,7 @@ def normalized_engine():
 def test_env():
     env = Environment()
     setup_titanic_distributed(env)
+    rich_env = Environment()
+    setup_richest_environment(rich_env)
+    env.add_import("rich_info", rich_env)
     yield env

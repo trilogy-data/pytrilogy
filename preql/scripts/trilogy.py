@@ -65,7 +65,7 @@ def run(ctx, input, dialect: str, conn_args):
         inputp = PathlibPath(input)
         with open(input, "r") as f:
             script = f.read()
-        namespace = inputp.stem
+        namespace = DEFAULT_NAMESPACE
         directory = inputp.parent
     else:
         script = input

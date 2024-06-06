@@ -134,7 +134,7 @@ grammar = r"""
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
 
-    rowset_derivation: ("rowset"i IDENTIFIER "<" "-" select) | ("with"i IDENTIFIER "as"i select)
+    rowset_derivation: ("rowset"i IDENTIFIER "<" "-" (multi_select | select)) | ("with"i IDENTIFIER "as"i (multi_select | select))
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
@@ -819,7 +819,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def rowset_derivation(self, meta: Meta, args) -> RowsetDerivation:
         name = args[0]
-        select: Select = args[1]
+        select: Select | MultiSelect = args[1]
         output = RowsetDerivation(
             name=name,
             select=select,
