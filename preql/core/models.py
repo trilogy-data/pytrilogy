@@ -1179,14 +1179,19 @@ class AlignItem(BaseModel):
 
     def gen_concept(self, parent: MultiSelect):
         datatypes = set([c.datatype for c in self.concepts])
+        purposes = set([c.purpose for c in self.concepts])
         if len(datatypes) > 1:
             raise InvalidSyntaxException(
                 f"Datatypes do not align for merged statements {self.alias}, have {datatypes}"
             )
+        if len(purposes) > 1:
+            purpose = Purpose.KEY
+        else:
+            purpose = list(purposes)[0]
         new = Concept(
             name=self.alias,
             datatype=datatypes.pop(),
-            purpose=Purpose.KEY,
+            purpose=purpose,
             lineage=parent,
             namespace=parent.namespace,
         )
@@ -1257,15 +1262,19 @@ class MultiSelect(BaseModel):
             output.append(item.gen_concept(self))
         return output
 
-    def find_source(self, concept: Concept, cte: CTE):
+    def find_source(self, concept: Concept, cte: CTE) -> Concept:
+        all = []
         for x in self.align.items:
             if concept.name == x.alias:
                 for c in x.concepts:
                     if c.address in cte.output_lcl:
-                        return c
+                        all.append(c)
+
+        if len(all) == 1:
+            return all[0]
 
         raise SyntaxError(
-            f"Could not find upstream map for multiselc {str(concept)} on cte ({cte})"
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
         )
 
     @property
@@ -1324,6 +1333,10 @@ def safe_grain(v) -> Grain:
 class DatasourceMetadata(BaseModel):
     freshness_concept: Concept | None
     partition_fields: List[Concept] = Field(default_factory=list)
+
+
+class MergeStatement(BaseModel):
+    concepts: List[Concept]
 
 
 class Datasource(BaseModel):
@@ -1596,9 +1609,9 @@ class QueryDatasource(BaseModel):
         )
         seen = set()
         for k, val in v.items():
-            if val:
-                if len(val) != 1:
-                    raise SyntaxError(f"source map {k} has multiple values {len(val)}")
+            # if val:
+            #     if len(val) != 1:
+            #         raise SyntaxError(f"source map {k} has multiple values {len(val)}")
             seen.add(k)
         for x in expected:
             if x not in seen:
@@ -1770,7 +1783,7 @@ class CTE(BaseModel):
     source: "QueryDatasource"  # TODO: make recursive
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
-    source_map: Dict[str, str]
+    source_map: Dict[str, str | list[str]]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
@@ -1823,10 +1836,6 @@ class CTE(BaseModel):
 
     @property
     def relevant_base_ctes(self):
-        """The parent CTEs includes all CTES,
-        not just those immediately referenced.
-        This method returns only those that are relevant
-        to the output of the query."""
         return self.parent_ctes
 
     @property
@@ -1852,10 +1861,8 @@ class CTE(BaseModel):
                 raise SyntaxError(
                     f"Invalid join configuration {candidates} {disallowed} with all parents {[x.base_name for x in self.parent_ctes]}"
                 )
-            return valid_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
-        # return self.source_map.values()[0]
         elif self.parent_ctes:
             raise SyntaxError(
                 f"{self.name} has no relevant base CTEs, {self.source_map},"
@@ -1870,8 +1877,6 @@ class CTE(BaseModel):
         if len(self.source.datasources) == 1 and isinstance(
             self.source.datasources[0], Datasource
         ):
-            # if isinstance(self.source.datasources[0], QueryDatasource) and self.relevant_base_ctes:
-            #     return self.relevant_base_ctes[0].name
             return self.source.datasources[0].full_name.replace(".", "_")
         if relevant_joins:
             return relevant_joins[0].left_cte.name
@@ -1886,7 +1891,8 @@ class CTE(BaseModel):
             if concept.address in [x.address for x in cte.output_columns]:
                 return concept.safe_address
         try:
-            return self.source.get_alias(concept)
+            source = self.source.get_alias(concept)
+            return source
         except ValueError as e:
             return f"INVALID_ALIAS: {str(e)}"
 
@@ -2105,6 +2111,7 @@ class Environment(BaseModel):
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
+    concept_links: Dict[Concept, Concept] = Field(default_factory=dict)
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)

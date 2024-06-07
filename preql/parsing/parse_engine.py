@@ -66,6 +66,7 @@ from preql.core.models import (
     ConceptTransform,
     Conditional,
     Datasource,
+    MergeStatement,
     Environment,
     FilterItem,
     Function,
@@ -121,6 +122,7 @@ grammar = r"""
     | persist
     | rowset_derivation
     | import_statement
+    | merge_statement
     
     _TERMINATOR:  ";"i /\s*/
     
@@ -173,9 +175,14 @@ grammar = r"""
     // multiple_selects
     multi_select: select ("merge" select)+ "align"i align_clause  where? comment* order_by? comment* limit? comment*
 
+
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)* ","?
 
     align_clause: align_item ("," align_item)*  ","?
+
+    // merge statemment
+
+    merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? comment*
 
     // FUNCTION blocks
     function: raw_function
@@ -828,7 +835,6 @@ class ParseToObjects(Transformer):
         for new_concept in output.derived_concepts:
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
-            logger.info(f"newconcept grain {new_concept.grain}")
             self.environment.add_concept(new_concept)
 
         return output
@@ -1005,6 +1011,15 @@ class ParseToObjects(Transformer):
 
     def over_list(self, args):
         return [self.environment.concepts[x] for x in args]
+
+    @v_args(meta=True)
+    def merge_statement(self, meta: Meta, args) -> None:
+        from itertools import combinations
+
+        parsed = [self.environment.concepts[x] for x in args]
+        for left, right in combinations(parsed, 2):
+            self.environment.concept_links[left] = right
+        return MergeStatement(concepts=parsed)
 
     def import_statement(self, args: list[str]):
         alias = args[-1]

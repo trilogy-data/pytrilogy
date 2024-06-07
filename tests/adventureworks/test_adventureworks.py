@@ -114,7 +114,7 @@ def test_query_datasources(environment: Environment):
         environment=environment, graph=environment_graph, statement=test
     )
 
-    cte = datasource_to_ctes(datasource)[0]
+    cte = datasource_to_ctes(datasource, {})[0]
 
     assert {c.address for c in cte.output_columns} == {
         "internet_sales.customer.first_name",

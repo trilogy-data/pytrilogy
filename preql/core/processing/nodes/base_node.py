@@ -43,18 +43,22 @@ def resolve_concept_map(
     inputs: List[QueryDatasource],
     targets: List[Concept],
     inherited_inputs: List[Concept],
+    full_joins: List[Concept] | None = None,
 ) -> dict[str, set[Datasource | QueryDatasource | UnnestJoin]]:
     targets = targets or []
     concept_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = (
         defaultdict(set)
     )
+    full_addresses = {c.address for c in full_joins} if full_joins else set()
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
             if concept.address not in [t.address for t in inherited_inputs]:
                 continue
-            if len(concept_map.get(concept.address, [])) == 0:
+            if concept.address in full_addresses:
+                concept_map[concept.address].add(input)
+            elif concept.address not in concept_map:
                 concept_map[concept.address].add(input)
 
     # second loop, include partials

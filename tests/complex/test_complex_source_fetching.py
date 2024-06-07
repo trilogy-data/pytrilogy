@@ -107,7 +107,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert posts == root
     assert post_id in root.concepts
 
-    ctes = datasource_to_ctes(datasource)
+    ctes = datasource_to_ctes(datasource, {})
 
     final_cte = ctes[0]
     assert len(final_cte.parent_ctes) > 0

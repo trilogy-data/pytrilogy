@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 from preql.constants import logger
@@ -57,6 +57,25 @@ def deduplicate_nodes(
             break
 
     return duplicates, merged, removed
+
+
+def deduplicate_nodes_and_joins(
+    joins: List[NodeJoin], merged: dict[str, QueryDatasource], logging_prefix: str
+) -> Tuple[List[NodeJoin], dict[str, QueryDatasource]]:
+    # it's possible that we have more sources than we need
+    duplicates = True
+    while duplicates:
+        duplicates = False
+        duplicates, merged, removed = deduplicate_nodes(merged, logging_prefix)
+        # filter out any removed joins
+        if joins:
+            joins = [
+                j
+                for j in joins
+                if j.left_node.resolve().full_name not in removed
+                and j.right_node.resolve().full_name not in removed
+            ]
+    return joins, merged
 
 
 class MergeNode(StrategyNode):
@@ -138,6 +157,48 @@ class MergeNode(StrategyNode):
                 seen.add(right_value.identifier)
         return joins
 
+    def generate_joins(
+        self, final_datasets, final_joins, pregrain: Grain, grain: Grain
+    ) -> List[BaseJoin]:
+        # only finally, join between them for unique values
+        dataset_list: List[QueryDatasource] = sorted(
+            final_datasets, key=lambda x: -len(x.grain.components_copy)
+        )
+
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
+        )
+        for item in dataset_list:
+            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} for {item.full_name}")
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} partial concepts {[x.address for x in item.partial_concepts]}"
+            )
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address+str(x.purpose) for x in item.output_concepts]} partial {[x.address for x in item.partial_concepts]}"
+            )
+
+        if not final_joins:
+            if not pregrain.components:
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} no grain components, doing full join"
+                )
+                joins = self.create_full_joins(dataset_list)
+            else:
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {str(grain)}"
+                )
+                joins = get_node_joins(dataset_list, grain.components)
+        else:
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(self.node_joins)}"
+            )
+            joins = self.translate_node_joins(self.node_joins)
+        for join in joins:
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} final join {join.join_type} {[str(c) for c in join.concepts]}"
+            )
+        return joins
+
     def _resolve(self) -> QueryDatasource:
         parent_sources = [p.resolve() for p in self.parents]
         merged: dict[str, QueryDatasource] = {}
@@ -152,19 +213,9 @@ class MergeNode(StrategyNode):
                 merged[source.full_name] = source
 
         # it's possible that we have more sources than we need
-        duplicates = True
-        while duplicates:
-            duplicates = False
-            duplicates, merged, removed = deduplicate_nodes(merged, self.logging_prefix)
-            # filter out any removed joins
-            if final_joins:
-                final_joins = [
-                    j
-                    for j in final_joins
-                    if j.left_node.resolve().full_name not in removed
-                    and j.right_node.resolve().full_name not in removed
-                ]
-
+        final_joins, merged = deduplicate_nodes_and_joins(
+            final_joins, merged, self.logging_prefix
+        )
         # early exit if we can just return the parent
         final_datasets: List[QueryDatasource] = list(merged.values())
 
@@ -178,6 +229,7 @@ class MergeNode(StrategyNode):
                     " outputs as this merge node, dropping merge node "
                 )
                 return final
+
         # if we have multiple candidates, see if one is good enough
         for dataset in final_datasets:
             output_set = set(
@@ -213,44 +265,16 @@ class MergeNode(StrategyNode):
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} final merge node grain {grain}"
         )
-        # only finally, join between them for unique values
-        dataset_list: List[QueryDatasource] = sorted(
-            final_datasets, key=lambda x: -len(x.grain.components_copy)
-        )
-        if not dataset_list:
-            raise SyntaxError("Empty merge node")
-        logger.info(
-            f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
-        )
-        for item in dataset_list:
-            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} for {item.full_name}")
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} partial concepts {[x.address for x in item.partial_concepts]}"
-            )
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address+str(x.purpose) for x in item.output_concepts]} partial {[x.address for x in item.partial_concepts]}"
-            )
 
-        if not self.node_joins:
-            if not pregrain.components:
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} no grain components, doing full join"
-                )
-                joins = self.create_full_joins(dataset_list)
-            else:
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {str(grain)}"
-                )
-                joins = get_node_joins(dataset_list, grain.components)
+        if len(final_datasets) > 1:
+            joins = self.generate_joins(final_datasets, final_joins, pregrain, grain)
         else:
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(self.node_joins)}"
-            )
-            joins = self.translate_node_joins(self.node_joins)
+            joins = []
+
+        full_join_concepts = []
         for join in joins:
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} final join {join.join_type} {[str(c) for c in join.concepts]}"
-            )
+            if join.join_type == JoinType.FULL:
+                full_join_concepts += join.concepts
 
         if self.whole_grain:
             force_group = False
@@ -269,7 +293,10 @@ class MergeNode(StrategyNode):
             datasources=final_datasets,
             source_type=self.source_type,
             source_map=resolve_concept_map(
-                parent_sources, self.output_concepts, self.input_concepts
+                parent_sources,
+                self.output_concepts,
+                self.input_concepts,
+                full_joins=full_join_concepts,
             ),
             joins=joins,
             grain=grain,

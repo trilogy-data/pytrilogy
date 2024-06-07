@@ -27,5 +27,6 @@ def generate_graph(
             # for example, order ID on order product table
             g.add_edge(concept, concept.with_default_grain())
             g.add_edge(concept.with_default_grain(), concept)
-
+    for k, v in environment.concept_links.items():
+        g.add_edge(k, v)
     return g

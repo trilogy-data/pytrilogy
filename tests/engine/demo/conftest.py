@@ -120,14 +120,21 @@ def create_function_derived_concept(
         metadata=metadata,
     )
 
+
 def setup_richest_environment(env: Environment):
     namespace = None
     name = Concept(
-        name="full_name", namespace=namespace, datatype=DataType.STRING, purpose=Purpose.KEY
+        name="full_name",
+        namespace=namespace,
+        datatype=DataType.STRING,
+        purpose=Purpose.KEY,
     )
     money = Concept(
-        name="net_worth_1918_dollars", namespace=namespace, datatype = DataType.STRING,
-        purpose = Purpose.PROPERTY, keys=(name,)
+        name="net_worth_1918_dollars",
+        namespace=namespace,
+        datatype=DataType.STRING,
+        purpose=Purpose.PROPERTY,
+        keys=(name,),
     )
     last_name = Concept(
         name="last_name",
@@ -154,7 +161,7 @@ def setup_richest_environment(env: Environment):
     )
     for x in [name, money, last_name]:
         env.add_concept(x)
-    
+
     env.add_datasource(
         Datasource(
             identifier="rich_info",
@@ -165,9 +172,6 @@ def setup_richest_environment(env: Environment):
             ],
         )
     )
-
-
-
 
 
 def setup_titanic_distributed(env: Environment):

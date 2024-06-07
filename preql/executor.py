@@ -184,7 +184,9 @@ class Executor(object):
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
         generatable = [
-            x for x in parsed if isinstance(x, (Select, Persist, MultiSelect, ShowStatement))
+            x
+            for x in parsed
+            if isinstance(x, (Select, Persist, MultiSelect, ShowStatement))
         ]
         sql = []
         while generatable:

@@ -13,8 +13,9 @@ from preql.core.processing.utility import padding
 from preql.core.processing.node_generators.common import concept_to_relevant_joins
 from collections import defaultdict
 from itertools import combinations
+from preql.core.enums import Purpose
 
-LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
+LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
 
 def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
@@ -53,10 +54,11 @@ def extra_align_joins(base: MultiSelect, parents: List[StrategyNode]) -> List[No
     output = []
     for align in base.align.items:
         jc = align.gen_concept(base)
-
+        if jc.purpose == Purpose.CONSTANT:
+            continue
         for node in parents:
             for item in align.concepts:
-                if item in node.output_concepts:
+                if item in node.output_lcl:
                     node_merge_concept_map[node].append(jc)
 
     for left, right in combinations(node_merge_concept_map.keys(), 2):
@@ -73,7 +75,6 @@ def extra_align_joins(base: MultiSelect, parents: List[StrategyNode]) -> List[No
                 join_type=JoinType.FULL,
             )
         )
-
     return resolve_join_order(output)
 
 
@@ -94,7 +95,7 @@ def gen_multiselect_node(
 
     base_parents: List[StrategyNode] = []
     for select in lineage.selects:
-        snode: MergeNode = source_concepts(
+        snode: StrategyNode = source_concepts(
             mandatory_list=select.output_components,
             environment=environment,
             g=g,
@@ -114,6 +115,8 @@ def gen_multiselect_node(
             # clear cache so QPS
             snode.resolution_cache = None
         base_parents.append(snode)
+
+    node_joins = extra_align_joins(lineage, base_parents)
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
         output_concepts=[x for y in base_parents for x in y.output_concepts],
@@ -121,7 +124,7 @@ def gen_multiselect_node(
         g=g,
         depth=depth,
         parents=base_parents,
-        node_joins=extra_align_joins(lineage, base_parents),
+        node_joins=node_joins,
     )
 
     enrichment = set([x.address for x in local_optional])
