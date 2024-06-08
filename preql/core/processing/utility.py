@@ -15,14 +15,14 @@ from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
 from logging import Logger
-
+from pydantic import BaseModel
 
 class NodeType(Enum):
     CONCEPT = 1
     NODE = 2
 
 
-class PathInfo(TypedDict):
+class PathInfo(BaseModel):
     paths: Dict[str, List[str]]
     datasource: Datasource
 

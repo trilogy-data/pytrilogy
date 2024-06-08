@@ -11,7 +11,7 @@ from lark.exceptions import (
 )
 from lark.tree import Meta
 from pydantic import ValidationError
-
+from preql.core.constants import CONSTANT_DATASET
 from preql.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
 from preql.constants import (
     DEFAULT_NAMESPACE,
@@ -1018,7 +1018,17 @@ class ParseToObjects(Transformer):
 
         parsed = [self.environment.concepts[x] for x in args]
         for left, right in combinations(parsed, 2):
-            self.environment.concept_links[left] = right
+            vid = f"__virtual_bridge_{left.safe_address}_{right.safe_address}"
+            self.environment.datasources[vid]=Datasource(
+                    identifier=vid,
+                    columns=[
+                        ColumnAssignment(alias=RawColumnExpr(text='1'), concept=left), 
+                        ColumnAssignment(alias=RawColumnExpr(text='1'), concept=right)
+                             ],
+                    grain=Grain(components=[left, right]),
+                    address=Address(location=CONSTANT_DATASET),
+                    namespace = self.environment.namespace
+            )
         return MergeStatement(concepts=parsed)
 
     def import_statement(self, args: list[str]):

@@ -11,6 +11,7 @@ from preql.core.processing.nodes import (
     FilterNode,
     MergeNode,
     NodeJoin,
+    History
 )
 from preql.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -29,6 +30,7 @@ def gen_filter_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None, 
 ) -> MergeNode | FilterNode | None:
     immediate_parent, parent_concepts = resolve_filter_parent_concepts(concept)
 
@@ -38,6 +40,7 @@ def gen_filter_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        history=history,
     )
     if not parent:
         return None
@@ -62,6 +65,7 @@ def gen_filter_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        history=history,
     )
     x = MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,

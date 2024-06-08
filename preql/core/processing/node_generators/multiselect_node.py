@@ -3,7 +3,7 @@ from preql.core.models import (
     Environment,
     MultiSelect,
 )
-from preql.core.processing.nodes import MergeNode, NodeJoin
+from preql.core.processing.nodes import MergeNode, NodeJoin, History
 from preql.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
 from typing import List
 
@@ -85,6 +85,7 @@ def gen_multiselect_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ) -> MergeNode | None:
     if not isinstance(concept.lineage, MultiSelect):
         logger.info(
@@ -100,6 +101,7 @@ def gen_multiselect_node(
             environment=environment,
             g=g,
             depth=depth + 1,
+            history=history,
         )
         if not snode:
             logger.info(
@@ -178,6 +180,7 @@ def gen_multiselect_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        history=history,
     )
     if not enrich_node:
         logger.info(

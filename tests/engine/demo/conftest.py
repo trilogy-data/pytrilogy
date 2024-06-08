@@ -18,7 +18,7 @@ from preql.hooks.query_debugger import DebuggingHook
 from logging import INFO
 from typing import Optional
 from preql.core.functions import function_args_to_output_purpose, arg_to_datatype
-
+from preql.parsing.common import function_to_concept
 from pytest import fixture
 
 
@@ -145,12 +145,18 @@ def setup_richest_environment(env: Environment):
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                Function(
+
+                function_to_concept(
+                    Function(
                     operator=FunctionType.SPLIT,
                     arguments=[name, " "],
                     output_datatype=DataType.ARRAY,
                     output_purpose=Purpose.PROPERTY,
                     arg_count=2,
+                ),
+                    name=f"split_name",
+                    namespace=namespace,
+                    # keys = (name,)
                 ),
                 -1,
             ],

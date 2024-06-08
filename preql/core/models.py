@@ -3,6 +3,7 @@ import difflib
 import os
 from copy import deepcopy
 from enum import Enum
+from collections import defaultdict
 from typing import (
     Dict,
     TypeVar,
@@ -19,6 +20,7 @@ from typing import (
     Generic,
     Tuple,
     Type,
+    ItemsView
 )
 from pydantic_core import core_schema
 from pydantic.functional_validators import PlainValidator
@@ -1351,6 +1353,11 @@ class Datasource(BaseModel):
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
 
+    @computed_field
+    @property
+    def output_lcl(self) -> LooseConceptList:
+        return LooseConceptList(self.output_concepts)
+
     @field_validator("namespace", mode="plain")
     @classmethod
     def namespace_validation(cls, v):
@@ -2078,6 +2085,8 @@ class EnvironmentConceptDict(dict):
         matches = difflib.get_close_matches(concept_name, self.keys())
         return matches
 
+    def items(self) -> ItemsView[str, Concept  | UndefinedConcept]:
+        return super().items()
 
 class Import(BaseModel):
     alias: str
@@ -2111,7 +2120,7 @@ class Environment(BaseModel):
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
-    concept_links: Dict[Concept, Concept] = Field(default_factory=dict)
+    concept_links: defaultdict[Concept, list[Concept]] = Field(default_factory=lambda: defaultdict(list))
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
@@ -2186,9 +2195,9 @@ class Environment(BaseModel):
     def add_import(self, alias: str, environment: Environment):
         self.imports[alias] = Import(alias=alias, path=str(environment.working_path))
         for key, concept in environment.concepts.items():
-            self.concepts[f"{alias}.{key}"] = concept
+            self.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
         for key, datasource in environment.datasources.items():
-            self.datasources[f"{alias}.{key}"] = datasource
+            self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
 
     def parse(self, input: str, namespace: str | None = None):
         from preql import parse

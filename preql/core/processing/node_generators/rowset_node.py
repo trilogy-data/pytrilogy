@@ -5,7 +5,7 @@ from preql.core.models import (
     RowsetDerivation,
     RowsetItem,
 )
-from preql.core.processing.nodes import MergeNode, NodeJoin
+from preql.core.processing.nodes import MergeNode, NodeJoin, History
 from preql.core.processing.nodes.base_node import concept_list_to_grain
 from typing import List
 
@@ -24,6 +24,7 @@ def gen_rowset_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ) -> MergeNode | None:
     if not isinstance(concept.lineage, RowsetItem):
         raise SyntaxError(
@@ -37,6 +38,7 @@ def gen_rowset_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        history=history,
     )
     if not node:
         logger.info(

@@ -7,6 +7,7 @@ from preql.core.models import (
 from preql.core.processing.nodes import (
     StrategyNode,
     SelectNode,
+    History
 )
 from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
@@ -23,6 +24,7 @@ def gen_basic_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None
 ):
     parent_concepts = resolve_function_parent_concepts(concept)
     depth_prefix = "\t" * depth
@@ -38,10 +40,11 @@ def gen_basic_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        history=history
     )
     if not enriched:
         logger.info(
-            f"{depth_prefix}{LOGGER_PREFIX} Could not find enrichment node for {concept} with local_optional {local_optional}"
+            f"{depth_prefix}{LOGGER_PREFIX} Could not find enrichment node for {concept} with local_optional {[c.address for c in local_optional]}"
         )
         return None
     parents: List[StrategyNode] = [enriched]

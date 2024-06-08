@@ -1,6 +1,6 @@
 from preql.core.models import Concept, Environment, LooseConceptList
 from preql.utility import unique
-from preql.core.processing.nodes import GroupNode, StrategyNode
+from preql.core.processing.nodes import GroupNode, StrategyNode, History
 from typing import List
 from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
@@ -21,6 +21,7 @@ def gen_group_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ):
     # aggregates MUST always group to the proper grain
     # except when the
@@ -51,6 +52,7 @@ def gen_group_node(
             environment=environment,
             g=g,
             depth=depth,
+            history=history,
         )
         if not parent:
             logger.info(
