@@ -47,7 +47,14 @@ def gen_basic_node(
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} Could not find enrichment node for {concept} with local_optional {[c.address for c in local_optional]}"
         )
-        return None
+        base = source_concepts(
+        mandatory_list=parent_concepts,
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+        history=history
+    )
+        return base
     parents: List[StrategyNode] = [enriched]
     for x in output_concepts:
         sources = [p for p in parents if x in p.output_concepts]

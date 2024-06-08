@@ -138,34 +138,27 @@ def get_priority_concept(
         f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}"
     )
 
-
 def generate_candidates_restrictive(
     priority_concept: Concept, candidates: list[Concept], exhausted: set[str]
 ) -> List[List[Concept]]:
-    from itertools import combinations
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
         return [[]]
     combos: list[list[Concept]] = []
-    base_list = [
+    combos.append(
+        Grain(
+            components=[
                 x
                 for x in list(candidates)
                 if x.address not in exhausted
                 and x.granularity != Granularity.SINGLE_ROW
             ]
-    combos.append(
-        Grain(
-            components=base_list
         ).components_copy
     )
-
-    # combos.append(base_list)
-    # for x in reversed(range(0, len(base_list) + 1)):
-    #     for combo in combinations(base_list, x):
-    #         combos.append(list(combo))
     # append the empty set for sourcing concept by itself last
     combos.append([])
     return combos
+
 
 
 def generate_node(
@@ -496,7 +489,8 @@ def _search_concepts(
             return expanded
     # if we can't find it after expanding to a merge, then
     # attempt to accept partials in join paths
-    elif not accept_partial:
+    
+    if not accept_partial:
         partial_search = search_concepts(
             mandatory_list=mandatory_list,
             environment=environment,

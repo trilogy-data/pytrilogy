@@ -147,13 +147,17 @@ def test_two_properties(environment: Environment):
     environment_graph = generate_graph(environment)
 
     # assert a group up to the first name works
-    customer_datasource = search_concepts(
+    _customer_datasource = search_concepts(
         [environment.concepts["internet_sales.customer.first_name"]]
         + test.grain.components_copy,
         environment=environment,
         g=environment_graph,
         depth=0,
-    ).resolve()
+    )
+
+    assert _customer_datasource
+    customer_datasource = _customer_datasource.resolve()
+
 
     assert list_to_address(customer_datasource.output_concepts).issuperset(
         list_to_address(

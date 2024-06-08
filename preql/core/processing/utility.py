@@ -25,6 +25,8 @@ class NodeType(Enum):
 class PathInfo(BaseModel):
     paths: Dict[str, List[str]]
     datasource: Datasource
+    reduced_concepts: Set[str]
+    concept_subgraphs: List[List[Concept]]
 
 
 def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
@@ -129,8 +131,8 @@ def get_node_joins(
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
             # we don't need to join on a concept if all of the keys exist in the grain
-            if concept.keys and all([x in grain for x in concept.keys]):
-                continue
+            # if concept.keys and all([x in grain for x in concept.keys]):
+            #     continue
             concepts.append(concept)
             graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource.identifier, concept.address)
@@ -197,6 +199,9 @@ def get_node_joins(
             local_concepts = [
                 c for c in local_concepts if c.purpose != Purpose.CONSTANT
             ]
+
+                    # if concept.keys and all([x in grain for x in concept.keys]):
+            #     continue
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],
@@ -222,7 +227,7 @@ def get_node_joins(
                     found = True
             if not found:
                 raise SyntaxError(
-                    f"Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}, joins {final_joins}"
+                    f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
                 )
     return final_joins
 

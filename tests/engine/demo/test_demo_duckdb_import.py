@@ -139,8 +139,9 @@ WHERE
     rich_info.net_worth_1918_dollars is not null
     and passenger.last_name is not null;"""
     parsed = normalized_engine.parse_text(test)[-1]
-    assert parsed.output_concepts[0].address == "passenger.last_name"
-    assert parsed.output_concepts[1].address == "rich_info.net_worth_1918_dollars"
+    assert parsed.output_columns[0].address == "passenger.last_name"
+    assert parsed.output_columns[1].address == "rich_info.net_worth_1918_dollars"
+    
     results = normalized_engine.execute_text(test)[-1].fetchall()
 
     assert len(results) == 8
