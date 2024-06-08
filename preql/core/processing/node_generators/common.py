@@ -139,9 +139,9 @@ def gen_enrichment_node(
     history: History | None = None, 
 ):
 
-    local_opts = LooseConceptList(local_optional)
+    local_opts = LooseConceptList(concepts=local_optional)
 
-    if local_opts.issubset(LooseConceptList(base_node.output_concepts)):
+    if local_opts.issubset(LooseConceptList(concepts=base_node.output_concepts)):
         log_lambda(
             f"{str(type(base_node).__name__)} has all optional { base_node.output_lcl}, skipping enrichmennt"
         )

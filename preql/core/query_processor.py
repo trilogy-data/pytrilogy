@@ -143,15 +143,15 @@ def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
 
 def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
     if CONFIG.human_identifiers:
-        shuffle(CTE_NAMES)
-        idx = len(name_map)
         suffix = ""
+        idx = len(name_map)
         if idx > len(CTE_NAMES):
             int = ceil(len(CTE_NAMES) / idx)
             suffix = f"_{int}"
-        # find the remainder from the len
-        lookup = idx % len(CTE_NAMES)
-        new_name = f"{CTE_NAMES[lookup]}{suffix}"
+        valid = [x for x in CTE_NAMES if x+suffix not in name_map.values()]
+        shuffle(valid)
+        lookup = valid[0]
+        new_name = f"{lookup}{suffix}"
         name_map[full_name] = new_name
         return new_name
     else:
@@ -161,7 +161,6 @@ def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
 def datasource_to_ctes(
     query_datasource: QueryDatasource, name_map: dict[str, str]
 ) -> List[CTE]:
-    name_map = {}
     output: List[CTE] = []
     parents: list[CTE] = []
     if len(query_datasource.datasources) > 1 or any(

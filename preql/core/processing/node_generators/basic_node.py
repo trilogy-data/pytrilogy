@@ -34,7 +34,8 @@ def gen_basic_node(
         )
     output_concepts = [concept] + local_optional
     partials = []
-
+    enriched = parent_concepts + local_optional
+    logger.info(f'{depth_prefix}{LOGGER_PREFIX} Generating basic enrichment node with {[x.address for x in enriched]}')
     enriched = source_concepts(
         mandatory_list=parent_concepts + local_optional,
         environment=environment,

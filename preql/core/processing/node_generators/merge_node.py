@@ -110,8 +110,9 @@ def gen_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} No additional join candidates could be found"
         )
         return None
+    original = {c.address for c in all_concepts}
     new = {c.address for c in final}.difference({c.address for c in all_concepts})
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} sourcing with new concepts {new}")
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} sourcing with new concepts {new} added to {original}")
     return source_concepts(
         mandatory_list=final,
         environment=environment,

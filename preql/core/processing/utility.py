@@ -28,9 +28,9 @@ class PathInfo(BaseModel):
 
 
 def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
-    addresses = LooseConceptList(concepts)
+    addresses = LooseConceptList(concepts=concepts)
     sub_props = LooseConceptList(
-        [x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
+        concepts=[x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
     )
     final = [c for c in concepts if c not in sub_props]
     return unique(final, "address")

@@ -44,7 +44,7 @@ def gen_group_node(
 
     if parent_concepts:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(parent_concepts)}"
+            f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(concepts=parent_concepts)}"
         )
         parent_concepts = unique(parent_concepts, "address")
         parent = source_concepts(

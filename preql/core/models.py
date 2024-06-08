@@ -1825,7 +1825,7 @@ class CTE(BaseModel):
         if not self.grain == other.grain:
             error = (
                 "Attempting to merge two ctes of different grains"
-                f" {self.name} {other.name} grains {self.grain} {other.grain}"
+                f" {self.name} {other.name} grains {self.grain} {other.grain} {self.group_to_grain} {other.group_to_grain} {self.output_lcl} {other.output_lcl}"
             )
             raise ValueError(error)
         self.partial_concepts = unique(

@@ -61,6 +61,23 @@ select
 
     assert len(results) == 8
 
+def test_merged_env_behavior(normalized_engine, test_env: Environment):
+    assert "passenger.last_name" in test_env.concepts
+    normalized_engine.environment = test_env
+    test_pre = """
+
+merge passenger.last_name, rich_info.last_name;
+
+
+    """
+    target_merge_concepts = [test_env.concepts[c] for c in ['passenger.last_name', 'rich_info.last_name']]
+    parsed = normalized_engine.parse_text(test_pre)
+    g = generate_graph(test_env)
+    found = search_concepts( [test_env.concepts[c] for c in ['passenger.last_name', 'rich_info.net_worth_1918_dollars', 'rich_info.last_name']], g=g, 
+                            environment=test_env, depth=0, )
+
+    assert found
+
 
 def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
@@ -102,6 +119,11 @@ merge passenger.last_name, rich_info.last_name;
     path = identify_ds_join_paths(target_select_concepts, g, test_env.datasources["rich_info.rich_info"], accept_partial=False, fail=True)
 
     assert path
+
+    found = search_concepts( [test_env.concepts[c] for c in ['passenger.last_name', 'rich_info.net_worth_1918_dollars', 'rich_info.full_name']], g=g, 
+                            environment=test_env, depth=0, )
+
+    assert found
 
     mn = gen_merge_node(target_select_concepts, 
                    environment=test_env, g=g, depth=0,
