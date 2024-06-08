@@ -127,6 +127,7 @@ limit 5;"""
             WindowNode,  # calculate aggregate
             MergeNode,  # enrich store name
             MergeNode,  # final node
+            MergeNode,  # final node
             GroupNode,  # final node
         ],
     )

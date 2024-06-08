@@ -22,7 +22,8 @@ from typing import (
     Type,
     ItemsView
 )
-from pydantic_core import core_schema
+from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
+from pydantic_core import core_schema, CoreSchema
 from pydantic.functional_validators import PlainValidator
 from pydantic import (
     BaseModel,
@@ -604,23 +605,33 @@ class Statement(BaseModel):
     pass
 
 
-class LooseConceptList:
+class LooseConceptList(BaseModel):
+    concepts:List[Concept]
 
-    def __init__(self, concepts: List[Concept]):
-        self.concepts = concepts
-        self.addresses = {s.address for s in self.concepts}
+    # def __init__(self, concepts: List[Concept]):
+    #     self.concepts = concepts
 
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-        if args:
-            schema = handler(List[args])  # type: ignore
-        else:
-            schema = handler(List)
-        return core_schema.no_info_after_validator_function(cls.validate, schema)
+    @computed_field
+    @property
+    def addresses(self)->set[str]:
+        return {s.address for s in self.concepts}
 
+    # @classmethod
+    # def __get_pydantic_core_schema__(
+    #     cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    # ) -> core_schema.CoreSchema:
+    #     args = get_args(source_type)
+    #     if args:
+    #         schema = handler(List[args])  # type: ignore
+    #     else:
+    #         schema = handler(List)
+    #     return core_schema.no_info_after_validator_function(cls.validate, schema)
+    # @classmethod
+    # def __get_pydantic_json_schema__(
+    #     cls, _core_schema: core_schema.CoreSchema, handler: GetJsonSchemaHandler
+    # ) -> Dict[str, Any]:
+    #     extra_json_base = {"type": "string"}  
+    #     return extra_json_base   
     @classmethod
     def validate(cls, v):
         return cls(v)
@@ -1170,7 +1181,7 @@ class AlignItem(BaseModel):
     @computed_field  # type: ignore
     @property
     def concepts_lcl(self) -> LooseConceptList:
-        return LooseConceptList(self.concepts)
+        return LooseConceptList(concepts=self.concepts)
 
     def with_namespace(self, namespace: str) -> "AlignItem":
         return AlignItem(
@@ -1356,7 +1367,7 @@ class Datasource(BaseModel):
     @computed_field
     @property
     def output_lcl(self) -> LooseConceptList:
-        return LooseConceptList(self.output_concepts)
+        return LooseConceptList(concepts=self.output_concepts)
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -1803,7 +1814,7 @@ class CTE(BaseModel):
     @computed_field  # type: ignore
     @property
     def output_lcl(self) -> LooseConceptList:
-        return LooseConceptList(self.output_columns)
+        return LooseConceptList(concepts=self.output_columns)
 
     @field_validator("output_columns")
     def validate_output_columns(cls, v):

@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 def test_environment_serialization(test_environment: Environment):
+    str(test_environment)
     path = test_environment.to_cache()
 
     test_environment2 = Environment.from_cache(path)

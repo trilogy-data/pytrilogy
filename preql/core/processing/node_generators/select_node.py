@@ -31,7 +31,7 @@ def gen_select_node_from_table(
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
-    all_lcl = LooseConceptList(all_concepts)
+    all_lcl = LooseConceptList(concepts=all_concepts)
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
         return ConstantNode(
             output_concepts=all_concepts,
@@ -102,7 +102,7 @@ def gen_select_node_from_table(
                 for c in datasource.columns
                 if not c.is_complete and c.concept in all_lcl
             ]
-            partial_lcl = LooseConceptList(partial_concepts)
+            partial_lcl = LooseConceptList(concepts=partial_concepts)
             if not accept_partial and target_concept in partial_lcl:
                 continue
             logger.info(
@@ -166,9 +166,9 @@ def gen_select_node(
     target_grain: Grain | None = None,
 ) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
-    all_lcl = LooseConceptList(all_concepts)
+    all_lcl = LooseConceptList(concepts=all_concepts)
     materialized_lcl = LooseConceptList(
-        [
+        concepts=[
             x
             for x in all_concepts
             if x.address in [z.address for z in environment.materialized_concepts]
