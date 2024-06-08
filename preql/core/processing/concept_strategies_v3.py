@@ -496,12 +496,13 @@ def source_query_concepts(
         g = generate_graph(environment)
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
+    history = History()
     root = search_concepts(
         mandatory_list=output_concepts,
         environment=environment,
         g=g,
         depth=0,
-        history=History(),
+        history=history,
     )
 
     if not root:

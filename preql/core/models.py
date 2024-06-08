@@ -2120,7 +2120,6 @@ class Environment(BaseModel):
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
-    concept_links: defaultdict[Concept, list[Concept]] = Field(default_factory=lambda: defaultdict(list))
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
@@ -2148,7 +2147,7 @@ class Environment(BaseModel):
         else:
             ppath = Path(path)
         with open(ppath, "w") as f:
-            f.write(self.json())
+            f.write(self.model_dump_json())
         return ppath
 
     @property

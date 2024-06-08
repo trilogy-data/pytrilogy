@@ -2,9 +2,7 @@ from typing import List
 
 
 from preql.core.models import Concept, Function
-from preql.core.processing.nodes import (
-    UnnestNode,
-)
+from preql.core.processing.nodes import UnnestNode, History
 
 
 def gen_unnest_node(
@@ -14,26 +12,26 @@ def gen_unnest_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ) -> UnnestNode:
     arguments = []
     if isinstance(concept.lineage, Function):
         arguments = concept.lineage.concept_arguments
+    if arguments or local_optional:
+        parent = source_concepts(
+            mandatory_list=arguments + local_optional,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+        )
+        if not parent:
+            return
     return UnnestNode(
         unnest_concept=concept,
         input_concepts=arguments + local_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
         g=g,
-        parents=(
-            [
-                source_concepts(
-                    mandatory_list=arguments + local_optional,
-                    environment=environment,
-                    g=g,
-                    depth=depth + 1,
-                )
-            ]
-            if (arguments or local_optional)
-            else []
-        ),
+        parents=([parent] if (arguments or local_optional) else []),
     )

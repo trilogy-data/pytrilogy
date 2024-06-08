@@ -6,7 +6,7 @@ from preql.utility import unique
 from preql.core.processing.nodes import (
     WindowNode,
 )
-from preql.core.processing.nodes import MergeNode
+from preql.core.processing.nodes import MergeNode, History
 
 from preql.constants import logger
 from preql.core.processing.utility import padding, create_log_lambda
@@ -37,6 +37,7 @@ def gen_window_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
 
@@ -45,6 +46,7 @@ def gen_window_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        history=history,
     )
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
@@ -79,4 +81,5 @@ def gen_window_node(
         depth=depth,
         source_concepts=source_concepts,
         log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
+        history=history
     )

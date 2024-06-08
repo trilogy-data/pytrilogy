@@ -14,6 +14,7 @@ from preql.core.models import (
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import StrategyNode
 from preql.core.processing.nodes.merge_node import MergeNode
+from preql.core.processing.nodes import History
 from preql.core.enums import JoinType
 from preql.core.processing.nodes import (
     NodeJoin,
@@ -72,6 +73,7 @@ def gen_property_enrichment_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
@@ -89,6 +91,7 @@ def gen_property_enrichment_node(
             environment=environment,
             g=g,
             depth=depth + 1,
+            history=history
         )
         final_nodes.append(enrich_node)
         node_joins.append(
@@ -133,6 +136,7 @@ def gen_enrichment_node(
     depth: int,
     source_concepts,
     log_lambda,
+    history: History | None = None, 
 ):
 
     local_opts = LooseConceptList(local_optional)
@@ -165,6 +169,7 @@ def gen_enrichment_node(
                 g,
                 depth,
                 source_concepts,
+                history=history
             )
 
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
@@ -173,6 +178,7 @@ def gen_enrichment_node(
         environment=environment,
         g=g,
         depth=depth,
+        history=history
     )
     if not enrich_node:
         log_lambda(

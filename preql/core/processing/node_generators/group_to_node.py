@@ -1,5 +1,5 @@
 from preql.core.models import Concept, Environment, Function
-from preql.core.processing.nodes import GroupNode, StrategyNode, MergeNode, NodeJoin
+from preql.core.processing.nodes import GroupNode, StrategyNode, MergeNode, NodeJoin, History
 from typing import List
 from preql.core.enums import JoinType
 
@@ -17,6 +17,7 @@ def gen_group_to_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, Function):
@@ -31,6 +32,7 @@ def gen_group_to_node(
             environment=environment,
             g=g,
             depth=depth + 1,
+            history=history,
         )
     ]
 
@@ -55,6 +57,7 @@ def gen_group_to_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        history=history,
     )
     if not enrich_node:
         logger.info(
