@@ -43,6 +43,7 @@ class PurposeLineage(Enum):
     ROOT = "root"
     ROWSET = "rowset"
     MULTISELECT = "multiselect"
+    MERGE = "merge"
 
 
 class Granularity(Enum):

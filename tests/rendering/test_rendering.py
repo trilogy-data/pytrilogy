@@ -19,6 +19,10 @@ from preql.core.models import (
     CaseElse,
     CaseWhen,
     Concept,
+    MergeStatement,
+    MultiSelect,
+    AlignClause,
+    AlignItem,
 )
 from preql import Environment
 from preql.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
@@ -48,6 +52,52 @@ ORDER BY
     order_id asc
 ;"""
     )
+
+
+def test_multi_select(test_environment):
+    query = MultiSelect(
+        namespace=DEFAULT_NAMESPACE,
+        selects=[
+            Select(
+                selection=[test_environment.concepts["order_id"]],
+                where_clause=None,
+            ),
+            Select(
+                selection=[test_environment.concepts["order_id"]],
+                where_clause=None,
+            ),
+        ],
+        align=AlignClause(
+            items=[
+                AlignItem(
+                    alias="merge", concepts=[test_environment.concepts["order_id"]]
+                )
+            ]
+        ),
+        order_by=OrderBy(
+            items=[
+                OrderItem(
+                    expr=test_environment.concepts["order_id"],
+                    order=Ordering.ASCENDING,
+                )
+            ]
+        ),
+    )
+
+    string_query = render_query(query)
+    assert (
+        string_query
+        == """SELECT
+    order_id,
+MERGE
+SELECT
+    order_id,
+ALIGN
+\tmerge:order_id
+ORDER BY
+\torder_id asc
+;"""
+    ), string_query
 
 
 def test_full_query(test_environment):
@@ -250,3 +300,37 @@ def test_render_anon(test_environment: Environment):
     )
 
     assert test == "[1, 2, 3, 4]"
+
+
+def test_render_merge():
+    test = Renderer().to_string(
+        MergeStatement(
+            datatype=DataType.INTEGER,
+            concepts=[
+                Concept(
+                    name="materialized",
+                    purpose=Purpose.CONSTANT,
+                    datatype=DataType.INTEGER,
+                    lineage=Function(
+                        arguments=[[1, 2, 3, 4]],
+                        operator=FunctionType.CONSTANT,
+                        output_purpose=Purpose.CONSTANT,
+                        output_datatype=DataType.ARRAY,
+                    ),
+                ),
+                Concept(
+                    name="materialized",
+                    purpose=Purpose.CONSTANT,
+                    namespace="test",
+                    datatype=DataType.INTEGER,
+                    lineage=Function(
+                        arguments=[[1, 2, 3, 4]],
+                        operator=FunctionType.CONSTANT,
+                        output_purpose=Purpose.CONSTANT,
+                        output_datatype=DataType.ARRAY,
+                    ),
+                ),
+            ],
+        )
+    )
+    assert test == "merge materialized, test.materialized;"

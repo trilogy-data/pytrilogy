@@ -1,5 +1,6 @@
 from preql.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
 from preql.core.models import Environment
+from preql.core.enums import PurposeLineage
 
 
 def generate_graph(
@@ -16,6 +17,8 @@ def generate_graph(
             for source in concept.sources:
                 generic = source.with_default_grain()
                 g.add_edge(generic, node_name)
+                if concept.derivation == PurposeLineage.MERGE:
+                    g.add_edge(node_name, generic)
     for _, dataset in environment.datasources.items():
         node = datasource_to_node(dataset)
         g.add_node(dataset, type="datasource", datasource=dataset)

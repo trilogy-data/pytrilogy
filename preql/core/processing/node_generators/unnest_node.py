@@ -13,7 +13,7 @@ def gen_unnest_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-) -> UnnestNode:
+) -> UnnestNode | None:
     arguments = []
     if isinstance(concept.lineage, Function):
         arguments = concept.lineage.concept_arguments
@@ -26,7 +26,7 @@ def gen_unnest_node(
             history=history,
         )
         if not parent:
-            return
+            return None
     return UnnestNode(
         unnest_concept=concept,
         input_concepts=arguments + local_optional,

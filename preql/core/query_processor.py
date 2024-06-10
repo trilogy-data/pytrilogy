@@ -72,9 +72,6 @@ def base_join_to_join(
                 == base_join.right_datasource.full_name
             )
         ]
-    # TODO: figure out why
-    if not right_ctes:
-        return None
     right_cte = right_ctes[0]
     return Join(
         left_cte=left_cte,
@@ -87,7 +84,7 @@ def base_join_to_join(
 def generate_source_map(
     query_datasource: QueryDatasource, all_new_ctes: List[CTE]
 ) -> Dict[str, str | list[str]]:
-    source_map: Dict[str, str | list[str]] = defaultdict(list)
+    source_map: Dict[str, list[str]] = defaultdict(list)
     # now populate anything derived in this level
     for qdk, qdv in query_datasource.source_map.items():
         if (
@@ -95,7 +92,7 @@ def generate_source_map(
             and len(qdv) == 1
             and isinstance(list(qdv)[0], UnnestJoin)
         ):
-            source_map[qdk] = ""
+            source_map[qdk] = []
 
         else:
             for cte in all_new_ctes:
@@ -113,15 +110,15 @@ def generate_source_map(
                 output_address = [x.address for x in cte.output_columns]
                 if qdk in output_address:
                     if qdk not in source_map:
-                        source_map[qdk] = cte.name
+                        source_map[qdk] = [cte.name]
         if qdk not in source_map and not qdv:
             # set source to empty, as it must be derived in this element
-            source_map[qdk] = ""
+            source_map[qdk] = []
         if qdk not in source_map:
             raise ValueError(
                 f"Missing {qdk} in {source_map}, source map {query_datasource.source_map.keys()} "
             )
-    return source_map
+    return {k: "" if not v else v for k, v in source_map.items()}
 
 
 def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
@@ -143,12 +140,14 @@ def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
 
 def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
     if CONFIG.human_identifiers:
+        if full_name in name_map:
+            return name_map[full_name]
         suffix = ""
         idx = len(name_map)
-        if idx > len(CTE_NAMES):
-            int = ceil(len(CTE_NAMES) / idx)
+        if idx >= len(CTE_NAMES):
+            int = ceil(idx / len(CTE_NAMES))
             suffix = f"_{int}"
-        valid = [x for x in CTE_NAMES if x+suffix not in name_map.values()]
+        valid = [x for x in CTE_NAMES if x + suffix not in name_map.values()]
         shuffle(valid)
         lookup = valid[0]
         new_name = f"{lookup}{suffix}"
@@ -186,7 +185,10 @@ def datasource_to_ctes(
         if source.full_name == DEFAULT_NAMESPACE + "_" + CONSTANT_DATASET:
             source_map = {k: "" for k in query_datasource.source_map}
         else:
-            source_map = {k: source.full_name for k in query_datasource.source_map}
+            source_map = {
+                k: "" if not v else source.full_name
+                for k, v in query_datasource.source_map.items()
+            }
     human_id = generate_cte_name(query_datasource.full_name, name_map)
     cte = CTE(
         name=human_id,
@@ -295,7 +297,7 @@ def process_query(
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
-    root_cte = datasource_to_ctes(root_datasource, {})[0]
+    root_cte = datasource_to_ctes(root_datasource, environment.cte_name_map)[0]
     for hook in hooks:
         hook.process_root_cte(root_cte)
     raw_ctes: List[CTE] = list(reversed(flatten_ctes(root_cte)))

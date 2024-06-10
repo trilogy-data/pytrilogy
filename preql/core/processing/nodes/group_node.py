@@ -53,6 +53,7 @@ class GroupNode(StrategyNode):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} Output of group by node equals input of group by node"
                 f" {self.output_lcl}"
+                f" grains {comp_grain} and {grain}"
             )
             if len(parent_sources) == 1:
                 logger.info(

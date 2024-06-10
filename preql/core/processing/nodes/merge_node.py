@@ -9,6 +9,7 @@ from preql.core.models import (
     QueryDatasource,
     SourceType,
     Concept,
+    UnnestJoin,
 )
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import (
@@ -60,8 +61,10 @@ def deduplicate_nodes(
 
 
 def deduplicate_nodes_and_joins(
-    joins: List[NodeJoin], merged: dict[str, QueryDatasource], logging_prefix: str
-) -> Tuple[List[NodeJoin], dict[str, QueryDatasource]]:
+    joins: List[NodeJoin] | None,
+    merged: dict[str, QueryDatasource],
+    logging_prefix: str,
+) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
     while duplicates:
@@ -188,11 +191,13 @@ class MergeNode(StrategyNode):
                     f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {str(grain)}"
                 )
                 joins = get_node_joins(dataset_list, grain.components)
-        else:
+        elif final_joins:
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(self.node_joins)}"
+                f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(final_joins)}"
             )
-            joins = self.translate_node_joins(self.node_joins)
+            joins = self.translate_node_joins(final_joins)
+        else:
+            return []
         for join in joins:
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} final join {join.join_type} {[str(c) for c in join.concepts]}"
@@ -287,6 +292,8 @@ class MergeNode(StrategyNode):
             force_group = True
         else:
             force_group = None
+
+        qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
         return QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),
@@ -298,7 +305,7 @@ class MergeNode(StrategyNode):
                 self.input_concepts,
                 full_joins=full_join_concepts,
             ),
-            joins=joins,
+            joins=qd_joins,
             grain=grain,
             partial_concepts=self.partial_concepts,
             force_group=force_group,

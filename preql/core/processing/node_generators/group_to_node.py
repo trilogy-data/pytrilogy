@@ -1,5 +1,11 @@
 from preql.core.models import Concept, Environment, Function
-from preql.core.processing.nodes import GroupNode, StrategyNode, MergeNode, NodeJoin, History
+from preql.core.processing.nodes import (
+    GroupNode,
+    StrategyNode,
+    MergeNode,
+    NodeJoin,
+    History,
+)
 from typing import List
 from preql.core.enums import JoinType
 

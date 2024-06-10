@@ -4,6 +4,7 @@ from preql.core.models import (
     Select,
     RowsetDerivation,
     RowsetItem,
+    MultiSelect,
 )
 from preql.core.processing.nodes import MergeNode, NodeJoin, History
 from preql.core.processing.nodes.base_node import concept_list_to_grain
@@ -32,7 +33,7 @@ def gen_rowset_node(
         )
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivation = lineage.rowset
-    select: Select = lineage.rowset.select
+    select: Select | MultiSelect = lineage.rowset.select
     node: MergeNode = source_concepts(
         mandatory_list=select.output_components,
         environment=environment,

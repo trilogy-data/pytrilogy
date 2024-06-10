@@ -3,7 +3,6 @@ import difflib
 import os
 from copy import deepcopy
 from enum import Enum
-from collections import defaultdict
 from typing import (
     Dict,
     TypeVar,
@@ -20,10 +19,9 @@ from typing import (
     Generic,
     Tuple,
     Type,
-    ItemsView
+    ItemsView,
 )
-from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
-from pydantic_core import core_schema, CoreSchema
+from pydantic_core import core_schema
 from pydantic.functional_validators import PlainValidator
 from pydantic import (
     BaseModel,
@@ -61,6 +59,7 @@ from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxExcept
 from preql.utility import unique
 from collections import UserList
 from preql.utility import string_to_hash
+from functools import cached_property
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -230,7 +229,12 @@ class Concept(BaseModel):
     )
     lineage: Optional[
         Union[
-            Function, WindowItem, FilterItem, AggregateWrapper, RowsetItem, MultiSelect
+            Function,
+            WindowItem,
+            FilterItem,
+            AggregateWrapper,
+            RowsetItem,
+            MultiSelect | MergeStatement,
         ]
     ] = None
     # lineage: Annotated[Optional[
@@ -441,6 +445,8 @@ class Concept(BaseModel):
             return PurposeLineage.ROWSET
         elif self.lineage and isinstance(self.lineage, MultiSelect):
             return PurposeLineage.MULTISELECT
+        elif self.lineage and isinstance(self.lineage, MergeStatement):
+            return PurposeLineage.MERGE
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -606,32 +612,12 @@ class Statement(BaseModel):
 
 
 class LooseConceptList(BaseModel):
-    concepts:List[Concept]
+    concepts: List[Concept]
 
-    # def __init__(self, concepts: List[Concept]):
-    #     self.concepts = concepts
-
-    @computed_field
-    @property
-    def addresses(self)->set[str]:
+    @cached_property
+    def addresses(self) -> set[str]:
         return {s.address for s in self.concepts}
 
-    # @classmethod
-    # def __get_pydantic_core_schema__(
-    #     cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    # ) -> core_schema.CoreSchema:
-    #     args = get_args(source_type)
-    #     if args:
-    #         schema = handler(List[args])  # type: ignore
-    #     else:
-    #         schema = handler(List)
-    #     return core_schema.no_info_after_validator_function(cls.validate, schema)
-    # @classmethod
-    # def __get_pydantic_json_schema__(
-    #     cls, _core_schema: core_schema.CoreSchema, handler: GetJsonSchemaHandler
-    # ) -> Dict[str, Any]:
-    #     extra_json_base = {"type": "string"}  
-    #     return extra_json_base   
     @classmethod
     def validate(cls, v):
         return cls(v)
@@ -1179,7 +1165,7 @@ class AlignItem(BaseModel):
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
 
     @computed_field  # type: ignore
-    @property
+    @cached_property
     def concepts_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.concepts)
 
@@ -1230,7 +1216,7 @@ class MultiSelect(BaseModel):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
 
     @computed_field  # type: ignore
-    @property
+    @cached_property
     def arguments(self) -> List[Concept]:
         output = []
         for select in self.selects:
@@ -1238,7 +1224,7 @@ class MultiSelect(BaseModel):
         return unique(output, "address")
 
     @computed_field  # type: ignore
-    @property
+    @cached_property
     def concept_arguments(self) -> List[Concept]:
         output = []
         for select in self.selects:
@@ -1268,7 +1254,7 @@ class MultiSelect(BaseModel):
         return base
 
     @computed_field  # type: ignore
-    @property
+    @cached_property
     def derived_concepts(self) -> List[Concept]:
         output = []
         for item in self.align.items:
@@ -1298,7 +1284,7 @@ class MultiSelect(BaseModel):
         return unique(output, "address")
 
     @computed_field  # type: ignore
-    @property
+    @cached_property
     def hidden_components(self) -> List[Concept]:
         output = []
         for select in self.selects:
@@ -1350,6 +1336,45 @@ class DatasourceMetadata(BaseModel):
 
 class MergeStatement(BaseModel):
     concepts: List[Concept]
+    datatype: DataType | ListType | StructType | MapType
+
+    @cached_property
+    def concepts_lcl(self):
+        return LooseConceptList(concepts=self.concepts)
+
+    @property
+    def merge_concept(self) -> Concept:
+        bridge_name = "_".join([c.safe_address for c in self.concepts])
+        return Concept(
+            name=f"__merge_{bridge_name}",
+            datatype=self.datatype,
+            purpose=Purpose.PROPERTY,
+            lineage=self,
+            keys=tuple(self.concepts),
+        )
+
+    @property
+    def arguments(self) -> List[Concept]:
+        return self.concepts
+
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        return self.concepts
+
+    def find_source(self, concept: Concept, cte: CTE) -> Concept:
+        for x in self.concepts:
+            for z in cte.output_columns:
+                if z.address == x.address:
+                    return z
+        raise SyntaxError(
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        )
+
+    def with_namespace(self, namespace: str) -> "MergeStatement":
+        return MergeStatement(
+            concepts=[c.with_namespace(namespace) for c in self.concepts],
+            datatype=self.datatype,
+        )
 
 
 class Datasource(BaseModel):
@@ -1364,8 +1389,7 @@ class Datasource(BaseModel):
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
 
-    @computed_field
-    @property
+    @cached_property
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
 
@@ -1401,6 +1425,8 @@ class Datasource(BaseModel):
         self.columns.append(
             ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
         )
+        # force refresh
+        del self.output_lcl
 
     def __add__(self, other):
         if not other == self:
@@ -1481,7 +1507,7 @@ class Datasource(BaseModel):
         namespace = self.namespace.replace(".", "_") if self.namespace else ""
         return f"{namespace}_{self.identifier}"
 
-    @property
+    @cached_property
     def safe_location(self) -> str:
         if isinstance(self.address, Address):
             return self.address.location
@@ -1655,8 +1681,6 @@ class QueryDatasource(BaseModel):
     @property
     def full_name(self):
         return self.identifier
-        # raw = '_'.join([c for c in self.source_map])
-        # return raw.replace('.', '_')
 
     @property
     def group_required(self) -> bool:
@@ -1825,7 +1849,7 @@ class CTE(BaseModel):
         if not self.grain == other.grain:
             error = (
                 "Attempting to merge two ctes of different grains"
-                f" {self.name} {other.name} grains {self.grain} {other.grain} {self.group_to_grain} {other.group_to_grain} {self.output_lcl} {other.output_lcl}"
+                f" {self.name} {other.name} grains {self.grain} {other.grain}| {self.group_to_grain} {other.group_to_grain}| {self.output_lcl} {other.output_lcl}"
             )
             raise ValueError(error)
         self.partial_concepts = unique(
@@ -2096,8 +2120,9 @@ class EnvironmentConceptDict(dict):
         matches = difflib.get_close_matches(concept_name, self.keys())
         return matches
 
-    def items(self) -> ItemsView[str, Concept  | UndefinedConcept]:
+    def items(self) -> ItemsView[str, Concept | UndefinedConcept]:  # type: ignore
         return super().items()
+
 
 class Import(BaseModel):
     alias: str
@@ -2135,12 +2160,13 @@ class Environment(BaseModel):
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
+    cte_name_map: Dict[str, str] = Field(default_factory=dict)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
         with open(path, "r") as f:
             read = f.read()
-        return Environment(working_path=Path(path).parent).parse(read)
+        return Environment(working_path=Path(path).parent).parse(read)[0]
 
     @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:
@@ -2209,16 +2235,18 @@ class Environment(BaseModel):
         for key, datasource in environment.datasources.items():
             self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
 
-    def parse(self, input: str, namespace: str | None = None):
+    def parse(
+        self, input: str, namespace: str | None = None
+    ) -> Tuple[Environment, list]:
         from preql import parse
 
         if namespace:
             new = Environment()
-            new.parse(input)
+            _, queries = new.parse(input)
             self.add_import(namespace, new)
-            return self
-        parse(input, self)
-        return self
+            return self, queries
+        _, queries = parse(input, self)
+        return self, queries
 
     def add_concept(
         self,

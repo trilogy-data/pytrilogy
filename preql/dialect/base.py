@@ -38,6 +38,7 @@ from preql.core.models import (
     ShowStatement,
     RowsetItem,
     MultiSelect,
+    MergeStatement,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -274,6 +275,8 @@ class BaseDialect:
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, MultiSelect):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
+            elif isinstance(c.lineage, MergeStatement):
+                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
                 #  rval = f"{self.FUNCTION_MAP[FunctionType.COALESCE](*[self.render_concept_sql(parent, cte=cte, alias=False) for parent in c.lineage.find_sources(c, cte)])}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [
@@ -311,8 +314,6 @@ class BaseDialect:
                 rval = self.render_expr(raw_content, cte=cte)
             else:
                 rval = f"{safe_get_cte_value(self.FUNCTION_MAP[FunctionType.COALESCE], cte, c.address, rendered=safe_quote(raw_content, self.QUOTE_CHARACTER))}"
-                # rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}.{safe_quote(raw_content, self.QUOTE_CHARACTER)}"
-
         if alias:
             return (
                 f"{rval} as"

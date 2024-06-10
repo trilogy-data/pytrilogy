@@ -81,5 +81,5 @@ def gen_window_node(
         depth=depth,
         source_concepts=source_concepts,
         log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
-        history=history
+        history=history,
     )

@@ -8,6 +8,7 @@ from .unnest_node import gen_unnest_node
 from .merge_node import gen_merge_node
 from .rowset_node import gen_rowset_node
 from .multiselect_node import gen_multiselect_node
+from .concept_merge import gen_concept_merge_node
 
 __all__ = [
     "gen_filter_node",
@@ -20,4 +21,5 @@ __all__ = [
     "gen_group_to_node",
     "gen_rowset_node",
     "gen_multiselect_node",
+    "gen_concept_merge_node",
 ]

@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, TypedDict, Set
+from typing import List, Tuple, Dict, Set
 import networkx as nx
 from preql.core.models import (
     Datasource,
@@ -17,6 +17,7 @@ from collections import defaultdict
 from logging import Logger
 from pydantic import BaseModel
 
+
 class NodeType(Enum):
     CONCEPT = 1
     NODE = 2
@@ -32,7 +33,9 @@ class PathInfo(BaseModel):
 def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
     addresses = LooseConceptList(concepts=concepts)
     sub_props = LooseConceptList(
-        concepts=[x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
+        concepts=[
+            x for x in concepts if x.keys and all([key in addresses for key in x.keys])
+        ]
     )
     final = [c for c in concepts if c not in sub_props]
     return unique(final, "address")
@@ -200,7 +203,7 @@ def get_node_joins(
                 c for c in local_concepts if c.purpose != Purpose.CONSTANT
             ]
 
-                    # if concept.keys and all([x in grain for x in concept.keys]):
+            # if concept.keys and all([x in grain for x in concept.keys]):
             #     continue
         final_joins_pre.append(
             BaseJoin(

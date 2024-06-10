@@ -11,13 +11,11 @@ from lark.exceptions import (
 )
 from lark.tree import Meta
 from pydantic import ValidationError
-from preql.core.constants import CONSTANT_DATASET
 from preql.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
 from preql.constants import (
     DEFAULT_NAMESPACE,
     NULL_VALUE,
     VIRTUAL_CONCEPT_PREFIX,
-    logger,
 )
 from preql.core.enums import (
     BooleanOperator,
@@ -1013,23 +1011,19 @@ class ParseToObjects(Transformer):
         return [self.environment.concepts[x] for x in args]
 
     @v_args(meta=True)
-    def merge_statement(self, meta: Meta, args) -> None:
-        from itertools import combinations
+    def merge_statement(self, meta: Meta, args) -> MergeStatement:
 
         parsed = [self.environment.concepts[x] for x in args]
-        for left, right in combinations(parsed, 2):
-            vid = f"__virtual_bridge_{left.safe_address}_{right.safe_address}"
-            self.environment.datasources[vid]=Datasource(
-                    identifier=vid,
-                    columns=[
-                        ColumnAssignment(alias=RawColumnExpr(text='1'), concept=left), 
-                        ColumnAssignment(alias=RawColumnExpr(text='1'), concept=right)
-                             ],
-                    grain=Grain(components=[left, right]),
-                    address=Address(location=CONSTANT_DATASET),
-                    namespace = self.environment.namespace
+        datatypes = {x.datatype for x in parsed}
+        if not len(datatypes) == 1:
+            raise SyntaxError(
+                f"Cannot merge concepts with different datatypes {datatypes}"
+                f"line: {meta.line} concepts: {[x.address for x in parsed]}"
             )
-        return MergeStatement(concepts=parsed)
+        merge = MergeStatement(concepts=parsed, datatype=datatypes.pop())
+        new = merge.merge_concept
+        self.environment.add_concept(new, meta=meta)
+        return merge
 
     def import_statement(self, args: list[str]):
         alias = args[-1]

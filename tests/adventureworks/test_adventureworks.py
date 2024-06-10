@@ -158,7 +158,6 @@ def test_two_properties(environment: Environment):
     assert _customer_datasource
     customer_datasource = _customer_datasource.resolve()
 
-
     assert list_to_address(customer_datasource.output_concepts).issuperset(
         list_to_address(
             [environment.concepts["internet_sales.customer.first_name"]]

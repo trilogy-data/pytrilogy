@@ -118,6 +118,7 @@ class SelectNode(StrategyNode):
             # add in any derived concepts to support a merge node
             if x.address not in source_map and x.derivation in (
                 PurposeLineage.MULTISELECT,
+                PurposeLineage.MERGE,
             ):
                 source_map[x.address] = set()
         return QueryDatasource(

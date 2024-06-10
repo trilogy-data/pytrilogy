@@ -145,16 +145,15 @@ def setup_richest_environment(env: Environment):
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-
                 function_to_concept(
                     Function(
-                    operator=FunctionType.SPLIT,
-                    arguments=[name, " "],
-                    output_datatype=DataType.ARRAY,
-                    output_purpose=Purpose.PROPERTY,
-                    arg_count=2,
-                ),
-                    name=f"split_name",
+                        operator=FunctionType.SPLIT,
+                        arguments=[name, " "],
+                        output_datatype=DataType.ARRAY,
+                        output_purpose=Purpose.PROPERTY,
+                        arg_count=2,
+                    ),
+                    name="split_name",
                     namespace=namespace,
                     # keys = (name,)
                 ),

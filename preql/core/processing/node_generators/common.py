@@ -91,7 +91,7 @@ def gen_property_enrichment_node(
             environment=environment,
             g=g,
             depth=depth + 1,
-            history=history
+            history=history,
         )
         final_nodes.append(enrich_node)
         node_joins.append(
@@ -136,7 +136,7 @@ def gen_enrichment_node(
     depth: int,
     source_concepts,
     log_lambda,
-    history: History | None = None, 
+    history: History | None = None,
 ):
 
     local_opts = LooseConceptList(concepts=local_optional)
@@ -169,7 +169,7 @@ def gen_enrichment_node(
                 g,
                 depth,
                 source_concepts,
-                history=history
+                history=history,
             )
 
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
@@ -178,7 +178,7 @@ def gen_enrichment_node(
         environment=environment,
         g=g,
         depth=depth,
-        history=history
+        history=history,
     )
     if not enrich_node:
         log_lambda(
@@ -210,3 +210,34 @@ def gen_enrichment_node(
             )
         ],
     )
+
+
+def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
+    available_aliases: set[StrategyNode] = set()
+    final_joins_pre = [*joins]
+    final_joins = []
+    while final_joins_pre:
+        new_final_joins_pre: List[NodeJoin] = []
+        for join in final_joins_pre:
+            if not available_aliases:
+                final_joins.append(join)
+                available_aliases.add(join.left_node)
+                available_aliases.add(join.right_node)
+            elif join.left_node in available_aliases:
+                # we don't need to join twice
+                # so whatever join we found first, works
+                if join.right_node in available_aliases:
+                    continue
+                final_joins.append(join)
+                available_aliases.add(join.left_node)
+                available_aliases.add(join.right_node)
+            else:
+                new_final_joins_pre.append(join)
+        if len(new_final_joins_pre) == len(final_joins_pre):
+            remaining = [join.left_node for join in new_final_joins_pre]
+            remaining_right = [join.right_node for join in new_final_joins_pre]
+            raise SyntaxError(
+                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
+            )
+        final_joins_pre = new_final_joins_pre
+    return final_joins

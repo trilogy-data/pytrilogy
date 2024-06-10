@@ -1,14 +1,7 @@
 from typing import List, Optional
 
-from preql.core.models import (
-    Concept,
-    Environment,
-    Datasource
-)
-from preql.core.processing.nodes import (
-    MergeNode,
-    History
-)
+from preql.core.models import Concept, Environment, Datasource
+from preql.core.processing.nodes import MergeNode, History
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
 from preql.core.processing.utility import PathInfo
@@ -24,12 +17,19 @@ LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 def reduce_path_concepts(paths, g) -> set[str]:
     concept_nodes: List[Concept] = []
     # along our path, find all the concepts required
-    for key, value in paths.items():
+    for _, value in paths.items():
         concept_nodes += [g.nodes[v]["concept"] for v in value if v.startswith("c~")]
     final: List[Concept] = unique(concept_nodes, "address")
     return set([x.address for x in final])
 
-def identify_ds_join_paths( all_concepts: List[Concept], g, datasource:Datasource, accept_partial: bool = False, fail:bool = False)->PathInfo | None:
+
+def identify_ds_join_paths(
+    all_concepts: List[Concept],
+    g,
+    datasource: Datasource,
+    accept_partial: bool = False,
+    fail: bool = False,
+) -> PathInfo | None:
     all_found = True
     any_direct_found = False
     paths = {}
@@ -66,9 +66,14 @@ def identify_ds_join_paths( all_concepts: List[Concept], g, datasource:Datasourc
         if partial and not accept_partial:
             return None
         # join_candidates.append({"paths": paths, "datasource": datasource})
-        return PathInfo(paths=paths, datasource=datasource,
-                        reduced_concepts= reduce_path_concepts(paths, g),
-                        concept_subgraphs = extract_mandatory_subgraphs(paths, g)) #{"paths": paths, "datasource": datasource}
+        return PathInfo(
+            paths=paths,
+            datasource=datasource,
+            reduced_concepts=reduce_path_concepts(paths, g),
+            concept_subgraphs=extract_mandatory_subgraphs(paths, g),
+        )  # {"paths": paths, "datasource": datasource}
+    return None
+
 
 def gen_merge_node(
     all_concepts: List[Concept],
@@ -107,26 +112,30 @@ def gen_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} No additional join candidates could be found"
         )
         return None
-    shortest:PathInfo = sorted(join_candidates, key=lambda x: len(x.reduced_concepts))[0]
-    logger.info(f'{padding(depth)}{LOGGER_PREFIX} final path is {shortest.paths}')
+    shortest: PathInfo = sorted(join_candidates, key=lambda x: len(x.reduced_concepts))[
+        0
+    ]
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} final path is {shortest.paths}")
     # logger.info(f'{padding(depth)}{LOGGER_PREFIX} final reduced concepts are {shortest.concs}')
     parents = []
     for graph in shortest.concept_subgraphs:
-        logger.info(f'{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]}')
-        parent =source_concepts(
-        mandatory_list=graph,
-        environment=environment,
-        g=g,
-        depth=depth + 1,
-        history=history
-    )
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]}"
+        )
+        parent = source_concepts(
+            mandatory_list=graph,
+            environment=environment,
+            g=g,
+            depth=depth + 1,
+            history=history,
+        )
         if not parent:
             logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} Unable to instantiate target subgraph"
-                    )
+                f"{padding(depth)}{LOGGER_PREFIX} Unable to instantiate target subgraph"
+            )
             return None
         parents.append(parent)
-            
+
     return MergeNode(
         input_concepts=[environment.concepts[x] for x in shortest.reduced_concepts],
         output_concepts=all_concepts,
