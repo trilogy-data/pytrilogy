@@ -1,11 +1,20 @@
 import item as item;
+import date as date;
+import time as time;
+import customer as customer;
 
 key ticket_number int;
+property <ticket_number,item.id>.quantity int;
+property <ticket_number,item.id>.sales_price float;
 
 
 datasource store_sales (
-     SS_TICKET_NUMBER: ticket_number,
-    SS_ITEM_SK: ~item.id
+    SS_SOLD_DATE_SK: date.id,
+    SS_SOLD_TIME_SK: time.id,
+    SS_CUSTOMER_SK: customer.id,
+    SS_TICKET_NUMBER: ticket_number,
+    SS_ITEM_SK: item.id,
+    SS_SALES_PRICE: sales_price,
 
 )
 grain (ticket_number, item.id)

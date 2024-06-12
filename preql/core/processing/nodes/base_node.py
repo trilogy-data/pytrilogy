@@ -22,15 +22,20 @@ from dataclasses import dataclass
 def concept_list_to_grain(
     inputs: List[Concept], parent_sources: Sequence[QueryDatasource | Datasource]
 ) -> Grain:
-    candidates = [c for c in inputs if c.purpose == Purpose.KEY]
+    candidates = [
+        c
+        for c in inputs
+        if c.purpose == Purpose.KEY and c.granularity != Granularity.SINGLE_ROW
+    ]
     for x in inputs:
+        if x.granularity == Granularity.SINGLE_ROW:
+            continue
         if x.purpose == Purpose.PROPERTY and not any(
             [key in candidates for key in (x.keys or [])]
         ):
             candidates.append(x)
         elif x.purpose == Purpose.CONSTANT:
-            if not x.granularity == Granularity.SINGLE_ROW:
-                candidates.append(x)
+            candidates.append(x)
         elif x.purpose == Purpose.METRIC:
             # metrics that were previously calculated must be included in grain
             if any([x in parent.output_concepts for parent in parent_sources]):
@@ -43,18 +48,22 @@ def resolve_concept_map(
     inputs: List[QueryDatasource],
     targets: List[Concept],
     inherited_inputs: List[Concept],
+    full_joins: List[Concept] | None = None,
 ) -> dict[str, set[Datasource | QueryDatasource | UnnestJoin]]:
     targets = targets or []
     concept_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = (
         defaultdict(set)
     )
+    full_addresses = {c.address for c in full_joins} if full_joins else set()
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
             if concept.address not in [t.address for t in inherited_inputs]:
                 continue
-            if len(concept_map.get(concept.address, [])) == 0:
+            if concept.address in full_addresses:
+                concept_map[concept.address].add(input)
+            elif concept.address not in concept_map:
                 concept_map[concept.address].add(input)
 
     # second loop, include partials
@@ -102,9 +111,9 @@ class StrategyNode:
         self.input_concepts: List[Concept] = (
             unique(input_concepts, "address") if input_concepts else []
         )
-        self.input_lcl = LooseConceptList(self.input_concepts)
+        self.input_lcl = LooseConceptList(concepts=self.input_concepts)
         self.output_concepts: List[Concept] = unique(output_concepts, "address")
-        self.output_lcl = LooseConceptList(self.output_concepts)
+        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
 
         self.environment = environment
         self.g = g
@@ -114,7 +123,7 @@ class StrategyNode:
         self.partial_concepts = partial_concepts or get_all_parent_partial(
             self.output_concepts, self.parents
         )
-        self.partial_lcl = LooseConceptList(self.partial_concepts)
+        self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
         self.depth = depth
         self.conditions = conditions
         self.grain = grain

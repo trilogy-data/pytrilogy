@@ -11,9 +11,12 @@ from lark.exceptions import (
 )
 from lark.tree import Meta
 from pydantic import ValidationError
-
 from preql.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
-from preql.constants import DEFAULT_NAMESPACE, NULL_VALUE, VIRTUAL_CONCEPT_PREFIX
+from preql.constants import (
+    DEFAULT_NAMESPACE,
+    NULL_VALUE,
+    VIRTUAL_CONCEPT_PREFIX,
+)
 from preql.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -49,6 +52,8 @@ from preql.core.functions import (
 )
 from preql.core.models import (
     Address,
+    AlignClause,
+    AlignItem,
     AggregateWrapper,
     CaseElse,
     CaseWhen,
@@ -59,6 +64,7 @@ from preql.core.models import (
     ConceptTransform,
     Conditional,
     Datasource,
+    MergeStatement,
     Environment,
     FilterItem,
     Function,
@@ -66,6 +72,7 @@ from preql.core.models import (
     Import,
     Limit,
     Metadata,
+    MultiSelect,
     OrderBy,
     OrderItem,
     Parenthetical,
@@ -92,6 +99,15 @@ from preql.core.models import (
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
+from preql.parsing.common import (
+    agg_wrapper_to_concept,
+    window_item_to_concept,
+    function_to_concept,
+    filter_item_to_concept,
+    constant_to_concept,
+)
+
+CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
 
 grammar = r"""
     !start: ( block | show | comment )*
@@ -99,10 +115,12 @@ grammar = r"""
     ?statement: concept
     | datasource
     | function
+    | multi_select
     | select
     | persist
     | rowset_derivation
     | import_statement
+    | merge_statement
     
     _TERMINATOR:  ";"i /\s*/
     
@@ -116,7 +134,7 @@ grammar = r"""
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
 
-    rowset_derivation: ("rowset"i IDENTIFIER "<" "-" select) | ("with"i IDENTIFIER "as"i select)
+    rowset_derivation: ("rowset"i IDENTIFIER "<" "-" (multi_select | select)) | ("with"i IDENTIFIER "as"i (multi_select | select))
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
@@ -151,6 +169,18 @@ grammar = r"""
 
     // select statement
     select: "select"i select_list  where? comment* order_by? comment* limit? comment*
+
+    // multiple_selects
+    multi_select: select ("merge" select)+ "align"i align_clause  where? comment* order_by? comment* limit? comment*
+
+
+    align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)* ","?
+
+    align_clause: align_item ("," align_item)*  ","?
+
+    // merge statemment
+
+    merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? comment*
 
     // FUNCTION blocks
     function: raw_function
@@ -385,25 +415,6 @@ def parse_concept_reference(
     return lookup, namespace, name, parent
 
 
-def get_purpose_and_keys(purpose: Purpose | None, args: list[Concept]):
-    local_purpose = purpose or function_args_to_output_purpose(args)
-    if local_purpose == Purpose.PROPERTY:
-        keys = concept_list_to_keys(args)
-    else:
-        keys = []
-    return local_purpose, keys
-
-
-def concept_list_to_keys(concepts: List[Concept]) -> List[Concept]:
-    final_keys = []
-    for concept in concepts:
-        if concept.keys:
-            final_keys += concept_list_to_keys(concept.keys)
-        else:
-            final_keys.append(concept)
-    return final_keys
-
-
 def unwrap_transformation(
     input: Union[
         FilterItem,
@@ -416,11 +427,11 @@ def unwrap_transformation(
         float,
         bool,
     ]
-) -> Function | FilterItem | WindowItem:
+) -> Function | FilterItem | WindowItem | AggregateWrapper:
     if isinstance(input, Function):
         return input
     elif isinstance(input, AggregateWrapper):
-        return input.function
+        return input
     elif isinstance(input, Concept):
         return Function(
             operator=FunctionType.ALIAS,
@@ -480,14 +491,10 @@ class ParseToObjects(Transformer):
                 arg = arg.content
             if isinstance(arg, Function):
                 id_hash = string_to_hash(str(arg))
-                concept = Concept(
+                concept = function_to_concept(
+                    arg,
                     name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    datatype=arg.output_datatype,
-                    purpose=arg.output_purpose,
-                    lineage=arg,
-                    namespace=DEFAULT_NAMESPACE,
-                    grain=Grain(components=[]),
-                    keys=None,
+                    namespace=self.environment.namespace,
                 )
                 # to satisfy mypy, concept will always have metadata
                 if concept.metadata:
@@ -496,14 +503,10 @@ class ParseToObjects(Transformer):
                 final.append(concept)
             elif isinstance(arg, FilterItem):
                 id_hash = string_to_hash(str(arg))
-                concept = Concept(
+                concept = filter_item_to_concept(
+                    arg,
                     name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    datatype=arg.content.datatype,
-                    purpose=arg.content.purpose,
-                    lineage=arg,
-                    # filters are implicitly at the grain of the base item
-                    grain=Grain(components=[arg.output]),
-                    namespace=DEFAULT_NAMESPACE,
+                    namespace=self.environment.namespace,
                 )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
@@ -511,54 +514,33 @@ class ParseToObjects(Transformer):
                 final.append(concept)
             elif isinstance(arg, WindowItem):
                 id_hash = string_to_hash(str(arg))
-                concept = Concept(
+                concept = window_item_to_concept(
+                    arg,
+                    namespace=self.environment.namespace,
                     name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    datatype=arg.content.datatype,
-                    purpose=arg.content.purpose,
-                    lineage=arg,
-                    # filters are implicitly at the grain of the base item
-                    grain=Grain(components=[arg.output]),
-                    namespace=DEFAULT_NAMESPACE,
                 )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
             elif isinstance(arg, AggregateWrapper):
-                parent = arg
-                aggfunction = arg.function
                 id_hash = string_to_hash(str(arg))
-                concept = Concept(
+                concept = agg_wrapper_to_concept(
+                    arg,
+                    namespace=self.environment.namespace,
                     name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    datatype=aggfunction.output_datatype,
-                    purpose=aggfunction.output_purpose,
-                    lineage=aggfunction,
-                    grain=(
-                        Grain(components=parent.by)
-                        if parent.by
-                        else aggfunction.output_grain
-                    ),
-                    namespace=DEFAULT_NAMESPACE,
                 )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
-            elif isinstance(arg, (ListWrapper,)):
-                const_function: Function = Function(
-                    operator=FunctionType.CONSTANT,
-                    output_datatype=arg_to_datatype(arg),
-                    output_purpose=Purpose.CONSTANT,
-                    arguments=[arg],
-                )
+            # we don't need virtual types for most constants
+            elif isinstance(arg, (ListWrapper)):
                 id_hash = string_to_hash(str(arg))
-                concept = Concept(
+                concept = constant_to_concept(
+                    arg,
                     name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    datatype=const_function.output_datatype,
-                    purpose=Purpose.CONSTANT,
-                    lineage=const_function,
-                    grain=const_function.output_grain,
-                    namespace=DEFAULT_NAMESPACE,
+                    namespace=self.environment.namespace,
                 )
                 if concept.metadata:
                     concept.metadata.line_number = meta.line
@@ -756,95 +738,50 @@ class ParseToObjects(Transformer):
             source_value = source_value.content
 
         if isinstance(source_value, FilterItem):
-            filter_item: FilterItem = source_value
-            concept = Concept(
+            concept = filter_item_to_concept(
+                source_value,
                 name=name,
-                datatype=filter_item.content.datatype,
-                # filters must always define a new key
-                # cannot be a property
-                purpose=filter_item.content.purpose,
-                metadata=metadata,
-                lineage=filter_item,
                 namespace=namespace,
-                keys=filter_item.content.keys,
-                grain=(
-                    filter_item.content.grain
-                    if filter_item.content.purpose == Purpose.PROPERTY
-                    else Grain()
-                ),
+                purpose=purpose,
+                metadata=metadata,
             )
+
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivation(concept=concept)
         elif isinstance(source_value, WindowItem):
-            window_item: WindowItem = source_value
-            local_purpose, keys = get_purpose_and_keys(purpose, [window_item.content])
-            if window_item.order_by:
-                grain = window_item.over + [window_item.content.output]
-                for item in window_item.order_by:
-                    grain += [item.expr.output]
-            else:
-                grain = window_item.over + [window_item.content.output]
-            concept = Concept(
+
+            concept = window_item_to_concept(
+                source_value,
                 name=name,
-                datatype=window_item.content.datatype,
-                purpose=local_purpose,
-                metadata=metadata,
-                lineage=window_item,
-                # windows are implicitly at the grain of the window over the original content
-                grain=Grain(components=grain),
                 namespace=namespace,
-                keys=keys,
+                purpose=purpose,
+                metadata=metadata,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivation(concept=concept)
         elif isinstance(source_value, AggregateWrapper):
-            parent: AggregateWrapper = source_value
-            aggfunction: Function = parent.function
-            local_purpose, keys = get_purpose_and_keys(
-                purpose, parent.by if parent.by else []
-            )
-            # anything grouped to a grain should be a property
-            # at that grain
-            if parent.by:
-                local_purpose = Purpose.METRIC
-
-            concept = Concept(
-                name=name,
-                datatype=aggfunction.output_datatype,
-                purpose=local_purpose,
-                metadata=metadata,
-                lineage=aggfunction,
-                grain=(
-                    Grain(components=parent.by)
-                    if parent.by
-                    else aggfunction.output_grain
-                ),
+            concept = agg_wrapper_to_concept(
+                source_value,
                 namespace=namespace,
-                keys=keys,
+                name=name,
+                metadata=metadata,
+                purpose=purpose,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivation(concept=concept)
-        elif isinstance(source_value, (int, float, str, bool, ListWrapper)):
-            const_function: Function = Function(
-                operator=FunctionType.CONSTANT,
-                output_datatype=arg_to_datatype(source_value),
-                output_purpose=Purpose.CONSTANT,
-                arguments=[source_value],
-            )
-            concept = Concept(
+        elif isinstance(source_value, CONSTANT_TYPES):
+            concept = constant_to_concept(
+                source_value,
                 name=name,
-                datatype=const_function.output_datatype,
-                purpose=Purpose.CONSTANT,
-                metadata=metadata,
-                lineage=const_function,
-                grain=const_function.output_grain,
                 namespace=namespace,
+                purpose=purpose,
+                metadata=metadata,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -869,9 +806,9 @@ class ParseToObjects(Transformer):
                 ),
                 namespace=namespace,
                 keys=(
-                    [self.environment.concepts[parent_concept]]
+                    tuple([self.environment.concepts[parent_concept]])
                     if parent_concept
-                    else function.output_keys
+                    else tuple(function.output_keys)
                 ),
             )
             if concept.metadata:
@@ -887,7 +824,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def rowset_derivation(self, meta: Meta, args) -> RowsetDerivation:
         name = args[0]
-        select: Select = args[1]
+        select: Select | MultiSelect = args[1]
         output = RowsetDerivation(
             name=name,
             select=select,
@@ -992,28 +929,40 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_transform(self, meta, args) -> ConceptTransform:
-        function = unwrap_transformation(args[0])
-        output: str = args[1]
 
+        output: str = args[1]
+        function = unwrap_transformation(args[0])
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
-        if function.output_purpose == Purpose.PROPERTY:
-            pkeys = [x for x in function.arguments if isinstance(x, Concept)]
-            grain = Grain(components=pkeys)
-            keys = grain.components_copy
+
+        if isinstance(args[0], AggregateWrapper):
+            concept = agg_wrapper_to_concept(args[0], namespace=namespace, name=output)
+        elif isinstance(args[0], WindowItem):
+            concept = window_item_to_concept(args[0], namespace=namespace, name=output)
+        elif isinstance(args[0], FilterItem):
+            concept = filter_item_to_concept(args[0], namespace=namespace, name=output)
+        elif isinstance(args[0], CONSTANT_TYPES):
+            concept = constant_to_concept(args[0], namespace=namespace, name=output)
+        elif isinstance(args[0], Function):
+            concept = function_to_concept(args[0], namespace=namespace, name=output)
         else:
-            grain = None
-            keys = None
-        concept = Concept(
-            name=output,
-            datatype=function.output_datatype,
-            purpose=function.output_purpose,
-            lineage=function,
-            namespace=namespace,
-            grain=Grain(components=[]) if not grain else grain,
-            keys=keys,
-        )
+            if function.output_purpose == Purpose.PROPERTY:
+                pkeys = [x for x in function.arguments if isinstance(x, Concept)]
+                grain = Grain(components=pkeys)
+                keys = tuple(grain.components_copy)
+            else:
+                grain = None
+                keys = None
+            concept = Concept(
+                name=output,
+                datatype=function.output_datatype,
+                purpose=function.output_purpose,
+                lineage=function,
+                namespace=namespace,
+                grain=Grain(components=[]) if not grain else grain,
+                keys=keys,
+            )
         if concept.metadata:
             concept.metadata.line_number = meta.line
         self.environment.add_concept(concept, meta=meta)
@@ -1060,6 +1009,21 @@ class ParseToObjects(Transformer):
 
     def over_list(self, args):
         return [self.environment.concepts[x] for x in args]
+
+    @v_args(meta=True)
+    def merge_statement(self, meta: Meta, args) -> MergeStatement:
+
+        parsed = [self.environment.concepts[x] for x in args]
+        datatypes = {x.datatype for x in parsed}
+        if not len(datatypes) == 1:
+            raise SyntaxError(
+                f"Cannot merge concepts with different datatypes {datatypes}"
+                f"line: {meta.line} concepts: {[x.address for x in parsed]}"
+            )
+        merge = MergeStatement(concepts=parsed, datatype=datatypes.pop())
+        new = merge.merge_concept
+        self.environment.add_concept(new, meta=meta)
+        return merge
 
     def import_statement(self, args: list[str]):
         alias = args[-1]
@@ -1131,6 +1095,51 @@ class ParseToObjects(Transformer):
         return Persist(select=select, datasource=new_datasource)
 
     @v_args(meta=True)
+    def align_item(self, meta: Meta, args) -> AlignItem:
+        return AlignItem(
+            alias=args[0],
+            namespace=self.environment.namespace,
+            concepts=[self.environment.concepts[arg] for arg in args[1:]],
+        )
+
+    @v_args(meta=True)
+    def align_clause(self, meta: Meta, args) -> AlignClause:
+        return AlignClause(items=args)
+
+    @v_args(meta=True)
+    def multi_select(self, meta: Meta, args) -> MultiSelect:
+        selects = []
+        align: AlignClause | None = None
+        limit: int | None = None
+        order_by: OrderBy | None = None
+        where: WhereClause | None = None
+        for arg in args:
+            if isinstance(arg, Select):
+                selects.append(arg)
+            elif isinstance(arg, Limit):
+                limit = arg.count
+            elif isinstance(arg, OrderBy):
+                order_by = arg
+            elif isinstance(arg, WhereClause):
+                where = arg
+            elif isinstance(arg, AlignClause):
+                align = arg
+
+        assert align
+        assert align is not None
+        multi = MultiSelect(
+            selects=selects,
+            align=align,
+            namespace=self.environment.namespace,
+            where_clause=where,
+            order_by=order_by,
+            limit=limit,
+        )
+        for concept in multi.derived_concepts:
+            self.environment.add_concept(concept, meta=meta)
+        return multi
+
+    @v_args(meta=True)
     def select(self, meta: Meta, args) -> Select:
         select_items = None
         limit = None
@@ -1155,13 +1164,9 @@ class ParseToObjects(Transformer):
             # so rebuild at this point in the tree
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
-                # where, we need to further filter the derived concept
-                # 2024-05-06 - this can result in circular references
-                # disabling until we can revisit
-                # if where:
-                #     item.content = item.content.with_filter(where)
                 new_concept = item.content.output.with_grain(output.grain)
-                self.environment.concepts[new_concept.address] = new_concept
+                self.environment.add_concept(new_concept, meta=meta)
+                # self.environment.concepts[new_concept.address] = new_concept
                 item.content.output = new_concept
         if order_by:
             for item in order_by.items:

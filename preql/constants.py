@@ -22,7 +22,7 @@ NULL_VALUE = MagicConstants.NULL
 @dataclass
 class Config:
     strict_mode: bool = True
-    hash_identifiers: bool = True
+    human_identifiers: bool = True
 
 
 CONFIG = Config()

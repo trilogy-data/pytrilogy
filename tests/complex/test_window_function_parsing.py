@@ -2,6 +2,7 @@ from preql.core.models import Select, WindowItem
 from preql.core.enums import PurposeLineage, Granularity, Purpose
 from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
 from preql.core.query_processor import process_query, get_query_datasources
+from preql.core.processing.utility import concept_to_relevant_joins
 from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect import duckdb
 from preql.parser import parse
@@ -85,9 +86,9 @@ property user_id.country string metadata(description="User provided description"
 key post_id int;
 metric post_count <-count(post_id);
 
-property user_country_rank <- rank user_id over country;
+property user_id.user_country_rank <- rank user_id over country;
 
-property rank_derived <- 100 + row_number user_id over country;
+property user_id.rank_derived <- 100 + row_number user_id over country;
 
 datasource posts (
     user_id: user_id,
@@ -123,6 +124,10 @@ limit 100
     env, parsed = parse(declarations)
     select: Select = parsed[-1]
 
+    assert env.concepts["rank_derived"].keys == (env.concepts["user_id"],)
+    assert concept_to_relevant_joins(
+        [env.concepts[x] for x in ["user_id", "rank_derived"]]
+    ) == [env.concepts["user_id"]]
     assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
 
     get_query_datasources(environment=env, statement=select)

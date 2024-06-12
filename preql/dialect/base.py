@@ -12,6 +12,7 @@ from preql.core.enums import (
     PurposeLineage,
 )
 from preql.core.models import (
+    ListType,
     DataType,
     Concept,
     CTE,
@@ -36,6 +37,8 @@ from preql.core.models import (
     ListWrapper,
     ShowStatement,
     RowsetItem,
+    MultiSelect,
+    MergeStatement,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -211,6 +214,17 @@ def safe_quote(string: str, quote_char: str):
     return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
 
 
+def safe_get_cte_value(coalesce, cte: CTE, address: str, rendered: str):
+    raw = cte.source_map.get(address, None)
+    if not raw:
+        return INVALID_REFERENCE_STRING("Missing source reference")
+    if isinstance(raw, str):
+        return f"{raw}.{rendered}"
+    if isinstance(raw, list) and len(raw) == 1:
+        return f"{raw[0]}.{rendered}"
+    return coalesce([f"{x}.{rendered}" for x in raw])
+
+
 class BaseDialect:
     WINDOW_FUNCTION_MAP = WINDOW_FUNCTION_MAP
     FUNCTION_MAP = FUNCTION_MAP
@@ -259,6 +273,11 @@ class BaseDialect:
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
+            elif isinstance(c.lineage, MultiSelect):
+                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
+            elif isinstance(c.lineage, MergeStatement):
+                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
+                #  rval = f"{self.FUNCTION_MAP[FunctionType.COALESCE](*[self.render_concept_sql(parent, cte=cte, alias=False) for parent in c.lineage.find_sources(c, cte)])}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
@@ -294,8 +313,7 @@ class BaseDialect:
             elif isinstance(raw_content, Function):
                 rval = self.render_expr(raw_content, cte=cte)
             else:
-                rval = f"{cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}.{safe_quote(raw_content, self.QUOTE_CHARACTER)}"
-
+                rval = f"{safe_get_cte_value(self.FUNCTION_MAP[FunctionType.COALESCE], cte, c.address, rendered=safe_quote(raw_content, self.QUOTE_CHARACTER))}"
         if alias:
             return (
                 f"{rval} as"
@@ -320,7 +338,10 @@ class BaseDialect:
             Parenthetical,
             AggregateWrapper,
             MagicConstants,
-            ListWrapper,
+            ListType,
+            ListWrapper[int],
+            ListWrapper[str],
+            ListWrapper[float],
             DatePart,
             CaseWhen,
             CaseElse,
@@ -379,7 +400,6 @@ class BaseDialect:
         elif isinstance(e, Concept):
             if cte:
                 return self.render_concept_sql(e, cte, alias=False)
-                # return f"{cte.source_map[e.address]}.{self.QUOTE_CHARACTER}{cte.get_alias(e)}{self.QUOTE_CHARACTER}"
             elif cte_map:
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
@@ -453,31 +473,36 @@ class BaseDialect:
                 # if cte.name in where_assignment
                 # else None,
                 group_by=(
-                    [
-                        self.render_concept_sql(c, cte, alias=False)
-                        for c in unique(
-                            cte.grain.components
-                            + [
-                                c
-                                for c in cte.output_columns
-                                if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
-                                and c.address
-                                not in [x.address for x in cte.grain.components]
-                            ]
-                            + [
-                                c
-                                for c in cte.output_columns
-                                if c.purpose == Purpose.METRIC
-                                and any(
-                                    [
-                                        c.with_grain(cte.grain) in cte.output_columns
-                                        for cte in cte.parent_ctes
+                    list(
+                        set(
+                            [
+                                self.render_concept_sql(c, cte, alias=False)
+                                for c in unique(
+                                    cte.grain.components
+                                    + [
+                                        c
+                                        for c in cte.output_columns
+                                        if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
+                                        and c.address
+                                        not in [x.address for x in cte.grain.components]
                                     ]
+                                    + [
+                                        c
+                                        for c in cte.output_columns
+                                        if c.purpose == Purpose.METRIC
+                                        and any(
+                                            [
+                                                c.with_grain(cte.grain)
+                                                in cte.output_columns
+                                                for cte in cte.parent_ctes
+                                            ]
+                                        )
+                                    ],
+                                    "address",
                                 )
-                            ],
-                            "address",
+                            ]
                         )
-                    ]
+                    )
                     if cte.group_to_grain
                     else None
                 ),
@@ -492,7 +517,7 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements: Sequence[Select | Persist | ShowStatement],
+        statements: Sequence[Select | MultiSelect | Persist | ShowStatement],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
         output: List[
@@ -512,6 +537,11 @@ class BaseDialect:
                 output.append(process_query(environment, statement, hooks=hooks))
                 # graph = generate_graph(environment, statement)
                 # output.append(graph_to_query(environment, graph, statement))
+            elif isinstance(statement, MultiSelect):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_multiselect_info(statement)
+                output.append(process_query(environment, statement, hooks=hooks))
             elif isinstance(statement, ShowStatement):
                 # TODO - encapsulate this a little better
                 if isinstance(statement.content, Select):
@@ -531,6 +561,8 @@ class BaseDialect:
                     )
                 else:
                     raise NotImplementedError
+            else:
+                raise NotImplementedError
         return output
 
     def compile_statement(

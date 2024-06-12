@@ -31,7 +31,7 @@ def gen_select_node_from_table(
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
-    all_lcl = LooseConceptList(all_concepts)
+    all_lcl = LooseConceptList(concepts=all_concepts)
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
         return ConstantNode(
             output_concepts=all_concepts,
@@ -102,17 +102,32 @@ def gen_select_node_from_table(
                 for c in datasource.columns
                 if not c.is_complete and c.concept in all_lcl
             ]
-            partial_lcl = LooseConceptList(partial_concepts)
+            partial_lcl = LooseConceptList(concepts=partial_concepts)
             if not accept_partial and target_concept in partial_lcl:
                 continue
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} target grain is {str(target_grain)}"
+            )
             if target_grain and target_grain.issubset(datasource.grain):
+
                 if all([x in all_lcl for x in target_grain.components]):
                     force_group = False
                 # if we are not returning the grain
                 # we have to group
                 else:
+                    logger.info(
+                        f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(all_lcl)}, group to actual grain"
+                    )
                     force_group = True
+            elif all([x in all_lcl for x in datasource.grain.components]):
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} query output includes all grain components, no reason to group further"
+                )
+                force_group = False
             else:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} target grain is not subset of datasource grain {datasource.grain}, required to group"
+                )
                 force_group = True
 
             candidate = SelectNode(
@@ -127,6 +142,9 @@ def gen_select_node_from_table(
                 datasource=datasource,
                 grain=Grain(components=all_concepts),
                 force_group=force_group,
+            )
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, returning {candidate.output_lcl}"
             )
             candidates[datasource.identifier] = candidate
             scores[datasource.identifier] = -len(partial_concepts)
@@ -148,9 +166,9 @@ def gen_select_node(
     target_grain: Grain | None = None,
 ) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
-    all_lcl = LooseConceptList(all_concepts)
+    all_lcl = LooseConceptList(concepts=all_concepts)
     materialized_lcl = LooseConceptList(
-        [
+        concepts=[
             x
             for x in all_concepts
             if x.address in [z.address for z in environment.materialized_concepts]
@@ -163,7 +181,7 @@ def gen_select_node(
     if materialized_lcl != all_lcl:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
-            f" as it + optional (looking for all {all_lcl}) includes non-materialized concepts {materialized_lcl.difference(all_lcl)} vs materialized: {materialized_lcl}"
+            f" as it + optional (looking for all {all_lcl}) includes non-materialized concepts {all_lcl.difference(materialized_lcl)} vs materialized: {materialized_lcl}"
         )
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")
@@ -183,7 +201,7 @@ def gen_select_node(
     )
     if ds:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Found select node with all required things, force group is {ds.force_group}, target grain {target_grain}"
+            f"{padding(depth)}{LOGGER_PREFIX} Found select node with all target concepts, force group is {ds.force_group}, target grain {target_grain}"
         )
         return ds
     # if we cannot find a match

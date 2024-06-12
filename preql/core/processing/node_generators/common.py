@@ -14,11 +14,13 @@ from preql.core.models import (
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import StrategyNode
 from preql.core.processing.nodes.merge_node import MergeNode
+from preql.core.processing.nodes import History
 from preql.core.enums import JoinType
 from preql.core.processing.nodes import (
     NodeJoin,
 )
 from collections import defaultdict
+from preql.core.processing.utility import concept_to_relevant_joins
 
 
 def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
@@ -26,15 +28,23 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == PurposeLineage.AGGREGATE:
         if not concept.grain.abstract:
-            return unique(
-                concept.lineage.concept_arguments + concept.grain.components_copy,
-                "address",
-            )
+            base = concept.lineage.concept_arguments + concept.grain.components_copy
+            for x in base:
+                if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+                    base += x.keys
+            return unique(base, "address")
+
         if concept.lineage.arguments:
             default_grain = Grain()
-            for x in concept.lineage.arguments:
-                if isinstance(x, Concept) and x.grain:
-                    default_grain += x.grain
+            for arg in concept.lineage.arguments:
+                if not isinstance(arg, Concept):
+                    continue
+                if arg.grain:
+                    default_grain += arg.grain
+                elif arg.purpose == Purpose.PROPERTY:
+                    default_grain += Grain(
+                        components=list(arg.keys) if arg.keys else []
+                    )
             return unique(
                 concept.lineage.concept_arguments + default_grain.components_copy,
                 "address",
@@ -56,15 +66,6 @@ def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Conc
     return concept.lineage.content, unique(base, "address")
 
 
-def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
-    addresses = LooseConceptList(concepts)
-    sub_props = LooseConceptList(
-        [x for x in concepts if x.keys and all([key in addresses for key in x.keys])]
-    )
-    final = [c for c in concepts if c not in sub_props]
-    return final
-
-
 def gen_property_enrichment_node(
     base_node: StrategyNode,
     extra_properties: list[Concept],
@@ -72,6 +73,7 @@ def gen_property_enrichment_node(
     g,
     depth: int,
     source_concepts,
+    history: History | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
@@ -89,6 +91,7 @@ def gen_property_enrichment_node(
             environment=environment,
             g=g,
             depth=depth + 1,
+            history=history,
         )
         final_nodes.append(enrich_node)
         node_joins.append(
@@ -106,7 +109,11 @@ def gen_property_enrichment_node(
         input_concepts=unique(
             base_node.output_concepts
             + extra_properties
-            + [environment.concepts[k] for k in required_keys],
+            + [
+                environment.concepts[v]
+                for k, values in required_keys.items()
+                for v in values
+            ],
             "address",
         ),
         output_concepts=base_node.output_concepts + extra_properties,
@@ -129,11 +136,12 @@ def gen_enrichment_node(
     depth: int,
     source_concepts,
     log_lambda,
+    history: History | None = None,
 ):
 
-    local_opts = LooseConceptList(local_optional)
+    local_opts = LooseConceptList(concepts=local_optional)
 
-    if local_opts.issubset(LooseConceptList(base_node.output_concepts)):
+    if local_opts.issubset(LooseConceptList(concepts=base_node.output_concepts)):
         log_lambda(
             f"{str(type(base_node).__name__)} has all optional { base_node.output_lcl}, skipping enrichmennt"
         )
@@ -161,6 +169,7 @@ def gen_enrichment_node(
                 g,
                 depth,
                 source_concepts,
+                history=history,
             )
 
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
@@ -169,6 +178,7 @@ def gen_enrichment_node(
         environment=environment,
         g=g,
         depth=depth,
+        history=history,
     )
     if not enrich_node:
         log_lambda(
@@ -200,3 +210,34 @@ def gen_enrichment_node(
             )
         ],
     )
+
+
+def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
+    available_aliases: set[StrategyNode] = set()
+    final_joins_pre = [*joins]
+    final_joins = []
+    while final_joins_pre:
+        new_final_joins_pre: List[NodeJoin] = []
+        for join in final_joins_pre:
+            if not available_aliases:
+                final_joins.append(join)
+                available_aliases.add(join.left_node)
+                available_aliases.add(join.right_node)
+            elif join.left_node in available_aliases:
+                # we don't need to join twice
+                # so whatever join we found first, works
+                if join.right_node in available_aliases:
+                    continue
+                final_joins.append(join)
+                available_aliases.add(join.left_node)
+                available_aliases.add(join.right_node)
+            else:
+                new_final_joins_pre.append(join)
+        if len(new_final_joins_pre) == len(final_joins_pre):
+            remaining = [join.left_node for join in new_final_joins_pre]
+            remaining_right = [join.right_node for join in new_final_joins_pre]
+            raise SyntaxError(
+                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
+            )
+        final_joins_pre = new_final_joins_pre
+    return final_joins

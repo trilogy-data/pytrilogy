@@ -157,4 +157,28 @@ select
     for name in ["name_alphabetical", "name_alphabetical_2"]:
         assert name in env.concepts
         assert env.concepts[name].purpose == Purpose.PROPERTY
-        assert env.concepts[name].keys == [env.concepts["id"]]
+        assert env.concepts[name].keys == (env.concepts["id"],)
+
+
+def test_output_purpose():
+
+    env, parsed = parse_text(
+        """key id int;
+property id.name string;
+
+auto name_alphabetical <- row_number id order by name asc;
+
+
+rowset test<- select
+    name,
+    row_number id order by name asc -> name_alphabetical_2
+    ;
+
+select 
+    count(test.name) -> test_name_count;
+"""
+    )
+    # assert output_purpose == Purpose.METRIC
+    for name in ["test_name_count"]:
+        assert name in env.concepts
+        assert env.concepts[name].purpose == Purpose.METRIC

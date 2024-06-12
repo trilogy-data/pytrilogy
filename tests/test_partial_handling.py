@@ -91,7 +91,7 @@ def setup_titanic(env: Environment):
 def test_partial_assignment():
     """
     Test that a derived concept is pulled from the
-    CTE that has the full concept, not a partiall filtered copy"""
+    CTE that has the full concept, not a partially filtered copy"""
     executor = setup_engine()
     env = Environment()
     setup_titanic(env)

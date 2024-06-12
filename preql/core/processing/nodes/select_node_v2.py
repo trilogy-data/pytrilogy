@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from preql.constants import logger
 from preql.core.constants import CONSTANT_DATASET
-from preql.core.enums import Purpose
+from preql.core.enums import Purpose, PurposeLineage
 from preql.core.models import (
     Datasource,
     QueryDatasource,
@@ -114,9 +114,13 @@ class SelectNode(StrategyNode):
                 continue
             for x in c.alias.concept_arguments:
                 source_map[x.address] = {datasource}
-            # ensure that if this select needs to merge, the grain components are present
-            all_concepts_final = all_concepts_final + datasource.grain.components_copy
-
+        for x in all_concepts_final:
+            # add in any derived concepts to support a merge node
+            if x.address not in source_map and x.derivation in (
+                PurposeLineage.MULTISELECT,
+                PurposeLineage.MERGE,
+            ):
+                source_map[x.address] = set()
         return QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=all_concepts_final,

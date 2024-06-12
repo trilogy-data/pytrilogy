@@ -24,6 +24,12 @@ TEST_DIALECTS = [
 ]
 
 
+def test_typing():
+    x = ListType(type=DataType.INTEGER)
+
+    assert x in set([x])
+
+
 def test_functions(test_environment):
     declarations = """
 

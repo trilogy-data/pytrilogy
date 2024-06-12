@@ -33,6 +33,11 @@ from preql.core.models import (
     Persist,
     ListWrapper,
     RowsetDerivation,
+    MergeStatement,
+    MultiSelect,
+    OrderBy,
+    AlignClause,
+    AlignItem,
 )
 from preql.core.enums import Modifier
 
@@ -136,6 +141,11 @@ class Renderer:
         return f"grain ({components})"
 
     @to_string.register
+    def _(self, arg: MergeStatement):
+        components = ", ".join(self.to_string(x) for x in arg.concepts)
+        return f"merge {components};"
+
+    @to_string.register
     def _(self, arg: "Query"):
         return f"""query {arg.text}"""
 
@@ -236,6 +246,31 @@ class Renderer:
             ),
             limit=arg.limit,
         )
+
+    @to_string.register
+    def _(self, arg: MultiSelect):
+        base = f"{"\nMERGE\n".join([self.to_string(select)[:-1] for select in arg.selects])}"
+        base += self.to_string(arg.align)
+        if arg.where_clause:
+            base += f"\nWHERE\n{self.to_string(arg.where_clause)}"
+        if arg.order_by:
+            base += f"\nORDER BY\n\t{self.to_string(arg.order_by)}"
+        if arg.limit:
+            base += f"\nLIMIT {arg.limit}"
+        base += "\n;"
+        return base
+
+    @to_string.register
+    def _(self, arg: AlignClause):
+        return "\nALIGN\n\t" + ",\n\t".join([self.to_string(c) for c in arg.items])
+
+    @to_string.register
+    def _(self, arg: AlignItem):
+        return f"{arg.alias}:{','.join([self.to_string(c) for c in arg.concepts])}"
+
+    @to_string.register
+    def _(self, arg: OrderBy):
+        return ",\t".join([self.to_string(c) for c in arg.items])
 
     @to_string.register
     def _(self, arg: "WhereClause"):

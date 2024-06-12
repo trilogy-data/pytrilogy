@@ -1,15 +1,30 @@
-from click import Path, argument, option, group, pass_context
+from click import Path, argument, option, group, pass_context, UNPROCESSED
 from preql import Executor, Environment, parse
 from preql.dialect.enums import Dialects
 from datetime import datetime
 from pathlib import Path as PathlibPath
 from preql.hooks.query_debugger import DebuggingHook
 from preql.parsing.render import Renderer
+from preql.constants import DEFAULT_NAMESPACE
 
 
 def print_tabulate(q, tabulate):
     result = q.fetchall()
     print(tabulate(result, headers=q.keys(), tablefmt="psql"))
+
+
+def pairwise(t):
+    it = iter(t)
+    return zip(it, it)
+
+
+def extra_to_kwargs(arg_list: list[str]) -> dict[str, str | int]:
+    pairs = pairwise(arg_list)
+    final = {}
+    for k, v in pairs:
+        k = k.lstrip("--")
+        final[k] = v
+    return final
 
 
 @group()
@@ -35,24 +50,53 @@ def fmt(ctx, input):
     print(f"Completed all in {(datetime.now()-start)}")
 
 
-@cli.command("run")
+@cli.command(
+    "run",
+    context_settings=dict(
+        ignore_unknown_options=True,
+    ),
+)
 @argument("input", type=Path())
 @argument("dialect", type=str)
+@argument("conn_args", nargs=-1, type=UNPROCESSED)
 @pass_context
-def run(ctx, input, dialect: str):
+def run(ctx, input, dialect: str, conn_args):
     if PathlibPath(input).exists():
+        inputp = PathlibPath(input)
         with open(input, "r") as f:
             script = f.read()
+        namespace = DEFAULT_NAMESPACE
+        directory = inputp.parent
     else:
         script = input
+        namespace = DEFAULT_NAMESPACE
+        directory = PathlibPath.cwd()
     edialect = Dialects(dialect)
-    inputp = PathlibPath(input)
-    directory = inputp.parent
+
     debug = ctx.obj["DEBUG"]
+    conn_dict = extra_to_kwargs((conn_args))
+    if edialect == Dialects.DUCK_DB:
+        from preql.dialect.config import DuckDBConfig
+
+        conf = DuckDBConfig(**conn_dict)  # type: ignore
+    elif edialect == Dialects.SNOWFLAKE:
+        from preql.dialect.config import SnowflakeConfig
+
+        conf = SnowflakeConfig(**conn_dict)  # type: ignore
+    elif edialect == Dialects.SQL_SERVER:
+        from preql.dialect.config import SQLServerConfig
+
+        conf = SQLServerConfig(**conn_dict)  # type: ignore
+    elif edialect == Dialects.POSTGRES:
+        from preql.dialect.config import PostgresConfig
+
+        conf = PostgresConfig(**conn_dict)  # type: ignore
+    else:
+        conf = None
     exec = Executor(
         dialect=edialect,
-        engine=edialect.default_engine(),
-        environment=Environment(working_path=str(directory), namespace=inputp.stem),
+        engine=edialect.default_engine(conf=conf),
+        environment=Environment(working_path=str(directory), namespace=namespace),
         hooks=[DebuggingHook()] if debug else [],
     )
 

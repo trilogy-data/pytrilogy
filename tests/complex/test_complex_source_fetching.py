@@ -6,6 +6,7 @@ from preql.core.models import Select, Grain, Datasource, QueryDatasource, Enviro
 from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
 from preql.core.query_processor import process_query, datasource_to_ctes
 from preql.dialect.sql_server import SqlServerDialect
+from preql.core.enums import Purpose
 import re
 
 
@@ -60,6 +61,8 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     avg_user_post_count = env.concepts["avg_user_post_count"]
     user_post_count = env.concepts["user_post_count"]
 
+    assert user_post_count.purpose == Purpose.METRIC
+
     posts = env.datasources["posts"]
     post_grain = Grain(components=[env.concepts["post_id"]])
 
@@ -75,7 +78,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert posts.grain == post_grain
 
     assert set(expected_parent.source_map.keys()) == set(
-        ["local.user_post_count", "local.user_id"]
+        ["local.user_post_count", "local.user_id", "local.post_id"]
     )
 
     assert user_post_count in expected_parent.output_concepts
@@ -95,8 +98,8 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert isinstance(parent, QueryDatasource)
     assert user_post_count in parent.output_concepts
 
-    assert set(parent.source_map.keys()) == set(
-        ["local.user_post_count", "local.post_id"]
+    assert set([x.address for x in parent.output_concepts]) == set(
+        ["local.user_post_count", "local.user_id"]
     )
 
     root = parent.datasources[0].datasources[0]
@@ -104,7 +107,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert posts == root
     assert post_id in root.concepts
 
-    ctes = datasource_to_ctes(datasource)
+    ctes = datasource_to_ctes(datasource, {})
 
     final_cte = ctes[0]
     assert len(final_cte.parent_ctes) > 0

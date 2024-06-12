@@ -28,9 +28,9 @@ def test_property_assignments(test_environment: Environment):
     assert store_name.purpose == Purpose.PROPERTY
     assert product_name.purpose == Purpose.PROPERTY
 
-    assert store_name.keys == [store_id]
+    assert store_name.keys == (store_id,)
     assert store_name.grain.components == [store_id]
-    assert product_name.keys == [product_id]
+    assert product_name.keys == (product_id,)
     assert product_name.grain.components == [product_id]
 
 
@@ -46,9 +46,9 @@ def test_auto_property_assignments(test_environment: Environment):
 
     for candidate in [store_name, upper_store_name, upper_store_name_2]:
         assert candidate.purpose == Purpose.PROPERTY
-        assert candidate.keys == [
-            store_id
-        ], f"keys for {candidate.address}: {candidate.keys} should be store_id"
+        assert candidate.keys == (
+            store_id,
+        ), f"keys for {candidate.address}: {candidate.keys} should be store_id"
         assert candidate.grain.components == [store_id]
 
 
@@ -60,7 +60,7 @@ def test_metric_assignments(test_environment: Environment):
 
     for candidate in [store_order_count, store_order_count_2]:
         assert candidate.purpose == Purpose.METRIC
-        assert candidate.keys == [store_id]
+        assert candidate.keys == (store_id,)
         assert candidate.grain.components == [store_id]
 
 

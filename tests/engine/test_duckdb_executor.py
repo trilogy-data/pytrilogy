@@ -151,6 +151,11 @@ def test_basic(duckdb_engine: Executor):
     date_trunc(today, year) -> current_year 
   ;
     """
+    duckdb_engine.parse_text(test)
+    assert (
+        duckdb_engine.environment.concepts["tomorrow"].granularity
+        == Granularity.SINGLE_ROW
+    )
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results[0]) == 3
 

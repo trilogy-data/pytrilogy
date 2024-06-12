@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, TypedDict, Set
+from typing import List, Tuple, Dict, Set
 import networkx as nx
 from preql.core.models import (
     Datasource,
@@ -6,13 +6,16 @@ from preql.core.models import (
     BaseJoin,
     Concept,
     QueryDatasource,
+    LooseConceptList,
 )
+
 from preql.core.enums import Purpose, PurposeLineage, Granularity
 from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
 from collections import defaultdict
 from logging import Logger
+from pydantic import BaseModel
 
 
 class NodeType(Enum):
@@ -20,9 +23,22 @@ class NodeType(Enum):
     NODE = 2
 
 
-class PathInfo(TypedDict):
+class PathInfo(BaseModel):
     paths: Dict[str, List[str]]
     datasource: Datasource
+    reduced_concepts: Set[str]
+    concept_subgraphs: List[List[Concept]]
+
+
+def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
+    addresses = LooseConceptList(concepts=concepts)
+    sub_props = LooseConceptList(
+        concepts=[
+            x for x in concepts if x.keys and all([key in addresses for key in x.keys])
+        ]
+    )
+    final = [c for c in concepts if c not in sub_props]
+    return unique(final, "address")
 
 
 def padding(x: int) -> str:
@@ -72,6 +88,41 @@ def calculate_graph_relevance(
     return relevance
 
 
+def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
+    available_aliases: set[str] = set()
+    final_joins_pre = [*joins]
+    final_joins = []
+    while final_joins_pre:
+        new_final_joins_pre: List[BaseJoin] = []
+        for join in final_joins_pre:
+            if not available_aliases:
+                final_joins.append(join)
+                available_aliases.add(join.left_datasource.identifier)
+                available_aliases.add(join.right_datasource.identifier)
+            elif join.left_datasource.identifier in available_aliases:
+                # we don't need to join twice
+                # so whatever join we found first, works
+                if join.right_datasource.identifier in available_aliases:
+                    continue
+                final_joins.append(join)
+                available_aliases.add(join.left_datasource.identifier)
+                available_aliases.add(join.right_datasource.identifier)
+            else:
+                new_final_joins_pre.append(join)
+        if len(new_final_joins_pre) == len(final_joins_pre):
+            remaining = [
+                join.left_datasource.identifier for join in new_final_joins_pre
+            ]
+            remaining_right = [
+                join.right_datasource.identifier for join in new_final_joins_pre
+            ]
+            raise SyntaxError(
+                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
+            )
+        final_joins_pre = new_final_joins_pre
+    return final_joins
+
+
 def get_node_joins(
     datasources: List[QueryDatasource],
     grain: List[Concept],
@@ -83,8 +134,8 @@ def get_node_joins(
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
             # we don't need to join on a concept if all of the keys exist in the grain
-            if concept.keys and all([x in grain for x in concept.keys]):
-                continue
+            # if concept.keys and all([x in grain for x in concept.keys]):
+            #     continue
             concepts.append(concept)
             graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource.identifier, concept.address)
@@ -151,44 +202,18 @@ def get_node_joins(
             local_concepts = [
                 c for c in local_concepts if c.purpose != Purpose.CONSTANT
             ]
+
+            # if concept.keys and all([x in grain for x in concept.keys]):
+            #     continue
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],
                 right_datasource=identifier_map[right],
                 join_type=join_type,
-                concepts=local_concepts,
+                concepts=concept_to_relevant_joins(local_concepts),
             )
         )
-    final_joins: List[BaseJoin] = []
-    available_aliases: set[str] = set()
-    while final_joins_pre:
-        new_final_joins_pre: List[BaseJoin] = []
-        for join in final_joins_pre:
-            if not available_aliases:
-                final_joins.append(join)
-                available_aliases.add(join.left_datasource.identifier)
-                available_aliases.add(join.right_datasource.identifier)
-            elif join.left_datasource.identifier in available_aliases:
-                # we don't need to join twice
-                # so whatever join we found first, works
-                if join.right_datasource.identifier in available_aliases:
-                    continue
-                final_joins.append(join)
-                available_aliases.add(join.left_datasource.identifier)
-                available_aliases.add(join.right_datasource.identifier)
-            else:
-                new_final_joins_pre.append(join)
-        if len(new_final_joins_pre) == len(final_joins_pre):
-            remaining = [
-                join.left_datasource.identifier for join in new_final_joins_pre
-            ]
-            remaining_right = [
-                join.right_datasource.identifier for join in new_final_joins_pre
-            ]
-            raise SyntaxError(
-                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
-            )
-        final_joins_pre = new_final_joins_pre
+    final_joins = resolve_join_order(final_joins_pre)
 
     # this is extra validation
     non_single_row_ds = [x for x in datasources if not x.grain.abstract]
@@ -205,7 +230,7 @@ def get_node_joins(
                     found = True
             if not found:
                 raise SyntaxError(
-                    f"Could not find join for {x.identifier}, all {[z.identifier for z in datasources]}, joins {final_joins}"
+                    f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
                 )
     return final_joins
 

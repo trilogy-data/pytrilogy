@@ -72,6 +72,8 @@ def function_args_to_output_purpose(args) -> Purpose:
     has_metric = False
     has_non_constant = False
     has_non_single_row_constant = False
+    if not args:
+        return Purpose.CONSTANT
     for arg in args:
         purpose = argument_to_purpose(arg)
         if purpose == Purpose.METRIC:
@@ -80,7 +82,7 @@ def function_args_to_output_purpose(args) -> Purpose:
             has_non_constant = True
         if isinstance(arg, Concept) and arg.granularity != Granularity.SINGLE_ROW:
             has_non_single_row_constant = True
-    if not has_non_constant and not has_non_single_row_constant:
+    if args and not has_non_constant and not has_non_single_row_constant:
         return Purpose.CONSTANT
     if has_metric:
         return Purpose.METRIC
@@ -176,7 +178,7 @@ def Split(args: list[Concept]) -> Function:
         operator=FunctionType.SPLIT,
         arguments=args,
         # first arg sets properties
-        output_datatype=DataType.ARRAY,
+        output_datatype=ListType(type=DataType.STRING),
         output_purpose=function_args_to_output_purpose(args),
         valid_inputs={DataType.STRING},
         arg_count=2,
@@ -187,12 +189,14 @@ def IndexAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.INDEX_ACCESS,
         arguments=args,
-        # first arg sets properties
-        # TODO: THIS IS WRONG - figure out how to get at array types
-        output_datatype=DataType.STRING,
+        output_datatype=(
+            args[0].datatype.value_data_type
+            if isinstance(args[0].datatype, ListType)
+            else args[0].datatype
+        ),
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
-            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {DataType.LIST},
             {
                 DataType.INTEGER,
             },
@@ -205,12 +209,10 @@ def AttrAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.ATTR_ACCESS,
         arguments=args,
-        # first arg sets properties
-        # TODO: THIS IS WRONG - figure out how to get at array types
-        output_datatype=DataType.STRING,
+        output_datatype=args[0].field_map[args[1]].datatype,  # type: ignore
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
-            {DataType.ARRAY, DataType.LIST, DataType.STRING},
+            {DataType.STRUCT},
             {
                 DataType.STRING,
             },

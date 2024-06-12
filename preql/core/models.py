@@ -19,6 +19,7 @@ from typing import (
     Generic,
     Tuple,
     Type,
+    ItemsView,
 )
 from pydantic_core import core_schema
 from pydantic.functional_validators import PlainValidator
@@ -29,6 +30,7 @@ from pydantic import (
     field_validator,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
+    computed_field,
 )
 from lark.tree import Meta
 from pathlib import Path
@@ -53,10 +55,11 @@ from preql.core.enums import (
     ShowCategory,
     Granularity,
 )
-from preql.core.exceptions import UndefinedConceptException
+from preql.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from preql.utility import unique
 from collections import UserList
 from preql.utility import string_to_hash
+from functools import cached_property
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -125,7 +128,11 @@ class DataType(Enum):
 
 
 class ListType(BaseModel):
+    model_config = ConfigDict(frozen=True)
     type: ALL_TYPES
+
+    def __str__(self) -> str:
+        return f"ListType<{self.type}>"
 
     @property
     def data_type(self):
@@ -157,6 +164,7 @@ class MapType(BaseModel):
 
 class StructType(BaseModel):
     fields: List[ALL_TYPES]
+    fields_map: Dict[str, Concept] = Field(default_factory=dict)
 
     @property
     def data_type(self):
@@ -220,17 +228,35 @@ class Concept(BaseModel):
         validate_default=True,
     )
     lineage: Optional[
-        Union[Function, WindowItem, FilterItem, AggregateWrapper, RowsetItem]
+        Union[
+            Function,
+            WindowItem,
+            FilterItem,
+            AggregateWrapper,
+            RowsetItem,
+            MultiSelect | MergeStatement,
+        ]
     ] = None
     # lineage: Annotated[Optional[
     #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
     # ], WrapValidator(lineage_validator)] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    keys: Optional[List["Concept"]] = None
+    keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
 
     def __hash__(self):
         return hash(str(self))
+
+    @field_validator("keys", mode="before")
+    @classmethod
+    def keys_validator(cls, v, info: ValidationInfo):
+        if v is None:
+            return v
+        if not isinstance(v, (list, tuple)):
+            raise ValueError(f"Keys must be a list or tuple, got {type(v)}")
+        if isinstance(v, list):
+            return tuple(v)
+        return v
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -338,11 +364,16 @@ class Concept(BaseModel):
                 else namespace
             ),
             keys=(
-                [x.with_namespace(namespace) for x in self.keys] if self.keys else None
+                tuple([x.with_namespace(namespace) for x in self.keys])
+                if self.keys
+                else None
             ),
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+        if not all([isinstance(x, Concept) for x in self.keys or []]):
+            raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
+
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -361,7 +392,7 @@ class Concept(BaseModel):
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.keys:
-                components = self.keys
+                components = [*self.keys]
             if self.lineage:
                 for item in self.lineage.arguments:
                     if isinstance(item, Concept):
@@ -381,7 +412,7 @@ class Concept(BaseModel):
             metadata=self.metadata,
             lineage=self.lineage,
             grain=grain,
-            keys=[*self.keys] if self.keys else None,
+            keys=self.keys,
             namespace=self.namespace,
         )
 
@@ -412,6 +443,10 @@ class Concept(BaseModel):
             return PurposeLineage.AGGREGATE
         elif self.lineage and isinstance(self.lineage, RowsetItem):
             return PurposeLineage.ROWSET
+        elif self.lineage and isinstance(self.lineage, MultiSelect):
+            return PurposeLineage.MULTISELECT
+        elif self.lineage and isinstance(self.lineage, MergeStatement):
+            return PurposeLineage.MERGE
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -432,6 +467,8 @@ class Concept(BaseModel):
 
     @property
     def granularity(self) -> Granularity:
+        """ "used to determine if concepts need to be included in grain
+        calculations"""
         if self.derivation == PurposeLineage.CONSTANT:
             # constants are a single row
             return Granularity.SINGLE_ROW
@@ -441,6 +478,19 @@ class Concept(BaseModel):
             if all([x.name == ALL_ROWS_CONCEPT for x in self.grain.components]):
                 return Granularity.SINGLE_ROW
         elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
+            return Granularity.SINGLE_ROW
+        elif (
+            self.lineage
+            and isinstance(self.lineage, Function)
+            and self.lineage.operator == FunctionType.UNNEST
+        ):
+            return Granularity.MULTI_ROW
+        elif self.lineage and all(
+            [
+                x.granularity == Granularity.SINGLE_ROW
+                for x in self.lineage.concept_arguments
+            ]
+        ):
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 
@@ -576,11 +626,16 @@ class Statement(BaseModel):
     pass
 
 
-class LooseConceptList:
+class LooseConceptList(BaseModel):
+    concepts: List[Concept]
 
-    def __init__(self, concepts: List[Concept]):
-        self.concepts = concepts
-        self.addresses = {s.address for s in self.concepts}
+    @cached_property
+    def addresses(self) -> set[str]:
+        return {s.address for s in self.concepts}
+
+    @classmethod
+    def validate(cls, v):
+        return cls(v)
 
     def __str__(self) -> str:
         return f"lcl{str(self.addresses)}"
@@ -621,17 +676,22 @@ class Function(BaseModel):
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType
     output_purpose: Purpose
-    valid_inputs: Optional[Union[Set[DataType], List[Set[DataType]]]] = None
+    valid_inputs: Optional[
+        Union[
+            Set[DataType | ListType | StructType],
+            List[Set[DataType | ListType | StructType]],
+        ]
+    ] = None
     arguments: Sequence[
         Union[
             Concept,
             "AggregateWrapper",
             "Function",
-            # "WindowItem",
             int,
             float,
             str,
             DataType,
+            ListType,
             DatePart,
             "Parenthetical",
             CaseWhen,
@@ -681,8 +741,8 @@ class Function(BaseModel):
             ):
                 if arg.datatype != DataType.UNKNOWN:
                     raise TypeError(
-                        f"Invalid input datatype {arg.datatype} passed into"
-                        f" {operator_name} from concept {arg.name}"
+                        f"Invalid input datatype {arg.datatype.data_type} passed into position {idx}"
+                        f" for {operator_name} from concept {arg.name}, valid is {valid_inputs[idx]}"
                     )
             if (
                 isinstance(arg, Function)
@@ -756,7 +816,7 @@ class Function(BaseModel):
 
 
 class ConceptTransform(BaseModel):
-    function: Function | FilterItem | WindowItem
+    function: Function | FilterItem | WindowItem | AggregateWrapper
     output: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
@@ -785,8 +845,7 @@ class ConceptTransform(BaseModel):
         new_parent = FilterItem(content=new_parent_concept, where=where)
         self.output.lineage = new_parent
         return ConceptTransform(
-            function=new_parent,
-            output=self.output,
+            function=new_parent, output=self.output, modifiers=self.modifiers
         )
 
 
@@ -1115,6 +1174,139 @@ class Select(BaseModel):
         )
 
 
+class AlignItem(BaseModel):
+    alias: str
+    concepts: List[Concept]
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+
+    @computed_field  # type: ignore
+    @cached_property
+    def concepts_lcl(self) -> LooseConceptList:
+        return LooseConceptList(concepts=self.concepts)
+
+    def with_namespace(self, namespace: str) -> "AlignItem":
+        return AlignItem(
+            alias=self.alias,
+            concepts=[c.with_namespace(namespace) for c in self.concepts],
+            namespace=namespace,
+        )
+
+    def gen_concept(self, parent: MultiSelect):
+        datatypes = set([c.datatype for c in self.concepts])
+        purposes = set([c.purpose for c in self.concepts])
+        if len(datatypes) > 1:
+            raise InvalidSyntaxException(
+                f"Datatypes do not align for merged statements {self.alias}, have {datatypes}"
+            )
+        if len(purposes) > 1:
+            purpose = Purpose.KEY
+        else:
+            purpose = list(purposes)[0]
+        new = Concept(
+            name=self.alias,
+            datatype=datatypes.pop(),
+            purpose=purpose,
+            lineage=parent,
+            namespace=parent.namespace,
+        )
+        return new
+
+
+class AlignClause(BaseModel):
+    items: List[AlignItem]
+
+    def with_namespace(self, namespace: str) -> "AlignClause":
+        return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
+
+
+class MultiSelect(BaseModel):
+    selects: List[Select]
+    align: AlignClause
+    namespace: str
+    where_clause: Optional["WhereClause"] = None
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+
+    def __repr__(self):
+        return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
+
+    @computed_field  # type: ignore
+    @cached_property
+    def arguments(self) -> List[Concept]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        return unique(output, "address")
+
+    @computed_field  # type: ignore
+    @cached_property
+    def concept_arguments(self) -> List[Concept]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        if self.where_clause:
+            output += self.where_clause.concept_arguments
+        return unique(output, "address")
+
+    def get_merge_concept(self, check: Concept):
+        for item in self.align.items:
+            if check in item.concepts_lcl:
+                return item.gen_concept(self)
+        return None
+
+    def with_namespace(self, namespace: str) -> "MultiSelect":
+        return MultiSelect(
+            selects=[c.with_namespace(namespace) for c in self.selects],
+            align=self.align.with_namespace(namespace),
+            namespace=namespace,
+        )
+
+    @property
+    def grain(self):
+        base = Grain()
+        for select in self.selects:
+            base += select.grain
+        return base
+
+    @computed_field  # type: ignore
+    @cached_property
+    def derived_concepts(self) -> List[Concept]:
+        output = []
+        for item in self.align.items:
+            output.append(item.gen_concept(self))
+        return output
+
+    def find_source(self, concept: Concept, cte: CTE) -> Concept:
+        all = []
+        for x in self.align.items:
+            if concept.name == x.alias:
+                for c in x.concepts:
+                    if c.address in cte.output_lcl:
+                        all.append(c)
+
+        if len(all) == 1:
+            return all[0]
+
+        raise SyntaxError(
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        )
+
+    @property
+    def output_components(self) -> List[Concept]:
+        output = self.derived_concepts
+        for select in self.selects:
+            output += select.output_components
+        return unique(output, "address")
+
+    @computed_field  # type: ignore
+    @cached_property
+    def hidden_components(self) -> List[Concept]:
+        output = []
+        for select in self.selects:
+            output += select.hidden_components
+        return output
+
+
 class Address(BaseModel):
     location: str
 
@@ -1157,6 +1349,49 @@ class DatasourceMetadata(BaseModel):
     partition_fields: List[Concept] = Field(default_factory=list)
 
 
+class MergeStatement(BaseModel):
+    concepts: List[Concept]
+    datatype: DataType | ListType | StructType | MapType
+
+    @cached_property
+    def concepts_lcl(self):
+        return LooseConceptList(concepts=self.concepts)
+
+    @property
+    def merge_concept(self) -> Concept:
+        bridge_name = "_".join([c.safe_address for c in self.concepts])
+        return Concept(
+            name=f"__merge_{bridge_name}",
+            datatype=self.datatype,
+            purpose=Purpose.PROPERTY,
+            lineage=self,
+            keys=tuple(self.concepts),
+        )
+
+    @property
+    def arguments(self) -> List[Concept]:
+        return self.concepts
+
+    @property
+    def concept_arguments(self) -> List[Concept]:
+        return self.concepts
+
+    def find_source(self, concept: Concept, cte: CTE) -> Concept:
+        for x in self.concepts:
+            for z in cte.output_columns:
+                if z.address == x.address:
+                    return z
+        raise SyntaxError(
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        )
+
+    def with_namespace(self, namespace: str) -> "MergeStatement":
+        return MergeStatement(
+            concepts=[c.with_namespace(namespace) for c in self.concepts],
+            datatype=self.datatype,
+        )
+
+
 class Datasource(BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
@@ -1168,6 +1403,10 @@ class Datasource(BaseModel):
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
+
+    @cached_property
+    def output_lcl(self) -> LooseConceptList:
+        return LooseConceptList(concepts=self.output_concepts)
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -1201,6 +1440,8 @@ class Datasource(BaseModel):
         self.columns.append(
             ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
         )
+        # force refresh
+        del self.output_lcl
 
     def __add__(self, other):
         if not other == self:
@@ -1281,7 +1522,7 @@ class Datasource(BaseModel):
         namespace = self.namespace.replace(".", "_") if self.namespace else ""
         return f"{namespace}_{self.identifier}"
 
-    @property
+    @cached_property
     def safe_location(self) -> str:
         if isinstance(self.address, Address):
             return self.address.location
@@ -1427,9 +1668,9 @@ class QueryDatasource(BaseModel):
         )
         seen = set()
         for k, val in v.items():
-            if val:
-                if len(val) != 1:
-                    raise SyntaxError(f"source map {k} has multiple values {len(val)}")
+            # if val:
+            #     if len(val) != 1:
+            #         raise SyntaxError(f"source map {k} has multiple values {len(val)}")
             seen.add(k)
         for x in expected:
             if x not in seen:
@@ -1455,8 +1696,6 @@ class QueryDatasource(BaseModel):
     @property
     def full_name(self):
         return self.identifier
-        # raw = '_'.join([c for c in self.source_map])
-        # return raw.replace('.', '_')
 
     @property
     def group_required(self) -> bool:
@@ -1601,7 +1840,7 @@ class CTE(BaseModel):
     source: "QueryDatasource"  # TODO: make recursive
     # output columns are what are selected/grouped by
     output_columns: List[Concept]
-    source_map: Dict[str, str]
+    source_map: Dict[str, str | list[str]]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
@@ -1610,6 +1849,11 @@ class CTE(BaseModel):
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
+
+    @computed_field  # type: ignore
+    @property
+    def output_lcl(self) -> LooseConceptList:
+        return LooseConceptList(concepts=self.output_columns)
 
     @field_validator("output_columns")
     def validate_output_columns(cls, v):
@@ -1620,7 +1864,7 @@ class CTE(BaseModel):
         if not self.grain == other.grain:
             error = (
                 "Attempting to merge two ctes of different grains"
-                f" {self.name} {other.name} grains {self.grain} {other.grain}"
+                f" {self.name} {other.name} grains {self.grain} {other.grain}| {self.group_to_grain} {other.group_to_grain}| {self.output_lcl} {other.output_lcl}"
             )
             raise ValueError(error)
         self.partial_concepts = unique(
@@ -1649,10 +1893,6 @@ class CTE(BaseModel):
 
     @property
     def relevant_base_ctes(self):
-        """The parent CTEs includes all CTES,
-        not just those immediately referenced.
-        This method returns only those that are relevant
-        to the output of the query."""
         return self.parent_ctes
 
     @property
@@ -1678,10 +1918,8 @@ class CTE(BaseModel):
                 raise SyntaxError(
                     f"Invalid join configuration {candidates} {disallowed} with all parents {[x.base_name for x in self.parent_ctes]}"
                 )
-            return valid_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
-        # return self.source_map.values()[0]
         elif self.parent_ctes:
             raise SyntaxError(
                 f"{self.name} has no relevant base CTEs, {self.source_map},"
@@ -1696,8 +1934,6 @@ class CTE(BaseModel):
         if len(self.source.datasources) == 1 and isinstance(
             self.source.datasources[0], Datasource
         ):
-            # if isinstance(self.source.datasources[0], QueryDatasource) and self.relevant_base_ctes:
-            #     return self.relevant_base_ctes[0].name
             return self.source.datasources[0].full_name.replace(".", "_")
         if relevant_joins:
             return relevant_joins[0].left_cte.name
@@ -1712,7 +1948,8 @@ class CTE(BaseModel):
             if concept.address in [x.address for x in cte.output_columns]:
                 return concept.safe_address
         try:
-            return self.source.get_alias(concept)
+            source = self.source.get_alias(concept)
+            return source
         except ValueError as e:
             return f"INVALID_ALIAS: {str(e)}"
 
@@ -1818,9 +2055,9 @@ class UndefinedConcept(Concept):
             # we need to make this abstract
             grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
         elif self.purpose == Purpose.PROPERTY:
-            components = []
+            components: List[Concept] = []
             if self.keys:
-                components = self.keys
+                components = [*self.keys]
             if self.lineage:
                 for item in self.lineage.arguments:
                     if isinstance(item, Concept):
@@ -1898,6 +2135,9 @@ class EnvironmentConceptDict(dict):
         matches = difflib.get_close_matches(concept_name, self.keys())
         return matches
 
+    def items(self) -> ItemsView[str, Concept | UndefinedConcept]:  # type: ignore
+        return super().items()
+
 
 class Import(BaseModel):
     alias: str
@@ -1931,16 +2171,17 @@ class Environment(BaseModel):
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, Import] = Field(default_factory=dict)
-    namespace: Optional[str] = None
+    namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
+    cte_name_map: Dict[str, str] = Field(default_factory=dict)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
         with open(path, "r") as f:
             read = f.read()
-        return Environment(working_path=Path(path).parent).parse(read)
+        return Environment(working_path=Path(path).parent).parse(read)[0]
 
     @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:
@@ -1958,7 +2199,7 @@ class Environment(BaseModel):
         else:
             ppath = Path(path)
         with open(ppath, "w") as f:
-            f.write(self.json())
+            f.write(self.model_dump_json())
         return ppath
 
     @property
@@ -2005,20 +2246,22 @@ class Environment(BaseModel):
     def add_import(self, alias: str, environment: Environment):
         self.imports[alias] = Import(alias=alias, path=str(environment.working_path))
         for key, concept in environment.concepts.items():
-            self.concepts[f"{alias}.{key}"] = concept
+            self.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
         for key, datasource in environment.datasources.items():
-            self.datasources[f"{alias}.{key}"] = datasource
+            self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
 
-    def parse(self, input: str, namespace: str | None = None):
+    def parse(
+        self, input: str, namespace: str | None = None
+    ) -> Tuple[Environment, list]:
         from preql import parse
 
         if namespace:
             new = Environment()
-            new.parse(input)
+            _, queries = new.parse(input)
             self.add_import(namespace, new)
-            return self
-        parse(input, self)
-        return self
+            return self, queries
+        _, queries = parse(input, self)
+        return self, queries
 
     def add_concept(
         self,
@@ -2400,8 +2643,11 @@ class ConceptDerivation(BaseModel):
 
 class RowsetDerivation(BaseModel):
     name: str
-    select: Select
+    select: Select | MultiSelect
     namespace: str
+
+    def __repr__(self):
+        return f"RowsetDerivation<{str(self.select)}>"
 
     @property
     def derived_concepts(self) -> List[Concept]:
@@ -2415,7 +2661,7 @@ class RowsetDerivation(BaseModel):
                 lineage=RowsetItem(
                     content=orig_concept, where=self.select.where_clause, rowset=self
                 ),
-                grain=self.select.grain,
+                grain=orig_concept.grain,
                 metadata=orig_concept.metadata,
                 namespace=(
                     f"{self.name}.{orig_concept.namespace}"
@@ -2429,7 +2675,9 @@ class RowsetDerivation(BaseModel):
         # remap everything to the properties of the rowset
         for x in output:
             if x.keys:
-                x.keys = [orig[k.address] if k.address in orig else k for k in x.keys]
+                x.keys = tuple(
+                    [orig[k.address] if k.address in orig else k for k in x.keys]
+                )
         for x in output:
             x.grain = Grain(
                 components=[
@@ -2456,7 +2704,7 @@ class RowsetItem(BaseModel):
     rowset: RowsetDerivation
     where: Optional["WhereClause"] = None
 
-    def __str__(self):
+    def __repr__(self):
         return (
             f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
         )

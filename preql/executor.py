@@ -9,6 +9,7 @@ from preql.core.models import (
     ProcessedQuery,
     ProcessedShowStatement,
     ProcessedQueryPersist,
+    MultiSelect,
     Select,
     Persist,
     ShowStatement,
@@ -138,6 +139,30 @@ class Executor(object):
         return output
 
     @generate_sql.register  # type: ignore
+    def _(self, command: MultiSelect) -> List[str]:
+        output = []
+        sql = self.generator.generate_queries(
+            self.environment, [command], hooks=self.hooks
+        )
+        for statement in sql:
+            compiled_sql = self.generator.compile_statement(statement)
+            output.append(compiled_sql)
+
+        output.append(compiled_sql)
+        return output
+
+    @generate_sql.register  # type: ignore
+    def _(self, command: Select) -> List[str]:
+        output = []
+        sql = self.generator.generate_queries(
+            self.environment, [command], hooks=self.hooks
+        )
+        for statement in sql:
+            compiled_sql = self.generator.compile_statement(statement)
+            output.append(compiled_sql)
+        return output
+
+    @generate_sql.register  # type: ignore
     def _(self, command: str) -> List[str]:
         """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
@@ -159,7 +184,9 @@ class Executor(object):
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
         generatable = [
-            x for x in parsed if isinstance(x, (Select, Persist, ShowStatement))
+            x
+            for x in parsed
+            if isinstance(x, (Select, Persist, MultiSelect, ShowStatement))
         ]
         sql = []
         while generatable:
