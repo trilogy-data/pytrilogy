@@ -467,6 +467,8 @@ class Concept(BaseModel):
 
     @property
     def granularity(self) -> Granularity:
+        """ "used to determine if concepts need to be included in grain
+        calculations"""
         if self.derivation == PurposeLineage.CONSTANT:
             # constants are a single row
             return Granularity.SINGLE_ROW
@@ -476,6 +478,19 @@ class Concept(BaseModel):
             if all([x.name == ALL_ROWS_CONCEPT for x in self.grain.components]):
                 return Granularity.SINGLE_ROW
         elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
+            return Granularity.SINGLE_ROW
+        elif (
+            self.lineage
+            and isinstance(self.lineage, Function)
+            and self.lineage.operator == FunctionType.UNNEST
+        ):
+            return Granularity.MULTI_ROW
+        elif self.lineage and all(
+            [
+                x.granularity == Granularity.SINGLE_ROW
+                for x in self.lineage.concept_arguments
+            ]
+        ):
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 

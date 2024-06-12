@@ -22,15 +22,20 @@ from dataclasses import dataclass
 def concept_list_to_grain(
     inputs: List[Concept], parent_sources: Sequence[QueryDatasource | Datasource]
 ) -> Grain:
-    candidates = [c for c in inputs if c.purpose == Purpose.KEY]
+    candidates = [
+        c
+        for c in inputs
+        if c.purpose == Purpose.KEY and c.granularity != Granularity.SINGLE_ROW
+    ]
     for x in inputs:
+        if x.granularity == Granularity.SINGLE_ROW:
+            continue
         if x.purpose == Purpose.PROPERTY and not any(
             [key in candidates for key in (x.keys or [])]
         ):
             candidates.append(x)
         elif x.purpose == Purpose.CONSTANT:
-            if not x.granularity == Granularity.SINGLE_ROW:
-                candidates.append(x)
+            candidates.append(x)
         elif x.purpose == Purpose.METRIC:
             # metrics that were previously calculated must be included in grain
             if any([x in parent.output_concepts for parent in parent_sources]):

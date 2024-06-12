@@ -88,9 +88,13 @@ def test_graph_rez_bridge():
 
         extract_required_subgraphs(assocs, v)
 
-    assert assocs["ds~rich_info.rich_info"] == []
-    assert assocs["ds~rich_info.rich_info"] == [
-        "c~rich_info.full_name@Grain<rich_info.full_name>",
-        "c~local.__merge_passenger_last_name_rich_info_last_name@Grain<Abstract>",
-        "c~rich_info.net_worth_1918_dollars@Grain<Abstract>",
-    ]
+    assert set(assocs["ds~rich_info.rich_info"]) == set(
+        [
+            "c~rich_info.full_name@Grain<rich_info.full_name>",
+            "c~local.__merge_passenger_last_name_rich_info_last_name@Grain<Abstract>",
+            "c~passenger.last_name@Grain<passenger.id>",
+            "c~passenger.last_name@Grain<Abstract>",
+            "c~rich_info.net_worth_1918_dollars@Grain<Abstract>",
+            "c~rich_info.net_worth_1918_dollars@Grain<rich_info.full_name>",
+        ]
+    )
