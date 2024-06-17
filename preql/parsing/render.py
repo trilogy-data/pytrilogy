@@ -249,7 +249,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: MultiSelect):
-        base = f"{"\nMERGE\n".join([self.to_string(select)[:-1] for select in arg.selects])}"
+        base = "\nMERGE\n".join([self.to_string(select)[:-1] for select in arg.selects])
         base += self.to_string(arg.align)
         if arg.where_clause:
             base += f"\nWHERE\n{self.to_string(arg.where_clause)}"

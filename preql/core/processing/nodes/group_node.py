@@ -95,4 +95,5 @@ class GroupNode(StrategyNode):
             joins=[],
             grain=grain,
             partial_concepts=self.partial_concepts,
+            condition=self.conditions,
         )

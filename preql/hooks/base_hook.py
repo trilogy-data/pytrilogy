@@ -1,4 +1,11 @@
-from preql.core.models import QueryDatasource, CTE, Select, Persist, MultiSelect
+from preql.core.models import (
+    QueryDatasource,
+    CTE,
+    Select,
+    Persist,
+    MultiSelect,
+    RowsetDerivation,
+)
 from preql.core.processing.nodes import StrategyNode
 
 
@@ -16,6 +23,9 @@ class BaseHook:
     def process_persist_info(self, persist: Persist):
         print(f"Persist statement persisting to {persist.address}")
         self.process_select_info(persist.select)
+
+    def process_rowset_info(self, rowset: RowsetDerivation):
+        print(f"Rowset statement with grain {str(rowset.select.grain)}")
 
     def process_root_datasource(self, datasource: QueryDatasource):
         pass

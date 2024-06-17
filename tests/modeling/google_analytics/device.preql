@@ -1,0 +1,5 @@
+key id int; # primary device ID key; unused until we create a device_id dimension
+
+
+property id.category string;
+property id.operating_system string;
