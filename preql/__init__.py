@@ -3,6 +3,6 @@ from preql.dialect.enums import Dialects
 from preql.executor import Executor
 from preql.parser import parse
 
-__version__ = "0.0.1.92"
+__version__ = "0.0.1.93"
 
 __all__ = ["parse", "Executor", "Dialects", "Environment"]
