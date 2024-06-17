@@ -61,7 +61,6 @@ def test_sane_rendering():
 
     engine.generator.compile_statement(select)
     # this statement should have this structure
-
     # select node
     # group node
     # output

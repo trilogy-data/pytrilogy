@@ -34,7 +34,7 @@ def test_one():
         text = f.read()
         env, queries = parse(text, env)
     exec = Dialects.DUCK_DB.default_executor(
-        environment=env,  # hooks=[DebuggingHook(process_other=False, process_ctes=False)]
+        environment=env,
     )
 
     env, queries = parse("""import store_returns as returns;""", env)
