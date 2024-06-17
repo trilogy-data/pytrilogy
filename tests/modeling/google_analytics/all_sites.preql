@@ -1,17 +1,36 @@
-import generic as generic;
+import geo as geo;
+import device as device;
 
-key user_pseudo_id int;
 key _row_id int;
+property _row_id.user_pseudo_id int;
 property _row_id.page_location string;
 property _row_id.page_title string;
+property _row_id.event_time int;
+property _row_id.event_date date;
+property _row_id.event_timestamp int;
+property _row_id.site_name string;
+
 metric event_count <- count(_row_id);
 
+
+property _row_id.clean_url <- CASE
+    WHEN STRPOS(page_location, "?") > 0 THEN SUBSTRING(page_location, 0, STRPOS(page_location, "?") - 1)
+    WHEN STRPOS(page_location, "#") > 0 THEN SUBSTRING(page_location, 0, STRPOS(page_location, "#") - 1)
+    ELSE page_location
+END;
+
 datasource pypreql(
-    raw('''(cast(event_timestamp as numeric) * 10000) + (row_number() over (partition by user_pseudo_id order by generic.event_timestamp))'''): _row_id,
-    raw('''PARSE_DATE('%Y%m%d', suffix)'''): generic.event_date,
+    raw('''(cast(event_timestamp as numeric) * 10000) + user_pseudo_id'''): _row_id,
+    raw('''PARSE_DATE('%Y%m%d', suffix)'''): event_date,
     user_pseudo_id: user_pseudo_id,
-    event_timestamp: generic.event_timestamp,
-    site:generic.site_name,
+    event_timestamp: event_timestamp,
+    device.category: device.category,
+    device.operating_system: device.operating_system,
+    geo.country: geo.country,
+    geo.city: geo.city,
+    geo.continent: geo.continent,
+    geo.region: geo.region,
+    site:site_name,
     raw('''(SELECT `value`.`string_value` FROM UNNEST(event_params) WHERE `key` = 'page_location' LIMIT 1)'''): page_location,
     raw('''(SELECT `value`.`string_value` FROM UNNEST(event_params) WHERE `key` = 'page_title' LIMIT 1)'''): page_title, 
 )

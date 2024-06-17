@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from preql.core.models import Concept, Environment, Datasource
+from preql.core.models import Concept, Environment, Datasource, Conditional
 from preql.core.processing.nodes import MergeNode, History
 import networkx as nx
 from preql.core.graph_models import concept_to_node, datasource_to_node
@@ -83,6 +83,7 @@ def gen_merge_node(
     source_concepts,
     accept_partial: bool = False,
     history: History | None = None,
+    conditions: Conditional | None = None,
 ) -> Optional[MergeNode]:
     join_candidates: List[PathInfo] = []
     # anchor on datasources
@@ -143,4 +144,5 @@ def gen_merge_node(
         g=g,
         parents=parents,
         depth=depth,
+        conditions=conditions,
     )

@@ -39,6 +39,7 @@ from preql.core.models import (
     RowsetItem,
     MultiSelect,
     MergeStatement,
+    RowsetDerivation,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -542,6 +543,10 @@ class BaseDialect:
                     for hook in hooks:
                         hook.process_multiselect_info(statement)
                 output.append(process_query(environment, statement, hooks=hooks))
+            elif isinstance(statement, RowsetDerivation):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_rowset_info(statement)
             elif isinstance(statement, ShowStatement):
                 # TODO - encapsulate this a little better
                 if isinstance(statement.content, Select):
@@ -560,9 +565,9 @@ class BaseDialect:
                         )
                     )
                 else:
-                    raise NotImplementedError
+                    raise NotImplementedError(type(statement))
             else:
-                raise NotImplementedError
+                raise NotImplementedError(type(statement))
         return output
 
     def compile_statement(

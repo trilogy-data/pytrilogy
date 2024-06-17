@@ -1,14 +1,10 @@
 ## PreQL/Trilogy
 
-pypreql is an experimental implementation of the [PreQL/Trilogy](https://github.com/preqldata) (prequel trilogy) language, a modified SQL syntax that compiles to SQL intended to embrace the best features of SQL while fixing common pain points.
+pypreql is an experimental implementation of the [PreQL/Trilogy] (prequel trilogy) language, a extension of SQL that replaces tables/joins with a lightweight semantic binding layer.
 
-PreQL/Trilogy looks like SQL, but doesn't require table references, group by, or joins directly in queries, shifting some parts of a standard SQL query into a reusable, lightweight semantic binding layer. When you query, it puts the focus on what you want to get, not how you want to get it - you've already done that work once in your data model.
+PreQL/Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want reusability and simplicity with the power and iteratability of SQL. It compiles to SQL, making it easy to debug, and can be run againstany supported SQL backend.  
 
-It's perfect for a modern data company that just can't quit SQL, but wants less pain, with a rich extension ecosystem to integrate with other tools like DBT.
-
-PypreQL can be run locally to parse and execute preql [.preql] models.  
-
-The PreQL language spec itself will be linked from the above repo. 
+PypreQL can be run locally to parse and execute preql [.preql] models using the `trilogy` CLI tool, or can be run in python using the `preql` package.
 
 You can read more about the project [here](https://preqldata.dev/) and try out an interactive demo on the page an interactive demo [here](https://preqldata.dev/demo). 
 
@@ -39,9 +35,73 @@ Enhance:
 Maintain:
 - Acceptable performance
 
+## Hello World
+
+Save the following code in a file named `hello.preql`
+
+```python
+key sentence_id int;
+property sentence_id.word_one string; # comments after a definition 
+property sentence_id.word_two string; # are syntactic sugar for adding
+property sentence_id.word_three string; # a description to it
+
+# comments in other places are just comments
+
+# define our datasources as queries in duckdb
+datasource word_one(
+    sentence: sentence_id,
+    word:word_one
+)
+grain(sentence_id)
+query '''
+select 1 as sentence, 'Hello' as word
+union all
+select 2, 'Bonjour'
+''';
+
+datasource word_two(
+    sentence: sentence_id,
+    word:word_two
+)
+grain(sentence_id)
+query '''
+select 1 as sentence, 'World' as word
+union all
+select 2 as sentence, 'World'
+''';
+
+datasource word_three(
+    sentence: sentence_id,
+    word:word_three
+)
+grain(sentence_id)
+query '''
+select 1 as sentence, '!' as word
+union all
+select 2 as sentence, '!'
+''';
+
+# an actual select statement
+SELECT
+    --sentence_id,
+    word_one || ' ' || word_two ||  word_three as hello_world, # outputs must be named, trailing commas are okah
+WHERE 
+    sentence_id = 1
+;
+# semicolon termination for all statements
+
+```
+
+Run the following from the directory the file is in.
+
+```bash
+trilogy run hello.preql duckdb
+```
+
+
 ## Backends
 
-The current PreQL implementation supports compiling to these SQL flavors:
+The current PreQL implementation supports these backends:
 
 - Bigquery
 - SQL Server
@@ -134,7 +194,6 @@ Clone repository and install requirements.txt and requirements-test.txt.
 ## Contributing
 
 Please open an issue first to discuss what you would like to change, and then create a PR against that issue.
-
 
 ## Similar in space
 

@@ -65,8 +65,6 @@ SELECT
 def test_aggregates(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
-auto aspen_store <- filter stores.name where stores.name = 'aspen';
-
 SELECT
     sum(qty) -> total_qty
 ;"""
@@ -77,3 +75,20 @@ SELECT
     results = test_executor.execute_text(test_select)[0].fetchall()
 
     assert results[0] == (7,)
+
+
+def test_computed(test_environment: Environment, test_executor: Executor):
+    # test keys
+    test_select = """
+SELECT
+    stores.upper_name,
+    sum(qty) -> total_qty
+ORDER BY total_qty desc
+;"""
+
+    _, statements = parse(test_select, test_environment)
+    statements[-1]
+
+    results = test_executor.execute_text(test_select)[0].fetchall()
+
+    assert results[0] == ("STORE1", 4)

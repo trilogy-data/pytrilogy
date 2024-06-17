@@ -1,7 +1,14 @@
 from preql import parse, Dialects
 from preql.executor import Executor
 from pathlib import Path
-from preql.core.models import ProcessedQuery, SourceType, Environment, Concept, DataType
+from preql.core.models import (
+    ProcessedQuery,
+    SourceType,
+    Environment,
+    Concept,
+    DataType,
+    Function,
+)
 from preql.core.enums import Purpose, Granularity
 from preql.core.functions import CurrentDatetime
 from preql.hooks.query_debugger import DebuggingHook
@@ -54,7 +61,55 @@ def test_sane_rendering():
 
     engine.generator.compile_statement(select)
     # this statement should have this structure
-
     # select node
     # group node
     # output
+
+
+def test_daily_job():
+    with open(Path(__file__).parent / "daily_analytics.preql") as f:
+        sql = f.read()
+
+    env, statements = parse(
+        sql, environment=Environment(working_path=Path(__file__).parent)
+    )
+    enrich_environment(env)
+    local_static = env.concepts["local.static"]
+    assert local_static.granularity == Granularity.SINGLE_ROW
+
+    case = env.concepts["all_sites.clean_url"]
+
+    assert isinstance(case.lineage, Function)
+    # assert set([x.address for x in case.lineage.concept_arguments]) == set([env.concepts["all_sites.page_location"].address])
+    assert local_static.granularity == Granularity.SINGLE_ROW
+    engine: Executor = Dialects.DUCK_DB.default_executor(
+        environment=env, hooks=[DebuggingHook(INFO)]
+    )
+    statements[-1].select.selection.append(local_static)
+    pstatements = engine.generator.generate_queries(env, statements)
+    select: ProcessedQuery = pstatements[-1]
+    engine.generator.compile_statement(select)
+
+
+def test_rolling_analytics():
+    with open(Path(__file__).parent / "rolling_analytics.preql") as f:
+        sql = f.read()
+
+    env, statements = parse(
+        sql, environment=Environment(working_path=Path(__file__).parent)
+    )
+
+    engine: Executor = Dialects.DUCK_DB.default_executor(
+        environment=env,
+        hooks=[
+            DebuggingHook(
+                INFO, process_other=False, process_ctes=False, process_datasources=False
+            )
+        ],
+    )
+    pstatements = engine.generator.generate_queries(env, statements)
+    select: ProcessedQuery = pstatements[-1]
+    compiled = engine.generator.compile_statement(select)
+
+    # make sure we got the where clause
+    assert ">= date_add(current_date(), INTERVAL 30 day)" in compiled

@@ -171,6 +171,12 @@ class StrategyNode:
             partial_concepts=self.partial_concepts,
         )
 
+    def rebuild_cache(self):
+        if not self.resolution_cache:
+            return self.resolve()
+        self.resolution_cache = None
+        return self.resolve()
+
     def resolve(self) -> QueryDatasource:
         if self.resolution_cache:
             return self.resolution_cache

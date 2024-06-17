@@ -3,11 +3,11 @@ import all_sites as all_sites;
 
 persist page_events into page_events FROM 
 SELECT
-    all_sites.generic.event_date,
+    all_sites.event_date,
     all_sites.page_title,
     all_sites.page_location,
     count(all_sites.user_pseudo_id)->user_count,
 order by 
-    all_sites.generic.event_date asc;
+    all_sites.event_date asc;
 
 

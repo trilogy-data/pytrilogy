@@ -1,0 +1,7 @@
+
+import all_sites as all_sites;
+
+persist page_events into page_events FROM 
+SELECT
+    all_sites.clean_url,
+;

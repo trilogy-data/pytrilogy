@@ -1,0 +1,26 @@
+
+import all_sites as all_sites;
+
+
+rowset page_events_l_30 <- 
+SELECT
+    all_sites.event_date,
+    all_sites.page_title,
+    all_sites.clean_url,
+    count(all_sites.user_pseudo_id)->user_count,
+WHERE 
+    all_sites.event_date >= date_add(current_date() , day, -30)
+ORDER BY
+    all_sites.event_date asc;
+
+
+
+persist page_events_last_30_days into page_events_last_30_days FROM
+SELECT
+    page_events_l_30.all_sites.page_title,
+    page_events_l_30.all_sites.clean_url,
+    sum(page_events_l_30.user_count) by page_events_l_30.all_sites.page_title, page_events_l_30.all_sites.clean_url  -> last_30_user_count,
+    avg(page_events_l_30.user_count) by page_events_l_30.all_sites.page_title, page_events_l_30.all_sites.clean_url -> avg_daily_last_30_user_count
+;
+
+

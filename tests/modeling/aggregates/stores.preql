@@ -3,6 +3,8 @@ key id int;
 
 property id.name string;
 
+property id.upper_name <-upper(name);
+
 datasource stores (
     store_id:id,
     store_name:name,

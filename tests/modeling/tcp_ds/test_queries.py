@@ -34,7 +34,7 @@ def test_one():
         text = f.read()
         env, queries = parse(text, env)
     exec = Dialects.DUCK_DB.default_executor(
-        environment=env,  # hooks=[DebuggingHook(process_other=False, process_ctes=False)]
+        environment=env,
     )
 
     env, queries = parse("""import store_returns as returns;""", env)
@@ -140,6 +140,23 @@ limit 100;"""
 def test_three():
     env = Environment(working_path=working_path)
     with open(working_path / "query3.preql") as f:
+        text = f.read()
+        env, queries = parse(text, env)
+
+    select = queries[-1]
+
+    # g = generate_graph(env)
+    exec = Dialects.DUCK_DB.default_executor(
+        environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)]
+    )
+    sql = exec.generate_sql(select)
+    assert "SELECT" in sql[-1]
+    # assert sql[0] == '123'
+
+
+def test_three_alt():
+    env = Environment(working_path=working_path)
+    with open(working_path / "query3_alt.preql") as f:
         text = f.read()
         env, queries = parse(text, env)
 

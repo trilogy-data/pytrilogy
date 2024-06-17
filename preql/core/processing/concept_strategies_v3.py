@@ -385,9 +385,6 @@ def _search_concepts(
     stack: List[StrategyNode] = []
     complete = ValidationResult.INCOMPLETE
 
-    logger.info(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} history length {len(history.history)}"
-    )
     while attempted != all_mandatory:
         priority_concept = get_priority_concept(
             mandatory_list, attempted, found_concepts=found

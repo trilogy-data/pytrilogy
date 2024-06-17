@@ -108,6 +108,7 @@ def test_environment():
             output_purpose=Purpose.PROPERTY,
             operator=FunctionType.LENGTH,
         ),
+        keys=[category_id],
     )
 
     category_name_length_sum = Concept(

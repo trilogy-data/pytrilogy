@@ -271,7 +271,7 @@ grammar = r"""
     
     //generic
     fcast: "cast"i "(" expr "AS"i data_type ")"
-    concat: "concat"i "(" (expr ",")* expr ")"
+    concat: ("concat"i "(" (expr ",")* expr ")") | (expr "||" expr)
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fcase_when: "WHEN"i (expr | conditional) "THEN"i expr
     fcase_else: "ELSE"i expr

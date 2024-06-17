@@ -6,7 +6,7 @@ from preql.core.models import (
     RowsetItem,
     MultiSelect,
 )
-from preql.core.processing.nodes import MergeNode, NodeJoin, History
+from preql.core.processing.nodes import MergeNode, NodeJoin, History, StrategyNode
 from preql.core.processing.nodes.base_node import concept_list_to_grain
 from typing import List
 
@@ -14,6 +14,7 @@ from preql.core.enums import JoinType
 from preql.constants import logger
 from preql.core.processing.utility import padding
 from preql.core.processing.node_generators.common import concept_to_relevant_joins
+
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
@@ -26,7 +27,7 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-) -> MergeNode | None:
+) -> StrategyNode | None:
     if not isinstance(concept.lineage, RowsetItem):
         raise SyntaxError(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
@@ -34,20 +35,21 @@ def gen_rowset_node(
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivation = lineage.rowset
     select: Select | MultiSelect = lineage.rowset.select
-    node: MergeNode = source_concepts(
+    node: StrategyNode = source_concepts(
         mandatory_list=select.output_components,
         environment=environment,
         g=g,
         depth=depth + 1,
         history=history,
     )
+    node.conditions = select.where_clause.conditional if select.where_clause else None
+    # rebuild any cached info with the new condition clause
+    node.rebuild_cache()
     if not node:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
         )
         return None
-    if select.where_clause:
-        node.conditions = select.where_clause.conditional
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [
         x
@@ -66,11 +68,9 @@ def gen_rowset_node(
         for item in additional_relevant:
             node.partial_concepts.append(item)
 
-    # we need a better API for refreshing a nodes QDS
-    node.resolution_cache = node._resolve()
-
     # assume grain to be outoput of select
     # but don't include anything aggregate at this point
+    assert node.resolution_cache
     node.resolution_cache.grain = concept_list_to_grain(
         node.output_concepts, parent_sources=node.resolution_cache.datasources
     )

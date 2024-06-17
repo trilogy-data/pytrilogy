@@ -1,0 +1,7 @@
+key id int; # unused unless we create a geo dimension
+property id.city string;
+property id.country string;
+property id.continent string;
+property id.region string;
+property id.sub_continent string;
+property id.metro string;

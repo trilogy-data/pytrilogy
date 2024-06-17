@@ -10,6 +10,7 @@ from preql.core.models import (
     SourceType,
     Concept,
     UnnestJoin,
+    Conditional,
 )
 from preql.utility import unique
 from preql.core.processing.nodes.base_node import (
@@ -43,6 +44,8 @@ def deduplicate_nodes(
                 and merged[k1].grain.issubset(merged[k2].grain)
                 and not merged[k2].partial_concepts
                 and not merged[k1].partial_concepts
+                and not merged[k2].condition
+                and not merged[k1].condition
             ):
                 og = merged[k1]
                 subset_to = merged[k2]
@@ -99,6 +102,7 @@ class MergeNode(StrategyNode):
         force_group: bool | None = None,
         depth: int = 0,
         grain: Grain | None = None,
+        conditions: Conditional | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -111,6 +115,7 @@ class MergeNode(StrategyNode):
             partial_concepts=partial_concepts,
             force_group=force_group,
             grain=grain,
+            conditions=conditions,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
@@ -226,8 +231,10 @@ class MergeNode(StrategyNode):
 
         if len(merged.keys()) == 1:
             final: QueryDatasource = list(merged.values())[0]
-            if set([c.address for c in final.output_concepts]) == set(
-                [c.address for c in self.output_concepts]
+            if (
+                set([c.address for c in final.output_concepts])
+                == set([c.address for c in self.output_concepts])
+                and not self.conditions
             ):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
@@ -244,10 +251,14 @@ class MergeNode(StrategyNode):
                     if c.address not in [x.address for x in dataset.partial_concepts]
                 ]
             )
-            if all([c.address in output_set for c in self.all_concepts]):
+            if (
+                all([c.address in output_set for c in self.all_concepts])
+                and not self.conditions
+            ):
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} Merge node not required as parent node {dataset.identifier} {dataset.source_type}"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} Merge node not required as parent node {dataset.source_type}"
                     f" has all required output properties with partial {[c.address for c in dataset.partial_concepts]}"
+                    f" and self has no conditions ({self.conditions})"
                 )
                 return dataset
 

@@ -775,7 +775,11 @@ class Function(BaseModel):
         return Function(
             operator=self.operator,
             arguments=[
-                c.with_namespace(namespace) if isinstance(c, Concept) else c
+                (
+                    c.with_namespace(namespace)
+                    if isinstance(c, (Concept, CaseWhen, CaseElse))
+                    else c
+                )
                 for c in self.arguments
             ],
             output_datatype=self.output_datatype,
@@ -1867,6 +1871,12 @@ class CTE(BaseModel):
                 f" {self.name} {other.name} grains {self.grain} {other.grain}| {self.group_to_grain} {other.group_to_grain}| {self.output_lcl} {other.output_lcl}"
             )
             raise ValueError(error)
+        if not self.condition == other.condition:
+            error = (
+                "Attempting to merge two ctes with different conditions"
+                f" {self.name} {other.name} conditions {self.condition} {other.condition}"
+            )
+            raise ValueError(error)
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
@@ -2436,15 +2446,61 @@ class CaseWhen(BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
+    def with_namespace(self, namespace: str):
+        return CaseWhen(
+            comparison=self.comparison.with_namespace(namespace),
+            expr=(
+                self.expr.with_namespace(namespace)
+                if isinstance(
+                    self.expr,
+                    (
+                        Concept,
+                        WindowItem,
+                        FilterItem,
+                        Concept,
+                        Comparison,
+                        Conditional,
+                        Parenthetical,
+                        Function,
+                        AggregateWrapper,
+                    ),
+                )
+                else self.expr
+            ),
+        )
+
 
 class CaseElse(BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
-    discrimant: ComparisonOperator = ComparisonOperator.ELSE
+    discriminant: ComparisonOperator = ComparisonOperator.ELSE
 
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
+
+    def with_namespace(self, namespace: str):
+        return CaseElse(
+            discriminant=self.discriminant,
+            expr=(
+                self.expr.with_namespace(namespace)
+                if isinstance(
+                    self.expr,
+                    (
+                        Concept,
+                        WindowItem,
+                        FilterItem,
+                        Concept,
+                        Comparison,
+                        Conditional,
+                        Parenthetical,
+                        Function,
+                        AggregateWrapper,
+                    ),
+                )
+                else self.expr
+            ),
+        )
 
 
 class Conditional(BaseModel):
@@ -2672,19 +2728,24 @@ class RowsetDerivation(BaseModel):
             )
             orig[orig_concept.address] = new_concept
             output.append(new_concept)
+        default_grain = Grain(components=[*output])
         # remap everything to the properties of the rowset
         for x in output:
             if x.keys:
-                x.keys = tuple(
-                    [orig[k.address] if k.address in orig else k for k in x.keys]
-                )
+                if all([k.address in orig for k in x.keys]):
+                    x.keys = tuple(
+                        [orig[k.address] if k.address in orig else k for k in x.keys]
+                    )
+                else:
+                    # TODO: fix this up
+                    x.keys = tuple()
         for x in output:
-            x.grain = Grain(
-                components=[
-                    orig[c.address] if c.address in orig else c
-                    for c in x.grain.components_copy
-                ]
-            )
+            if all([c.address in orig for c in x.grain.components_copy]):
+                x.grain = Grain(
+                    components=[orig[c.address] for c in x.grain.components_copy]
+                )
+            else:
+                x.grain = default_grain
         return output
 
     @property

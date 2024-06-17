@@ -18,20 +18,47 @@ class History(BaseModel):
         return "-".join([c.address for c in search]) + str(accept_partial)
 
     def search_to_history(
-        self, search: list[Concept], accept_partial, output: StrategyNode | None
+        self, search: list[Concept], accept_partial: bool, output: StrategyNode | None
     ):
         self.history[self._concepts_to_lookup(search, accept_partial)] = output
 
     def get_history(
-        self, search: list[Concept], accept_partial: bool = False
+        self,
+        search: list[Concept],
+        accept_partial: bool = False,
     ) -> StrategyNode | None | bool:
-        return self.history.get(self._concepts_to_lookup(search, accept_partial), False)
+        return self.history.get(
+            self._concepts_to_lookup(
+                search,
+                accept_partial,
+            ),
+            False,
+        )
 
-    def log_start(self, search: list[Concept], accept_partial: bool = False):
-        self.started.add(self._concepts_to_lookup(search, accept_partial))
+    def log_start(
+        self,
+        search: list[Concept],
+        accept_partial: bool = False,
+    ):
+        self.started.add(
+            self._concepts_to_lookup(
+                search,
+                accept_partial,
+            )
+        )
 
-    def check_started(self, search: list[Concept], accept_partial: bool = False):
-        return self._concepts_to_lookup(search, accept_partial) in self.started
+    def check_started(
+        self,
+        search: list[Concept],
+        accept_partial: bool = False,
+    ):
+        return (
+            self._concepts_to_lookup(
+                search,
+                accept_partial,
+            )
+            in self.started
+        )
 
 
 __all__ = [
