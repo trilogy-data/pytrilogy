@@ -69,17 +69,18 @@ def gen_concept_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge node for {concept}"
             )
             return None
-
-        snode.output_concepts.append(lineage.merge_concept)
-        # clear cache so QPS
-        snode.resolution_cache = None
+        snode.add_output_concept(lineage.merge_concept)
         base_parents.append(snode)
 
     node_joins = merge_joins(lineage, base_parents)
+
+    enrichment = set([x.address for x in local_optional])
+    outputs = [x for y in base_parents for x in y.output_concepts]
+
+    additional_relevant = [x for x in outputs if x.address in enrichment]
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
-        output_concepts=[x for y in base_parents for x in y.output_concepts]
-        + [concept],
+        output_concepts=outputs + additional_relevant + [concept],
         environment=environment,
         g=g,
         depth=depth,
@@ -87,19 +88,12 @@ def gen_concept_merge_node(
         node_joins=node_joins,
     )
 
-    enrichment = set([x.address for x in local_optional])
-
-    additional_relevant = [x for x in node.output_concepts if x.address in enrichment]
-    for item in additional_relevant:
-        node.output_concepts.append(item)
-
-    # we need a better API for refreshing a nodes QDS
-    node.resolution_cache = node._resolve()
+    qds = node.rebuild_cache()
 
     # assume grain to be outoput of select
     # but don't include anything aggregate at this point
-    node.resolution_cache.grain = concept_list_to_grain(
-        node.output_concepts, parent_sources=node.resolution_cache.datasources
+    qds.grain = concept_list_to_grain(
+        node.output_concepts, parent_sources=qds.datasources
     )
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:

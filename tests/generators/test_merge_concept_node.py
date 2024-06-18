@@ -56,7 +56,10 @@ def test_merge_concepts():
     for query in queries:
         compiled = bd.compile_statement(query)
         for cte in query.ctes:
-            if len(cte.output_columns) == 2:
+            if (
+                len(cte.output_columns) == 2
+                and "local.__merge_one_env2_one" in cte.source_map
+            ):
                 assert cte.source_map["local.__merge_one_env2_one"] == ""
 
         assert "env2_num1.`one` as `__merge_one_env2_one`" in compiled

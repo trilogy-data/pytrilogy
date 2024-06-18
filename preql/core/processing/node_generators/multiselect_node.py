@@ -80,12 +80,16 @@ def gen_multiselect_node(
             return None
         if select.where_clause:
             snode.conditions = select.where_clause.conditional
+        merge_concepts = []
         for x in [*snode.output_concepts]:
             merge = lineage.get_merge_concept(x)
             if merge:
                 snode.output_concepts.append(merge)
+                merge_concepts.append(merge)
         # clear cache so QPS
-        snode.resolution_cache = None
+        snode.rebuild_cache()
+        for mc in merge_concepts:
+            assert mc in snode.resolve().output_concepts
         base_parents.append(snode)
 
     node_joins = extra_align_joins(lineage, base_parents)

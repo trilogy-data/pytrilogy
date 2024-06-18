@@ -264,13 +264,8 @@ class MergeNode(StrategyNode):
 
         pregrain = Grain()
         for source in final_datasets:
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Merge node parent has grain {source.grain}"
-            )
             pregrain += source.grain
-        logger.info(
-            f"{self.logging_prefix}{LOGGER_PREFIX} merge node has pre grain {pregrain}"
-        )
+
         grain = Grain(
             components=[
                 c
@@ -279,7 +274,7 @@ class MergeNode(StrategyNode):
             ]
         )
         logger.info(
-            f"{self.logging_prefix}{LOGGER_PREFIX} final merge node grain {grain}"
+            f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {pregrain} and final merge node grain {grain}"
         )
 
         if len(final_datasets) > 1:
@@ -296,11 +291,16 @@ class MergeNode(StrategyNode):
             force_group = False
         elif self.force_group is False:
             force_group = False
-        elif not any([d.grain.issubset(grain) for d in final_datasets]):
+        elif not any(
+            [d.grain.issubset(grain) for d in final_datasets]
+        ) and not pregrain.issubset(grain):
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} no parents include , assume must group to grain."
+                f"{self.logging_prefix}{LOGGER_PREFIX} no parents include full grain {grain} and pregrain {pregrain} does not match, assume must group to grain. Have {[str(d.grain) for d in final_datasets]}"
             )
             force_group = True
+            # Grain<returns.customer.id,returns.store.id,returns.item.id,returns.store_sales.ticket_number>
+            # Grain<returns.customer.id,returns.store.id,returns.return_date.id,returns.item.id,returns.store_sales.ticket_number>
+            # Grain<returns.customer.id,returns.store.id,returns.item.id,returns.store_sales.ticket_number>
         else:
             force_group = None
 

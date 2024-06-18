@@ -16,6 +16,7 @@ from preql.core.functions import (
     arg_to_datatype,
 )
 from preql.utility import unique
+from preql.core.enums import PurposeLineage
 
 
 def get_purpose_and_keys(
@@ -64,13 +65,33 @@ def constant_to_concept(
 
 
 def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
-    pkeys = [x for x in parent.arguments if isinstance(x, Concept)]
-    grain = Grain(components=pkeys)
-    keys = tuple(grain.components_copy)
+    pkeys = []
+    for x in parent.arguments:
+        pkeys += [
+            x
+            for x in parent.concept_arguments
+            if not x.derivation == PurposeLineage.CONSTANT
+        ]
+    # pkeys = [x for x in parent.arguments if isinstance(x, Concept) and not x.derivation == PurposeLineage.CONSTANT]
+    grain = Grain()
+    for x in pkeys:
+        grain += x.grain
+
+    key_grain = []
+    for x in pkeys:
+        if x.keys:
+            key_grain += [*x.keys]
+        else:
+            key_grain.append(x)
+    keys = tuple(Grain(components=key_grain).components_copy)
+    if not pkeys:
+        purpose = Purpose.CONSTANT
+    else:
+        purpose = parent.output_purpose
     return Concept(
         name=name,
         datatype=parent.output_datatype,
-        purpose=parent.output_purpose,
+        purpose=purpose,
         lineage=parent,
         namespace=namespace,
         grain=grain,
@@ -150,5 +171,5 @@ def agg_wrapper_to_concept(
         lineage=aggfunction,
         grain=(Grain(components=parent.by) if parent.by else aggfunction.output_grain),
         namespace=namespace,
-        keys=keys,
+        keys=tuple(parent.by) if parent.by else keys,
     )

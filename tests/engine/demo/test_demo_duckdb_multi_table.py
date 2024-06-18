@@ -114,7 +114,7 @@ limit 5;"""
     # assert {x.address for x in env.concepts["local.eldest"].keys} == {env.concepts["survivors.passenger.id"].address}
 
     # actual = executor.generate_sql(sql)
-    # logger.info(actual)
+    # assert actual == ''
     g = generate_graph(env)
     validate_shape(
         sql.output_columns,
@@ -123,9 +123,11 @@ limit 5;"""
         levels=[
             SelectNode,  # select store
             SelectNode,  # select year
-            MergeNode,
-            WindowNode,  # calculate aggregate
-            MergeNode,  # enrich store name
+            MergeNode,  # get survived
+            MergeNode,  # basic node
+            MergeNode,  # filter to survived
+            WindowNode,  # add window
+            MergeNode,  # merge window derivation
             MergeNode,  # final node
             MergeNode,  # final node
             GroupNode,  # final node

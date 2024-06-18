@@ -6,6 +6,7 @@ from preql.dialect.base import BaseDialect
 from preql.dialect.bigquery import BigqueryDialect
 from preql.dialect.duckdb import DuckDBDialect
 from preql.dialect.sql_server import SqlServerDialect
+from preql.core.enums import PurposeLineage
 from preql.parser import parse
 from preql.core.processing.nodes.select_node_v2 import SelectNode
 from preql.core.processing.node_generators import (
@@ -39,7 +40,7 @@ def test_derivations():
     grain (category_id)
     address category;
 
-    key test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
+    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
 
     persist bool_is_upper_name into upper_name from
     select
@@ -65,8 +66,9 @@ def test_derivations():
                 env.add_datasource(processed.datasource)
 
         test_concept = env.concepts["test_upper_case_2"]
-        assert test_concept.purpose == Purpose.KEY
+        assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept in env.materialized_concepts
+        assert test_concept.derivation == PurposeLineage.BASIC
 
         persist: Persist = parsed[-2]
         select: Select = parsed[-1]
@@ -81,7 +83,7 @@ def test_derivations():
             source=datasource_to_node(env.datasources["bool_is_upper_name"]),
             target=concept_to_node(test_concept.with_default_grain()),
         )
-        assert len(path) == 2, path
+        assert len(path) == 3, path
 
         # test that the full function returns the value
         static = gen_select_node(
@@ -92,7 +94,7 @@ def test_derivations():
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]
 
-        assert test_concept.purpose == Purpose.KEY
+        assert test_concept.purpose == Purpose.PROPERTY
         assert env.datasources["bool_is_upper_name"].grain == Grain(
             components=[test_concept]
         )

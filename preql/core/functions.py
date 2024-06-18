@@ -99,7 +99,12 @@ def Unnest(args: list[Concept]) -> Function:
         output_datatype=output,
         output_purpose=Purpose.KEY,
         arg_count=1,
-        valid_inputs={DataType.ARRAY, DataType.LIST},
+        valid_inputs={
+            DataType.ARRAY,
+            DataType.LIST,
+            ListType(type=DataType.STRING),
+            ListType(type=DataType.INTEGER),
+        },
     )
 
 
@@ -196,7 +201,11 @@ def IndexAccess(args: list[Concept]):
         ),
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
-            {DataType.LIST},
+            {
+                DataType.LIST,
+                ListType(type=DataType.STRING),
+                ListType(type=DataType.INTEGER),
+            },
             {
                 DataType.INTEGER,
             },

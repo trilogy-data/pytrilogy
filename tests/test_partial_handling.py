@@ -96,7 +96,8 @@ def test_partial_assignment():
     env = Environment()
     setup_titanic(env)
     executor.environment = env
-    test = """property passenger.id.family <- split(passenger.name, ',')[1]; auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
+    test = """property passenger.id.family <- split(passenger.name, ',')[1]; 
+    auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
 select 
     passenger.family,
     passenger.id.count,
@@ -136,7 +137,8 @@ limit 5;"""
     )
     assert isinstance(sourced, MergeNode)
     assert len(sourced.parents) == 2
-    mnode = [node for node in sourced.parents if isinstance(node, MergeNode)][0]
+    # filter
+    mnode = [node for node in sourced.parents if node.partial_concepts][0]
     # selectnode = [node for node in sourced.parents if isinstance(node, SelectNode)][0]
     resolved = sourced.resolve().source_map["passenger.family"]
 
@@ -152,7 +154,7 @@ limit 5;"""
     )
 
     filter_node = sourced.parents[0]
-    assert isinstance(filter_node, MergeNode)
+    assert isinstance(filter_node, MergeNode), str(type(filter_node)) + str(filter_node)
 
     assert len(filter_node.partial_concepts) == 2
     assert set([c.address for c in filter_node.partial_concepts]) == set(

@@ -156,6 +156,12 @@ order by x asc;"""
 
     z = env.concepts["z"]
     assert z.purpose == Purpose.PROPERTY
+    assert set([x.address for x in z.lineage.concept_arguments]) == set(
+        [
+            x.address,
+        ]
+    )
+    assert z.keys == (x,)
 
     ds = search_concepts(
         [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0

@@ -29,7 +29,9 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     if concept.derivation == PurposeLineage.AGGREGATE:
         if not concept.grain.abstract:
             base = concept.lineage.concept_arguments + concept.grain.components_copy
-            for x in base:
+            # if the base concept being aggregated is a property with a key
+            # keep the key as a parent
+            for x in concept.lineage.concept_arguments:
                 if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
                     base += x.keys
             return unique(base, "address")
@@ -41,10 +43,11 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
                     continue
                 if arg.grain:
                     default_grain += arg.grain
-                elif arg.purpose == Purpose.PROPERTY:
-                    default_grain += Grain(
-                        components=list(arg.keys) if arg.keys else []
-                    )
+            # for arg in concept.lineage.arguments:
+            #     if arg.purpose == Purpose.PROPERTY
+            #         default_grain += Grain(
+            #             components=list(arg.keys) if arg.keys else []
+            #         )
             return unique(
                 concept.lineage.concept_arguments + default_grain.components_copy,
                 "address",

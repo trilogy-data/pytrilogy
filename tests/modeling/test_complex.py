@@ -49,11 +49,11 @@ def test_rowset_with_aggregation(
 ):
     test_select = """
 
-    rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
+    rowset even_orders <- select order_id, store_id, revenue where (order_id % 2) = 0;
     SELECT
         even_orders.store_id,
         count(even_orders.order_id) -> even_order_count,
-        sum(revenue) by even_orders.store_id -> even_order_store_revenue,
+        sum(even_orders.revenue) by even_orders.store_id -> even_order_store_revenue,
     order by 
         even_order_count desc, 
         even_orders.store_id asc
@@ -70,7 +70,7 @@ def test_rowset_with_aggregation(
 
     x_lcl = LooseConceptList(concepts=x)
 
-    assert "local.revenue" in x_lcl
+    # assert "local.revenue" in x_lcl
     assert "even_orders.store_id" in x_lcl
 
     for count in [

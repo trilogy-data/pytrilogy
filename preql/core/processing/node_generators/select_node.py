@@ -27,12 +27,15 @@ def gen_select_node_from_table(
     depth: int,
     target_grain: Grain,
     accept_partial: bool = False,
-) -> Optional[SelectNode | ConstantNode]:
+) -> Optional[StrategyNode]:
     # if we have only constants
     # we don't need a table
     # so verify nothing, select node will render
     all_lcl = LooseConceptList(concepts=all_concepts)
     if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
+        )
         return ConstantNode(
             output_concepts=all_concepts,
             input_concepts=[],
@@ -44,7 +47,7 @@ def gen_select_node_from_table(
             partial_concepts=[],
             force_group=False,
         )
-    candidates: dict[str, SelectNode] = {}
+    candidates: dict[str, StrategyNode] = {}
     scores: dict[str, int] = {}
     # otherwise, we need to look for a table
     for datasource in environment.datasources.values():
@@ -130,7 +133,7 @@ def gen_select_node_from_table(
                 )
                 force_group = True
 
-            candidate = SelectNode(
+            bcandidate: StrategyNode = SelectNode(
                 input_concepts=[c.concept for c in datasource.columns],
                 output_concepts=all_concepts,
                 environment=environment,
@@ -141,8 +144,20 @@ def gen_select_node_from_table(
                 accept_partial=accept_partial,
                 datasource=datasource,
                 grain=Grain(components=all_concepts),
-                force_group=force_group,
             )
+            # we need to ntest the group node one further
+            if force_group is True:
+                candidate: StrategyNode = GroupNode(
+                    output_concepts=all_concepts,
+                    input_concepts=all_concepts,
+                    environment=environment,
+                    g=g,
+                    parents=[bcandidate],
+                    depth=depth,
+                    partial_concepts=bcandidate.partial_concepts,
+                )
+            else:
+                candidate = bcandidate
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, returning {candidate.output_lcl}"
             )
@@ -219,6 +234,9 @@ def gen_select_node(
                 break
             # filter to just the original ones we need to get
             local_combo = [x for x in combo if x not in found]
+            # skip if nothing new in this combo
+            if not local_combo:
+                continue
             # include core concept as join
             all_concepts = [concept, *local_combo]
 

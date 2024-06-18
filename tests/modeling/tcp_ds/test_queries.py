@@ -34,9 +34,11 @@ def test_one():
         text = f.read()
         env, queries = parse(text, env)
     exec = Dialects.DUCK_DB.default_executor(
-        environment=env,
+        environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)]
     )
 
+    # Grain<returns.customer.id,returns.store.id,returns.item.id,returns.store_sales.ticket_number>
+    # Grain<returns.customer.id,returns.store.id,returns.return_date.id,returns.item.id,returns.store_sales.ticket_number>
     env, queries = parse("""import store_returns as returns;""", env)
 
     for k, c in env.concepts.items():
@@ -125,16 +127,6 @@ limit 100;"""
     assert "SELECT" in sql[-1]
     # check that our casts returned properly
     assert "INVALID_ALIAS" not in sql[-1]
-
-    # validate_shape(sql[-1].output_columns, env, g, levels = [
-    #         SelectNode,  # select store
-    #         SelectNode,  # select year
-    #         SelectNode,  # select fact
-    #         MergeNode,  # merge year into fact
-    #         GroupNode,  # calculate aggregate
-    #         MergeNode,  # enrich store name
-    #         GroupNode,  # final node
-    #     ])
 
 
 def test_three():
