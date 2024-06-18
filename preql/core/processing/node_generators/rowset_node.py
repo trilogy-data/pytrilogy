@@ -1,10 +1,10 @@
 from preql.core.models import (
     Concept,
     Environment,
-    Select,
-    RowsetDerivation,
+    SelectStatement,
+    RowsetDerivationStatement,
     RowsetItem,
-    MultiSelect,
+    MultiSelectStatement,
 )
 from preql.core.processing.nodes import MergeNode, NodeJoin, History, StrategyNode
 from preql.core.processing.nodes.base_node import concept_list_to_grain
@@ -33,8 +33,8 @@ def gen_rowset_node(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
         )
     lineage: RowsetItem = concept.lineage
-    rowset: RowsetDerivation = lineage.rowset
-    select: Select | MultiSelect = lineage.rowset.select
+    rowset: RowsetDerivationStatement = lineage.rowset
+    select: SelectStatement | MultiSelectStatement = lineage.rowset.select
     node: StrategyNode = source_concepts(
         mandatory_list=select.output_components,
         environment=environment,

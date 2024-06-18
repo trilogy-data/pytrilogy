@@ -9,9 +9,9 @@ from preql.core.models import (
     ProcessedQuery,
     ProcessedShowStatement,
     ProcessedQueryPersist,
-    MultiSelect,
-    Select,
-    Persist,
+    MultiSelectStatement,
+    SelectStatement,
+    PersistStatement,
     ShowStatement,
     Concept,
 )
@@ -99,7 +99,7 @@ class Executor(object):
         raise NotImplementedError("Cannot execute type {}".format(type(query)))
 
     @execute_query.register
-    def _(self, query: Select | Persist) -> CursorResult:
+    def _(self, query: SelectStatement | PersistStatement) -> CursorResult:
         sql = self.generator.generate_queries(
             self.environment, [query], hooks=self.hooks
         )
@@ -139,7 +139,7 @@ class Executor(object):
         return output
 
     @generate_sql.register  # type: ignore
-    def _(self, command: MultiSelect) -> List[str]:
+    def _(self, command: MultiSelectStatement) -> List[str]:
         output = []
         sql = self.generator.generate_queries(
             self.environment, [command], hooks=self.hooks
@@ -152,7 +152,7 @@ class Executor(object):
         return output
 
     @generate_sql.register  # type: ignore
-    def _(self, command: Select) -> List[str]:
+    def _(self, command: SelectStatement) -> List[str]:
         output = []
         sql = self.generator.generate_queries(
             self.environment, [command], hooks=self.hooks
@@ -166,7 +166,9 @@ class Executor(object):
     def _(self, command: str) -> List[str]:
         """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
-        generatable = [x for x in parsed if isinstance(x, (Select, Persist))]
+        generatable = [
+            x for x in parsed if isinstance(x, (SelectStatement, PersistStatement))
+        ]
         sql = self.generator.generate_queries(
             self.environment, generatable, hooks=self.hooks
         )
@@ -186,7 +188,15 @@ class Executor(object):
         generatable = [
             x
             for x in parsed
-            if isinstance(x, (Select, Persist, MultiSelect, ShowStatement))
+            if isinstance(
+                x,
+                (
+                    SelectStatement,
+                    PersistStatement,
+                    MultiSelectStatement,
+                    ShowStatement,
+                ),
+            )
         ]
         sql = []
         while generatable:

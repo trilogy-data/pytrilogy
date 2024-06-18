@@ -3,24 +3,24 @@ from preql.core.models import (
     OrderBy,
     Ordering,
     OrderItem,
-    Select,
+    SelectStatement,
     WhereClause,
     Conditional,
     Comparison,
-    Persist,
+    PersistStatement,
     Address,
     SelectItem,
-    ConceptDeclaration,
+    ConceptDeclarationStatement,
     ListWrapper,
     Function,
     Purpose,
     DataType,
-    RowsetDerivation,
+    RowsetDerivationStatement,
     CaseElse,
     CaseWhen,
     Concept,
     MergeStatement,
-    MultiSelect,
+    MultiSelectStatement,
     AlignClause,
     AlignItem,
 )
@@ -30,7 +30,7 @@ from preql.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
 
 
 def test_basic_query(test_environment):
-    query = Select(
+    query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
         order_by=OrderBy(
@@ -55,14 +55,14 @@ ORDER BY
 
 
 def test_multi_select(test_environment):
-    query = MultiSelect(
+    query = MultiSelectStatement(
         namespace=DEFAULT_NAMESPACE,
         selects=[
-            Select(
+            SelectStatement(
                 selection=[test_environment.concepts["order_id"]],
                 where_clause=None,
             ),
-            Select(
+            SelectStatement(
                 selection=[test_environment.concepts["order_id"]],
                 where_clause=None,
             ),
@@ -101,7 +101,7 @@ ORDER BY
 
 
 def test_full_query(test_environment):
-    query = Select(
+    query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=WhereClause(
             conditional=Conditional(
@@ -148,7 +148,7 @@ def test_environment_rendering(test_environment):
 
 
 def test_persist(test_environment: Environment):
-    select = Select(
+    select = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
         order_by=OrderBy(
@@ -160,7 +160,7 @@ def test_persist(test_environment: Environment):
             ]
         ),
     )
-    query = Persist(
+    query = PersistStatement(
         select=select,
         datasource=select.to_datasource(
             namespace=test_environment.namespace,
@@ -192,7 +192,7 @@ def test_render_select_item(test_environment: Environment):
 
 def test_render_concept_declaration(test_environment: Environment):
     test = Renderer().to_string(
-        ConceptDeclaration(concept=test_environment.concepts["order_id"])
+        ConceptDeclarationStatement(concept=test_environment.concepts["order_id"])
     )
 
     assert test == "key local.order_id int;"
@@ -218,7 +218,7 @@ def test_render_constant(test_environment: Environment):
 
 
 def test_render_rowset(test_environment: Environment):
-    query = Select(
+    query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
         order_by=OrderBy(
@@ -231,7 +231,9 @@ def test_render_rowset(test_environment: Environment):
         ),
     )
     test = Renderer().to_string(
-        RowsetDerivation(select=query, name="test", namespace=DEFAULT_NAMESPACE)
+        RowsetDerivationStatement(
+            select=query, name="test", namespace=DEFAULT_NAMESPACE
+        )
     )
 
     assert (

@@ -4,7 +4,7 @@ from preql.core.models import (
     Parenthetical,
     ProcessedQuery,
     ShowStatement,
-    Select,
+    SelectStatement,
     Environment,
 )
 from preql.core.functions import argument_to_purpose, function_args_to_output_purpose
@@ -116,7 +116,7 @@ def test_show(test_environment):
 def test_as_transform(test_environment):
     _, parsed = parse_text("const order_id <- 4; SELECT order_id as new_order_id;")
     query = parsed[-1]
-    assert isinstance(query, Select)
+    assert isinstance(query, SelectStatement)
 
 
 def test_bq_address():

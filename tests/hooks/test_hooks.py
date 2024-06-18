@@ -1,5 +1,5 @@
-from preql.hooks.base_hook import BaseHook, Select
-from preql.core.models import RowsetDerivation
+from preql.hooks.base_hook import BaseHook, SelectStatement
+from preql.core.models import RowsetDerivationStatement
 from preql import parse
 
 
@@ -47,7 +47,7 @@ select
 
     """
     env, parsed = parse(declarations)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     BaseHook().process_rowset_info(
-        RowsetDerivation(name="test", select=select, namespace="test")
+        RowsetDerivationStatement(name="test", select=select, namespace="test")
     )

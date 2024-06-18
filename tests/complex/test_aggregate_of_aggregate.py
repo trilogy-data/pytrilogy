@@ -1,4 +1,4 @@
-from preql.core.models import Select
+from preql.core.models import SelectStatement
 from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
 from preql.hooks.query_debugger import DebuggingHook
@@ -50,7 +50,7 @@ select
 
     """
     env, parsed = parse(declarations)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 

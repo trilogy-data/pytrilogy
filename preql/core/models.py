@@ -247,7 +247,7 @@ class Concept(BaseModel):
             FilterItem,
             AggregateWrapper,
             RowsetItem,
-            MultiSelect | MergeStatement,
+            MultiSelectStatement | MergeStatement,
         ]
     ] = None
     # lineage: Annotated[Optional[
@@ -458,7 +458,7 @@ class Concept(BaseModel):
             return PurposeLineage.AGGREGATE
         elif self.lineage and isinstance(self.lineage, RowsetItem):
             return PurposeLineage.ROWSET
-        elif self.lineage and isinstance(self.lineage, MultiSelect):
+        elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
             return PurposeLineage.MULTISELECT
         elif self.lineage and isinstance(self.lineage, MergeStatement):
             return PurposeLineage.MERGE
@@ -1049,7 +1049,7 @@ class OrderBy(BaseModel):
         return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class Select(BaseModel):
+class SelectStatement(BaseModel):
     selection: List[SelectItem]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
@@ -1190,8 +1190,8 @@ class Select(BaseModel):
                 output.append(item)
         return Grain(components=unique(output, "address"))
 
-    def with_namespace(self, namespace: str) -> "Select":
-        return Select(
+    def with_namespace(self, namespace: str) -> "SelectStatement":
+        return SelectStatement(
             selection=[c.with_namespace(namespace) for c in self.selection],
             where_clause=(
                 self.where_clause.with_namespace(namespace)
@@ -1220,7 +1220,7 @@ class AlignItem(BaseModel):
             namespace=namespace,
         )
 
-    def gen_concept(self, parent: MultiSelect):
+    def gen_concept(self, parent: MultiSelectStatement):
         datatypes = set([c.datatype for c in self.concepts])
         purposes = set([c.purpose for c in self.concepts])
         if len(datatypes) > 1:
@@ -1248,8 +1248,8 @@ class AlignClause(BaseModel):
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class MultiSelect(BaseModel):
-    selects: List[Select]
+class MultiSelectStatement(BaseModel):
+    selects: List[SelectStatement]
     align: AlignClause
     namespace: str
     where_clause: Optional["WhereClause"] = None
@@ -1283,8 +1283,8 @@ class MultiSelect(BaseModel):
                 return item.gen_concept(self)
         return None
 
-    def with_namespace(self, namespace: str) -> "MultiSelect":
-        return MultiSelect(
+    def with_namespace(self, namespace: str) -> "MultiSelectStatement":
+        return MultiSelectStatement(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             namespace=namespace,
@@ -2174,7 +2174,7 @@ class EnvironmentConceptDict(dict):
         return super().items()
 
 
-class Import(BaseModel):
+class ImportStatement(BaseModel):
     alias: str
     path: str
     # environment: "Environment" | None = None
@@ -2205,7 +2205,7 @@ class Environment(BaseModel):
     datasources: Dict[str, Datasource] = Field(default_factory=dict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
-    imports: Dict[str, Import] = Field(default_factory=dict)
+    imports: Dict[str, ImportStatement] = Field(default_factory=dict)
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
@@ -2279,7 +2279,9 @@ class Environment(BaseModel):
         )
 
     def add_import(self, alias: str, environment: Environment):
-        self.imports[alias] = Import(alias=alias, path=str(environment.working_path))
+        self.imports[alias] = ImportStatement(
+            alias=alias, path=str(environment.working_path)
+        )
         for key, concept in environment.concepts.items():
             self.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
         for key, datasource in environment.datasources.items():
@@ -2714,7 +2716,7 @@ class Limit(BaseModel):
     count: int
 
 
-class ConceptDeclaration(BaseModel):
+class ConceptDeclarationStatement(BaseModel):
     concept: Concept
 
 
@@ -2722,9 +2724,9 @@ class ConceptDerivation(BaseModel):
     concept: Concept
 
 
-class RowsetDerivation(BaseModel):
+class RowsetDerivationStatement(BaseModel):
     name: str
-    select: Select | MultiSelect
+    select: SelectStatement | MultiSelectStatement
     namespace: str
 
     def __repr__(self):
@@ -2777,8 +2779,8 @@ class RowsetDerivation(BaseModel):
     def arguments(self) -> List[Concept]:
         return self.select.output_components
 
-    def with_namespace(self, namespace: str) -> "RowsetDerivation":
-        return RowsetDerivation(
+    def with_namespace(self, namespace: str) -> "RowsetDerivationStatement":
+        return RowsetDerivationStatement(
             name=self.name,
             select=self.select.with_namespace(namespace),
             namespace=namespace,
@@ -2787,7 +2789,7 @@ class RowsetDerivation(BaseModel):
 
 class RowsetItem(BaseModel):
     content: Concept
-    rowset: RowsetDerivation
+    rowset: RowsetDerivationStatement
     where: Optional["WhereClause"] = None
 
     def __repr__(self):
@@ -2846,9 +2848,6 @@ class RowsetItem(BaseModel):
 
 class Parenthetical(BaseModel):
     content: "Expr"
-    # Union[
-    #     int, str, float, list, bool, Concept, Comparison, "Conditional", "Parenthetical"
-    # ]
 
     def __str__(self):
         return self.__repr__()
@@ -2891,9 +2890,9 @@ class Parenthetical(BaseModel):
         return base
 
 
-class Persist(BaseModel):
+class PersistStatement(BaseModel):
     datasource: Datasource
-    select: Select
+    select: SelectStatement
 
     @property
     def identifier(self):
@@ -2905,7 +2904,7 @@ class Persist(BaseModel):
 
 
 class ShowStatement(BaseModel):
-    content: Select | Persist | ShowCategory
+    content: SelectStatement | PersistStatement | ShowCategory
 
 
 Expr = (
@@ -2934,10 +2933,10 @@ Comparison.model_rebuild()
 Conditional.model_rebuild()
 Parenthetical.model_rebuild()
 WhereClause.model_rebuild()
-Import.model_rebuild()
+ImportStatement.model_rebuild()
 CaseWhen.model_rebuild()
 CaseElse.model_rebuild()
-Select.model_rebuild()
+SelectStatement.model_rebuild()
 CTE.model_rebuild()
 BaseJoin.model_rebuild()
 QueryDatasource.model_rebuild()

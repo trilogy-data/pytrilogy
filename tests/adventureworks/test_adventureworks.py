@@ -5,7 +5,7 @@ import pytest
 from preql import Executor
 from preql.core.env_processor import generate_graph
 from preql.core.models import (
-    Select,
+    SelectStatement,
     QueryDatasource,
     Grain,
     Environment,
@@ -61,7 +61,7 @@ def test_query_datasources(environment: Environment):
         == "Grain<internet_sales.order_line_number,internet_sales.order_number>"
     )
 
-    test: Select = statements[-1]  # multipart join
+    test: SelectStatement = statements[-1]  # multipart join
 
     environment_graph = generate_graph(environment)
     from preql.hooks.query_debugger import print_recursive_nodes
@@ -142,7 +142,7 @@ def test_two_properties(environment: Environment):
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
-    test: Select = statements[-3]
+    test: SelectStatement = statements[-3]
 
     environment_graph = generate_graph(environment)
 
@@ -293,7 +293,7 @@ def test_two_properties_query(environment: Environment):
         source_concepts=search_concepts,
     )
 
-    test: Select = statements[-3]
+    test: SelectStatement = statements[-3]
     generator = SqlServerDialect()
     sql2 = generator.generate_queries(environment, [test])
     generator.compile_statement(sql2[0])

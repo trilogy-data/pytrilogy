@@ -1,6 +1,6 @@
 from cProfile import Profile
 from pstats import SortKey, Stats
-from preql.core.models import Select
+from preql.core.models import SelectStatement
 from preql import parse
 
 # from preql.compiler import compile
@@ -252,7 +252,7 @@ def date_functions():
     
         """
     env, parsed = parse(declarations, environment=environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     BigqueryDialect().compile_statement(process_query(environment, select))
 

@@ -2,7 +2,13 @@
 
 
 # from preql.compiler import compile
-from preql.core.models import Select, Grain, Datasource, QueryDatasource, Environment
+from preql.core.models import (
+    SelectStatement,
+    Grain,
+    Datasource,
+    QueryDatasource,
+    Environment,
+)
 from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
 from preql.core.query_processor import process_query, datasource_to_ctes
 from preql.dialect.sql_server import SqlServerDialect
@@ -14,7 +20,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
     env: Environment = stackoverflow_environment
     avg_user_post_count = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
-    select: Select = Select(selection=[avg_user_post_count, user_id])
+    select: SelectStatement = SelectStatement(selection=[avg_user_post_count, user_id])
 
     query = process_query(statement=select, environment=env)
     generator = SqlServerDialect()
@@ -35,7 +41,7 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
     env = stackoverflow_environment
     avg_post_length = env.concepts["avg_post_length_by_post_id"]
     user_id = env.concepts["user_id"]
-    select: Select = Select(selection=[avg_post_length, user_id])
+    select: SelectStatement = SelectStatement(selection=[avg_post_length, user_id])
 
     query = process_query(statement=select, environment=env)
     generator = SqlServerDialect()
@@ -113,7 +119,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert len(final_cte.parent_ctes) > 0
 
     # now validate
-    select: Select = Select(selection=[avg_user_post_count])
+    select: SelectStatement = SelectStatement(selection=[avg_user_post_count])
 
     query = process_query(statement=select, environment=env, hooks=[])
     cte = query.base

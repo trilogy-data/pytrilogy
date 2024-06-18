@@ -70,16 +70,16 @@ from preql.core.models import (
     FilterItem,
     Function,
     Grain,
-    Import,
+    ImportStatement,
     Limit,
     Metadata,
-    MultiSelect,
+    MultiSelectStatement,
     OrderBy,
     OrderItem,
     Parenthetical,
-    Persist,
+    PersistStatement,
     Query,
-    Select,
+    SelectStatement,
     SelectItem,
     WhereClause,
     Window,
@@ -94,9 +94,9 @@ from preql.core.models import (
     DataType,
     StructType,
     ListType,
-    ConceptDeclaration,
+    ConceptDeclarationStatement,
     ConceptDerivation,
-    RowsetDerivation,
+    RowsetDerivationStatement,
     LooseConceptList,
 )
 from preql.parsing.exceptions import ParseError
@@ -564,7 +564,7 @@ class ParseToObjects(Transformer):
 
     def block(self, args):
         output = args[0]
-        if isinstance(output, ConceptDeclaration):
+        if isinstance(output, ConceptDeclarationStatement):
             if len(args) > 1 and isinstance(args[1], Comment):
                 output.concept.metadata.description = (
                     output.concept.metadata.description
@@ -706,7 +706,7 @@ class ParseToObjects(Transformer):
         return concept
 
     @v_args(meta=True)
-    def concept_declaration(self, meta: Meta, args) -> ConceptDeclaration:
+    def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -725,7 +725,7 @@ class ParseToObjects(Transformer):
         if concept.metadata:
             concept.metadata.line_number = meta.line
         self.environment.add_concept(concept, meta=meta)
-        return ConceptDeclaration(concept=concept)
+        return ConceptDeclarationStatement(concept=concept)
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> ConceptDerivation:
@@ -816,10 +816,10 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
-    def rowset_derivation(self, meta: Meta, args) -> RowsetDerivation:
+    def rowset_derivation(self, meta: Meta, args) -> RowsetDerivationStatement:
         name = args[0]
-        select: Select | MultiSelect = args[1]
-        output = RowsetDerivation(
+        select: SelectStatement | MultiSelectStatement = args[1]
+        output = RowsetDerivationStatement(
             name=name,
             select=select,
             namespace=self.environment.namespace or DEFAULT_NAMESPACE,
@@ -862,7 +862,7 @@ class ParseToObjects(Transformer):
         return concept
 
     @v_args(meta=True)
-    def concept(self, meta: Meta, args) -> ConceptDeclaration:
+    def concept(self, meta: Meta, args) -> ConceptDeclarationStatement:
 
         if isinstance(args[0], Concept):
             concept: Concept = args[0]
@@ -870,7 +870,7 @@ class ParseToObjects(Transformer):
             concept = args[0].concept
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        return ConceptDeclaration(concept=concept)
+        return ConceptDeclarationStatement(concept=concept)
 
     def column_assignment_list(self, args):
         return args
@@ -1056,7 +1056,7 @@ class ParseToObjects(Transformer):
             self.environment.add_datasource(datasource.with_namespace(alias))
             # self.environment.datasources[f"{alias}.{key}"] = datasource.with_namespace(new_namespace)
 
-        self.environment.imports[alias] = Import(alias=alias, path=args[0])
+        self.environment.imports[alias] = ImportStatement(alias=alias, path=args[0])
         return None
 
     @v_args(meta=True)
@@ -1068,10 +1068,10 @@ class ParseToObjects(Transformer):
         return ShowStatement(content=args[0])
 
     @v_args(meta=True)
-    def persist(self, meta: Meta, args) -> Persist:
+    def persist(self, meta: Meta, args) -> PersistStatement:
         identifier: str = args[0]
         address: str = args[1]
-        select: Select = args[2]
+        select: SelectStatement = args[2]
         if len(args) > 3:
             grain: Grain | None = args[3]
         else:
@@ -1086,7 +1086,7 @@ class ParseToObjects(Transformer):
             address=Address(location=address),
             grain=grain,
         )
-        return Persist(select=select, datasource=new_datasource)
+        return PersistStatement(select=select, datasource=new_datasource)
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:
@@ -1101,14 +1101,14 @@ class ParseToObjects(Transformer):
         return AlignClause(items=args)
 
     @v_args(meta=True)
-    def multi_select(self, meta: Meta, args) -> MultiSelect:
+    def multi_select(self, meta: Meta, args) -> MultiSelectStatement:
         selects = []
         align: AlignClause | None = None
         limit: int | None = None
         order_by: OrderBy | None = None
         where: WhereClause | None = None
         for arg in args:
-            if isinstance(arg, Select):
+            if isinstance(arg, SelectStatement):
                 selects.append(arg)
             elif isinstance(arg, Limit):
                 limit = arg.count
@@ -1121,7 +1121,7 @@ class ParseToObjects(Transformer):
 
         assert align
         assert align is not None
-        multi = MultiSelect(
+        multi = MultiSelectStatement(
             selects=selects,
             align=align,
             namespace=self.environment.namespace,
@@ -1134,7 +1134,7 @@ class ParseToObjects(Transformer):
         return multi
 
     @v_args(meta=True)
-    def select(self, meta: Meta, args) -> Select:
+    def select(self, meta: Meta, args) -> SelectStatement:
         select_items = None
         limit = None
         order_by = None
@@ -1150,7 +1150,7 @@ class ParseToObjects(Transformer):
                 where = arg
         if not select_items:
             raise ValueError("Malformed select, missing select items")
-        output = Select(
+        output = SelectStatement(
             selection=select_items, where_clause=where, limit=limit, order_by=order_by
         )
         for item in select_items:
@@ -1889,10 +1889,16 @@ def unpack_visit_error(e: VisitError):
     raise e
 
 
-def parse_text(
-    text: str, environment: Optional[Environment] = None
-) -> Tuple[
-    Environment, List[Datasource | Import | Select | Persist | ShowStatement | None]
+def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
+    Environment,
+    List[
+        Datasource
+        | ImportStatement
+        | SelectStatement
+        | PersistStatement
+        | ShowStatement
+        | None
+    ],
 ]:
     environment = environment or Environment(datasources={})
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)

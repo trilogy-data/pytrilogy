@@ -4,7 +4,7 @@ from preql.core.models import (
     Grain,
     QueryDatasource,
     Conditional,
-    Select,
+    SelectStatement,
     Environment,
     Address,
 )
@@ -105,7 +105,7 @@ def test_select(test_environment: Environment):
     pid = test_environment.concepts["product_id"]
     cid = test_environment.concepts["category_id"]
     cname = test_environment.concepts["category_name"]
-    x = Select(selection=[oid, pid, cid, cname])
+    x = SelectStatement(selection=[oid, pid, cid, cname])
     ds = x.to_datasource(
         test_environment.namespace, "test", address=Address(location="test")
     )

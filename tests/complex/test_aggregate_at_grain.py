@@ -1,4 +1,4 @@
-from preql.core.models import Select, Grain
+from preql.core.models import SelectStatement, Grain
 from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
 from preql.hooks.query_debugger import DebuggingHook
@@ -35,7 +35,7 @@ select
 
     """
     env, parsed = parse(declarations)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 
@@ -69,7 +69,7 @@ select
 
     assert env.concepts["total_posts"].granularity == Granularity.SINGLE_ROW
     assert env.concepts["total_posts_auto"].granularity == Granularity.SINGLE_ROW
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     assert select.grain == Grain(components=[env.concepts["user_id"]])
 

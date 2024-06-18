@@ -1,6 +1,11 @@
 # from preql.compiler import compile
 from preql.core.enums import Purpose
-from preql.core.models import Grain, ProcessedQueryPersist, Select, Persist
+from preql.core.models import (
+    Grain,
+    ProcessedQueryPersist,
+    SelectStatement,
+    PersistStatement,
+)
 from preql.core.query_processor import process_auto
 from preql.dialect.base import BaseDialect
 from preql.dialect.bigquery import BigqueryDialect
@@ -70,8 +75,8 @@ def test_derivations():
         assert test_concept in env.materialized_concepts
         assert test_concept.derivation == PurposeLineage.BASIC
 
-        persist: Persist = parsed[-2]
-        select: Select = parsed[-1]
+        persist: PersistStatement = parsed[-2]
+        select: SelectStatement = parsed[-1]
         assert persist.select.grain == Grain(components=[test_concept])
         assert select.output_components == [test_concept]
         assert len(compiled) == 2

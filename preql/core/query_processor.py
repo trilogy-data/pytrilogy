@@ -7,9 +7,9 @@ from preql.core.processing.concept_strategies_v3 import source_query_concepts
 from preql.constants import CONFIG, DEFAULT_NAMESPACE
 from preql.core.models import (
     Environment,
-    Persist,
-    Select,
-    MultiSelect,
+    PersistStatement,
+    SelectStatement,
+    MultiSelectStatement,
     CTE,
     Join,
     UnnestJoin,
@@ -229,7 +229,7 @@ def datasource_to_ctes(
 
 def get_query_datasources(
     environment: Environment,
-    statement: Select | MultiSelect,
+    statement: SelectStatement | MultiSelectStatement,
     graph: Optional[ReferenceGraph] = None,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
@@ -258,18 +258,20 @@ def flatten_ctes(input: CTE) -> list[CTE]:
 
 def process_auto(
     environment: Environment,
-    statement: Persist | Select,
+    statement: PersistStatement | SelectStatement,
     hooks: List[BaseHook] | None = None,
 ):
-    if isinstance(statement, Persist):
+    if isinstance(statement, PersistStatement):
         return process_persist(environment, statement, hooks)
-    elif isinstance(statement, Select):
+    elif isinstance(statement, SelectStatement):
         return process_query(environment, statement, hooks)
     raise ValueError(f"Do not know how to process {type(statement)}")
 
 
 def process_persist(
-    environment: Environment, statement: Persist, hooks: List[BaseHook] | None = None
+    environment: Environment,
+    statement: PersistStatement,
+    hooks: List[BaseHook] | None = None,
 ) -> ProcessedQueryPersist:
     select = process_query(
         environment=environment, statement=statement.select, hooks=hooks
@@ -286,7 +288,7 @@ def process_persist(
 
 def process_query(
     environment: Environment,
-    statement: Select | MultiSelect,
+    statement: SelectStatement | MultiSelectStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:
     hooks = hooks or []
