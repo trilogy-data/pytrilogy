@@ -27,6 +27,7 @@ FUNCTION_MAP = {
     FunctionType.QUARTER: lambda x: f"EXTRACT(QUARTER from {x[0]})",
     # math
     FunctionType.DIVIDE: lambda x: f"SAFE_DIVIDE({x[0]},{x[1]})",
+    FunctionType.DATE_ADD: lambda x: f"DATE_ADD({x[0]}, INTERVAL {x[2]} {x[1]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

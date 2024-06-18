@@ -112,15 +112,15 @@ from preql.parsing.common import (
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
 
 grammar = r"""
-    !start: ( block | show | comment )*
+    !start: ( block | show_statement | comment )*
     block: statement _TERMINATOR comment?
     ?statement: concept
     | datasource
     | function
-    | multi_select
-    | select
-    | persist
-    | rowset_derivation
+    | multi_select_statement
+    | select_statement
+    | persist_statement
+    | rowset_derivation_statement
     | import_statement
     | merge_statement
     
@@ -136,7 +136,7 @@ grammar = r"""
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
 
-    rowset_derivation: ("rowset"i IDENTIFIER "<" "-" (multi_select | select)) | ("with"i IDENTIFIER "as"i (multi_select | select))
+    rowset_derivation_statement: ("rowset"i IDENTIFIER "<" "-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
     
@@ -167,13 +167,13 @@ grammar = r"""
     import_statement: "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
 
     // persist_statement
-    persist: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select grain_clause?
+    persist_statement: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select_statement grain_clause?
 
     // select statement
-    select: "select"i select_list  where? comment* order_by? comment* limit? comment*
+    select_statement: "select"i select_list  where? comment* order_by? comment* limit? comment*
 
     // multiple_selects
-    multi_select: select ("merge" select)+ "align"i align_clause  where? comment* order_by? comment* limit? comment*
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? comment* order_by? comment* limit? comment*
 
 
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)* ","?
@@ -352,8 +352,10 @@ grammar = r"""
     _single_quote: "'" ( SINGLE_STRING_CHARS )* "'" 
     _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
     _string_lit: _single_quote | _double_quote
-    
-    int_lit: "-"? /[0-9]+/
+
+    MINUS: "-"
+
+    int_lit: MINUS? /[0-9]+/
     
     float_lit: /[0-9]*\.[0-9]+/
 
@@ -387,7 +389,7 @@ grammar = r"""
 
     show_category: CONCEPTS | DATASOURCES
 
-    show: "show"i ( show_category | select | persist) _TERMINATOR
+    show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
 
     %import common.WS_INLINE -> _WHITESPACE
     %import common.WS
@@ -591,6 +593,9 @@ class ParseToObjects(Transformer):
 
     def DOUBLE_STRING_CHARS(self, args) -> str:
         return args.value
+
+    def MINUS(self, args) -> str:
+        return "-"
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
@@ -816,7 +821,9 @@ class ParseToObjects(Transformer):
         )
 
     @v_args(meta=True)
-    def rowset_derivation(self, meta: Meta, args) -> RowsetDerivationStatement:
+    def rowset_derivation_statement(
+        self, meta: Meta, args
+    ) -> RowsetDerivationStatement:
         name = args[0]
         select: SelectStatement | MultiSelectStatement = args[1]
         output = RowsetDerivationStatement(
@@ -1064,11 +1071,11 @@ class ParseToObjects(Transformer):
         return ShowCategory(args[0])
 
     @v_args(meta=True)
-    def show(self, meta: Meta, args) -> ShowStatement:
+    def show_statement(self, meta: Meta, args) -> ShowStatement:
         return ShowStatement(content=args[0])
 
     @v_args(meta=True)
-    def persist(self, meta: Meta, args) -> PersistStatement:
+    def persist_statement(self, meta: Meta, args) -> PersistStatement:
         identifier: str = args[0]
         address: str = args[1]
         select: SelectStatement = args[2]
@@ -1101,7 +1108,7 @@ class ParseToObjects(Transformer):
         return AlignClause(items=args)
 
     @v_args(meta=True)
-    def multi_select(self, meta: Meta, args) -> MultiSelectStatement:
+    def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
         selects = []
         align: AlignClause | None = None
         limit: int | None = None
@@ -1134,7 +1141,7 @@ class ParseToObjects(Transformer):
         return multi
 
     @v_args(meta=True)
-    def select(self, meta: Meta, args) -> SelectStatement:
+    def select_statement(self, meta: Meta, args) -> SelectStatement:
         select_items = None
         limit = None
         order_by = None
@@ -1214,7 +1221,7 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def int_lit(self, args):
-        return int(args[0])
+        return int("".join(args))
 
     def bool_lit(self, args):
         return args[0].capitalize() == "True"

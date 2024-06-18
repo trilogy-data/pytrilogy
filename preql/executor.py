@@ -126,7 +126,7 @@ class Executor(object):
         return output
 
     @singledispatchmethod
-    def generate_sql(self, command: ProcessedQuery | str) -> str:
+    def generate_sql(self, command: ProcessedQuery | str) -> list[str]:
         raise NotImplementedError(
             "Cannot generate sql for type {}".format(type(command))
         )
