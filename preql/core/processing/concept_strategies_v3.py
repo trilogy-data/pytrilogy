@@ -146,17 +146,17 @@ def generate_candidates_restrictive(
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
         return [[]]
+
+    local_candidates = [
+        x
+        for x in list(candidates)
+        if x.address not in exhausted and x.granularity != Granularity.SINGLE_ROW
+    ]
     combos: list[list[Concept]] = []
-    combos.append(
-        Grain(
-            components=[
-                x
-                for x in list(candidates)
-                if x.address not in exhausted
-                and x.granularity != Granularity.SINGLE_ROW
-            ]
-        ).components_copy
-    )
+    # for simple operations these, fetch as much as possible.
+    if priority_concept.derivation in (PurposeLineage.BASIC, PurposeLineage.ROOT):
+        combos.append(local_candidates)
+    combos.append(Grain(components=[*local_candidates]).components_copy)
     # append the empty set for sourcing concept by itself last
     combos.append([])
     return combos

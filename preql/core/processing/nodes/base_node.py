@@ -128,9 +128,15 @@ class StrategyNode:
         self.conditions = conditions
         self.grain = grain
         self.force_group = force_group
+        self.tainted = False
         for parent in self.parents:
             if not parent:
                 raise SyntaxError("Unresolvable parent")
+
+    def add_output_concept(self, concept: Concept):
+        self.output_concepts.append(concept)
+        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.rebuild_cache()
 
     @property
     def logging_prefix(self) -> str:
@@ -171,7 +177,8 @@ class StrategyNode:
             partial_concepts=self.partial_concepts,
         )
 
-    def rebuild_cache(self):
+    def rebuild_cache(self) -> QueryDatasource:
+        self.tainted = True
         if not self.resolution_cache:
             return self.resolve()
         self.resolution_cache = None

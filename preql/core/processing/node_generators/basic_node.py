@@ -24,10 +24,6 @@ def gen_basic_node(
 ):
     parent_concepts = resolve_function_parent_concepts(concept)
     depth_prefix = "\t" * depth
-    if not parent_concepts:
-        raise ValueError(
-            f"concept {concept} has basic lineage {concept.derivation} {type(concept.lineage)} {str(concept.lineage)}  but no parents!"
-        )
     output_concepts = [concept] + local_optional
     partials = []
 

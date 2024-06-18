@@ -5,7 +5,7 @@ persist page_events into page_events FROM
 SELECT
     all_sites.event_date,
     all_sites.page_title,
-    all_sites.page_location,
+    all_sites.clean_url,
     count(all_sites.user_pseudo_id)->user_count,
 order by 
     all_sites.event_date asc;

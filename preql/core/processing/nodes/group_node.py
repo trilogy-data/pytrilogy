@@ -1,7 +1,14 @@
 from typing import List, Optional
 
 from preql.constants import logger
-from preql.core.models import Grain, QueryDatasource, SourceType, Concept, Environment
+from preql.core.models import (
+    Grain,
+    QueryDatasource,
+    SourceType,
+    Concept,
+    Environment,
+    LooseConceptList,
+)
 from preql.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
@@ -38,7 +45,7 @@ class GroupNode(StrategyNode):
         )
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources = [p.resolve() for p in self.parents]
+        parent_sources: list[QueryDatasource] = [p.resolve() for p in self.parents]
 
         grain = concept_list_to_grain(self.output_concepts, [])
         comp_grain = Grain()
@@ -55,7 +62,11 @@ class GroupNode(StrategyNode):
                 f" {self.output_lcl}"
                 f" grains {comp_grain} and {grain}"
             )
-            if len(parent_sources) == 1:
+            if (
+                len(parent_sources) == 1
+                and LooseConceptList(concepts=parent_sources[0].output_concepts)
+                == self.output_lcl
+            ):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} No group by required, returning parent node"
                 )

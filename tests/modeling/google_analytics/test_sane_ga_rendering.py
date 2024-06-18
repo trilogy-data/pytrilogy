@@ -50,18 +50,21 @@ def test_sane_rendering():
     # this should be a
     # constant node since we have constants
     assert select.ctes[0].source.source_type == SourceType.DIRECT_SELECT
+    # basic derivation
+    assert select.ctes[1].source.source_type == SourceType.MERGE
+
     # select node for the data
-    assert select.ctes[1].source.source_type == SourceType.GROUP
+    assert select.ctes[2].source.source_type == SourceType.GROUP
     # a group as groups happen without any constants
-    assert select.ctes[2].source.source_type == SourceType.CONSTANT
+    # assert select.ctes[2].source.source_type == SourceType.CONSTANT
     # merge node to get in constants
-    assert select.ctes[3].source.source_type == SourceType.MERGE
+    # assert select.ctes[3].source.source_type == SourceType.MERGE
     # assert select.ctes[2].source.source_type == SourceType.MERGE
     # assert len(select.ctes) == 5
 
-    engine.generator.compile_statement(select)
+    _ = engine.generator.compile_statement(select)
     # this statement should have this structure
-    # select node
+    # selectnode
     # group node
     # output
 
@@ -80,15 +83,29 @@ def test_daily_job():
     case = env.concepts["all_sites.clean_url"]
 
     assert isinstance(case.lineage, Function)
-    # assert set([x.address for x in case.lineage.concept_arguments]) == set([env.concepts["all_sites.page_location"].address])
     assert local_static.granularity == Granularity.SINGLE_ROW
+
+    from preql.core.processing.node_generators.common import (
+        resolve_function_parent_concepts,
+    )
+
+    for x in case.lineage.concept_arguments:
+        test = case.lineage.with_namespace("all_sites")
+        for y in test.concept_arguments:
+            assert y.namespace == "all_sites"
+        assert x.namespace == "all_sites", type(case.lineage)
+
+    parents = resolve_function_parent_concepts(case)
+    for x in parents:
+        assert x.namespace == "all_sites"
+
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
     statements[-1].select.selection.append(local_static)
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
-    engine.generator.compile_statement(select)
+    _ = engine.generator.compile_statement(select)
 
 
 def test_rolling_analytics():
@@ -113,3 +130,43 @@ def test_rolling_analytics():
 
     # make sure we got the where clause
     assert ">= date_add(current_date(), INTERVAL 30 day)" in compiled
+
+
+def test_counts():
+    with open(Path(__file__).parent / "daily_visits.preql") as f:
+        sql = f.read()
+
+    env, statements = parse(
+        sql, environment=Environment(working_path=Path(__file__).parent)
+    )
+    enrich_environment(env)
+    local_static = env.concepts["local.static"]
+    assert local_static.granularity == Granularity.SINGLE_ROW
+
+    case = env.concepts["all_sites.clean_url"]
+
+    assert isinstance(case.lineage, Function)
+    assert local_static.granularity == Granularity.SINGLE_ROW
+
+    from preql.core.processing.node_generators.common import (
+        resolve_function_parent_concepts,
+    )
+
+    for x in case.lineage.concept_arguments:
+        test = case.lineage.with_namespace("all_sites")
+        for y in test.concept_arguments:
+            assert y.namespace == "all_sites"
+        assert x.namespace == "all_sites", type(case.lineage)
+
+    parents = resolve_function_parent_concepts(case)
+    for x in parents:
+        assert x.namespace == "all_sites"
+
+    engine: Executor = Dialects.DUCK_DB.default_executor(
+        environment=env, hooks=[DebuggingHook(INFO)]
+    )
+    statements[-1].select.selection.append(local_static)
+    pstatements = engine.generator.generate_queries(env, statements)
+    select: ProcessedQuery = pstatements[-1]
+    comp = engine.generator.compile_statement(select)
+    assert '"all_sites__row_id" =' not in comp

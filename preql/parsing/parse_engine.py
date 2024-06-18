@@ -22,6 +22,7 @@ from preql.core.enums import (
     ComparisonOperator,
     FunctionType,
     InfiniteFunctionArgs,
+    FunctionClass,
     Modifier,
     Ordering,
     Purpose,
@@ -96,6 +97,7 @@ from preql.core.models import (
     ConceptDeclaration,
     ConceptDerivation,
     RowsetDerivation,
+    LooseConceptList,
 )
 from preql.parsing.exceptions import ParseError
 from preql.utility import string_to_hash
@@ -482,14 +484,21 @@ class ParseToObjects(Transformer):
         self.environment.concepts.undefined = {}
         return reparsed
 
-    def process_function_args(self, args, meta: Meta):
-        final = []
+    def process_function_args(
+        self, args, meta: Meta, concept_arguments: Optional[LooseConceptList] = None
+    ):
+        final: List[Concept | Function] = []
         for arg in args:
             # if a function has an anonymous function argument
             # create an implicit concept
             while isinstance(arg, Parenthetical):
                 arg = arg.content
             if isinstance(arg, Function):
+                # if it's not an aggregate function, we can skip the virtual concepts
+                # to simplify anonymous function handling
+                if arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                    final.append(arg)
+                    continue
                 id_hash = string_to_hash(str(arg))
                 concept = function_to_concept(
                     arg,
@@ -790,26 +799,11 @@ class ParseToObjects(Transformer):
 
         elif isinstance(source_value, Function):
             function: Function = source_value
-            # if purpose != function.output_purpose:
-            #     raise SyntaxError(f'Invalid output purpose assigned {purpose}')
-            final_purpose = purpose if purpose else function.output_purpose
-            concept = Concept(
+
+            concept = function_to_concept(
+                function,
                 name=name,
-                datatype=function.output_datatype,
-                purpose=final_purpose,
-                metadata=metadata,
-                lineage=function,
-                grain=(
-                    function.output_grain
-                    if final_purpose != Purpose.KEY
-                    else Grain(components=[])
-                ),
                 namespace=namespace,
-                keys=(
-                    tuple([self.environment.concepts[parent_concept]])
-                    if parent_concept
-                    else tuple(function.output_keys)
-                ),
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
@@ -1472,7 +1466,10 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fsubstring(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = self.process_function_args(
+            args,
+            meta=meta,
+        )
         return SubString(args)
 
     @v_args(meta=True)

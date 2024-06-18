@@ -97,6 +97,19 @@ def get_concept_arguments(expr) -> List["Concept"]:
 
 ALL_TYPES = Union["DataType", "MapType", "ListType", "StructType", "Concept"]
 
+NAMESPACED_TYPES = Union[
+    "WindowItem",
+    "FilterItem",
+    "Conditional",
+    "Comparison",
+    "Concept",
+    "CaseWhen",
+    "CaseElse",
+    "Function",
+    "AggregateWrapper",
+    "Parenthetical",
+]
+
 
 class DataType(Enum):
     # PRIMITIVES
@@ -360,7 +373,9 @@ class Concept(BaseModel):
             ),
             namespace=(
                 namespace + "." + self.namespace
-                if self.namespace and self.namespace != DEFAULT_NAMESPACE
+                if self.namespace
+                and self.namespace != DEFAULT_NAMESPACE
+                and self.namespace != namespace
                 else namespace
             ),
             keys=(
@@ -510,7 +525,7 @@ class Grain(BaseModel):
             v2 = unique(v, "address")
         final = []
         for sub in v2:
-            if sub.purpose == Purpose.PROPERTY and sub.keys:
+            if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
                 if all([c in v2 for c in sub.keys]):
                     continue
             final.append(sub)
@@ -777,7 +792,17 @@ class Function(BaseModel):
             arguments=[
                 (
                     c.with_namespace(namespace)
-                    if isinstance(c, (Concept, CaseWhen, CaseElse))
+                    if isinstance(
+                        c,
+                        (
+                            Concept,
+                            CaseWhen,
+                            CaseElse,
+                            Function,
+                            AggregateWrapper,
+                            Parenthetical,
+                        ),
+                    )
                     else c
                 )
                 for c in self.arguments

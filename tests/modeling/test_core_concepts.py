@@ -49,7 +49,9 @@ def test_auto_property_assignments(test_environment: Environment):
         assert candidate.keys == (
             store_id,
         ), f"keys for {candidate.address}: {candidate.keys} should be store_id"
-        assert candidate.grain.components == [store_id]
+        assert {x.address for x in candidate.grain.components} == set(
+            [store_id.address]
+        ), f"grain for {candidate.address}: {candidate.keys} should be store_id"
 
 
 def test_metric_assignments(test_environment: Environment):

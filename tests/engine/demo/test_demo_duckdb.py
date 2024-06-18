@@ -9,6 +9,7 @@ from preql.core.models import (
     Grain,
     DataType,
     Function,
+    LooseConceptList,
 )
 from preql.core.enums import Purpose, FunctionType
 from os.path import dirname
@@ -222,14 +223,35 @@ select
     passenger.class, 
     survival_rate;
 """
+    from preql.parsing.common import function_to_concept
 
     executor.parse_text(test)
     ratio = env.concepts["ratio"]
     assert ratio.purpose == Purpose.METRIC
-    assert env.concepts["ratio"].grain == Grain(
-        components=[env.concepts["passenger.class"]]
+    assert set(x.address for x in env.concepts["survivors"].keys) == {
+        "passenger.class",
+    }
+    assert (
+        len(
+            Grain(
+                components=[env.concepts["survivors"], env.concepts["passenger.class"]]
+            ).components
+        )
+        == 1
     )
 
+    testc = function_to_concept(
+        parent=env.concepts["ratio"].lineage, name="test", namespace="test"
+    )
+    assert set(x.address for x in testc.keys) == {
+        "passenger.class",
+    }
+
+    assert (
+        LooseConceptList(concepts=env.concepts["survivors"].grain.components).addresses
+        == LooseConceptList(concepts=[env.concepts["passenger.class"]]).addresses
+    )
+    # assert  LooseConceptList(concepts=env.concepts["ratio"].grain.components).addresses ==  LooseConceptList(concepts = [env.concepts["passenger.class"]]).addresses
     results = executor.execute_text(test)
 
     for row in results[0]:
