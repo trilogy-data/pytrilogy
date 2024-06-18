@@ -1,4 +1,4 @@
-from preql.core.models import Select, WindowItem
+from preql.core.models import SelectStatement, WindowItem
 from preql.core.enums import PurposeLineage, Granularity, Purpose
 from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
 from preql.core.query_processor import process_query, get_query_datasources
@@ -53,7 +53,7 @@ limit 100
 
     """
     env, parsed = parse(declarations)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
 
@@ -122,7 +122,7 @@ limit 100
 
     """
     env, parsed = parse(declarations)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     assert env.concepts["rank_derived"].keys == (env.concepts["user_id"],)
     assert concept_to_relevant_joins(
@@ -150,7 +150,7 @@ auto z <- rank x order by x desc;
 select x, z 
 order by x asc;"""
     env, parsed = parse(declarations)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     x = env.concepts["x"]
     assert x.granularity == Granularity.MULTI_ROW
 

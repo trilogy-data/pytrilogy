@@ -13,13 +13,13 @@ from preql.core.models import (
     Function,
     Grain,
     OrderItem,
-    Select,
+    SelectStatement,
     SelectItem,
     WhereClause,
     Conditional,
     Comparison,
     Environment,
-    ConceptDeclaration,
+    ConceptDeclarationStatement,
     ConceptDerivation,
     Datasource,
     WindowItem,
@@ -27,14 +27,14 @@ from preql.core.models import (
     ColumnAssignment,
     CaseElse,
     CaseWhen,
-    Import,
+    ImportStatement,
     Parenthetical,
     AggregateWrapper,
-    Persist,
+    PersistStatement,
     ListWrapper,
-    RowsetDerivation,
+    RowsetDerivationStatement,
     MergeStatement,
-    MultiSelect,
+    MultiSelectStatement,
     OrderBy,
     AlignClause,
     AlignItem,
@@ -101,7 +101,7 @@ class Renderer:
         output_concepts += metrics
 
         rendered_concepts = [
-            self.to_string(ConceptDeclaration(concept=concept))
+            self.to_string(ConceptDeclarationStatement(concept=concept))
             for concept in output_concepts
         ]
 
@@ -150,7 +150,7 @@ class Renderer:
         return f"""query {arg.text}"""
 
     @to_string.register
-    def _(self, arg: RowsetDerivation):
+    def _(self, arg: RowsetDerivationStatement):
         return f"""rowset {arg.name} <- {self.to_string(arg.select)}"""
 
     @to_string.register
@@ -194,7 +194,7 @@ class Renderer:
         return f"{arg.alias}:{self.to_string(arg.concept)}"
 
     @to_string.register
-    def _(self, arg: "ConceptDeclaration"):
+    def _(self, arg: "ConceptDeclarationStatement"):
         concept = arg.concept
         if concept.metadata and concept.metadata.description:
             base_description = concept.metadata.description
@@ -218,10 +218,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: ConceptDerivation):
         # this is identical rendering;
-        return self.to_string(ConceptDeclaration(concept=arg.concept))
+        return self.to_string(ConceptDeclarationStatement(concept=arg.concept))
 
     @to_string.register
-    def _(self, arg: Persist):
+    def _(self, arg: PersistStatement):
         return f"PERSIST {arg.identifier} INTO {arg.address.location} FROM {self.to_string(arg.select)}"
 
     @to_string.register
@@ -235,7 +235,7 @@ class Renderer:
         return f"{final}{self.to_string(arg.content)}"
 
     @to_string.register
-    def _(self, arg: Select):
+    def _(self, arg: SelectStatement):
         return QUERY_TEMPLATE.render(
             select_columns=[self.to_string(c) for c in arg.selection],
             where=self.to_string(arg.where_clause) if arg.where_clause else None,
@@ -248,7 +248,7 @@ class Renderer:
         )
 
     @to_string.register
-    def _(self, arg: MultiSelect):
+    def _(self, arg: MultiSelectStatement):
         base = "\nMERGE\n".join([self.to_string(select)[:-1] for select in arg.selects])
         base += self.to_string(arg.align)
         if arg.where_clause:
@@ -313,7 +313,7 @@ class Renderer:
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
-    def _(self, arg: "Import"):
+    def _(self, arg: "ImportStatement"):
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
@@ -331,7 +331,7 @@ class Renderer:
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
-    def _(self, arg: "Import"):
+    def _(self, arg: "ImportStatement"):
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
@@ -349,7 +349,7 @@ class Renderer:
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
-    def _(self, arg: "Import"):
+    def _(self, arg: "ImportStatement"):
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
@@ -367,7 +367,7 @@ class Renderer:
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
-    def _(self, arg: "Import"):
+    def _(self, arg: "ImportStatement"):
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
@@ -385,7 +385,7 @@ class Renderer:
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
-    def _(self, arg: "Import"):
+    def _(self, arg: "ImportStatement"):
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
@@ -403,7 +403,7 @@ class Renderer:
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
-    def _(self, arg: "Import"):
+    def _(self, arg: "ImportStatement"):
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
@@ -421,7 +421,7 @@ class Renderer:
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
     @to_string.register
-    def _(self, arg: "Import"):
+    def _(self, arg: "ImportStatement"):
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register
@@ -475,7 +475,7 @@ class Renderer:
         return f"[{base}]"
 
 
-def render_query(query: "Select") -> str:
+def render_query(query: "SelectStatement") -> str:
     return Renderer().to_string(query)
 
 

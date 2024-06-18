@@ -1,6 +1,6 @@
 from os.path import dirname
 
-from preql.core.models import Select, Environment
+from preql.core.models import SelectStatement, Environment
 from preql.core.query_processor import process_query
 from preql.parser import parse
 from preql.hooks.query_debugger import DebuggingHook
@@ -29,7 +29,7 @@ order by
         QUERY,
         environment=Environment(working_path=dirname(__file__)),
     )
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     # for item in select.selection:
     #    if item.content
     #    assert item.content.grain == Grain(components=[env.concepts["tag.name"]])
@@ -55,5 +55,5 @@ order
 limit 10
     ;"""
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     process_query(statement=select, environment=env)

@@ -1,7 +1,7 @@
 from preql.core.models import (
     Concept,
     Environment,
-    MultiSelect,
+    MultiSelectStatement,
 )
 from preql.core.processing.nodes import MergeNode, NodeJoin, History
 from preql.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
@@ -19,7 +19,9 @@ from preql.core.processing.node_generators.common import resolve_join_order
 LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
 
-def extra_align_joins(base: MultiSelect, parents: List[StrategyNode]) -> List[NodeJoin]:
+def extra_align_joins(
+    base: MultiSelectStatement, parents: List[StrategyNode]
+) -> List[NodeJoin]:
     node_merge_concept_map = defaultdict(list)
     output = []
     for align in base.align.items:
@@ -57,12 +59,12 @@ def gen_multiselect_node(
     source_concepts,
     history: History | None = None,
 ) -> MergeNode | None:
-    if not isinstance(concept.lineage, MultiSelect):
+    if not isinstance(concept.lineage, MultiSelectStatement):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
         )
         return None
-    lineage: MultiSelect = concept.lineage
+    lineage: MultiSelectStatement = concept.lineage
 
     base_parents: List[StrategyNode] = []
     for select in lineage.selects:

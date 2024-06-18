@@ -1,5 +1,5 @@
 # from preql.compiler import compile
-from preql.core.models import Select, Grain
+from preql.core.models import SelectStatement, Grain
 from preql.core.query_processor import process_query
 from preql.parser import parse
 
@@ -62,7 +62,7 @@ select
 
 def test_select():
     env, parsed = parse(TEST_SETUP)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     assert select.grain == Grain(components=[env.concepts["category_name"]])
 

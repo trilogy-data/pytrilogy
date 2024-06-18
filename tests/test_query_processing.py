@@ -1,4 +1,4 @@
-from preql.core.models import Select, QueryDatasource, Environment, Grain
+from preql.core.models import SelectStatement, QueryDatasource, Environment, Grain
 from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.query_processor import process_query, get_query_datasources
 
@@ -134,7 +134,7 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
 
 
 def test_query_aggregation(test_environment, test_environment_graph):
-    select = Select(selection=[test_environment.concepts["total_revenue"]])
+    select = SelectStatement(selection=[test_environment.concepts["total_revenue"]])
     datasource = get_query_datasources(
         environment=test_environment, graph=test_environment_graph, statement=select
     )
@@ -148,7 +148,7 @@ def test_query_aggregation(test_environment, test_environment_graph):
 
 
 def test_query_datasources(test_environment, test_environment_graph):
-    select = Select(
+    select = SelectStatement(
         selection=[
             test_environment.concepts["category_id"],
             test_environment.concepts["category_name"],
@@ -161,7 +161,7 @@ def test_query_datasources(test_environment, test_environment_graph):
 
 
 def test_full_query(test_environment, test_environment_graph):
-    select = Select(
+    select = SelectStatement(
         selection=[
             test_environment.concepts["category_id"],
             test_environment.concepts["category_name"],

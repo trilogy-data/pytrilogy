@@ -1,6 +1,24 @@
 from preql import Dialects, Environment
 
 
+def test_date_diff_rendering():
+    environment = Environment()
+
+    _, queries = environment.parse(
+        """
+
+    const today <- current_date();
+
+    select today
+    where date_add(current_date() , day, -30) < today;
+    """
+    )
+    executor = Dialects.BIGQUERY.default_executor(environment=environment)
+    sql = executor.generate_sql(queries[-1])
+
+    assert "DATE_ADD(current_date(), INTERVAL -30 day)" in sql[0]
+
+
 def test_readme():
 
     environment = Environment()

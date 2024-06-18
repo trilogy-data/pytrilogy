@@ -30,16 +30,18 @@ from preql.core.models import (
     Parenthetical,
     CaseWhen,
     CaseElse,
-    Select,
-    Persist,
+    SelectStatement,
+    PersistStatement,
     Environment,
     RawColumnExpr,
     ListWrapper,
     ShowStatement,
     RowsetItem,
-    MultiSelect,
+    MultiSelectStatement,
     MergeStatement,
-    RowsetDerivation,
+    RowsetDerivationStatement,
+    ConceptDeclarationStatement,
+    ImportStatement,
 )
 from preql.core.query_processor import process_query, process_persist
 from preql.dialect.common import render_join
@@ -274,7 +276,7 @@ class BaseDialect:
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
-            elif isinstance(c.lineage, MultiSelect):
+            elif isinstance(c.lineage, MultiSelectStatement):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
             elif isinstance(c.lineage, MergeStatement):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
@@ -379,14 +381,6 @@ class BaseDialect:
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map) }"
         elif isinstance(e, CaseElse):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map) }"
-        # elif isinstance(e, FilterItem):
-        #     return f"{self.render_expr}"
-
-        # elif isinstance(e, Parenthetical):
-        #     # conditions need to be nested in parentheses
-        #     return (
-        #         f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
-        #     )
         elif isinstance(e, Function):
             if cte and cte.group_to_grain:
                 return self.FUNCTION_MAP[e.operator](
@@ -518,38 +512,45 @@ class BaseDialect:
     def generate_queries(
         self,
         environment: Environment,
-        statements: Sequence[Select | MultiSelect | Persist | ShowStatement],
+        statements: Sequence[
+            SelectStatement
+            | MultiSelectStatement
+            | PersistStatement
+            | ShowStatement
+            | ConceptDeclarationStatement
+            | RowsetDerivationStatement
+            | MergeStatement
+            | ImportStatement
+        ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
         output: List[
             ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
         ] = []
         for statement in statements:
-            if isinstance(statement, Persist):
+            if isinstance(statement, PersistStatement):
                 if hooks:
                     for hook in hooks:
                         hook.process_persist_info(statement)
                 persist = process_persist(environment, statement, hooks=hooks)
                 output.append(persist)
-            elif isinstance(statement, Select):
+            elif isinstance(statement, SelectStatement):
                 if hooks:
                     for hook in hooks:
                         hook.process_select_info(statement)
                 output.append(process_query(environment, statement, hooks=hooks))
-                # graph = generate_graph(environment, statement)
-                # output.append(graph_to_query(environment, graph, statement))
-            elif isinstance(statement, MultiSelect):
+            elif isinstance(statement, MultiSelectStatement):
                 if hooks:
                     for hook in hooks:
                         hook.process_multiselect_info(statement)
                 output.append(process_query(environment, statement, hooks=hooks))
-            elif isinstance(statement, RowsetDerivation):
+            elif isinstance(statement, RowsetDerivationStatement):
                 if hooks:
                     for hook in hooks:
                         hook.process_rowset_info(statement)
             elif isinstance(statement, ShowStatement):
                 # TODO - encapsulate this a little better
-                if isinstance(statement.content, Select):
+                if isinstance(statement.content, SelectStatement):
                     output.append(
                         ProcessedShowStatement(
                             output_columns=[
@@ -566,6 +567,16 @@ class BaseDialect:
                     )
                 else:
                     raise NotImplementedError(type(statement))
+            elif isinstance(
+                statement,
+                (
+                    ConceptDeclarationStatement,
+                    MergeStatement,
+                    ImportStatement,
+                    RowsetDerivationStatement,
+                ),
+            ):
+                continue
             else:
                 raise NotImplementedError(type(statement))
         return output

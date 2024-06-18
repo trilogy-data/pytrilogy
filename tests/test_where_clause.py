@@ -1,5 +1,5 @@
 # from preql.compiler import compile
-from preql.core.models import Select, Grain, Parenthetical
+from preql.core.models import SelectStatement, Grain, Parenthetical
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.parser import parse
@@ -17,7 +17,7 @@ where
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     assert select.grain == Grain(components=[env.concepts["order_id"]])
 
@@ -36,7 +36,7 @@ where
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     assert select.grain == Grain(components=[env.concepts["order_id"]])
 
@@ -55,7 +55,7 @@ select
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     BaseDialect().compile_statement(process_query(test_environment, select))
 
@@ -71,7 +71,7 @@ select
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     final = BaseDialect().compile_statement(process_query(test_environment, select))
     print(final)
@@ -96,7 +96,7 @@ select
     assert len(inputs) == 1
     assert category_name.address in inputs
 
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     BaseDialect().compile_statement(process_query(test_environment, select))
 
@@ -114,7 +114,7 @@ select
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     compiled = BaseDialect().compile_statement(process_query(test_environment, select))
     print(compiled)
@@ -136,7 +136,7 @@ select
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     query = BaseDialect().compile_statement(process_query(test_environment, select))
     print(query)
@@ -156,7 +156,7 @@ where
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     left = select.where_clause.conditional.left
 
@@ -186,7 +186,7 @@ select
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     assert env.concepts["special_order"].lineage.where.conditional.right is True
     assert env.concepts["special_order_2"].lineage.where.conditional.right == 1

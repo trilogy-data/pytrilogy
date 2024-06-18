@@ -1,6 +1,6 @@
 # from preql.compiler import compile
 from preql.core.models import Grain
-from preql.core.models import Select
+from preql.core.models import SelectStatement
 from preql.core.query_processor import process_query
 from preql.dialect.bigquery import BigqueryDialect
 from preql.parser import parse
@@ -43,7 +43,7 @@ datasource users (
 ;"""
     env, parse_one = parse(q1, environment=env)
 
-    select: Select = parse_one[-1]
+    select: SelectStatement = parse_one[-1]
     assert select.grain == Grain(components=[env.concepts["user_id"]])
 
     q2 = """select
@@ -52,7 +52,7 @@ datasource users (
 ;"""
     env, parse_two = parse(q2, environment=env)
 
-    select: Select = parse_two[-1]
+    select: SelectStatement = parse_two[-1]
     assert select.grain == Grain(components=[env.concepts["about_me"]])
 
 
@@ -98,7 +98,7 @@ def test_double_aggregate():
         user_count
     ;"""
     env, parsed = parse(q1, environment=env)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     query = process_query(statement=select, environment=env)
 
@@ -117,7 +117,7 @@ def test_modifiers():
     where b =2
     ;"""
     env, parsed = parse(q1)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     assert select.hidden_components == [env.concepts["b"]]
     assert select.output_components == [env.concepts["a"], env.concepts["b"]]
     query = process_query(statement=select, environment=env)

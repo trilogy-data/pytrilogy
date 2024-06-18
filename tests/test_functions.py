@@ -2,7 +2,7 @@
 from pytest import raises
 
 from preql.core.exceptions import InvalidSyntaxException
-from preql.core.models import DataType, Select, ListType
+from preql.core.models import DataType, SelectStatement, ListType
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.dialect.bigquery import BigqueryDialect
@@ -44,7 +44,7 @@ select
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select, hooks=[]))
@@ -61,7 +61,7 @@ select
 
     """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -82,7 +82,7 @@ def test_window_functions(test_environment):
 
         """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -112,7 +112,7 @@ def test_date_functions(test_environment):
     
         """
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
 
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
@@ -137,7 +137,7 @@ def test_explicit_cast(test_environment):
         _str_order_id
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 
@@ -162,7 +162,7 @@ def test_math_functions(test_environment):
         rounded
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 
@@ -185,7 +185,7 @@ def test_string_functions(test_environment):
         strpos_name,
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 
@@ -202,7 +202,7 @@ def test_case_function(test_environment):
         test_environment.concepts["category_name"]
         in test_environment.concepts["test_upper_case"].lineage.concept_arguments
     )
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         compiled = dialect.compile_statement(process_query(test_environment, select))
         assert "CASE" in compiled
@@ -221,7 +221,7 @@ def test_split_and_index_function(test_environment):
         split(test_string, '_')[0] -> first_element,
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 
@@ -237,7 +237,7 @@ def test_coalesce(test_environment):
         coalesce(null, null, test_string)->coalesce_null_null,
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 
@@ -252,7 +252,7 @@ def test_constants(test_environment):
         current_datetime,
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    select: Select = parsed[-1]
+    select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 

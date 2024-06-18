@@ -1,5 +1,5 @@
 from typing import Union
-from preql.core.models import QueryDatasource, CTE, Datasource, Select
+from preql.core.models import QueryDatasource, CTE, Datasource, SelectStatement
 
 from preql.hooks.base_hook import BaseHook
 from preql.constants import logger
@@ -112,7 +112,7 @@ class DebuggingHook(BaseHook):
         self.process_datasources = PrintMode(process_datasources)
         self.process_other = PrintMode(process_other)
 
-    def process_select_info(self, select: Select):
+    def process_select_info(self, select: SelectStatement):
         if self.process_datasources != PrintMode.OFF:
             print(f"grain: {str(select.grain)}")
 
