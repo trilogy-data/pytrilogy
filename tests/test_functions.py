@@ -2,7 +2,7 @@
 from pytest import raises
 
 from preql.core.exceptions import InvalidSyntaxException
-from preql.core.models import DataType, SelectStatement, ListType
+from preql.core.models import DataType, SelectStatement, ListType, Environment
 from preql.core.query_processor import process_query
 from preql.dialect.base import BaseDialect
 from preql.dialect.bigquery import BigqueryDialect
@@ -12,6 +12,7 @@ from preql.dialect.snowflake import SnowflakeDialect
 from preql.parser import parse
 from logging import INFO
 from preql.constants import logger
+from preql.core.enums import PurposeLineage, Purpose
 
 logger.setLevel(INFO)
 
@@ -268,3 +269,14 @@ def test_unnest(test_environment):
     env, parsed = parse(declarations, environment=test_environment)
     assert env.concepts["int_list"].datatype == ListType(type=DataType.INTEGER)
     assert env.concepts["x"].datatype == DataType.INTEGER
+
+
+def test_validate_constant_functions():
+    x = Environment()
+    env, _ = x.parse(
+        """
+            const current_date <- current_date();
+            """
+    )
+    assert env.concepts["current_date"].purpose == Purpose.CONSTANT
+    assert env.concepts["current_date"].derivation == PurposeLineage.CONSTANT
