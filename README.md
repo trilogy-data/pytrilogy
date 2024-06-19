@@ -2,13 +2,15 @@
 
 pypreql is an experimental implementation of the [PreQL/Trilogy] (prequel trilogy) language, a extension of SQL that replaces tables/joins with a lightweight semantic binding layer.
 
-PreQL/Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want reusability and simplicity with the power and iteratability of SQL. It compiles to SQL, making it easy to debug, and can be run againstany supported SQL backend.  
+PreQL/Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want reusability and simplicity with the power and iteratability of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
 
-PypreQL can be run locally to parse and execute preql [.preql] models using the `trilogy` CLI tool, or can be run in python using the `preql` package.
+Installation: `pip install pypreql`
+
+`pypreql` can be run locally to parse and execute preql [.preql] models using the `trilogy` CLI tool, or can be run in python by importing the `preql` package.
 
 You can read more about the project [here](https://preqldata.dev/) and try out an interactive demo on the page an interactive demo [here](https://preqldata.dev/demo). 
 
-PreQL looks like like SQL:
+PreQL:
 ```sql
 SELECT
     name,
@@ -173,19 +175,42 @@ and second the dialect to run.
 
 `trilogy run <cmd or path to preql file> <dialect>`
 
+To pass arguments to a backend, append additional --<option> flags after specifying the dialect.
+
+Example:
+`trilogy run key in int; datasource test_source ( i:in) grain(in) address test; select in;" duckdb --path <path/to/duckdb>`
+
+### Bigquery Args
+N/A, only supports default auth. In python you can pass in a custom client.
+<TODO> support arbitrary cred paths. 
+
+### DuckDB Args
+- path <optional>
+
+### Postgres Args
+- host
+- port
+- username
+- password
+- database
+
+### Snowflake Args
+- account
+- username
+- password
+
+
 > [!TIP]
-> This will only work for basic backends, such as Bigquery with local default credentials; if the backend requires more configuration, the CLI will require additional config arguments.
-
-The CLI can also be used for formatting. PreQL has a default formatting style that should always be adhered to.
-
-`trilogy fmt <path to preql file>`
+> The CLI can also be used for formatting. PreQL has a default formatting style that should always be adhered to. `trilogy fmt <path to preql file>`
 
 
 ## More Examples
 
-Examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models).
-This is a good place to start for more complex examples.
+[Interactive demo](https://preqldata.dev/demo). 
 
+Additional examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models).
+
+This is a good place to look for modeling examples.
 
 ## Developing
 
