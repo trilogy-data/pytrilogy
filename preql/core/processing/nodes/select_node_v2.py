@@ -156,7 +156,18 @@ class SelectNode(StrategyNode):
         if self.parents:
             return super()._resolve()
         resolution: QueryDatasource | None
-        if all([c.purpose == Purpose.CONSTANT for c in self.all_concepts]):
+        if all(
+            [
+                (
+                    c.derivation == PurposeLineage.CONSTANT
+                    or (
+                        c.purpose == Purpose.CONSTANT
+                        and c.derivation == PurposeLineage.MULTISELECT
+                    )
+                )
+                for c in self.all_concepts
+            ]
+        ):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"
             )

@@ -1,7 +1,7 @@
 from itertools import combinations
 from typing import List, Optional
 
-from preql.core.enums import Purpose
+from preql.core.enums import PurposeLineage
 from preql.core.models import Concept, Environment, Grain, LooseConceptList
 from preql.core.processing.nodes import (
     StrategyNode,
@@ -32,7 +32,7 @@ def gen_select_node_from_table(
     # we don't need a table
     # so verify nothing, select node will render
     all_lcl = LooseConceptList(concepts=all_concepts)
-    if all([c.purpose == Purpose.CONSTANT for c in all_concepts]):
+    if all([c.derivation == PurposeLineage.CONSTANT for c in all_concepts]):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
         )
@@ -187,6 +187,7 @@ def gen_select_node(
             x
             for x in all_concepts
             if x.address in [z.address for z in environment.materialized_concepts]
+            or x.derivation == PurposeLineage.CONSTANT
         ]
     )
     if not target_grain:

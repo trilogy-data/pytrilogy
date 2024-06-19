@@ -418,6 +418,13 @@ class Concept(BaseModel):
             grain = Grain(components=components)
         elif self.purpose == Purpose.METRIC:
             grain = Grain()
+        elif self.purpose == Purpose.CONSTANT:
+            if self.derivation != PurposeLineage.CONSTANT:
+                grain = Grain(
+                    components=[deepcopy(self).with_grain(Grain())], nested=True
+                )
+            else:
+                grain = self.grain
         else:
             grain = self.grain  # type: ignore
         return self.__class__(
@@ -1991,7 +1998,7 @@ class CTE(BaseModel):
     @property
     def render_from_clause(self) -> bool:
         if (
-            all([c.purpose == Purpose.CONSTANT for c in self.output_columns])
+            all([c.derivation == PurposeLineage.CONSTANT for c in self.output_columns])
             and not self.parent_ctes
             and not self.group_to_grain
         ):
@@ -2288,9 +2295,10 @@ class Environment(BaseModel):
             self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
 
     def parse(
-        self, input: str, namespace: str | None = None
+        self, input: str, namespace: str | None = None, persist: bool = False
     ) -> Tuple[Environment, list]:
         from preql import parse
+        from preql.core.query_processor import process_persist
 
         if namespace:
             new = Environment()
@@ -2298,6 +2306,24 @@ class Environment(BaseModel):
             self.add_import(namespace, new)
             return self, queries
         _, queries = parse(input, self)
+        generatable = [
+            x
+            for x in queries
+            if isinstance(
+                x,
+                (
+                    SelectStatement,
+                    PersistStatement,
+                    MultiSelectStatement,
+                    ShowStatement,
+                ),
+            )
+        ]
+        while generatable:
+            t = generatable.pop(0)
+            if isinstance(t, PersistStatement) and persist:
+                processed = process_persist(self, t)
+                self.add_datasource(processed.datasource)
         return self, queries
 
     def add_concept(

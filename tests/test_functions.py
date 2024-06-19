@@ -270,10 +270,13 @@ def test_unnest(test_environment):
     assert env.concepts["int_list"].datatype == ListType(type=DataType.INTEGER)
     assert env.concepts["x"].datatype == DataType.INTEGER
 
+
 def test_validate_constant_functions():
     x = Environment()
-    env, _ = x.parse("""
+    env, _ = x.parse(
+        """
             const current_date <- current_date();
-            """)
+            """
+    )
     assert env.concepts["current_date"].purpose == Purpose.CONSTANT
     assert env.concepts["current_date"].derivation == PurposeLineage.CONSTANT
