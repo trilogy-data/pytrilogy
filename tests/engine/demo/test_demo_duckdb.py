@@ -121,7 +121,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=[id],
+        keys=(id,),
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
@@ -329,3 +329,27 @@ limit 5;"""
 
     assert len(results) == 5
     assert len(results[0]) == 3
+
+
+def test_demo_duplication():
+    executor = setup_engine(debug_flag=False)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
+select 
+    passenger.last_name,
+    passenger.id.count,
+    count(surviving_passenger) -> surviving_size
+order by
+    passenger.id.count desc
+limit 5;"""
+
+    # raw = executor.generate_sql(test)
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 5
+    first_row = results[0]
+    assert first_row.passenger_last_name == "Andersson"
+    assert first_row.passenger_id_count == 9   
+    assert first_row.surviving_size == 2
