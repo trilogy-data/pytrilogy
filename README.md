@@ -87,11 +87,22 @@ select 2 as sentence, '!'
 ''';
 
 # an actual select statement
+# joins are automatically resolved between the 3 sources
+with sentences as
+select sentence_id, word_one || ' ' || word_two ||  word_three as text;
+
 SELECT
-    --sentence_id,
-    word_one || ' ' || word_two ||  word_three as hello_world, # outputs must be named, trailing commas are okah
+    --sentences.sentence_id,
+    sentences.text
 WHERE 
-    sentence_id = 1
+    sentences.sentence_id = 1
+;
+
+SELECT
+    --sentences.sentence_id,
+    sentences.text
+WHERE 
+    sentences.sentence_id = 2
 ;
 # semicolon termination for all statements
 
