@@ -4,6 +4,9 @@ pypreql is an experimental implementation of the [PreQL/Trilogy] (prequel trilog
 
 PreQL/Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want reusability and simplicity with the power and iteratability of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
 
+> [!TIP]
+> To get an overview, read more and explore the language [here](https://preqldata.dev/)
+
 Installation: `pip install pypreql`
 
 `pypreql` can be run locally to parse and execute preql [.preql] models using the `trilogy` CLI tool, or can be run in python by importing the `preql` package.
