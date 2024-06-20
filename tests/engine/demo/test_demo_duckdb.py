@@ -353,3 +353,49 @@ limit 5;"""
     assert first_row.passenger_last_name == "Andersson"
     assert first_row.passenger_id_count == 9   
     assert first_row.surviving_size == 2
+
+
+def test_demo_suggested_answer():
+    executor = setup_engine(debug_flag=False)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """auto survivor <- filter passenger.id 
+where passenger.survived = 1;
+
+property passenger.id.decade<- cast(passenger.age / 10 as int) * 10;
+select 
+    passenger.decade, 
+    (count(survivor) by passenger.decade)/(count(passenger.id) by passenger.decade)
+    ->survival_rate,
+    count(passenger.id) -> bucket_size
+order by passenger.decade desc
+;"""
+    # raw = executor.generate_sql(test)
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 10
+
+
+
+def test_demo_suggested_answer_failing():
+    executor = setup_engine(debug_flag=True)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """
+auto survivor <- filter passenger.id 
+where passenger.survived = 1;
+select 
+    count(survivor)/count(passenger.id)
+    ->survival_rate,
+    passenger.class
+order by passenger.class desc
+;
+"""
+    raw = executor.generate_sql(test)
+    top = env.concepts['survival_rate'].lineage.arguments[0]
+    assert top.grain == Grain(components=[env.concepts['passenger.class']])
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 10

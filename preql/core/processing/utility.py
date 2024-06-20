@@ -182,7 +182,7 @@ def get_node_joins(
         local_concepts: List[Concept] = unique(
             [c for c in concepts if c.address in join_concepts], "address"
         )
-        if all([c.derivation == PurposeLineage.CONSTANT for c in local_concepts]):
+        if all([c.granularity == Granularity.SINGLE_ROW for c in local_concepts]):
             # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []
@@ -229,6 +229,21 @@ def get_node_joins(
                 ):
                     found = True
             if not found:
+                raise SyntaxError(
+                    f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
+                )
+    single_row = [x for x in datasources if x.grain.abstract]
+    for x in single_row:
+        for join in final_joins:
+            found = False
+            for join in final_joins:
+                if (
+                    join.left_datasource.identifier == x.identifier
+                    or join.right_datasource.identifier == x.identifier
+                ):
+                    found = True
+            if not found:
+                join.append()
                 raise SyntaxError(
                     f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
                 )

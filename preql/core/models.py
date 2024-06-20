@@ -388,14 +388,22 @@ class Concept(BaseModel):
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
-
+        new_grain = grain or Grain(components=[])
+        if self.lineage:
+            if isinstance(self.lineage, Function):
+                new_lineage = self.lineage.with_grain(new_grain)
+            else:
+                new_lineage = self.lineage
+        else:
+            new_lineage = None
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
-            lineage=self.lineage,
-            grain=grain or Grain(components=[]),
+            lineage = new_lineage,
+            # lineage=self.lineage.with_grain(new_grain) if self.lineage else None,
+            grain=new_grain,
             namespace=self.namespace,
             keys=self.keys,
         )
@@ -730,6 +738,33 @@ class Function(BaseModel):
     @property
     def datatype(self):
         return self.output_datatype
+    
+    def with_grain(self, grain:Grain):
+        return Function(
+            operator=self.operator,
+            arguments=[
+                (
+                    c.with_grain(grain)
+                    if isinstance(
+                        c,
+                        (
+                            Concept,
+                            # CaseWhen,
+                            # CaseElse,
+                            Function,
+                            # AggregateWrapper,
+                            # Parenthetical,
+                        ),
+                    )
+                    else c
+                )
+                for c in self.arguments
+            ],
+            output_datatype=self.output_datatype,
+            output_purpose=self.output_purpose,
+            valid_inputs=self.valid_inputs,
+            arg_count=self.arg_count,
+        )
 
     @field_validator("arguments")
     @classmethod
