@@ -351,7 +351,7 @@ limit 5;"""
     assert len(results) == 5
     first_row = results[0]
     assert first_row.passenger_last_name == "Andersson"
-    assert first_row.passenger_id_count == 9   
+    assert first_row.passenger_id_count == 9
     assert first_row.surviving_size == 2
 
 
@@ -377,7 +377,6 @@ order by passenger.decade desc
     assert len(results) == 10
 
 
-
 def test_demo_suggested_answer_failing():
     executor = setup_engine(debug_flag=True)
     env = Environment()
@@ -388,14 +387,38 @@ auto survivor <- filter passenger.id
 where passenger.survived = 1;
 select 
     count(survivor)/count(passenger.id)
-    ->survival_rate,
+    -> survival_rate_auto,
     passenger.class
 order by passenger.class desc
 ;
 """
-    raw = executor.generate_sql(test)
-    top = env.concepts['survival_rate'].lineage.arguments[0]
-    assert top.grain == Grain(components=[env.concepts['passenger.class']])
+    env.parse(test)
+    srate = env.concepts["survival_rate_auto"]
+    assert srate.lineage
+    for agg in env.concepts["survival_rate_auto"].lineage.arguments:
+        assert agg.grain == Grain(components=[env.concepts["passenger.class"]])
+        assert len(agg.grain.components) == 1
     results = executor.execute_text(test)[-1].fetchall()
 
-    assert len(results) == 10
+    assert len(results) == 3
+
+
+def test_demo_suggested_answer_failing_intentional():
+    executor = setup_engine(debug_flag=True)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """
+auto survivor <- filter passenger.id 
+where passenger.survived = 1;
+select 
+    (count(survivor) by *)/(count(passenger.id) by *)
+    ->survival_rate,
+    count(passenger.id)->clas_count,
+    passenger.class
+order by passenger.class desc
+;
+"""
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 3

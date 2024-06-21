@@ -143,7 +143,7 @@ def get_node_joins(
     # add edges for every constant to every datasource
     for datasource in datasources:
         for concept in datasource.output_concepts:
-            if concept.purpose == Purpose.CONSTANT:
+            if concept.granularity == Granularity.SINGLE_ROW:
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
@@ -194,13 +194,13 @@ def get_node_joins(
         ):
             join_type = JoinType.FULL
             local_concepts = [
-                c for c in local_concepts if c.purpose != Purpose.CONSTANT
+                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
         else:
             join_type = JoinType.LEFT_OUTER
             # remove any constants if other join keys exist
             local_concepts = [
-                c for c in local_concepts if c.purpose != Purpose.CONSTANT
+                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
 
             # if concept.keys and all([x in grain for x in concept.keys]):
@@ -243,7 +243,6 @@ def get_node_joins(
                 ):
                     found = True
             if not found:
-                join.append()
                 raise SyntaxError(
                     f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
                 )

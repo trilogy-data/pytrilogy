@@ -1165,9 +1165,8 @@ class ParseToObjects(Transformer):
             # so rebuild at this point in the tree
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_grain(output.grain)
+                new_concept = item.content.output.with_select_grain(output.grain)
                 self.environment.add_concept(new_concept, meta=meta)
-                # self.environment.concepts[new_concept.address] = new_concept
                 item.content.output = new_concept
         if order_by:
             for item in order_by.items:

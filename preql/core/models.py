@@ -61,6 +61,7 @@ from collections import UserList
 from preql.utility import string_to_hash
 from functools import cached_property
 
+
 LOGGER_PREFIX = "[MODELS]"
 
 KT = TypeVar("KT")
@@ -109,6 +110,20 @@ NAMESPACED_TYPES = Union[
     "AggregateWrapper",
     "Parenthetical",
 ]
+
+
+class Namespaced:
+    pass
+
+    def with_namespace(self, namespace: str):
+        raise NotImplementedError
+
+
+class SelectGrain:
+    pass
+
+    def with_select_grain(self, grain: Grain):
+        raise NotImplementedError
 
 
 class DataType(Enum):
@@ -385,15 +400,14 @@ class Concept(BaseModel):
             ),
         )
 
-    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+    def with_select_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
         new_grain = grain or Grain(components=[])
         if self.lineage:
-            if isinstance(self.lineage, Function):
-                new_lineage = self.lineage.with_grain(new_grain)
-            else:
-                new_lineage = self.lineage
+            new_lineage = self.lineage
+            if isinstance(self.lineage, SelectGrain):
+                new_lineage = self.lineage.with_select_grain(new_grain)
         else:
             new_lineage = None
         return self.__class__(
@@ -401,9 +415,22 @@ class Concept(BaseModel):
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
-            lineage = new_lineage,
-            # lineage=self.lineage.with_grain(new_grain) if self.lineage else None,
+            lineage=new_lineage,
             grain=new_grain,
+            namespace=self.namespace,
+            keys=self.keys,
+        )
+
+    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+        if not all([isinstance(x, Concept) for x in self.keys or []]):
+            raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain if grain else Grain(components=[]),
             namespace=self.namespace,
             keys=self.keys,
         )
@@ -701,7 +728,7 @@ class LooseConceptList(BaseModel):
         return self.addresses.isdisjoint(other.addresses)
 
 
-class Function(BaseModel):
+class Function(Namespaced, SelectGrain, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType
@@ -738,23 +765,16 @@ class Function(BaseModel):
     @property
     def datatype(self):
         return self.output_datatype
-    
-    def with_grain(self, grain:Grain):
+
+    def with_select_grain(self, grain: Grain) -> Function:
         return Function(
             operator=self.operator,
             arguments=[
                 (
-                    c.with_grain(grain)
+                    c.with_select_grain(grain)
                     if isinstance(
                         c,
-                        (
-                            Concept,
-                            # CaseWhen,
-                            # CaseElse,
-                            Function,
-                            # AggregateWrapper,
-                            # Parenthetical,
-                        ),
+                        SelectGrain,
                     )
                     else c
                 )
@@ -836,14 +856,7 @@ class Function(BaseModel):
                     c.with_namespace(namespace)
                     if isinstance(
                         c,
-                        (
-                            Concept,
-                            CaseWhen,
-                            CaseElse,
-                            Function,
-                            AggregateWrapper,
-                            Parenthetical,
-                        ),
+                        Namespaced,
                     )
                     else c
                 )
@@ -886,7 +899,7 @@ class Function(BaseModel):
         return list(set(components))
 
 
-class ConceptTransform(BaseModel):
+class ConceptTransform(Namespaced, BaseModel):
     function: Function | FilterItem | WindowItem | AggregateWrapper
     output: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
@@ -936,7 +949,7 @@ class WindowItemOrder(BaseModel):
     contents: List["OrderItem"]
 
 
-class WindowItem(BaseModel):
+class WindowItem(Namespaced, SelectGrain, BaseModel):
     type: WindowType
     content: Concept
     order_by: List["OrderItem"]
@@ -948,6 +961,14 @@ class WindowItem(BaseModel):
             content=self.content.with_namespace(namespace),
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
+        )
+
+    def with_select_grain(self, grain: Grain) -> "WindowItem":
+        return WindowItem(
+            type=self.type,
+            content=self.content.with_select_grain(grain),
+            over=[x.with_select_grain(grain) for x in self.over],
+            order_by=[x.with_select_grain(grain) for x in self.order_by],
         )
 
     @property
@@ -994,7 +1015,7 @@ class WindowItem(BaseModel):
         return Purpose.PROPERTY
 
 
-class FilterItem(BaseModel):
+class FilterItem(Namespaced, SelectGrain, BaseModel):
     content: Concept
     where: "WhereClause"
 
@@ -1005,6 +1026,12 @@ class FilterItem(BaseModel):
         return FilterItem(
             content=self.content.with_namespace(namespace),
             where=self.where.with_namespace(namespace),
+        )
+
+    def with_select_grain(self, grain: Grain) -> FilterItem:
+        return FilterItem(
+            content=self.content.with_select_grain(grain),
+            where=self.where.with_select_grain(grain),
         )
 
     @property
@@ -1045,7 +1072,7 @@ class FilterItem(BaseModel):
         return [self.content] + self.where.concept_arguments
 
 
-class SelectItem(BaseModel):
+class SelectItem(Namespaced, BaseModel):
     content: Union[Concept, ConceptTransform]
     modifiers: List[Modifier] = Field(default_factory=list)
 
@@ -1068,12 +1095,15 @@ class SelectItem(BaseModel):
         )
 
 
-class OrderItem(BaseModel):
+class OrderItem(SelectGrain, Namespaced, BaseModel):
     expr: Concept
     order: Ordering
 
     def with_namespace(self, namespace: str) -> "OrderItem":
         return OrderItem(expr=self.expr.with_namespace(namespace), order=self.order)
+
+    def with_select_grain(self, grain: Grain) -> "OrderItem":
+        return OrderItem(expr=self.expr.with_grain(grain), order=self.order)
 
     @property
     def input(self):
@@ -1084,14 +1114,14 @@ class OrderItem(BaseModel):
         return self.expr.output
 
 
-class OrderBy(BaseModel):
+class OrderBy(Namespaced, BaseModel):
     items: List[OrderItem]
 
     def with_namespace(self, namespace: str) -> "OrderBy":
         return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class SelectStatement(BaseModel):
+class SelectStatement(Namespaced, BaseModel):
     selection: List[SelectItem]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
@@ -1245,7 +1275,7 @@ class SelectStatement(BaseModel):
         )
 
 
-class AlignItem(BaseModel):
+class AlignItem(Namespaced, BaseModel):
     alias: str
     concepts: List[Concept]
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -1283,14 +1313,14 @@ class AlignItem(BaseModel):
         return new
 
 
-class AlignClause(BaseModel):
+class AlignClause(Namespaced, BaseModel):
     items: List[AlignItem]
 
     def with_namespace(self, namespace: str) -> "AlignClause":
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class MultiSelectStatement(BaseModel):
+class MultiSelectStatement(Namespaced, BaseModel):
     selects: List[SelectStatement]
     align: AlignClause
     namespace: str
@@ -1420,7 +1450,7 @@ class DatasourceMetadata(BaseModel):
     partition_fields: List[Concept] = Field(default_factory=list)
 
 
-class MergeStatement(BaseModel):
+class MergeStatement(Namespaced, BaseModel):
     concepts: List[Concept]
     datatype: DataType | ListType | StructType | MapType
 
@@ -1463,7 +1493,7 @@ class MergeStatement(BaseModel):
         )
 
 
-class Datasource(BaseModel):
+class Datasource(Namespaced, BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
@@ -1825,7 +1855,7 @@ class QueryDatasource(BaseModel):
                 merged_datasources[ds.full_name] = merged_datasources[ds.full_name] + ds
             else:
                 merged_datasources[ds.full_name] = ds
-        return QueryDatasource(
+        qds = QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
             ),
@@ -1847,6 +1877,8 @@ class QueryDatasource(BaseModel):
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
         )
+
+        return qds
 
     @property
     def identifier(self) -> str:
@@ -2087,7 +2119,7 @@ class Join(BaseModel):
         )
 
 
-class UndefinedConcept(Concept):
+class UndefinedConcept(Namespaced, SelectGrain, Concept):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     environment: "EnvironmentConceptDict"
@@ -2111,6 +2143,28 @@ class UndefinedConcept(Concept):
             keys=self.keys,
             environment=self.environment,
             line_no=self.line_no,
+        )
+
+    def with_select_grain(self, grain: Optional["Grain"] = None) -> "UndefinedConcept":
+        if not all([isinstance(x, Concept) for x in self.keys or []]):
+            raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
+        new_grain = grain or Grain(components=[])
+        if self.lineage:
+            new_lineage = self.lineage
+            if isinstance(self.lineage, SelectGrain):
+                new_lineage = self.lineage.with_select_grain(new_grain)
+        else:
+            new_lineage = None
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=new_lineage,
+            grain=new_grain,
+            namespace=self.namespace,
+            keys=self.keys,
+            environment=self.environment,
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
@@ -2425,7 +2479,7 @@ class LazyEnvironment(Environment):
         return super().__getattribute__(name)
 
 
-class Comparison(BaseModel):
+class Comparison(Namespaced, SelectGrain, BaseModel):
     left: Union[
         int,
         str,
@@ -2480,16 +2534,27 @@ class Comparison(BaseModel):
         return Comparison(
             left=(
                 self.left.with_namespace(namespace)
-                if isinstance(
-                    self.left, (Concept, Function, Conditional, Parenthetical)
-                )
+                if isinstance(self.left, Namespaced)
                 else self.left
             ),
             right=(
                 self.right.with_namespace(namespace)
-                if isinstance(
-                    self.right, (Concept, Function, Conditional, Parenthetical)
-                )
+                if isinstance(self.right, Namespaced)
+                else self.right
+            ),
+            operator=self.operator,
+        )
+
+    def with_select_grain(self, grain: Grain):
+        return Comparison(
+            left=(
+                self.left.with_select_grain(grain)
+                if isinstance(self.left, SelectGrain)
+                else self.left
+            ),
+            right=(
+                self.right.with_select_grain(grain)
+                if isinstance(self.right, SelectGrain)
                 else self.right
             ),
             operator=self.operator,
@@ -2526,7 +2591,7 @@ class Comparison(BaseModel):
         return output
 
 
-class CaseWhen(BaseModel):
+class CaseWhen(Namespaced, SelectGrain, BaseModel):
     comparison: Conditional | Comparison
     expr: "Expr"
 
@@ -2541,24 +2606,26 @@ class CaseWhen(BaseModel):
                 self.expr.with_namespace(namespace)
                 if isinstance(
                     self.expr,
-                    (
-                        Concept,
-                        WindowItem,
-                        FilterItem,
-                        Concept,
-                        Comparison,
-                        Conditional,
-                        Parenthetical,
-                        Function,
-                        AggregateWrapper,
-                    ),
+                    Namespaced,
                 )
                 else self.expr
             ),
         )
 
+    def with_select_grain(self, grain: Grain):
+        return (
+            CaseWhen(
+                comparison=self.comparison.with_select_grain(grain),
+                expr=(
+                    (self.expr.with_select_grain(grain))
+                    if isinstance(self.expr, SelectGrain)
+                    else self.expr
+                ),
+            ),
+        )
 
-class CaseElse(BaseModel):
+
+class CaseElse(Namespaced, SelectGrain, BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -2567,6 +2634,19 @@ class CaseElse(BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
+    def with_select_grain(self, grain: Grain):
+        return CaseElse(
+            discriminant=self.discriminant,
+            expr=(
+                self.expr.with_select_grain(grain)
+                if isinstance(
+                    self.expr,
+                    SelectGrain,
+                )
+                else self.expr
+            ),
+        )
+
     def with_namespace(self, namespace: str):
         return CaseElse(
             discriminant=self.discriminant,
@@ -2574,24 +2654,14 @@ class CaseElse(BaseModel):
                 self.expr.with_namespace(namespace)
                 if isinstance(
                     self.expr,
-                    (
-                        Concept,
-                        WindowItem,
-                        FilterItem,
-                        Concept,
-                        Comparison,
-                        Conditional,
-                        Parenthetical,
-                        Function,
-                        AggregateWrapper,
-                    ),
+                    Namespaced,
                 )
                 else self.expr
             ),
         )
 
 
-class Conditional(BaseModel):
+class Conditional(Namespaced, SelectGrain, BaseModel):
     left: Union[
         int,
         str,
@@ -2603,6 +2673,7 @@ class Conditional(BaseModel):
         "Conditional",
         "Parenthetical",
         Function,
+        FilterItem,
     ]
     right: Union[
         int,
@@ -2635,16 +2706,27 @@ class Conditional(BaseModel):
         return Conditional(
             left=(
                 self.left.with_namespace(namespace)
-                if isinstance(
-                    self.left, (Concept, Comparison, Conditional, Parenthetical)
-                )
+                if isinstance(self.left, Namespaced)
                 else self.left
             ),
             right=(
                 self.right.with_namespace(namespace)
-                if isinstance(
-                    self.right, (Concept, Comparison, Conditional, Parenthetical)
-                )
+                if isinstance(self.right, Namespaced)
+                else self.right
+            ),
+            operator=self.operator,
+        )
+
+    def with_select_grain(self, grain: Grain):
+        return Conditional(
+            left=(
+                self.left.with_select_grain(grain)
+                if isinstance(self.left, SelectGrain)
+                else self.left
+            ),
+            right=(
+                self.right.with_select_grain(grain)
+                if isinstance(self.right, SelectGrain)
                 else self.right
             ),
             operator=self.operator,
@@ -2654,18 +2736,14 @@ class Conditional(BaseModel):
     def input(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
-        if isinstance(self.left, Concept):
-            output += self.input
-        elif isinstance(self.left, (Comparison, Conditional)):
-            output += self.left.input
-        if isinstance(self.right, Concept):
-            output += self.right.input
-        elif isinstance(self.right, (Comparison, Conditional)):
-            output += self.right.input
-        if isinstance(self.left, (Function, Parenthetical)):
-            output += self.left.concept_arguments
-        elif isinstance(self.right, (Function, Parenthetical)):
-            output += self.right.concept_arguments
+
+        for x in (self.left, self.right):
+            if isinstance(x, Concept):
+                output += x.input
+            elif isinstance(x, (Comparison, Conditional)):
+                output += x.input
+            elif isinstance(x, (Function, Parenthetical, FilterItem)):
+                output += x.concept_arguments
         return output
 
     @property
@@ -2677,7 +2755,7 @@ class Conditional(BaseModel):
         return output
 
 
-class AggregateWrapper(BaseModel):
+class AggregateWrapper(Namespaced, SelectGrain, BaseModel):
     function: Function
     by: List[Concept] = Field(default_factory=list)
 
@@ -2711,8 +2789,15 @@ class AggregateWrapper(BaseModel):
             by=[c.with_namespace(namespace) for c in self.by] if self.by else [],
         )
 
+    def with_select_grain(self, grain: Grain) -> AggregateWrapper:
+        if not self.by:
+            by = grain.components_copy
+        else:
+            by = self.by
+        return AggregateWrapper(function=self.function.with_select_grain(grain), by=by)
 
-class WhereClause(BaseModel):
+
+class WhereClause(Namespaced, SelectGrain, BaseModel):
     conditional: Union[Comparison, Conditional, "Parenthetical"]
 
     @property
@@ -2723,8 +2808,11 @@ class WhereClause(BaseModel):
     def concept_arguments(self) -> List[Concept]:
         return self.conditional.concept_arguments
 
-    def with_namespace(self, namespace: str):
+    def with_namespace(self, namespace: str) -> WhereClause:
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
+
+    def with_select_grain(self, grain: Grain) -> WhereClause:
+        return WhereClause(conditional=self.conditional.with_select_grain(grain))
 
     @property
     def grain(self) -> Grain:
@@ -2785,7 +2873,7 @@ class ConceptDerivation(BaseModel):
     concept: Concept
 
 
-class RowsetDerivationStatement(BaseModel):
+class RowsetDerivationStatement(Namespaced, BaseModel):
     name: str
     select: SelectStatement | MultiSelectStatement
     namespace: str
@@ -2848,7 +2936,7 @@ class RowsetDerivationStatement(BaseModel):
         )
 
 
-class RowsetItem(BaseModel):
+class RowsetItem(Namespaced, BaseModel):
     content: Concept
     rowset: RowsetDerivationStatement
     where: Optional["WhereClause"] = None
@@ -2907,7 +2995,7 @@ class RowsetItem(BaseModel):
         return [self.content]
 
 
-class Parenthetical(BaseModel):
+class Parenthetical(Namespaced, SelectGrain, BaseModel):
     content: "Expr"
 
     def __str__(self):
@@ -2927,7 +3015,16 @@ class Parenthetical(BaseModel):
         return Parenthetical(
             content=(
                 self.content.with_namespace(namespace)
-                if hasattr(self.content, "with_namespace")
+                if isinstance(self.content, Namespaced)
+                else self.content
+            )
+        )
+
+    def with_select_grain(self, grain: Grain):
+        return Parenthetical(
+            content=(
+                self.content.with_select_grain(grain)
+                if isinstance(self.content, SelectGrain)
                 else self.content
             )
         )
