@@ -305,7 +305,7 @@ class MergeNode(StrategyNode):
             force_group = None
 
         qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
-        return QueryDatasource(
+        qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),
             datasources=final_datasets,
@@ -322,3 +322,4 @@ class MergeNode(StrategyNode):
             force_group=force_group,
             condition=self.conditions,
         )
+        return qds

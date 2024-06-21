@@ -114,6 +114,7 @@ Run the following from the directory the file is in.
 trilogy run hello.preql duckdb
 ```
 
+![UI Preview](./docs/hello_world.png)
 
 ## Backends
 

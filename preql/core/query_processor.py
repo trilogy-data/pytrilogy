@@ -223,6 +223,7 @@ def datasource_to_ctes(
             raise ValueError(
                 f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
             )
+
     output.append(cte)
     return output
 

@@ -9,7 +9,7 @@ from preql.core.models import (
     LooseConceptList,
 )
 
-from preql.core.enums import Purpose, PurposeLineage, Granularity
+from preql.core.enums import Purpose, Granularity
 from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
@@ -143,7 +143,7 @@ def get_node_joins(
     # add edges for every constant to every datasource
     for datasource in datasources:
         for concept in datasource.output_concepts:
-            if concept.purpose == Purpose.CONSTANT:
+            if concept.granularity == Granularity.SINGLE_ROW:
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
@@ -182,7 +182,7 @@ def get_node_joins(
         local_concepts: List[Concept] = unique(
             [c for c in concepts if c.address in join_concepts], "address"
         )
-        if all([c.derivation == PurposeLineage.CONSTANT for c in local_concepts]):
+        if all([c.granularity == Granularity.SINGLE_ROW for c in local_concepts]):
             # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []
@@ -194,13 +194,13 @@ def get_node_joins(
         ):
             join_type = JoinType.FULL
             local_concepts = [
-                c for c in local_concepts if c.purpose != Purpose.CONSTANT
+                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
         else:
             join_type = JoinType.LEFT_OUTER
             # remove any constants if other join keys exist
             local_concepts = [
-                c for c in local_concepts if c.purpose != Purpose.CONSTANT
+                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
 
             # if concept.keys and all([x in grain for x in concept.keys]):
@@ -221,6 +221,20 @@ def get_node_joins(
         for x in datasources:
             if x.grain.abstract:
                 continue
+            found = False
+            for join in final_joins:
+                if (
+                    join.left_datasource.identifier == x.identifier
+                    or join.right_datasource.identifier == x.identifier
+                ):
+                    found = True
+            if not found:
+                raise SyntaxError(
+                    f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
+                )
+    single_row = [x for x in datasources if x.grain.abstract]
+    for x in single_row:
+        for join in final_joins:
             found = False
             for join in final_joins:
                 if (

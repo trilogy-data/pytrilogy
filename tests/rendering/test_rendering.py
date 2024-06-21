@@ -336,3 +336,7 @@ def test_render_merge():
         )
     )
     assert test == "merge materialized, test.materialized;"
+
+
+def test_render_persist_to_source():
+    pass

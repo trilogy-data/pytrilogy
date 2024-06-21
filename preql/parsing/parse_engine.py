@@ -447,6 +447,8 @@ def unwrap_transformation(
         return input
     elif isinstance(input, WindowItem):
         return input
+    elif isinstance(input, Parenthetical):
+        return unwrap_transformation(input.content)
     else:
         return Function(
             operator=FunctionType.CONSTANT,
@@ -937,16 +939,16 @@ class ParseToObjects(Transformer):
             output, self.environment
         )
 
-        if isinstance(args[0], AggregateWrapper):
-            concept = agg_wrapper_to_concept(args[0], namespace=namespace, name=output)
-        elif isinstance(args[0], WindowItem):
-            concept = window_item_to_concept(args[0], namespace=namespace, name=output)
-        elif isinstance(args[0], FilterItem):
-            concept = filter_item_to_concept(args[0], namespace=namespace, name=output)
-        elif isinstance(args[0], CONSTANT_TYPES):
-            concept = constant_to_concept(args[0], namespace=namespace, name=output)
-        elif isinstance(args[0], Function):
-            concept = function_to_concept(args[0], namespace=namespace, name=output)
+        if isinstance(function, AggregateWrapper):
+            concept = agg_wrapper_to_concept(function, namespace=namespace, name=output)
+        elif isinstance(function, WindowItem):
+            concept = window_item_to_concept(function, namespace=namespace, name=output)
+        elif isinstance(function, FilterItem):
+            concept = filter_item_to_concept(function, namespace=namespace, name=output)
+        elif isinstance(function, CONSTANT_TYPES):
+            concept = constant_to_concept(function, namespace=namespace, name=output)
+        elif isinstance(function, Function):
+            concept = function_to_concept(function, namespace=namespace, name=output)
         else:
             if function.output_purpose == Purpose.PROPERTY:
                 pkeys = [x for x in function.arguments if isinstance(x, Concept)]
@@ -1165,9 +1167,8 @@ class ParseToObjects(Transformer):
             # so rebuild at this point in the tree
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_grain(output.grain)
+                new_concept = item.content.output.with_select_grain(output.grain)
                 self.environment.add_concept(new_concept, meta=meta)
-                # self.environment.concepts[new_concept.address] = new_concept
                 item.content.output = new_concept
         if order_by:
             for item in order_by.items:
