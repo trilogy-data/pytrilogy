@@ -168,7 +168,7 @@ def test_base_join(test_environment: Environment):
             right_datasource=test_environment.datasources["category"],
             concepts=[
                 test_environment.concepts["product_id"],
-                test_environment.concepts["product_name"],
+                test_environment.concepts["category_name"],
             ],
             join_type=JoinType.RIGHT_OUTER,
             filter_to_mutual=True,
