@@ -1847,10 +1847,6 @@ class QueryDatasource(BaseModel):
             raise SyntaxError(
                 "can only merge two datasources if the group required flag is the same"
             )
-        if not self.partial_concepts == other.partial_concepts:
-            raise SyntaxError(
-                "can only merge two datasources if the partial concepts are the same"
-            )
         if not self.join_derived_concepts == other.join_derived_concepts:
             raise SyntaxError(
                 "can only merge two datasources if the join derived concepts are the same"
@@ -1889,7 +1885,7 @@ class QueryDatasource(BaseModel):
                 else None
             ),
             source_type=self.source_type,
-            partial_concepts=self.partial_concepts,
+            partial_concepts=self.partial_concepts + other.partial_concepts,
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
         )

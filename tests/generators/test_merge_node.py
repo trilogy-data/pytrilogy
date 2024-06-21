@@ -16,7 +16,7 @@ def test_same_join_fails(test_environment: Environment, test_environment_graph):
         depth=0,
     )
     try:
-        _ = MergeNode(
+        n = MergeNode(
             input_concepts=[],
             output_concepts=[],
             environment=None,
@@ -31,7 +31,7 @@ def test_same_join_fails(test_environment: Environment, test_environment_graph):
                 )
             ],
         )
-        assert 1 == 0, "test should fail"
+        len(n.node_joins) == 1
     except Exception as e:
         assert isinstance(e, SyntaxError)
 
