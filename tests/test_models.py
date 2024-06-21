@@ -1,4 +1,4 @@
-from preql.core.enums import BooleanOperator
+from preql.core.enums import BooleanOperator, Purpose
 from preql.core.models import (
     CTE,
     Grain,
@@ -7,6 +7,7 @@ from preql.core.models import (
     SelectStatement,
     Environment,
     Address,
+    UndefinedConcept,
 )
 
 
@@ -111,3 +112,18 @@ def test_select(test_environment: Environment):
     )
 
     assert ds.grain == Grain(components=[oid, pid, cid])
+
+
+def test_undefined(test_environment: Environment):
+    x = UndefinedConcept(
+        name="test",
+        datatype="int",
+        purpose=Purpose.CONSTANT,
+        grain=Grain(),
+        namespace="test",
+        environment=test_environment.concepts,
+    )
+
+    y = x.with_select_grain(Grain(components=[test_environment.concepts["order_id"]]))
+
+    assert y.grain == Grain(components=[test_environment.concepts["order_id"]])
