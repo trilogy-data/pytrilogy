@@ -404,7 +404,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
     def with_select_grain(self, grain: Optional["Grain"] = None) -> "Concept":
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
-        new_grain = grain or Grain(components=[])
+        new_grain = grain or self.grain
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectGrain):
             new_lineage = self.lineage.with_select_grain(new_grain)

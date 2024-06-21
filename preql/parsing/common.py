@@ -162,13 +162,16 @@ def agg_wrapper_to_concept(
     # anything grouped to a grain should be a property
     # at that grain
     aggfunction = parent.function
-    return Concept(
+    out = Concept(
         name=name,
         datatype=aggfunction.output_datatype,
         purpose=Purpose.METRIC,
         metadata=metadata,
-        lineage=aggfunction,
-        grain=(Grain(components=parent.by) if parent.by else aggfunction.output_grain),
+        lineage=parent,
+        grain=Grain(components=parent.by) if parent.by else Grain(),
         namespace=namespace,
         keys=tuple(parent.by) if parent.by else keys,
     )
+    if parent.by:
+        assert len(out.grain.components) == len(out.keys) == len(parent.by)
+    return out
