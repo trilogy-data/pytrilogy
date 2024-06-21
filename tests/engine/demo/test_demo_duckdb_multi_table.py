@@ -108,10 +108,6 @@ limit 5;"""
     sql = executor.parse_text(test)[-1]
 
     assert env.concepts["local.eldest"].purpose == Purpose.PROPERTY
-    # for x in env.concepts["local.eldest"].keys:
-    #     if x.address != 'survivors.passenger.id' and x.address != 'passenger.id':
-    #         assert x.keys, f"address fir {x.address}  {x.purpose} should have keys"
-    # assert {x.address for x in env.concepts["local.eldest"].keys} == {env.concepts["survivors.passenger.id"].address}
 
     # actual = executor.generate_sql(sql)
     # assert actual == ''
@@ -126,8 +122,8 @@ limit 5;"""
             MergeNode,  # get survived
             MergeNode,  # basic node
             MergeNode,  # filter to survived
+            MergeNode,  # filter to survived
             WindowNode,  # add window
-            MergeNode,  # merge window derivation
             MergeNode,  # final node
             MergeNode,  # final node
             GroupNode,  # final node

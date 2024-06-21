@@ -186,6 +186,11 @@ class FunctionClass(Enum):
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
     ]
+    SINGLE_ROW = [
+        FunctionType.CONSTANT,
+        FunctionType.CURRENT_DATE,
+        FunctionType.CURRENT_DATETIME,
+    ]
 
 
 class Boolean(Enum):

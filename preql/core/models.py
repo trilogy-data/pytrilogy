@@ -485,6 +485,10 @@ class Concept(Namespaced, SelectGrain, BaseModel):
         return []
 
     @property
+    def concept_arguments(self) -> List[Concept]:
+        return self.lineage.concept_arguments if self.lineage else []
+
+    @property
     def input(self):
         return [self] + self.sources
 
@@ -514,10 +518,19 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             and self.lineage.operator == FunctionType.UNNEST
         ):
             return PurposeLineage.UNNEST
+        elif (
+            self.lineage
+            and isinstance(self.lineage, Function)
+            and self.lineage.operator in FunctionClass.SINGLE_ROW.value
+        ):
+            return PurposeLineage.CONSTANT
+
+        elif self.lineage and isinstance(self.lineage, Function):
+            if not self.lineage.concept_arguments:
+                return PurposeLineage.CONSTANT
+            return PurposeLineage.BASIC
         elif self.purpose == Purpose.CONSTANT:
             return PurposeLineage.CONSTANT
-        elif self.lineage and isinstance(self.lineage, Function):
-            return PurposeLineage.BASIC
         return PurposeLineage.ROOT
 
     @property

@@ -133,8 +133,29 @@ def get_priority_concept(
                 and c.granularity == Granularity.SINGLE_ROW
             ]
         )
-        if priority:
-            return priority[0]
+
+        final = []
+        # if any thing is derived from another concept
+        # get the derived copy first
+        # as this will usually resolve cleaner
+        for x in priority:
+            if any(
+                [
+                    x.address in [y.address for y in c.concept_arguments]
+                    for c in priority
+                ]
+            ):
+                logger.info(
+                    f"delaying fetch of {x.address} as parent of another concept"
+                )
+                continue
+            final.append(x)
+        # then append anything we didn't get
+        for x2 in priority:
+            if x2 not in final:
+                final.append(x2)
+        if final:
+            return final[0]
     raise ValueError(
         f"Cannot resolve query. No remaining priority concepts, have attempted {attempted_addresses}"
     )

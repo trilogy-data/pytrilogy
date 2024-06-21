@@ -4,7 +4,7 @@ from typing import List
 from preql.core.models import (
     Concept,
 )
-from preql.core.processing.nodes import StrategyNode, History, MergeNode
+from preql.core.processing.nodes import StrategyNode, History, MergeNode, ConstantNode
 from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
@@ -22,8 +22,13 @@ def gen_basic_node(
     source_concepts,
     history: History | None = None,
 ):
-    parent_concepts = resolve_function_parent_concepts(concept)
     depth_prefix = "\t" * depth
+    parent_concepts = resolve_function_parent_concepts(concept)
+
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}"
+    )
+
     output_concepts = [concept] + local_optional
     partials = []
 

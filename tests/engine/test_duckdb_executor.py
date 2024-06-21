@@ -3,7 +3,7 @@ import networkx as nx
 from preql.core.env_processor import generate_graph
 from preql.executor import Executor
 from preql.core.models import ShowStatement, Concept, Grain
-from preql.core.enums import Purpose, Granularity
+from preql.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from preql.parser import parse_text
 
 
@@ -206,3 +206,33 @@ def test_default_engine(default_duckdb_engine: Executor):
     """
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results[0]) == 3
+
+
+def test_complex(default_duckdb_engine: Executor):
+    from preql.hooks.query_debugger import DebuggingHook
+
+    test = """
+const list <- [1,2,2,3];
+const orid <- unnest(list);
+
+select 
+    orid,
+    ((orid+17)/2) -> half_orid,
+
+    
+  ;
+    """
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    listc = default_duckdb_engine.environment.concepts["list"]
+    assert listc.purpose == Purpose.CONSTANT
+    orid = default_duckdb_engine.environment.concepts["orid"]
+    half = default_duckdb_engine.environment.concepts["half_orid"]
+    assert orid.address in [x.address for x in half.concept_arguments]
+    assert set([x.address for x in half.keys]) == {
+        "local.orid",
+    }
+    assert half.lineage.operator == FunctionType.DIVIDE
+    assert half.derivation == PurposeLineage.BASIC
+    assert half.granularity == Granularity.MULTI_ROW
+    assert len(results) == 4
