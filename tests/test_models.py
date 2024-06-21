@@ -156,7 +156,7 @@ def test_base_join(test_environment: Environment):
             test_environment.concepts["product_name"],
         ],
         join_type=JoinType.RIGHT_OUTER,
-        filter_to_mutual=True
+        filter_to_mutual=True,
     )
 
     assert x.concepts == [test_environment.concepts["product_id"]]
@@ -171,7 +171,7 @@ def test_base_join(test_environment: Environment):
                 test_environment.concepts["product_name"],
             ],
             join_type=JoinType.RIGHT_OUTER,
-            filter_to_mutual=True
+            filter_to_mutual=True,
         )
     except Exception as exc4:
         exc3 = exc4
