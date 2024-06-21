@@ -407,6 +407,22 @@ order by passenger.class desc
 
     assert round(results[0].survival_rate_auto, 2) == 0.24
 
+    test = """
+auto survivor <- filter passenger.id 
+where passenger.survived = 1;
+select 
+    count(survivor)/count(passenger.id)+1
+    -> survival_rate_auto_two,
+    passenger.class
+order by passenger.class desc
+;
+"""
+    results = executor.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 3
+
+    assert round(results[0].survival_rate_auto_two, 2) == 1.24
+
 
 def test_demo_suggested_answer_failing_intentional():
     executor = setup_engine(debug_flag=True)

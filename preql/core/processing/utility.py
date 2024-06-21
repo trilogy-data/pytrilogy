@@ -9,7 +9,7 @@ from preql.core.models import (
     LooseConceptList,
 )
 
-from preql.core.enums import Purpose, PurposeLineage, Granularity
+from preql.core.enums import Purpose, Granularity
 from preql.core.constants import CONSTANT_DATASET
 from enum import Enum
 from preql.utility import unique
