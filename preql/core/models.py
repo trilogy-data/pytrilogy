@@ -60,6 +60,7 @@ from preql.utility import unique
 from collections import UserList
 from preql.utility import string_to_hash
 from functools import cached_property
+from abc import ABC
 
 
 LOGGER_PREFIX = "[MODELS]"
@@ -112,14 +113,14 @@ NAMESPACED_TYPES = Union[
 ]
 
 
-class Namespaced:
+class Namespaced(ABC):
     pass
 
     def with_namespace(self, namespace: str):
         raise NotImplementedError
 
 
-class SelectGrain:
+class SelectGrain(ABC):
     pass
 
     def with_select_grain(self, grain: Grain):
@@ -247,7 +248,7 @@ def empty_grain() -> Grain:
     return Grain(components=[])
 
 
-class Concept(BaseModel):
+class Concept(Namespaced, SelectGrain, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType
     purpose: Purpose
@@ -404,12 +405,9 @@ class Concept(BaseModel):
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
         new_grain = grain or Grain(components=[])
-        if self.lineage:
-            new_lineage = self.lineage
-            if isinstance(self.lineage, SelectGrain):
-                new_lineage = self.lineage.with_select_grain(new_grain)
-        else:
-            new_lineage = None
+        new_lineage = self.lineage
+        if isinstance(self.lineage, SelectGrain):
+            new_lineage = self.lineage.with_select_grain(new_grain)
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -2119,7 +2117,7 @@ class Join(BaseModel):
         )
 
 
-class UndefinedConcept(Namespaced, SelectGrain, Concept):
+class UndefinedConcept(Concept):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     environment: "EnvironmentConceptDict"

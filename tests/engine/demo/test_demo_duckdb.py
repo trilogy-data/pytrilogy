@@ -10,6 +10,7 @@ from preql.core.models import (
     DataType,
     Function,
     LooseConceptList,
+    SelectGrain,
 )
 from preql.core.enums import Purpose, FunctionType
 from os.path import dirname
@@ -395,12 +396,16 @@ order by passenger.class desc
     env.parse(test)
     srate = env.concepts["survival_rate_auto"]
     assert srate.lineage
+    assert isinstance(srate.lineage, Function)
+    assert isinstance(srate.lineage, SelectGrain)
     for agg in env.concepts["survival_rate_auto"].lineage.arguments:
-        assert agg.grain == Grain(components=[env.concepts["passenger.class"]])
+        assert agg.grain.components == [env.concepts["passenger.class"]]
         assert len(agg.grain.components) == 1
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 3
+
+    assert round(results[0].survival_rate_auto, 2) == 0.24
 
 
 def test_demo_suggested_answer_failing_intentional():
