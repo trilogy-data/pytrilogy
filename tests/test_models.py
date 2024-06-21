@@ -1,4 +1,4 @@
-from preql.core.enums import BooleanOperator, Purpose
+from preql.core.enums import BooleanOperator, Purpose, JoinType
 from preql.core.models import (
     CTE,
     Grain,
@@ -8,6 +8,7 @@ from preql.core.models import (
     Environment,
     Address,
     UndefinedConcept,
+    BaseJoin,
 )
 
 
@@ -127,3 +128,52 @@ def test_undefined(test_environment: Environment):
     y = x.with_select_grain(Grain(components=[test_environment.concepts["order_id"]]))
 
     assert y.grain == Grain(components=[test_environment.concepts["order_id"]])
+
+    z = x.with_default_grain()
+
+    assert z.grain == Grain()
+
+
+def test_base_join(test_environment: Environment):
+    exc: SyntaxError | None = None
+    try:
+        BaseJoin(
+            left_datasource=test_environment.datasources["revenue"],
+            right_datasource=test_environment.datasources["revenue"],
+            concepts=[test_environment.concepts["product_id"]],
+            join_type=JoinType.RIGHT_OUTER,
+        )
+    except Exception as exc2:
+        exc = exc2
+        pass
+    assert isinstance(exc, SyntaxError)
+
+    x = BaseJoin(
+        left_datasource=test_environment.datasources["revenue"],
+        right_datasource=test_environment.datasources["products"],
+        concepts=[
+            test_environment.concepts["product_id"],
+            test_environment.concepts["product_name"],
+        ],
+        join_type=JoinType.RIGHT_OUTER,
+        filter_to_mutual=True
+    )
+
+    assert x.concepts == [test_environment.concepts["product_id"]]
+
+    exc3: SyntaxError | None = None
+    try:
+        x = BaseJoin(
+            left_datasource=test_environment.datasources["revenue"],
+            right_datasource=test_environment.datasources["category"],
+            concepts=[
+                test_environment.concepts["product_id"],
+                test_environment.concepts["product_name"],
+            ],
+            join_type=JoinType.RIGHT_OUTER,
+            filter_to_mutual=True
+        )
+    except Exception as exc4:
+        exc3 = exc4
+        pass
+    assert isinstance(exc3, SyntaxError)
