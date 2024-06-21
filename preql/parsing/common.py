@@ -172,6 +172,4 @@ def agg_wrapper_to_concept(
         namespace=namespace,
         keys=tuple(parent.by) if parent.by else keys,
     )
-    if parent.by:
-        assert len(out.grain.components) == len(out.keys) == len(parent.by)
     return out
