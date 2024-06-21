@@ -70,7 +70,11 @@ def test_query_datasources(environment: Environment):
 
     # source query concepts includes extra group by to grain
     customer_node = search_concepts(
-        [environment.concepts["internet_sales.customer.first_name"]],
+        [
+            environment.concepts[
+                "internet_sales.customer.first_name"
+            ].with_default_grain()
+        ],
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -80,7 +84,7 @@ def test_query_datasources(environment: Environment):
 
     assert (
         customer_datasource.identifier
-        == "customers_at_internet_sales_customer_first_name"
+        == "customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
     )
 
     # assert a join before the group by works
@@ -107,7 +111,7 @@ def test_query_datasources(environment: Environment):
 
     assert (
         customer_datasource.identifier
-        == "customers_at_internet_sales_customer_first_name"
+        == "customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
     )
 
     datasource = get_query_datasources(

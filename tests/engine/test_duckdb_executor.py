@@ -209,7 +209,6 @@ def test_default_engine(default_duckdb_engine: Executor):
 
 
 def test_complex(default_duckdb_engine: Executor):
-    from preql.hooks.query_debugger import DebuggingHook
 
     test = """
 const list <- [1,2,2,3];
@@ -222,7 +221,7 @@ select
     
   ;
     """
-    default_duckdb_engine.hooks = [DebuggingHook()]
+
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     listc = default_duckdb_engine.environment.concepts["list"]
     assert listc.purpose == Purpose.CONSTANT
@@ -236,3 +235,59 @@ select
     assert half.derivation == PurposeLineage.BASIC
     assert half.granularity == Granularity.MULTI_ROW
     assert len(results) == 4
+
+
+def test_agg_demo(default_duckdb_engine: Executor):
+    from preql.hooks.query_debugger import DebuggingHook
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    test = """key orid int;
+key store string;
+key customer int;
+
+auto customer_orders <- count(orid) by customer;
+datasource agg_example(
+  orid: orid,
+  store: store,
+  customer:customer,
+)
+grain(orid)
+query '''
+select 1 orid, 'store1' store, 145 customer
+union all
+select 2, 'store2', 244
+union all
+select 3, 'store2', 244
+union all
+select 4, 'store3', 244
+''';
+
+select 
+    avg(customer_orders) -> avg_customer_orders,
+    avg(count(orid) by store) -> avg_store_orders,
+;"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    customer_orders = default_duckdb_engine.environment.concepts["customer_orders"]
+    assert set([x.address for x in customer_orders.keys]) == {"local.customer"}
+    assert set([x.address for x in customer_orders.grain.components]) == {
+        "local.customer"
+    }
+
+    customer_orders_2 = customer_orders.with_select_grain(Grain())
+    assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
+    assert set([x.address for x in customer_orders_2.grain.components]) == {
+        "local.customer"
+    }
+
+    count_by_customer = default_duckdb_engine.environment.concepts[
+        "avg_customer_orders"
+    ].lineage.arguments[0]
+    # assert isinstance(count_by_customer, AggregateWrapper)
+    assert set([x.address for x in count_by_customer.keys]) == {"local.customer"}
+    assert set([x.address for x in count_by_customer.grain.components]) == {
+        "local.customer"
+    }
+    assert len(results) == 1
+    assert results[0].avg_customer_orders == 2
+    assert round(results[0].avg_store_orders, 2) == 1.33

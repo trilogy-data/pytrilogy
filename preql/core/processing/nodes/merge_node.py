@@ -120,12 +120,13 @@ class MergeNode(StrategyNode):
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
         self.node_joins = node_joins
+        final_joins = []
         if self.node_joins:
             for join in self.node_joins:
                 if join.left_node.resolve().name == join.right_node.resolve().name:
-                    raise SyntaxError(
-                        f"Cannot join node {join.left_node.resolve().name} to itself"
-                    )
+                    continue
+                final_joins.append(join)
+        self.node_joins = final_joins
 
     def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
         joins = []
