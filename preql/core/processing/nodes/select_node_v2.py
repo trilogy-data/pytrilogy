@@ -121,12 +121,20 @@ class SelectNode(StrategyNode):
                 PurposeLineage.MERGE,
             ):
                 source_map[x.address] = set()
+
+        # if we're not grouping
+        # force grain to datasource grain
+        # so that we merge on the same grain
+        if self.force_group is False:
+            grain = datasource.grain
+        else:
+            grain = self.grain or Grain()
         return QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=all_concepts_final,
             source_map=source_map,
             datasources=[datasource],
-            grain=self.grain or Grain(),
+            grain=grain,
             joins=[],
             partial_concepts=[
                 c.concept for c in datasource.columns if not c.is_complete

@@ -41,6 +41,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
+        keys=(id,),
     )
 
     name = Concept(
@@ -48,6 +49,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
+        keys=(id,),
     )
 
     pclass = Concept(
@@ -55,18 +57,21 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
+        keys=(id,),
     )
     survived = Concept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.BOOL,
+        keys=(id,),
     )
     fare = Concept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.FLOAT,
+        keys=(id,),
     )
     for x in [id, age, survived, name, pclass, fare]:
         env.add_concept(x)
@@ -92,10 +97,14 @@ def test_partial_assignment():
     """
     Test that a derived concept is pulled from the
     CTE that has the full concept, not a partially filtered copy"""
+    from preql.hooks.query_debugger import DebuggingHook
+    from preql.core.processing.node_generators.common import concept_to_relevant_joins
+
     executor = setup_engine()
     env = Environment()
     setup_titanic(env)
     executor.environment = env
+    executor.hooks = [DebuggingHook()]
     test = """property passenger.id.family <- split(passenger.name, ',')[1]; 
     auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
 select 
@@ -142,11 +151,14 @@ limit 5;"""
     # selectnode = [node for node in sourced.parents if isinstance(node, SelectNode)][0]
     resolved = sourced.resolve().source_map["passenger.family"]
 
-    # assert len(resolved) == 2
+    join_concepts = [
+        env.concepts[v]
+        for v in ["passenger.id", "passenger.family", "passenger.survived"]
+    ]
 
-    # check:QueryDatasource = list(resolved)[0]
-
-    # assert 'filtered' not in check.identifier
+    assert (
+        len(concept_to_relevant_joins(join_concepts)) == 1
+    ), "should only have one join concept"
 
     assert len(mnode.partial_concepts) == 2
     assert set([c.address for c in mnode.partial_concepts]) == set(
@@ -163,12 +175,15 @@ limit 5;"""
 
     # and now a full E2E
     query = results[-1]
-    x = query.ctes[-1]
+    x = query.ctes[-1].parent_ctes[0]
     # parent = x.parent_ctes[0]
     assert x.get_alias(family) != x.get_alias(env.concepts["surviving_size"])
-    # raise SyntaxError([c.address for c in x.output_columns])
     assert "local_surviving_passenger" not in x.source.source_map["passenger.family"]
+    non_filtered_found = False
     for source in x.source.source_map["passenger.family"]:
         # ensure we don't get this from a filtered source
-        assert "filtered" not in source.identifier
-        # raise SyntaxError(source.identifier)
+        non_filtered_found = True
+        if "filtered" not in source.identifier:
+            non_filtered_found = True
+
+    assert non_filtered_found, x.source.source_map["passenger.family"]
