@@ -1,4 +1,6 @@
 ## PreQL/Trilogy
+[![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://preqldata.dev/)
+[![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 
 pypreql is an experimental implementation of the [PreQL/Trilogy] (prequel trilogy) language, a extension of SQL that replaces tables/joins with a lightweight semantic binding layer.
 
