@@ -29,7 +29,7 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x: f"EXTRACT(WEEK from {x[0]})",
     FunctionType.QUARTER: lambda x: f"EXTRACT(QUARTER from {x[0]})",
     # math
-    FunctionType.DIVIDE: lambda x: f"SAFE_DIVIDE({x[0]},{x[1]})",
+    FunctionType.DIVIDE: lambda x: f"DIV0({x[0]},{x[1]})",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {

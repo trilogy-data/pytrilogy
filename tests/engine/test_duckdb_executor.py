@@ -5,6 +5,7 @@ from preql.executor import Executor
 from preql.core.models import ShowStatement, Concept, Grain
 from preql.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from preql.parser import parse_text
+from preql.core.processing.concept_strategies_v3 import get_upstream_concepts
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -310,3 +311,52 @@ order by
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (0, 2)
+
+
+def test_case_group():
+    from preql.core.processing.node_generators.group_node import (
+        resolve_function_parent_concepts,
+    )
+
+    from preql import Dialects
+
+    from preql.core.models import LooseConceptList
+
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    test = """
+const x <- 1;
+const x2 <- x+1;
+
+key orid <- unnest([1,2,3,6,10]);
+property orid.mod_two <- orid % 2;
+
+property orid.cased <-CASE WHEN mod_two = 0 THEN 1 ELSE 0 END;
+
+select 
+    SUM(cased) -> total_mod_two
+  ;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    cased = default_duckdb_engine.environment.concepts["cased"]
+    total = default_duckdb_engine.environment.concepts["total_mod_two"]
+    assert cased.purpose == Purpose.PROPERTY
+    assert LooseConceptList(concepts=cased.keys) == LooseConceptList(
+        concepts=[default_duckdb_engine.environment.concepts["orid"]]
+    )
+
+    assert total.derivation == PurposeLineage.AGGREGATE
+    x = resolve_function_parent_concepts(total)
+    assert len(cased.concept_arguments) == 1
+    assert "local.orid" in get_upstream_concepts(cased)
+
+    # for x in total.lineage.concept_arguments:
+    #     if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+    #         raise SyntaxError(x.keys)
+    assert "local.cased" in LooseConceptList(concepts=x)
+    assert "local.orid" in LooseConceptList(concepts=x)
+    # function_to_concept(
+    #     parent=function_to_concept()
+    # )
+    assert results[0] == (3,)

@@ -8,7 +8,6 @@ from preql.core.models import (
     AggregateWrapper,
     FilterItem,
     Environment,
-    Grain,
     LooseConceptList,
 )
 from preql.utility import unique
@@ -31,35 +30,18 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
             base = concept.lineage.concept_arguments + concept.grain.components_copy
             # if the base concept being aggregated is a property with a key
             # keep the key as a parent
-            if isinstance(concept.lineage, AggregateWrapper):
-                # for aggregate wrapper, don't include the by
-                extra_grain = concept.lineage.function.concept_arguments
-            else:
-                extra_grain = concept.lineage.concept_arguments
-            for x in extra_grain:
-                if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
-                    base += x.keys
-            return unique(base, "address")
-
-        if concept.lineage.arguments:
-            default_grain = Grain()
-            for arg in concept.lineage.arguments:
-                if not isinstance(arg, Concept):
-                    continue
-                if arg.grain:
-                    default_grain += arg.grain
-            # for arg in concept.lineage.arguments:
-            #     if arg.purpose == Purpose.PROPERTY
-            #         default_grain += Grain(
-            #             components=list(arg.keys) if arg.keys else []
-            #         )
-            return unique(
-                concept.lineage.concept_arguments + default_grain.components_copy,
-                "address",
-            )
-        return concept.lineage.concept_arguments
+        else:
+            base = concept.lineage.concept_arguments
+        if isinstance(concept.lineage, AggregateWrapper):
+            # for aggregate wrapper, don't include the by
+            extra_property_grain = concept.lineage.function.concept_arguments
+        else:
+            extra_property_grain = concept.lineage.concept_arguments
+        for x in extra_property_grain:
+            if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+                base += x.keys
+        return unique(base, "address")
     # TODO: handle basic lineage chains?
-
     return unique(concept.lineage.concept_arguments, "address")
 
 

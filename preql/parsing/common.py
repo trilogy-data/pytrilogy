@@ -113,7 +113,8 @@ def filter_item_to_concept(
         lineage=parent,
         metadata=metadata,
         namespace=namespace,
-        keys=parent.content.keys,
+        # filtered copies cannot inherit keys
+        keys=None,
         grain=(
             parent.content.grain
             if parent.content.purpose == Purpose.PROPERTY
