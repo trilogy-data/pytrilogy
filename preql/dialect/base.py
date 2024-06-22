@@ -492,6 +492,12 @@ class BaseDialect:
                                                 for cte in cte.parent_ctes
                                             ]
                                         )
+                                    ]
+                                    + [
+                                        c
+                                        for c in cte.output_columns
+                                        if c.purpose == Purpose.CONSTANT
+                                        and cte.source_map[c.address] != ""
                                     ],
                                     "address",
                                 )
