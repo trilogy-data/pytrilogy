@@ -1,6 +1,7 @@
 from __future__ import annotations
 import difflib
 import os
+from copy import deepcopy
 from enum import Enum
 from typing import (
     Dict,
@@ -452,7 +453,9 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             grain = Grain()
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != PurposeLineage.CONSTANT:
-                grain = Grain(components=[self.with_grain(Grain())], nested=True)
+                grain = Grain(
+                    components=[self.with_grain(Grain())], nested=True
+                )
             else:
                 grain = self.grain
         else:
@@ -1538,7 +1541,7 @@ class Datasource(Namespaced, BaseModel):
             columns: List[ColumnAssignment] = values.get("columns", [])
             grain = Grain(
                 components=[
-                    c.with_grain(Grain())
+                    c.concept.with_grain(Grain())
                     for c in columns
                     if c.concept.purpose == Purpose.KEY
                 ]
