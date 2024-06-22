@@ -323,15 +323,17 @@ def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
     return upstream
 
 
-def test_case_group(default_duckdb_engine: Executor):
-    from preql.hooks.query_debugger import DebuggingHook
+def test_case_group():
     from preql.core.processing.node_generators.group_node import (
         resolve_function_parent_concepts,
     )
 
+    from preql import Dialects
+
     from preql.core.models import LooseConceptList
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
+    default_duckdb_engine = Dialects.DUCK_DB.default_engine()
+
     test = """
 const x <- 1;
 const x2 <- x+1;

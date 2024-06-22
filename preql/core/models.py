@@ -1,7 +1,6 @@
 from __future__ import annotations
 import difflib
 import os
-from copy import deepcopy
 from enum import Enum
 from typing import (
     Dict,
@@ -436,7 +435,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
     def with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
-            grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
+            grain = Grain(components=[self.with_grain(Grain())], nested=True)
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.keys:
@@ -453,9 +452,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             grain = Grain()
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != PurposeLineage.CONSTANT:
-                grain = Grain(
-                    components=[deepcopy(self).with_grain(Grain())], nested=True
-                )
+                grain = Grain(components=[self.with_grain(Grain())], nested=True)
             else:
                 grain = self.grain
         else:
@@ -587,7 +584,7 @@ class Grain(BaseModel):
 
     @property
     def components_copy(self) -> List[Concept]:
-        return deepcopy(self.components)
+        return [*self.components]
 
     def __str__(self):
         if self.abstract:
@@ -1541,7 +1538,7 @@ class Datasource(Namespaced, BaseModel):
             columns: List[ColumnAssignment] = values.get("columns", [])
             grain = Grain(
                 components=[
-                    deepcopy(c.concept).with_grain(Grain())
+                    c.with_grain(Grain())
                     for c in columns
                     if c.concept.purpose == Purpose.KEY
                 ]
@@ -2196,7 +2193,7 @@ class UndefinedConcept(Concept):
     def with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
-            grain = Grain(components=[deepcopy(self).with_grain(Grain())], nested=True)
+            grain = Grain(components=[self.with_grain(Grain())], nested=True)
         elif self.purpose == Purpose.PROPERTY:
             components: List[Concept] = []
             if self.keys:

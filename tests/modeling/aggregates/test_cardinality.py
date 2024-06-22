@@ -20,7 +20,7 @@ SELECT
 
     results = test_executor.execute_text(test_select)[0].fetchall()
 
-    assert len(results) == 2
+    assert len(results) == 3
     assert ("store1", None) in results
     assert ("aspen", "aspen") in results
 
