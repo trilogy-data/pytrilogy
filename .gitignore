@@ -18,8 +18,6 @@ AdventureWorksDW2019.bak
 
 *.code-workspace
 
-examples/
-
 .temp
 .cache
 
