@@ -5,6 +5,7 @@ from preql.executor import Executor
 from preql.core.models import ShowStatement, Concept, Grain
 from preql.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from preql.parser import parse_text
+from preql.core.processing.concept_strategies_v3 import get_upstream_concepts
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -310,17 +311,6 @@ order by
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (0, 2)
-
-
-def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
-    upstream = set()
-    if nested:
-        upstream.add(base.address)
-    if not base.lineage:
-        return upstream
-    for x in base.lineage.concept_arguments:
-        upstream = upstream.union(get_upstream_concepts(x, nested=True))
-    return upstream
 
 
 def test_case_group():
