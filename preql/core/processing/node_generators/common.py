@@ -8,7 +8,6 @@ from preql.core.models import (
     AggregateWrapper,
     FilterItem,
     Environment,
-    Grain,
     LooseConceptList,
 )
 from preql.utility import unique
