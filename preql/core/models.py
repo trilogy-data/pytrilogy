@@ -1,7 +1,6 @@
 from __future__ import annotations
 import difflib
 import os
-from copy import deepcopy
 from enum import Enum
 from typing import (
     Dict,
