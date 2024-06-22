@@ -332,7 +332,7 @@ def test_case_group():
 
     from preql.core.models import LooseConceptList
 
-    default_duckdb_engine = Dialects.DUCK_DB.default_engine()
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
     test = """
 const x <- 1;

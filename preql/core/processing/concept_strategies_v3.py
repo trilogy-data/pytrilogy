@@ -425,7 +425,7 @@ def _search_concepts(
             mandatory_list, attempted, found_concepts=found, depth=depth
         )
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priortiy concept is {str(priority_concept)}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)}"
         )
 
         candidates = [

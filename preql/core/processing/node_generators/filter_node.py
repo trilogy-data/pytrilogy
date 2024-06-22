@@ -86,6 +86,6 @@ def gen_filter_node(
         # all of these concepts only count as partial
         partial_concepts=[immediate_parent] + local_optional,
         # we should not need to implicitly group here
-        force_group=False,
+        force_group=True,
     )
     return x
