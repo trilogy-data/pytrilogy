@@ -5,8 +5,9 @@ from preql.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from preql.core.processing.nodes import MergeNode
-from preql.core.models import Environment, AggregateWrapper
-from preql.core.enums import PurposeLineage
+from preql.core.models import Environment, AggregateWrapper, Function, DataType
+from preql.core.enums import PurposeLineage, FunctionType, Purpose
+from preql.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
 def test_gen_group_node_parents(test_environment: Environment, test_environment_graph):
@@ -67,3 +68,32 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
 
     # check that the parent is a merge node
     parent.resolve()
+
+
+def test_proper_parents(test_environment):
+    base = Function(
+        operator=FunctionType.COUNT,
+        arguments=[test_environment.concepts["category_name"]],
+        output_purpose=Purpose.PROPERTY,
+        output_datatype=DataType.INTEGER,
+    )
+
+    resolved = resolve_function_parent_concepts(
+        function_to_concept(base, name="base_agg", namespace="local"),
+    )
+    assert len(resolved) == 2
+    assert test_environment.concepts["category_id"] in resolved
+    resolved = resolve_function_parent_concepts(
+        agg_wrapper_to_concept(
+            AggregateWrapper(
+                function=base,
+                by=[test_environment.concepts["product_name"]],
+            ),
+            name="agg_to_alt_grain",
+            namespace="local",
+        )
+    )
+
+    assert len(resolved) == 3
+    assert test_environment.concepts["product_name"] in resolved
+    assert test_environment.concepts["product_id"] not in resolved
