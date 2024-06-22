@@ -19,7 +19,6 @@ To get an overview of the project, read the [README](../README.md) file. Here ar
 - [Collaborating with pull requests](https://docs.github.com/en/github/collaborating-with-pull-requests)
 
 
-
 ### Issues
 
 #### Create a new issue
@@ -35,8 +34,6 @@ Scan through our [existing issues](https://github.com/preqldata/pypreql/issues) 
 
 Recommend that you work in a virtual environment with requirements from both requirements.txt and requirements-test.txt installed. The latter is necessary to run
 tests (surprise). 
-
-Pypreql is python 3.10+.
 
 ## Running Tests
 

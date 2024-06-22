@@ -217,8 +217,6 @@ const orid <- unnest(list);
 select 
     orid,
     ((orid+17)/2) -> half_orid,
-
-    
   ;
     """
 
@@ -238,9 +236,7 @@ select
 
 
 def test_agg_demo(default_duckdb_engine: Executor):
-    from preql.hooks.query_debugger import DebuggingHook
 
-    default_duckdb_engine.hooks = [DebuggingHook()]
     test = """key orid int;
 key store string;
 key customer int;
@@ -291,3 +287,26 @@ select
     assert len(results) == 1
     assert results[0].avg_customer_orders == 2
     assert round(results[0].avg_store_orders, 2) == 1.33
+
+
+def test_constant_group(default_duckdb_engine: Executor):
+    from preql.hooks.query_debugger import DebuggingHook
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    test = """
+const x <- 1;
+const x2 <- x+1;
+
+key orid <- unnest([1,2,3]);
+property orid.mod_two <- orid % 2;
+
+select 
+    mod_two,
+    x2
+order by
+    mod_two asc
+  ;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (0, 2)
