@@ -2611,7 +2611,7 @@ class CaseWhen(Namespaced, SelectGrain, BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
-    def with_namespace(self, namespace: str):
+    def with_namespace(self, namespace: str) -> CaseWhen:
         return CaseWhen(
             comparison=self.comparison.with_namespace(namespace),
             expr=(
@@ -2624,15 +2624,13 @@ class CaseWhen(Namespaced, SelectGrain, BaseModel):
             ),
         )
 
-    def with_select_grain(self, grain: Grain):
-        return (
-            CaseWhen(
-                comparison=self.comparison.with_select_grain(grain),
-                expr=(
-                    (self.expr.with_select_grain(grain))
-                    if isinstance(self.expr, SelectGrain)
-                    else self.expr
-                ),
+    def with_select_grain(self, grain: Grain) -> CaseWhen:
+        return CaseWhen(
+            comparison=self.comparison.with_select_grain(grain),
+            expr=(
+                (self.expr.with_select_grain(grain))
+                if isinstance(self.expr, SelectGrain)
+                else self.expr
             ),
         )
 
@@ -2646,7 +2644,7 @@ class CaseElse(Namespaced, SelectGrain, BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
-    def with_select_grain(self, grain: Grain):
+    def with_select_grain(self, grain: Grain) -> CaseElse:
         return CaseElse(
             discriminant=self.discriminant,
             expr=(
@@ -2659,7 +2657,7 @@ class CaseElse(Namespaced, SelectGrain, BaseModel):
             ),
         )
 
-    def with_namespace(self, namespace: str):
+    def with_namespace(self, namespace: str) -> CaseElse:
         return CaseElse(
             discriminant=self.discriminant,
             expr=(

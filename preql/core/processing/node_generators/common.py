@@ -31,15 +31,17 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
             base = concept.lineage.concept_arguments + concept.grain.components_copy
             # if the base concept being aggregated is a property with a key
             # keep the key as a parent
-            if isinstance(concept.lineage, AggregateWrapper):
-                # for aggregate wrapper, don't include the by
-                extra_grain = concept.lineage.function.concept_arguments
-            else:
-                extra_grain = concept.lineage.concept_arguments
-            for x in extra_grain:
-                if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
-                    base += x.keys
-            return unique(base, "address")
+        else:
+            base = concept.lineage.concept_arguments
+        if isinstance(concept.lineage, AggregateWrapper):
+            # for aggregate wrapper, don't include the by
+            extra_property_grain = concept.lineage.function.concept_arguments
+        else:
+            extra_property_grain = concept.lineage.concept_arguments
+        for x in extra_property_grain:
+            if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+                base += x.keys
+        return unique(base, "address")
 
         if concept.lineage.arguments:
             default_grain = Grain()

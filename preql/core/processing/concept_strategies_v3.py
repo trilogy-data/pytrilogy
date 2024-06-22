@@ -44,8 +44,22 @@ class ValidationResult(Enum):
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
+def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
+    upstream = set()
+    if nested:
+        upstream.add(base.address)
+    if not base.lineage:
+        return upstream
+    for x in base.lineage.concept_arguments:
+        upstream = upstream.union(get_upstream_concepts(x, nested=True))
+    return upstream
+
+
 def get_priority_concept(
-    all_concepts: List[Concept], attempted_addresses: set[str], found_concepts: set[str]
+    all_concepts: List[Concept],
+    attempted_addresses: set[str],
+    found_concepts: set[str],
+    depth: int,
 ) -> Concept:
     # optimized search for missing concepts
     pass_one = [
@@ -134,19 +148,19 @@ def get_priority_concept(
             ]
         )
 
+        priority += [
+            c
+            for c in remaining_concept
+            if c.address not in [x.address for x in priority]
+        ]
         final = []
         # if any thing is derived from another concept
         # get the derived copy first
         # as this will usually resolve cleaner
         for x in priority:
-            if any(
-                [
-                    x.address in [y.address for y in c.concept_arguments]
-                    for c in priority
-                ]
-            ):
+            if any([x.address in get_upstream_concepts(c) for c in priority]):
                 logger.info(
-                    f"delaying fetch of {x.address} as parent of another concept"
+                    f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
                 )
                 continue
             final.append(x)
@@ -408,7 +422,10 @@ def _search_concepts(
 
     while attempted != all_mandatory:
         priority_concept = get_priority_concept(
-            mandatory_list, attempted, found_concepts=found
+            mandatory_list, attempted, found_concepts=found, depth=depth
+        )
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priortiy concept is {str(priority_concept)}"
         )
 
         candidates = [

@@ -91,7 +91,7 @@ DATATYPE_MAP = {
 
 
 def render_case(args):
-    return "CASE\n\t\t" + "\n\t\t".join(args) + "\n\tEND"
+    return "CASE\n\t" + "\n\t".join(args) + "\n\tEND"
 
 
 FUNCTION_MAP = {
@@ -173,14 +173,14 @@ SELECT
 {%- if limit is not none %}
 TOP {{ limit }}{% endif %}
 {%- for select in select_columns %}
-    {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
+\t{{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 {% if base %}FROM
-    {{ base }}{% endif %}{% if joins %}{% for join in joins %}
-    {{ join }}{% endfor %}{% endif %}
+\t{{ base }}{% endif %}{% if joins %}{% for join in joins %}
+\t{{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
-    {{ where }}
+\t{{ where }}
 {% endif %}{%- if group_by %}GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
+\t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}
