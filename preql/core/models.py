@@ -453,9 +453,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             grain = Grain()
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != PurposeLineage.CONSTANT:
-                grain = Grain(
-                    components=[self.with_grain(Grain())], nested=True
-                )
+                grain = Grain(components=[self.with_grain(Grain())], nested=True)
             else:
                 grain = self.grain
         else:
