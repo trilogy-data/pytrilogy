@@ -273,7 +273,7 @@ class BaseDialect:
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
-                rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
+                rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, MultiSelectStatement):
@@ -373,7 +373,7 @@ class BaseDialect:
             ]
             return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
         elif isinstance(e, FilterItem):
-            return f"{self.render_expr(e.content, cte=cte, cte_map=cte_map)}"
+            return f"CASE WHEN {self.render_expr(e.where.conditional, cte=cte, cte_map=cte_map)} THEN  {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ELSE 0 END"
         elif isinstance(e, Parenthetical):
             # conditions need to be nested in parentheses
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
@@ -392,6 +392,8 @@ class BaseDialect:
             )
         elif isinstance(e, AggregateWrapper):
             return self.render_expr(e.function, cte, cte_map=cte_map)
+        elif isinstance(e, FilterItem):
+            return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map)} THEN {self.render_expr(e.content, cte, cte_map=cte_map)} ELSE NULL END"
         elif isinstance(e, Concept):
             if cte:
                 return self.render_concept_sql(e, cte, alias=False)

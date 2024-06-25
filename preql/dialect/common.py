@@ -1,6 +1,12 @@
 from preql.core.models import Join, InstantiatedUnnestJoin, CTE, Concept
-from preql.core.enums import UnnestMode
+from preql.core.enums import UnnestMode, Modifier
 from typing import Optional, Callable
+
+
+def null_wrapper(lval: str, rval: str, concept: Concept) -> str:
+    if concept.modifiers and Modifier.NULLABLE in concept.modifiers:
+        return f"(({lval} is null and {rval} is null) or ({lval} = {rval}))"
+    return f"{lval} = {rval}"
 
 
 def render_join(
@@ -24,8 +30,11 @@ def render_join(
         return f"FULL JOIN {render_func(join.concept, cte, False)} as unnest_wrapper({quote_character}{join.concept.safe_address}{quote_character})"
 
     base_joinkeys = [
-        f"{join.left_cte.name}.{quote_character}{key.concept.safe_address}{quote_character} ="
-        f" {join.right_cte.name}.{quote_character}{key.concept.safe_address}{quote_character}"
+        null_wrapper(
+            f"{join.left_cte.name}.{quote_character}{key.concept.safe_address}{quote_character}",
+            f"{join.right_cte.name}.{quote_character}{key.concept.safe_address}{quote_character}",
+            key.concept,
+        )
         for key in join.joinkeys
     ]
     if not base_joinkeys:

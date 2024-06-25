@@ -168,7 +168,7 @@ SELECT
     }
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
-    assert len(results) == 2
+    assert len(results) == 3
 
 
 def test_datasource_properties(test_environment: Environment, test_executor: Executor):
@@ -191,12 +191,13 @@ def test_filter_grain_different(test_environment: Environment, test_executor: Ex
     auto even_order_store_id <- filter store_id where (order_id % 2) = 0;
     SELECT
         store_id,
+        order_id,
         even_order_store_id
     ;"""
     _, statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[-1].fetchall())
-    assert len(results) == 3
+    assert len(results) == 5
 
 
 def test_inline_source_derivation(

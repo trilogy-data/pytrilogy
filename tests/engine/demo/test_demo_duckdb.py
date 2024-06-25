@@ -287,6 +287,7 @@ def test_demo_filter():
     results = executor.execute_text(test)[-1].fetchall()
 
     assert results[0].passenger_last_name == "Carter"
+    assert results[0].surviving_size == 4
 
 
 def test_demo_const():

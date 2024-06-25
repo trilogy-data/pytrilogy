@@ -1,4 +1,3 @@
-
 from pytest import fixture
 
 from preql import Environment

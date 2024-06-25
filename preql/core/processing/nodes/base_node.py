@@ -175,6 +175,7 @@ class StrategyNode:
             grain=grain,
             condition=self.conditions,
             partial_concepts=self.partial_concepts,
+            force_group=self.force_group,
         )
 
     def rebuild_cache(self) -> QueryDatasource:
