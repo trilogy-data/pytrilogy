@@ -4,16 +4,11 @@ from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.models import Environment
 from preql import parse
 from preql.core.env_processor import generate_graph
-from preql.constants import logger
-from logging import StreamHandler, DEBUG
 from preql.core.models import MergeStatement
 from preql.dialect.base import BaseDialect
 
 
 def test_merge_concepts():
-    # from preql.core.models import AggregateWrapper
-    logger.setLevel(DEBUG)
-    logger.addHandler(StreamHandler())
     env1 = Environment()
     env2 = Environment()
     for env in [env1, env2]:

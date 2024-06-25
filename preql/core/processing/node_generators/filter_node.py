@@ -50,7 +50,7 @@ def gen_filter_node(
             if isinstance(concept.lineage, FilterItem)
             else None
         ),
-        partial_concepts=[immediate_parent],
+        partial_concepts=[immediate_parent] + parent_concepts,
     )
     if not local_optional:
         return filter_node
@@ -64,7 +64,10 @@ def gen_filter_node(
     )
     x = MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,
-        output_concepts=[concept, immediate_parent] + local_optional,
+        output_concepts=[
+            concept,
+        ]
+        + local_optional,
         environment=environment,
         g=g,
         parents=[
@@ -79,7 +82,7 @@ def gen_filter_node(
                 concepts=concept_to_relevant_joins(
                     [immediate_parent] + parent_concepts
                 ),
-                join_type=JoinType.INNER,
+                join_type=JoinType.LEFT_OUTER,
                 filter_to_mutual=False,
             )
         ],

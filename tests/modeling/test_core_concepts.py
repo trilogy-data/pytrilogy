@@ -195,7 +195,7 @@ def test_filter_grain_different(test_environment: Environment, test_executor: Ex
     ;"""
     _, statements = parse(test_select, test_environment)
 
-    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    results = list(test_executor.execute_text(test_select)[-1].fetchall())
     assert len(results) == 3
 
 

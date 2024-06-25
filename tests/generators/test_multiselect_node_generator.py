@@ -4,15 +4,11 @@ from preql.core.processing.concept_strategies_v3 import search_concepts
 from preql.core.models import Environment
 from preql import parse
 from preql.core.env_processor import generate_graph
-from preql.constants import logger
-from logging import StreamHandler, INFO
 from preql.core.query_processor import datasource_to_ctes
 
 
 def test_multi_select(test_environment: Environment, test_environment_graph):
     # from preql.core.models import AggregateWrapper
-    logger.setLevel(INFO)
-    logger.addHandler(StreamHandler())
     parse(
         """
 key one int;
