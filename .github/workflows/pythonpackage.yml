@@ -39,11 +39,11 @@ jobs:
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          mypy preql
+          mypy trilogy
       - name: Lint with ruff
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          ruff check preql
+          ruff check trilogy
       - name: Test with pytest
         run: |
           pip install pytest
