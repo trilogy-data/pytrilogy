@@ -132,7 +132,7 @@ grammar = r"""
     concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
-    concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type metadata?
+    concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
 
@@ -257,7 +257,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fgroup | aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access | comparison | parenthetical
+    expr:  window_item | filter_item | comparison | fgroup |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access |  parenthetical
     
     // functions
     
@@ -680,10 +680,14 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
-        if len(args) > 3:
-            metadata = args[3]
-        else:
-            metadata = None
+
+        metadata = None
+        modifiers = []
+        for arg in args:
+            if isinstance(arg, Metadata):
+                metadata = arg
+            if isinstance(arg, Modifier):
+                modifiers.append(arg)
 
         declaration = args[1]
         if isinstance(declaration, (tuple)):
@@ -709,6 +713,7 @@ class ParseToObjects(Transformer):
             grain=Grain(components=parents),
             namespace=namespace,
             keys=parents,
+            modifiers=modifiers,
         )
         self.environment.add_concept(concept, meta)
         return concept

@@ -442,3 +442,27 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (2, 4)
     assert len(results) == 1
+
+
+def test_mod_parse_order():
+    from preql.hooks.query_debugger import DebuggingHook
+
+    test = """
+const x <- unnest([1,2,3,4]);
+
+with even_squares as select 
+    x, 
+    x*x as x_squared
+where x_squared %2  = 0;
+
+select 
+    even_squares.x_squared
+order by
+    even_squares.x_squared asc
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (4,)
+    assert len(results) == 2
