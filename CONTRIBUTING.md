@@ -1,5 +1,5 @@
 
-# Welcome to the Preql Contributing Guide <!-- omit in toc -->
+# Welcome to the Trilogy Contributing Guide <!-- omit in toc -->
 
 Thank you for investing your time in contributing to our project! :.
 
@@ -27,7 +27,7 @@ If you spot a problem with the docs, [search if an issue already exists](https:/
 
 #### Solve an issue
 
-Scan through our [existing issues](https://github.com/preqldata/pypreql/issues) to find one that interests you. You can narrow down the search using `labels` as filters. 
+Scan through our [existing issues](https://github.com/trilogydata/pytrilogy/issues) to find one that interests you. You can narrow down the search using `labels` as filters. 
 
 
 ## Setting Up Your Environment

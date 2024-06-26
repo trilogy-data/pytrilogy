@@ -1,12 +1,12 @@
-from preql.core.models import SelectStatement, WindowItem
-from preql.core.enums import PurposeLineage, Granularity, Purpose
-from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
-from preql.core.query_processor import process_query, get_query_datasources
-from preql.core.processing.utility import concept_to_relevant_joins
-from preql.dialect.bigquery import BigqueryDialect
-from preql.dialect import duckdb
-from preql.parser import parse
-from preql import Dialects
+from trilogy.core.models import SelectStatement, WindowItem
+from trilogy.core.enums import PurposeLineage, Granularity, Purpose
+from trilogy.core.processing.concept_strategies_v3 import search_concepts, generate_graph
+from trilogy.core.query_processor import process_query, get_query_datasources
+from trilogy.core.processing.utility import concept_to_relevant_joins
+from trilogy.dialect.bigquery import BigqueryDialect
+from trilogy.dialect import duckdb
+from trilogy.parser import parse
+from trilogy import Dialects
 
 
 def test_select() -> None:

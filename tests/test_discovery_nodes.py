@@ -1,10 +1,10 @@
-from preql.core.processing.concept_strategies_v3 import (
+from trilogy.core.processing.concept_strategies_v3 import (
     GroupNode,
     search_concepts,
 )
-from preql.core.processing.node_generators import gen_group_node
-from preql.core.models import Environment, Grain
-from preql.core.constants import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
+from trilogy.core.processing.node_generators import gen_group_node
+from trilogy.core.models import Environment, Grain
+from trilogy.core.constants import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
 
 
 def test_group_node(test_environment, test_environment_graph):

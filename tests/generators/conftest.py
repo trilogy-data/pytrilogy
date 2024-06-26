@@ -1,18 +1,18 @@
 from pytest import fixture
 
-from preql import Environment
-from preql.core.enums import (
+from trilogy import Environment
+from trilogy.core.enums import (
     Purpose,
     FunctionType,
     ComparisonOperator,
     WindowType,
     Modifier,
 )
-from preql.core.env_processor import generate_graph
-from preql.core.functions import Count, CountDistinct, Max, Min
-from preql.core.models import AggregateWrapper
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.functions import Count, CountDistinct, Max, Min
+from trilogy.core.models import AggregateWrapper
 
-from preql.core.models import (
+from trilogy.core.models import (
     Concept,
     DataType,
     Datasource,

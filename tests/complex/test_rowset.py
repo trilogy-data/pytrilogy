@@ -1,4 +1,4 @@
-from preql.parser import parse
+from trilogy.parser import parse
 
 
 def test_rowset() -> None:

@@ -1,18 +1,18 @@
-# from preql.compiler import compile
+# from trilogy.compiler import compile
 from pytest import raises
 
-from preql.core.exceptions import InvalidSyntaxException
-from preql.core.models import DataType, SelectStatement, ListType, Environment
-from preql.core.query_processor import process_query
-from preql.dialect.base import BaseDialect
-from preql.dialect.bigquery import BigqueryDialect
-from preql.dialect.duckdb import DuckDBDialect
-from preql.dialect.sql_server import SqlServerDialect
-from preql.dialect.snowflake import SnowflakeDialect
-from preql.parser import parse
+from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.models import DataType, SelectStatement, ListType, Environment
+from trilogy.core.query_processor import process_query
+from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.bigquery import BigqueryDialect
+from trilogy.dialect.duckdb import DuckDBDialect
+from trilogy.dialect.sql_server import SqlServerDialect
+from trilogy.dialect.snowflake import SnowflakeDialect
+from trilogy.parser import parse
 from logging import INFO
-from preql.constants import logger
-from preql.core.enums import PurposeLineage, Purpose
+from trilogy.constants import logger
+from trilogy.core.enums import PurposeLineage, Purpose
 
 logger.setLevel(INFO)
 

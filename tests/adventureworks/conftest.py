@@ -11,8 +11,8 @@ from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
-from preql import Dialects, Environment, Executor
-from preql.constants import logger
+from trilogy import Dialects, Environment, Executor
+from trilogy.constants import logger
 
 logger.setLevel(DEBUG)
 

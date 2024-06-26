@@ -1,18 +1,18 @@
 from datetime import datetime
 import networkx as nx
-from preql.core.env_processor import generate_graph
-from preql.executor import Executor
-from preql.core.models import ShowStatement, Concept, Grain
-from preql.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
-from preql.parser import parse_text
-from preql.core.processing.concept_strategies_v3 import get_upstream_concepts
-from preql.core.processing.node_generators.group_node import (
+from trilogy.core.env_processor import generate_graph
+from trilogy.executor import Executor
+from trilogy.core.models import ShowStatement, Concept, Grain
+from trilogy.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
+from trilogy.parser import parse_text
+from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
+from trilogy.core.processing.node_generators.group_node import (
     resolve_function_parent_concepts,
 )
 
-from preql import Dialects
+from trilogy import Dialects
 
-from preql.core.models import LooseConceptList
+from trilogy.core.models import LooseConceptList
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -360,7 +360,7 @@ select
 
 
 def test_demo_filter():
-    from preql.hooks.query_debugger import DebuggingHook
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     test = """const x <- unnest([1,2,2,3]);
 
@@ -382,7 +382,7 @@ asc
 
 
 def test_demo_filter_select():
-    from preql.hooks.query_debugger import DebuggingHook
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     test = """const x <- unnest([1,2,2,3]);
 
@@ -400,7 +400,7 @@ where
 
 
 def test_demo_filter_rowset():
-    from preql.hooks.query_debugger import DebuggingHook
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     test = """
 const x <- unnest([1,2,3,4]);
@@ -424,7 +424,7 @@ order by
 
 
 def test_filter_count():
-    from preql.hooks.query_debugger import DebuggingHook
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     test = """const x <- unnest([1,2,2,3]);
 
@@ -445,7 +445,7 @@ select
 
 
 def test_mod_parse_order():
-    from preql.hooks.query_debugger import DebuggingHook
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     test = """
 const x <- unnest([1,2,3,4]);

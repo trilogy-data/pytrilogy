@@ -1,5 +1,5 @@
-from preql.core.enums import BooleanOperator, Purpose, JoinType
-from preql.core.models import (
+from trilogy.core.enums import BooleanOperator, Purpose, JoinType
+from trilogy.core.models import (
     CTE,
     Grain,
     QueryDatasource,

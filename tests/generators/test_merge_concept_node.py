@@ -1,11 +1,11 @@
-from preql.core.processing.node_generators import gen_concept_merge_node
-from preql.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.node_generators import gen_concept_merge_node
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
-from preql.core.models import Environment
-from preql import parse
-from preql.core.env_processor import generate_graph
-from preql.core.models import MergeStatement
-from preql.dialect.base import BaseDialect
+from trilogy.core.models import Environment
+from trilogy import parse
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.models import MergeStatement
+from trilogy.dialect.base import BaseDialect
 
 
 def test_merge_concepts():

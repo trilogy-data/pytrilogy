@@ -1,5 +1,5 @@
-from preql.core.models import Environment
-from preql import Executor
+from trilogy.core.models import Environment
+from trilogy import Executor
 
 
 def test_statement_grains(test_environment: Environment, test_executor: Executor):

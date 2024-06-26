@@ -1,9 +1,9 @@
 from pytest import fixture
 
-from preql import Environment
-from preql.core.env_processor import generate_graph
-from preql import parse, Dialects
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy import Environment
+from trilogy.core.env_processor import generate_graph
+from trilogy import parse, Dialects
+from trilogy.hooks.query_debugger import DebuggingHook
 from logging import INFO
 
 

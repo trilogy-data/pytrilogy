@@ -1,9 +1,9 @@
-from preql.core.models import SelectStatement, Grain
-from preql.core.query_processor import process_query
-from preql.dialect.bigquery import BigqueryDialect
-from preql.hooks.query_debugger import DebuggingHook
-from preql.core.enums import Granularity
-from preql.parser import parse
+from trilogy.core.models import SelectStatement, Grain
+from trilogy.core.query_processor import process_query
+from trilogy.dialect.bigquery import BigqueryDialect
+from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.core.enums import Granularity
+from trilogy.parser import parse
 
 
 def test_select() -> None:

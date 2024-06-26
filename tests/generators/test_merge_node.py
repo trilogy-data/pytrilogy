@@ -1,8 +1,8 @@
-from preql.core.processing.nodes import MergeNode
-from preql.core.processing.nodes import NodeJoin, ConstantNode
-from preql.core.models import Environment
-from preql.core.enums import JoinType
-from preql.core.processing.graph_utils import extract_required_subgraphs
+from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.processing.nodes import NodeJoin, ConstantNode
+from trilogy.core.models import Environment
+from trilogy.core.enums import JoinType
+from trilogy.core.processing.graph_utils import extract_required_subgraphs
 from collections import defaultdict
 
 

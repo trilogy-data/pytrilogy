@@ -1,6 +1,6 @@
-from preql.core.processing.node_generators import gen_unnest_node
-from preql.core.processing.concept_strategies_v3 import search_concepts
-from preql.core.models import Environment
+from trilogy.core.processing.node_generators import gen_unnest_node
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.models import Environment
 
 
 def test_gen_unnest_node_parents(test_environment: Environment, test_environment_graph):

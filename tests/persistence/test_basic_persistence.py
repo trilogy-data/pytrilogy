@@ -1,28 +1,28 @@
-# from preql.compiler import compile
-from preql.core.enums import Purpose
-from preql.core.models import (
+# from trilogy.compiler import compile
+from trilogy.core.enums import Purpose
+from trilogy.core.models import (
     Grain,
     ProcessedQueryPersist,
     SelectStatement,
     PersistStatement,
 )
-from preql.core.query_processor import process_auto
-from preql.dialect.base import BaseDialect
-from preql.dialect.bigquery import BigqueryDialect
-from preql.dialect.duckdb import DuckDBDialect
-from preql.dialect.sql_server import SqlServerDialect
-from preql.core.enums import PurposeLineage
-from preql.parser import parse
-from preql.core.processing.nodes.select_node_v2 import SelectNode
-from preql.core.processing.node_generators import (
+from trilogy.core.query_processor import process_auto
+from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.bigquery import BigqueryDialect
+from trilogy.dialect.duckdb import DuckDBDialect
+from trilogy.dialect.sql_server import SqlServerDialect
+from trilogy.core.enums import PurposeLineage
+from trilogy.parser import parse
+from trilogy.core.processing.nodes.select_node_v2 import SelectNode
+from trilogy.core.processing.node_generators import (
     gen_select_node,
 )
-from preql.core.env_processor import (
+from trilogy.core.env_processor import (
     generate_graph,
     datasource_to_node,
     concept_to_node,
 )
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy.hooks.query_debugger import DebuggingHook
 
 import networkx as nx
 

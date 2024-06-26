@@ -1,18 +1,18 @@
-# from preql.compiler import compile
+# from trilogy.compiler import compile
 
 
-# from preql.compiler import compile
-from preql.core.models import (
+# from trilogy.compiler import compile
+from trilogy.core.models import (
     SelectStatement,
     Grain,
     Datasource,
     QueryDatasource,
     Environment,
 )
-from preql.core.processing.concept_strategies_v3 import search_concepts, generate_graph
-from preql.core.query_processor import process_query, datasource_to_ctes
-from preql.dialect.sql_server import SqlServerDialect
-from preql.core.enums import Purpose
+from trilogy.core.processing.concept_strategies_v3 import search_concepts, generate_graph
+from trilogy.core.query_processor import process_query, datasource_to_ctes
+from trilogy.dialect.sql_server import SqlServerDialect
+from trilogy.core.enums import Purpose
 import re
 
 

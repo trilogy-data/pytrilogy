@@ -1,24 +1,24 @@
-from preql import Executor, Dialects
+from trilogy import Executor, Dialects
 
-# from preql.core.models import Environment
+# from trilogy.core.models import Environment
 from sqlalchemy import create_engine
-from preql.core.models import (
+from trilogy.core.models import (
     DataType,
     Datasource,
     Concept,
     ColumnAssignment,
     Environment,
 )
-from preql.core.enums import Purpose
+from trilogy.core.enums import Purpose
 
 
-from preql.core.query_processor import generate_graph
-from preql.core.processing.nodes import MergeNode
-from preql.core.processing.concept_strategies_v3 import search_concepts
-from preql.core.processing.node_generators import (
+from trilogy.core.query_processor import generate_graph
+from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.node_generators import (
     gen_filter_node,
 )
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def setup_engine() -> Executor:

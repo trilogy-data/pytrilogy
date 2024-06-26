@@ -1,10 +1,10 @@
-# from preql.compiler import compile
+# from trilogy.compiler import compile
 from os.path import dirname
 
-from preql.core.models import Environment
-from preql.core.enums import Modifier
-from preql.parser import parse
-from preql.parsing.render import render_environment
+from trilogy.core.models import Environment
+from trilogy.core.enums import Modifier
+from trilogy.parser import parse
+from trilogy.parsing.render import render_environment
 
 QUERY = """import concepts.core as core;
 import so_concepts.circular as circular;

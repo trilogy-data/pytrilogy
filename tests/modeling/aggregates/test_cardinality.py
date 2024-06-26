@@ -1,5 +1,5 @@
-from preql.core.models import Environment, Grain
-from preql import parse, Executor
+from trilogy.core.models import Environment, Grain
+from trilogy import parse, Executor
 
 
 def test_key_fetch_cardinality(test_environment: Environment, test_executor: Executor):

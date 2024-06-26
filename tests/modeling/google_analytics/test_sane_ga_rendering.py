@@ -1,7 +1,7 @@
-from preql import parse, Dialects
-from preql.executor import Executor
+from trilogy import parse, Dialects
+from trilogy.executor import Executor
 from pathlib import Path
-from preql.core.models import (
+from trilogy.core.models import (
     ProcessedQuery,
     SourceType,
     Environment,
@@ -9,9 +9,9 @@ from preql.core.models import (
     DataType,
     Function,
 )
-from preql.core.enums import Purpose, Granularity
-from preql.core.functions import CurrentDatetime
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy.core.enums import Purpose, Granularity
+from trilogy.core.functions import CurrentDatetime
+from trilogy.hooks.query_debugger import DebuggingHook
 from logging import INFO
 
 ENVIRONMENT_CONCEPTS = [
@@ -85,7 +85,7 @@ def test_daily_job():
     assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
-    from preql.core.processing.node_generators.common import (
+    from trilogy.core.processing.node_generators.common import (
         resolve_function_parent_concepts,
     )
 
@@ -148,7 +148,7 @@ def test_counts():
     assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
-    from preql.core.processing.node_generators.common import (
+    from trilogy.core.processing.node_generators.common import (
         resolve_function_parent_concepts,
     )
 

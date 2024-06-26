@@ -1,8 +1,8 @@
 import pandas as pd
-from preql import Executor, Dialects
-from preql.core.models import Environment
+from trilogy import Executor, Dialects
+from trilogy.core.models import Environment
 from sqlalchemy import create_engine
-from preql.core.models import (
+from trilogy.core.models import (
     Datasource,
     Concept,
     ColumnAssignment,
@@ -12,10 +12,10 @@ from preql.core.models import (
     LooseConceptList,
     SelectGrain,
 )
-from preql.core.enums import Purpose, FunctionType
+from trilogy.core.enums import Purpose, FunctionType
 from os.path import dirname
 from pathlib import PurePath
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy.hooks.query_debugger import DebuggingHook
 from logging import INFO
 
 
@@ -224,7 +224,7 @@ select
     passenger.class, 
     survival_rate;
 """
-    from preql.parsing.common import function_to_concept
+    from trilogy.parsing.common import function_to_concept
 
     executor.parse_text(test)
     ratio = env.concepts["ratio"]

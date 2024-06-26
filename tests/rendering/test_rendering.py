@@ -1,5 +1,5 @@
-from preql.parsing.render import render_query, render_environment, Renderer
-from preql.core.models import (
+from trilogy.parsing.render import render_query, render_environment, Renderer
+from trilogy.core.models import (
     OrderBy,
     Ordering,
     OrderItem,
@@ -24,9 +24,9 @@ from preql.core.models import (
     AlignClause,
     AlignItem,
 )
-from preql import Environment
-from preql.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
-from preql.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
+from trilogy import Environment
+from trilogy.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
+from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
 
 
 def test_basic_query(test_environment):

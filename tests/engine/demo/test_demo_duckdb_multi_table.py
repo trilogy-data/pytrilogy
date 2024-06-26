@@ -1,13 +1,13 @@
-from preql.core.models import Environment
-from preql.core.models import (
+from trilogy.core.models import Environment
+from trilogy.core.models import (
     Concept,
     CTE,
 )
-from preql.core.processing.nodes.base_node import StrategyNode
-from preql.core.processing.nodes import GroupNode, SelectNode, MergeNode, WindowNode
-from preql.core.processing.concept_strategies_v3 import source_query_concepts
-from preql.core.enums import Purpose
-from preql.core.env_processor import generate_graph
+from trilogy.core.processing.nodes.base_node import StrategyNode
+from trilogy.core.processing.nodes import GroupNode, SelectNode, MergeNode, WindowNode
+from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.enums import Purpose
+from trilogy.core.env_processor import generate_graph
 
 
 def fingerprint(node: StrategyNode) -> str:

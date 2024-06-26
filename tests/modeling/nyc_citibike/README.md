@@ -5,7 +5,7 @@
 
 ## Examples
 This example walks through an [existing analysis](https://fitriwidyan.medium.com/nyc-citi-bike-trips-data-analysis-a07a1db9c1be) of New York Citibike usage, 
-but writes out the queries in PreQL. The full code can be found in the script.preql
+but writes out the queries in trilogy. The full code can be found in the script.preql
 section in this folder.
 
 For this kind of one-off analysis, the queries should look quite similar. Note that the

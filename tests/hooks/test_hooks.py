@@ -1,6 +1,6 @@
-from preql.hooks.base_hook import BaseHook, SelectStatement
-from preql.core.models import RowsetDerivationStatement
-from preql import parse
+from trilogy.hooks.base_hook import BaseHook, SelectStatement
+from trilogy.core.models import RowsetDerivationStatement
+from trilogy import parse
 
 
 def test_base():

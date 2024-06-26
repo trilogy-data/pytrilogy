@@ -1,10 +1,10 @@
-from preql.core.models import Environment
-from preql import parse, Executor
-from preql.core.enums import Purpose, PurposeLineage
-from preql.core.processing.node_generators.common import (
+from trilogy.core.models import Environment
+from trilogy import parse, Executor
+from trilogy.core.enums import Purpose, PurposeLineage
+from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from preql.core.models import LooseConceptList
+from trilogy.core.models import LooseConceptList
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):

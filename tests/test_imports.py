@@ -1,4 +1,4 @@
-from preql import Environment
+from trilogy import Environment
 
 
 def test_multi_environment():

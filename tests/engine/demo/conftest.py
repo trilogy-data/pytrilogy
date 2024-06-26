@@ -1,8 +1,8 @@
 import pandas as pd
-from preql import Executor, Dialects
-from preql.core.models import Environment
+from trilogy import Executor, Dialects
+from trilogy.core.models import Environment
 from sqlalchemy import create_engine
-from preql.core.models import (
+from trilogy.core.models import (
     Datasource,
     Concept,
     ColumnAssignment,
@@ -11,14 +11,14 @@ from preql.core.models import (
     Function,
     Metadata,
 )
-from preql.core.enums import Purpose, FunctionType
+from trilogy.core.enums import Purpose, FunctionType
 from os.path import dirname
 from pathlib import PurePath
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy.hooks.query_debugger import DebuggingHook
 from logging import INFO
 from typing import Optional
-from preql.core.functions import function_args_to_output_purpose, arg_to_datatype
-from preql.parsing.common import function_to_concept
+from trilogy.core.functions import function_args_to_output_purpose, arg_to_datatype
+from trilogy.parsing.common import function_to_concept
 from pytest import fixture
 
 

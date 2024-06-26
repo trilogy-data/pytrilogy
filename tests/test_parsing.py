@@ -1,5 +1,5 @@
-from preql.core.enums import Purpose
-from preql.core.models import (
+from trilogy.core.enums import Purpose
+from trilogy.core.models import (
     DataType,
     Parenthetical,
     ProcessedQuery,
@@ -7,13 +7,13 @@ from preql.core.models import (
     SelectStatement,
     Environment,
 )
-from preql.core.functions import argument_to_purpose, function_args_to_output_purpose
-from preql.parsing.parse_engine import (
+from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
+from trilogy.parsing.parse_engine import (
     arg_to_datatype,
     parse_text,
 )
-from preql.constants import MagicConstants
-from preql.dialect.base import BaseDialect
+from trilogy.constants import MagicConstants
+from trilogy.dialect.base import BaseDialect
 
 
 def test_in():

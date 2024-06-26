@@ -1,7 +1,7 @@
-# from preql.compiler import compile
-from preql.core.models import SelectStatement, Grain
-from preql.core.query_processor import process_query
-from preql.parser import parse
+# from trilogy.compiler import compile
+from trilogy.core.models import SelectStatement, Grain
+from trilogy.core.query_processor import process_query
+from trilogy.parser import parse
 
 TEST_SETUP = r"""
 

@@ -1,21 +1,21 @@
-## PreQL/Trilogy
-[![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://preqldata.dev/)
+##Trilogy
+[![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://trilogydata.dev/)
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 
-pypreql is an experimental implementation of the [PreQL/Trilogy] (prequel trilogy) language, a extension of SQL that replaces tables/joins with a lightweight semantic binding layer.
+pytrilogy is an experimental implementation of the Trilogy language, a higher-level SQL that replaces tables/joins with a lightweight semantic binding layer.
 
-PreQL/Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want reusability and simplicity with the power and iteratability of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
+Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want reusability and simplicity with the power and iteratability of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
 
 > [!TIP]
-> To get an overview of the language and run interactive examples, head to the [documentation](https://preqldata.dev/).
+> To get an overview of the language and run interactive examples, head to the [documentation](https://trilogydata.dev/).
 
-Installation: `pip install pypreql`
+Installation: `pip install pytrilogy`
 
-`pypreql` can be run locally to parse and execute preql [.preql] models using the `trilogy` CLI tool, or can be run in python by importing the `preql` package.
+`pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
 
-You can read more about the project [here](https://preqldata.dev/) and try out an interactive demo on the page an interactive demo [here](https://preqldata.dev/demo). 
+You can read more about the project [here](https://trilogydata.dev/) and try out an interactive demo on the page an interactive demo [here](https://trilogydata.dev/demo). 
 
-PreQL:
+Trilogy:
 ```sql
 SELECT
     name,
@@ -113,14 +113,14 @@ WHERE
 Run the following from the directory the file is in.
 
 ```bash
-trilogy run hello.preql duckdb
+trilogy run hello.trilogy duckdb
 ```
 
 ![UI Preview](./docs/hello_world.png)
 
 ## Backends
 
-The current PreQL implementation supports these backends:
+The current Trilogy implementation supports these backends:
 
 - Bigquery
 - SQL Server
@@ -129,14 +129,14 @@ The current PreQL implementation supports these backends:
 
 ## Basic Example - Python
 
-Preql can be run directly in python.
+Trilogy can be run directly in python.
 
 A bigquery example, similar to bigquery [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console)
 
 ```python
 
 
-from preql import Dialects, Environment
+from trilogy import Dialects, Environment
 
 environment = Environment()
 
@@ -185,12 +185,12 @@ for row in results:
 
 ## Basic Example - CLI
 
-Preql can be run through a CLI tool, 'trilogy'.
+Trilogy can be run through a CLI tool, appropriately named 'trilogy'.
 
-After installing preql, you can run the trilogy CLI with two required positional arguments; the first the path to a file or a direct command,
+After installing trilogy, you can run the trilogy CLI with two required positional arguments; the first the path to a file or a direct command,
 and second the dialect to run.
 
-`trilogy run <cmd or path to preql file> <dialect>`
+`trilogy run <cmd or path to trilogy file> <dialect>`
 
 To pass arguments to a backend, append additional --<option> flags after specifying the dialect.
 
@@ -218,14 +218,14 @@ N/A, only supports default auth. In python you can pass in a custom client.
 
 
 > [!TIP]
-> The CLI can also be used for formatting. PreQL has a default formatting style that should always be adhered to. `trilogy fmt <path to preql file>`
+> The CLI can also be used for formatting. PreQL has a default formatting style that should always be adhered to. `trilogy fmt <path to trilogy file>`
 
 
 ## More Examples
 
-[Interactive demo](https://preqldata.dev/demo). 
+[Interactive demo](https://trilogydata.dev/demo). 
 
-Additional examples can be found in the [public model repository](https://github.com/preqldata/trilogy-public-models).
+Additional examples can be found in the [public model repository](https://github.com/trilogydata/trilogy-public-models).
 
 This is a good place to look for modeling examples.
 
@@ -239,7 +239,7 @@ Please open an issue first to discuss what you would like to change, and then cr
 
 ## Similar in space
 
-"Better SQL" has been a popular space. We believe Trilogy/PreQL takes a different approach then the following,
+"Better SQL" has been a popular space. We believe Trilogy takes a different approach then the following,
 but all are worth checking out. Please open PRs/comment for anything missed!
 
 
