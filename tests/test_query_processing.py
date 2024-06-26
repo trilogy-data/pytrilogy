@@ -1,6 +1,6 @@
-from preql.core.models import SelectStatement, QueryDatasource, Environment, Grain
-from preql.core.processing.concept_strategies_v3 import search_concepts
-from preql.core.query_processor import process_query, get_query_datasources
+from trilogy.core.models import SelectStatement, QueryDatasource, Environment, Grain
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.query_processor import process_query, get_query_datasources
 
 
 def test_direct_select(test_environment, test_environment_graph):

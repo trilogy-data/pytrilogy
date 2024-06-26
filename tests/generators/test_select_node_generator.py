@@ -1,7 +1,7 @@
-from preql.core.models import Environment
-from preql.core.processing.node_generators import gen_select_node
-from preql.core.env_processor import generate_graph
-from preql.core.processing.nodes import ConstantNode, SelectNode
+from trilogy.core.models import Environment
+from trilogy.core.processing.node_generators import gen_select_node
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.processing.nodes import ConstantNode, SelectNode
 
 
 def test_gen_select_node_parents(test_environment: Environment):

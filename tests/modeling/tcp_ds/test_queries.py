@@ -1,12 +1,12 @@
-from preql import parse
+from trilogy import parse
 from pathlib import Path
 
-from preql import Environment, Dialects
-from preql.core.env_processor import generate_graph
-from preql.core.processing.nodes import GroupNode, SelectNode, MergeNode, StrategyNode
-from preql.core.processing.concept_strategies_v3 import source_query_concepts
-from preql.core.models import Concept
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy import Environment, Dialects
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.processing.nodes import GroupNode, SelectNode, MergeNode, StrategyNode
+from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.models import Concept
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 working_path = Path(__file__).parent

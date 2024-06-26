@@ -1,10 +1,10 @@
-# from preql.compiler import compile
+# from trilogy.compiler import compile
 from os.path import dirname, join
 
 import pytest
-from preql import Executor
-from preql.core.env_processor import generate_graph
-from preql.core.models import (
+from trilogy import Executor
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.models import (
     SelectStatement,
     QueryDatasource,
     Grain,
@@ -14,11 +14,11 @@ from preql.core.models import (
     Concept,
 )
 
-from preql.core.processing.concept_strategies_v3 import search_concepts
-from preql.core.query_processor import datasource_to_ctes, get_query_datasources
-from preql.dialect.sql_server import SqlServerDialect
-from preql.parser import parse
-from preql.core.processing.nodes import GroupNode, MergeNode, SelectNode
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.query_processor import datasource_to_ctes, get_query_datasources
+from trilogy.dialect.sql_server import SqlServerDialect
+from trilogy.parser import parse
+from trilogy.core.processing.nodes import GroupNode, MergeNode, SelectNode
 
 
 @pytest.mark.adventureworks
@@ -64,7 +64,7 @@ def test_query_datasources(environment: Environment):
     test: SelectStatement = statements[-1]  # multipart join
 
     environment_graph = generate_graph(environment)
-    from preql.hooks.query_debugger import print_recursive_nodes
+    from trilogy.hooks.query_debugger import print_recursive_nodes
 
     # assert a group up to the first name works
 
@@ -191,7 +191,7 @@ def test_two_properties(environment: Environment):
 
 @pytest.mark.adventureworks
 def test_grain(environment: Environment):
-    from preql.core.processing.concept_strategies_v3 import search_concepts
+    from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
@@ -226,7 +226,7 @@ def test_grain(environment: Environment):
 
 @pytest.mark.adventureworks
 def test_group_to_grain(environment: Environment):
-    from preql.core.processing.concept_strategies_v3 import search_concepts
+    from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
@@ -270,8 +270,8 @@ def test_group_to_grain(environment: Environment):
 
 @pytest.mark.adventureworks
 def test_two_properties_query(environment: Environment):
-    from preql.core.processing.node_generators import gen_group_node
-    from preql.core.processing.concept_strategies_v3 import search_concepts
+    from trilogy.core.processing.node_generators import gen_group_node
+    from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"

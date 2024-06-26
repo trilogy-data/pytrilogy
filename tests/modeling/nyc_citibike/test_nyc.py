@@ -1,6 +1,6 @@
-from preql import Environment
+from trilogy import Environment
 from pathlib import Path
-from preql.core.models import Function
+from trilogy.core.models import Function
 
 
 def test_datasource_func_namespace():

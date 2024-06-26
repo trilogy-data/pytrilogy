@@ -2,8 +2,8 @@ from logging import DEBUG
 
 from pytest import fixture
 
-from preql import parse
-from preql.constants import logger
+from trilogy import parse
+from trilogy.constants import logger
 
 logger.setLevel(DEBUG)
 

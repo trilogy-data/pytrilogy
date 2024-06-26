@@ -1,6 +1,6 @@
-from preql.parser import parse
+from trilogy.parser import parse
 
-# from preql.compiler import compile
+# from trilogy.compiler import compile
 
 
 def test_declarations():

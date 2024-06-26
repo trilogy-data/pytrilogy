@@ -1,13 +1,13 @@
-from preql.core.processing.node_generators import gen_group_node
-from preql.core.processing.nodes import GroupNode
-from preql.core.processing.concept_strategies_v3 import search_concepts
-from preql.core.processing.node_generators.common import (
+from trilogy.core.processing.node_generators import gen_group_node
+from trilogy.core.processing.nodes import GroupNode
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from preql.core.processing.nodes import MergeNode
-from preql.core.models import Environment, AggregateWrapper, Function, DataType
-from preql.core.enums import PurposeLineage, FunctionType, Purpose
-from preql.parsing.common import agg_wrapper_to_concept, function_to_concept
+from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.models import Environment, AggregateWrapper, Function, DataType
+from trilogy.core.enums import PurposeLineage, FunctionType, Purpose
+from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
 def test_gen_group_node_parents(test_environment: Environment, test_environment_graph):
@@ -25,7 +25,7 @@ def test_gen_group_node_parents(test_environment: Environment, test_environment_
 
 
 def test_gen_group_node_basic(test_environment, test_environment_graph):
-    # from preql.core.models import AggregateWrapper
+    # from trilogy.core.models import AggregateWrapper
     prod = test_environment.concepts["product_id"]
     test_environment.concepts["revenue"]
     prod_r = test_environment.concepts["total_revenue"]
@@ -42,7 +42,7 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
 
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
-    # from preql.core.models import AggregateWrapper
+    # from trilogy.core.models import AggregateWrapper
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]
     immediate_aggregate_input = test_environment.concepts[

@@ -1,7 +1,7 @@
-from preql.core.models import Environment, Grain
-from preql.core.enums import Purpose
-from preql.core.exceptions import AmbiguousRelationshipResolutionException
-from preql import parse, Executor
+from trilogy.core.models import Environment, Grain
+from trilogy.core.enums import Purpose
+from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
+from trilogy import parse, Executor
 import pytest
 
 

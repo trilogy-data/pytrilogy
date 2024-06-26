@@ -1,14 +1,14 @@
-from preql.core.processing.node_generators import gen_multiselect_node
-from preql.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.node_generators import gen_multiselect_node
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
-from preql.core.models import Environment
-from preql import parse
-from preql.core.env_processor import generate_graph
-from preql.core.query_processor import datasource_to_ctes
+from trilogy.core.models import Environment
+from trilogy import parse
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.query_processor import datasource_to_ctes
 
 
 def test_multi_select(test_environment: Environment, test_environment_graph):
-    # from preql.core.models import AggregateWrapper
+    # from trilogy.core.models import AggregateWrapper
     parse(
         """
 key one int;
@@ -61,7 +61,7 @@ ALIGN
 
 
 def test_multi_select_constant(test_environment: Environment, test_environment_graph):
-    # from preql.core.models import AggregateWrapper
+    # from trilogy.core.models import AggregateWrapper
 
     parse(
         """

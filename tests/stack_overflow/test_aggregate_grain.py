@@ -1,8 +1,8 @@
-# from preql.compiler import compile
+# from trilogy.compiler import compile
 from os.path import dirname
 
-from preql.core.models import SelectStatement, Grain, Environment
-from preql.parser import parse
+from trilogy.core.models import SelectStatement, Grain, Environment
+from trilogy.parser import parse
 
 QUERY = """import concepts.core as core;
 

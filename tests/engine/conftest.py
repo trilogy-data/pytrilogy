@@ -5,10 +5,10 @@ from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
-from preql import Executor, Dialects, parse, Environment
-from preql.engine import ExecutionEngine, EngineConnection, EngineResult
-from preql.dialect.config import SnowflakeConfig
-from preql.hooks.query_debugger import DebuggingHook
+from trilogy import Executor, Dialects, parse, Environment
+from trilogy.engine import ExecutionEngine, EngineConnection, EngineResult
+from trilogy.dialect.config import SnowflakeConfig
+from trilogy.hooks.query_debugger import DebuggingHook
 import fakesnow
 
 ENV_PATH = abspath(__file__)

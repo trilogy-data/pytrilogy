@@ -1,4 +1,4 @@
-from preql import Dialects, Environment
+from trilogy import Dialects, Environment
 
 
 def test_date_diff_rendering():

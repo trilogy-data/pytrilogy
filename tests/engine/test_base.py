@@ -1,4 +1,4 @@
-from preql.dialect.base import safe_quote
+from trilogy.dialect.base import safe_quote
 
 
 def test_safe_quote():

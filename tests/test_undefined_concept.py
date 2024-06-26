@@ -1,7 +1,7 @@
-from preql.core.enums import Purpose
-from preql.core.exceptions import UndefinedConceptException
-from preql.core.models import DataType, EnvironmentConceptDict, Concept
-from preql.parser import parse
+from trilogy.core.enums import Purpose
+from trilogy.core.exceptions import UndefinedConceptException
+from trilogy.core.models import DataType, EnvironmentConceptDict, Concept
+from trilogy.parser import parse
 
 
 def test_undefined_concept_query(test_environment):

@@ -1,26 +1,26 @@
 from cProfile import Profile
 from pstats import SortKey, Stats
-from preql.core.models import SelectStatement
-from preql import parse
+from trilogy.core.models import SelectStatement
+from trilogy import parse
 
-# from preql.compiler import compile
+# from trilogy.compiler import compile
 
-from preql.core.models import DataType
-from preql.core.query_processor import process_query
-from preql.dialect.base import BaseDialect
-from preql.dialect.bigquery import BigqueryDialect
-from preql.dialect.duckdb import DuckDBDialect
-from preql.dialect.sql_server import SqlServerDialect
+from trilogy.core.models import DataType
+from trilogy.core.query_processor import process_query
+from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.bigquery import BigqueryDialect
+from trilogy.dialect.duckdb import DuckDBDialect
+from trilogy.dialect.sql_server import SqlServerDialect
 
-from preql import Environment
-from preql.core.enums import (
+from trilogy import Environment
+from trilogy.core.enums import (
     Purpose,
     FunctionType,
     ComparisonOperator,
     WindowType,
 )
-from preql.core.functions import Count, CountDistinct, Max, Min
-from preql.core.models import (
+from trilogy.core.functions import Count, CountDistinct, Max, Min
+from trilogy.core.models import (
     Concept,
     Datasource,
     ColumnAssignment,

@@ -1,4 +1,4 @@
-from preql import parse
+from trilogy import parse
 
 
 def test_metadata():

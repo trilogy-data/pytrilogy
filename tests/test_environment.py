@@ -1,4 +1,4 @@
-from preql.core.models import Environment
+from trilogy.core.models import Environment
 from pathlib import Path
 
 

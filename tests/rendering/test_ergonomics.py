@@ -1,4 +1,4 @@
-from preql.core.query_processor import generate_cte_name
+from trilogy.core.query_processor import generate_cte_name
 
 
 def test_generate_cte_name():

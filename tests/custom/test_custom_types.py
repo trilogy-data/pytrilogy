@@ -1,8 +1,8 @@
-from preql.core.models import Parenthetical
-from preql.parsing.parse_engine import (
+from trilogy.core.models import Parenthetical
+from trilogy.parsing.parse_engine import (
     parse_text,
 )
-from preql.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect
 import pytest
 
 

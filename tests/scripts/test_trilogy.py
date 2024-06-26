@@ -1,5 +1,5 @@
 from click.testing import CliRunner
-from preql.scripts.trilogy import cli
+from trilogy.scripts.trilogy import cli
 import os
 from pathlib import Path
 

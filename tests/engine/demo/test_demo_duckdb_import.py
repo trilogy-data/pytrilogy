@@ -1,10 +1,10 @@
-from preql.core.models import Environment
-from preql.core.processing.node_generators.merge_node import (
+from trilogy.core.models import Environment
+from trilogy.core.processing.node_generators.merge_node import (
     gen_merge_node,
     identify_ds_join_paths,
 )
-from preql.core.processing.concept_strategies_v3 import search_concepts
-from preql.core.env_processor import generate_graph
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.env_processor import generate_graph
 
 
 def test_demo_merge(normalized_engine, test_env: Environment):
@@ -108,7 +108,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
     normalized_engine.parse_text(test_pre)
     # raw = executor.generate_sql(test)
     g = generate_graph(test_env)
-    # from preql.hooks.graph_hook import GraphHook
+    # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(g)
     target_select_concepts = [
         test_env.concepts[c]
