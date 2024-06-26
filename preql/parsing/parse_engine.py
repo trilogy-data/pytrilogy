@@ -129,17 +129,17 @@ grammar = r"""
     comment:   /#.*(\n|$)/ |  /\/\/.*\n/  
     
     // property display_name string
-    concept_declaration: PURPOSE IDENTIFIER data_type metadata?
+    concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
     //customer_id.property first_name STRING;
     //<customer_id,country>.property local_alias STRING
-    concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type metadata?
+    concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
     concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<" "-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
     constant_derivation: CONST IDENTIFIER "<" "-" literal
-    
+    concept_nullable_modifier: "?"
     concept:  (concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
     
     //concept property
@@ -204,7 +204,8 @@ grammar = r"""
     window_item_order: ("ORDER"i? "BY"i order_list)
     
     select_hide_modifier: "--"
-    select_item: select_hide_modifier? (IDENTIFIER | select_transform | comment+ ) | ("~" select_item)
+    select_partial_modifier: "~"
+    select_item: (select_hide_modifier | select_partial_modifier)? (IDENTIFIER | select_transform | comment+ )
     
     select_list:  ( select_item "," )* select_item ","?
     
@@ -256,7 +257,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr: window_item | filter_item | fgroup | aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access | comparison | parenthetical
+    expr:  window_item | filter_item | comparison | fgroup |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access |  parenthetical
     
     // functions
     
@@ -367,7 +368,7 @@ grammar = r"""
     
     literal: _string_lit | int_lit | float_lit | bool_lit | null_lit | array_lit
 
-    MODIFIER: "Optional"i | "Partial"i
+    MODIFIER: "Optional"i | "Partial"i | "Nullable"i
 
     SHORTHAND_MODIFIER: "~"
 
@@ -679,10 +680,14 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
-        if len(args) > 3:
-            metadata = args[3]
-        else:
-            metadata = None
+
+        metadata = None
+        modifiers = []
+        for arg in args:
+            if isinstance(arg, Metadata):
+                metadata = arg
+            if isinstance(arg, Modifier):
+                modifiers.append(arg)
 
         declaration = args[1]
         if isinstance(declaration, (tuple)):
@@ -708,16 +713,20 @@ class ParseToObjects(Transformer):
             grain=Grain(components=parents),
             namespace=namespace,
             keys=parents,
+            modifiers=modifiers,
         )
         self.environment.add_concept(concept, meta)
         return concept
 
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
-        if len(args) > 3:
-            metadata = args[3]
-        else:
-            metadata = None
+        metadata = None
+        modifiers = []
+        for arg in args:
+            if isinstance(arg, Metadata):
+                metadata = arg
+            if isinstance(arg, Modifier):
+                modifiers.append(arg)
         name = args[1]
         lookup, namespace, name, parent = parse_concept_reference(
             name, self.environment
@@ -728,6 +737,7 @@ class ParseToObjects(Transformer):
             purpose=args[0],
             metadata=metadata,
             namespace=namespace,
+            modifiers=modifiers,
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
@@ -972,8 +982,16 @@ class ParseToObjects(Transformer):
         return ConceptTransform(function=function, output=concept)
 
     @v_args(meta=True)
+    def concept_nullable_modifier(self, meta: Meta, args) -> Modifier:
+        return Modifier.NULLABLE
+
+    @v_args(meta=True)
     def select_hide_modifier(self, meta: Meta, args) -> Modifier:
         return Modifier.HIDDEN
+
+    @v_args(meta=True)
+    def select_partial_modifier(self, meta: Meta, args) -> Modifier:
+        return Modifier.PARTIAL
 
     @v_args(meta=True)
     def select_item(self, meta: Meta, args) -> Optional[SelectItem]:

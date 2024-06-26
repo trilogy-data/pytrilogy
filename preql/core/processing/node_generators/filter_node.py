@@ -5,7 +5,6 @@ from preql.core.enums import JoinType
 from preql.core.models import (
     Concept,
     Environment,
-    FilterItem,
 )
 from preql.core.processing.nodes import FilterNode, MergeNode, NodeJoin, History
 from preql.core.processing.node_generators.common import (
@@ -45,12 +44,6 @@ def gen_filter_node(
         environment=environment,
         g=g,
         parents=[parent],
-        conditions=(
-            concept.lineage.where.conditional
-            if isinstance(concept.lineage, FilterItem)
-            else None
-        ),
-        partial_concepts=[immediate_parent],
     )
     if not local_optional:
         return filter_node
@@ -64,7 +57,10 @@ def gen_filter_node(
     )
     x = MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,
-        output_concepts=[concept, immediate_parent] + local_optional,
+        output_concepts=[
+            concept,
+        ]
+        + local_optional,
         environment=environment,
         g=g,
         parents=[
@@ -74,18 +70,14 @@ def gen_filter_node(
         ],
         node_joins=[
             NodeJoin(
-                left_node=filter_node,
-                right_node=enrich_node,
+                left_node=enrich_node,
+                right_node=filter_node,
                 concepts=concept_to_relevant_joins(
                     [immediate_parent] + parent_concepts
                 ),
-                join_type=JoinType.INNER,
+                join_type=JoinType.LEFT_OUTER,
                 filter_to_mutual=False,
             )
         ],
-        # all of these concepts only count as partial
-        partial_concepts=[immediate_parent] + local_optional,
-        # we should not need to implicitly group here
-        force_group=True,
     )
     return x

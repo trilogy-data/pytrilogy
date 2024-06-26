@@ -53,6 +53,12 @@ def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Conc
     base += concept.lineage.where.concept_arguments
     if direct_parent.grain:
         base += direct_parent.grain.components_copy
+    if (
+        isinstance(direct_parent, Concept)
+        and direct_parent.purpose == Purpose.PROPERTY
+        and direct_parent.keys
+    ):
+        base += direct_parent.keys
     return concept.lineage.content, unique(base, "address")
 
 

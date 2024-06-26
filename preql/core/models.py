@@ -271,6 +271,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
+    modifiers: Optional[List[Modifier]] = Field(default_factory=list)
 
     def __hash__(self):
         return hash(str(self))
@@ -398,6 +399,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
                 if self.keys
                 else None
             ),
+            modifiers=self.modifiers,
         )
 
     def with_select_grain(self, grain: Optional["Grain"] = None) -> "Concept":
@@ -416,6 +418,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             grain=new_grain,
             namespace=self.namespace,
             keys=self.keys,
+            modifiers=self.modifiers,
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
@@ -430,6 +433,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             grain=grain if grain else Grain(components=[]),
             namespace=self.namespace,
             keys=self.keys,
+            modifiers=self.modifiers,
         )
 
     def with_default_grain(self) -> "Concept":
@@ -466,6 +470,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             grain=grain,
             keys=self.keys,
             namespace=self.namespace,
+            modifiers=self.modifiers,
         )
 
     @property

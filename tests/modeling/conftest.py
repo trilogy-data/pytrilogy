@@ -20,6 +20,7 @@ property order_id.order_timestamp datetime;
 property order_id.order_year int;
 property store_id.store_name string;
 property product_id.product_name string;
+property product_id.manufacturer string?;
 property <store_id, product_id>.inv_qty int;
 property order_id.revenue float;    
 
@@ -59,13 +60,15 @@ select 3, 'store3'
 datasource products (
     product_id:product_id,
     product_name:product_name,
+    manufacturer:manufacturer,
 )
 grain (product_id)
 query '''
-select 1 product_id, 'product1' product_name
+select 1 product_id, 'product1' product_name , 'maker1' manufacturer
 union all
-select 2, 'product2'
+select 2, 'product2', null 
 ''';
+
 
 
 

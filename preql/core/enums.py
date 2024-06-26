@@ -55,6 +55,7 @@ class Modifier(Enum):
     PARTIAL = "Partial"
     OPTIONAL = "Optional"
     HIDDEN = "Hidden"
+    NULLABLE = "Nullable"
 
     @classmethod
     def _missing_(cls, value):

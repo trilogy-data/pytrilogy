@@ -6,6 +6,13 @@ from preql.core.models import ShowStatement, Concept, Grain
 from preql.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from preql.parser import parse_text
 from preql.core.processing.concept_strategies_v3 import get_upstream_concepts
+from preql.core.processing.node_generators.group_node import (
+    resolve_function_parent_concepts,
+)
+
+from preql import Dialects
+
+from preql.core.models import LooseConceptList
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -291,9 +298,6 @@ select
 
 
 def test_constant_group(default_duckdb_engine: Executor):
-    from preql.hooks.query_debugger import DebuggingHook
-
-    default_duckdb_engine.hooks = [DebuggingHook()]
     test = """
 const x <- 1;
 const x2 <- x+1;
@@ -314,13 +318,6 @@ order by
 
 
 def test_case_group():
-    from preql.core.processing.node_generators.group_node import (
-        resolve_function_parent_concepts,
-    )
-
-    from preql import Dialects
-
-    from preql.core.models import LooseConceptList
 
     default_duckdb_engine = Dialects.DUCK_DB.default_executor()
 
@@ -360,3 +357,112 @@ select
     #     parent=function_to_concept()
     # )
     assert results[0] == (3,)
+
+
+def test_demo_filter():
+    from preql.hooks.query_debugger import DebuggingHook
+
+    test = """const x <- unnest([1,2,2,3]);
+
+const even_x <- filter x where (x % 2) = 0;
+
+select 
+    x, 
+    even_x
+order by x 
+asc
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (1, None)
+    assert results[1] == (2, 2)
+    assert len(results) == 4
+
+
+def test_demo_filter_select():
+    from preql.hooks.query_debugger import DebuggingHook
+
+    test = """const x <- unnest([1,2,2,3]);
+
+select
+  ~x,
+  x*x*x -> x_cubed
+where 
+  (x % 2) = 0;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (2, 8)
+    assert len(results) == 2
+
+
+def test_demo_filter_rowset():
+    from preql.hooks.query_debugger import DebuggingHook
+
+    test = """
+const x <- unnest([1,2,3,4]);
+
+with even_squares as select 
+    x, 
+    x*x as x_squared
+where (x_squared %2) = 0;
+
+select 
+    even_squares.x_squared
+order by
+    even_squares.x_squared asc
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (4,)
+    assert len(results) == 2
+
+
+def test_filter_count():
+    from preql.hooks.query_debugger import DebuggingHook
+
+    test = """const x <- unnest([1,2,2,3]);
+
+const y <- x+1;
+
+const odd_y <- filter x where (x % 2) = 0;
+
+select 
+    count(odd_y) -> odd_y_count,
+    count(x) -> x_count
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (2, 4)
+    assert len(results) == 1
+
+
+def test_mod_parse_order():
+    from preql.hooks.query_debugger import DebuggingHook
+
+    test = """
+const x <- unnest([1,2,3,4]);
+
+with even_squares as select 
+    x, 
+    x*x as x_squared
+where x_squared %2  = 0;
+
+select 
+    even_squares.x_squared
+order by
+    even_squares.x_squared asc
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (4,)
+    assert len(results) == 2

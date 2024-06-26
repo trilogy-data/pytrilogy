@@ -25,7 +25,7 @@ def test_gen_filter_node_parents(test_environment: Environment, test_environment
 def test_gen_filter_node(test_environment, test_environment_graph):
     # from preql.core.models import AggregateWrapper
 
-    gnode = gen_filter_node(
+    _ = gen_filter_node(
         concept=test_environment.concepts["products_with_revenue_over_50"],
         local_optional=[],
         environment=test_environment,
@@ -33,5 +33,3 @@ def test_gen_filter_node(test_environment, test_environment_graph):
         depth=0,
         source_concepts=search_concepts,
     )
-
-    assert gnode.partial_concepts == [test_environment.concepts["product_id"]]
