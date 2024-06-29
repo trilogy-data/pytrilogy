@@ -119,7 +119,6 @@ limit 5;"""
         levels=[
             SelectNode,  # select store
             SelectNode,  # select year
-            MergeNode,  # get survived
             MergeNode,  # basic node
             MergeNode,  # filter to survived
             MergeNode,  # filter to survived
