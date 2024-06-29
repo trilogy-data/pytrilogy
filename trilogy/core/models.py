@@ -338,7 +338,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
 
     def __eq__(self, other: object):
         if isinstance(other, str):
-            if self.address == str:
+            if self.address == other:
                 return True
         if not isinstance(other, Concept):
             return False
