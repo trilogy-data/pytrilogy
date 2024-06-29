@@ -15,13 +15,14 @@ def engine():
         environment=env,
         hooks=[DebuggingHook(level=INFO, process_other=False, process_ctes=False)],
         conf=DuckDBConfig(),
-        # hooks = [DebuggingHook()]
     )
 
     # TODO: Detect if loaded
-    #     engine.execute_raw_sql('''
-    # INSTALL tpcds;
-    # LOAD tpcds;
-    # SELECT * FROM dsdgen(sf=1);''')
+    engine.execute_raw_sql(
+        """
+    INSTALL tpcds;
+    LOAD tpcds;
+    SELECT * FROM dsdgen(sf=1);"""
+    )
 
     yield engine

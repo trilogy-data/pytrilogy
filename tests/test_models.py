@@ -74,11 +74,17 @@ def test_conditional(test_environment, test_environment_graph):
     condition_b = Conditional(
         left=test_concept, right=test_concept, operator=BooleanOperator.AND
     )
-
     merged = condition_a + condition_b
-    assert merged.left == condition_a
-    assert merged.right == condition_b
-    assert merged.operator == BooleanOperator.AND
+    assert merged == condition_a
+
+    test_concept_two = list(test_environment.concepts.values())[-2]
+    condition_c = Conditional(
+        left=test_concept, right=test_concept_two, operator=BooleanOperator.AND
+    )
+    merged_two = condition_a + condition_c
+    assert merged_two.left == condition_a
+    assert merged_two.right == condition_c
+    assert merged_two.operator == BooleanOperator.AND
 
 
 def test_grain(test_environment):

@@ -54,12 +54,6 @@ def gen_select_node_from_table(
     for datasource in environment.datasources.values():
         all_found = True
         for idx, req_concept in enumerate(nodes_to_find):
-            # look for connection to abstract grain
-            # req_concept = raw_concept.with_default_grain()
-            # if we don't have a concept in the graph
-            # exit early
-            if req_concept not in g.nodes:
-                raise ValueError(req_concept)
             try:
                 path = nx.shortest_path(
                     g,
@@ -232,10 +226,10 @@ def gen_select_node(
     all_found = False
     unreachable: list[str] = []
     # first pass
-    for x in local_optional:
+    for opt_con in local_optional:
         ds = gen_select_node_from_table(
             concept,
-            [concept, x],
+            [concept, opt_con],
             g=g,
             environment=environment,
             depth=depth + 1,
@@ -243,7 +237,8 @@ def gen_select_node(
             target_grain=Grain(components=all_concepts),
         )
         if not ds:
-            unreachable.append(x.address)
+            unreachable.append(opt_con.address)
+    # actual search
     for x in reversed(range(1, len(local_optional) + 1)):
         if all_found:
             break
