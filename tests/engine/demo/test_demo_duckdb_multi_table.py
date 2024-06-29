@@ -129,3 +129,17 @@ limit 5;"""
             GroupNode,  # final node
         ],
     )
+
+
+def test_age_class_query_resolution(normalized_engine, test_env):
+    executor = normalized_engine
+    env = test_env
+    executor.environment = env
+    test = """
+SELECT
+passenger.class,
+passenger.id.count,
+;"""
+
+    sql = executor.parse_text(test)[-1]
+    assert sql == ""

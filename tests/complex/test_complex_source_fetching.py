@@ -9,7 +9,10 @@ from trilogy.core.models import (
     QueryDatasource,
     Environment,
 )
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, generate_graph
+from trilogy.core.processing.concept_strategies_v3 import (
+    search_concepts,
+    generate_graph,
+)
 from trilogy.core.query_processor import process_query, datasource_to_ctes
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.core.enums import Purpose

@@ -35,26 +35,30 @@ def gen_rowset_node(
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivationStatement = lineage.rowset
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
+    if where := select.where_clause:
+        targets = select.output_components + where.conditional.concept_arguments
+    else:
+        targets = select.output_components
     node: StrategyNode = source_concepts(
-        mandatory_list=select.output_components,
+        mandatory_list=targets,
         environment=environment,
         g=g,
         depth=depth + 1,
         history=history,
     )
-    node.conditions = select.where_clause.conditional if select.where_clause else None
-    # rebuild any cached info with the new condition clause
-    node.rebuild_cache()
     if not node:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
         )
         return None
+    node.conditions = select.where_clause.conditional if select.where_clause else None
+    # rebuild any cached info with the new condition clause
+    node.rebuild_cache()
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [
         x
         for x in rowset.derived_concepts
-        if x.address == concept.address or x.address in enrichment
+        # if x.address == concept.address or x.address in enrichment
     ]
     additional_relevant = [
         x for x in select.output_components if x.address in enrichment
@@ -68,7 +72,7 @@ def gen_rowset_node(
         for item in additional_relevant:
             node.partial_concepts.append(item)
 
-    # assume grain to be outoput of select
+    # assume grain to be output of select
     # but don't include anything aggregate at this point
     assert node.resolution_cache
     node.resolution_cache.grain = concept_list_to_grain(

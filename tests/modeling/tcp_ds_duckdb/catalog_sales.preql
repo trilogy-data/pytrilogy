@@ -1,0 +1,31 @@
+import item as item;
+import date as date;
+import time as time;
+import customer as customer;
+
+key order_number int;
+property <order_number,item.id>.quantity int;
+property <order_number,item.id>.sales_price float;
+property <order_number,item.id>.list_price float;
+property <order_number,item.id>.wholesale_cost float;
+property <order_number,item.id>.discount_amount float;
+property <order_number,item.id>.extra_sales_price float;
+
+property <order_number.item.id>.extra_wholesale_cost float;
+
+property <order_number,item.id>.profit <- list_price - wholesale_cost - discount_amount+ extra_sales_price;
+
+datasource store_sales (
+    CS_SOLD_DATE_SK: date.id,
+    CS_SOLD_TIME_SK: time.id,
+    CS_BIL_CUSTOMER_SK: customer.id,
+    CSITEM_SK: item.id,
+    CS_SALES_PRICE: sales_price,
+    CS_ORDER_NUMBER: order_number,
+    CS_WHOLESALE_COST:  wholesale_cost,
+    CS_EXT_WHOLESALE_COST: extra_wholesale_cost,
+
+)
+grain (order_number, item.id)
+address memory.store_sales
+;

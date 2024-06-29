@@ -1,4 +1,4 @@
-##Trilogy
+## Trilogy
 [![Website](https://img.shields.io/badge/INTRO-WEB-orange?)](https://trilogydata.dev/)
 [![Discord](https://img.shields.io/badge/DISCORD-CHAT-red?logo=discord)](https://discord.gg/Z4QSSuqGEd)
 

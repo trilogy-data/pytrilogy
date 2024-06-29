@@ -1,0 +1,15 @@
+
+key id int;
+property id.gender string;
+property id.marital_status string;
+property id.education_status string;
+
+
+datasource customer_demographics (
+        CD_DEMO_SK: id,
+        CD_GENDER: gender,
+        CD_MARITAL_STATUS: marital_status,
+        CD_EDUCATION_STATUS: education_status
+)
+grain (id)
+address memory.customer_demographics;

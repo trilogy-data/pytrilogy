@@ -1887,7 +1887,9 @@ class QueryDatasource(BaseModel):
                 else None
             ),
             source_type=self.source_type,
-            partial_concepts=self.partial_concepts + other.partial_concepts,
+            partial_concepts=unique(
+                self.partial_concepts + other.partial_concepts, "address"
+            ),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
         )
@@ -2530,7 +2532,7 @@ class Comparison(Namespaced, SelectGrain, BaseModel):
 
     def __post_init__(self):
         if arg_to_datatype(self.left) != arg_to_datatype(self.right):
-            raise ValueError(
+            raise SyntaxError(
                 f"Cannot compare {self.left} and {self.right} of different types"
             )
 
@@ -2703,6 +2705,8 @@ class Conditional(Namespaced, SelectGrain, BaseModel):
 
     def __add__(self, other) -> "Conditional":
         if other is None:
+            return self
+        elif str(other) == str(self):
             return self
         elif isinstance(other, (Comparison, Conditional, Parenthetical)):
             return Conditional(left=self, right=other, operator=BooleanOperator.AND)

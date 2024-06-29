@@ -1,0 +1,20 @@
+
+
+#Find customers who spend more money via catalog than in stores. Identify preferred customers and their
+#country of origin.
+#Qualification Substitution Parameters:
+#• YEAR.01=2001
+#• SELECTONE.01= t_s_secyear.customer_preferred_cust_flag
+
+import customer;
+import store_sales;
+import catalog_sales;
+
+merge customer.id, store_sales.customer.id, catalog_sales.customer_id;
+
+with customer_sales as 
+SELECT 
+    customer_id,
+    sum(store_sales.)
+
+

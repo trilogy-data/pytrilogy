@@ -1,4 +1,4 @@
-from trilogy.core.enums import BooleanOperator, Purpose, JoinType
+from trilogy.core.enums import BooleanOperator, Purpose, JoinType, ComparisonOperator
 from trilogy.core.models import (
     CTE,
     Grain,
@@ -9,6 +9,7 @@ from trilogy.core.models import (
     Address,
     UndefinedConcept,
     BaseJoin,
+    Comparison,
 )
 
 
@@ -177,3 +178,10 @@ def test_base_join(test_environment: Environment):
         exc3 = exc4
         pass
     assert isinstance(exc3, SyntaxError)
+
+
+def test_comparison():
+    try:
+        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+    except Exception as exc:
+        assert isinstance(exc, SyntaxError)

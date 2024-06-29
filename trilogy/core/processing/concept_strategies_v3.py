@@ -318,7 +318,7 @@ def generate_node(
         )
     elif concept.derivation == PurposeLineage.ROOT:
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating select node"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating select node with optional {[x.address for x in local_optional]}"
         )
         return gen_select_node(
             concept,

@@ -25,7 +25,12 @@ from trilogy.core.models import (
     AlignItem,
 )
 from trilogy import Environment
-from trilogy.core.enums import ComparisonOperator, BooleanOperator, Modifier, FunctionType
+from trilogy.core.enums import (
+    ComparisonOperator,
+    BooleanOperator,
+    Modifier,
+    FunctionType,
+)
 from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
 
 

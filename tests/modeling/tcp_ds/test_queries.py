@@ -116,9 +116,8 @@ auto avg_store_returns <- avg(ca_2022.total_returns) by ca_2022.returns.store.id
 
 select
     ca_2022.returns.customer.id,
-    ca_2022.total_returns,
-    --ca_2022.returns.store.id,
-    avg_store_returns,
+    -- ca_2022.total_returns,
+    -- avg_store_returns,
 where
     ca_2022.total_returns > (1.2*avg_store_returns)
 order by ca_2022.total_returns desc

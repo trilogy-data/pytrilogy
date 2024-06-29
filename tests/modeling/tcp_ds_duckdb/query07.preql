@@ -1,0 +1,39 @@
+# compute the average quantity, list price, discount, and sales price for promotional items sold in stores where the
+# promotion is not offered by mail or a special event. Restrict the results to a specific gender, marital and
+# educational status.
+
+import store_sales as store_sales;
+
+
+with filtered_sales as 
+    SELECT
+    store_sales.item.name,
+    store_sales.quantity,
+    store_sales.list_price,
+    store_sales.coupon_amt,
+    store_sales.sales_price,
+    --store_sales.promotion.channel_email,
+    --store_sales.promotion.channel_event,
+    --store_sales.date.year,
+    --store_sales.customer_demographic.gender,
+    --store_sales.customer_demographic.marital_status,
+    --store_sales.customer_demographic.education_status
+WHERE
+    store_sales.customer_demographic.gender = 'M'
+    and store_sales.customer_demographic.marital_status = 'S'
+    and store_sales.customer_demographic.education_status = 'College'
+    and (store_sales.promotion.channel_email = 'N' or store_sales.promotion.channel_event = 'N')
+    and store_sales.date.year = 2000
+;
+
+SELECT
+    filtered_sales.store_sales.item.name,
+    avg(filtered_sales.store_sales.quantity) as avg_quantity,
+    avg(filtered_sales.store_sales.list_price) as avg_list_price,
+    avg(filtered_sales.store_sales.coupon_amt) as avg_coupon_amt,
+    avg(filtered_sales.store_sales.sales_price) as avg_sales_price
+order by
+    filtered_sales.store_sales.item.name asc
+limit 100
+;
+

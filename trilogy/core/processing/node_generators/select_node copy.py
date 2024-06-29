@@ -50,58 +50,35 @@ def gen_select_node_from_table(
     candidates: dict[str, StrategyNode] = {}
     scores: dict[str, int] = {}
     # otherwise, we need to look for a table
-    nodes_to_find = [concept_to_node(x.with_default_grain()) for x in all_concepts]
+
+    nodes_to_search = [concept_to_node(x.with_default_grain()) for x in all_concepts]
     for datasource in environment.datasources.values():
         all_found = True
-        for idx, req_concept in enumerate(nodes_to_find):
-            # look for connection to abstract grain
-            # req_concept = raw_concept.with_default_grain()
+        for snode in nodes_to_search:
             # if we don't have a concept in the graph
             # exit early
-            if req_concept not in g.nodes:
-                raise ValueError(req_concept)
+            if snode not in g.nodes:
+                raise ValueError(snode)
             try:
                 path = nx.shortest_path(
                     g,
                     source=datasource_to_node(datasource),
-                    target=req_concept,
+                    target=snode,
                 )
-            except nx.NodeNotFound as e:
-                # just to provide better error
-                ncandidates = [
-                    datasource_to_node(datasource),
-                    req_concept,
-                ]
-                for ncandidate in ncandidates:
-                    try:
-                        g.nodes[ncandidate]
-                    except KeyError:
-                        raise SyntaxError(
-                            "Could not find node for {}".format(ncandidate)
-                        )
-                raise e
             except nx.exception.NetworkXNoPath:
                 all_found = False
                 break
-            # 2023-10-18 - more strict condition then below
-            # 2023-10-20 - we need this to get through abstract concepts
-            # but we may want to add a filter to avoid using this for anything with lineage
-            # if len(path) != 2:
-            #     all_found = False
-            #     break
             if len([p for p in path if g.nodes[p]["type"] == "datasource"]) != 1:
                 all_found = False
                 break
             for node in path:
                 if g.nodes[node]["type"] == "datasource":
                     continue
-                if g.nodes[node]["concept"].address == all_concepts[idx].address:
+                if concept_to_node(g.nodes[node]["concept"]) == snode:
                     continue
                 all_found = False
                 break
-
         if not all_found:
-            # skip to next node
             continue
         partial_concepts = [
             c.concept
@@ -148,7 +125,7 @@ def gen_select_node_from_table(
             datasource=datasource,
             grain=Grain(components=all_concepts),
         )
-        # we need to nest the group node one further
+        # we need to ntest the group node one further
         if force_group is True:
             candidate: StrategyNode = GroupNode(
                 output_concepts=all_concepts,
