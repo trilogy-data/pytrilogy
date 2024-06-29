@@ -1,4 +1,4 @@
-deimport store_sales as store_sales;
+import store_sales as store_sales;
 import web_sales as web_sales;
 import date as date;
 
