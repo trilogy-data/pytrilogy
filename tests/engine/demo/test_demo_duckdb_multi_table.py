@@ -119,7 +119,6 @@ limit 5;"""
         levels=[
             SelectNode,  # select store
             SelectNode,  # select year
-            MergeNode,  # get survived
             MergeNode,  # basic node
             MergeNode,  # filter to survived
             MergeNode,  # filter to survived
@@ -129,3 +128,16 @@ limit 5;"""
             GroupNode,  # final node
         ],
     )
+
+
+def test_age_class_query_resolution(normalized_engine, test_env):
+    executor = normalized_engine
+    env = test_env
+    executor.environment = env
+    test = """
+SELECT
+passenger.class,
+passenger.id.count,
+;"""
+
+    _ = executor.parse_text(test)[-1]

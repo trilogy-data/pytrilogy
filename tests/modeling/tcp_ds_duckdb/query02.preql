@@ -1,0 +1,53 @@
+import store_sales as store_sales;
+import web_sales as web_sales;
+import date as date;
+
+# query 2
+#Report the ratios of weekly web and catalog sales increases from one year to the next year for each week. That
+#is, compute the increase of Monday, Tuesday, ... Sunday sales from one year to the following
+# trilogy run C:\Users\ethan\coding_projects\pypreql-etl\tests\tcp-ds\query02.preql snowflake --username EFROMVT --account DHZVXJH-DE83081 --password <>
+
+#merge date.id,store_sales.date.id;
+
+rowset merged_sales <- select 
+    web_sales.date.year,
+    web_sales.date.day_of_week,
+    sum(web_sales.sales_price) as yearly_web_sales
+where 
+    web_sales.date.year in (2001,2002)
+merge
+select 
+    store_sales.date.year,
+    store_sales.date.day_of_week,
+    sum(store_sales.sales_price) as yearly_store_sales
+where 
+    store_sales.date.year in (2001,2002)
+align  
+    year:web_sales.date.year,store_sales.date.year,
+    day_of_week:web_sales.date.day_of_week,store_sales.date.day_of_week,
+
+;
+
+with yearly_agg AS
+select
+    merged_sales.year,
+    SUM(CASE WHEN merged_sales.day_of_week = 0 THEN merged_sales.yearly_web_sales + merged_sales.yearly_store_sales ELSE 0.0 END) as sunday_sales,
+    SUM(CASE WHEN merged_sales.day_of_week = 1 THEN merged_sales.yearly_web_sales + merged_sales.yearly_store_sales ELSE 0.0 END) as monday_sales,
+    SUM(CASE WHEN merged_sales.day_of_week = 2 THEN merged_sales.yearly_web_sales + merged_sales.yearly_store_sales ELSE 0.0 END) as tuesday_sales,
+    SUM(CASE WHEN merged_sales.day_of_week = 3 THEN merged_sales.yearly_web_sales + merged_sales.yearly_store_sales ELSE 0.0 END) as wednesday_sales,
+    SUM(CASE WHEN merged_sales.day_of_week = 4 THEN merged_sales.yearly_web_sales + merged_sales.yearly_store_sales ELSE 0.0 END) as thursday_sales,
+    SUM(CASE WHEN merged_sales.day_of_week = 5 THEN merged_sales.yearly_web_sales + merged_sales.yearly_store_sales ELSE 0.0 END) as friday_sales,
+    SUM(CASE WHEN merged_sales.day_of_week = 6 THEN merged_sales.yearly_web_sales + merged_sales.yearly_store_sales ELSE 0.0 END) as saturday_sales,
+;
+            
+select 
+    yearly_agg.merged_sales.year,
+    yearly_agg.monday_sales / (lag yearly_agg.monday_sales by yearly_agg.merged_sales.year asc) as monday_increase,
+    yearly_agg.tuesday_sales / (lag yearly_agg.tuesday_sales by yearly_agg.merged_sales.year asc) as tuesday_increase,
+    yearly_agg.wednesday_sales / (lag yearly_agg.wednesday_sales by yearly_agg.merged_sales.year asc) as wednesday_increase,
+    yearly_agg.thursday_sales / (lag yearly_agg.thursday_sales by yearly_agg.merged_sales.year asc) as thursday_increase,
+    yearly_agg.friday_sales / (lag yearly_agg.friday_sales by yearly_agg.merged_sales.year asc) as friday_increase,
+    yearly_agg.saturday_sales / (lag yearly_agg.saturday_sales by yearly_agg.merged_sales.year asc) as saturday_increase,
+    yearly_agg.sunday_sales / (lag yearly_agg.sunday_sales by yearly_agg.merged_sales.year asc) as sunday_increase,
+WHERE yearly_agg.merged_sales.year = 2002
+;

@@ -1,0 +1,21 @@
+
+key id int;
+
+property id.name string;
+property id.brand_id int;
+property id.brand_name string;
+property id.manufacturer_id int;
+property id.category int;
+property id.current_price float;
+
+datasource items (
+    I_ITEM_SK: id,
+    I_ITEM_ID: name,
+    I_BRAND: brand_name,
+    I_BRAND_ID: brand_id,
+    I_MANUFACT_ID: manufacturer_id,
+    I_CATEGORY: category,
+    I_CURRENT_PRICE: current_price,
+)
+grain (id)
+address memory.item;

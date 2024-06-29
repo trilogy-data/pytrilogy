@@ -27,3 +27,5 @@ AdventureWorksDW2019.bak
 .preql-cache.json
 
 .mypy_cache
+
+memory.db

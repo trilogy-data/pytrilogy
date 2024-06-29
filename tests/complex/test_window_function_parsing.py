@@ -1,6 +1,9 @@
 from trilogy.core.models import SelectStatement, WindowItem
 from trilogy.core.enums import PurposeLineage, Granularity, Purpose
-from trilogy.core.processing.concept_strategies_v3 import search_concepts, generate_graph
+from trilogy.core.processing.concept_strategies_v3 import (
+    search_concepts,
+    generate_graph,
+)
 from trilogy.core.query_processor import process_query, get_query_datasources
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from trilogy.dialect.bigquery import BigqueryDialect

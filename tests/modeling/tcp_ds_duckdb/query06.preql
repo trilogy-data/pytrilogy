@@ -1,0 +1,23 @@
+#List all the states with at least 10 customers who during a given month bought items with the price tag at least
+#20% higher than the average price of items in the same category##
+
+import store_sales as store_sales;
+import item as item;
+
+
+merge store_sales.item.id, item.id; # merge models for this query to get avg price of all items, not just sold items
+
+SELECT
+    store_sales.customer.state,
+    count(
+        filter store_sales.customer.id 
+            where store_sales.date.year=2001 
+            and store_sales.date.month_of_year=1 
+            and store_sales.item.current_price > 1.2 * avg(item.current_price) by item.category
+        ) as customer_count
+WHERE
+    customer_count>=10
+ORDER by
+    customer_count asc,
+    store_sales.customer.state asc
+;

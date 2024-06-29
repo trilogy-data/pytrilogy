@@ -1,4 +1,4 @@
-from trilogy.core.enums import BooleanOperator, Purpose, JoinType
+from trilogy.core.enums import BooleanOperator, Purpose, JoinType, ComparisonOperator
 from trilogy.core.models import (
     CTE,
     Grain,
@@ -9,6 +9,7 @@ from trilogy.core.models import (
     Address,
     UndefinedConcept,
     BaseJoin,
+    Comparison,
 )
 
 
@@ -73,11 +74,17 @@ def test_conditional(test_environment, test_environment_graph):
     condition_b = Conditional(
         left=test_concept, right=test_concept, operator=BooleanOperator.AND
     )
-
     merged = condition_a + condition_b
-    assert merged.left == condition_a
-    assert merged.right == condition_b
-    assert merged.operator == BooleanOperator.AND
+    assert merged == condition_a
+
+    test_concept_two = list(test_environment.concepts.values())[-2]
+    condition_c = Conditional(
+        left=test_concept, right=test_concept_two, operator=BooleanOperator.AND
+    )
+    merged_two = condition_a + condition_c
+    assert merged_two.left == condition_a
+    assert merged_two.right == condition_c
+    assert merged_two.operator == BooleanOperator.AND
 
 
 def test_grain(test_environment):
@@ -177,3 +184,10 @@ def test_base_join(test_environment: Environment):
         exc3 = exc4
         pass
     assert isinstance(exc3, SyntaxError)
+
+
+def test_comparison():
+    try:
+        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+    except Exception as exc:
+        assert isinstance(exc, SyntaxError)

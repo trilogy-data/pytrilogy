@@ -115,7 +115,7 @@ def run(ctx, input, dialect: str, conn_args):
 
             print_tabulate(results, tabulate.tabulate)
         except ImportError:
-            print('Install tabulate (pip install tabulate) for a prettier output')
+            print("Install tabulate (pip install tabulate) for a prettier output")
             print(", ".join(results.keys()))
             for row in results:
                 print(row)

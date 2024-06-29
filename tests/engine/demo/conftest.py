@@ -288,6 +288,7 @@ def setup_titanic_distributed(env: Environment):
         embarked,
         survived_count,
         last_name,
+        class_id,
     ]:
         env.add_concept(x)
 
@@ -340,7 +341,6 @@ def setup_titanic_distributed(env: Environment):
             grain=Grain(components=[class_id]),
         ),
     )
-
     return env
 
 
@@ -353,7 +353,7 @@ def normalized_engine():
 @fixture
 def test_env():
     env = Environment()
-    setup_titanic_distributed(env)
+    env = setup_titanic_distributed(env)
     rich_env = Environment()
     setup_richest_environment(rich_env)
     env.add_import("rich_info", rich_env)

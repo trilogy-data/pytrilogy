@@ -1,4 +1,8 @@
-from trilogy.core.graph_models import ReferenceGraph, concept_to_node, datasource_to_node
+from trilogy.core.graph_models import (
+    ReferenceGraph,
+    concept_to_node,
+    datasource_to_node,
+)
 from trilogy.core.models import Environment
 from trilogy.core.enums import PurposeLineage
 

@@ -50,26 +50,21 @@ def gen_select_node_from_table(
     candidates: dict[str, StrategyNode] = {}
     scores: dict[str, int] = {}
     # otherwise, we need to look for a table
+    nodes_to_find = [concept_to_node(x.with_default_grain()) for x in all_concepts]
     for datasource in environment.datasources.values():
         all_found = True
-        for raw_concept in all_concepts:
-            # look for connection to abstract grain
-            req_concept = raw_concept.with_default_grain()
-            # if we don't have a concept in the graph
-            # exit early
-            if concept_to_node(req_concept) not in g.nodes:
-                raise ValueError(concept_to_node(req_concept))
+        for idx, req_concept in enumerate(nodes_to_find):
             try:
                 path = nx.shortest_path(
                     g,
                     source=datasource_to_node(datasource),
-                    target=concept_to_node(req_concept),
+                    target=req_concept,
                 )
             except nx.NodeNotFound as e:
                 # just to provide better error
                 ncandidates = [
                     datasource_to_node(datasource),
-                    concept_to_node(req_concept),
+                    req_concept,
                 ]
                 for ncandidate in ncandidates:
                     try:
@@ -94,75 +89,77 @@ def gen_select_node_from_table(
             for node in path:
                 if g.nodes[node]["type"] == "datasource":
                     continue
-                if g.nodes[node]["concept"].address == raw_concept.address:
+                if g.nodes[node]["concept"].address == all_concepts[idx].address:
                     continue
                 all_found = False
                 break
 
-        if all_found:
-            partial_concepts = [
-                c.concept
-                for c in datasource.columns
-                if not c.is_complete and c.concept in all_lcl
-            ]
-            partial_lcl = LooseConceptList(concepts=partial_concepts)
-            if not accept_partial and target_concept in partial_lcl:
-                continue
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} target grain is {str(target_grain)}"
-            )
-            if target_grain and target_grain.issubset(datasource.grain):
+        if not all_found:
+            # skip to next node
+            continue
+        partial_concepts = [
+            c.concept
+            for c in datasource.columns
+            if not c.is_complete and c.concept in all_lcl
+        ]
+        partial_lcl = LooseConceptList(concepts=partial_concepts)
+        if not accept_partial and target_concept in partial_lcl:
+            continue
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} target grain is {str(target_grain)}"
+        )
+        if target_grain and target_grain.issubset(datasource.grain):
 
-                if all([x in all_lcl for x in target_grain.components]):
-                    force_group = False
-                # if we are not returning the grain
-                # we have to group
-                else:
-                    logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(all_lcl)}, group to actual grain"
-                    )
-                    force_group = True
-            elif all([x in all_lcl for x in datasource.grain.components]):
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} query output includes all grain components, no reason to group further"
-                )
+            if all([x in all_lcl for x in target_grain.components]):
                 force_group = False
+            # if we are not returning the grain
+            # we have to group
             else:
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} target grain is not subset of datasource grain {datasource.grain}, required to group"
+                    f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(all_lcl)}, group to actual grain"
                 )
                 force_group = True
+        elif all([x in all_lcl for x in datasource.grain.components]):
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} query output includes all grain components, no reason to group further"
+            )
+            force_group = False
+        else:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} target grain is not subset of datasource grain {datasource.grain}, required to group"
+            )
+            force_group = True
 
-            bcandidate: StrategyNode = SelectNode(
-                input_concepts=[c.concept for c in datasource.columns],
+        bcandidate: StrategyNode = SelectNode(
+            input_concepts=[c.concept for c in datasource.columns],
+            output_concepts=all_concepts,
+            environment=environment,
+            g=g,
+            parents=[],
+            depth=depth,
+            partial_concepts=[c for c in all_concepts if c in partial_lcl],
+            accept_partial=accept_partial,
+            datasource=datasource,
+            grain=Grain(components=all_concepts),
+        )
+        # we need to nest the group node one further
+        if force_group is True:
+            candidate: StrategyNode = GroupNode(
                 output_concepts=all_concepts,
+                input_concepts=all_concepts,
                 environment=environment,
                 g=g,
-                parents=[],
+                parents=[bcandidate],
                 depth=depth,
-                partial_concepts=[c for c in all_concepts if c in partial_lcl],
-                accept_partial=accept_partial,
-                datasource=datasource,
-                grain=Grain(components=all_concepts),
+                partial_concepts=bcandidate.partial_concepts,
             )
-            # we need to ntest the group node one further
-            if force_group is True:
-                candidate: StrategyNode = GroupNode(
-                    output_concepts=all_concepts,
-                    input_concepts=all_concepts,
-                    environment=environment,
-                    g=g,
-                    parents=[bcandidate],
-                    depth=depth,
-                    partial_concepts=bcandidate.partial_concepts,
-                )
-            else:
-                candidate = bcandidate
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, returning {candidate.output_lcl}"
-            )
-            candidates[datasource.identifier] = candidate
-            scores[datasource.identifier] = -len(partial_concepts)
+        else:
+            candidate = bcandidate
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, returning {candidate.output_lcl}"
+        )
+        candidates[datasource.identifier] = candidate
+        scores[datasource.identifier] = -len(partial_concepts)
     if not candidates:
         return None
     final = max(candidates, key=lambda x: scores[x])
@@ -227,6 +224,21 @@ def gen_select_node(
         f"{padding(depth)}{LOGGER_PREFIX} looking for multiple sources that can satisfy"
     )
     all_found = False
+    unreachable: list[str] = []
+    # first pass
+    for opt_con in local_optional:
+        ds = gen_select_node_from_table(
+            concept,
+            [concept, opt_con],
+            g=g,
+            environment=environment,
+            depth=depth + 1,
+            accept_partial=accept_partial,
+            target_grain=Grain(components=all_concepts),
+        )
+        if not ds:
+            unreachable.append(opt_con.address)
+    # actual search
     for x in reversed(range(1, len(local_optional) + 1)):
         if all_found:
             break
@@ -234,7 +246,9 @@ def gen_select_node(
             if all_found:
                 break
             # filter to just the original ones we need to get
-            local_combo = [x for x in combo if x not in found]
+            local_combo = [
+                x for x in combo if x not in found and x.address not in unreachable
+            ]
             # skip if nothing new in this combo
             if not local_combo:
                 continue
