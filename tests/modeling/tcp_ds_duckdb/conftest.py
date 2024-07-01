@@ -23,8 +23,6 @@ def engine():
     results = engine.execute_raw_sql("SHOW TABLES;").fetchall()
     tables = [r[0] for r in results]
     if "store_sales" not in tables:
-        print("Generating raw tcp data, this may take a minute")
-        # raise SyntaxError(f"This is not working: {tables}")
         engine.execute_raw_sql(
             f"""
         INSTALL tpcds;
