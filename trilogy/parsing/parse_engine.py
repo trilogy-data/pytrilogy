@@ -9,6 +9,7 @@ from lark.exceptions import (
     UnexpectedToken,
     VisitError,
 )
+from pathlib import Path
 from lark.tree import Meta
 from pydantic import ValidationError
 from trilogy.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
@@ -466,7 +467,7 @@ class ParseToObjects(Transformer):
         text,
         environment: Environment,
         parse_address: str | None = None,
-        parsed: dict | None = None,
+        parsed: dict[str, "ParseToObjects"] | None = None,
     ):
         Transformer.__init__(self, visit_tokens)
         self.text = text
@@ -476,14 +477,24 @@ class ParseToObjects(Transformer):
         # we do a second pass to pick up circular dependencies
         # after initial parsing
         self.pass_count = 1
+        self._results_stash = None
+
+    def transform(self, tree):
+        results = super().transform(tree)
+        self._results_stash = results
+        self.environment._parse_count += 1
+        return results
 
     def hydrate_missing(self):
         self.pass_count = 2
         for k, v in self.parsed.items():
+
             if v.pass_count == 2:
                 continue
             v.hydrate_missing()
         self.environment.concepts.fail_on_missing = True
+        # if not self.environment.concepts.undefined:
+        #     return self._results_stash
         reparsed = self.transform(PARSER.parse(self.text))
         self.environment.concepts.undefined = {}
         return reparsed
@@ -931,7 +942,7 @@ class ParseToObjects(Transformer):
         )
         for column in columns:
             column.concept = column.concept.with_grain(datasource.grain)
-        self.environment.datasources[datasource.identifier] = datasource
+        self.environment.add_datasource(datasource, meta=meta)
         return datasource
 
     @v_args(meta=True)
@@ -1080,7 +1091,9 @@ class ParseToObjects(Transformer):
 
         for _, datasource in nparser.environment.datasources.items():
             self.environment.add_datasource(datasource.with_namespace(alias))
-        imps = ImportStatement(alias=alias, path=args[0])
+        imps = ImportStatement(
+            alias=alias, path=Path(args[0]), environment=nparser.environment
+        )
         self.environment.imports[alias] = imps
         return imps
 
