@@ -355,7 +355,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
         grain = ",".join([str(c.address) for c in self.grain.components])
         return f"{self.namespace}.{self.name}<{grain}>"
 
-    @property
+    @cached_property
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 
@@ -436,7 +436,8 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             modifiers=self.modifiers,
         )
 
-    def with_default_grain(self) -> "Concept":
+    @cached_property
+    def _with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
             grain = Grain(components=[self.with_grain(Grain())], nested=True)
@@ -472,6 +473,9 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             namespace=self.namespace,
             modifiers=self.modifiers,
         )
+
+    def with_default_grain(self) -> "Concept":
+        return self._with_default_grain
 
     @property
     def sources(self) -> List["Concept"]:
@@ -2324,6 +2328,8 @@ class Environment(BaseModel):
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
 
+    materialized_concepts: List[Concept] = Field(default_factory=list)
+
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
         with open(path, "r") as f:
@@ -2349,8 +2355,7 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    @property
-    def materialized_concepts(self) -> List[Concept]:
+    def gen_materialized_concepts(self) -> None:
         output = []
         for concept in self.concepts.values():
             found = False
@@ -2362,7 +2367,7 @@ class Environment(BaseModel):
                     break
             if found:
                 output.append(concept)
-        return output
+        self.materialized_concepts = output
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing: Concept = self.concepts.get(lookup)  # type: ignore
@@ -2398,6 +2403,7 @@ class Environment(BaseModel):
             self.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
         for key, datasource in environment.datasources.items():
             self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
+        self.gen_materialized_concepts()
 
     def parse(
         self, input: str, namespace: str | None = None, persist: bool = False
@@ -2448,21 +2454,21 @@ class Environment(BaseModel):
             from trilogy.core.environment_helpers import generate_related_concepts
 
             generate_related_concepts(concept, self)
+        self.gen_materialized_concepts()
         return concept
 
     def add_datasource(
         self,
         datasource: Datasource,
     ):
-        if datasource.namespace == DEFAULT_NAMESPACE:
+        if not datasource.namespace or datasource.namespace == DEFAULT_NAMESPACE:
             self.datasources[datasource.name] = datasource
-            return datasource
-        if not datasource.namespace:
-            self.datasources[datasource.name] = datasource
+            self.gen_materialized_concepts()
             return datasource
         self.datasources[datasource.namespace + "." + datasource.identifier] = (
             datasource
         )
+        self.gen_materialized_concepts()
         return datasource
 
 

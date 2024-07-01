@@ -471,7 +471,6 @@ class ParseToObjects(Transformer):
         Transformer.__init__(self, visit_tokens)
         self.text = text
         self.environment: Environment = environment
-        self.imported: set[str] = set()
         self.parse_address = parse_address or "root"
         self.parsed: dict[str, ParseToObjects] = parsed if parsed else {}
         # we do a second pass to pick up circular dependencies
@@ -1046,12 +1045,11 @@ class ParseToObjects(Transformer):
         self.environment.add_concept(new, meta=meta)
         return merge
 
-    def import_statement(self, args: list[str]):
+    def import_statement(self, args: list[str]) -> ImportStatement:
         alias = args[-1]
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
-        self.imported.add(target)
         if target in self.parsed:
             nparser = self.parsed[target]
         else:
@@ -1070,21 +1068,21 @@ class ParseToObjects(Transformer):
                 )
                 nparser.transform(PARSER.parse(text))
                 self.parsed[target] = nparser
+                # add the parsed objects of the import in
+                self.parsed = {**self.parsed, **nparser.parsed}
             except Exception as e:
                 raise ImportError(
                     f"Unable to import file {dirname(target)}, parsing error: {e}"
                 )
 
-        for key, concept in nparser.environment.concepts.items():
-            # self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(new_namespace)
+        for _, concept in nparser.environment.concepts.items():
             self.environment.add_concept(concept.with_namespace(alias))
 
-        for key, datasource in nparser.environment.datasources.items():
+        for _, datasource in nparser.environment.datasources.items():
             self.environment.add_datasource(datasource.with_namespace(alias))
-            # self.environment.datasources[f"{alias}.{key}"] = datasource.with_namespace(new_namespace)
-
-        self.environment.imports[alias] = ImportStatement(alias=alias, path=args[0])
-        return None
+        imps = ImportStatement(alias=alias, path=args[0])
+        self.environment.imports[alias] = imps
+        return imps
 
     @v_args(meta=True)
     def show_category(self, meta: Meta, args) -> ShowCategory:
