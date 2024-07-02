@@ -174,3 +174,33 @@ def agg_wrapper_to_concept(
         keys=tuple(parent.by) if parent.by else keys,
     )
     return out
+
+
+def arbitrary_to_concept(
+    parent: (
+        AggregateWrapper
+        | WindowItem
+        | FilterItem
+        | Function
+        | ListWrapper
+        | int
+        | float
+        | str
+    ),
+    namespace: str,
+    name: str,
+    metadata: Metadata | None = None,
+    purpose: Purpose | None = None,
+) -> Concept:
+    if isinstance(parent, AggregateWrapper):
+        return agg_wrapper_to_concept(parent, namespace, name, metadata, purpose)
+    elif isinstance(parent, WindowItem):
+        return window_item_to_concept(parent, name, namespace, purpose, metadata)
+    elif isinstance(parent, FilterItem):
+        return filter_item_to_concept(parent, name, namespace, purpose, metadata)
+    elif isinstance(parent, Function):
+        return function_to_concept(parent, name, namespace)
+    elif isinstance(parent, ListWrapper):
+        return constant_to_concept(parent, name, namespace, purpose, metadata)
+    else:
+        return constant_to_concept(parent, name, namespace, purpose, metadata)

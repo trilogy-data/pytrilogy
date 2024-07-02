@@ -3,6 +3,7 @@ from typing import List, Optional
 from trilogy.core.models import Concept, Environment, Datasource, Conditional
 from trilogy.core.processing.nodes import MergeNode, History
 import networkx as nx
+from trilogy.core.enums import PurposeLineage
 from trilogy.core.graph_models import concept_to_node, datasource_to_node
 from trilogy.core.processing.utility import PathInfo
 from trilogy.constants import logger
@@ -10,7 +11,8 @@ from trilogy.utility import unique
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.graph_utils import extract_mandatory_subgraphs
-
+from collections import defaultdict
+from trilogy.core.processing.node_generators.common import resolve_function_parent_concepts, resolve_filter_parent_concepts
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 
 
@@ -45,6 +47,9 @@ def identify_ds_join_paths(
             paths[target_node] = path
             if sum([1 for x in path if x.startswith("ds~")]) == 1:
                 any_direct_found = True
+            ncount = defaultdict(lambda: 0)
+            for x in path:
+                ncount[x] += 1
         except nx.exception.NodeNotFound:
             # TODO: support Verbose logging mode configuration and reenable these
             all_found = False
@@ -87,8 +92,18 @@ def gen_merge_node(
 ) -> Optional[MergeNode]:
     join_candidates: List[PathInfo] = []
     # anchor on datasources
+    final_all_concepts = []
+    # implicit_upstream = {}
+    for x in all_concepts:
+        # if x.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.BASIC):
+        #     final_all_concepts +=resolve_function_parent_concepts(x)
+        # elif x.derivation == PurposeLineage.FILTER:
+        #     final_all_concepts +=resolve_filter_parent_concepts(x)
+        # else:
+        #     final_all_concepts.append(x)
+        final_all_concepts.append(x)
     for datasource in environment.datasources.values():
-        path = identify_ds_join_paths(all_concepts, g, datasource, accept_partial)
+        path = identify_ds_join_paths(final_all_concepts, g, datasource, accept_partial)
         if path and path.reduced_concepts:
             join_candidates.append(path)
     join_candidates.sort(key=lambda x: sum([len(v) for v in x.paths.values()]))

@@ -113,15 +113,27 @@ NAMESPACED_TYPES = Union[
 
 
 class Namespaced(ABC):
-    pass
 
     def with_namespace(self, namespace: str):
         raise NotImplementedError
 
 
-class SelectGrain(ABC):
-    pass
+class ConceptArgs(ABC):
 
+    @property
+    def concept_arguments(self) -> List["Concept"]:
+        raise NotImplementedError
+
+    @property
+    def existence_arguments(self) -> List["Concept"]:
+        return []
+
+    @property
+    def row_arguments(self) -> List["Concept"]:
+        return self.concept_arguments
+
+
+class SelectGrain(ABC):
     def with_select_grain(self, grain: Grain):
         raise NotImplementedError
 
@@ -1395,16 +1407,11 @@ class MultiSelectStatement(Namespaced, BaseModel):
         return output
 
     def find_source(self, concept: Concept, cte: CTE) -> Concept:
-        all = []
         for x in self.align.items:
             if concept.name == x.alias:
                 for c in x.concepts:
                     if c.address in cte.output_lcl:
-                        all.append(c)
-
-        if len(all) == 1:
-            return all[0]
-
+                        return c
         raise SyntaxError(
             f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
         )
@@ -2546,7 +2553,7 @@ class LazyEnvironment(Environment):
         return super().__getattribute__(name)
 
 
-class Comparison(Namespaced, SelectGrain, BaseModel):
+class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
     left: Union[
         int,
         str,
@@ -2598,7 +2605,7 @@ class Comparison(Namespaced, SelectGrain, BaseModel):
         return f"{str(self.left)} {self.operator.value} {str(self.right)}"
 
     def with_namespace(self, namespace: str):
-        return Comparison(
+        return self.__class__(
             left=(
                 self.left.with_namespace(namespace)
                 if isinstance(self.left, Namespaced)
@@ -2613,7 +2620,7 @@ class Comparison(Namespaced, SelectGrain, BaseModel):
         )
 
     def with_select_grain(self, grain: Grain):
-        return Comparison(
+        return self.__class__(
             left=(
                 self.left.with_select_grain(grain)
                 if isinstance(self.left, SelectGrain)
@@ -2632,7 +2639,7 @@ class Comparison(Namespaced, SelectGrain, BaseModel):
         output: List[Concept] = []
         if isinstance(self.left, (Concept,)):
             output += [self.left]
-        if isinstance(self.left, (Conditional, Parenthetical)):
+        if isinstance(self.left, (Comparison, SubselectComparison, Conditional, Parenthetical)):
             output += self.left.input
         if isinstance(self.left, FilterItem):
             output += self.left.concept_arguments
@@ -2641,7 +2648,7 @@ class Comparison(Namespaced, SelectGrain, BaseModel):
 
         if isinstance(self.right, (Concept,)):
             output += [self.right]
-        if isinstance(self.right, (Conditional, Parenthetical)):
+        if isinstance(self.right, (Comparison, SubselectComparison, Conditional, Parenthetical)):
             output += self.right.input
         if isinstance(self.right, FilterItem):
             output += self.right.concept_arguments
@@ -2658,8 +2665,29 @@ class Comparison(Namespaced, SelectGrain, BaseModel):
         return output
 
 
+class SubselectComparison(Comparison):
+
+    @property
+    def row_arguments(self) -> List[Concept]:
+        return get_concept_arguments(self.left)
+
+    @property
+    def existence_arguments(self) -> List[Concept]:
+        return get_concept_arguments(self.right)
+    
+    def with_select_grain(self, grain: Grain):
+        # there's no need to pass the select grain through to a subselect comparison
+        return self.__class__(
+            left=(
+                self.left.with_select_grain(grain)
+                if isinstance(self.left, SelectGrain)
+                else self.left
+            ),
+            right=self.right,
+            operator=self.operator,
+        )
 class CaseWhen(Namespaced, SelectGrain, BaseModel):
-    comparison: Conditional | Comparison
+    comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
     @property
@@ -2726,7 +2754,7 @@ class CaseElse(Namespaced, SelectGrain, BaseModel):
         )
 
 
-class Conditional(Namespaced, SelectGrain, BaseModel):
+class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
     left: Union[
         int,
         str,
@@ -2821,6 +2849,32 @@ class Conditional(Namespaced, SelectGrain, BaseModel):
         output += get_concept_arguments(self.right)
         return output
 
+    @property
+    def row_arguments(self) -> List[Concept]:
+        output = []
+        if isinstance(self.left, ConceptArgs):
+            output += self.left.row_arguments
+        else:
+            output += get_concept_arguments(self.left)
+        if isinstance(self.right, ConceptArgs):
+            output += self.right.row_arguments
+        else:
+            output += get_concept_arguments(self.right)
+        return output
+    
+
+    @property
+    def existence_arguments(self) -> List[Concept]:
+        output = []
+        if isinstance(self.left, ConceptArgs):
+            output += self.left.existence_arguments
+        else:
+            output += get_concept_arguments(self.left)
+        if isinstance(self.right, ConceptArgs):
+            output += self.right.existence_arguments
+        else:
+            output += get_concept_arguments(self.right)
+        return output
 
 class AggregateWrapper(Namespaced, SelectGrain, BaseModel):
     function: Function
@@ -2864,8 +2918,8 @@ class AggregateWrapper(Namespaced, SelectGrain, BaseModel):
         return AggregateWrapper(function=self.function.with_select_grain(grain), by=by)
 
 
-class WhereClause(Namespaced, SelectGrain, BaseModel):
-    conditional: Union[Comparison, Conditional, "Parenthetical"]
+class WhereClause(ConceptArgs, Namespaced, SelectGrain, BaseModel):
+    conditional: Union[SubselectComparison, Comparison, Conditional, "Parenthetical"]
 
     @property
     def input(self) -> List[Concept]:
@@ -2874,6 +2928,14 @@ class WhereClause(Namespaced, SelectGrain, BaseModel):
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.conditional.concept_arguments
+
+    @property
+    def row_arguments(self) -> List[Concept]:
+        return self.conditional.row_arguments
+
+    @property
+    def existence_arguments(self) -> List[Concept]:
+        return self.conditional.existence_arguments
 
     def with_namespace(self, namespace: str) -> WhereClause:
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
@@ -3062,7 +3124,7 @@ class RowsetItem(Namespaced, BaseModel):
         return [self.content]
 
 
-class Parenthetical(Namespaced, SelectGrain, BaseModel):
+class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
     content: "Expr"
 
     def __str__(self):
@@ -3105,6 +3167,14 @@ class Parenthetical(Namespaced, SelectGrain, BaseModel):
         elif isinstance(x, Concept):
             base.append(x)
         return base
+
+    @property
+    def row_arguments(self) -> List[Concept]:
+        return self.content.row_arguments
+
+    @property
+    def existence_arguments(self) -> List[Concept]:
+        return self.content.existence_arguments
 
     @property
     def input(self):

@@ -17,6 +17,7 @@ from trilogy.constants import (
     DEFAULT_NAMESPACE,
     NULL_VALUE,
     VIRTUAL_CONCEPT_PREFIX,
+    MagicConstants,
 )
 from trilogy.core.enums import (
     BooleanOperator,
@@ -62,6 +63,7 @@ from trilogy.core.models import (
     ColumnAssignment,
     Comment,
     Comparison,
+    SubselectComparison,
     Concept,
     ConceptTransform,
     Conditional,
@@ -108,6 +110,7 @@ from trilogy.parsing.common import (
     function_to_concept,
     filter_item_to_concept,
     constant_to_concept,
+    arbitrary_to_concept,
 )
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
@@ -246,7 +249,9 @@ grammar = r"""
 
     COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!="  )
     
-    comparison: (expr COMPARISON_OPERATOR expr) | (expr array_comparison expr_tuple) 
+    comparison: (expr COMPARISON_OPERATOR expr) | (expr array_comparison expr_tuple)
+
+    subselect_comparison: expr array_comparison expr
     
     expr_tuple: "("  (expr ",")* expr ","?  ")"
 
@@ -258,7 +263,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr:  window_item | filter_item | comparison | fgroup |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access |  parenthetical
+    expr:  window_item | filter_item | comparison | subselect_comparison | fgroup |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access |  parenthetical
     
     // functions
     
@@ -1219,7 +1224,14 @@ class ParseToObjects(Transformer):
     def where(self, args):
         root = args[0]
         if not isinstance(root, (Comparison, Conditional, Parenthetical)):
-            root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
+            if arg_to_datatype(root) == DataType.BOOL:
+                root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
+            else:
+                root = Comparison(
+                    left=root,
+                    right=MagicConstants.NULL,
+                    operator=ComparisonOperator.IS_NOT,
+                )
         return WhereClause(conditional=root)
 
     @v_args(meta=True)
@@ -1272,6 +1284,22 @@ class ParseToObjects(Transformer):
 
     def comparison(self, args) -> Comparison:
         return Comparison(left=args[0], right=args[2], operator=args[1])
+
+    @v_args(meta=True)
+    def subselect_comparison(self, meta: Meta, args) -> SubselectComparison:
+        right = args[2]
+        if not isinstance(right, Concept):
+            right = arbitrary_to_concept(
+                right,
+                namespace=self.environment.namespace,
+                name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(right))}",
+            )
+            self.environment.add_concept(right)
+        return SubselectComparison(
+            left=args[0],
+            right=right,
+            operator=args[1],
+        )
 
     def expr_tuple(self, args):
         return Parenthetical(content=args)
