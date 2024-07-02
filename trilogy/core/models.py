@@ -1784,7 +1784,7 @@ class QueryDatasource(BaseModel):
 
     @field_validator("source_map")
     @classmethod
-    def validate_source_map(cls, v, info=ValidationInfo):
+    def validate_source_map(cls, v, info: ValidationInfo):
         values = info.data
         expected = {c.address for c in values["output_concepts"]}.union(
             c.address for c in values["input_concepts"]
