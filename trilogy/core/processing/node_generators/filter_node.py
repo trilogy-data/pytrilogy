@@ -55,6 +55,8 @@ def gen_filter_node(
         depth=depth + 1,
         history=history,
     )
+    if not enrich_node:
+        return filter_node
     x = MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,
         output_concepts=[

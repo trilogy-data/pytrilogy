@@ -355,7 +355,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
         grain = ",".join([str(c.address) for c in self.grain.components])
         return f"{self.namespace}.{self.name}<{grain}>"
 
-    @property
+    @cached_property
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 
@@ -436,7 +436,8 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             modifiers=self.modifiers,
         )
 
-    def with_default_grain(self) -> "Concept":
+    @cached_property
+    def _with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
             grain = Grain(components=[self.with_grain(Grain())], nested=True)
@@ -472,6 +473,9 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             namespace=self.namespace,
             modifiers=self.modifiers,
         )
+
+    def with_default_grain(self) -> "Concept":
+        return self._with_default_grain
 
     @property
     def sources(self) -> List["Concept"]:
@@ -610,7 +614,7 @@ class Grain(BaseModel):
             [c.name == ALL_ROWS_CONCEPT for c in self.components]
         )
 
-    @property
+    @cached_property
     def set(self):
         return set([c.address for c in self.components_copy])
 
@@ -1585,7 +1589,7 @@ class Datasource(Namespaced, BaseModel):
             columns=[c.with_namespace(namespace) for c in self.columns],
         )
 
-    @property
+    @cached_property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
 
@@ -1780,7 +1784,7 @@ class QueryDatasource(BaseModel):
 
     @field_validator("source_map")
     @classmethod
-    def validate_source_map(cls, v, info=ValidationInfo):
+    def validate_source_map(cls, v, info: ValidationInfo):
         values = info.data
         expected = {c.address for c in values["output_concepts"]}.union(
             c.address for c in values["input_concepts"]
@@ -2288,8 +2292,8 @@ class EnvironmentConceptDict(dict):
 
 class ImportStatement(BaseModel):
     alias: str
-    path: str
-    # environment: "Environment" | None = None
+    path: Path
+    environment: Union["Environment", None] = None
     # TODO: this might result in a lot of duplication
     # environment:"Environment"
 
@@ -2324,6 +2328,9 @@ class Environment(BaseModel):
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
 
+    materialized_concepts: List[Concept] = Field(default_factory=list)
+    _parse_count: int = 0
+
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
         with open(path, "r") as f:
@@ -2349,20 +2356,14 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    @property
-    def materialized_concepts(self) -> List[Concept]:
-        output = []
-        for concept in self.concepts.values():
-            found = False
-            # basic concepts are effectively materialized
-            # and can be found via join paths
-            for datasource in self.datasources.values():
-                if concept.address in [x.address for x in datasource.output_concepts]:
-                    found = True
-                    break
-            if found:
-                output.append(concept)
-        return output
+    def gen_materialized_concepts(self) -> None:
+        concrete_addresses = set()
+        for datasource in self.datasources.values():
+            for concept in datasource.output_concepts:
+                concrete_addresses.add(concept.address)
+        self.materialized_concepts = [
+            c for c in self.concepts.values() if c.address in concrete_addresses
+        ]
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing: Concept = self.concepts.get(lookup)  # type: ignore
@@ -2392,12 +2393,61 @@ class Environment(BaseModel):
 
     def add_import(self, alias: str, environment: Environment):
         self.imports[alias] = ImportStatement(
-            alias=alias, path=str(environment.working_path)
+            alias=alias, path=Path(environment.working_path)
         )
         for key, concept in environment.concepts.items():
             self.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
         for key, datasource in environment.datasources.items():
             self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
+        self.gen_materialized_concepts()
+        return self
+
+    def add_file_import(self, path: str, alias: str, env: Environment | None = None):
+        from trilogy.parsing.parse_engine import ParseToObjects, PARSER
+
+        apath = path.split(".")
+        apath[-1] = apath[-1] + ".preql"
+
+        target: Path = Path(self.working_path, *apath)
+        if env:
+            self.imports[alias] = ImportStatement(
+                alias=alias, path=target, environment=env
+            )
+
+        elif alias in self.imports:
+            current = self.imports[alias]
+            env = self.imports[alias].environment
+            if current.path != target:
+                raise ImportError(
+                    f"Attempted to import {target} with alias {alias} but {alias} is already imported from {current.path}"
+                )
+        else:
+            try:
+                with open(target, "r", encoding="utf-8") as f:
+                    text = f.read()
+                nparser = ParseToObjects(
+                    visit_tokens=True,
+                    text=text,
+                    environment=Environment(
+                        working_path=target.parent,
+                    ),
+                    parse_address=str(target),
+                )
+                nparser.transform(PARSER.parse(text))
+            except Exception as e:
+                raise ImportError(
+                    f"Unable to import file {target.parent}, parsing error: {e}"
+                )
+            env = nparser.environment
+        if env:
+            for _, concept in env.concepts.items():
+                self.add_concept(concept.with_namespace(alias))
+
+            for _, datasource in env.datasources.items():
+                self.add_datasource(datasource.with_namespace(alias))
+        imps = ImportStatement(alias=alias, path=target, environment=env)
+        self.imports[alias] = imps
+        return imps
 
     def parse(
         self, input: str, namespace: str | None = None, persist: bool = False
@@ -2448,21 +2498,22 @@ class Environment(BaseModel):
             from trilogy.core.environment_helpers import generate_related_concepts
 
             generate_related_concepts(concept, self)
+        self.gen_materialized_concepts()
         return concept
 
     def add_datasource(
         self,
         datasource: Datasource,
+        meta: Meta | None = None,
     ):
-        if datasource.namespace == DEFAULT_NAMESPACE:
+        if not datasource.namespace or datasource.namespace == DEFAULT_NAMESPACE:
             self.datasources[datasource.name] = datasource
-            return datasource
-        if not datasource.namespace:
-            self.datasources[datasource.name] = datasource
+            self.gen_materialized_concepts()
             return datasource
         self.datasources[datasource.namespace + "." + datasource.identifier] = (
             datasource
         )
+        self.gen_materialized_concepts()
         return datasource
 
 

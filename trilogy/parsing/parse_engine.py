@@ -9,6 +9,7 @@ from lark.exceptions import (
     UnexpectedToken,
     VisitError,
 )
+from pathlib import Path
 from lark.tree import Meta
 from pydantic import ValidationError
 from trilogy.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
@@ -466,25 +467,34 @@ class ParseToObjects(Transformer):
         text,
         environment: Environment,
         parse_address: str | None = None,
-        parsed: dict | None = None,
+        parsed: dict[str, "ParseToObjects"] | None = None,
     ):
         Transformer.__init__(self, visit_tokens)
         self.text = text
         self.environment: Environment = environment
-        self.imported: set[str] = set()
         self.parse_address = parse_address or "root"
         self.parsed: dict[str, ParseToObjects] = parsed if parsed else {}
         # we do a second pass to pick up circular dependencies
         # after initial parsing
         self.pass_count = 1
+        self._results_stash = None
+
+    def transform(self, tree):
+        results = super().transform(tree)
+        self._results_stash = results
+        self.environment._parse_count += 1
+        return results
 
     def hydrate_missing(self):
         self.pass_count = 2
         for k, v in self.parsed.items():
+
             if v.pass_count == 2:
                 continue
             v.hydrate_missing()
         self.environment.concepts.fail_on_missing = True
+        # if not self.environment.concepts.undefined:
+        #     return self._results_stash
         reparsed = self.transform(PARSER.parse(self.text))
         self.environment.concepts.undefined = {}
         return reparsed
@@ -932,7 +942,7 @@ class ParseToObjects(Transformer):
         )
         for column in columns:
             column.concept = column.concept.with_grain(datasource.grain)
-        self.environment.datasources[datasource.identifier] = datasource
+        self.environment.add_datasource(datasource, meta=meta)
         return datasource
 
     @v_args(meta=True)
@@ -1046,12 +1056,11 @@ class ParseToObjects(Transformer):
         self.environment.add_concept(new, meta=meta)
         return merge
 
-    def import_statement(self, args: list[str]):
+    def import_statement(self, args: list[str]) -> ImportStatement:
         alias = args[-1]
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
-        self.imported.add(target)
         if target in self.parsed:
             nparser = self.parsed[target]
         else:
@@ -1070,21 +1079,23 @@ class ParseToObjects(Transformer):
                 )
                 nparser.transform(PARSER.parse(text))
                 self.parsed[target] = nparser
+                # add the parsed objects of the import in
+                self.parsed = {**self.parsed, **nparser.parsed}
             except Exception as e:
                 raise ImportError(
                     f"Unable to import file {dirname(target)}, parsing error: {e}"
                 )
 
-        for key, concept in nparser.environment.concepts.items():
-            # self.environment.concepts[f"{alias}.{key}"] = concept.with_namespace(new_namespace)
+        for _, concept in nparser.environment.concepts.items():
             self.environment.add_concept(concept.with_namespace(alias))
 
-        for key, datasource in nparser.environment.datasources.items():
+        for _, datasource in nparser.environment.datasources.items():
             self.environment.add_datasource(datasource.with_namespace(alias))
-            # self.environment.datasources[f"{alias}.{key}"] = datasource.with_namespace(new_namespace)
-
-        self.environment.imports[alias] = ImportStatement(alias=alias, path=args[0])
-        return None
+        imps = ImportStatement(
+            alias=alias, path=Path(args[0]), environment=nparser.environment
+        )
+        self.environment.imports[alias] = imps
+        return imps
 
     @v_args(meta=True)
     def show_category(self, meta: Meta, args) -> ShowCategory:

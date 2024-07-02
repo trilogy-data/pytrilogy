@@ -23,7 +23,6 @@ from trilogy.core.processing.node_generators import (
     gen_window_node,
     gen_group_node,
     gen_basic_node,
-    gen_select_node,
     gen_unnest_node,
     gen_merge_node,
     gen_group_to_node,
@@ -208,7 +207,8 @@ def generate_node(
     history: History | None = None,
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
-    candidate = gen_select_node(
+    history = history or History()
+    candidate = history.gen_select_node(
         concept,
         local_optional,
         environment,
@@ -218,6 +218,7 @@ def generate_node(
         accept_partial=accept_partial,
         accept_partial_optional=False,
     )
+
     if candidate:
         return candidate
 
@@ -320,7 +321,7 @@ def generate_node(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating select node with optional {[x.address for x in local_optional]}"
         )
-        return gen_select_node(
+        return history.gen_select_node(
             concept,
             local_optional,
             environment,
@@ -328,6 +329,7 @@ def generate_node(
             depth + 1,
             fail_if_not_found=False,
             accept_partial=accept_partial,
+            accept_partial_optional=True,
         )
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")

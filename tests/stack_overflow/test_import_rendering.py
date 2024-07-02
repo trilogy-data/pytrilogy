@@ -48,11 +48,48 @@ def test_select():
     assert rendered.startswith("import concepts.core as core;")
 
 
+def test_import_violation():
+    env = Environment(working_path=dirname(__file__))
+    env.add_file_import(path="so_concepts.circular", alias="c1")
+
+    try:
+        env.add_file_import(path="so_concepts.circular_dep", alias="c1")
+    except ImportError:
+        assert True
+    else:
+        assert False
+
+
+def test_circular_base():
+    env = Environment(working_path=dirname(__file__))
+
+    env.add_file_import(path="so_concepts.circular", alias="c1")
+    assert env.concepts["c1.id"]
+    assert env.concepts["c2.id"]
+    validated = False
+    assert len(env.datasources) == 2
+    for n, datasource in env.datasources.items():
+        for z in datasource.columns:
+            self = z.concept
+            if z.concept.namespace != datasource.namespace:
+                continue
+            other = env.concepts[z.concept.address]
+            assert self.name == other.name
+            assert self.datatype == other.datatype
+            assert self.purpose == other.purpose
+            assert self.namespace == other.namespace
+            assert self.grain.set == other.grain.set
+            assert self.grain == other.grain
+            assert self.keys == other.keys
+            assert z.concept == env.concepts[z.concept.address]
+            validated = True
+    assert validated
+
+
 def test_circular():
     env, parsed = parse(
         CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
     )
-    # raise ValueError(env.concepts.keys())
     assert env.concepts["c1.id"]
     assert env.concepts["c2.id"]
     validated = False

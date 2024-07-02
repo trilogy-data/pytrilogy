@@ -6,11 +6,12 @@ from .window_node import WindowNode
 from .base_node import StrategyNode, NodeJoin
 from .unnest_node import UnnestNode
 from pydantic import BaseModel, Field, ConfigDict
-from trilogy.core.models import Concept
+from trilogy.core.models import Concept, Environment
 
 
 class History(BaseModel):
     history: dict[str, StrategyNode | None] = Field(default_factory=dict)
+    select_history: dict[str, StrategyNode | None] = Field(default_factory=dict)
     started: set[str] = Field(default_factory=set)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -59,6 +60,58 @@ class History(BaseModel):
             )
             in self.started
         )
+
+    def _select_concepts_to_lookup(
+        self,
+        main: Concept,
+        search: list[Concept],
+        accept_partial: bool,
+        fail_if_not_found: bool,
+        accept_partial_optional: bool,
+    ) -> str:
+        return (
+            str(main.address)
+            + "|"
+            + "-".join([c.address for c in search])
+            + str(accept_partial)
+            + str(fail_if_not_found)
+            + str(accept_partial_optional)
+        )
+
+    def gen_select_node(
+        self,
+        concept: Concept,
+        local_optional: list[Concept],
+        environment: Environment,
+        g,
+        depth: int,
+        fail_if_not_found: bool = False,
+        accept_partial: bool = False,
+        accept_partial_optional: bool = False,
+    ) -> StrategyNode | None:
+        from trilogy.core.processing.node_generators.select_node import gen_select_node
+
+        fingerprint = self._select_concepts_to_lookup(
+            concept,
+            local_optional,
+            accept_partial,
+            fail_if_not_found,
+            accept_partial_optional,
+        )
+        if fingerprint in self.select_history:
+            return self.select_history[fingerprint]
+        gen = gen_select_node(
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            fail_if_not_found=fail_if_not_found,
+            accept_partial=accept_partial,
+            accept_partial_optional=accept_partial_optional,
+        )
+        self.select_history[fingerprint] = gen
+        return gen
 
 
 __all__ = [
