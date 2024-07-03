@@ -284,7 +284,7 @@ select
     count(filtered_even_orders)->f_ord_count
 ;
     """
-    parsed = default_duckdb_engine.parse_text(test)[-1]
+    _ = default_duckdb_engine.parse_text(test)[-1]
     env = default_duckdb_engine.environment
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg)[0]

@@ -10,7 +10,6 @@ from trilogy.utility import unique
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.graph_utils import extract_mandatory_subgraphs
-from collections import defaultdict
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 
