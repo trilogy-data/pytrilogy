@@ -190,9 +190,9 @@ grammar = r"""
 
     // FUNCTION blocks
     function: raw_function
-    function_binding_item: IDENTIFIER data_type
+    function_binding_item: IDENTIFIER ":" data_type
     function_binding_list: (function_binding_item ",")* function_binding_item ","?
-    raw_function: "def" "rawsql"  IDENTIFIER  "("  function_binding_list ")" "-" ">" data_type "as"i MULTILINE_STRING
+    raw_function: "bind" "sql"  IDENTIFIER  "("  function_binding_list ")" "-" ">" data_type "as"i MULTILINE_STRING
 
     
     // user_id where state = Mexico
@@ -1177,7 +1177,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def raw_function(self, meta: Meta, args) -> Function:
-        print(args)
         identity = args[0]
         fargs = args[1]
         output = args[2]
