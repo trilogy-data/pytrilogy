@@ -8,6 +8,7 @@ property id.year int;
 property id.day_of_week int;
 property id.week_seq int;
 property id.month_of_year int;
+property id.quarter_of_year int;
 
 datasource date (
     D_DATE_SK: id,
@@ -15,6 +16,7 @@ datasource date (
     D_DOW: day_of_week,
     D_WEEK_SEQ: week_seq,
     D_MOY: month_of_year,
+    D_QOY: quarter_of_year,
     raw('''cast("D_YEAR" as int)'''): year
 )
 grain (id)
