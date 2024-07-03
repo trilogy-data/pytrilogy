@@ -3176,11 +3176,15 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
 
     @property
     def row_arguments(self) -> List[Concept]:
-        return self.content.row_arguments
+        if isinstance(self.content, ConceptArgs):
+            return self.content.row_arguments
+        return self.concept_arguments
 
     @property
     def existence_arguments(self) -> List[Concept]:
-        return self.content.existence_arguments
+        if isinstance(self.content, ConceptArgs):
+            return self.content.existence_arguments
+        return self.concept_arguments
 
     @property
     def input(self):

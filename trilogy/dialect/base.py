@@ -360,7 +360,13 @@ class BaseDialect:
         #     cte = cte or cte_map.get(e.address, None)
 
         if isinstance(e, SubselectComparison):
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {self.render_expr(e.right, cte=cte, cte_map=cte_map)} from {cte.source_map[e.right.address][0]})"
+            assert cte, "Subselects must be rendered with a CTE in context"
+            if isinstance(e.right, Concept):
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {self.render_expr(e.right, cte=cte, cte_map=cte_map)} from {cte.source_map[e.right.address][0]})"
+            else:
+                raise NotImplementedError(
+                    f"Subselects must be a concept, got {e.right}"
+                )
         elif isinstance(e, Comparison):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):

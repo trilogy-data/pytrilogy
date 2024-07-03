@@ -46,9 +46,6 @@ def identify_ds_join_paths(
             paths[target_node] = path
             if sum([1 for x in path if x.startswith("ds~")]) == 1:
                 any_direct_found = True
-            ncount = defaultdict(lambda: 0)
-            for x in path:
-                ncount[x] += 1
         except nx.exception.NodeNotFound:
             # TODO: support Verbose logging mode configuration and reenable these
             all_found = False
