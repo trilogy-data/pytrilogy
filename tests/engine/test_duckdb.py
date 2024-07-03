@@ -262,12 +262,13 @@ where
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 3
 
+
 def test_array_inclusion_aggregate(default_duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
     from trilogy.core.models import FilterItem, SubselectComparison
     from trilogy.core.processing.node_generators.common import (
         resolve_filter_parent_concepts,
-        resolve_function_parent_concepts
+        resolve_function_parent_concepts,
     )
 
     default_duckdb_engine.hooks = [DebuggingHook()]
@@ -290,12 +291,11 @@ select
     assert agg_parent.address == "local.filtered_even_orders"
     assert isinstance(agg_parent.lineage, FilterItem)
     assert isinstance(agg_parent.lineage.where.conditional, SubselectComparison)
-    base, row, existence = resolve_filter_parent_concepts(agg_parent)
+    _, _, existence = resolve_filter_parent_concepts(agg_parent)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert results[0].f_ord_count == 3
-
 
     test = """
 const list <- [1,2,3,4,5,6];
@@ -309,13 +309,12 @@ select
     count(filtered_even_orders)->f_ord_count
 ;
     """
-    parsed = default_duckdb_engine.parse_text(test)[-1]
     env = default_duckdb_engine.environment
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg)[0]
     assert agg_parent.address == "local.filtered_even_orders"
     assert isinstance(agg_parent.lineage, FilterItem)
-    base, row, existence = resolve_filter_parent_concepts(agg_parent)
+    _, _, existence = resolve_filter_parent_concepts(agg_parent)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1

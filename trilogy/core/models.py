@@ -2639,7 +2639,9 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         output: List[Concept] = []
         if isinstance(self.left, (Concept,)):
             output += [self.left]
-        if isinstance(self.left, (Comparison, SubselectComparison, Conditional, Parenthetical)):
+        if isinstance(
+            self.left, (Comparison, SubselectComparison, Conditional, Parenthetical)
+        ):
             output += self.left.input
         if isinstance(self.left, FilterItem):
             output += self.left.concept_arguments
@@ -2648,7 +2650,9 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
 
         if isinstance(self.right, (Concept,)):
             output += [self.right]
-        if isinstance(self.right, (Comparison, SubselectComparison, Conditional, Parenthetical)):
+        if isinstance(
+            self.right, (Comparison, SubselectComparison, Conditional, Parenthetical)
+        ):
             output += self.right.input
         if isinstance(self.right, FilterItem):
             output += self.right.concept_arguments
@@ -2674,7 +2678,7 @@ class SubselectComparison(Comparison):
     @property
     def existence_arguments(self) -> List[Concept]:
         return get_concept_arguments(self.right)
-    
+
     def with_select_grain(self, grain: Grain):
         # there's no need to pass the select grain through to a subselect comparison
         return self.__class__(
@@ -2686,6 +2690,8 @@ class SubselectComparison(Comparison):
             right=self.right,
             operator=self.operator,
         )
+
+
 class CaseWhen(Namespaced, SelectGrain, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
@@ -2861,7 +2867,6 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         else:
             output += get_concept_arguments(self.right)
         return output
-    
 
     @property
     def existence_arguments(self) -> List[Concept]:
@@ -2875,6 +2880,7 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         else:
             output += get_concept_arguments(self.right)
         return output
+
 
 class AggregateWrapper(Namespaced, SelectGrain, BaseModel):
     function: Function

@@ -70,7 +70,9 @@ def gen_filter_node(
         g=g,
         parents=core_parents,
     )
-    if not local_optional or all([x.address in [y.address for y in parent_row_concepts] for x in local_optional]):
+    if not local_optional or all(
+        [x.address in [y.address for y in parent_row_concepts] for x in local_optional]
+    ):
         return filter_node
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

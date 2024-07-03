@@ -3,7 +3,6 @@ from typing import List, Optional
 from trilogy.core.models import Concept, Environment, Datasource, Conditional
 from trilogy.core.processing.nodes import MergeNode, History
 import networkx as nx
-from trilogy.core.enums import PurposeLineage
 from trilogy.core.graph_models import concept_to_node, datasource_to_node
 from trilogy.core.processing.utility import PathInfo
 from trilogy.constants import logger
@@ -12,7 +11,7 @@ from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.graph_utils import extract_mandatory_subgraphs
 from collections import defaultdict
-from trilogy.core.processing.node_generators.common import resolve_function_parent_concepts, resolve_filter_parent_concepts
+
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 
 

@@ -11,7 +11,9 @@ auto product_store_name <- store_name || product_name;
 auto filtered <- filter product_store_name where store_id = 2;
 SELECT
     filtered
+where 
+    filtered
 ;
 """
 
-    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(list(test_executor.execute_text(test_select)[0].fetchall())) == 2
