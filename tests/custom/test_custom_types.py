@@ -30,3 +30,11 @@ validate test;
     assert right.content[0] == 1
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "( 1,2,3 )".strip()
+
+
+def test_custom_function_parsing():
+    _, parsed = parse_text(
+        """bind sql test_function (x: int) -> int as '''?+1''';
+
+    """
+    )

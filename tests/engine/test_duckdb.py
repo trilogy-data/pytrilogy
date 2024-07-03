@@ -243,6 +243,84 @@ select
     assert len(results) == 4
 
 
+def test_array_inclusion(default_duckdb_engine: Executor):
+    test = """
+const list <- [1,2,3,4,5,6];
+const list_2 <- [1,2,3,4,5,6,7,8,9,10];
+const orid <- unnest(list);
+const orid_2 <-unnest(list_2);
+const even_orders <- filter orid where (orid % 2) = 0;
+const filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
+
+select 
+    filtered_even_orders
+where
+    filtered_even_orders
+;
+    """
+
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 3
+
+
+def test_array_inclusion_aggregate(default_duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+    from trilogy.core.models import FilterItem, SubselectComparison
+    from trilogy.core.processing.node_generators.common import (
+        resolve_filter_parent_concepts,
+        resolve_function_parent_concepts,
+    )
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    test = """
+const list <- [1,2,3,4,5,6];
+const list_2 <- [1,2,3,4,5,6,7,8,9,10];
+auto orid <- unnest(list);
+auto orid_2 <-unnest(list_2);
+auto even_orders <- filter orid where (orid % 2) = 0;
+auto filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
+
+select 
+    count(filtered_even_orders)->f_ord_count
+;
+    """
+    _ = default_duckdb_engine.parse_text(test)[-1]
+    env = default_duckdb_engine.environment
+    agg = env.concepts["f_ord_count"]
+    agg_parent = resolve_function_parent_concepts(agg)[0]
+    assert agg_parent.address == "local.filtered_even_orders"
+    assert isinstance(agg_parent.lineage, FilterItem)
+    assert isinstance(agg_parent.lineage.where.conditional, SubselectComparison)
+    _, _, existence = resolve_filter_parent_concepts(agg_parent)
+    assert len(existence) == 1
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0].f_ord_count == 3
+
+    test = """
+const list <- [1,2,3,4,5,6];
+const list_2 <- [1,2,3,4,5,6,7,8,9,10];
+auto orid <- unnest(list);
+auto orid_2 <-unnest(list_2);
+auto even_orders <- filter orid where (orid % 2) = 0;
+auto filtered_even_orders <- filter orid_2 where 1=1 and orid_2 in even_orders;
+
+select 
+    count(filtered_even_orders)->f_ord_count
+;
+    """
+    env = default_duckdb_engine.environment
+    agg = env.concepts["f_ord_count"]
+    agg_parent = resolve_function_parent_concepts(agg)[0]
+    assert agg_parent.address == "local.filtered_even_orders"
+    assert isinstance(agg_parent.lineage, FilterItem)
+    _, _, existence = resolve_filter_parent_concepts(agg_parent)
+    assert len(existence) == 1
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0].f_ord_count == 3
+
+
 def test_agg_demo(default_duckdb_engine: Executor):
 
     test = """key orid int;

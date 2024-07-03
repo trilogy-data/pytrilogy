@@ -87,8 +87,18 @@ def gen_merge_node(
 ) -> Optional[MergeNode]:
     join_candidates: List[PathInfo] = []
     # anchor on datasources
+    final_all_concepts = []
+    # implicit_upstream = {}
+    for x in all_concepts:
+        # if x.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.BASIC):
+        #     final_all_concepts +=resolve_function_parent_concepts(x)
+        # elif x.derivation == PurposeLineage.FILTER:
+        #     final_all_concepts +=resolve_filter_parent_concepts(x)
+        # else:
+        #     final_all_concepts.append(x)
+        final_all_concepts.append(x)
     for datasource in environment.datasources.values():
-        path = identify_ds_join_paths(all_concepts, g, datasource, accept_partial)
+        path = identify_ds_join_paths(final_all_concepts, g, datasource, accept_partial)
         if path and path.reduced_concepts:
             join_candidates.append(path)
     join_candidates.sort(key=lambda x: sum([len(v) for v in x.paths.values()]))

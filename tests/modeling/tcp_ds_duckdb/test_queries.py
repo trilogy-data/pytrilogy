@@ -57,3 +57,7 @@ def test_six(engine):
 
 def test_seven(engine):
     run_query(engine, 7)
+
+
+def test_eight(engine):
+    run_query(engine, 8)

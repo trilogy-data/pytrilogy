@@ -22,6 +22,7 @@ from trilogy.core.models import (
     CompiledCTE,
     Conditional,
     Comparison,
+    SubselectComparison,
     OrderItem,
     WindowItem,
     FilterItem,
@@ -273,14 +274,13 @@ class BaseDialect:
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
-                rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
+                rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, MultiSelectStatement):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
             elif isinstance(c.lineage, MergeStatement):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
-                #  rval = f"{self.FUNCTION_MAP[FunctionType.COALESCE](*[self.render_concept_sql(parent, cte=cte, alias=False) for parent in c.lineage.find_sources(c, cte)])}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
@@ -330,6 +330,7 @@ class BaseDialect:
             Function,
             Conditional,
             Comparison,
+            SubselectComparison,
             Concept,
             str,
             int,
@@ -358,7 +359,15 @@ class BaseDialect:
         # if isinstance(e, Concept):
         #     cte = cte or cte_map.get(e.address, None)
 
-        if isinstance(e, Comparison):
+        if isinstance(e, SubselectComparison):
+            assert cte, "Subselects must be rendered with a CTE in context"
+            if isinstance(e.right, Concept):
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {self.render_expr(e.right, cte=cte, cte_map=cte_map)} from {cte.source_map[e.right.address][0]})"
+            else:
+                raise NotImplementedError(
+                    f"Subselects must be a concept, got {e.right}"
+                )
+        elif isinstance(e, Comparison):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses

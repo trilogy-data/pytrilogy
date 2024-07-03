@@ -45,21 +45,33 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     return unique(concept.lineage.concept_arguments, "address")
 
 
-def resolve_filter_parent_concepts(concept: Concept) -> Tuple[Concept, List[Concept]]:
+def resolve_filter_parent_concepts(
+    concept: Concept,
+) -> Tuple[Concept, List[Concept], List[Concept]]:
     if not isinstance(concept.lineage, FilterItem):
-        raise ValueError
+        raise ValueError(
+            f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
+        )
     direct_parent = concept.lineage.content
-    base = [direct_parent]
-    base += concept.lineage.where.concept_arguments
+    base_existence = []
+    base_rows = [direct_parent]
+    base_rows += concept.lineage.where.row_arguments
+    base_existence += concept.lineage.where.existence_arguments
     if direct_parent.grain:
-        base += direct_parent.grain.components_copy
+        base_rows += direct_parent.grain.components_copy
     if (
         isinstance(direct_parent, Concept)
         and direct_parent.purpose == Purpose.PROPERTY
         and direct_parent.keys
     ):
-        base += direct_parent.keys
-    return concept.lineage.content, unique(base, "address")
+        base_rows += direct_parent.keys
+    if concept.lineage.where.existence_arguments:
+        return (
+            concept.lineage.content,
+            unique(base_rows, "address"),
+            unique(base_existence, "address"),
+        )
+    return concept.lineage.content, unique(base_rows, "address"), []
 
 
 def gen_property_enrichment_node(

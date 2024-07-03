@@ -4,6 +4,8 @@ import time as time;
 import customer as customer;
 import promotion as promotion;
 import customer_demographic as customer_demographic;
+import store as store;
+
 
 key ticket_number int;
 property <ticket_number,item.id>.quantity int;
@@ -14,6 +16,7 @@ property <ticket_number,item.id>.ext_wholesale_cost float;
 property <ticket_number,item.id>.ext_list_price float;
 property <ticket_number,item.id>.ext_discount_amount float;
 property <ticket_number,item.id>.coupon_amt float;
+property <ticket_number,item.id>.net_profit float;
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
 
@@ -30,9 +33,11 @@ datasource store_sales (
     SS_EXT_LIST_PRICE: ext_list_price,
     SS_EXT_WHOLESALE_COST: ext_wholesale_cost,
     SS_EXT_DISCOUNT_AMOUNT: ext_discount_amount,
+    SS_NET_PROFIT: net_profit,
     SS_PROMO_SK: promotion.id,
     SS_QUANTITY: quantity,
-    SS_COUPON_AMT: coupon_amt
+    SS_COUPON_AMT: coupon_amt,
+    SS_STORE_SK: ~store.id,
 )
 grain (ticket_number, item.id)
 address memory.store_sales

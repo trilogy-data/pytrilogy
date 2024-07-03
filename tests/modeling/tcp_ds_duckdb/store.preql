@@ -20,7 +20,7 @@ datasource store (
     S_STORE_SK: id,
     S_STORE_ID: text_id,
     S_CLOSED_DATE: date.id,
-    S_NAME: name,
+    S_STORE_NAME: name,
     S_EMPLOYEES: employees,
     S_FLOOR_SPACE: floor_space,
     S_HOURS: hours,
