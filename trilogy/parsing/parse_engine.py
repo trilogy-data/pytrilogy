@@ -530,9 +530,11 @@ class ParseToObjects(Transformer):
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
-            elif isinstance(arg, FilterItem):
+            elif isinstance(
+                arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper)
+            ):
                 id_hash = string_to_hash(str(arg))
-                concept = filter_item_to_concept(
+                concept = arbitrary_to_concept(
                     arg,
                     name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                     namespace=self.environment.namespace,
@@ -541,40 +543,7 @@ class ParseToObjects(Transformer):
                     concept.metadata.line_number = meta.line
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
-            elif isinstance(arg, WindowItem):
-                id_hash = string_to_hash(str(arg))
-                concept = window_item_to_concept(
-                    arg,
-                    namespace=self.environment.namespace,
-                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                )
-                if concept.metadata:
-                    concept.metadata.line_number = meta.line
-                self.environment.add_concept(concept, meta=meta)
-                final.append(concept)
-            elif isinstance(arg, AggregateWrapper):
-                id_hash = string_to_hash(str(arg))
-                concept = agg_wrapper_to_concept(
-                    arg,
-                    namespace=self.environment.namespace,
-                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                )
-                if concept.metadata:
-                    concept.metadata.line_number = meta.line
-                self.environment.add_concept(concept, meta=meta)
-                final.append(concept)
-            # we don't need virtual types for most constants
-            elif isinstance(arg, (ListWrapper)):
-                id_hash = string_to_hash(str(arg))
-                concept = constant_to_concept(
-                    arg,
-                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    namespace=self.environment.namespace,
-                )
-                if concept.metadata:
-                    concept.metadata.line_number = meta.line
-                self.environment.add_concept(concept, meta=meta)
-                final.append(concept)
+
             else:
                 final.append(arg)
         return final
@@ -778,8 +747,10 @@ class ParseToObjects(Transformer):
         while isinstance(source_value, Parenthetical):
             source_value = source_value.content
 
-        if isinstance(source_value, FilterItem):
-            concept = filter_item_to_concept(
+        if isinstance(
+            source_value, (FilterItem, WindowItem, AggregateWrapper, Function)
+        ):
+            concept = arbitrary_to_concept(
                 source_value,
                 name=name,
                 namespace=namespace,
@@ -787,31 +758,6 @@ class ParseToObjects(Transformer):
                 metadata=metadata,
             )
 
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
-        elif isinstance(source_value, WindowItem):
-
-            concept = window_item_to_concept(
-                source_value,
-                name=name,
-                namespace=namespace,
-                purpose=purpose,
-                metadata=metadata,
-            )
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
-        elif isinstance(source_value, AggregateWrapper):
-            concept = agg_wrapper_to_concept(
-                source_value,
-                namespace=namespace,
-                name=name,
-                metadata=metadata,
-                purpose=purpose,
-            )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
@@ -823,19 +769,6 @@ class ParseToObjects(Transformer):
                 namespace=namespace,
                 purpose=purpose,
                 metadata=metadata,
-            )
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
-
-        elif isinstance(source_value, Function):
-            function: Function = source_value
-
-            concept = function_to_concept(
-                function,
-                name=name,
-                namespace=namespace,
             )
             if concept.metadata:
                 concept.metadata.line_number = meta.line
