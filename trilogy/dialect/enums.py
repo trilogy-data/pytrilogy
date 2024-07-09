@@ -9,7 +9,7 @@ from trilogy.dialect.config import DialectConfig
 from trilogy.constants import logger
 
 
-def default_factory(conf: DialectConfig, config_type, **kwargs):
+def default_factory(conf: DialectConfig, config_type):
     from sqlalchemy import create_engine
 
     if not isinstance(conf, config_type):
