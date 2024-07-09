@@ -9,10 +9,23 @@ from trilogy import Executor, Dialects, parse, Environment
 from trilogy.engine import ExecutionEngine, EngineConnection, EngineResult
 from trilogy.dialect.config import SnowflakeConfig, PrestoConfig, TrinoConfig
 from trilogy.hooks.query_debugger import DebuggingHook
-from unittest.mock import Mock
+from trilogy.dialect.enums import DialectConfig
 import fakesnow
 
 ENV_PATH = abspath(__file__)
+
+
+def mock_factory(conf: DialectConfig, config_type, **kwargs):
+    from sqlalchemy import create_engine
+
+    if not isinstance(conf, config_type):
+        raise TypeError(
+            f"Invalid dialect configuration for type {type(config_type).__name__}"
+        )
+    assert conf.connection_string()
+    if conf.connect_args:
+        return create_engine("duckdb:///:memory:", future=True)
+    return create_engine("duckdb:///:memory:", future=True)
 
 
 @fixture(scope="session")
@@ -145,8 +158,6 @@ class PrestoEngine(ExecutionEngine):
 
 @fixture()
 def presto_engine(presto_model, mocker) -> Generator[Executor, None, None]:
-    mock_factory = Mock()
-    mock_factory.return_value = create_engine("duckdb:///:memory:", future=True)
     executor = Dialects.PRESTO.default_executor(
         environment=presto_model,
         conf=PrestoConfig(
@@ -163,8 +174,6 @@ def presto_engine(presto_model, mocker) -> Generator[Executor, None, None]:
 
 @fixture()
 def trino_engine(presto_model, mocker) -> Generator[Executor, None, None]:
-    mock_factory = Mock()
-    mock_factory.return_value = create_engine("duckdb:///:memory:", future=True)
     executor = Dialects.TRINO.default_executor(
         environment=presto_model,
         conf=TrinoConfig(
