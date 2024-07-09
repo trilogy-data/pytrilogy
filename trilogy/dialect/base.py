@@ -187,8 +187,8 @@ TOP {{ limit }}{% endif %}
 \t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}{% endif %}
+    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}
+{% endif %}{% endif %}
 """
 )
 
@@ -221,19 +221,19 @@ def safe_quote(string: str, quote_char: str):
     return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
 
 
-def safe_get_cte_value(coalesce, cte: CTE, c: Concept):
+def safe_get_cte_value(coalesce, cte: CTE, c: Concept, quote_char: str):
     address = c.address
     raw = cte.source_map.get(address, None)
 
     if not raw:
         return INVALID_REFERENCE_STRING("Missing source reference")
     if isinstance(raw, str):
-        rendered = cte.get_alias(c)
-        return f"{raw}.{rendered}"
+        rendered = cte.get_alias(c, raw)
+        return f"{raw}.{quote_char}{rendered}{quote_char}"
     if isinstance(raw, list) and len(raw) == 1:
-        rendered = cte.get_alias(c)
-        return f"{raw[0]}.{rendered}"
-    return coalesce([f"{x}.{cte.get_alias(c, x)}" for x in raw])
+        rendered = cte.get_alias(c, raw[0])
+        return f"{raw[0]}.{quote_char}{rendered}{quote_char}"
+    return coalesce([f"{x}.{quote_char}{cte.get_alias(c, x)}{quote_char}" for x in raw])
 
 
 class BaseDialect:
@@ -309,13 +309,14 @@ class BaseDialect:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}"
             )
+
             raw_content = cte.get_alias(c)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
             elif isinstance(raw_content, Function):
                 rval = self.render_expr(raw_content, cte=cte)
             else:
-                rval = f"{safe_get_cte_value(self.FUNCTION_MAP[FunctionType.COALESCE], cte, c)}"
+                rval = f"{safe_get_cte_value(self.FUNCTION_MAP[FunctionType.COALESCE], cte, c, self.QUOTE_CHARACTER)}"
         if alias:
             return (
                 f"{rval} as"

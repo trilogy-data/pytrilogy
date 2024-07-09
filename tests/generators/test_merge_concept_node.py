@@ -57,4 +57,4 @@ def test_merge_concepts():
             ):
                 assert cte.source_map["local.__merge_one_env2_one"] == ""
 
-        assert "env2_num1.`one` as `__merge_one_env2_one`" in compiled
+        assert "num1.`one` as `__merge_one_env2_one`" in compiled

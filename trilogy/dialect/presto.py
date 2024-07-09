@@ -42,6 +42,7 @@ CREATE OR REPLACE TABLE {{ output.address }} AS
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
+
 SELECT
 {%- if full_select -%}
 {{full_select}}
@@ -60,8 +61,7 @@ SELECT
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
+    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}{% endif %}
 """

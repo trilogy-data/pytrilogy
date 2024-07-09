@@ -48,6 +48,7 @@ WITH {% for cte in ctes %}
 {%- if full_select -%}
 {{full_select}}
 {%- else -%}
+
 SELECT
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
@@ -63,8 +64,7 @@ SELECT
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
+    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}
 LIMIT {{ limit }}{% endif %}{% endif %}
 """

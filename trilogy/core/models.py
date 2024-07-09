@@ -1941,12 +1941,18 @@ class QueryDatasource(BaseModel):
         )
 
     def get_alias(
-        self, concept: Concept, use_raw_name: bool = False, force_alias: bool = False
+        self,
+        concept: Concept,
+        use_raw_name: bool = False,
+        force_alias: bool = False,
+        source: str | None = None,
     ):
         for x in self.datasources:
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
             use_raw_name = isinstance(x, Datasource) and not force_alias
+            if source and x.identifier != source:
+                continue
             try:
                 return x.get_alias(
                     concept.with_grain(self.grain),
@@ -2125,11 +2131,10 @@ class CTE(BaseModel):
 
     @property
     def base_alias(self) -> str:
+
+        if self.is_root_datasource:
+            return self.source.datasources[0].identifier
         relevant_joins = [j for j in self.joins if isinstance(j, Join)]
-        if len(self.source.datasources) == 1 and isinstance(
-            self.source.datasources[0], Datasource
-        ):
-            return self.source.datasources[0].full_name.replace(".", "_")
         if relevant_joins:
             return relevant_joins[0].left_cte.name
         elif self.relevant_base_ctes:
@@ -2145,7 +2150,7 @@ class CTE(BaseModel):
                     continue
                 return concept.safe_address
         try:
-            source = self.source.get_alias(concept)
+            source = self.source.get_alias(concept, source=source)
             if not source:
                 raise ValueError("No source found")
             return source

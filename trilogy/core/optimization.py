@@ -19,20 +19,6 @@ class OptimizationRule(ABC):
         logger.info(f"[Optimization][{self.__class__.__name__}] {message}")
 
 
-def invert_dict(original_dict):
-    inverted_dict = {}
-    for key, value in original_dict.items():
-        if isinstance(value, str):
-            values = [value]
-        else:
-            values = value
-        for svalue in values:
-            if svalue not in inverted_dict:
-                inverted_dict[svalue] = []
-            inverted_dict[svalue].append(key)
-    return inverted_dict
-
-
 class InlineDatasource(OptimizationRule):
 
     def optimize(self, cte: CTE) -> bool:

@@ -472,15 +472,15 @@ ORDER BY
         results.strip()
         == """
 SELECT
-    local_raw_data."passengerid" as "passenger_id",
-    (local_raw_data."passengerid" + 1) as "id_one",
-    local_raw_data."name" as "passenger_name"
+    raw_data."passengerid" as "passenger_id",
+    (raw_data."passengerid" + 1) as "id_one",
+    raw_data."name" as "passenger_name"
 FROM
-    raw_titanic as local_raw_data
+    raw_titanic as raw_data
 WHERE
-     CASE WHEN local_raw_data."name" like '%a%' THEN True ELSE False END = True
+     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True
 
 ORDER BY 
-    local_raw_data."name" asc
+    raw_data."name" asc
 """.strip()
     )

@@ -187,7 +187,7 @@ def datasource_to_ctes(
             source_map = {k: "" for k in query_datasource.source_map}
         else:
             source_map = {
-                k: "" if not v else source.full_name
+                k: "" if not v else source.identifier
                 for k, v in query_datasource.source_map.items()
             }
     human_id = generate_cte_name(query_datasource.full_name, name_map)

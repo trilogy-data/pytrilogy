@@ -56,9 +56,8 @@ select
 
     generator = BigqueryDialect()
     sql = generator.compile_statement(query)
-    print(sql)
 
-    assert re.search(r"(count\([A-z0-9\_]+\.`post_id`\) as `user_post_count`)", sql)
+    assert re.search(r"(count\([A-z0-9\_]+\.`id`\) as `user_post_count`)", sql)
     assert re.search(
         r"avg\([A-z0-9\_]+\.`user_post_count`\) as `avg_user_post_count`", sql
     )

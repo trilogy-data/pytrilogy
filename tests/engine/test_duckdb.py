@@ -133,9 +133,7 @@ order by item desc;
     assert len(parsed) == 1
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
-    assert (
-        'local_fact_items."item" as "item"' in results[0]["__preql_internal_query_text"]
-    )
+    assert 'fact_items."item" as "item"' in results[0]["__preql_internal_query_text"]
 
 
 def test_rollback(duckdb_engine: Executor, expected_results):
