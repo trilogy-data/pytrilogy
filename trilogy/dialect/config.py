@@ -6,6 +6,23 @@ class DialectConfig:
     def connection_string(self) -> str:
         raise NotImplementedError
 
+    @property
+    def connect_args(self) -> dict:
+        return {}
+
+
+class BigQueryConfig(DialectConfig):
+    def __init__(self, project: str, client):
+        self.project = project
+        self.client = client
+
+    def connection_string(self) -> str:
+        return f"bigquery://{self.project}?user_supplied_client=True"
+
+    @property
+    def connect_args(self) -> dict:
+        return {"client": self.client}
+
 
 class DuckDBConfig(DialectConfig):
     def __init__(self, path: str | None = None):

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, TYPE_CHECKING, Optional
+from typing import List, TYPE_CHECKING, Optional, Callable
 
 if TYPE_CHECKING:
     from trilogy.hooks.base_hook import BaseHook
@@ -9,12 +9,16 @@ from trilogy.dialect.config import DialectConfig
 from trilogy.constants import logger
 
 
-def default_factory(conf: DialectConfig, config_type):
+def default_factory(conf: DialectConfig, config_type, **kwargs):
     from sqlalchemy import create_engine
 
     if not isinstance(conf, config_type):
         raise TypeError(
             f"Invalid dialect configuration for type {type(config_type).__name__}"
+        )
+    if conf.connect_args:
+        return create_engine(
+            conf.connection_string(), future=True, connect_args=conf.connect_args
         )
     return create_engine(conf.connection_string(), future=True)
 
@@ -34,34 +38,32 @@ class Dialects(Enum):
             return cls.DUCK_DB
         return super()._missing_(value)
 
-    def default_engine(self, conf=None):
+    def default_engine(self, conf=None, _engine_factory: Callable = default_factory):
         if self == Dialects.BIGQUERY:
-            from sqlalchemy import create_engine
             from google.auth import default
             from google.cloud import bigquery
+            from trilogy.dialect.config import BigQueryConfig
 
             credentials, project = default()
             client = bigquery.Client(credentials=credentials, project=project)
-            return create_engine(
-                f"bigquery://{project}?user_supplied_client=True",
-                connect_args={"client": client},
+            conf = conf or BigQueryConfig(project=project, client=client)
+            return _engine_factory(
+                conf,
+                BigQueryConfig,
             )
         elif self == Dialects.SQL_SERVER:
-            from sqlalchemy import create_engine
 
             raise NotImplementedError()
         elif self == Dialects.DUCK_DB:
-            from sqlalchemy import create_engine
             from trilogy.dialect.config import DuckDBConfig
 
             if not conf:
                 conf = DuckDBConfig()
-            return default_factory(conf, DuckDBConfig)
+            return _engine_factory(conf, DuckDBConfig)
         elif self == Dialects.SNOWFLAKE:
-            from sqlalchemy import create_engine
             from trilogy.dialect.config import SnowflakeConfig
 
-            return default_factory(conf, SnowflakeConfig)
+            return _engine_factory(conf, SnowflakeConfig)
         elif self == Dialects.POSTGRES:
             logger.warn(
                 "WARN: Using experimental postgres dialect. Most functionality will not work."
@@ -73,20 +75,17 @@ class Dialects(Enum):
                 raise ImportError(
                     "postgres driver not installed. python -m pip install pypreql[postgres]"
                 )
-            from sqlalchemy import create_engine
             from trilogy.dialect.config import PostgresConfig
 
-            return default_factory(conf, PostgresConfig)
+            return _engine_factory(conf, PostgresConfig)
         elif self == Dialects.PRESTO:
-            from sqlalchemy import create_engine
             from trilogy.dialect.config import PrestoConfig
 
-            return default_factory(conf, PrestoConfig)
+            return _engine_factory(conf, PrestoConfig)
         elif self == Dialects.TRINO:
-            from sqlalchemy import create_engine
             from trilogy.dialect.config import TrinoConfig
 
-            return default_factory(conf, TrinoConfig)
+            return _engine_factory(conf, TrinoConfig)
         else:
             raise ValueError(
                 f"Unsupported dialect {self} for default engine creation; create one explicitly."
@@ -97,8 +96,17 @@ class Dialects(Enum):
         environment: Optional["Environment"] = None,
         hooks: List["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
+        _engine_factory: Callable | None = None,
     ) -> "Executor":
         from trilogy import Executor, Environment
+
+        if _engine_factory is not None:
+            return Executor(
+                engine=self.default_engine(conf=conf, _engine_factory=_engine_factory),
+                environment=environment or Environment(),
+                dialect=self,
+                hooks=hooks,
+            )
 
         return Executor(
             engine=self.default_engine(conf=conf),
