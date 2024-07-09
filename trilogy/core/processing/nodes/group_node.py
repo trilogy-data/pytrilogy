@@ -4,6 +4,7 @@ from trilogy.constants import logger
 from trilogy.core.models import (
     Grain,
     QueryDatasource,
+    Datasource,
     SourceType,
     Concept,
     Environment,
@@ -45,7 +46,9 @@ class GroupNode(StrategyNode):
         )
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: list[QueryDatasource] = [p.resolve() for p in self.parents]
+        parent_sources: List[QueryDatasource | Datasource] = [
+            p.resolve() for p in self.parents
+        ]
 
         grain = concept_list_to_grain(self.output_concepts, [])
         comp_grain = Grain()
@@ -66,7 +69,7 @@ class GroupNode(StrategyNode):
                 len(parent_sources) == 1
                 and LooseConceptList(concepts=parent_sources[0].output_concepts)
                 == self.output_lcl
-            ):
+            ) and isinstance(parent_sources[0], QueryDatasource):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} No group by required, returning parent node"
                 )

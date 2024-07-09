@@ -34,7 +34,11 @@ from pydantic import (
 from lark.tree import Meta
 from pathlib import Path
 from trilogy.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.constants import (
+    ALL_ROWS_CONCEPT,
+    INTERNAL_NAMESPACE,
+    CONSTANT_DATASET,
+)
 from trilogy.core.enums import (
     InfiniteFunctionArgs,
     Purpose,
@@ -1434,6 +1438,7 @@ class MultiSelectStatement(Namespaced, BaseModel):
 
 class Address(BaseModel):
     location: str
+    is_query: bool = False
 
 
 class Query(BaseModel):
@@ -1529,9 +1534,26 @@ class Datasource(Namespaced, BaseModel):
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
 
+    @property
+    def condition(self):
+        return None
+
     @cached_property
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
+
+    @property
+    def can_be_inlined(self) -> bool:
+        if isinstance(self.address, Address) and self.address.is_query:
+            return False
+        for x in self.columns:
+            if not isinstance(x.alias, str):
+                return False
+        return True
+
+    @property
+    def non_partial_concept_addresses(self) -> set[str]:
+        return set([c.address for c in self.full_concepts])
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -1746,7 +1768,7 @@ class QueryDatasource(BaseModel):
     input_concepts: List[Concept]
     output_concepts: List[Concept]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
-    datasources: Sequence[Union[Datasource, "QueryDatasource"]]
+    datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
@@ -1797,10 +1819,7 @@ class QueryDatasource(BaseModel):
             c.address for c in values["input_concepts"]
         )
         seen = set()
-        for k, val in v.items():
-            # if val:
-            #     if len(val) != 1:
-            #         raise SyntaxError(f"source map {k} has multiple values {len(val)}")
+        for k, _ in v.items():
             seen.add(k)
         for x in expected:
             if x not in seen:
@@ -1924,16 +1943,10 @@ class QueryDatasource(BaseModel):
     def get_alias(
         self, concept: Concept, use_raw_name: bool = False, force_alias: bool = False
     ):
-        # if we should use the raw datasource name to access
-        use_raw_name = (
-            True
-            if (len(self.datasources) == 1 or use_raw_name) and not force_alias
-            # if ((len(self.datasources) == 1 and isinstance(self.datasources[0], Datasource)) or use_raw_name) and not force_alias
-            else False
-        )
         for x in self.datasources:
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
+            use_raw_name = isinstance(x, Datasource) and not force_alias
             try:
                 return x.get_alias(
                     concept.with_grain(self.grain),
@@ -1967,8 +1980,7 @@ class Comment(BaseModel):
 
 class CTE(BaseModel):
     name: str
-    source: "QueryDatasource"  # TODO: make recursive
-    # output columns are what are selected/grouped by
+    source: "QueryDatasource"
     output_columns: List[Concept]
     source_map: Dict[str, str | list[str]]
     grain: Grain
@@ -1979,6 +1991,10 @@ class CTE(BaseModel):
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+    requires_nesting: bool = True
+    base_name_override: Optional[str] = None
 
     @computed_field  # type: ignore
     @property
@@ -1988,6 +2004,40 @@ class CTE(BaseModel):
     @field_validator("output_columns")
     def validate_output_columns(cls, v):
         return unique(v, "address")
+
+    def inline_parent_datasource(self, parent: CTE) -> bool:
+        qds_being_inlined = parent.source
+        ds_being_inlined = qds_being_inlined.datasources[0]
+        if not isinstance(ds_being_inlined, Datasource):
+            return False
+        self.source.datasources = [
+            ds_being_inlined,
+            *[
+                x
+                for x in self.source.datasources
+                if x.identifier != qds_being_inlined.identifier
+            ],
+        ]
+        # need to identify this before updating joins
+        if self.base_name == parent.name:
+            self.base_name_override = ds_being_inlined.safe_location
+
+        for join in self.joins:
+            if isinstance(join, InstantiatedUnnestJoin):
+                continue
+            if join.left_cte.name == parent.name:
+                join.left_cte = ds_being_inlined
+            if join.right_cte.name == parent.name:
+                join.right_cte = ds_being_inlined
+        for k, v in self.source_map.items():
+            if isinstance(v, list):
+                self.source_map[k] = [
+                    ds_being_inlined.name if x == parent.name else x for x in v
+                ]
+            elif v == parent.name:
+                self.source_map[k] = ds_being_inlined.name
+        self.parent_ctes = [x for x in self.parent_ctes if x.name != parent.name]
+        return True
 
     def __add__(self, other: "CTE"):
         logger.info('Merging two copies of CTE "%s"', self.name)
@@ -2032,15 +2082,24 @@ class CTE(BaseModel):
         return self.parent_ctes
 
     @property
+    def is_root_datasource(self) -> bool:
+        return (
+            len(self.source.datasources) == 1
+            and isinstance(self.source.datasources[0], Datasource)
+            and not self.source.datasources[0].name == CONSTANT_DATASET
+        )
+
+    @property
     def base_name(self) -> str:
+        if self.base_name_override:
+            return self.base_name_override
         # if this cte selects from a single datasource, select right from it
         valid_joins: List[Join] = [
             join for join in self.joins if isinstance(join, Join)
         ]
-        if len(self.source.datasources) == 1 and isinstance(
-            self.source.datasources[0], Datasource
-        ):
+        if self.is_root_datasource:
             return self.source.datasources[0].safe_location
+
         # if we have multiple joined CTEs, pick the base
         # as the root
         elif len(self.source.datasources) == 1 and len(self.parent_ctes) == 1:
@@ -2079,12 +2138,16 @@ class CTE(BaseModel):
             return self.parent_ctes[0].name
         return self.name
 
-    def get_alias(self, concept: Concept) -> str:
+    def get_alias(self, concept: Concept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
             if concept.address in [x.address for x in cte.output_columns]:
+                if source and source != cte.name:
+                    continue
                 return concept.safe_address
         try:
             source = self.source.get_alias(concept)
+            if not source:
+                raise ValueError("No source found")
             return source
         except ValueError as e:
             return f"INVALID_ALIAS: {str(e)}"
@@ -2095,6 +2158,11 @@ class CTE(BaseModel):
             all([c.derivation == PurposeLineage.CONSTANT for c in self.output_columns])
             and not self.parent_ctes
             and not self.group_to_grain
+        ):
+            return False
+        if (
+            len(self.source.datasources) == 1
+            and self.source.datasources[0].name == CONSTANT_DATASET
         ):
             return False
         return True
@@ -2130,19 +2198,43 @@ class JoinKey(BaseModel):
 
 
 class Join(BaseModel):
-    left_cte: CTE
-    right_cte: CTE
+    left_cte: CTE | Datasource
+    right_cte: CTE | Datasource
     jointype: JoinType
     joinkeys: List[JoinKey]
 
     @property
+    def left_name(self) -> str:
+        if isinstance(self.left_cte, Datasource):
+            return self.left_cte.identifier
+        return self.left_cte.name
+
+    @property
+    def right_name(self) -> str:
+        if isinstance(self.right_cte, Datasource):
+            return self.right_cte.identifier
+        return self.right_cte.name
+
+    @property
+    def left_ref(self) -> str:
+        if isinstance(self.left_cte, Datasource):
+            return f"{self.left_cte.safe_location} as {self.left_cte.identifier}"
+        return self.left_cte.name
+
+    @property
+    def right_ref(self) -> str:
+        if isinstance(self.right_cte, Datasource):
+            return f"{self.right_cte.safe_location} as {self.right_cte.identifier}"
+        return self.right_cte.name
+
+    @property
     def unique_id(self) -> str:
-        return self.left_cte.name + self.right_cte.name + self.jointype.value
+        return self.left_name + self.right_name + self.jointype.value
 
     def __str__(self):
         return (
-            f"{self.jointype.value} JOIN {self.left_cte.name} and"
-            f" {self.right_cte.name} on {','.join([str(k) for k in self.joinkeys])}"
+            f"{self.jointype.value} JOIN {self.left_name} and"
+            f" {self.right_name} on {','.join([str(k) for k in self.joinkeys])}"
         )
 
 

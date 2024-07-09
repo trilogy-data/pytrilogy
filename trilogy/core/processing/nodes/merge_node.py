@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Grain,
     JoinType,
     QueryDatasource,
+    Datasource,
     SourceType,
     Concept,
     UnnestJoin,
@@ -24,8 +25,8 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
 def deduplicate_nodes(
-    merged: dict[str, QueryDatasource], logging_prefix: str
-) -> tuple[bool, dict[str, QueryDatasource], set[str]]:
+    merged: dict[str, QueryDatasource | Datasource], logging_prefix: str
+) -> tuple[bool, dict[str, QueryDatasource | Datasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
@@ -65,9 +66,9 @@ def deduplicate_nodes(
 
 def deduplicate_nodes_and_joins(
     joins: List[NodeJoin] | None,
-    merged: dict[str, QueryDatasource],
+    merged: dict[str, QueryDatasource | Datasource],
     logging_prefix: str,
-) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource]]:
+) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | Datasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
     while duplicates:
@@ -211,8 +212,10 @@ class MergeNode(StrategyNode):
         return joins
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources = [p.resolve() for p in self.parents]
-        merged: dict[str, QueryDatasource] = {}
+        parent_sources: List[QueryDatasource | Datasource] = [
+            p.resolve() for p in self.parents
+        ]
+        merged: dict[str, QueryDatasource | Datasource] = {}
         final_joins = self.node_joins
         for source in parent_sources:
             if source.full_name in merged:
@@ -228,14 +231,15 @@ class MergeNode(StrategyNode):
             final_joins, merged, self.logging_prefix
         )
         # early exit if we can just return the parent
-        final_datasets: List[QueryDatasource] = list(merged.values())
+        final_datasets: List[QueryDatasource | Datasource] = list(merged.values())
 
         if len(merged.keys()) == 1:
-            final: QueryDatasource = list(merged.values())[0]
+            final: QueryDatasource | Datasource = list(merged.values())[0]
             if (
                 set([c.address for c in final.output_concepts])
                 == set([c.address for c in self.output_concepts])
                 and not self.conditions
+                and isinstance(final, QueryDatasource)
             ):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has only one parent with the same"
@@ -255,6 +259,7 @@ class MergeNode(StrategyNode):
             if (
                 all([c.address in output_set for c in self.all_concepts])
                 and not self.conditions
+                and isinstance(dataset, QueryDatasource)
             ):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Merge node not required as parent node {dataset.source_type}"

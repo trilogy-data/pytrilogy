@@ -9,6 +9,16 @@ from trilogy.dialect.config import DialectConfig
 from trilogy.constants import logger
 
 
+def default_factory(conf: DialectConfig, config_type):
+    from sqlalchemy import create_engine
+
+    if not isinstance(conf, config_type):
+        raise TypeError(
+            f"Invalid dialect configuration for type {type(config_type).__name__}"
+        )
+    return create_engine(conf.connection_string(), future=True)
+
+
 class Dialects(Enum):
     BIGQUERY = "bigquery"
     SQL_SERVER = "sql_server"
@@ -46,16 +56,12 @@ class Dialects(Enum):
 
             if not conf:
                 conf = DuckDBConfig()
-            if not isinstance(conf, DuckDBConfig):
-                raise TypeError("Invalid dialect configuration for type duck_db")
-            return create_engine(conf.connection_string(), future=True)
+            return default_factory(conf, DuckDBConfig)
         elif self == Dialects.SNOWFLAKE:
             from sqlalchemy import create_engine
             from trilogy.dialect.config import SnowflakeConfig
 
-            if not isinstance(conf, SnowflakeConfig):
-                raise TypeError("Invalid dialect configuration for type snowflake")
-            return create_engine(conf.connection_string(), future=True)
+            return default_factory(conf, SnowflakeConfig)
         elif self == Dialects.POSTGRES:
             logger.warn(
                 "WARN: Using experimental postgres dialect. Most functionality will not work."
@@ -70,10 +76,17 @@ class Dialects(Enum):
             from sqlalchemy import create_engine
             from trilogy.dialect.config import PostgresConfig
 
-            if not isinstance(conf, PostgresConfig):
-                raise TypeError("Invalid dialect configuration for type postgres")
+            return default_factory(conf, PostgresConfig)
+        elif self == Dialects.PRESTO:
+            from sqlalchemy import create_engine
+            from trilogy.dialect.config import PrestoConfig
 
-            return create_engine(conf.connection_string(), future=True)
+            return default_factory(conf, PrestoConfig)
+        elif self == Dialects.TRINO:
+            from sqlalchemy import create_engine
+            from trilogy.dialect.config import TrinoConfig
+
+            return default_factory(conf, TrinoConfig)
         else:
             raise ValueError(
                 f"Unsupported dialect {self} for default engine creation; create one explicitly."

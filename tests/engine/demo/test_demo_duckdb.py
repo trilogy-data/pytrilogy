@@ -444,3 +444,43 @@ order by passenger.class desc
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 3
+
+
+def test_demo_basic():
+    executor = setup_engine(debug_flag=True)
+    env = Environment()
+    setup_titanic(env)
+    executor.environment = env
+    test = """
+SELECT
+    passenger.id,
+    passenger.id+1 -> id_one,
+    passenger.name
+WHERE
+    passenger.name like '%a%'
+ORDER BY
+    passenger.name asc
+;
+"""
+    base = executor.parse_text(test)[-1]
+    results = executor.generate_sql(base)[-1]
+
+    row_results = executor.execute_text(test)[-1].fetchall()
+    assert len(row_results) == 794
+
+    assert (
+        results.strip()
+        == """
+SELECT
+    local_raw_data."passengerid" as "passenger_id",
+    (local_raw_data."passengerid" + 1) as "id_one",
+    local_raw_data."name" as "passenger_name"
+FROM
+    raw_titanic as local_raw_data
+WHERE
+     CASE WHEN local_raw_data."name" like '%a%' THEN True ELSE False END = True
+
+ORDER BY 
+    local_raw_data."name" asc
+""".strip()
+    )

@@ -26,7 +26,7 @@ datasource store_sales (
     SS_CUSTOMER_SK: customer.id,
     SS_CDEMO_SK: customer_demographic.id,
     SS_TICKET_NUMBER: ticket_number,
-    SS_ITEM_SK: item.id,
+    SS_ITEM_SK: ~item.id,
     SS_SALES_PRICE: sales_price,
     SS_LIST_PRICE: list_price,
     SS_EXT_SALES_PRICE: ext_sales_price,

@@ -45,7 +45,7 @@ def concept_list_to_grain(
 
 
 def resolve_concept_map(
-    inputs: List[QueryDatasource],
+    inputs: List[QueryDatasource | Datasource],
     targets: List[Concept],
     inherited_inputs: List[Concept],
     full_joins: List[Concept] | None = None,
@@ -156,7 +156,9 @@ class StrategyNode:
         return f"{self.__class__.__name__}<{contents}>"
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources = [p.resolve() for p in self.parents]
+        parent_sources: List[QueryDatasource | Datasource] = [
+            p.resolve() for p in self.parents
+        ]
 
         # if conditional:
         #     for condition in conditions[1:]:

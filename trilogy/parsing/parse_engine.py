@@ -864,7 +864,7 @@ class ParseToObjects(Transformer):
             elif isinstance(val, Grain):
                 grain = val
             elif isinstance(val, Query):
-                address = Address(location=f"({val.text})")
+                address = Address(location=f"({val.text})", is_query=True)
         if not address:
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"

@@ -29,6 +29,7 @@ from trilogy.hooks.base_hook import BaseHook
 from trilogy.constants import logger
 from random import shuffle
 from trilogy.core.ergonomics import CTE_NAMES
+from trilogy.core.optimization import optimize_ctes
 from math import ceil
 
 LOGGER_PREFIX = "[QUERY BUILD]"
@@ -315,7 +316,9 @@ def process_query(
             seen[cte.name] = seen[cte.name] + cte
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
-    final_ctes: List[CTE] = list(seen.values())
+    deduped_ctes: List[CTE] = list(seen.values())
+
+    final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
 
     return ProcessedQuery(
         order_by=statement.order_by,

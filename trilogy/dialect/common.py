@@ -1,4 +1,4 @@
-from trilogy.core.models import Join, InstantiatedUnnestJoin, CTE, Concept
+from trilogy.core.models import Join, InstantiatedUnnestJoin, CTE, Concept, Datasource
 from trilogy.core.enums import UnnestMode, Modifier
 from typing import Optional, Callable
 
@@ -21,18 +21,20 @@ def render_join(
         if unnest_mode == UnnestMode.DIRECT:
             return None
         if not render_func:
-            raise ValueError("must provide a render func to build an unnest joins")
+            raise ValueError("must provide a render function to build an unnest joins")
         if not cte:
             raise ValueError("must provide a cte to build an unnest joins")
         if unnest_mode == UnnestMode.CROSS_JOIN:
             return f"CROSS JOIN {render_func(join.concept, cte, False)} as {quote_character}{join.concept.safe_address}{quote_character}"
 
         return f"FULL JOIN {render_func(join.concept, cte, False)} as unnest_wrapper({quote_character}{join.concept.safe_address}{quote_character})"
-
+    left_name = join.left_name
+    right_name = join.right_name
+    right_base = join.right_ref
     base_joinkeys = [
         null_wrapper(
-            f"{join.left_cte.name}.{quote_character}{key.concept.safe_address}{quote_character}",
-            f"{join.right_cte.name}.{quote_character}{key.concept.safe_address}{quote_character}",
+            f"{left_name}.{quote_character}{join.left_cte.get_alias(key.concept) if isinstance(join.left_cte, Datasource) else key.concept.safe_address}{quote_character}",
+            f"{right_name}.{quote_character}{join.right_cte.get_alias(key.concept) if isinstance(join.right_cte, Datasource) else key.concept.safe_address}{quote_character}",
             key.concept,
         )
         for key in join.joinkeys
@@ -40,4 +42,4 @@ def render_join(
     if not base_joinkeys:
         base_joinkeys = ["1=1"]
     joinkeys = " AND ".join(base_joinkeys)
-    return f"{join.jointype.value.upper()} JOIN {join.right_cte.name} on {joinkeys}"
+    return f"{join.jointype.value.upper()} JOIN {right_base} on {joinkeys}"
