@@ -23,6 +23,7 @@ NULL_VALUE = MagicConstants.NULL
 class Config:
     strict_mode: bool = True
     human_identifiers: bool = True
+    inline_datasources: bool = True
 
 
 CONFIG = Config()

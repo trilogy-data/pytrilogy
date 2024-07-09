@@ -1,5 +1,27 @@
 class DialectConfig:
-    pass
+
+    def __init__(self):
+        pass
+
+    def connection_string(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def connect_args(self) -> dict:
+        return {}
+
+
+class BigQueryConfig(DialectConfig):
+    def __init__(self, project: str, client):
+        self.project = project
+        self.client = client
+
+    def connection_string(self) -> str:
+        return f"bigquery://{self.project}?user_supplied_client=True"
+
+    @property
+    def connect_args(self) -> dict:
+        return {"client": self.client}
 
 
 class DuckDBConfig(DialectConfig):
@@ -53,3 +75,49 @@ class SnowflakeConfig(DialectConfig):
 
     def connection_string(self) -> str:
         return f"snowflake://{self.username}:{self.password}@{self.account}"
+
+
+class PrestoConfig(DialectConfig):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        catalog: str,
+        schema: str | None = None,
+    ):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.catalog = catalog
+        self.schema = schema
+
+    def connection_string(self) -> str:
+        if self.schema:
+            return f"presto://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}/{self.schema}"
+        return f"presto://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}"
+
+
+class TrinoConfig(DialectConfig):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        catalog: str,
+        schema: str | None = None,
+    ):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.catalog = catalog
+        self.schema = schema
+
+    def connection_string(self) -> str:
+        if self.schema:
+            return f"trino://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}/{self.schema}"
+        return f"trino://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}"

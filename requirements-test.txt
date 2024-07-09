@@ -1,5 +1,6 @@
 pytest
 pytest-cov
+pytest-mock
 duckdb
 duckdb-engine
 mypy

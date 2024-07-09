@@ -125,4 +125,5 @@ def test_modifiers():
     generator = BigqueryDialect()
 
     text = generator.compile_statement(query)
-    assert "`b` = 2" in text
+    assert "2 = 2" in text
+    assert "as `b`" not in text

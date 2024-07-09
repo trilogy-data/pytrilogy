@@ -170,6 +170,9 @@ GENERIC_SQL_TEMPLATE = Template(
     """{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
+{%- if full_select -%}
+{{full_select}}
+{%- else -%}
 SELECT
 {%- if limit is not none %}
 TOP {{ limit }}{% endif %}
@@ -184,8 +187,8 @@ TOP {{ limit }}{% endif %}
 \t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}
+    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}
+{% endif %}{% endif %}
 """
 )
 
@@ -218,15 +221,19 @@ def safe_quote(string: str, quote_char: str):
     return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
 
 
-def safe_get_cte_value(coalesce, cte: CTE, address: str, rendered: str):
+def safe_get_cte_value(coalesce, cte: CTE, c: Concept, quote_char: str):
+    address = c.address
     raw = cte.source_map.get(address, None)
+
     if not raw:
         return INVALID_REFERENCE_STRING("Missing source reference")
     if isinstance(raw, str):
-        return f"{raw}.{rendered}"
+        rendered = cte.get_alias(c, raw)
+        return f"{raw}.{quote_char}{rendered}{quote_char}"
     if isinstance(raw, list) and len(raw) == 1:
-        return f"{raw[0]}.{rendered}"
-    return coalesce([f"{x}.{rendered}" for x in raw])
+        rendered = cte.get_alias(c, raw[0])
+        return f"{raw[0]}.{quote_char}{rendered}{quote_char}"
+    return coalesce([f"{x}.{quote_char}{cte.get_alias(c, x)}{quote_char}" for x in raw])
 
 
 class BaseDialect:
@@ -238,21 +245,13 @@ class BaseDialect:
     DATATYPE_MAP = DATATYPE_MAP
     UNNEST_MODE = UnnestMode.CROSS_APPLY
 
-    def render_order_item(self, order_item: OrderItem, ctes: List[CTE]) -> str:
-        matched_ctes = [
-            cte
-            for cte in ctes
-            if order_item.expr.address in [a.address for a in cte.output_columns]
-        ]
-        if not matched_ctes:
-            all_outputs = set()
-            for cte in ctes:
-                all_outputs.update([a.address for a in cte.output_columns])
-            raise ValueError(
-                f"No source found for concept {order_item.expr}, have {all_outputs}"
-            )
-        selected = matched_ctes[0]
-        return f"{selected.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+    def render_order_item(
+        self, order_item: OrderItem, cte: CTE, final: bool = False
+    ) -> str:
+        if final:
+            return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+
+        return f"{self.render_concept_sql(order_item.expr, cte=cte, alias=False)} {order_item.order.value}"
 
     def render_concept_sql(self, c: Concept, cte: CTE, alias: bool = True) -> str:
         # only recurse while it's in sources of the current cte
@@ -310,13 +309,14 @@ class BaseDialect:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] Rendering basic lookup from {cte.source_map.get(c.address, INVALID_REFERENCE_STRING('Missing source reference'))}"
             )
+
             raw_content = cte.get_alias(c)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
             elif isinstance(raw_content, Function):
                 rval = self.render_expr(raw_content, cte=cte)
             else:
-                rval = f"{safe_get_cte_value(self.FUNCTION_MAP[FunctionType.COALESCE], cte, c.address, rendered=safe_quote(raw_content, self.QUOTE_CHARACTER))}"
+                rval = f"{safe_get_cte_value(self.FUNCTION_MAP[FunctionType.COALESCE], cte, c, self.QUOTE_CHARACTER)}"
         if alias:
             return (
                 f"{rval} as"
@@ -456,7 +456,7 @@ class BaseDialect:
                     else None
                 ),
                 grain=cte.grain,
-                limit=None,
+                limit=cte.limit,
                 # some joins may not need to be rendered
                 joins=[
                     j
@@ -475,9 +475,11 @@ class BaseDialect:
                 where=(
                     self.render_expr(cte.condition, cte) if cte.condition else None
                 ),  # source_map=cte_output_map)
-                # where=self.render_expr(where_assignment[cte.name], cte)
-                # if cte.name in where_assignment
-                # else None,
+                order_by=(
+                    [self.render_order_item(i, cte) for i in cte.order_by.items]
+                    if cte.order_by
+                    else None
+                ),
                 group_by=(
                     list(
                         set(
@@ -522,7 +524,8 @@ class BaseDialect:
         )
 
     def generate_ctes(
-        self, query: ProcessedQuery, where_assignment: Dict[str, Conditional]
+        self,
+        query: ProcessedQuery,
     ):
         return [self.render_cte(cte) for cte in query.ctes]
 
@@ -649,35 +652,54 @@ class BaseDialect:
                     " filtered concept instead."
                 )
 
-        compiled_ctes = self.generate_ctes(query, {})
+        compiled_ctes = self.generate_ctes(query)
 
         # restort selections by the order they were written in
         sorted_select: List[str] = []
         for output_c in output_addresses:
             sorted_select.append(select_columns[output_c])
-        final = self.SQL_TEMPLATE.render(
-            output=(
-                query.output_to if isinstance(query, ProcessedQueryPersist) else None
-            ),
-            select_columns=sorted_select,
-            base=query.base.name,
-            joins=[
-                render_join(join, self.QUOTE_CHARACTER, None) for join in query.joins
-            ],
-            ctes=compiled_ctes,
-            limit=query.limit,
-            # move up to CTEs
-            where=(
-                self.render_expr(query.where_clause.conditional, cte_map=cte_output_map)
-                if query.where_clause and output_where
-                else None
-            ),
-            order_by=(
-                [self.render_order_item(i, [query.base]) for i in query.order_by.items]
-                if query.order_by
-                else None
-            ),
-        )
+        if not query.base.requires_nesting:
+            final = self.SQL_TEMPLATE.render(
+                output=(
+                    query.output_to
+                    if isinstance(query, ProcessedQueryPersist)
+                    else None
+                ),
+                full_select=compiled_ctes[-1].statement,
+                ctes=compiled_ctes[:-1],
+            )
+        else:
+            final = self.SQL_TEMPLATE.render(
+                output=(
+                    query.output_to
+                    if isinstance(query, ProcessedQueryPersist)
+                    else None
+                ),
+                select_columns=sorted_select,
+                base=query.base.name,
+                joins=[
+                    render_join(join, self.QUOTE_CHARACTER, None)
+                    for join in query.joins
+                ],
+                ctes=compiled_ctes,
+                limit=query.limit,
+                # move up to CTEs
+                where=(
+                    self.render_expr(
+                        query.where_clause.conditional, cte_map=cte_output_map
+                    )
+                    if query.where_clause and output_where
+                    else None
+                ),
+                order_by=(
+                    [
+                        self.render_order_item(i, query.base, final=True)
+                        for i in query.order_by.items
+                    ]
+                    if query.order_by
+                    else None
+                ),
+            )
 
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
             raise ValueError(

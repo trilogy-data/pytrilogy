@@ -99,7 +99,14 @@ class Executor(object):
         raise NotImplementedError("Cannot execute type {}".format(type(query)))
 
     @execute_query.register
-    def _(self, query: SelectStatement | PersistStatement) -> CursorResult:
+    def _(self, query: SelectStatement) -> CursorResult:
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
+        return self.execute_query(sql[0])
+
+    @execute_query.register
+    def _(self, query: PersistStatement) -> CursorResult:
         sql = self.generator.generate_queries(
             self.environment, [query], hooks=self.hooks
         )
@@ -117,16 +124,22 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: ProcessedQuery | ProcessedQueryPersist) -> CursorResult:
+    def _(self, query: ProcessedQuery) -> CursorResult:
         sql = self.generator.compile_statement(query)
         # connection = self.engine.connect()
         output = self.connection.execute(text(sql))
-        if isinstance(query, ProcessedQueryPersist):
-            self.environment.add_datasource(query.datasource)
+        return output
+
+    @execute_query.register
+    def _(self, query: ProcessedQueryPersist) -> CursorResult:
+        sql = self.generator.compile_statement(query)
+        # connection = self.engine.connect()
+        output = self.connection.execute(text(sql))
+        self.environment.add_datasource(query.datasource)
         return output
 
     @singledispatchmethod
-    def generate_sql(self, command: ProcessedQuery | str) -> list[str]:
+    def generate_sql(self, command) -> list[str]:
         raise NotImplementedError(
             "Cannot generate sql for type {}".format(type(command))
         )

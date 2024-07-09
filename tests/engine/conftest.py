@@ -7,11 +7,25 @@ from sqlalchemy.engine import create_engine
 
 from trilogy import Executor, Dialects, parse, Environment
 from trilogy.engine import ExecutionEngine, EngineConnection, EngineResult
-from trilogy.dialect.config import SnowflakeConfig
+from trilogy.dialect.config import SnowflakeConfig, PrestoConfig, TrinoConfig
 from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.dialect.enums import DialectConfig
 import fakesnow
 
 ENV_PATH = abspath(__file__)
+
+
+def mock_factory(conf: DialectConfig, config_type, **kwargs):
+    from sqlalchemy import create_engine
+
+    if not isinstance(conf, config_type):
+        raise TypeError(
+            f"Invalid dialect configuration for type {type(config_type).__name__}"
+        )
+    assert conf.connection_string()
+    if conf.connect_args:
+        return create_engine("duckdb:///:memory:", future=True)
+    return create_engine("duckdb:///:memory:", future=True)
 
 
 @fixture(scope="session")
@@ -142,12 +156,34 @@ class PrestoEngine(ExecutionEngine):
         return PrestoEngineConnection()
 
 
-@fixture(scope="session")
-def presto_engine(presto_model) -> Generator[Executor, None, None]:
-    engine = PrestoEngine()
+@fixture()
+def presto_engine(presto_model, mocker) -> Generator[Executor, None, None]:
+    executor = Dialects.PRESTO.default_executor(
+        environment=presto_model,
+        conf=PrestoConfig(
+            host="localhost",
+            port=8080,
+            username="user",
+            password="password",
+            catalog="default",
+        ),
+        _engine_factory=mock_factory,
+    )
+    yield executor
 
-    executor = Executor(
-        dialect=Dialects.DUCK_DB, engine=engine, environment=presto_model
+
+@fixture()
+def trino_engine(presto_model, mocker) -> Generator[Executor, None, None]:
+    executor = Dialects.TRINO.default_executor(
+        environment=presto_model,
+        conf=TrinoConfig(
+            host="localhost",
+            port=8080,
+            username="user",
+            password="password",
+            catalog="default",
+        ),
+        _engine_factory=mock_factory,
     )
     yield executor
 
