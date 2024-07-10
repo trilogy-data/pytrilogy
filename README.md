@@ -249,11 +249,11 @@ but all are worth checking out. Please open PRs/comment for anything missed!
 
 ## Minimal Syntax Reference
 
-#### Import
+#### IMPORT
 
 `import <path> as <alias>;`
 
-#### Concept Declaration
+#### CONCEPT
 
 Types: `string | int | float | bool | date | datetime | time | timestamp | interval`;
 
@@ -266,7 +266,7 @@ Property:
 Transformation:
 `auto <name> <- <expression>;`
 
-#### Datasource
+#### DATASOURCE
 ```sql
 datasource <name>(
     <column>:<concept>,
@@ -276,7 +276,10 @@ grain(<concept>, <concept>)
 address <table>;
 ```
 
-#### Query
+#### SELECT
+
+Primary acces
+
 ```sql
 select
     <concept>,
@@ -288,8 +291,19 @@ ORDER BY
 ;
 ```
 
-#### Persist
+#### PERSIST
+
+Store output of a query in a warehouse table
+
 ```sql
 persist <alias> as <table_name> from
-<query>;
+<select>;
+```
+
+#### SHOW
+
+Return generated SQL without executing.
+
+```sql
+show <select>;
 ```
