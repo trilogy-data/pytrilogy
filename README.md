@@ -246,3 +246,81 @@ but all are worth checking out. Please open PRs/comment for anything missed!
 - [malloy](https://github.com/malloydata/malloy)
 - [preql](https://github.com/erezsh/Preql)
 - [PREQL](https://github.com/PRQL/prql)
+
+## Minimal Syntax Reference
+
+#### IMPORT
+
+`import <path> as <alias>;`
+
+#### CONCEPT
+
+Types: `string | int | float | bool | date | datetime | time | timestamp | interval`;
+
+Key:
+`key <name> <type>;`
+
+Property:
+`property <key>.<name> <type>;`
+
+Transformation:
+`auto <name> <- <expression>;`
+
+#### DATASOURCE
+```sql
+datasource <name>(
+    <column>:<concept>,
+    <column>:<concept>,
+)
+grain(<concept>, <concept>)
+address <table>;
+```
+
+#### SELECT
+
+Primary acces
+
+```sql
+select
+    <concept>,
+    <concept>+1 -> <alias>
+WHERE
+    <concept> = <value>
+ORDER BY
+    <concept> asc|desc
+;
+```
+
+#### CTE/ROWSET
+
+Reusable virtual set of rows. Useful for windows, filtering. 
+
+```sql
+with <alias> as
+select
+    <concept>,
+    <concept>+1 -> <alias>
+WHERE
+    <concept> = <value>
+
+select <alias>.<concept>;
+
+```
+
+
+#### PERSIST
+
+Store output of a query in a warehouse table
+
+```sql
+persist <alias> as <table_name> from
+<select>;
+```
+
+#### SHOW
+
+Return generated SQL without executing.
+
+```sql
+show <select>;
+```

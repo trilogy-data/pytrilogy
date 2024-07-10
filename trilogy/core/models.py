@@ -1669,7 +1669,7 @@ class Datasource(Namespaced, BaseModel):
         namespace = self.namespace.replace(".", "_") if self.namespace else ""
         return f"{namespace}_{self.identifier}"
 
-    @cached_property
+    @property
     def safe_location(self) -> str:
         if isinstance(self.address, Address):
             return self.address.location

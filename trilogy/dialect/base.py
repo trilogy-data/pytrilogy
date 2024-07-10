@@ -229,11 +229,11 @@ def safe_get_cte_value(coalesce, cte: CTE, c: Concept, quote_char: str):
         return INVALID_REFERENCE_STRING("Missing source reference")
     if isinstance(raw, str):
         rendered = cte.get_alias(c, raw)
-        return f"{raw}.{quote_char}{rendered}{quote_char}"
+        return f"{raw}.{safe_quote(rendered, quote_char)}"
     if isinstance(raw, list) and len(raw) == 1:
         rendered = cte.get_alias(c, raw[0])
-        return f"{raw[0]}.{quote_char}{rendered}{quote_char}"
-    return coalesce([f"{x}.{quote_char}{cte.get_alias(c, x)}{quote_char}" for x in raw])
+        return f"{raw[0]}.{safe_quote(rendered, quote_char)}"
+    return coalesce([f"{x}.{safe_quote(cte.get_alias(c, x), quote_char)}" for x in raw])
 
 
 class BaseDialect:
