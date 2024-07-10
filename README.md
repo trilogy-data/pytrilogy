@@ -255,11 +255,16 @@ but all are worth checking out. Please open PRs/comment for anything missed!
 
 #### Concept Declaration
 
+Types: `string | int | float | bool | date | datetime | time | timestamp | interval`;
+
 Key:
 `key <name> <type>;`
 
-Property
+Property:
 `property <key>.<name> <type>;`
+
+Transformation:
+`auto <name> <- <expression>;`
 
 #### Datasource
 ```sql
@@ -274,10 +279,13 @@ address <table>;
 #### Query
 ```sql
 select
-    <column>,
-    <column>+1 -> <alias>
+    <concept>,
+    <concept>+1 -> <alias>
 WHERE
-    <column> = <value>
+    <concept> = <value>
+ORDER BY
+    <concept> asc|desc
+;
 ```
 
 #### Persist
