@@ -247,3 +247,41 @@ but all are worth checking out. Please open PRs/comment for anything missed!
 - [preql](https://github.com/erezsh/Preql)
 - [PREQL](https://github.com/PRQL/prql)
 
+## Minimal Syntax Reference
+
+#### Import
+
+`import <path> as <alias>;`
+
+#### Concept Declaration
+
+Key:
+`key <name> <type>;`
+
+Property
+`property <key>.<name> <type>;`
+
+#### Datasource
+```sql
+datasource <name>(
+    <column>:<concept>,
+    <column>:<concept>,
+)
+grain(<concept>, <concept>)
+address <table>;
+```
+
+#### Query
+```sql
+select
+    <column>,
+    <column>+1 -> <alias>
+WHERE
+    <column> = <value>
+```
+
+#### Persist
+```sql
+persist <alias> as <table_name> from
+<query>;
+```
