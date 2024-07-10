@@ -291,6 +291,23 @@ ORDER BY
 ;
 ```
 
+#### CTE/ROWSET
+
+Reusable virtual set of rows. Useful for windows, filtering. 
+
+```sql
+with <alias> as
+select
+    <concept>,
+    <concept>+1 -> <alias>
+WHERE
+    <concept> = <value>
+
+select <alias>.<concept>;
+
+```
+
+
 #### PERSIST
 
 Store output of a query in a warehouse table
