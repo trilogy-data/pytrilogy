@@ -508,14 +508,16 @@ def _search_concepts(
 
         output = MergeNode(
             input_concepts=mandatory_list,
-            output_concepts=[
-                x for x in mandatory_list if x.derivation != PurposeLineage.MERGE
-            ],
+            output_concepts=mandatory_list,
             environment=environment,
             g=g,
             parents=stack,
             depth=depth,
             partial_concepts=all_partial,
+            # always hide merge concepts
+            hidden_concepts=[
+                x for x in mandatory_list if x.derivation == PurposeLineage.MERGE
+            ],
         )
 
         # ensure we can resolve our final merge

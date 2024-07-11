@@ -72,14 +72,15 @@ def gen_concept_merge_node(
             x for x in additional_merge if x.namespace == select.namespace
         ]
         sub_optional += sub_additional_merge
-
+        final: List[Concept] = unique([select] + sub_optional, "address")
         snode: StrategyNode = source_concepts(
-            mandatory_list=[select] + sub_optional,
+            mandatory_list=final,
             environment=environment,
             g=g,
             depth=depth + 1,
             history=history,
         )
+
         if not snode:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge node for {concept}"
@@ -105,9 +106,6 @@ def gen_concept_merge_node(
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
         output_concepts=final_outputs,
-        hidden_concepts=[
-            x for x in final_outputs if x.derivation == PurposeLineage.MERGE
-        ],
         environment=environment,
         g=g,
         depth=depth,
@@ -153,15 +151,15 @@ def gen_concept_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge concept enrichment node for {concept} with optional {local_optional}, returning just merge concept"
         )
         return node
-    non_hidden_outputs = [
-        x
-        for x in node.output_concepts
-        if x.address not in [y.address for y in node.hidden_concepts]
-    ]
+
+    # we still need the hidden concepts to be returned to the search
+    # since they must be on the final node
+    # to avoid further recursion
+    # TODO: let the downstream search know they were found
     return MergeNode(
-        input_concepts=enrich_node.output_concepts + non_hidden_outputs,
+        input_concepts=enrich_node.output_concepts + node.output_concepts,
         # also filter out the
-        output_concepts=non_hidden_outputs + local_optional,
+        output_concepts=node.output_concepts + local_optional,
         hidden_concepts=[
             x for x in local_optional if x.derivation == PurposeLineage.MERGE
         ],
