@@ -437,6 +437,7 @@ class BaseDialect:
                 self.render_concept_sql(c, cte)
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.join_derived_concepts]
+                and c.address not in [y.address for y in cte.hidden_concepts]
             ] + [
                 f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
                 for c in cte.join_derived_concepts
@@ -444,7 +445,9 @@ class BaseDialect:
         else:
             # otherwse, assume we are unnesting directly in the select
             select_columns = [
-                self.render_concept_sql(c, cte) for c in cte.output_columns
+                self.render_concept_sql(c, cte)
+                for c in cte.output_columns
+                if c.address not in [y.address for y in cte.hidden_concepts]
             ]
         return CompiledCTE(
             name=cte.name,

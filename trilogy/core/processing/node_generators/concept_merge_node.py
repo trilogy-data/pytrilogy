@@ -7,27 +7,30 @@ from trilogy.core.processing.nodes import MergeNode, NodeJoin, History
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
 from typing import List
 
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import JoinType, PurposeLineage
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
 from itertools import combinations
 from trilogy.core.processing.node_generators.common import resolve_join_order
+from trilogy.utility import unique
+
 
 LOGGER_PREFIX = "[GEN_CONCEPT_MERGE_NODE]"
 
 
-def merge_joins(base: MergeStatement, parents: List[StrategyNode]) -> List[NodeJoin]:
+def merge_joins(
+    parents: List[StrategyNode], merge_concepts: List[Concept]
+) -> List[NodeJoin]:
     output = []
     for left, right in combinations(parents, 2):
         output.append(
             NodeJoin(
                 left_node=left,
                 right_node=right,
-                concepts=[
-                    base.merge_concept,
-                ],
+                concepts=merge_concepts,
                 join_type=JoinType.FULL,
+                filter_to_mutual=True,
             )
         )
     return resolve_join_order(output)
@@ -50,6 +53,13 @@ def gen_concept_merge_node(
     lineage: MergeStatement = concept.lineage
 
     base_parents: List[StrategyNode] = []
+
+    # get additional concepts that should be merged across the environments
+    additional_merge: List[Concept] = []
+    for x in local_optional:
+        if x.address in environment.merged_concepts:
+            additional_merge += environment.merged_concepts[x.address].lineage.concepts
+
     for select in lineage.concepts:
         # if it's a merge concept, filter it out of the optional
         sub_optional = [
@@ -57,6 +67,12 @@ def gen_concept_merge_node(
             for x in local_optional
             if x.address not in lineage.concepts_lcl and x.namespace == select.namespace
         ]
+
+        sub_additional_merge = [
+            x for x in additional_merge if x.namespace == select.namespace
+        ]
+        sub_optional += sub_additional_merge
+
         snode: StrategyNode = source_concepts(
             mandatory_list=[select] + sub_optional,
             environment=environment,
@@ -69,18 +85,29 @@ def gen_concept_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge node for {concept}"
             )
             return None
-        snode.add_output_concept(lineage.merge_concept)
+        for x in sub_additional_merge:
+            snode.add_output_concept(environment.merged_concepts[x.address])
         base_parents.append(snode)
 
-    node_joins = merge_joins(lineage, base_parents)
+    node_joins = merge_joins(
+        base_parents,
+        unique(
+            [environment.merged_concepts[x.address] for x in additional_merge],
+            "address",
+        ),
+    )
 
     enrichment = set([x.address for x in local_optional])
     outputs = [x for y in base_parents for x in y.output_concepts]
 
     additional_relevant = [x for x in outputs if x.address in enrichment]
+    final_outputs = outputs + additional_relevant + [concept]
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
-        output_concepts=outputs + additional_relevant + [concept],
+        output_concepts=final_outputs,
+        hidden_concepts=[
+            x for x in final_outputs if x.derivation == PurposeLineage.MERGE
+        ],
         environment=environment,
         g=g,
         depth=depth,

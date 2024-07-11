@@ -100,22 +100,7 @@ class PrestoConfig(DialectConfig):
         return f"presto://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}"
 
 
-class TrinoConfig(DialectConfig):
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        username: str,
-        password: str,
-        catalog: str,
-        schema: str | None = None,
-    ):
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.catalog = catalog
-        self.schema = schema
+class TrinoConfig(PrestoConfig):
 
     def connection_string(self) -> str:
         if self.schema:

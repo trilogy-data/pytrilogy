@@ -216,6 +216,7 @@ def datasource_to_ctes(
         condition=query_datasource.condition,
         partial_concepts=query_datasource.partial_concepts,
         join_derived_concepts=query_datasource.join_derived_concepts,
+        hidden_concepts=query_datasource.hidden_concepts,
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")

@@ -1512,7 +1512,7 @@ class MergeStatement(Namespaced, BaseModel):
                 if z.address == x.address:
                     return z
         raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte.name})"
         )
 
     def with_namespace(self, namespace: str) -> "MergeStatement":
@@ -1779,6 +1779,7 @@ class QueryDatasource(BaseModel):
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
+    hidden_concepts: List[Concept] = Field(default_factory=list)
     force_group: bool | None = None
 
     @property
@@ -1997,6 +1998,7 @@ class CTE(BaseModel):
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
+    hidden_concepts: List[Concept] = Field(default_factory=list)
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     requires_nesting: bool = True
@@ -2433,6 +2435,7 @@ class Environment(BaseModel):
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
 
     materialized_concepts: List[Concept] = Field(default_factory=list)
+    merged_concepts: Dict[str, Concept] = Field(default_factory=dict)
     _parse_count: int = 0
 
     @classmethod
@@ -2460,7 +2463,7 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    def gen_materialized_concepts(self) -> None:
+    def gen_concept_list_caches(self) -> None:
         concrete_addresses = set()
         for datasource in self.datasources.values():
             for concept in datasource.output_concepts:
@@ -2468,6 +2471,10 @@ class Environment(BaseModel):
         self.materialized_concepts = [
             c for c in self.concepts.values() if c.address in concrete_addresses
         ]
+        for concept in self.concepts.values():
+            if concept.derivation == PurposeLineage.MERGE:
+                for parent in concept.lineage.concepts:
+                    self.merged_concepts[parent.address] = concept
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing: Concept = self.concepts.get(lookup)  # type: ignore
@@ -2503,7 +2510,7 @@ class Environment(BaseModel):
             self.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
         for key, datasource in environment.datasources.items():
             self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
-        self.gen_materialized_concepts()
+        self.gen_concept_list_caches()
         return self
 
     def add_file_import(self, path: str, alias: str, env: Environment | None = None):
@@ -2602,7 +2609,7 @@ class Environment(BaseModel):
             from trilogy.core.environment_helpers import generate_related_concepts
 
             generate_related_concepts(concept, self)
-        self.gen_materialized_concepts()
+        self.gen_concept_list_caches()
         return concept
 
     def add_datasource(
@@ -2612,12 +2619,12 @@ class Environment(BaseModel):
     ):
         if not datasource.namespace or datasource.namespace == DEFAULT_NAMESPACE:
             self.datasources[datasource.name] = datasource
-            self.gen_materialized_concepts()
+            self.gen_concept_list_caches()
             return datasource
         self.datasources[datasource.namespace + "." + datasource.identifier] = (
             datasource
         )
-        self.gen_materialized_concepts()
+        self.gen_concept_list_caches()
         return datasource
 
 

@@ -21,6 +21,8 @@ def generate_graph(
             for source in concept.sources:
                 generic = source.with_default_grain()
                 g.add_edge(generic, node_name)
+
+                # link the concept to the generic source
                 if concept.derivation == PurposeLineage.MERGE:
                     g.add_edge(node_name, generic)
     for _, dataset in environment.datasources.items():
