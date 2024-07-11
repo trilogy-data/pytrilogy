@@ -55,7 +55,7 @@ def gen_concept_merge_node(
     base_parents: List[StrategyNode] = []
 
     # get additional concepts that should be merged across the environments
-    additional_merge: List[Concept] = []
+    additional_merge: List[Concept] = concept.lineage.concepts
     for x in local_optional:
         if x.address in environment.merged_concepts:
             additional_merge += environment.merged_concepts[x.address].lineage.concepts
@@ -153,10 +153,18 @@ def gen_concept_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge concept enrichment node for {concept} with optional {local_optional}, returning just merge concept"
         )
         return node
-
+    non_hidden_outputs = [
+        x
+        for x in node.output_concepts
+        if x.address not in [y.address for y in node.hidden_concepts]
+    ]
     return MergeNode(
-        input_concepts=enrich_node.output_concepts + node.output_concepts,
-        output_concepts=node.output_concepts + local_optional,
+        input_concepts=enrich_node.output_concepts + non_hidden_outputs,
+        # also filter out the
+        output_concepts=non_hidden_outputs + local_optional,
+        hidden_concepts=[
+            x for x in local_optional if x.derivation == PurposeLineage.MERGE
+        ],
         environment=environment,
         g=g,
         depth=depth,

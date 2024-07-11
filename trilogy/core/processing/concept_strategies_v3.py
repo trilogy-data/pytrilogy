@@ -508,7 +508,9 @@ def _search_concepts(
 
         output = MergeNode(
             input_concepts=mandatory_list,
-            output_concepts=mandatory_list,
+            output_concepts=[
+                x for x in mandatory_list if x.derivation != PurposeLineage.MERGE
+            ],
             environment=environment,
             g=g,
             parents=stack,
