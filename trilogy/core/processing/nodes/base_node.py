@@ -184,6 +184,7 @@ class StrategyNode:
 
     def rebuild_cache(self) -> QueryDatasource:
         self.tainted = True
+        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
         if not self.resolution_cache:
             return self.resolve()
         self.resolution_cache = None

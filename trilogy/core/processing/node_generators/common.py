@@ -196,6 +196,7 @@ def gen_enrichment_node(
     log_lambda(
         f"{str(type(base_node).__name__)} returning merge node with group node + enrichment node"
     )
+
     return MergeNode(
         input_concepts=unique(
             join_keys + extra_required + base_node.output_concepts, "address"

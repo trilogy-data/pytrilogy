@@ -74,7 +74,7 @@ def gen_rowset_node(
     node.hidden_concepts = [
         x
         for x in node.output_concepts
-        if x.address not in [y.address for y in local_optional]
+        if x.address not in [y.address for y in local_optional + [concept]]
         and x.derivation != PurposeLineage.ROWSET
     ]
     # assume grain to be output of select
