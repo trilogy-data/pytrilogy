@@ -337,7 +337,10 @@ def generate_node(
 
 
 def validate_stack(
-    stack: List[StrategyNode], concepts: List[Concept], accept_partial: bool = False
+    stack: List[StrategyNode],
+    concepts: List[Concept],
+    accept_partial: bool = False,
+    # known_found: set[str] = set(),
 ) -> tuple[ValidationResult, set[str], set[str], set[str]]:
     found_map = defaultdict(set)
     found_addresses: set[str] = set()
@@ -357,6 +360,8 @@ def validate_stack(
                 if accept_partial:
                     found_addresses.add(concept.address)
                     found_map[str(node)].add(concept)
+    # zip in those we know we found
+    # found_addresses = found_addresses.union(known_found)
     if not all([c.address in found_addresses for c in concepts]):
         return (
             ValidationResult.INCOMPLETE,
@@ -388,7 +393,7 @@ def search_concepts(
     hist = history.get_history(mandatory_list, accept_partial)
     if hist is not False:
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
         )
         assert not isinstance(hist, bool)
         return hist
@@ -419,6 +424,7 @@ def _search_concepts(
     attempted: set[str] = set()
 
     found: set[str] = set()
+    known_found: set[str] = set()
     skip: set[str] = set()
     stack: List[StrategyNode] = []
     complete = ValidationResult.INCOMPLETE
@@ -454,7 +460,7 @@ def _search_concepts(
             if node:
                 stack.append(node)
                 node.resolve()
-                found.add(priority_concept.address)
+                known_found.add(priority_concept.address)
                 # these concepts should not be attempted to be sourced again
                 # as fetching them requires operating on a subset of concepts
                 if priority_concept.derivation in [
@@ -473,11 +479,12 @@ def _search_concepts(
         complete, found, missing, partial = validate_stack(
             stack, mandatory_list, accept_partial
         )
-        # early exit if we have a complete stack with one node
+
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} flag for accepting partial addresses is "
             f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial}), attempted {attempted}"
         )
+        # early exit if we have a complete stack with one node
         # we can only early exit if we have a complete stack
         # and we are not looking for more non-partial sources
         if complete == ValidationResult.COMPLETE and (
