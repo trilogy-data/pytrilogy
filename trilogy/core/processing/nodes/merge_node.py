@@ -207,6 +207,7 @@ class MergeNode(StrategyNode):
             joins = self.translate_node_joins(final_joins)
         else:
             return []
+
         for join in joins:
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} final join {join.join_type} {[str(c) for c in join.concepts]}"

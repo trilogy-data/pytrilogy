@@ -42,6 +42,9 @@ def setup_engine(debug_flag: bool = True) -> Executor:
     )
 
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
+    df2 = pd.read_csv(PurePath(dirname(__file__)) / "richest.csv")
+    _ = df2
+    output.execute_raw_sql("CREATE TABLE rich_info AS SELECT * FROM df2")
     return output
 
 
@@ -326,7 +329,8 @@ where
     eldest = 1
 order by survivors.passenger.name desc
 limit 5;"""
-    # raw = executor.generate_sql(test)
+    raw = executor.generate_sql(test)[-1]
+    assert raw.count("STRING_SPLIT") == 1
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 5
@@ -484,3 +488,22 @@ ORDER BY
     raw_data."name" asc
 """.strip()
     )
+
+
+def test_merge(base_test_env):
+    executor = setup_engine(debug_flag=True)
+    executor.environment = base_test_env
+    cmd = """MERGE passenger.last_name, rich_info.last_name;
+
+SELECT
+    passenger.last_name,
+    count(passenger.id)-> family_count,
+    rich_info.net_worth_1918_dollars,
+WHERE
+    rich_info.net_worth_1918_dollars is not null
+    and passenger.last_name is not null
+ORDER BY 
+    family_count desc ;"""
+    results = executor.execute_text(cmd)[-1].fetchall()
+
+    assert len(results) == 8

@@ -981,13 +981,13 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatement:
-
         parsed = [self.environment.concepts[x] for x in args]
         datatypes = {x.datatype for x in parsed}
-        if not len(datatypes) == 1:
+        if not len(datatypes) == 1 and self.environment.concepts.fail_on_missing:
+            type_dict = {x.address: x.datatype for x in parsed}
             raise SyntaxError(
-                f"Cannot merge concepts with different datatypes {datatypes}"
-                f"line: {meta.line} concepts: {[x.address for x in parsed]}"
+                f"Cannot merge concepts with different datatype"
+                f"line: {meta.line} concepts: {type_dict}"
             )
         merge = MergeStatement(concepts=parsed, datatype=datatypes.pop())
         new = merge.merge_concept
