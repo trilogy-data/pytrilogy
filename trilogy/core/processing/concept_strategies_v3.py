@@ -340,7 +340,6 @@ def validate_stack(
     stack: List[StrategyNode],
     concepts: List[Concept],
     accept_partial: bool = False,
-    # known_found: set[str] = set(),
 ) -> tuple[ValidationResult, set[str], set[str], set[str]]:
     found_map = defaultdict(set)
     found_addresses: set[str] = set()
@@ -361,7 +360,6 @@ def validate_stack(
                     found_addresses.add(concept.address)
                     found_map[str(node)].add(concept)
     # zip in those we know we found
-    # found_addresses = found_addresses.union(known_found)
     if not all([c.address in found_addresses for c in concepts]):
         return (
             ValidationResult.INCOMPLETE,
@@ -424,7 +422,6 @@ def _search_concepts(
     attempted: set[str] = set()
 
     found: set[str] = set()
-    known_found: set[str] = set()
     skip: set[str] = set()
     stack: List[StrategyNode] = []
     complete = ValidationResult.INCOMPLETE
@@ -460,7 +457,6 @@ def _search_concepts(
             if node:
                 stack.append(node)
                 node.resolve()
-                known_found.add(priority_concept.address)
                 # these concepts should not be attempted to be sourced again
                 # as fetching them requires operating on a subset of concepts
                 if priority_concept.derivation in [

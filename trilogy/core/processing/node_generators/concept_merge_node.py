@@ -114,6 +114,9 @@ def gen_concept_merge_node(
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
         output_concepts=[x for x in final_outputs],
+        hidden_concepts=[
+            x for x in final_outputs if x.derivation == PurposeLineage.MERGE
+        ],
         environment=environment,
         g=g,
         depth=depth,
@@ -168,6 +171,11 @@ def gen_concept_merge_node(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
         # also filter out the
         output_concepts=node.output_concepts + local_optional,
+        hidden_concepts=[
+            x
+            for x in node.output_concepts + local_optional
+            if x.derivation == PurposeLineage.MERGE
+        ],
         environment=environment,
         g=g,
         depth=depth,

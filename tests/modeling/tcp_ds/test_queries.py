@@ -160,8 +160,3 @@ def test_three_alt():
     sql = exec.generate_sql(select)
     assert "SELECT" in sql[-1]
     # assert sql[0] == '123'
-
-
-if __name__ == "__main__":
-
-    test_three_alt()
