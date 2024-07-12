@@ -344,10 +344,150 @@ def setup_titanic_distributed(env: Environment):
     return env
 
 
+def setup_titanic(env: Environment):
+    namespace = "passenger"
+    id = Concept(
+        name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
+    age = Concept(
+        name="age",
+        namespace=namespace,
+        datatype=DataType.INTEGER,
+        purpose=Purpose.PROPERTY,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+
+    name = Concept(
+        name="name",
+        namespace=namespace,
+        datatype=DataType.STRING,
+        purpose=Purpose.PROPERTY,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+
+    pclass = Concept(
+        name="class",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.INTEGER,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+    survived = Concept(
+        name="survived",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.BOOL,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+    fare = Concept(
+        name="fare",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.FLOAT,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+    embarked = Concept(
+        name="embarked",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.INTEGER,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+    cabin = Concept(
+        name="cabin",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+    ticket = Concept(
+        name="ticket",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        keys=[id],
+        grain=Grain(components=[id]),
+    )
+
+    last_name = Concept(
+        name="last_name",
+        namespace=namespace,
+        purpose=Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        keys=(id,),
+        lineage=Function(
+            operator=FunctionType.INDEX_ACCESS,
+            arguments=[
+                Function(
+                    operator=FunctionType.SPLIT,
+                    arguments=[name, ","],
+                    output_datatype=DataType.ARRAY,
+                    output_purpose=Purpose.PROPERTY,
+                    arg_count=2,
+                ),
+                1,
+            ],
+            output_datatype=DataType.STRING,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+    )
+    for x in [
+        id,
+        age,
+        survived,
+        name,
+        last_name,
+        pclass,
+        fare,
+        cabin,
+        embarked,
+        ticket,
+    ]:
+        env.add_concept(x)
+    assert name in last_name.sources
+    env.add_datasource(
+        Datasource(
+            identifier="raw_data",
+            address="raw_titanic",
+            columns=[
+                ColumnAssignment(alias="passengerid", concept=id),
+                ColumnAssignment(alias="age", concept=age),
+                ColumnAssignment(alias="survived", concept=survived),
+                ColumnAssignment(alias="pclass", concept=pclass),
+                ColumnAssignment(alias="name", concept=name),
+                ColumnAssignment(alias="fare", concept=fare),
+                ColumnAssignment(alias="cabin", concept=cabin),
+                ColumnAssignment(alias="embarked", concept=embarked),
+                ColumnAssignment(alias="ticket", concept=ticket),
+            ],
+            grain=Grain(components=[id]),
+        ),
+    )
+    return env
+
+
 @fixture
 def normalized_engine():
     executor = setup_normalized_engine()
     yield executor
+
+
+@fixture
+def base_test_env():
+    env = Environment()
+    env = setup_titanic(env)
+    rich_env = Environment()
+    setup_richest_environment(rich_env)
+    env.add_import("rich_info", rich_env)
+    yield env
 
 
 @fixture

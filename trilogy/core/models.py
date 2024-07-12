@@ -497,12 +497,30 @@ class Concept(Namespaced, SelectGrain, BaseModel):
     def sources(self) -> List["Concept"]:
         if self.lineage:
             output = []
-            for item in self.lineage.arguments:
-                if isinstance(item, Concept):
-                    if item.address == self.address:
-                        raise SyntaxError(f"Concept {self.address} references itself")
-                    output.append(item)
-                    output += item.sources
+
+            def get_sources(
+                expr: Union[
+                    Function,
+                    WindowItem,
+                    FilterItem,
+                    AggregateWrapper,
+                    RowsetItem,
+                    MultiSelectStatement | MergeStatement,
+                ],
+                output: list,
+            ):
+                for item in expr.arguments:
+                    if isinstance(item, Concept):
+                        if item.address == self.address:
+                            raise SyntaxError(
+                                f"Concept {self.address} references itself"
+                            )
+                        output.append(item)
+                        output += item.sources
+                    elif isinstance(item, Function):
+                        get_sources(item, output)
+
+            get_sources(self.lineage, output)
             return output
         return []
 

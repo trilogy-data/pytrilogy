@@ -10,7 +10,7 @@ from trilogy.core.processing.nodes import MergeNode, NodeJoin, History, Strategy
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 from typing import List
 
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import JoinType, PurposeLineage
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
@@ -53,7 +53,7 @@ def gen_rowset_node(
         return None
     node.conditions = select.where_clause.conditional if select.where_clause else None
     # rebuild any cached info with the new condition clause
-    node.rebuild_cache()
+
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [
         x
@@ -71,9 +71,15 @@ def gen_rowset_node(
     if select.where_clause:
         for item in additional_relevant:
             node.partial_concepts.append(item)
-
+    node.hidden_concepts = [
+        x
+        for x in node.output_concepts
+        if x.address not in [y.address for y in local_optional]
+        and x.derivation != PurposeLineage.ROWSET
+    ]
     # assume grain to be output of select
     # but don't include anything aggregate at this point
+    node.rebuild_cache()
     assert node.resolution_cache
     node.resolution_cache.grain = concept_list_to_grain(
         node.output_concepts, parent_sources=node.resolution_cache.datasources
