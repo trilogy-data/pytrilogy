@@ -496,7 +496,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
     @property
     def sources(self) -> List["Concept"]:
         if self.lineage:
-            output = []
+            output: List[Concept] = []
 
             def get_sources(
                 expr: Union[
@@ -507,7 +507,7 @@ class Concept(Namespaced, SelectGrain, BaseModel):
                     RowsetItem,
                     MultiSelectStatement | MergeStatement,
                 ],
-                output: list,
+                output: List[Concept],
             ):
                 for item in expr.arguments:
                     if isinstance(item, Concept):
