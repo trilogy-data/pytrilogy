@@ -58,7 +58,9 @@ def gen_concept_merge_node(
     additional_merge: List[Concept] = concept.lineage.concepts
     for x in local_optional:
         if x.address in environment.merged_concepts:
-            additional_merge += environment.merged_concepts[x.address].lineage.concepts
+            ms = environment.merged_concepts[x.address].lineage
+            assert isinstance(ms, MergeStatement)
+            additional_merge += ms.concepts
 
     for select in lineage.concepts:
         # if it's a merge concept, filter it out of the optional

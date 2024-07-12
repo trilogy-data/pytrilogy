@@ -2473,7 +2473,9 @@ class Environment(BaseModel):
         ]
         for concept in self.concepts.values():
             if concept.derivation == PurposeLineage.MERGE:
-                for parent in concept.lineage.concepts:
+                ms = concept.lineage
+                assert isinstance(ms, MergeStatement)
+                for parent in ms.concepts:
                     self.merged_concepts[parent.address] = concept
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
