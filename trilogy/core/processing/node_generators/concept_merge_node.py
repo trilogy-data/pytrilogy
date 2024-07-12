@@ -7,27 +7,30 @@ from trilogy.core.processing.nodes import MergeNode, NodeJoin, History
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
 from typing import List
 
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import JoinType, PurposeLineage
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
 from itertools import combinations
 from trilogy.core.processing.node_generators.common import resolve_join_order
+from trilogy.utility import unique
+
 
 LOGGER_PREFIX = "[GEN_CONCEPT_MERGE_NODE]"
 
 
-def merge_joins(base: MergeStatement, parents: List[StrategyNode]) -> List[NodeJoin]:
+def merge_joins(
+    parents: List[StrategyNode], merge_concepts: List[Concept]
+) -> List[NodeJoin]:
     output = []
     for left, right in combinations(parents, 2):
         output.append(
             NodeJoin(
                 left_node=left,
                 right_node=right,
-                concepts=[
-                    base.merge_concept,
-                ],
+                concepts=merge_concepts,
                 join_type=JoinType.FULL,
+                filter_to_mutual=True,
             )
         )
     return resolve_join_order(output)
@@ -50,37 +53,70 @@ def gen_concept_merge_node(
     lineage: MergeStatement = concept.lineage
 
     base_parents: List[StrategyNode] = []
+
+    # get additional concepts that should be merged across the environments
+    additional_merge: List[Concept] = [*lineage.concepts]
+    for x in local_optional:
+        if x.address in environment.merged_concepts:
+            ms = environment.merged_concepts[x.address].lineage
+            assert isinstance(ms, MergeStatement)
+            additional_merge += ms.concepts
+
     for select in lineage.concepts:
         # if it's a merge concept, filter it out of the optional
         sub_optional = [
             x
             for x in local_optional
-            if x.address not in lineage.concepts_lcl and x.namespace == select.namespace
+            if x.address not in environment.merged_concepts
+            and x.namespace == select.namespace
         ]
+
+        sub_additional_merge = [
+            x for x in additional_merge if x.namespace == select.namespace
+        ]
+        sub_optional += sub_additional_merge
+        final: List[Concept] = unique([select] + sub_optional, "address")
         snode: StrategyNode = source_concepts(
-            mandatory_list=[select] + sub_optional,
+            mandatory_list=final,
             environment=environment,
             g=g,
             depth=depth + 1,
             history=history,
         )
+
         if not snode:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge node for {concept}"
             )
             return None
-        snode.add_output_concept(lineage.merge_concept)
+        for x in sub_additional_merge:
+            snode.add_output_concept(environment.merged_concepts[x.address])
         base_parents.append(snode)
 
-    node_joins = merge_joins(lineage, base_parents)
+    node_joins = merge_joins(
+        base_parents,
+        unique(
+            [environment.merged_concepts[x.address] for x in additional_merge],
+            "address",
+        ),
+    )
 
     enrichment = set([x.address for x in local_optional])
-    outputs = [x for y in base_parents for x in y.output_concepts]
+    outputs = [
+        x
+        for y in base_parents
+        for x in y.output_concepts
+        if x.derivation != PurposeLineage.MERGE
+    ]
 
     additional_relevant = [x for x in outputs if x.address in enrichment]
+    final_outputs = outputs + additional_relevant + [concept]
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
-        output_concepts=outputs + additional_relevant + [concept],
+        output_concepts=[x for x in final_outputs],
+        hidden_concepts=[
+            x for x in final_outputs if x.derivation == PurposeLineage.MERGE
+        ],
         environment=environment,
         g=g,
         depth=depth,
@@ -127,9 +163,19 @@ def gen_concept_merge_node(
         )
         return node
 
+    # we still need the hidden concepts to be returned to the search
+    # since they must be on the final node
+    # to avoid further recursion
+    # TODO: let the downstream search know they were found
     return MergeNode(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
+        # also filter out the
         output_concepts=node.output_concepts + local_optional,
+        hidden_concepts=[
+            x
+            for x in node.output_concepts + local_optional
+            if x.derivation == PurposeLineage.MERGE
+        ],
         environment=environment,
         g=g,
         depth=depth,

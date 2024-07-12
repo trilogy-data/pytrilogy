@@ -136,6 +136,6 @@ def optimize_ctes(
             select.where_clause.conditional if select.where_clause else None
         )
         root_cte.requires_nesting = False
-        sort_select_output(cte, select)
+        sort_select_output(root_cte, select)
 
     return filter_irrelevant_ctes(input, root_cte)

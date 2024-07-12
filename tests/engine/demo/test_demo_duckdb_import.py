@@ -1,5 +1,5 @@
 from trilogy.core.models import Environment
-from trilogy.core.processing.node_generators.merge_node import (
+from trilogy.core.processing.node_generators.node_merge_node import (
     gen_merge_node,
     identify_ds_join_paths,
 )

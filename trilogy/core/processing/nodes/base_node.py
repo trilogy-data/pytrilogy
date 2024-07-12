@@ -107,6 +107,7 @@ class StrategyNode:
         conditions: Conditional | Comparison | Parenthetical | None = None,
         force_group: bool | None = None,
         grain: Optional[Grain] = None,
+        hidden_concepts: List[Concept] | None = None,
     ):
         self.input_concepts: List[Concept] = (
             unique(input_concepts, "address") if input_concepts else []
@@ -129,6 +130,7 @@ class StrategyNode:
         self.grain = grain
         self.force_group = force_group
         self.tainted = False
+        self.hidden_concepts = hidden_concepts or []
         for parent in self.parents:
             if not parent:
                 raise SyntaxError("Unresolvable parent")

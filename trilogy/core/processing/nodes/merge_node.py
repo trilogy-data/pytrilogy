@@ -104,6 +104,7 @@ class MergeNode(StrategyNode):
         depth: int = 0,
         grain: Grain | None = None,
         conditions: Conditional | None = None,
+        hidden_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -117,6 +118,7 @@ class MergeNode(StrategyNode):
             force_group=force_group,
             grain=grain,
             conditions=conditions,
+            hidden_concepts=hidden_concepts,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
@@ -327,5 +329,6 @@ class MergeNode(StrategyNode):
             partial_concepts=self.partial_concepts,
             force_group=force_group,
             condition=self.conditions,
+            hidden_concepts=self.hidden_concepts,
         )
         return qds

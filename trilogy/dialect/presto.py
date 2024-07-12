@@ -27,6 +27,9 @@ FUNCTION_MAP = {
     FunctionType.QUARTER: lambda x: f"EXTRACT(QUARTER from {x[0]})",
     # math
     FunctionType.DIVIDE: lambda x: f"SAFE_DIVIDE({x[0]},{x[1]})",
+    FunctionType.DATE_ADD: lambda x: f"DATE_ADD('{x[1]}', {x[2]}, {x[0]})",
+    FunctionType.CURRENT_DATE: lambda x: "CURRENT_DATE",
+    FunctionType.CURRENT_DATETIME: lambda x: "CURRENT_TIMESTAMP",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -42,11 +45,10 @@ CREATE OR REPLACE TABLE {{ output.address }} AS
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-
-SELECT
 {%- if full_select -%}
 {{full_select}}
-{%- else -%}
+{%- else %}
+SELECT
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 {% if base %}FROM

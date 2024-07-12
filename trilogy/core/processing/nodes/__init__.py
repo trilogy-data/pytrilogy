@@ -27,12 +27,18 @@ class History(BaseModel):
         self,
         search: list[Concept],
         accept_partial: bool = False,
+        parent_key: str = "",
     ) -> StrategyNode | None | bool:
+        key = self._concepts_to_lookup(
+            search,
+            accept_partial,
+        )
+        if parent_key and parent_key == key:
+            raise ValueError(
+                f"Parent key {parent_key} is the same as the current key {key}"
+            )
         return self.history.get(
-            self._concepts_to_lookup(
-                search,
-                accept_partial,
-            ),
+            key,
             False,
         )
 
