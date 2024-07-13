@@ -60,7 +60,10 @@ def gen_rowset_node(
     ]
     select_hidden = set([x.address for x in select.hidden_components])
     rowset_hidden = [
-        x for x in rowset.derived_concepts if x.lineage.content.address in select_hidden
+        x
+        for x in rowset.derived_concepts
+        if isinstance(x.lineage, RowsetItem)
+        and x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
         x for x in select.output_components if x.address in enrichment

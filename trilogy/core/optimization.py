@@ -4,9 +4,8 @@ from trilogy.core.models import (
     PersistStatement,
     Datasource,
     MultiSelectStatement,
-    Conditional,
 )
-from trilogy.core.enums import PurposeLineage, ComparisonOperator
+from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger, CONFIG
 from abc import ABC
 
@@ -16,7 +15,7 @@ REGISTERED_RULES: list["OptimizationRule"] = []
 
 class OptimizationRule(ABC):
 
-    def optimize(self, cte: CTE) -> bool:
+    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
         raise NotImplementedError
 
     def log(self, message: str):
@@ -64,21 +63,22 @@ class InlineDatasource(OptimizationRule):
         return optimized
 
 
-def decompose_condition(conditional: Conditional):
-    chunks = []
-    if conditional.operator == ComparisonOperator.EQ:
-        for left, right in [conditional.left, conditional.right]:
-            if isinstance(left, Conditional):
-                chunks.extend(decompose_condition(left))
-            else:
-                chunks.append(left)
-            if isinstance(right, Conditional):
-                chunks.extend(decompose_condition(right))
-            else:
-                chunks.append(right)
-    else:
-        chunks.append(conditional)
-    return chunks
+# This will be used in the future for more complex condition decomposition
+# def decompose_condition(conditional: Conditional):
+#     chunks = []
+#     if conditional.operator == ComparisonOperator.EQ and isinstance(conditional.left, Conditional and isinstance(conditional.right, Conditional)):
+#         for left, right in [conditional.left, conditional.right]:
+#             if isinstance(left, Conditional):
+#                 chunks.extend(decompose_condition(left))
+#             else:
+#                 chunks.append(left)
+#             if isinstance(right, Conditional):
+#                 chunks.extend(decompose_condition(right))
+#             else:
+#                 chunks.append(right)
+#     else:
+#         chunks.append(conditional)
+#     return chunks
 
 
 class PredicatePushdown(OptimizationRule):
