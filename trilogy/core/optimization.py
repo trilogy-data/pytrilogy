@@ -4,10 +4,14 @@ from trilogy.core.models import (
     PersistStatement,
     Datasource,
     MultiSelectStatement,
+    Conditional,
 )
-from trilogy.core.enums import PurposeLineage
-from trilogy.constants import logger
+from trilogy.core.enums import PurposeLineage, ComparisonOperator
+from trilogy.constants import logger, CONFIG
 from abc import ABC
+
+
+REGISTERED_RULES: list["OptimizationRule"] = []
 
 
 class OptimizationRule(ABC):
@@ -21,7 +25,7 @@ class OptimizationRule(ABC):
 
 class InlineDatasource(OptimizationRule):
 
-    def optimize(self, cte: CTE) -> bool:
+    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
         if not cte.parent_ctes:
             return False
 
@@ -60,10 +64,71 @@ class InlineDatasource(OptimizationRule):
         return optimized
 
 
-REGISTERED_RULES: list[OptimizationRule] = [InlineDatasource()]
+def decompose_condition(conditional: Conditional):
+    chunks = []
+    if conditional.operator == ComparisonOperator.EQ:
+        for left, right in [conditional.left, conditional.right]:
+            if isinstance(left, Conditional):
+                chunks.extend(decompose_condition(left))
+            else:
+                chunks.append(left)
+            if isinstance(right, Conditional):
+                chunks.extend(decompose_condition(right))
+            else:
+                chunks.append(right)
+    else:
+        chunks.append(conditional)
+    return chunks
 
 
-def filter_irrelevant_ctes(input: list[CTE], root_cte: CTE):
+class PredicatePushdown(OptimizationRule):
+
+    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+        if not cte.parent_ctes:
+            return False
+
+        optimized = False
+        if not cte.condition:
+            return False
+        self.log(
+            f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
+        )
+        conditions = {x.address for x in cte.condition.concept_arguments}
+        for parent_cte in cte.parent_ctes:
+            materialized = {k for k, v in parent_cte.source_map.items() if v != ""}
+            if conditions.issubset(materialized):
+                if all(
+                    [
+                        child.condition == cte.condition
+                        for child in inverse_map[parent_cte.name]
+                    ]
+                ):
+                    self.log(
+                        f"All concepts are found on {parent_cte.name} and all it's children have same filter, pushing up filter"
+                    )
+                    parent_cte.condition = cte.condition
+                    optimized = True
+
+        if all(
+            [parent_cte.condition == cte.condition for parent_cte in cte.parent_ctes]
+        ):
+            self.log("All parents have same filter, removing filter")
+            cte.condition = None
+            optimized = True
+
+        return optimized
+
+
+if CONFIG.optimizations.datasource_inlining:
+    REGISTERED_RULES.append(InlineDatasource())
+if CONFIG.optimizations.predicate_pushdown:
+    REGISTERED_RULES.append(PredicatePushdown())
+
+
+def filter_irrelevant_ctes(
+    input: list[CTE],
+    root_cte: CTE,
+):
     relevant_ctes = set()
 
     def recurse(cte: CTE):
@@ -73,6 +138,16 @@ def filter_irrelevant_ctes(input: list[CTE], root_cte: CTE):
 
     recurse(root_cte)
     return [cte for cte in input if cte.name in relevant_ctes]
+
+
+def gen_inverse_map(input: list[CTE]) -> dict[str, list[CTE]]:
+    inverse_map: dict[str, list[CTE]] = {}
+    for cte in input:
+        for parent in cte.parent_ctes:
+            if parent.name not in inverse_map:
+                inverse_map[parent.name] = []
+            inverse_map[parent.name].append(cte)
+    return inverse_map
 
 
 def is_direct_return_eligible(
@@ -126,7 +201,8 @@ def optimize_ctes(
         actions_taken = False
         for rule in REGISTERED_RULES:
             for cte in input:
-                actions_taken = rule.optimize(cte)
+                inverse_map = gen_inverse_map(input)
+                actions_taken = rule.optimize(cte, inverse_map)
         complete = not actions_taken
 
     if is_direct_return_eligible(root_cte, select):

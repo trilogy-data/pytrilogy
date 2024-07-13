@@ -282,6 +282,7 @@ class MergeNode(StrategyNode):
                 if c.address in [x.address for x in self.output_concepts]
             ]
         )
+
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {pregrain} and final merge node grain {grain}"
         )
@@ -307,9 +308,6 @@ class MergeNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} no parents include full grain {grain} and pregrain {pregrain} does not match, assume must group to grain. Have {[str(d.grain) for d in final_datasets]}"
             )
             force_group = True
-            # Grain<returns.customer.id,returns.store.id,returns.item.id,returns.store_sales.ticket_number>
-            # Grain<returns.customer.id,returns.store.id,returns.return_date.id,returns.item.id,returns.store_sales.ticket_number>
-            # Grain<returns.customer.id,returns.store.id,returns.item.id,returns.store_sales.ticket_number>
         else:
             force_group = None
 

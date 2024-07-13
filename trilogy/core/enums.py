@@ -263,6 +263,7 @@ class SourceType(Enum):
     WINDOW = "window"
     UNNEST = "unnest"
     CONSTANT = "constant"
+    ROWSET = "rowset"
 
 
 class ShowCategory(Enum):

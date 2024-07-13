@@ -12,7 +12,7 @@ from typing import List
 
 from trilogy.core.enums import JoinType, PurposeLineage
 from trilogy.constants import logger
-from trilogy.core.processing.utility import padding
+from trilogy.core.processing.utility import padding, unique
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
 
 
@@ -40,7 +40,7 @@ def gen_rowset_node(
     else:
         targets = select.output_components
     node: StrategyNode = source_concepts(
-        mandatory_list=targets,
+        mandatory_list=unique(targets, "address"),
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -52,13 +52,15 @@ def gen_rowset_node(
         )
         return None
     node.conditions = select.where_clause.conditional if select.where_clause else None
-    # rebuild any cached info with the new condition clause
-
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [
         x
         for x in rowset.derived_concepts
         # if x.address == concept.address or x.address in enrichment
+    ]
+    select_hidden = set([x.address for x in select.hidden_components])
+    rowset_hidden = [
+        x for x in rowset.derived_concepts if x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
         x for x in select.output_components if x.address in enrichment
@@ -71,7 +73,7 @@ def gen_rowset_node(
     if select.where_clause:
         for item in additional_relevant:
             node.partial_concepts.append(item)
-    node.hidden_concepts = [
+    node.hidden_concepts = rowset_hidden + [
         x
         for x in node.output_concepts
         if x.address not in [y.address for y in local_optional + [concept]]

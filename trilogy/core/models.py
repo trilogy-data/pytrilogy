@@ -1941,6 +1941,9 @@ class QueryDatasource(BaseModel):
             ),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
+            hidden_concepts=unique(
+                self.hidden_concepts + other.hidden_concepts, "address"
+            ),
         )
 
         return qds
@@ -2100,6 +2103,9 @@ class CTE(BaseModel):
         self.source.source_map = {**self.source.source_map, **other.source.source_map}
         self.source.output_concepts = unique(
             self.source.output_concepts + other.source.output_concepts, "address"
+        )
+        self.hidden_concepts = unique(
+            self.hidden_concepts + other.hidden_concepts, "address"
         )
         return self
 
