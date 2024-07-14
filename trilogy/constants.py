@@ -2,7 +2,7 @@ from logging import getLogger
 from dataclasses import dataclass, field
 from enum import Enum
 
-logger = getLogger("preql")
+logger = getLogger("trilogy")
 
 DEFAULT_NAMESPACE = "local"
 

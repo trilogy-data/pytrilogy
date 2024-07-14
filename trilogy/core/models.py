@@ -2734,6 +2734,9 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
     def __repr__(self):
         return f"{str(self.left)} {self.operator.value} {str(self.right)}"
 
+    def __str__(self):
+        return self.__repr__()
+
     def with_namespace(self, namespace: str):
         return self.__class__(
             left=(
