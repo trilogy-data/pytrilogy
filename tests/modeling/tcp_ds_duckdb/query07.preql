@@ -5,8 +5,12 @@
 import store_sales as store_sales;
 
 
+
+
 with filtered_sales as 
     SELECT
+    store_sales.ticket_number,
+    store_sales.item.id,
     store_sales.item.name,
     store_sales.quantity,
     store_sales.list_price,

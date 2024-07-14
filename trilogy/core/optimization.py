@@ -4,24 +4,32 @@ from trilogy.core.models import (
     PersistStatement,
     Datasource,
     MultiSelectStatement,
+    Conditional,
+    BooleanOperator,
 )
 from trilogy.core.enums import PurposeLineage
-from trilogy.constants import logger
+from trilogy.constants import logger, CONFIG
 from abc import ABC
+
+
+REGISTERED_RULES: list["OptimizationRule"] = []
 
 
 class OptimizationRule(ABC):
 
-    def optimize(self, cte: CTE) -> bool:
+    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
         raise NotImplementedError
 
     def log(self, message: str):
         logger.info(f"[Optimization][{self.__class__.__name__}] {message}")
 
+    def debug(self, message: str):
+        logger.debug(f"[Optimization][{self.__class__.__name__}] {message}")
+
 
 class InlineDatasource(OptimizationRule):
 
-    def optimize(self, cte: CTE) -> bool:
+    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
         if not cte.parent_ctes:
             return False
 
@@ -60,10 +68,98 @@ class InlineDatasource(OptimizationRule):
         return optimized
 
 
-REGISTERED_RULES: list[OptimizationRule] = [InlineDatasource()]
+# This will be used in the future for more complex condition decomposition
+def decompose_condition(conditional: Conditional):
+    chunks = []
+    if conditional.operator == BooleanOperator.AND:
+        for val in [conditional.left, conditional.right]:
+            if isinstance(val, Conditional):
+                chunks.extend(decompose_condition(val))
+            else:
+                chunks.append(val)
+    else:
+        chunks.append(conditional)
+    return chunks
 
 
-def filter_irrelevant_ctes(input: list[CTE], root_cte: CTE):
+def is_child_of(a, comparison):
+    if isinstance(comparison, Conditional):
+        return (
+            is_child_of(a, comparison.left) or is_child_of(a, comparison.right)
+        ) and comparison.operator == BooleanOperator.AND
+    return comparison == a
+
+
+class PredicatePushdown(OptimizationRule):
+
+    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+
+        if not cte.parent_ctes:
+            self.debug(f"No parent CTEs for {cte.name}")
+
+            return False
+
+        optimized = False
+        if not cte.condition:
+            self.debug(f"No CTE condition for {cte.name}")
+            return False
+        self.log(
+            f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
+        )
+        if isinstance(cte.condition, Conditional):
+            candidates = decompose_condition(cte.condition)
+        else:
+            candidates = [cte.condition]
+        logger.info(f"Have {len(candidates)} candidates to try to push down")
+        for candidate in candidates:
+            conditions = {x.address for x in candidate.concept_arguments}
+            for parent_cte in cte.parent_ctes:
+                materialized = {k for k, v in parent_cte.source_map.items() if v != ""}
+                if conditions.issubset(materialized):
+                    if all(
+                        [
+                            is_child_of(candidate, child.condition)
+                            for child in inverse_map[parent_cte.name]
+                        ]
+                    ):
+                        self.log(
+                            f"All concepts are found on {parent_cte.name} and all it's children include same filter; pushing up filter"
+                        )
+                        if parent_cte.condition:
+                            parent_cte.condition = Conditional(
+                                left=parent_cte.condition,
+                                operator=BooleanOperator.AND,
+                                right=candidate,
+                            )
+                        else:
+                            parent_cte.condition = candidate
+                        optimized = True
+                else:
+                    logger.info("conditions not subset of parent materialized")
+
+        if all(
+            [
+                is_child_of(cte.condition, parent_cte.condition)
+                for parent_cte in cte.parent_ctes
+            ]
+        ):
+            self.log("All parents have same filter, removing filter")
+            cte.condition = None
+            optimized = True
+
+        return optimized
+
+
+if CONFIG.optimizations.datasource_inlining:
+    REGISTERED_RULES.append(InlineDatasource())
+if CONFIG.optimizations.predicate_pushdown:
+    REGISTERED_RULES.append(PredicatePushdown())
+
+
+def filter_irrelevant_ctes(
+    input: list[CTE],
+    root_cte: CTE,
+):
     relevant_ctes = set()
 
     def recurse(cte: CTE):
@@ -73,6 +169,16 @@ def filter_irrelevant_ctes(input: list[CTE], root_cte: CTE):
 
     recurse(root_cte)
     return [cte for cte in input if cte.name in relevant_ctes]
+
+
+def gen_inverse_map(input: list[CTE]) -> dict[str, list[CTE]]:
+    inverse_map: dict[str, list[CTE]] = {}
+    for cte in input:
+        for parent in cte.parent_ctes:
+            if parent.name not in inverse_map:
+                inverse_map[parent.name] = []
+            inverse_map[parent.name].append(cte)
+    return inverse_map
 
 
 def is_direct_return_eligible(
@@ -126,7 +232,8 @@ def optimize_ctes(
         actions_taken = False
         for rule in REGISTERED_RULES:
             for cte in input:
-                actions_taken = rule.optimize(cte)
+                inverse_map = gen_inverse_map(input)
+                actions_taken = rule.optimize(cte, inverse_map)
         complete = not actions_taken
 
     if is_direct_return_eligible(root_cte, select):
