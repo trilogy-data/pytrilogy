@@ -13,6 +13,7 @@ property address_id.street string;
 property address_id.city string;
 property address_id.state string?;
 property address_id.zip string;
+property address_id.county string;
 
 
 
@@ -34,7 +35,8 @@ datasource customer_address(
     CA_STREET: street,
     CA_CITY: city,
     CA_STATE: state,
-    CA_ZIP: zip
+    CA_ZIP: zip,
+    CA_COUNTY: county,
 )
 grain (address_id)
 address memory.customer_address;

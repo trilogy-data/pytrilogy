@@ -35,8 +35,26 @@ def gen_rowset_node(
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivationStatement = lineage.rowset
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
+    parents: List[StrategyNode] = []
     if where := select.where_clause:
-        targets = select.output_components + where.conditional.concept_arguments
+        targets = select.output_components + where.conditional.row_arguments
+        for sub_select in where.conditional.existence_arguments:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} generating parent existence node with {[x.address for x in sub_select]}"
+            )
+            parent_check = source_concepts(
+                mandatory_list=sub_select,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+                history=history,
+            )
+            if not parent_check:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent existence node for rowset node for {concept}"
+                )
+                return None
+            parents.append(parent_check)
     else:
         targets = select.output_components
     node: StrategyNode = source_concepts(
@@ -46,6 +64,14 @@ def gen_rowset_node(
         depth=depth + 1,
         history=history,
     )
+
+    # add our existence concepts in
+    if parents:
+        node.parents += parents
+        for parent in parents:
+            for x in parent.output_concepts:
+                if x.address not in node.output_lcl:
+                    node.existence_concepts.append(x)
     if not node:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
@@ -53,11 +79,7 @@ def gen_rowset_node(
         return None
     node.conditions = select.where_clause.conditional if select.where_clause else None
     enrichment = set([x.address for x in local_optional])
-    rowset_relevant = [
-        x
-        for x in rowset.derived_concepts
-        # if x.address == concept.address or x.address in enrichment
-    ]
+    rowset_relevant = [x for x in rowset.derived_concepts]
     select_hidden = set([x.address for x in select.hidden_components])
     rowset_hidden = [
         x

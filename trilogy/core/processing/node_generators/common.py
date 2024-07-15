@@ -56,7 +56,9 @@ def resolve_filter_parent_concepts(
     base_existence = []
     base_rows = [direct_parent]
     base_rows += concept.lineage.where.row_arguments
-    base_existence += concept.lineage.where.existence_arguments
+    # TODO: pass tuple groups through
+    for ctuple in concept.lineage.where.existence_arguments:
+        base_existence += list(ctuple)
     if direct_parent.grain:
         base_rows += direct_parent.grain.components_copy
     if (

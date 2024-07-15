@@ -65,13 +65,13 @@ def identify_ds_join_paths(
         ]
         if partial and not accept_partial:
             return None
-        # join_candidates.append({"paths": paths, "datasource": datasource})
+
         return PathInfo(
             paths=paths,
             datasource=datasource,
             reduced_concepts=reduce_path_concepts(paths, g),
             concept_subgraphs=extract_mandatory_subgraphs(paths, g),
-        )  # {"paths": paths, "datasource": datasource}
+        )
     return None
 
 
@@ -88,14 +88,7 @@ def gen_merge_node(
     join_candidates: List[PathInfo] = []
     # anchor on datasources
     final_all_concepts = []
-    # implicit_upstream = {}
     for x in all_concepts:
-        # if x.derivation in (PurposeLineage.AGGREGATE, PurposeLineage.BASIC):
-        #     final_all_concepts +=resolve_function_parent_concepts(x)
-        # elif x.derivation == PurposeLineage.FILTER:
-        #     final_all_concepts +=resolve_filter_parent_concepts(x)
-        # else:
-        #     final_all_concepts.append(x)
         final_all_concepts.append(x)
     for datasource in environment.datasources.values():
         path = identify_ds_join_paths(final_all_concepts, g, datasource, accept_partial)
@@ -104,18 +97,26 @@ def gen_merge_node(
     join_candidates.sort(key=lambda x: sum([len(v) for v in x.paths.values()]))
     if not join_candidates:
         return None
-    for join_candidate in join_candidates:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Join candidate: {join_candidate.paths}"
-        )
-    join_additions: List[set[str]] = []
+    join_additions: set[set[str]] = []
     for candidate in join_candidates:
         join_additions.append(candidate.reduced_concepts)
-    if not all(
-        [x.issubset(y) or y.issubset(x) for x in join_additions for y in join_additions]
-    ):
+
+    common = set()
+    # find all values that show up in every join_additions
+    for x in join_additions:
+        if not common:
+            common = x
+        else:
+            common = common.intersection(x)
+    final_candidates = []
+    for x in join_additions:
+        if all(x.issubset(y) for y in join_additions):
+            final_candidates.append(x)
+
+    if not final_candidates:
+        filtered_paths = [x.difference(common) for x in join_additions]
         raise AmbiguousRelationshipResolutionException(
-            f"Ambiguous concept join resolution - possible paths =  {join_additions}. Include an additional concept to disambiguate",
+            f"Ambiguous concept join resolution fetching {[x.address for x in all_concepts]} - unique values in possible paths = {filtered_paths}. Include an additional concept to disambiguate",
             join_additions,
         )
     if not join_candidates:
@@ -123,9 +124,10 @@ def gen_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} No additional join candidates could be found"
         )
         return None
-    shortest: PathInfo = sorted(join_candidates, key=lambda x: len(x.reduced_concepts))[
-        0
-    ]
+    shortest: PathInfo = sorted(
+        [x for x in join_candidates if x.reduced_concepts in final_candidates],
+        key=lambda x: len(x.reduced_concepts),
+    )[0]
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} final path is {shortest.paths}")
     # logger.info(f'{padding(depth)}{LOGGER_PREFIX} final reduced concepts are {shortest.concs}')
     parents = []
@@ -145,6 +147,9 @@ def gen_merge_node(
                 f"{padding(depth)}{LOGGER_PREFIX} Unable to instantiate target subgraph"
             )
             return None
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} finished subgraph fetch for {[c.address for c in graph]}, have parent {type(parent)}"
+        )
         parents.append(parent)
 
     return MergeNode(

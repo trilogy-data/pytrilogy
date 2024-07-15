@@ -346,7 +346,8 @@ def validate_stack(
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
     for node in stack:
-        for concept in node.resolve().output_concepts:
+        resolved = node.resolve()
+        for concept in resolved.output_concepts + node.virtual_output_concepts:
             found_map[str(node)].add(concept)
             if concept not in node.partial_concepts:
                 found_addresses.add(concept.address)
@@ -582,6 +583,7 @@ def source_query_concepts(
     output_concepts: List[Concept],
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
+    target_grain: Grain | None = None,
 ):
     if not g:
         g = generate_graph(environment)

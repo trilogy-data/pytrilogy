@@ -30,7 +30,7 @@ class Optimizations:
 class Config:
     strict_mode: bool = True
     human_identifiers: bool = True
-    inline_datasources: bool = True
+    validate_missing: bool = True
     optimizations: Optimizations = field(default_factory=Optimizations)
 
 

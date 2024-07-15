@@ -101,6 +101,7 @@ def generate_source_map(
                     x.address
                     for x in cte.output_columns
                     if x.address not in [z.address for z in cte.partial_concepts]
+                    and x.address not in [z.address for z in cte.hidden_concepts]
                 ]
                 if qdk in output_address:
                     source_map[qdk].append(cte.name)
@@ -108,14 +109,18 @@ def generate_source_map(
             # TODO: move this into a second loop by first creationg all sub sourcdes
             # then loop through this
             for cte in all_new_ctes:
-                output_address = [x.address for x in cte.output_columns]
+                output_address = [
+                    x.address
+                    for x in cte.output_columns
+                    if x.address not in [z.address for z in cte.hidden_concepts]
+                ]
                 if qdk in output_address:
                     if qdk not in source_map:
                         source_map[qdk] = [cte.name]
         if qdk not in source_map and not qdv:
             # set source to empty, as it must be derived in this element
             source_map[qdk] = []
-        if qdk not in source_map:
+        if qdk not in source_map and CONFIG.validate_missing:
             raise ValueError(
                 f"Missing {qdk} in {source_map}, source map {query_datasource.source_map.keys()} "
             )
@@ -221,7 +226,7 @@ def datasource_to_ctes(
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
     for x in cte.output_columns:
-        if x.address not in cte.source_map:
+        if x.address not in cte.source_map and CONFIG.validate_missing:
             raise ValueError(
                 f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
             )
@@ -243,12 +248,32 @@ def get_query_datasources(
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
     ds = source_query_concepts(
-        statement.output_components, environment=environment, g=graph
+        statement.output_components,
+        environment=environment,
+        g=graph,
+        target_grain=statement.grain,
     )
     if hooks:
         for hook in hooks:
             hook.process_root_strategy_node(ds)
     final_qds = ds.resolve()
+
+    # we if we have a where clause doing an existence check
+    # treat that as separate subquery
+    if (where := statement.where_clause) and where.existence_arguments:
+        for subselect in where.existence_arguments:
+            logger.info(
+                f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
+            )
+            eds = source_query_concepts(subselect, environment=environment, g=graph)
+
+            final_eds = eds.resolve()
+            # first_parent = final_qds.datasources[0]
+            first_parent = final_qds
+            first_parent.datasources.append(final_eds)
+            for x in final_eds.output_concepts:
+                if x.address not in first_parent.source_map:
+                    first_parent.source_map[x.address] = {final_eds}
     return final_qds
 
 

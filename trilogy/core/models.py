@@ -33,7 +33,13 @@ from pydantic import (
 )
 from lark.tree import Meta
 from pathlib import Path
-from trilogy.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
+from trilogy.constants import (
+    logger,
+    DEFAULT_NAMESPACE,
+    ENV_CACHE_NAME,
+    MagicConstants,
+    CONFIG,
+)
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
     INTERNAL_NAMESPACE,
@@ -129,7 +135,7 @@ class ConceptArgs(ABC):
         raise NotImplementedError
 
     @property
-    def existence_arguments(self) -> List["Concept"]:
+    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
         return []
 
     @property
@@ -620,6 +626,10 @@ class Grain(BaseModel):
         for sub in v2:
             if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
                 if all([c in v2 for c in sub.keys]):
+                    continue
+            elif sub.derivation == PurposeLineage.MERGE:
+                parents = sub.lineage.concepts
+                if any([p in v2 for p in parents]):
                     continue
             final.append(sub)
         v2 = sorted(final, key=lambda x: x.name)
@@ -1841,7 +1851,7 @@ class QueryDatasource(BaseModel):
         for k, _ in v.items():
             seen.add(k)
         for x in expected:
-            if x not in seen:
+            if x not in seen and CONFIG.validate_missing:
                 raise SyntaxError(
                     f"source map missing {x} on (expected {expected}, have {seen})"
                 )
@@ -2034,7 +2044,7 @@ class CTE(BaseModel):
     def validate_output_columns(cls, v):
         return unique(v, "address")
 
-    def inline_parent_datasource(self, parent: CTE) -> bool:
+    def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
         if not isinstance(ds_being_inlined, Datasource):
@@ -2066,6 +2076,8 @@ class CTE(BaseModel):
             elif v == parent.name:
                 self.source_map[k] = ds_being_inlined.name
         self.parent_ctes = [x for x in self.parent_ctes if x.name != parent.name]
+        if force_group:
+            self.group_to_grain = True
         return True
 
     def __add__(self, other: "CTE"):
@@ -2759,11 +2771,8 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
                 if isinstance(self.left, SelectGrain)
                 else self.left
             ),
-            right=(
-                self.right.with_select_grain(grain)
-                if isinstance(self.right, SelectGrain)
-                else self.right
-            ),
+            # the right side does NOT need to inherit select grain
+            right=self.right,
             operator=self.operator,
         )
 
@@ -2809,8 +2818,8 @@ class SubselectComparison(Comparison):
         return get_concept_arguments(self.left)
 
     @property
-    def existence_arguments(self) -> List[Concept]:
-        return get_concept_arguments(self.right)
+    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
+        return [tuple(get_concept_arguments(self.right))]
 
     def with_select_grain(self, grain: Grain):
         # there's no need to pass the select grain through to a subselect comparison
@@ -3002,7 +3011,7 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return output
 
     @property
-    def existence_arguments(self) -> List[Concept]:
+    def existence_arguments(self) -> List[Tuple[Concept]]:
         output = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
@@ -3013,6 +3022,18 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         else:
             output += get_concept_arguments(self.right)
         return output
+
+    def decompose(self):
+        chunks = []
+        if self.operator == BooleanOperator.AND:
+            for val in [self.left, self.right]:
+                if isinstance(val, Conditional):
+                    chunks.extend(val.decompose())
+                else:
+                    chunks.append(val)
+        else:
+            chunks.append(self)
+        return chunks
 
 
 class AggregateWrapper(Namespaced, SelectGrain, BaseModel):
@@ -3073,7 +3094,7 @@ class WhereClause(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> List[Concept]:
+    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
         return self.conditional.existence_arguments
 
     def with_namespace(self, namespace: str) -> WhereClause:
@@ -3314,7 +3335,7 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> List[Concept]:
+    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
         return self.concept_arguments
@@ -3386,6 +3407,12 @@ Function.model_rebuild()
 Grain.model_rebuild()
 
 
+def list_to_wrapper(args):
+    types = [arg_to_datatype(arg) for arg in args]
+    assert len(set(types)) == 1
+    return ListWrapper(args, type=types[0])
+
+
 def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
     if isinstance(arg, Function):
         return arg.output_datatype
@@ -3409,5 +3436,8 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
         if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
             return DataType.INTEGER
         return arg_to_datatype(arg.content)
+    elif isinstance(arg, list):
+        wrapper = list_to_wrapper(arg)
+        return ListType(type=wrapper.type)
     else:
         raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

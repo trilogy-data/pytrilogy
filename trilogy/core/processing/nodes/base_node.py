@@ -55,11 +55,14 @@ def resolve_concept_map(
         defaultdict(set)
     )
     full_addresses = {c.address for c in full_joins} if full_joins else set()
+    inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
-            if concept.address not in [t.address for t in inherited_inputs]:
+            if concept.address not in inherited:
+                continue
+            if concept.address in input.hidden_concepts:
                 continue
             if concept.address in full_addresses:
                 concept_map[concept.address].add(input)
@@ -70,6 +73,8 @@ def resolve_concept_map(
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in [t.address for t in inherited_inputs]:
+                continue
+            if concept.address in input.hidden_concepts:
                 continue
             if len(concept_map.get(concept.address, [])) == 0:
                 concept_map[concept.address].add(input)
@@ -108,6 +113,8 @@ class StrategyNode:
         force_group: bool | None = None,
         grain: Optional[Grain] = None,
         hidden_concepts: List[Concept] | None = None,
+        existence_concepts: List[Concept] | None = None,
+        virtual_output_concepts: List[Concept] | None = None,
     ):
         self.input_concepts: List[Concept] = (
             unique(input_concepts, "address") if input_concepts else []
@@ -131,6 +138,8 @@ class StrategyNode:
         self.force_group = force_group
         self.tainted = False
         self.hidden_concepts = hidden_concepts or []
+        self.existence_concepts = existence_concepts or []
+        self.virtual_output_concepts = virtual_output_concepts or []
         for parent in self.parents:
             if not parent:
                 raise SyntaxError("Unresolvable parent")
@@ -162,12 +171,11 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        # if conditional:
-        #     for condition in conditions[1:]:
-        #         conditional += condition
         grain = Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
-            parent_sources, self.output_concepts, self.input_concepts
+            parent_sources,
+            self.output_concepts,
+            self.input_concepts + self.existence_concepts,
         )
         return QueryDatasource(
             input_concepts=self.input_concepts,

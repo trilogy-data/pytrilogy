@@ -111,6 +111,7 @@ from trilogy.parsing.common import (
     filter_item_to_concept,
     constant_to_concept,
     arbitrary_to_concept,
+    list_to_wrapper,
 )
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
@@ -138,7 +139,7 @@ grammar = r"""
     //<customer_id,country>.property local_alias STRING
     concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) IDENTIFIER "<" "-" expr
+    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | IDENTIFIER) "<" "-" expr
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<" "-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
@@ -179,13 +180,11 @@ grammar = r"""
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? comment* order_by? comment* limit? comment*
 
-
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)* ","?
 
     align_clause: align_item ("," align_item)*  ","?
 
     // merge statemment
-
     merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? comment*
 
     // FUNCTION blocks
@@ -193,7 +192,6 @@ grammar = r"""
     function_binding_item: IDENTIFIER ":" data_type
     function_binding_list: (function_binding_item ",")* function_binding_item ","?
     raw_function: "bind" "sql"  IDENTIFIER  "("  function_binding_list ")" "-" ">" data_type "as"i MULTILINE_STRING
-
     
     // user_id where state = Mexico
     filter_item: "filter"i IDENTIFIER where
@@ -249,9 +247,9 @@ grammar = r"""
 
     COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!="  )
     
-    comparison: (expr COMPARISON_OPERATOR expr) | (expr array_comparison expr_tuple)
+    comparison: (expr COMPARISON_OPERATOR expr) 
 
-    subselect_comparison: expr array_comparison expr
+    subselect_comparison: expr array_comparison expr | (expr array_comparison expr_tuple)
     
     expr_tuple: "("  (expr ",")* expr ","?  ")"
 
@@ -267,7 +265,6 @@ grammar = r"""
     
     // functions
     
-    //math TODO: add syntactic sugar
     fadd: ("add"i "(" expr "," expr ")" ) | ( expr "+" expr )
     fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
     fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
@@ -738,10 +735,17 @@ class ParseToObjects(Transformer):
         purpose = args[0]
         if purpose == Purpose.AUTO:
             purpose = None
-        name = args[1]
-        lookup, namespace, name, parent_concept = parse_concept_reference(
-            name, self.environment, purpose
-        )
+        raw_name = args[1]
+        if isinstance(raw_name, str):
+            lookup, namespace, name, parent_concept = parse_concept_reference(
+                raw_name, self.environment, purpose
+            )
+        else:
+            keys, name = raw_name
+            if "." in name:
+                namespace, name = name.rsplit(".", 1)
+            else:
+                namespace = self.environment.namespace or DEFAULT_NAMESPACE
         source_value = args[2]
         # we need to strip off every parenthetical to see what is being assigned.
         while isinstance(source_value, Parenthetical):
@@ -1207,26 +1211,28 @@ class ParseToObjects(Transformer):
         return float(args[0])
 
     def array_lit(self, args):
-        types = [arg_to_datatype(arg) for arg in args]
-        assert len(set(types)) == 1
-        return ListWrapper(args, type=types[0])
+        return list_to_wrapper(args)
 
     def literal(self, args):
         return args[0]
 
     def comparison(self, args) -> Comparison:
+        if args[1] == ComparisonOperator.IN:
+            raise SyntaxError
         return Comparison(left=args[0], right=args[2], operator=args[1])
 
     @v_args(meta=True)
     def subselect_comparison(self, meta: Meta, args) -> SubselectComparison:
         right = args[2]
-        if not isinstance(right, Concept):
+        while isinstance(right, Parenthetical):
+            right = right.content
+        if isinstance(right, (FilterItem, WindowItem, AggregateWrapper, ListWrapper)):
             right = arbitrary_to_concept(
                 right,
                 namespace=self.environment.namespace,
                 name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(right))}",
             )
-            self.environment.add_concept(right)
+            self.environment.add_concept(right, meta=meta)
         return SubselectComparison(
             left=args[0],
             right=right,

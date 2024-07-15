@@ -105,6 +105,7 @@ class MergeNode(StrategyNode):
         grain: Grain | None = None,
         conditions: Conditional | None = None,
         hidden_concepts: List[Concept] | None = None,
+        virtual_output_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -119,10 +120,12 @@ class MergeNode(StrategyNode):
             grain=grain,
             conditions=conditions,
             hidden_concepts=hidden_concepts,
+            virtual_output_concepts=virtual_output_concepts,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
         self.node_joins = node_joins
+
         final_joins = []
         if self.node_joins:
             for join in self.node_joins:
@@ -319,8 +322,8 @@ class MergeNode(StrategyNode):
             source_type=self.source_type,
             source_map=resolve_concept_map(
                 parent_sources,
-                self.output_concepts,
-                self.input_concepts,
+                targets=self.output_concepts,
+                inherited_inputs=self.input_concepts + self.existence_concepts,
                 full_joins=full_join_concepts,
             ),
             joins=qd_joins,

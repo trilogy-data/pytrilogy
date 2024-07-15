@@ -273,7 +273,11 @@ class BaseDialect:
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
-                rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
+                # for cases when we've optimized this
+                if len(cte.output_columns) == 1:
+                    rval = self.render_expr(c.lineage.content, cte=cte)
+                else:
+                    rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, MultiSelectStatement):
@@ -363,9 +367,13 @@ class BaseDialect:
             assert cte, "Subselects must be rendered with a CTE in context"
             if isinstance(e.right, Concept):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {self.render_expr(e.right, cte=cte, cte_map=cte_map)} from {cte.source_map[e.right.address][0]})"
+            elif isinstance(e.right, ListWrapper):
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
+            elif isinstance(e.right, (str, int, bool, float, list)):
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
             else:
                 raise NotImplementedError(
-                    f"Subselects must be a concept, got {e.right}"
+                    f"Subselects must be a concept, got {type(e.right)} {e.right}"
                 )
         elif isinstance(e, Comparison):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
@@ -639,7 +647,7 @@ class BaseDialect:
             filter = set(
                 [
                     str(x.address)
-                    for x in query.where_clause.concept_arguments
+                    for x in query.where_clause.row_arguments
                     if not x.derivation == PurposeLineage.CONSTANT
                 ]
             )
@@ -650,7 +658,7 @@ class BaseDialect:
 
             if not found:
                 raise NotImplementedError(
-                    f"Cannot generate query with filtering on grain {filter} that is"
+                    f"Cannot generate query with filtering on row arguments {filter} that is"
                     f" not a subset of the query output grain {query_output}. Use a"
                     " filtered concept instead."
                 )

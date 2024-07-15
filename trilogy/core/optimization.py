@@ -38,6 +38,7 @@ class InlineDatasource(OptimizationRule):
             f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
         )
         to_inline: list[CTE] = []
+        force_group = False
         for parent_cte in cte.parent_ctes:
             if not parent_cte.is_root_datasource:
                 self.log(f"parent {parent_cte.name} is not root")
@@ -55,15 +56,18 @@ class InlineDatasource(OptimizationRule):
                 continue
             root_outputs = {x.address for x in root.output_concepts}
             cte_outputs = {x.address for x in parent_cte.output_columns}
+            grain_components = {x.address for x in root.grain.components}
             if not cte_outputs.issubset(root_outputs):
                 self.log(f"Not all {parent_cte.name} outputs are found on datasource")
                 continue
-
+            if not grain_components.issubset(cte_outputs):
+                self.log("Not all datasource components in cte outputs, forcing group")
+                force_group = True
             to_inline.append(parent_cte)
 
         for replaceable in to_inline:
             self.log(f"Inlining parent {replaceable.name}")
-            cte.inline_parent_datasource(replaceable)
+            cte.inline_parent_datasource(replaceable, force_group=force_group)
 
         return optimized
 
@@ -107,7 +111,7 @@ class PredicatePushdown(OptimizationRule):
             f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
         )
         if isinstance(cte.condition, Conditional):
-            candidates = decompose_condition(cte.condition)
+            candidates = cte.condition.decompose()
         else:
             candidates = [cte.condition]
         logger.info(f"Have {len(candidates)} candidates to try to push down")
