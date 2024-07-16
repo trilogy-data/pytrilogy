@@ -340,14 +340,15 @@ def validate_stack(
     stack: List[StrategyNode],
     concepts: List[Concept],
     accept_partial: bool = False,
-) -> tuple[ValidationResult, set[str], set[str], set[str]]:
+) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
     found_map = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
+    virtual_addresses: set[str] = set()
     for node in stack:
         resolved = node.resolve()
-        for concept in resolved.output_concepts + node.virtual_output_concepts:
+        for concept in resolved.output_concepts:
             found_map[str(node)].add(concept)
             if concept not in node.partial_concepts:
                 found_addresses.add(concept.address)
@@ -355,11 +356,20 @@ def validate_stack(
                 # remove it from our partial tracking
                 if concept.address in partial_addresses:
                     partial_addresses.remove(concept.address)
+                if concept.address in virtual_addresses:
+                    virtual_addresses.remove(concept.address)
             if concept in node.partial_concepts:
+                if concept.address in non_partial_addresses:
+                    continue
                 partial_addresses.add(concept.address)
                 if accept_partial:
                     found_addresses.add(concept.address)
                     found_map[str(node)].add(concept)
+        for concept in node.virtual_output_concepts:
+            if concept.address in non_partial_addresses:
+                continue
+            found_addresses.add(concept.address)
+            virtual_addresses.add(concept.address)
     # zip in those we know we found
     if not all([c.address in found_addresses for c in concepts]):
         return (
@@ -367,12 +377,13 @@ def validate_stack(
             found_addresses,
             {c.address for c in concepts if c.address not in found_addresses},
             partial_addresses,
+            virtual_addresses
         )
     graph_count, graphs = get_disconnected_components(found_map)
     if graph_count in (0, 1):
-        return ValidationResult.COMPLETE, found_addresses, set(), partial_addresses
+        return ValidationResult.COMPLETE, found_addresses, set(), partial_addresses, virtual_addresses
     # if we have too many subgraphs, we need to keep searching
-    return ValidationResult.DISCONNECTED, found_addresses, set(), partial_addresses
+    return ValidationResult.DISCONNECTED, found_addresses, set(), partial_addresses, virtual_addresses
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -473,7 +484,7 @@ def _search_concepts(
                     skip.add(priority_concept.address)
                 break
         attempted.add(priority_concept.address)
-        complete, found, missing, partial = validate_stack(
+        complete, found, missing, partial, virtual = validate_stack(
             stack, mandatory_list, accept_partial
         )
 
@@ -490,7 +501,7 @@ def _search_concepts(
             break
 
     logger.info(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all_mandatory - found}), attempted {attempted}"
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all_mandatory - found}), attempted {attempted}, virtual {virtual}"
     )
     if complete == ValidationResult.COMPLETE:
         all_partial = [
@@ -504,6 +515,7 @@ def _search_concepts(
                 ]
             )
         ]
+        non_virtual = [c for c in mandatory_list if c.address not in virtual]
         if len(stack) == 1:
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning just that node"
@@ -511,17 +523,13 @@ def _search_concepts(
             return stack[0]
 
         output = MergeNode(
-            input_concepts=mandatory_list,
-            output_concepts=mandatory_list,
+            input_concepts=non_virtual,
+            output_concepts=non_virtual,
             environment=environment,
             g=g,
             parents=stack,
             depth=depth,
             partial_concepts=all_partial,
-            # always hide merge concepts
-            hidden_concepts=[
-                x for x in mandatory_list if x.derivation == PurposeLineage.MERGE
-            ],
         )
 
         # ensure we can resolve our final merge

@@ -197,11 +197,6 @@ select
 
     executor.execute_text(test)
 
-    # for x, v in executor.environment.datasources.items():
-    #     print(x)
-    #     print(v.grain)
-    #     print([str(z) for z in v.output_concepts])
-    # remove raw data
     del executor.environment.datasources["raw_data"]
     executor.execute_text(
         """ select

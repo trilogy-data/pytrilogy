@@ -10,6 +10,7 @@ from trilogy.utility import unique
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.graph_utils import extract_mandatory_subgraphs
+from trilogy.core.enums import PurposeLineage
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 
@@ -152,8 +153,8 @@ def gen_merge_node(
         parents.append(parent)
 
     return MergeNode(
-        input_concepts=[environment.concepts[x] for x in shortest.reduced_concepts],
-        output_concepts=all_concepts,
+        input_concepts=[environment.concepts[x] for x in shortest.reduced_concepts if environment.concepts[x].derivation != PurposeLineage.MERGE],
+        output_concepts=[x for x in all_concepts if x.derivation != PurposeLineage.MERGE],
         environment=environment,
         g=g,
         parents=parents,

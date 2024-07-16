@@ -63,7 +63,7 @@ class GroupNode(StrategyNode):
         if (
             comp_grain == grain
             and self.output_lcl == self.input_lcl
-            and self.force_group is False
+            and self.force_group is not True
         ):
             # if there is no group by, and inputs equal outputs
             # return the parent

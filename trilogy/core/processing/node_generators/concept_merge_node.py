@@ -119,15 +119,15 @@ def gen_concept_merge_node(
     final_outputs = outputs + additional_relevant + [concept]
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
-        output_concepts=[x for x in final_outputs],
-        hidden_concepts=[
-            x for x in final_outputs if x.derivation == PurposeLineage.MERGE
-        ],
+        output_concepts=[x for x in final_outputs if x.derivation != PurposeLineage.MERGE],
         environment=environment,
         g=g,
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
+        virtual_output_concepts=[
+            x for x in final_outputs if x.derivation == PurposeLineage.MERGE
+        ]
     )
 
     qds = node.rebuild_cache()

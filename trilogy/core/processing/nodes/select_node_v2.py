@@ -119,6 +119,7 @@ class SelectNode(StrategyNode):
             if x.address not in source_map and x.derivation in (
                 PurposeLineage.MULTISELECT,
                 PurposeLineage.MERGE,
+                PurposeLineage.FILTER
             ):
                 source_map[x.address] = set()
 
