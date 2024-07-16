@@ -135,7 +135,7 @@ class ConceptArgs(ABC):
         raise NotImplementedError
 
     @property
-    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return []
 
     @property
@@ -2818,7 +2818,7 @@ class SubselectComparison(Comparison):
         return get_concept_arguments(self.left)
 
     @property
-    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return [tuple(get_concept_arguments(self.right))]
 
     def with_select_grain(self, grain: Grain):
@@ -3011,7 +3011,7 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return output
 
     @property
-    def existence_arguments(self) -> List[Tuple[Concept]]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         output = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
@@ -3094,7 +3094,7 @@ class WhereClause(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return self.conditional.existence_arguments
 
     def with_namespace(self, namespace: str) -> WhereClause:
@@ -3335,7 +3335,7 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> List[Tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
         return self.concept_arguments
