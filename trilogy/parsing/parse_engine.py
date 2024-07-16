@@ -101,6 +101,7 @@ from trilogy.core.models import (
     ConceptDerivation,
     RowsetDerivationStatement,
     LooseConceptList,
+    list_to_wrapper,
 )
 from trilogy.parsing.exceptions import ParseError
 from trilogy.utility import string_to_hash
@@ -111,8 +112,8 @@ from trilogy.parsing.common import (
     filter_item_to_concept,
     constant_to_concept,
     arbitrary_to_concept,
-    list_to_wrapper,
 )
+
 
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
 

@@ -627,7 +627,9 @@ class Grain(BaseModel):
             if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
                 if all([c in v2 for c in sub.keys]):
                     continue
-            elif sub.derivation == PurposeLineage.MERGE:
+            elif sub.derivation == PurposeLineage.MERGE and isinstance(
+                sub.lineage, MergeStatement
+            ):
                 parents = sub.lineage.concepts
                 if any([p in v2 for p in parents]):
                     continue
@@ -3015,12 +3017,8 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         output = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
-        else:
-            output += get_concept_arguments(self.left)
         if isinstance(self.right, ConceptArgs):
             output += self.right.existence_arguments
-        else:
-            output += get_concept_arguments(self.right)
         return output
 
     def decompose(self):
@@ -3338,7 +3336,7 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
     def existence_arguments(self) -> list[tuple["Concept", ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
-        return self.concept_arguments
+        return []
 
     @property
     def input(self):

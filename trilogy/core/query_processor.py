@@ -265,7 +265,7 @@ def get_query_datasources(
             logger.info(
                 f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
             )
-            eds = source_query_concepts(subselect, environment=environment, g=graph)
+            eds = source_query_concepts([*subselect], environment=environment, g=graph)
 
             final_eds = eds.resolve()
             # first_parent = final_qds.datasources[0]

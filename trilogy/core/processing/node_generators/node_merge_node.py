@@ -97,21 +97,20 @@ def gen_merge_node(
     join_candidates.sort(key=lambda x: sum([len(v) for v in x.paths.values()]))
     if not join_candidates:
         return None
-    join_additions: set[set[str]] = []
+    join_additions: list[set[str]] = []
     for candidate in join_candidates:
         join_additions.append(candidate.reduced_concepts)
 
-    common = set()
+    common: set[str] = set()
+    final_candidates: list[set[str]] = []
     # find all values that show up in every join_additions
-    for x in join_additions:
+    for ja in join_additions:
         if not common:
-            common = x
+            common = ja
         else:
-            common = common.intersection(x)
-    final_candidates = []
-    for x in join_additions:
-        if all(x.issubset(y) for y in join_additions):
-            final_candidates.append(x)
+            common = common.intersection(ja)
+        if all(ja.issubset(y) for y in join_additions):
+            final_candidates.append(ja)
 
     if not final_candidates:
         filtered_paths = [x.difference(common) for x in join_additions]

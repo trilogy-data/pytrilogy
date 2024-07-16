@@ -2,7 +2,7 @@ from typing import List
 
 
 from trilogy.core.enums import JoinType
-from trilogy.core.models import Concept, Environment
+from trilogy.core.models import Concept, Environment, FilterItem
 from trilogy.core.processing.nodes import (
     FilterNode,
     MergeNode,
@@ -28,11 +28,12 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-) -> MergeNode | FilterNode | None:
+) -> StrategyNode | None:
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept)
     )
-
+    if not isinstance(concept.lineage, FilterItem):
+        raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
 
     logger.info(
@@ -59,7 +60,8 @@ def gen_filter_node(
         optimized_pushdown = False
 
     if optimized_pushdown:
-        parent.conditions = where.conditional
+        if parent.conditions:
+            parent.conditions = where.conditional
         parent.output_concepts = [concept]
         parent.rebuild_cache()
         return parent
