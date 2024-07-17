@@ -34,7 +34,6 @@ class GroupNode(StrategyNode):
         depth: int = 0,
         partial_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
-        grain: Grain | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -117,4 +116,17 @@ class GroupNode(StrategyNode):
             grain=grain,
             partial_concepts=self.partial_concepts,
             condition=self.conditions,
+        )
+
+    def copy(self) -> "GroupNode":
+        return GroupNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=self.parents,
+            depth=self.depth,
+            partial_concepts=list(self.partial_concepts),
+            force_group=self.force_group,
         )

@@ -32,3 +32,14 @@ class WindowNode(StrategyNode):
         base = super()._resolve()
         base.grain = Grain(components=self.input_concepts)
         return base
+
+    def copy(self) -> "WindowNode":
+        return self.__class__(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=self.parents,
+            depth=self.depth,
+        )

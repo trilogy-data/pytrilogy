@@ -52,3 +52,15 @@ class UnnestNode(StrategyNode):
         base.source_map[self.unnest_concept.address] = {unnest}
         base.join_derived_concepts = [self.unnest_concept]
         return base
+
+    def copy(self) -> "UnnestNode":
+        return self.__class__(
+            unnest_concept=self.unnest_concept,
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=self.parents,
+            depth=self.depth,
+        )

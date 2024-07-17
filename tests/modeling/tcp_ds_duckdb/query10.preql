@@ -34,9 +34,8 @@ with base as select
     customer.demographics.employed_dependent_count,
     customer.demographics.college_dependent_count,
 WHERE
-customer.id in (
-    relevant_customers
-);
+customer.id in relevant_customers
+;
 
 SELECT
     base.customer.demographics.gender,

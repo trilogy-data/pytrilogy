@@ -1,6 +1,5 @@
 from collections import defaultdict
 from typing import List, Optional, Callable
-from copy import deepcopy
 
 from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage, Granularity, FunctionType
@@ -431,7 +430,7 @@ def search_concepts(
     )
     # a node may be mutated after be cached; always store a copy
     history.search_to_history(
-        mandatory_list, accept_partial, deepcopy(result) if result else None
+        mandatory_list, accept_partial, result.copy() if result else None
     )
     return result
 

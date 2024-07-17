@@ -7,7 +7,6 @@ from .base_node import StrategyNode, NodeJoin
 from .unnest_node import UnnestNode
 from pydantic import BaseModel, Field, ConfigDict
 from trilogy.core.models import Concept, Environment
-from copy import deepcopy
 
 
 class History(BaseModel):
@@ -39,7 +38,10 @@ class History(BaseModel):
                 f"Parent key {parent_key} is the same as the current key {key}"
             )
         if key in self.history:
-            return deepcopy(self.history[key])
+            node = self.history[key]
+            if node:
+                return node.copy()
+            return node
         return False
 
     def log_start(

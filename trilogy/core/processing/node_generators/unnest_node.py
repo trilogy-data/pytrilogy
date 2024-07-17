@@ -2,7 +2,7 @@ from typing import List
 
 
 from trilogy.core.models import Concept, Function
-from trilogy.core.processing.nodes import SelectNode, UnnestNode, History
+from trilogy.core.processing.nodes import SelectNode, UnnestNode, History, StrategyNode
 
 
 def gen_unnest_node(
@@ -13,7 +13,7 @@ def gen_unnest_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-) -> UnnestNode | None:
+) -> StrategyNode | None:
     arguments = []
     if isinstance(concept.lineage, Function):
         arguments = concept.lineage.concept_arguments

@@ -106,7 +106,7 @@ def test_in_select(test_environment: Environment, test_executor: Executor):
     SELECT
         order_id,
     WHERE
-        order_id in (filtered)
+        order_id in filtered
 
     ;"""
     _, statements = parse(test_select, test_environment)

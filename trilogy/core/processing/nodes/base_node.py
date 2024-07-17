@@ -211,6 +211,24 @@ class StrategyNode:
         self.resolution_cache = qds
         return qds
 
+    def copy(self) -> "StrategyNode":
+        return self.__class__(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=list(self.parents),
+            partial_concepts=list(self.partial_concepts),
+            depth=self.depth,
+            conditions=self.conditions,
+            force_group=self.force_group,
+            grain=self.grain,
+            hidden_concepts=list(self.hidden_concepts),
+            existence_concepts=list(self.existence_concepts),
+            virtual_output_concepts=list(self.virtual_output_concepts),
+        )
+
 
 @dataclass
 class NodeJoin:

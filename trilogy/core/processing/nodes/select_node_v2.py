@@ -5,14 +5,14 @@ from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.models import (
-    Datasource,
+    Function,
+    Grain,
     QueryDatasource,
     SourceType,
-    Environment,
     Concept,
-    Grain,
-    Function,
+    Environment,
     UnnestJoin,
+    Datasource,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -53,6 +53,19 @@ class StaticSelectNode(StrategyNode):
         if self.datasource.grain == Grain():
             raise NotImplementedError
         return self.datasource
+
+    def copy(self) -> "StaticSelectNode":
+        return StaticSelectNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            datasource=self.datasource,
+            depth=self.depth,
+            partial_concepts=(
+                list(self.partial_concepts) if self.partial_concepts else None
+            ),
+        )
 
 
 class SelectNode(StrategyNode):
@@ -194,8 +207,33 @@ class SelectNode(StrategyNode):
             f"Could not find any way to associate required concepts {required}"
         )
 
+    def copy(self) -> "SelectNode":
+        return SelectNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            datasource=self.datasource,
+            depth=self.depth,
+            parents=self.parents,
+            whole_grain=self.whole_grain,
+            partial_concepts=list(self.partial_concepts),
+            accept_partial=self.accept_partial,
+            grain=self.grain,
+            force_group=self.force_group,
+        )
+
 
 class ConstantNode(SelectNode):
     """Represents a constant value."""
 
-    pass
+    def copy(self) -> "ConstantNode":
+        return ConstantNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            datasource=self.datasource,
+            depth=self.depth,
+            partial_concepts=list(self.partial_concepts),
+        )

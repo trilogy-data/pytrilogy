@@ -88,7 +88,6 @@ def dm_to_strategy_node(
             parents=[bcandidate],
             depth=depth,
             partial_concepts=bcandidate.partial_concepts,
-            grain=Grain(components=dm.matched.concepts),
         )
     else:
         candidate = bcandidate
@@ -366,7 +365,6 @@ def gen_select_node_from_table(
                 parents=[bcandidate],
                 depth=depth,
                 partial_concepts=bcandidate.partial_concepts,
-                grain=target_grain,
             )
         else:
             candidate = bcandidate

@@ -33,7 +33,7 @@ class FilterNode(StrategyNode):
         depth: int = 0,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         partial_concepts: List[Concept] | None = None,
-        force_group: bool = False,
+        force_group: bool | None = False,
     ):
         super().__init__(
             output_concepts=output_concepts,
@@ -46,4 +46,18 @@ class FilterNode(StrategyNode):
             conditions=conditions,
             partial_concepts=partial_concepts,
             force_group=force_group,
+        )
+
+    def copy(self) -> "FilterNode":
+        return FilterNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=self.parents,
+            depth=self.depth,
+            conditions=self.conditions,
+            partial_concepts=list(self.partial_concepts),
+            force_group=self.force_group,
         )

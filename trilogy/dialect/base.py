@@ -367,9 +367,9 @@ class BaseDialect:
             assert cte, "Subselects must be rendered with a CTE in context"
             if isinstance(e.right, Concept):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {self.render_expr(e.right, cte=cte, cte_map=cte_map)} from {cte.source_map[e.right.address][0]})"
-            elif isinstance(e.right, ListWrapper):
+            elif isinstance(e.right, (ListWrapper, Parenthetical)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
-            elif isinstance(e.right, (str, int, bool, float, list, Parenthetical)):
+            elif isinstance(e.right, (str, int, bool, float, list)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
             else:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
