@@ -88,7 +88,7 @@ class SelectNode(StrategyNode):
         partial_concepts: List[Concept] | None = None,
         accept_partial: bool = False,
         grain: Optional[Grain] = None,
-        force_group: bool = False,
+        force_group: bool | None = False,
     ):
         super().__init__(
             input_concepts=input_concepts,
