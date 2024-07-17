@@ -369,12 +369,10 @@ class BaseDialect:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {self.render_expr(e.right, cte=cte, cte_map=cte_map)} from {cte.source_map[e.right.address][0]})"
             elif isinstance(e.right, ListWrapper):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
-            elif isinstance(e.right, (str, int, bool, float, list)):
+            elif isinstance(e.right, (str, int, bool, float, list, Parenthetical)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
             else:
-                raise NotImplementedError(
-                    f"Subselects must be a concept, got {type(e.right)} {e.right}"
-                )
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
         elif isinstance(e, Comparison):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):

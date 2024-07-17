@@ -287,9 +287,6 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             MultiSelectStatement | MergeStatement,
         ]
     ] = None
-    # lineage: Annotated[Optional[
-    #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
-    # ], WrapValidator(lineage_validator)] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
@@ -2506,9 +2503,17 @@ class Environment(BaseModel):
         for datasource in self.datasources.values():
             for concept in datasource.output_concepts:
                 concrete_addresses.add(concept.address)
+        current_mat = [x.address for x in self.materialized_concepts]
         self.materialized_concepts = [
             c for c in self.concepts.values() if c.address in concrete_addresses
         ]
+        new = [
+            x.address
+            for x in self.materialized_concepts
+            if x.address not in current_mat
+        ]
+        if new:
+            logger.info(f"Environment added new materialized concepts {new}")
         for concept in self.concepts.values():
             if concept.derivation == PurposeLineage.MERGE:
                 ms = concept.lineage
@@ -2666,6 +2671,17 @@ class Environment(BaseModel):
         )
         self.gen_concept_list_caches()
         return datasource
+
+    def delete_datasource(
+        self,
+        address: str,
+        meta: Meta | None = None,
+    ) -> bool:
+        if address in self.datasources:
+            del self.datasources[address]
+            self.gen_concept_list_caches()
+            return True
+        return False
 
 
 class LazyEnvironment(Environment):

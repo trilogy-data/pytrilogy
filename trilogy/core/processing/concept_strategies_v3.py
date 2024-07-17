@@ -1,6 +1,6 @@
 from collections import defaultdict
 from typing import List, Optional, Callable
-
+from copy import deepcopy
 
 from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage, Granularity, FunctionType
@@ -278,9 +278,10 @@ def generate_node(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating multiselect node with optional {[x.address for x in local_optional]}"
         )
-        return gen_concept_merge_node(
+        node = gen_concept_merge_node(
             concept, local_optional, environment, g, depth + 1, source_concepts, history
         )
+        return node
     elif concept.derivation == PurposeLineage.CONSTANT:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating constant node"
@@ -377,13 +378,25 @@ def validate_stack(
             found_addresses,
             {c.address for c in concepts if c.address not in found_addresses},
             partial_addresses,
-            virtual_addresses
+            virtual_addresses,
         )
     graph_count, graphs = get_disconnected_components(found_map)
     if graph_count in (0, 1):
-        return ValidationResult.COMPLETE, found_addresses, set(), partial_addresses, virtual_addresses
+        return (
+            ValidationResult.COMPLETE,
+            found_addresses,
+            set(),
+            partial_addresses,
+            virtual_addresses,
+        )
     # if we have too many subgraphs, we need to keep searching
-    return ValidationResult.DISCONNECTED, found_addresses, set(), partial_addresses, virtual_addresses
+    return (
+        ValidationResult.DISCONNECTED,
+        found_addresses,
+        set(),
+        partial_addresses,
+        virtual_addresses,
+    )
 
 
 def depth_to_prefix(depth: int) -> str:
@@ -416,7 +429,10 @@ def search_concepts(
         accept_partial=accept_partial,
         history=history,
     )
-    history.search_to_history(mandatory_list, accept_partial, result)
+    # a node may be mutated after be cached; always store a copy
+    history.search_to_history(
+        mandatory_list, accept_partial, deepcopy(result) if result else None
+    )
     return result
 
 
@@ -490,7 +506,7 @@ def _search_concepts(
 
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} flag for accepting partial addresses is "
-            f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial}), attempted {attempted}"
+            f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial} virtual {virtual}), attempted {attempted}"
         )
         # early exit if we have a complete stack with one node
         # we can only early exit if we have a complete stack
@@ -517,10 +533,11 @@ def _search_concepts(
         ]
         non_virtual = [c for c in mandatory_list if c.address not in virtual]
         if len(stack) == 1:
+            output = stack[0]
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning just that node"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
             )
-            return stack[0]
+            return output
 
         output = MergeNode(
             input_concepts=non_virtual,
@@ -582,7 +599,7 @@ def _search_concepts(
             )
             return partial_search
     logger.error(
-        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {all_mandatory - found}"
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve concepts {[c.address for c in mandatory_list]}, network outcome was {complete}, missing {all_mandatory - found},"
     )
     return None
 
@@ -591,7 +608,6 @@ def source_query_concepts(
     output_concepts: List[Concept],
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
-    target_grain: Grain | None = None,
 ):
     if not g:
         g = generate_graph(environment)

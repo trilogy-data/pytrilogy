@@ -204,6 +204,8 @@ def is_direct_return_eligible(
     for x in derived_concepts:
         if x.derivation == PurposeLineage.WINDOW:
             return False
+        if x.derivation == PurposeLineage.UNNEST:
+            return False
         if x.derivation == PurposeLineage.AGGREGATE:
             if x.address in conditions:
                 return False
@@ -243,9 +245,16 @@ def optimize_ctes(
     if is_direct_return_eligible(root_cte, select):
         root_cte.order_by = select.order_by
         root_cte.limit = select.limit
-        root_cte.condition = (
-            select.where_clause.conditional if select.where_clause else None
-        )
+        if select.where_clause:
+
+            if root_cte.condition:
+                root_cte.condition = Conditional(
+                    left=root_cte.condition,
+                    operator=BooleanOperator.AND,
+                    right=select.where_clause.conditional,
+                )
+            else:
+                root_cte.condition = select.where_clause.conditional
         root_cte.requires_nesting = False
         sort_select_output(root_cte, select)
 

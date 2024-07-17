@@ -54,16 +54,21 @@ def gen_filter_node(
         )
         return None
 
-    if not local_optional:
+    if not local_optional and not parent_existence_concepts:
         optimized_pushdown = True
     else:
         optimized_pushdown = False
 
     if optimized_pushdown:
         if parent.conditions:
+            parent.conditions = parent.conditions + where.conditional
+        else:
             parent.conditions = where.conditional
         parent.output_concepts = [concept]
         parent.rebuild_cache()
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
+        )
         return parent
 
     core_parents.append(parent)

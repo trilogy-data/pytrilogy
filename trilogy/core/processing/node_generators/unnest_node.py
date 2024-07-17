@@ -2,7 +2,7 @@ from typing import List
 
 
 from trilogy.core.models import Concept, Function
-from trilogy.core.processing.nodes import UnnestNode, History
+from trilogy.core.processing.nodes import SelectNode, UnnestNode, History
 
 
 def gen_unnest_node(
@@ -27,11 +27,22 @@ def gen_unnest_node(
         )
         if not parent:
             return None
-    return UnnestNode(
-        unnest_concept=concept,
-        input_concepts=arguments + local_optional,
+    # we need to always nest an unnest node,
+    # as unnest operations are not valid in all situations
+
+    return SelectNode(
+        input_concepts=[concept] + local_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
         g=g,
-        parents=([parent] if (arguments or local_optional) else []),
+        parents=[
+            UnnestNode(
+                unnest_concept=concept,
+                input_concepts=arguments + local_optional,
+                output_concepts=[concept] + local_optional,
+                environment=environment,
+                g=g,
+                parents=([parent] if (arguments or local_optional) else []),
+            )
+        ],
     )

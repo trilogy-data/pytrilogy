@@ -251,7 +251,6 @@ def get_query_datasources(
         statement.output_components,
         environment=environment,
         g=graph,
-        target_grain=statement.grain,
     )
     if hooks:
         for hook in hooks:
@@ -262,6 +261,8 @@ def get_query_datasources(
     # treat that as separate subquery
     if (where := statement.where_clause) and where.existence_arguments:
         for subselect in where.existence_arguments:
+            if not subselect:
+                continue
             logger.info(
                 f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
             )

@@ -53,7 +53,7 @@ def dm_to_strategy_node(
         # we have to group
         else:
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(dm.matched)}, group to actual grain"
+                f"{padding(depth)}{LOGGER_PREFIX} not all grain components {target_grain} are in output {str(dm.matched)}, group to actual grain"
             )
             force_group = True
     elif all([x in dm.matched for x in datasource.grain.components]):
@@ -330,7 +330,7 @@ def gen_select_node_from_table(
             # we have to group
             else:
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(all_lcl)}, group to actual grain"
+                    f"{padding(depth)}{LOGGER_PREFIX} not all grain components {target_grain} are in output {str(all_lcl)}, group to actual grain"
                 )
                 force_group = True
         elif all([x in all_lcl for x in datasource.grain.components]):
@@ -475,6 +475,8 @@ def gen_select_node(
         target_grain = Grain()
         for ac in all_concepts:
             target_grain += ac.grain
+    if target_grain.abstract:
+        target_grain = Grain(components=all_concepts)
     if materialized_lcl != all_lcl:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "

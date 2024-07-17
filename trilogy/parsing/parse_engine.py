@@ -1225,9 +1225,9 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def subselect_comparison(self, meta: Meta, args) -> SubselectComparison:
         right = args[2]
-        while isinstance(right, Parenthetical):
-            right = right.content
-        if isinstance(right, (FilterItem, WindowItem, AggregateWrapper, ListWrapper)):
+        if isinstance(
+            right, (Function, FilterItem, WindowItem, AggregateWrapper, ListWrapper)
+        ):
             right = arbitrary_to_concept(
                 right,
                 namespace=self.environment.namespace,

@@ -111,7 +111,7 @@ class GroupNode(StrategyNode):
             source_map=resolve_concept_map(
                 parent_sources,
                 targets=self.output_concepts,
-                inherited_inputs=self.input_concepts + self.existence_concepts,
+                inherited_inputs=self.input_concepts,
             ),
             joins=[],
             grain=grain,

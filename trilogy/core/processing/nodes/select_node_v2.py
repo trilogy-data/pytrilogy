@@ -119,7 +119,7 @@ class SelectNode(StrategyNode):
             if x.address not in source_map and x.derivation in (
                 PurposeLineage.MULTISELECT,
                 PurposeLineage.MERGE,
-                PurposeLineage.FILTER
+                PurposeLineage.FILTER,
             ):
                 source_map[x.address] = set()
 
@@ -141,6 +141,7 @@ class SelectNode(StrategyNode):
                 c.concept for c in datasource.columns if not c.is_complete
             ],
             source_type=SourceType.DIRECT_SELECT,
+            condition=self.conditions,
             # select nodes should never group
             force_group=self.force_group,
         )
@@ -155,6 +156,7 @@ class SelectNode(StrategyNode):
             source_map={concept.address: set() for concept in self.all_concepts},
             datasources=[datasource],
             grain=datasource.grain,
+            condition=self.conditions,
             joins=[],
             partial_concepts=[],
             source_type=SourceType.CONSTANT,

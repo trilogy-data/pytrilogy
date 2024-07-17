@@ -153,8 +153,14 @@ def gen_merge_node(
         parents.append(parent)
 
     return MergeNode(
-        input_concepts=[environment.concepts[x] for x in shortest.reduced_concepts if environment.concepts[x].derivation != PurposeLineage.MERGE],
-        output_concepts=[x for x in all_concepts if x.derivation != PurposeLineage.MERGE],
+        input_concepts=[
+            environment.concepts[x]
+            for x in shortest.reduced_concepts
+            if environment.concepts[x].derivation != PurposeLineage.MERGE
+        ],
+        output_concepts=[
+            x for x in all_concepts if x.derivation != PurposeLineage.MERGE
+        ],
         environment=environment,
         g=g,
         parents=parents,
