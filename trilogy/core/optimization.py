@@ -118,7 +118,7 @@ class PredicatePushdown(OptimizationRule):
         for candidate in candidates:
             conditions = {x.address for x in candidate.concept_arguments}
             for parent_cte in cte.parent_ctes:
-                materialized = {k for k, v in parent_cte.source_map.items() if v != ""}
+                materialized = {k for k, v in parent_cte.source_map.items() if v != []}
                 if conditions.issubset(materialized):
                     if all(
                         [
