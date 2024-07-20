@@ -119,9 +119,30 @@ def test_in_select(test_environment: Environment, test_executor: Executor):
 
     datasource = get_query_datasources(test_environment, select)
 
-    assert "local.filtered" in datasource.source_map
+    assert "local.filtered" in datasource.existence_source_map
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2
     assert results[0] == (2,)
     assert results[1] == (4,)
+
+
+def test_window_clone(test_environment: Environment, test_executor: Executor):
+    test_select = """
+    auto nums <- unnest([1,2]);
+
+    auto filtered <- lag nums order by nums asc;
+
+    SELECT
+        filtered,
+        order_id,
+    WHERE
+        order_id in filtered
+
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 2
+    assert results[0] == (None, 1)
+    assert results[1] == (1, 1)

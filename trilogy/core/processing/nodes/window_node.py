@@ -34,7 +34,7 @@ class WindowNode(StrategyNode):
         return base
 
     def copy(self) -> "WindowNode":
-        return self.__class__(
+        return WindowNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,

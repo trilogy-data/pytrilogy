@@ -54,7 +54,7 @@ class UnnestNode(StrategyNode):
         return base
 
     def copy(self) -> "UnnestNode":
-        return self.__class__(
+        return UnnestNode(
             unnest_concept=self.unnest_concept,
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),

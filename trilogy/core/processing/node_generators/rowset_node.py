@@ -108,9 +108,11 @@ def gen_rowset_node(
     # but don't include anything aggregate at this point
     node.rebuild_cache()
     assert node.resolution_cache
+
     node.resolution_cache.grain = concept_list_to_grain(
         node.output_concepts, parent_sources=node.resolution_cache.datasources
     )
+
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:
         logger.info(

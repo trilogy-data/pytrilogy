@@ -1620,13 +1620,15 @@ class Datasource(Namespaced, BaseModel):
     def __add__(self, other):
         if not other == self:
             raise ValueError(
-                "Attempted to add two datasources that are not identical, this should"
-                " never happen"
+                "Attempted to add two datasources that are not identical, this is not a valid operation"
             )
         return self
 
+    def __repr__(self):
+        return f"Datasource<{self.namespace}.{self.identifier}@<{self.grain}>"
+
     def __str__(self):
-        return f"{self.namespace}.{self.identifier}@<{self.grain}>"
+        return self.__repr__()
 
     def __hash__(self):
         return (self.namespace + self.identifier).__hash__()
@@ -1795,6 +1797,7 @@ class QueryDatasource(BaseModel):
     input_concepts: List[Concept]
     output_concepts: List[Concept]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
+
     datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin | UnnestJoin]
@@ -1808,6 +1811,12 @@ class QueryDatasource(BaseModel):
     join_derived_concepts: List[Concept] = Field(default_factory=list)
     hidden_concepts: List[Concept] = Field(default_factory=list)
     force_group: bool | None = None
+    existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(
+        default_factory=dict
+    )
+
+    def __repr__(self):
+        return f"{self.identifier}@<{self.grain}>"
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
@@ -1857,7 +1866,7 @@ class QueryDatasource(BaseModel):
         return v
 
     def __str__(self):
-        return f"{self.identifier}@<{self.grain}>"
+        return self.__repr__()
 
     def __hash__(self):
         return (self.identifier).__hash__()
@@ -2019,10 +2028,11 @@ class CTE(BaseModel):
     name: str
     source: "QueryDatasource"
     output_columns: List[Concept]
-    source_map: Dict[str, str | list[str]]
+    source_map: Dict[str, list[str]]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
+    existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
     parent_ctes: List["CTE"] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
@@ -2033,6 +2043,7 @@ class CTE(BaseModel):
     limit: Optional[int] = None
     requires_nesting: bool = True
     base_name_override: Optional[str] = None
+    base_alias_override: Optional[str] = None
 
     @computed_field  # type: ignore
     @property
@@ -2059,6 +2070,7 @@ class CTE(BaseModel):
         # need to identify this before updating joins
         if self.base_name == parent.name:
             self.base_name_override = ds_being_inlined.safe_location
+            self.base_alias_override = ds_being_inlined.identifier
 
         for join in self.joins:
             if isinstance(join, InstantiatedUnnestJoin):
@@ -2168,7 +2180,8 @@ class CTE(BaseModel):
 
     @property
     def base_alias(self) -> str:
-
+        if self.base_alias_override:
+            return self.base_alias_override
         if self.is_root_datasource:
             return self.source.datasources[0].identifier
         relevant_joins = [j for j in self.joins if isinstance(j, Join)]

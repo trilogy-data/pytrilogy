@@ -17,6 +17,7 @@ from trilogy.core.models import (
 from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
 from dataclasses import dataclass
+from trilogy.constants import logger
 
 
 def concept_list_to_grain(
@@ -58,6 +59,7 @@ def resolve_concept_map(
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
         for concept in input.output_concepts:
+            logger.info(concept.address)
             if concept.address not in input.non_partial_concept_addresses:
                 continue
             if concept.address not in inherited:
@@ -86,7 +88,7 @@ def resolve_concept_map(
                 concept_map[concept.address].add(input)
     # this adds our new derived metrics, which are not created in this CTE
     for target in targets:
-        if target not in inherited_inputs:
+        if target.address not in inherited:
             # an empty source means it is defined in this CTE
             concept_map[target.address] = set()
     return concept_map

@@ -317,17 +317,21 @@ class MergeNode(StrategyNode):
             force_group = None
 
         qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
+        source_map = resolve_concept_map(
+            parent_sources,
+            targets=self.output_concepts,
+            inherited_inputs=self.input_concepts + self.existence_concepts,
+            full_joins=full_join_concepts,
+        )
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} source_map {str(source_map)}"
+        )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),
             datasources=final_datasets,
             source_type=self.source_type,
-            source_map=resolve_concept_map(
-                parent_sources,
-                targets=self.output_concepts,
-                inherited_inputs=self.input_concepts + self.existence_concepts,
-                full_joins=full_join_concepts,
-            ),
+            source_map=source_map,
             joins=qd_joins,
             grain=grain,
             partial_concepts=self.partial_concepts,

@@ -20,7 +20,7 @@ datasource catalog_sales (
     CS_SOLD_DATE_SK: date.id,
     CS_SOLD_TIME_SK: time.id,
     CS_SHIP_CUSTOMER_SK: ~customer.id,
-    CSITEM_SK: item.id,
+    CS_ITEM_SK: item.id,
     CS_SALES_PRICE: sales_price,
     CS_ORDER_NUMBER: order_number,
     CS_WHOLESALE_COST:  wholesale_cost,

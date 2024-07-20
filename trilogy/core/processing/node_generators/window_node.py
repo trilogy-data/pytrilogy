@@ -59,19 +59,21 @@ def gen_window_node(
         parents=[
             parent_node,
         ],
+        depth=depth,
     )
     window_node = MergeNode(
         parents=[_window_node],
         environment=environment,
         g=g,
-        input_concepts=_window_node.input_concepts,
+        input_concepts=[concept] + _window_node.input_concepts,
         output_concepts=_window_node.output_concepts,
         grain=_window_node.grain,
         force_group=False,
+        depth=depth,
     )
     if not local_optional:
         return window_node
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} group node requires enrichment")
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node requires enrichment")
     return gen_enrichment_node(
         window_node,
         join_keys=concept_to_relevant_joins(parent_concepts),

@@ -1,4 +1,4 @@
-from typing import List, Optional, Set, Union, Dict
+from typing import List, Optional, Set, Union, Dict, Tuple
 
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
@@ -84,47 +84,60 @@ def base_join_to_join(
 
 def generate_source_map(
     query_datasource: QueryDatasource, all_new_ctes: List[CTE]
-) -> Dict[str, str | list[str]]:
+) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
     source_map: Dict[str, list[str]] = defaultdict(list)
     # now populate anything derived in this level
     for qdk, qdv in query_datasource.source_map.items():
+        unnest = [x for x in qdv if isinstance(x, UnnestJoin)]
+        for x in unnest:
+            source_map[qdk] = []
         if (
             qdk not in source_map
             and len(qdv) == 1
             and isinstance(list(qdv)[0], UnnestJoin)
         ):
             source_map[qdk] = []
+        basic = [x for x in qdv if isinstance(x, Datasource)]
+        for base in basic:
+            source_map[qdk].append(base.name)
 
-        else:
-            for cte in all_new_ctes:
+        ctes = [x for x in qdv if isinstance(x, QueryDatasource)]
+        if ctes:
+            names = set([x.name for x in ctes])
+            matches = [cte for cte in all_new_ctes if cte.source.name in names]
+
+            if not matches and names:
+                raise SyntaxError(query_datasource.source_map)
+            for cte in matches:
                 output_address = [
                     x.address
                     for x in cte.output_columns
                     if x.address not in [z.address for z in cte.partial_concepts]
-                    and x.address not in [z.address for z in cte.hidden_concepts]
                 ]
                 if qdk in output_address:
                     source_map[qdk].append(cte.name)
             # now do a pass that accepts partials
-            # TODO: move this into a second loop by first creationg all sub sourcdes
+            # TODO: move this into a second loop by first creationg all sub sources
             # then loop through this
-            for cte in all_new_ctes:
-                output_address = [
-                    x.address
-                    for x in cte.output_columns
-                    if x.address not in [z.address for z in cte.hidden_concepts]
-                ]
-                if qdk in output_address:
-                    if qdk not in source_map:
-                        source_map[qdk] = [cte.name]
-        if qdk not in source_map and not qdv:
-            # set source to empty, as it must be derived in this element
-            source_map[qdk] = []
-        if qdk not in source_map and CONFIG.validate_missing:
-            raise ValueError(
-                f"Missing {qdk} in {source_map}, source map {query_datasource.source_map.keys()} "
-            )
-    return {k: "" if not v else v for k, v in source_map.items()}
+            for cte in matches:
+                if qdk not in source_map:
+                    source_map[qdk] = [cte.name]
+        if qdk not in source_map:
+            if not qdv:
+                source_map[qdk] = []
+            elif CONFIG.validate_missing:
+                raise ValueError(
+                    f"Missing {qdk} in {source_map}, source map {query_datasource.source_map} "
+                )
+
+    # existence lookups use a separate map
+    # as they cannot be referenced in row resolution
+    existence_source_map: Dict[str, list[str]] = defaultdict(list)
+    for ek, ev in query_datasource.existence_source_map.items():
+        names = set([x.name for x in ev])
+        ematches = [cte.name for cte in all_new_ctes if cte.source.name in names]
+        existence_source_map[ek] = ematches
+    return {k: [] if not v else v for k, v in source_map.items()}, existence_source_map
 
 
 def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
@@ -163,6 +176,52 @@ def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
         return full_name.replace("<", "").replace(">", "").replace(",", "_")
 
 
+def resolve_cte_base_name_and_alias(
+    name: str,
+    source: QueryDatasource,
+    parents: List[CTE],
+    joins: List[Join | InstantiatedUnnestJoin],
+) -> Tuple[str | None, str | None]:
+
+    valid_joins: List[Join] = [join for join in joins if isinstance(join, Join)]
+    relevant_parent_sources = set()
+    for k, v in source.source_map.items():
+        if v:
+            relevant_parent_sources.update(v)
+    eligible = [x for x in source.datasources if x in relevant_parent_sources]
+    if (
+        len(eligible) == 1
+        and isinstance(eligible[0], Datasource)
+        and not eligible[0].name == CONSTANT_DATASET
+    ):
+        ds = eligible[0]
+        return ds.safe_location, ds.identifier
+
+    # if we have multiple joined CTEs, pick the base
+    # as the root
+    elif len(eligible) == 1 and len(parents) == 1:
+        return parents[0].name, parents[0].name
+    elif valid_joins and len(valid_joins) > 0:
+        candidates = [x.left_cte.name for x in valid_joins]
+        disallowed = [x.right_cte.name for x in valid_joins]
+        try:
+            cte = [y for y in candidates if y not in disallowed][0]
+            return cte, cte
+        except IndexError:
+            raise SyntaxError(
+                f"Invalid join configuration {candidates} {disallowed} with all parents {[x.base_name for x in parents]}"
+            )
+    elif eligible:
+        matched = [x for x in parents if x.source.name == eligible[0].name]
+        if matched:
+            return matched[0].name, matched[0].name
+
+    logger.info(
+        f"Could not determine CTE base name for {name} with relevant sources {relevant_parent_sources}"
+    )
+    return None, None
+
+
 def datasource_to_ctes(
     query_datasource: QueryDatasource, name_map: dict[str, str]
 ) -> List[CTE]:
@@ -181,7 +240,8 @@ def datasource_to_ctes(
             sub_cte = datasource_to_ctes(sub_datasource, name_map)
             parents += sub_cte
             all_new_ctes += sub_cte
-        source_map = generate_source_map(query_datasource, all_new_ctes)
+        source_map, existence_map = generate_source_map(query_datasource, all_new_ctes)
+
     else:
         # source is the first datasource of the query datasource
         source = query_datasource.datasources[0]
@@ -189,13 +249,27 @@ def datasource_to_ctes(
         # render properly on initial access; since they have
         # no actual source
         if source.full_name == DEFAULT_NAMESPACE + "_" + CONSTANT_DATASET:
-            source_map = {k: "" for k in query_datasource.source_map}
+            source_map = {k: [] for k in query_datasource.source_map}
+            existence_map = source_map
         else:
             source_map = {
-                k: "" if not v else source.identifier
+                k: [] if not v else [source.identifier]
                 for k, v in query_datasource.source_map.items()
             }
+            existence_map = source_map
+
     human_id = generate_cte_name(query_datasource.full_name, name_map)
+    logger.info(
+        f"Finished building source map for {human_id} with {len(parents)} parents, have {source_map}, parent had non-empty keys {[k for k, v in query_datasource.source_map.items() if v]} "
+    )
+    final_joins = [
+        x
+        for x in [base_join_to_join(join, parents) for join in query_datasource.joins]
+        if x
+    ]
+    base_name, base_alias = resolve_cte_base_name_and_alias(
+        human_id, query_datasource, parents, final_joins
+    )
     cte = CTE(
         name=human_id,
         source=query_datasource,
@@ -205,14 +279,9 @@ def datasource_to_ctes(
             for c in query_datasource.output_concepts
         ],
         source_map=source_map,
+        existence_source_map=existence_map,
         # related columns include all referenced columns, such as filtering
-        joins=[
-            x
-            for x in [
-                base_join_to_join(join, parents) for join in query_datasource.joins
-            ]
-            if x
-        ],
+        joins=final_joins,
         grain=query_datasource.grain,
         group_to_grain=query_datasource.group_required,
         # we restrict parent_ctes to one level
@@ -222,6 +291,8 @@ def datasource_to_ctes(
         partial_concepts=query_datasource.partial_concepts,
         join_derived_concepts=query_datasource.join_derived_concepts,
         hidden_concepts=query_datasource.hidden_concepts,
+        base_name_override=base_name,
+        base_alias_override=base_alias,
     )
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
@@ -269,12 +340,11 @@ def get_query_datasources(
             eds = source_query_concepts([*subselect], environment=environment, g=graph)
 
             final_eds = eds.resolve()
-            # first_parent = final_qds.datasources[0]
             first_parent = final_qds
             first_parent.datasources.append(final_eds)
             for x in final_eds.output_concepts:
-                if x.address not in first_parent.source_map:
-                    first_parent.source_map[x.address] = {final_eds}
+                if x.address not in first_parent.existence_source_map:
+                    first_parent.existence_source_map[x.address] = {final_eds}
     return final_qds
 
 

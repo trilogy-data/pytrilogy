@@ -242,7 +242,9 @@ def optimize_ctes(
                 actions_taken = rule.optimize(cte, inverse_map)
         complete = not actions_taken
 
-    if is_direct_return_eligible(root_cte, select):
+    if CONFIG.optimizations.direct_return and is_direct_return_eligible(
+        root_cte, select
+    ):
         root_cte.order_by = select.order_by
         root_cte.limit = select.limit
         if select.where_clause:

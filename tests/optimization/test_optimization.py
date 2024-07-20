@@ -89,6 +89,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
         parent_ctes=[],
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
 
     cte2 = CTE(
@@ -108,6 +109,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
         ),
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
     inverse_map = {"parent": [cte2]}
     rule = PredicatePushdown()
@@ -149,6 +151,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
         parent_ctes=[parent],
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
 
     cte2 = CTE(
@@ -168,6 +171,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
         ),
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
 
     inverse_map = {"parent": [cte1, cte2]}

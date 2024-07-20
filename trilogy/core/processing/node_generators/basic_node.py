@@ -8,6 +8,7 @@ from trilogy.core.processing.nodes import StrategyNode, History, MergeNode
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
+from trilogy.utility import unique
 from trilogy.constants import logger
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
@@ -37,6 +38,7 @@ def gen_basic_node(
         attempts.append((parent_concepts + local_optional, local_optional + [concept]))
 
     for attempt, output in reversed(attempts):
+        attempt = unique(attempt, "address")
         parent_node = source_concepts(
             mandatory_list=attempt,
             environment=environment,
