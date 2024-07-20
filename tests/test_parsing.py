@@ -30,6 +30,19 @@ def test_in():
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "( 1,2,3 )".strip()
 
+    _, parsed = parse_text(
+        "const order_id <- 3; SELECT order_id  WHERE order_id IN (1);"
+    )
+    query = parsed[-1]
+    right = query.where_clause.conditional.right
+    assert isinstance(
+        right,
+        Parenthetical,
+    ), type(right)
+    assert right.content == 1
+    rendered = BaseDialect().render_expr(right)
+    assert rendered.strip() == "( 1 )".strip()
+
 
 def test_not_in():
     _, parsed = parse_text(
