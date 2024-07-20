@@ -976,7 +976,26 @@ class ParseToObjects(Transformer):
         return Ordering(args.lower())
 
     def order_list(self, args):
-        return [OrderItem(expr=x, order=y) for x, y in zip(args[::2], args[1::2])]
+
+        def handle_order_item(x, namespace: str):
+            if not isinstance(x, Concept):
+                x = arbitrary_to_concept(
+                    x,
+                    namespace=namespace,
+                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(x))}",
+                )
+            return x
+
+        return [
+            OrderItem(
+                expr=handle_order_item(
+                    x,
+                    self.environment.namespace,
+                ),
+                order=y,
+            )
+            for x, y in zip(args[::2], args[1::2])
+        ]
 
     def order_by(self, args):
         return OrderBy(items=args[0])
