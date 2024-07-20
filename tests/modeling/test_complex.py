@@ -138,11 +138,11 @@ def test_window_clone(test_environment: Environment, test_executor: Executor):
         order_id,
     WHERE
         order_id in filtered
-
+    order by filtered asc
     ;"""
     _, statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2
-    assert results[0] == (None, 1)
-    assert results[1] == (1, 1)
+    assert results[0] == (1, 1)
+    assert results[1] == (None, 1)
