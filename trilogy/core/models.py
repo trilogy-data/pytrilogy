@@ -2149,9 +2149,6 @@ class CTE(BaseModel):
         if self.base_name_override:
             return self.base_name_override
         # if this cte selects from a single datasource, select right from it
-        valid_joins: List[Join] = [
-            join for join in self.joins if isinstance(join, Join)
-        ]
         if self.is_root_datasource:
             return self.source.datasources[0].safe_location
 
@@ -2159,23 +2156,8 @@ class CTE(BaseModel):
         # as the root
         elif len(self.source.datasources) == 1 and len(self.parent_ctes) == 1:
             return self.parent_ctes[0].name
-        elif valid_joins and len(valid_joins) > 0:
-            candidates = [x.left_cte.name for x in valid_joins]
-            disallowed = [x.right_cte.name for x in valid_joins]
-            try:
-                return [y for y in candidates if y not in disallowed][0]
-            except IndexError:
-                raise SyntaxError(
-                    f"Invalid join configuration {candidates} {disallowed} with all parents {[x.base_name for x in self.parent_ctes]}"
-                )
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
-        elif self.parent_ctes:
-            raise SyntaxError(
-                f"{self.name} has no relevant base CTEs, {self.source_map},"
-                f" {[x.name for x in self.parent_ctes]}, outputs"
-                f" {[x.address for x in self.output_columns]}"
-            )
         return self.source.name
 
     @property
@@ -2184,9 +2166,6 @@ class CTE(BaseModel):
             return self.base_alias_override
         if self.is_root_datasource:
             return self.source.datasources[0].identifier
-        relevant_joins = [j for j in self.joins if isinstance(j, Join)]
-        if relevant_joins:
-            return relevant_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         elif self.parent_ctes:
