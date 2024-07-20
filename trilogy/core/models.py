@@ -975,23 +975,6 @@ class ConceptTransform(Namespaced, BaseModel):
             modifiers=self.modifiers,
         )
 
-    def with_filter(self, where: "WhereClause") -> "ConceptTransform":
-        id_hash = string_to_hash(str(where))
-        new_parent_concept = Concept(
-            name=f"_anon_concept_transform_filter_input_{id_hash}",
-            datatype=self.output.datatype,
-            purpose=self.output.purpose,
-            lineage=self.output.lineage,
-            namespace=DEFAULT_NAMESPACE,
-            grain=self.output.grain,
-            keys=self.output.keys,
-        )
-        new_parent = FilterItem(content=new_parent_concept, where=where)
-        self.output.lineage = new_parent
-        return ConceptTransform(
-            function=new_parent, output=self.output, modifiers=self.modifiers
-        )
-
 
 class Window(BaseModel):
     count: int
