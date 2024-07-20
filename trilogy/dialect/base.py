@@ -259,7 +259,7 @@ class BaseDialect:
             f"{LOGGER_PREFIX} [{c.address}] Starting rendering loop on cte: {cte.name}"
         )
 
-        if c.lineage and cte.source_map.get(c.address, "") == "":
+        if c.lineage and cte.source_map.get(c.address, []) == []:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"
             )
@@ -528,7 +528,7 @@ class BaseDialect:
                                         c
                                         for c in cte.output_columns
                                         if c.purpose == Purpose.CONSTANT
-                                        and cte.source_map[c.address] != ""
+                                        and cte.source_map[c.address] != []
                                     ],
                                     "address",
                                 )
