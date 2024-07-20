@@ -34,7 +34,7 @@ def test_cte_merge(test_environment, test_environment_graph):
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
-        source_map={c.address: datasource.identifier for c in outputs},
+        source_map={c.address: [datasource.identifier] for c in outputs},
     )
     b = CTE(
         name="testb",
@@ -48,7 +48,7 @@ def test_cte_merge(test_environment, test_environment_graph):
             joins=[],
             source_map=output_map,
         ),
-        source_map={c.address: datasource.identifier for c in outputs},
+        source_map={c.address: [datasource.identifier] for c in outputs},
     )
 
     merged = a + b
