@@ -146,3 +146,21 @@ def test_window_clone(test_environment: Environment, test_executor: Executor):
     assert len(results) == 2
     assert results[0] == (1, 1)
     assert results[1] == (None, 1)
+
+
+def test_window_alt(test_environment: Environment, test_executor: Executor):
+    test_select = """
+    auto nums <- unnest([1,2]);
+
+    auto filtered <- rank nums;
+
+    SELECT
+        filtered
+    where
+        filtered = 1
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == (1,)
