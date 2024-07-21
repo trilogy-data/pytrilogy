@@ -2,11 +2,14 @@ from typing import List
 
 
 from trilogy.core.enums import JoinType
-from trilogy.core.models import (
-    Concept,
-    Environment,
+from trilogy.core.models import Concept, Environment, FilterItem
+from trilogy.core.processing.nodes import (
+    FilterNode,
+    MergeNode,
+    NodeJoin,
+    History,
+    StrategyNode,
 )
-from trilogy.core.processing.nodes import FilterNode, MergeNode, NodeJoin, History
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
@@ -25,16 +28,19 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-) -> MergeNode | FilterNode | None:
+) -> StrategyNode | None:
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept)
     )
+    if not isinstance(concept.lineage, FilterItem):
+        raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
+    where = concept.lineage.where
 
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching filter node row parents {[x.address for x in parent_row_concepts]}"
     )
     core_parents = []
-    parent = source_concepts(
+    parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,
         g=g,
@@ -43,7 +49,28 @@ def gen_filter_node(
     )
 
     if not parent:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
+        )
         return None
+
+    if not local_optional and not parent_existence_concepts:
+        optimized_pushdown = True
+    else:
+        optimized_pushdown = False
+
+    if optimized_pushdown:
+        if parent.conditions:
+            parent.conditions = parent.conditions + where.conditional
+        else:
+            parent.conditions = where.conditional
+        parent.output_concepts = [concept]
+        parent.rebuild_cache()
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
+        )
+        return parent
+
     core_parents.append(parent)
     if parent_existence_concepts:
         logger.info(
@@ -57,6 +84,9 @@ def gen_filter_node(
             history=history,
         )
         if not parent_existence:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} filter existence node parents could not be found"
+            )
             return None
         core_parents.append(parent_existence)
 

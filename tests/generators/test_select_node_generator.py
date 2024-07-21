@@ -2,6 +2,7 @@ from trilogy.core.models import Environment
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_gen_select_node_parents(test_environment: Environment):
@@ -11,6 +12,7 @@ def test_gen_select_node_parents(test_environment: Environment):
 
 def test_select_nodes():
     env = Environment()
+    DebuggingHook()
     env.parse(
         """
 const array_one <- [1,2,3];

@@ -12,6 +12,8 @@ from trilogy.core.models import (
     Concept,
     UnnestJoin,
     Conditional,
+    Comparison,
+    Parenthetical,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import (
@@ -103,8 +105,9 @@ class MergeNode(StrategyNode):
         force_group: bool | None = None,
         depth: int = 0,
         grain: Grain | None = None,
-        conditions: Conditional | None = None,
+        conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
+        virtual_output_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -119,10 +122,12 @@ class MergeNode(StrategyNode):
             grain=grain,
             conditions=conditions,
             hidden_concepts=hidden_concepts,
+            virtual_output_concepts=virtual_output_concepts,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
         self.node_joins = node_joins
+
         final_joins = []
         if self.node_joins:
             for join in self.node_joins:
@@ -312,17 +317,21 @@ class MergeNode(StrategyNode):
             force_group = None
 
         qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
+        source_map = resolve_concept_map(
+            parent_sources,
+            targets=self.output_concepts,
+            inherited_inputs=self.input_concepts + self.existence_concepts,
+            full_joins=full_join_concepts,
+        )
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} source_map {str(source_map)}"
+        )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),
             datasources=final_datasets,
             source_type=self.source_type,
-            source_map=resolve_concept_map(
-                parent_sources,
-                self.output_concepts,
-                self.input_concepts,
-                full_joins=full_join_concepts,
-            ),
+            source_map=source_map,
             joins=qd_joins,
             grain=grain,
             partial_concepts=self.partial_concepts,
@@ -331,3 +340,23 @@ class MergeNode(StrategyNode):
             hidden_concepts=self.hidden_concepts,
         )
         return qds
+
+    def copy(self) -> "MergeNode":
+        return MergeNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=self.parents,
+            depth=self.depth,
+            partial_concepts=list(self.partial_concepts),
+            force_group=self.force_group,
+            grain=self.grain,
+            conditions=self.conditions,
+            hidden_concepts=list(self.hidden_concepts),
+            virtual_output_concepts=list(self.virtual_output_concepts),
+            node_joins=self.node_joins,
+            join_concepts=list(self.join_concepts) if self.join_concepts else None,
+            force_join_type=self.force_join_type,
+        )

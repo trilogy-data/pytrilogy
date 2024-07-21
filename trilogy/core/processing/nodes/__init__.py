@@ -1,7 +1,7 @@
 from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode
-from .select_node_v2 import SelectNode, StaticSelectNode, ConstantNode
+from .select_node_v2 import SelectNode, ConstantNode
 from .window_node import WindowNode
 from .base_node import StrategyNode, NodeJoin
 from .unnest_node import UnnestNode
@@ -37,10 +37,12 @@ class History(BaseModel):
             raise ValueError(
                 f"Parent key {parent_key} is the same as the current key {key}"
             )
-        return self.history.get(
-            key,
-            False,
-        )
+        if key in self.history:
+            node = self.history[key]
+            if node:
+                return node.copy()
+            return node
+        return False
 
     def log_start(
         self,
@@ -125,7 +127,6 @@ __all__ = [
     "GroupNode",
     "MergeNode",
     "SelectNode",
-    "StaticSelectNode",
     "WindowNode",
     "StrategyNode",
     "NodeJoin",

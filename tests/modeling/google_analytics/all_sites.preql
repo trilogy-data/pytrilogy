@@ -12,6 +12,8 @@ property _row_id.site_name string;
 
 metric event_count <- count(_row_id);
 
+key site_rank <- rank site_name by count(user_pseudo_id) asc;
+
 
 property _row_id.clean_url <- CASE
     WHEN STRPOS(page_location, "?") > 0 THEN SUBSTRING(page_location, 0, STRPOS(page_location, "?") - 1)

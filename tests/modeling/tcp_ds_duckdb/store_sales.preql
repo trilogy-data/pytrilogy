@@ -23,10 +23,10 @@ auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_s
 datasource store_sales (
     SS_SOLD_DATE_SK: date.id,
     SS_SOLD_TIME_SK: time.id,
-    SS_CUSTOMER_SK: customer.id,
+    SS_CUSTOMER_SK: ~customer.id,
     SS_CDEMO_SK: customer_demographic.id,
     SS_TICKET_NUMBER: ticket_number,
-    SS_ITEM_SK: ~item.id,
+    SS_ITEM_SK: item.id,
     SS_SALES_PRICE: sales_price,
     SS_LIST_PRICE: list_price,
     SS_EXT_SALES_PRICE: ext_sales_price,
@@ -37,7 +37,7 @@ datasource store_sales (
     SS_PROMO_SK: promotion.id,
     SS_QUANTITY: quantity,
     SS_COUPON_AMT: coupon_amt,
-    SS_STORE_SK: ~store.id,
+    SS_STORE_SK: store.id,
 )
 grain (ticket_number, item.id)
 address memory.store_sales

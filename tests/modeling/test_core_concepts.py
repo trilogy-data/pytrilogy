@@ -168,7 +168,7 @@ SELECT
     }
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
-    assert len(results) == 3
+    assert len(results) == 2
 
 
 def test_datasource_properties(test_environment: Environment, test_executor: Executor):

@@ -53,7 +53,7 @@ def dm_to_strategy_node(
         # we have to group
         else:
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(dm.matched)}, group to actual grain"
+                f"{padding(depth)}{LOGGER_PREFIX} not all grain components {target_grain} are in output {str(dm.matched)}, group to actual grain"
             )
             force_group = True
     elif all([x in dm.matched for x in datasource.grain.components]):
@@ -76,7 +76,7 @@ def dm_to_strategy_node(
         partial_concepts=dm.partial.concepts,
         accept_partial=accept_partial,
         datasource=datasource,
-        grain=Grain(components=dm.matched.concepts),
+        grain=datasource.grain,
     )
     # we need to nest the group node one further
     if force_group is True:
@@ -317,13 +317,19 @@ def gen_select_node_from_table(
         )
         if target_grain and target_grain.issubset(datasource.grain):
 
-            if all([x in all_lcl for x in target_grain.components]):
+            if (
+                all([x in all_lcl for x in target_grain.components])
+                and target_grain == datasource.grain
+            ):
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} target grain components match all lcl, group to false"
+                )
                 force_group = False
             # if we are not returning the grain
             # we have to group
             else:
                 logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} not all grain components are in output {str(all_lcl)}, group to actual grain"
+                    f"{padding(depth)}{LOGGER_PREFIX} not all grain components {target_grain} are in output {str(all_lcl)}, group to actual grain"
                 )
                 force_group = True
         elif all([x in all_lcl for x in datasource.grain.components]):
@@ -363,7 +369,7 @@ def gen_select_node_from_table(
         else:
             candidate = bcandidate
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, returning {candidate.output_lcl}"
+            f"{padding(depth)}{LOGGER_PREFIX} found select node with {datasource.identifier}, force group is {force_group}, returning {candidate.output_lcl}"
         )
         candidates[datasource.identifier] = candidate
         scores[datasource.identifier] = -len(partial_concepts)
@@ -467,6 +473,8 @@ def gen_select_node(
         target_grain = Grain()
         for ac in all_concepts:
             target_grain += ac.grain
+    if target_grain.abstract:
+        target_grain = Grain(components=all_concepts)
     if materialized_lcl != all_lcl:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address} "
@@ -513,13 +521,15 @@ def gen_select_node(
                 [c.address in [x.address for x in p.partial_concepts] for p in parents]
             )
         ]
-        force_group = False
+        force_group = None
+        inferred_grain = sum([x.grain for x in parents if x.grain], Grain())
         for candidate in parents:
             if candidate.grain and not candidate.grain.issubset(target_grain):
                 force_group = True
         if len(parents) == 1:
             candidate = parents[0]
         else:
+
             candidate = MergeNode(
                 output_concepts=[concept] + found,
                 input_concepts=[concept] + found,
@@ -528,13 +538,13 @@ def gen_select_node(
                 parents=parents,
                 depth=depth,
                 partial_concepts=all_partial,
-                grain=sum([x.grain for x in parents if x.grain], Grain()),
+                grain=inferred_grain,
             )
         candidate.depth += 1
-        source_grain = candidate.grain
+        # source_grain = candidate.grain
         if force_group:
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} datasource grain {source_grain} does not match target grain {target_grain} for select, adding group node"
+                f"{padding(depth)}{LOGGER_PREFIX} datasource grain {inferred_grain} does not match target grain {target_grain} for select, adding group node"
             )
             return GroupNode(
                 output_concepts=candidate.output_concepts,
@@ -544,6 +554,10 @@ def gen_select_node(
                 parents=[candidate],
                 depth=depth,
                 partial_concepts=candidate.partial_concepts,
+            )
+        else:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} datasource grain {inferred_grain} matches target grain {target_grain} for select, returning without group"
             )
         return candidate
 

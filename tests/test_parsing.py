@@ -30,6 +30,19 @@ def test_in():
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "( 1,2,3 )".strip()
 
+    _, parsed = parse_text(
+        "const order_id <- 3; SELECT order_id  WHERE order_id IN (1);"
+    )
+    query = parsed[-1]
+    right = query.where_clause.conditional.right
+    assert isinstance(
+        right,
+        Parenthetical,
+    ), type(right)
+    assert right.content == 1
+    rendered = BaseDialect().render_expr(right)
+    assert rendered.strip() == "( 1 )".strip()
+
 
 def test_not_in():
     _, parsed = parse_text(
@@ -158,6 +171,28 @@ select
         assert name in env.concepts
         assert env.concepts[name].purpose == Purpose.PROPERTY
         assert env.concepts[name].keys == (env.concepts["id"],)
+
+
+def test_purpose_and_derivation():
+    env, parsed = parse_text(
+        """key id int;
+key other_id int;
+property <id, other_id>.join_id <- id*10+other_id;
+
+
+select 
+    join_id
+;
+"""
+    )
+
+    for name in ["join_id"]:
+        assert name in env.concepts
+        assert env.concepts[name].purpose == Purpose.PROPERTY
+        assert env.concepts[name].keys == (
+            env.concepts["id"],
+            env.concepts["other_id"],
+        )
 
 
 def test_output_purpose():

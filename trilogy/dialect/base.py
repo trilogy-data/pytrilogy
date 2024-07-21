@@ -193,27 +193,6 @@ ORDER BY {% for order in order_by %}
 )
 
 
-def check_lineage(c: Concept, cte: CTE) -> bool:
-    checks = []
-    if not c.lineage:
-        return True
-    for sub_c in c.lineage.concept_arguments:
-        if not isinstance(sub_c, Concept):
-            continue
-        if sub_c.address in cte.source_map or (
-            sub_c.lineage and check_lineage(sub_c, cte)
-        ):
-            checks.append(True)
-        else:
-            logger.debug(
-                f"{LOGGER_PREFIX} [{sub_c.address}] not found in source map for"
-                f" {cte.name}, have cte keys {[c for c in cte.source_map.keys()]} and"
-                f" datasource keys {[c for c in cte.source.source_map.keys()]}"
-            )
-            checks.append(False)
-    return all(checks)
-
-
 def safe_quote(string: str, quote_char: str):
     # split dotted identifiers
     # TODO: evaluate if we need smarter parsing for strings that could actually include .
@@ -259,7 +238,7 @@ class BaseDialect:
             f"{LOGGER_PREFIX} [{c.address}] Starting rendering loop on cte: {cte.name}"
         )
 
-        if c.lineage and cte.source_map.get(c.address, "") == "":
+        if c.lineage and cte.source_map.get(c.address, []) == []:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing"
             )
@@ -273,7 +252,11 @@ class BaseDialect:
                 ]
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
-                rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
+                # for cases when we've optimized this
+                if len(cte.output_columns) == 1:
+                    rval = self.render_expr(c.lineage.content, cte=cte)
+                else:
+                    rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, MultiSelectStatement):
@@ -356,17 +339,28 @@ class BaseDialect:
         cte: Optional[CTE] = None,
         cte_map: Optional[Dict[str, CTE]] = None,
     ) -> str:
-        # if isinstance(e, Concept):
-        #     cte = cte or cte_map.get(e.address, None)
 
         if isinstance(e, SubselectComparison):
-            assert cte, "Subselects must be rendered with a CTE in context"
+
             if isinstance(e.right, Concept):
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {self.render_expr(e.right, cte=cte, cte_map=cte_map)} from {cte.source_map[e.right.address][0]})"
+                # we won't always have an existnce map
+                # so fall back to the normal map
+                lookup_cte = cte
+                if cte_map and not lookup_cte:
+                    lookup_cte = cte_map.get(e.right.address)
+                assert lookup_cte, "Subselects must be rendered with a CTE in context"
+                if e.right.address not in lookup_cte.existence_source_map:
+                    lookup = lookup_cte.source_map[e.right.address]
+                else:
+                    lookup = lookup_cte.existence_source_map[e.right.address]
+
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {lookup[0]}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {lookup[0]})"
+            elif isinstance(e.right, (ListWrapper, Parenthetical)):
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
+            elif isinstance(e.right, (str, int, bool, float, list)):
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
             else:
-                raise NotImplementedError(
-                    f"Subselects must be a concept, got {e.right}"
-                )
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
         elif isinstance(e, Comparison):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):
@@ -449,15 +443,15 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.hidden_concepts]
             ]
+        if cte.base_name == cte.base_alias:
+            source = cte.base_name
+        else:
+            source = f"{cte.base_name} as {cte.base_alias}"
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
                 select_columns=select_columns,
-                base=(
-                    f"{cte.base_name} as {cte.base_alias}"
-                    if cte.render_from_clause
-                    else None
-                ),
+                base=(f"{source}" if cte.render_from_clause else None),
                 grain=cte.grain,
                 limit=cte.limit,
                 # some joins may not need to be rendered
@@ -513,7 +507,7 @@ class BaseDialect:
                                         c
                                         for c in cte.output_columns
                                         if c.purpose == Purpose.CONSTANT
-                                        and cte.source_map[c.address] != ""
+                                        and cte.source_map[c.address] != []
                                     ],
                                     "address",
                                 )
@@ -639,7 +633,7 @@ class BaseDialect:
             filter = set(
                 [
                     str(x.address)
-                    for x in query.where_clause.concept_arguments
+                    for x in query.where_clause.row_arguments
                     if not x.derivation == PurposeLineage.CONSTANT
                 ]
             )
@@ -650,10 +644,21 @@ class BaseDialect:
 
             if not found:
                 raise NotImplementedError(
-                    f"Cannot generate query with filtering on grain {filter} that is"
-                    f" not a subset of the query output grain {query_output}. Use a"
-                    " filtered concept instead."
+                    f"Cannot generate query with filtering on row arguments {filter} that is"
+                    f" not a subset of the query output grain {query_output}. Try a"
+                    " filtered concept instead, or include it in the select clause"
                 )
+            for ex_set in query.where_clause.existence_arguments:
+                for c in ex_set:
+                    if c.address not in cte_output_map:
+                        cts = [
+                            ct
+                            for ct in query.ctes
+                            if ct.name in query.base.existence_source_map[c.address]
+                        ]
+                        if not cts:
+                            raise ValueError(query.base.existence_source_map[c.address])
+                        cte_output_map[c.address] = cts[0]
 
         compiled_ctes = self.generate_ctes(query)
 

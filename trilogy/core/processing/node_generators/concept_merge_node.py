@@ -56,6 +56,7 @@ def gen_concept_merge_node(
 
     # get additional concepts that should be merged across the environments
     additional_merge: List[Concept] = [*lineage.concepts]
+    target_namespaces = set(x.namespace for x in [concept] + local_optional)
     for x in local_optional:
         if x.address in environment.merged_concepts:
             ms = environment.merged_concepts[x.address].lineage
@@ -64,6 +65,8 @@ def gen_concept_merge_node(
 
     for select in lineage.concepts:
         # if it's a merge concept, filter it out of the optional
+        if select.namespace not in target_namespaces:
+            continue
         sub_optional = [
             x
             for x in local_optional
@@ -76,6 +79,9 @@ def gen_concept_merge_node(
         ]
         sub_optional += sub_additional_merge
         final: List[Concept] = unique([select] + sub_optional, "address")
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} generating concept merge parent node with {[x.address for x in final]}"
+        )
         snode: StrategyNode = source_concepts(
             mandatory_list=final,
             environment=environment,
@@ -111,17 +117,18 @@ def gen_concept_merge_node(
 
     additional_relevant = [x for x in outputs if x.address in enrichment]
     final_outputs = outputs + additional_relevant + [concept]
+    virtual_outputs = [x for x in final_outputs if x.derivation == PurposeLineage.MERGE]
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
-        output_concepts=[x for x in final_outputs],
-        hidden_concepts=[
-            x for x in final_outputs if x.derivation == PurposeLineage.MERGE
+        output_concepts=[
+            x for x in final_outputs if x.derivation != PurposeLineage.MERGE
         ],
         environment=environment,
         g=g,
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
+        virtual_output_concepts=virtual_outputs,
     )
 
     qds = node.rebuild_cache()
@@ -149,9 +156,17 @@ def gen_concept_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base merge concept node; exiting early"
         )
         return node
+    missing = [
+        x
+        for x in local_optional
+        if x.address not in [y.address for y in node.output_concepts]
+    ]
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} generating merge concept enrichment node for missing {[x.address for x in missing]}"
+    )
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        mandatory_list=additional_relevant + local_optional,
+        mandatory_list=additional_relevant + missing,
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -159,7 +174,7 @@ def gen_concept_merge_node(
     )
     if not enrich_node:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge concept enrichment node for {concept} with optional {local_optional}, returning just merge concept"
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate merge concept enrichment node for {concept.address} with optional {[x.address for x in local_optional]}, returning just merge concept"
         )
         return node
 
@@ -170,12 +185,12 @@ def gen_concept_merge_node(
     return MergeNode(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
         # also filter out the
-        output_concepts=node.output_concepts + local_optional,
-        hidden_concepts=[
+        output_concepts=[
             x
             for x in node.output_concepts + local_optional
-            if x.derivation == PurposeLineage.MERGE
+            if x.derivation != PurposeLineage.MERGE
         ],
+        hidden_concepts=[],
         environment=environment,
         g=g,
         depth=depth,
@@ -195,4 +210,5 @@ def gen_concept_merge_node(
             )
         ],
         partial_concepts=node.partial_concepts,
+        virtual_output_concepts=virtual_outputs,
     )

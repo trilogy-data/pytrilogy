@@ -17,6 +17,7 @@ from trilogy.core.models import (
 from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
 from dataclasses import dataclass
+from trilogy.constants import logger
 
 
 def concept_list_to_grain(
@@ -55,11 +56,18 @@ def resolve_concept_map(
         defaultdict(set)
     )
     full_addresses = {c.address for c in full_joins} if full_joins else set()
+    inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
         for concept in input.output_concepts:
+            logger.info(concept.address)
             if concept.address not in input.non_partial_concept_addresses:
                 continue
-            if concept.address not in [t.address for t in inherited_inputs]:
+            if concept.address not in inherited:
+                continue
+            if (
+                isinstance(input, QueryDatasource)
+                and concept.address in input.hidden_concepts
+            ):
                 continue
             if concept.address in full_addresses:
                 concept_map[concept.address].add(input)
@@ -71,11 +79,16 @@ def resolve_concept_map(
         for concept in input.output_concepts:
             if concept.address not in [t.address for t in inherited_inputs]:
                 continue
+            if (
+                isinstance(input, QueryDatasource)
+                and concept.address in input.hidden_concepts
+            ):
+                continue
             if len(concept_map.get(concept.address, [])) == 0:
                 concept_map[concept.address].add(input)
     # this adds our new derived metrics, which are not created in this CTE
     for target in targets:
-        if target not in inherited_inputs:
+        if target.address not in inherited:
             # an empty source means it is defined in this CTE
             concept_map[target.address] = set()
     return concept_map
@@ -108,6 +121,8 @@ class StrategyNode:
         force_group: bool | None = None,
         grain: Optional[Grain] = None,
         hidden_concepts: List[Concept] | None = None,
+        existence_concepts: List[Concept] | None = None,
+        virtual_output_concepts: List[Concept] | None = None,
     ):
         self.input_concepts: List[Concept] = (
             unique(input_concepts, "address") if input_concepts else []
@@ -131,6 +146,8 @@ class StrategyNode:
         self.force_group = force_group
         self.tainted = False
         self.hidden_concepts = hidden_concepts or []
+        self.existence_concepts = existence_concepts or []
+        self.virtual_output_concepts = virtual_output_concepts or []
         for parent in self.parents:
             if not parent:
                 raise SyntaxError("Unresolvable parent")
@@ -162,12 +179,11 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        # if conditional:
-        #     for condition in conditions[1:]:
-        #         conditional += condition
         grain = Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
-            parent_sources, self.output_concepts, self.input_concepts
+            parent_sources,
+            self.output_concepts,
+            self.input_concepts + self.existence_concepts,
         )
         return QueryDatasource(
             input_concepts=self.input_concepts,
@@ -196,6 +212,24 @@ class StrategyNode:
         qds = self._resolve()
         self.resolution_cache = qds
         return qds
+
+    def copy(self) -> "StrategyNode":
+        return self.__class__(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=list(self.parents),
+            partial_concepts=list(self.partial_concepts),
+            depth=self.depth,
+            conditions=self.conditions,
+            force_group=self.force_group,
+            grain=self.grain,
+            hidden_concepts=list(self.hidden_concepts),
+            existence_concepts=list(self.existence_concepts),
+            virtual_output_concepts=list(self.virtual_output_concepts),
+        )
 
 
 @dataclass

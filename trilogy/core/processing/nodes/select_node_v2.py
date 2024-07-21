@@ -5,14 +5,14 @@ from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.models import (
-    Datasource,
+    Function,
+    Grain,
     QueryDatasource,
     SourceType,
-    Environment,
     Concept,
-    Grain,
-    Function,
+    Environment,
     UnnestJoin,
+    Datasource,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -20,39 +20,6 @@ from trilogy.core.exceptions import NoDatasourceException
 
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
-
-
-class StaticSelectNode(StrategyNode):
-    """Static select nodes."""
-
-    source_type = SourceType.SELECT
-
-    def __init__(
-        self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
-        environment: Environment,
-        g,
-        datasource: QueryDatasource,
-        depth: int = 0,
-        partial_concepts: List[Concept] | None = None,
-    ):
-        super().__init__(
-            input_concepts=input_concepts,
-            output_concepts=output_concepts,
-            environment=environment,
-            g=g,
-            whole_grain=True,
-            parents=[],
-            depth=depth,
-            partial_concepts=partial_concepts,
-        )
-        self.datasource = datasource
-
-    def _resolve(self):
-        if self.datasource.grain == Grain():
-            raise NotImplementedError
-        return self.datasource
 
 
 class SelectNode(StrategyNode):
@@ -75,7 +42,7 @@ class SelectNode(StrategyNode):
         partial_concepts: List[Concept] | None = None,
         accept_partial: bool = False,
         grain: Optional[Grain] = None,
-        force_group: bool = False,
+        force_group: bool | None = False,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -119,6 +86,7 @@ class SelectNode(StrategyNode):
             if x.address not in source_map and x.derivation in (
                 PurposeLineage.MULTISELECT,
                 PurposeLineage.MERGE,
+                PurposeLineage.FILTER,
             ):
                 source_map[x.address] = set()
 
@@ -140,6 +108,7 @@ class SelectNode(StrategyNode):
                 c.concept for c in datasource.columns if not c.is_complete
             ],
             source_type=SourceType.DIRECT_SELECT,
+            condition=self.conditions,
             # select nodes should never group
             force_group=self.force_group,
         )
@@ -154,6 +123,7 @@ class SelectNode(StrategyNode):
             source_map={concept.address: set() for concept in self.all_concepts},
             datasources=[datasource],
             grain=datasource.grain,
+            condition=self.conditions,
             joins=[],
             partial_concepts=[],
             source_type=SourceType.CONSTANT,
@@ -191,8 +161,33 @@ class SelectNode(StrategyNode):
             f"Could not find any way to associate required concepts {required}"
         )
 
+    def copy(self) -> "SelectNode":
+        return SelectNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            datasource=self.datasource,
+            depth=self.depth,
+            parents=self.parents,
+            whole_grain=self.whole_grain,
+            partial_concepts=list(self.partial_concepts),
+            accept_partial=self.accept_partial,
+            grain=self.grain,
+            force_group=self.force_group,
+        )
+
 
 class ConstantNode(SelectNode):
     """Represents a constant value."""
 
-    pass
+    def copy(self) -> "ConstantNode":
+        return ConstantNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            datasource=self.datasource,
+            depth=self.depth,
+            partial_concepts=list(self.partial_concepts),
+        )

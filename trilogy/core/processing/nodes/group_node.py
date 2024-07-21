@@ -33,6 +33,7 @@ class GroupNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: Optional[List[Concept]] = None,
+        force_group: bool | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -43,6 +44,7 @@ class GroupNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            force_group=force_group,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -57,7 +59,11 @@ class GroupNode(StrategyNode):
 
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if comp_grain == grain and self.output_lcl == self.input_lcl:
+        if (
+            comp_grain == grain
+            and self.output_lcl == self.input_lcl
+            and self.force_group is not True
+        ):
             # if there is no group by, and inputs equal outputs
             # return the parent
             logger.info(
@@ -110,4 +116,17 @@ class GroupNode(StrategyNode):
             grain=grain,
             partial_concepts=self.partial_concepts,
             condition=self.conditions,
+        )
+
+    def copy(self) -> "GroupNode":
+        return GroupNode(
+            input_concepts=list(self.input_concepts),
+            output_concepts=list(self.output_concepts),
+            environment=self.environment,
+            g=self.g,
+            whole_grain=self.whole_grain,
+            parents=self.parents,
+            depth=self.depth,
+            partial_concepts=list(self.partial_concepts),
+            force_group=self.force_group,
         )

@@ -1,4 +1,4 @@
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Generator
 from functools import singledispatchmethod
 from sqlalchemy import text
 from sqlalchemy.engine import Engine, CursorResult
@@ -222,6 +222,35 @@ class Executor(object):
             sql.append(x)
         return sql
 
+    def parse_text_generator(
+        self, command: str, persist: bool = False
+    ) -> Generator[
+        ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement, None, None
+    ]:
+        """Process a preql text command"""
+        _, parsed = parse_text(command, self.environment)
+        generatable = [
+            x
+            for x in parsed
+            if isinstance(
+                x,
+                (
+                    SelectStatement,
+                    PersistStatement,
+                    MultiSelectStatement,
+                    ShowStatement,
+                ),
+            )
+        ]
+        while generatable:
+            t = generatable.pop(0)
+            x = self.generator.generate_queries(
+                self.environment, [t], hooks=self.hooks
+            )[0]
+            if persist and isinstance(x, ProcessedQueryPersist):
+                self.environment.add_datasource(x.datasource)
+            yield x
+
     def execute_raw_sql(self, command: str) -> CursorResult:
         """Run a command against the raw underlying
         execution engine"""
@@ -229,10 +258,9 @@ class Executor(object):
 
     def execute_text(self, command: str) -> List[CursorResult]:
         """Run a preql text command"""
-        sql = self.parse_text(command)
         output = []
         # connection = self.engine.connect()
-        for statement in sql:
+        for statement in self.parse_text_generator(command):
             if isinstance(statement, ProcessedShowStatement):
                 output.append(
                     generate_result_set(

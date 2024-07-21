@@ -33,7 +33,13 @@ from pydantic import (
 )
 from lark.tree import Meta
 from pathlib import Path
-from trilogy.constants import logger, DEFAULT_NAMESPACE, ENV_CACHE_NAME, MagicConstants
+from trilogy.constants import (
+    logger,
+    DEFAULT_NAMESPACE,
+    ENV_CACHE_NAME,
+    MagicConstants,
+    CONFIG,
+)
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
     INTERNAL_NAMESPACE,
@@ -61,7 +67,6 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from trilogy.utility import unique
 from collections import UserList
-from trilogy.utility import string_to_hash
 from functools import cached_property
 from abc import ABC
 
@@ -129,7 +134,7 @@ class ConceptArgs(ABC):
         raise NotImplementedError
 
     @property
-    def existence_arguments(self) -> List["Concept"]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return []
 
     @property
@@ -281,9 +286,6 @@ class Concept(Namespaced, SelectGrain, BaseModel):
             MultiSelectStatement | MergeStatement,
         ]
     ] = None
-    # lineage: Annotated[Optional[
-    #     Union[Function, WindowItem, FilterItem, AggregateWrapper]
-    # ], WrapValidator(lineage_validator)] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
@@ -620,6 +622,12 @@ class Grain(BaseModel):
         for sub in v2:
             if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
                 if all([c in v2 for c in sub.keys]):
+                    continue
+            elif sub.derivation == PurposeLineage.MERGE and isinstance(
+                sub.lineage, MergeStatement
+            ):
+                parents = sub.lineage.concepts
+                if any([p in v2 for p in parents]):
                     continue
             final.append(sub)
         v2 = sorted(final, key=lambda x: x.name)
@@ -964,23 +972,6 @@ class ConceptTransform(Namespaced, BaseModel):
             function=self.function.with_namespace(namespace),
             output=self.output.with_namespace(namespace),
             modifiers=self.modifiers,
-        )
-
-    def with_filter(self, where: "WhereClause") -> "ConceptTransform":
-        id_hash = string_to_hash(str(where))
-        new_parent_concept = Concept(
-            name=f"_anon_concept_transform_filter_input_{id_hash}",
-            datatype=self.output.datatype,
-            purpose=self.output.purpose,
-            lineage=self.output.lineage,
-            namespace=DEFAULT_NAMESPACE,
-            grain=self.output.grain,
-            keys=self.output.keys,
-        )
-        new_parent = FilterItem(content=new_parent_concept, where=where)
-        self.output.lineage = new_parent
-        return ConceptTransform(
-            function=new_parent, output=self.output, modifiers=self.modifiers
         )
 
 
@@ -1611,13 +1602,15 @@ class Datasource(Namespaced, BaseModel):
     def __add__(self, other):
         if not other == self:
             raise ValueError(
-                "Attempted to add two datasources that are not identical, this should"
-                " never happen"
+                "Attempted to add two datasources that are not identical, this is not a valid operation"
             )
         return self
 
+    def __repr__(self):
+        return f"Datasource<{self.namespace}.{self.identifier}@<{self.grain}>"
+
     def __str__(self):
-        return f"{self.namespace}.{self.identifier}@<{self.grain}>"
+        return self.__repr__()
 
     def __hash__(self):
         return (self.namespace + self.identifier).__hash__()
@@ -1786,6 +1779,7 @@ class QueryDatasource(BaseModel):
     input_concepts: List[Concept]
     output_concepts: List[Concept]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
+
     datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin | UnnestJoin]
@@ -1799,6 +1793,12 @@ class QueryDatasource(BaseModel):
     join_derived_concepts: List[Concept] = Field(default_factory=list)
     hidden_concepts: List[Concept] = Field(default_factory=list)
     force_group: bool | None = None
+    existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(
+        default_factory=dict
+    )
+
+    def __repr__(self):
+        return f"{self.identifier}@<{self.grain}>"
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
@@ -1841,14 +1841,14 @@ class QueryDatasource(BaseModel):
         for k, _ in v.items():
             seen.add(k)
         for x in expected:
-            if x not in seen:
+            if x not in seen and CONFIG.validate_missing:
                 raise SyntaxError(
                     f"source map missing {x} on (expected {expected}, have {seen})"
                 )
         return v
 
     def __str__(self):
-        return f"{self.identifier}@<{self.grain}>"
+        return self.__repr__()
 
     def __hash__(self):
         return (self.identifier).__hash__()
@@ -2010,10 +2010,11 @@ class CTE(BaseModel):
     name: str
     source: "QueryDatasource"
     output_columns: List[Concept]
-    source_map: Dict[str, str | list[str]]
+    source_map: Dict[str, list[str]]
     grain: Grain
     base: bool = False
     group_to_grain: bool = False
+    existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
     parent_ctes: List["CTE"] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
@@ -2024,6 +2025,7 @@ class CTE(BaseModel):
     limit: Optional[int] = None
     requires_nesting: bool = True
     base_name_override: Optional[str] = None
+    base_alias_override: Optional[str] = None
 
     @computed_field  # type: ignore
     @property
@@ -2034,7 +2036,7 @@ class CTE(BaseModel):
     def validate_output_columns(cls, v):
         return unique(v, "address")
 
-    def inline_parent_datasource(self, parent: CTE) -> bool:
+    def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
         if not isinstance(ds_being_inlined, Datasource):
@@ -2050,6 +2052,7 @@ class CTE(BaseModel):
         # need to identify this before updating joins
         if self.base_name == parent.name:
             self.base_name_override = ds_being_inlined.safe_location
+            self.base_alias_override = ds_being_inlined.identifier
 
         for join in self.joins:
             if isinstance(join, InstantiatedUnnestJoin):
@@ -2066,6 +2069,8 @@ class CTE(BaseModel):
             elif v == parent.name:
                 self.source_map[k] = ds_being_inlined.name
         self.parent_ctes = [x for x in self.parent_ctes if x.name != parent.name]
+        if force_group:
+            self.group_to_grain = True
         return True
 
     def __add__(self, other: "CTE"):
@@ -2126,9 +2131,6 @@ class CTE(BaseModel):
         if self.base_name_override:
             return self.base_name_override
         # if this cte selects from a single datasource, select right from it
-        valid_joins: List[Join] = [
-            join for join in self.joins if isinstance(join, Join)
-        ]
         if self.is_root_datasource:
             return self.source.datasources[0].safe_location
 
@@ -2136,33 +2138,16 @@ class CTE(BaseModel):
         # as the root
         elif len(self.source.datasources) == 1 and len(self.parent_ctes) == 1:
             return self.parent_ctes[0].name
-        elif valid_joins and len(valid_joins) > 0:
-            candidates = [x.left_cte.name for x in valid_joins]
-            disallowed = [x.right_cte.name for x in valid_joins]
-            try:
-                return [y for y in candidates if y not in disallowed][0]
-            except IndexError:
-                raise SyntaxError(
-                    f"Invalid join configuration {candidates} {disallowed} with all parents {[x.base_name for x in self.parent_ctes]}"
-                )
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
-        elif self.parent_ctes:
-            raise SyntaxError(
-                f"{self.name} has no relevant base CTEs, {self.source_map},"
-                f" {[x.name for x in self.parent_ctes]}, outputs"
-                f" {[x.address for x in self.output_columns]}"
-            )
         return self.source.name
 
     @property
     def base_alias(self) -> str:
-
+        if self.base_alias_override:
+            return self.base_alias_override
         if self.is_root_datasource:
             return self.source.datasources[0].identifier
-        relevant_joins = [j for j in self.joins if isinstance(j, Join)]
-        if relevant_joins:
-            return relevant_joins[0].left_cte.name
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         elif self.parent_ctes:
@@ -2492,9 +2477,17 @@ class Environment(BaseModel):
         for datasource in self.datasources.values():
             for concept in datasource.output_concepts:
                 concrete_addresses.add(concept.address)
+        current_mat = [x.address for x in self.materialized_concepts]
         self.materialized_concepts = [
             c for c in self.concepts.values() if c.address in concrete_addresses
         ]
+        new = [
+            x.address
+            for x in self.materialized_concepts
+            if x.address not in current_mat
+        ]
+        if new:
+            logger.info(f"Environment added new materialized concepts {new}")
         for concept in self.concepts.values():
             if concept.derivation == PurposeLineage.MERGE:
                 ms = concept.lineage
@@ -2653,6 +2646,17 @@ class Environment(BaseModel):
         self.gen_concept_list_caches()
         return datasource
 
+    def delete_datasource(
+        self,
+        address: str,
+        meta: Meta | None = None,
+    ) -> bool:
+        if address in self.datasources:
+            del self.datasources[address]
+            self.gen_concept_list_caches()
+            return True
+        return False
+
 
 class LazyEnvironment(Environment):
     """Variant of environment to defer parsing of a path"""
@@ -2759,11 +2763,8 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
                 if isinstance(self.left, SelectGrain)
                 else self.left
             ),
-            right=(
-                self.right.with_select_grain(grain)
-                if isinstance(self.right, SelectGrain)
-                else self.right
-            ),
+            # the right side does NOT need to inherit select grain
+            right=self.right,
             operator=self.operator,
         )
 
@@ -2809,8 +2810,8 @@ class SubselectComparison(Comparison):
         return get_concept_arguments(self.left)
 
     @property
-    def existence_arguments(self) -> List[Concept]:
-        return get_concept_arguments(self.right)
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+        return [tuple(get_concept_arguments(self.right))]
 
     def with_select_grain(self, grain: Grain):
         # there's no need to pass the select grain through to a subselect comparison
@@ -3002,17 +3003,25 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return output
 
     @property
-    def existence_arguments(self) -> List[Concept]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         output = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
-        else:
-            output += get_concept_arguments(self.left)
         if isinstance(self.right, ConceptArgs):
             output += self.right.existence_arguments
-        else:
-            output += get_concept_arguments(self.right)
         return output
+
+    def decompose(self):
+        chunks = []
+        if self.operator == BooleanOperator.AND:
+            for val in [self.left, self.right]:
+                if isinstance(val, Conditional):
+                    chunks.extend(val.decompose())
+                else:
+                    chunks.append(val)
+        else:
+            chunks.append(self)
+        return chunks
 
 
 class AggregateWrapper(Namespaced, SelectGrain, BaseModel):
@@ -3073,7 +3082,7 @@ class WhereClause(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> List[Concept]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return self.conditional.existence_arguments
 
     def with_namespace(self, namespace: str) -> WhereClause:
@@ -3314,10 +3323,10 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> List[Concept]:
+    def existence_arguments(self) -> list[tuple["Concept", ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
-        return self.concept_arguments
+        return []
 
     @property
     def input(self):
@@ -3386,6 +3395,12 @@ Function.model_rebuild()
 Grain.model_rebuild()
 
 
+def list_to_wrapper(args):
+    types = [arg_to_datatype(arg) for arg in args]
+    assert len(set(types)) == 1
+    return ListWrapper(args, type=types[0])
+
+
 def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
     if isinstance(arg, Function):
         return arg.output_datatype
@@ -3409,5 +3424,8 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
         if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
             return DataType.INTEGER
         return arg_to_datatype(arg.content)
+    elif isinstance(arg, list):
+        wrapper = list_to_wrapper(arg)
+        return ListType(type=wrapper.type)
     else:
         raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

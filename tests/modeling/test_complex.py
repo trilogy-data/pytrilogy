@@ -1,10 +1,11 @@
-from trilogy.core.models import Environment
+from trilogy.core.models import Environment, SelectStatement
 from trilogy import parse, Executor
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.models import LooseConceptList
+from trilogy.core.query_processor import get_query_datasources
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):
@@ -94,3 +95,72 @@ def test_rowset_with_aggregation(
     # assert len(results) == 3
     assert results[0] == (1, 1, 10.0)
     assert results[1] == (2, 1, 5.0)
+
+
+def test_in_select(test_environment: Environment, test_executor: Executor):
+    test_select = """
+    auto even_stores <- unnest([1,2,3,4]);
+
+    auto filtered <- filter order_id where order_id in even_stores and order_id %2 = 0;
+
+    SELECT
+        order_id,
+    WHERE
+        order_id in filtered
+
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    select: SelectStatement = statements[-1]
+    assert select.where_clause.conditional.existence_arguments, str(
+        select.where_clause.conditional.__class__
+    ) + str(select.where_clause.conditional)
+    assert select.where_clause.existence_arguments
+
+    datasource = get_query_datasources(test_environment, select)
+
+    assert "local.filtered" in datasource.existence_source_map
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 2
+    assert results[0] == (2,)
+    assert results[1] == (4,)
+
+
+def test_window_clone(test_environment: Environment, test_executor: Executor):
+    test_select = """
+    auto nums <- unnest([1,2]);
+
+    auto filtered <- lag nums order by nums asc;
+
+    SELECT
+        filtered,
+        order_id,
+    WHERE
+        order_id in filtered
+    order by filtered asc
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 2
+    assert results[0] == (1, 1)
+    assert results[1] == (None, 1)
+
+
+def test_window_alt(test_environment: Environment, test_executor: Executor):
+    test_select = """
+    auto nums <- unnest([1,2]);
+
+    auto filtered <- rank nums;
+
+    SELECT
+        filtered
+    where
+        filtered = 1
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == (1,)

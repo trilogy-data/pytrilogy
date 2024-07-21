@@ -232,20 +232,6 @@ def get_node_joins(
                 raise SyntaxError(
                     f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
                 )
-    single_row = [x for x in datasources if x.grain.abstract]
-    for x in single_row:
-        for join in final_joins:
-            found = False
-            for join in final_joins:
-                if (
-                    join.left_datasource.identifier == x.identifier
-                    or join.right_datasource.identifier == x.identifier
-                ):
-                    found = True
-            if not found:
-                raise SyntaxError(
-                    f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
-                )
     return final_joins
 
 

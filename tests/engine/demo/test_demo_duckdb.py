@@ -190,22 +190,10 @@ select
     passenger.split_cabin;
 
 """
-
-    executor.parse_text(test)
-
-    executor.generate_sql(test)
-
     executor.execute_text(test)
-
-    # for x, v in executor.environment.datasources.items():
-    #     print(x)
-    #     print(v.grain)
-    #     print([str(z) for z in v.output_concepts])
-    # remove raw data
-    del executor.environment.datasources["raw_data"]
+    executor.environment.delete_datasource("raw_data")
     executor.execute_text(
         """ select
-   passenger.id,
     passenger.split_cabin;"""
     )
     # confirm we can still get results

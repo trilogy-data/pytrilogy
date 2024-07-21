@@ -38,6 +38,7 @@ class InlineDatasource(OptimizationRule):
             f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
         )
         to_inline: list[CTE] = []
+        force_group = False
         for parent_cte in cte.parent_ctes:
             if not parent_cte.is_root_datasource:
                 self.log(f"parent {parent_cte.name} is not root")
@@ -55,15 +56,18 @@ class InlineDatasource(OptimizationRule):
                 continue
             root_outputs = {x.address for x in root.output_concepts}
             cte_outputs = {x.address for x in parent_cte.output_columns}
+            grain_components = {x.address for x in root.grain.components}
             if not cte_outputs.issubset(root_outputs):
                 self.log(f"Not all {parent_cte.name} outputs are found on datasource")
                 continue
-
+            if not grain_components.issubset(cte_outputs):
+                self.log("Not all datasource components in cte outputs, forcing group")
+                force_group = True
             to_inline.append(parent_cte)
 
         for replaceable in to_inline:
             self.log(f"Inlining parent {replaceable.name}")
-            cte.inline_parent_datasource(replaceable)
+            cte.inline_parent_datasource(replaceable, force_group=force_group)
 
         return optimized
 
@@ -107,14 +111,14 @@ class PredicatePushdown(OptimizationRule):
             f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
         )
         if isinstance(cte.condition, Conditional):
-            candidates = decompose_condition(cte.condition)
+            candidates = cte.condition.decompose()
         else:
             candidates = [cte.condition]
         logger.info(f"Have {len(candidates)} candidates to try to push down")
         for candidate in candidates:
             conditions = {x.address for x in candidate.concept_arguments}
             for parent_cte in cte.parent_ctes:
-                materialized = {k for k, v in parent_cte.source_map.items() if v != ""}
+                materialized = {k for k, v in parent_cte.source_map.items() if v != []}
                 if conditions.issubset(materialized):
                     if all(
                         [
@@ -200,6 +204,8 @@ def is_direct_return_eligible(
     for x in derived_concepts:
         if x.derivation == PurposeLineage.WINDOW:
             return False
+        if x.derivation == PurposeLineage.UNNEST:
+            return False
         if x.derivation == PurposeLineage.AGGREGATE:
             if x.address in conditions:
                 return False
@@ -236,12 +242,21 @@ def optimize_ctes(
                 actions_taken = rule.optimize(cte, inverse_map)
         complete = not actions_taken
 
-    if is_direct_return_eligible(root_cte, select):
+    if CONFIG.optimizations.direct_return and is_direct_return_eligible(
+        root_cte, select
+    ):
         root_cte.order_by = select.order_by
         root_cte.limit = select.limit
-        root_cte.condition = (
-            select.where_clause.conditional if select.where_clause else None
-        )
+        if select.where_clause:
+
+            if root_cte.condition:
+                root_cte.condition = Conditional(
+                    left=root_cte.condition,
+                    operator=BooleanOperator.AND,
+                    right=select.where_clause.conditional,
+                )
+            else:
+                root_cte.condition = select.where_clause.conditional
         root_cte.requires_nesting = False
         sort_select_output(root_cte, select)
 

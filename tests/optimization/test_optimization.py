@@ -74,7 +74,7 @@ def test_decomposition_function():
 def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
-    cte_source_map = {outputs[0].address: datasource.name}
+    cte_source_map = {outputs[0].address: [datasource.name]}
     parent = CTE(
         name="parent",
         source=QueryDatasource(
@@ -89,6 +89,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
         parent_ctes=[],
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
 
     cte2 = CTE(
@@ -108,6 +109,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
         ),
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
     inverse_map = {"parent": [cte2]}
     rule = PredicatePushdown()
@@ -120,7 +122,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
 def test_invalid_pushdown(test_environment: Environment, test_environment_graph):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
-    cte_source_map = {outputs[0].address: datasource.name}
+    cte_source_map = {outputs[0].address: [datasource.name]}
     parent = CTE(
         name="parent",
         source=QueryDatasource(
@@ -149,6 +151,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
         parent_ctes=[parent],
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
 
     cte2 = CTE(
@@ -168,6 +171,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
         ),
         grain=Grain(),
         source_map=cte_source_map,
+        existence_source_map={},
     )
 
     inverse_map = {"parent": [cte1, cte2]}
@@ -182,7 +186,7 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
     outputs = [c.concept for c in datasource.columns]
     concept_0 = outputs[0]
     concept_1 = outputs[1]
-    cte_source_map = {output.address: datasource.name for output in outputs}
+    cte_source_map = {output.address: [datasource.name] for output in outputs}
     parent1 = CTE(
         name="parent1",
         source=QueryDatasource(
@@ -196,7 +200,7 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
         output_columns=[],
         condition=Comparison(left=outputs[0], right=1, operator=ComparisonOperator.EQ),
         grain=Grain(),
-        source_map={outputs[0].address: datasource.name},
+        source_map={outputs[0].address: [datasource.name]},
     )
     parent2 = CTE(
         name="parent2",
@@ -210,7 +214,7 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
         ),
         output_columns=[],
         grain=Grain(),
-        source_map={concept_1.address: datasource.name},
+        source_map={concept_1.address: [datasource.name]},
     )
     cte1 = CTE(
         name="test1",
