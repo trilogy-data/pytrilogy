@@ -67,7 +67,6 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from trilogy.utility import unique
 from collections import UserList
-from trilogy.utility import string_to_hash
 from functools import cached_property
 from abc import ABC
 
