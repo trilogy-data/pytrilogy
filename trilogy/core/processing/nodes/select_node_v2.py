@@ -22,52 +22,6 @@ from trilogy.core.exceptions import NoDatasourceException
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
 
 
-class StaticSelectNode(StrategyNode):
-    """Static select nodes."""
-
-    source_type = SourceType.SELECT
-
-    def __init__(
-        self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
-        environment: Environment,
-        g,
-        datasource: QueryDatasource,
-        depth: int = 0,
-        partial_concepts: List[Concept] | None = None,
-    ):
-        super().__init__(
-            input_concepts=input_concepts,
-            output_concepts=output_concepts,
-            environment=environment,
-            g=g,
-            whole_grain=True,
-            parents=[],
-            depth=depth,
-            partial_concepts=partial_concepts,
-        )
-        self.datasource = datasource
-
-    def _resolve(self):
-        if self.datasource.grain == Grain():
-            raise NotImplementedError
-        return self.datasource
-
-    def copy(self) -> "StaticSelectNode":
-        return StaticSelectNode(
-            input_concepts=list(self.input_concepts),
-            output_concepts=list(self.output_concepts),
-            environment=self.environment,
-            g=self.g,
-            datasource=self.datasource,
-            depth=self.depth,
-            partial_concepts=(
-                list(self.partial_concepts) if self.partial_concepts else None
-            ),
-        )
-
-
 class SelectNode(StrategyNode):
     """Select nodes actually fetch raw data from a table
     Responsible for selecting the cheapest option from which to select.
