@@ -193,27 +193,6 @@ ORDER BY {% for order in order_by %}
 )
 
 
-def check_lineage(c: Concept, cte: CTE) -> bool:
-    checks = []
-    if not c.lineage:
-        return True
-    for sub_c in c.lineage.concept_arguments:
-        if not isinstance(sub_c, Concept):
-            continue
-        if sub_c.address in cte.source_map or (
-            sub_c.lineage and check_lineage(sub_c, cte)
-        ):
-            checks.append(True)
-        else:
-            logger.debug(
-                f"{LOGGER_PREFIX} [{sub_c.address}] not found in source map for"
-                f" {cte.name}, have cte keys {[c for c in cte.source_map.keys()]} and"
-                f" datasource keys {[c for c in cte.source.source_map.keys()]}"
-            )
-            checks.append(False)
-    return all(checks)
-
-
 def safe_quote(string: str, quote_char: str):
     # split dotted identifiers
     # TODO: evaluate if we need smarter parsing for strings that could actually include .
