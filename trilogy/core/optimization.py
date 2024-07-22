@@ -66,7 +66,7 @@ class InlineDatasource(OptimizationRule):
 
             result = cte.inline_parent_datasource(replaceable, force_group=force_group)
             if result:
-                self.log(f"Ilined parent {replaceable.name}")
+                self.log(f"Inlined parent {replaceable.name}")
             else:
                 self.log(f"Failed to inline {replaceable.name}")
         return optimized
