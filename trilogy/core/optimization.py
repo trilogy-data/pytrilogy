@@ -12,9 +12,6 @@ from trilogy.constants import logger, CONFIG
 from abc import ABC
 
 
-REGISTERED_RULES: list["OptimizationRule"] = []
-
-
 class OptimizationRule(ABC):
 
     def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
@@ -66,13 +63,15 @@ class InlineDatasource(OptimizationRule):
             to_inline.append(parent_cte)
 
         for replaceable in to_inline:
-            self.log(f"Inlining parent {replaceable.name}")
-            cte.inline_parent_datasource(replaceable, force_group=force_group)
 
+            result = cte.inline_parent_datasource(replaceable, force_group=force_group)
+            if result:
+                self.log(f"Ilined parent {replaceable.name}")
+            else:
+                self.log(f"Failed to inline {replaceable.name}")
         return optimized
 
 
-# This will be used in the future for more complex condition decomposition
 def decompose_condition(conditional: Conditional):
     chunks = []
     if conditional.operator == BooleanOperator.AND:
@@ -154,12 +153,6 @@ class PredicatePushdown(OptimizationRule):
         return optimized
 
 
-if CONFIG.optimizations.datasource_inlining:
-    REGISTERED_RULES.append(InlineDatasource())
-if CONFIG.optimizations.predicate_pushdown:
-    REGISTERED_RULES.append(PredicatePushdown())
-
-
 def filter_irrelevant_ctes(
     input: list[CTE],
     root_cte: CTE,
@@ -233,6 +226,12 @@ def optimize_ctes(
     input: list[CTE], root_cte: CTE, select: SelectStatement | MultiSelectStatement
 ):
     complete = False
+    REGISTERED_RULES: list["OptimizationRule"] = []
+
+    if CONFIG.optimizations.datasource_inlining:
+        REGISTERED_RULES.append(InlineDatasource())
+    if CONFIG.optimizations.predicate_pushdown:
+        REGISTERED_RULES.append(PredicatePushdown())
 
     while not complete:
         actions_taken = False

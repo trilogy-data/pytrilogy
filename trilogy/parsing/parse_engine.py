@@ -250,6 +250,8 @@ grammar = r"""
     
     comparison: (expr COMPARISON_OPERATOR expr) 
 
+    between_comparison: expr "BETWEEN"i expr "AND"i expr
+
     subselect_comparison: expr array_comparison expr | (expr array_comparison expr_tuple)
     
     expr_tuple: "("  (expr ",")* expr ","?  ")"
@@ -262,7 +264,7 @@ grammar = r"""
 
     parenthetical: "(" (conditional | expr) ")"
     
-    expr:  window_item | filter_item | comparison | subselect_comparison | fgroup |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access |  parenthetical
+    expr:  window_item | filter_item | between_comparison | comparison | subselect_comparison | fgroup |  aggregate_functions | unnest | _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions |  literal |  expr_reference  | index_access | attr_access |  parenthetical
     
     // functions
     
@@ -1240,6 +1242,19 @@ class ParseToObjects(Transformer):
         if args[1] == ComparisonOperator.IN:
             raise SyntaxError
         return Comparison(left=args[0], right=args[2], operator=args[1])
+
+    def between_comparison(self, args) -> Conditional:
+        left_bound = args[1]
+        right_bound = args[2]
+        return Conditional(
+            left=Comparison(
+                left=args[0], right=left_bound, operator=ComparisonOperator.GTE
+            ),
+            right=Comparison(
+                left=args[0], right=right_bound, operator=ComparisonOperator.LTE
+            ),
+            operator=BooleanOperator.AND,
+        )
 
     @v_args(meta=True)
     def subselect_comparison(self, meta: Meta, args) -> SubselectComparison:

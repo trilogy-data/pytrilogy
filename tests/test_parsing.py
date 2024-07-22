@@ -1,4 +1,4 @@
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import Purpose, ComparisonOperator
 from trilogy.core.models import (
     DataType,
     Parenthetical,
@@ -6,6 +6,7 @@ from trilogy.core.models import (
     ShowStatement,
     SelectStatement,
     Environment,
+    Comparison,
 )
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.parsing.parse_engine import (
@@ -217,3 +218,25 @@ select
     for name in ["test_name_count"]:
         assert name in env.concepts
         assert env.concepts[name].purpose == Purpose.METRIC
+
+
+def test_between():
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  WHERE order_id BETWEEN 3 and 5;"
+    )
+    query: ProcessedQuery = parsed[-1]
+    left = query.where_clause.conditional.left
+    assert isinstance(
+        left,
+        Comparison,
+    ), type(left)
+    assert left.operator == ComparisonOperator.GTE
+    assert left.right == 3
+
+    right = query.where_clause.conditional.right
+    assert isinstance(
+        right,
+        Comparison,
+    ), type(right)
+    assert right.operator == ComparisonOperator.LTE
+    assert right.right == 5

@@ -2041,6 +2041,14 @@ class CTE(BaseModel):
         ds_being_inlined = qds_being_inlined.datasources[0]
         if not isinstance(ds_being_inlined, Datasource):
             return False
+        if any(
+            [
+                x.identifier == qds_being_inlined.identifier
+                for x in self.source.datasources
+            ]
+        ):
+            return False
+
         self.source.datasources = [
             ds_being_inlined,
             *[

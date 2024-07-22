@@ -1,0 +1,25 @@
+import web_sales as web_sales;
+
+
+auto relevant_sales <- filter web_sales.external_sales_price where web_sales.date.date between cast('1999-02-22' AS date) AND cast('1999-03-24' AS date)
+    and web_sales.item.category in (
+        'Sports', 'Books', 'Home'
+    );
+
+select
+    web_sales.item.name,
+    web_sales.item.desc,
+    web_sales.item.category,
+    web_sales.item.class,
+    web_sales.item.current_price,
+    sum(relevant_sales) -> itemrevenue,
+    (sum(relevant_sales) *100.00) / sum(relevant_sales) by web_sales.item.class ->revenueratio
+WHERE
+    itemrevenue
+ORDER BY
+    web_sales.item.category asc,
+    web_sales.item.class asc,
+    web_sales.item.name asc,
+    web_sales.item.desc asc,
+    revenueratio asc,
+LIMIT 100;
