@@ -2043,7 +2043,7 @@ class CTE(BaseModel):
             return False
         if any(
             [
-                x.identifier == qds_being_inlined.identifier
+                x.identifier == ds_being_inlined.identifier
                 for x in self.source.datasources
             ]
         ):
