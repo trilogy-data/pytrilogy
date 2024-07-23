@@ -7,14 +7,18 @@ property id.brand_name string;
 property id.manufacturer_id int;
 property id.category int;
 property id.current_price float;
+property id.class string;
+property id.desc string;
 
 datasource items (
     I_ITEM_SK: id,
     I_ITEM_ID: name,
+    I_ITEM_DESC: desc,
     I_BRAND: brand_name,
     I_BRAND_ID: brand_id,
     I_MANUFACT_ID: manufacturer_id,
     I_CATEGORY: category,
+    I_CLASS: class,
     I_CURRENT_PRICE: current_price,
 )
 grain (id)

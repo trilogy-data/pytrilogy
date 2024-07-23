@@ -69,20 +69,29 @@ def test_ten(engine):
     run_query(engine, 10)
 
 
+def test_twelve(engine):
+    run_query(engine, 12)
+
+
 # def test_eleven(engine):
 #     run_query(engine, 11)
 
 
-# def run_adhoc(number: int):
-#     env = Environment(working_path=Path(__file__).parent)
-#     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env)
-#     engine.execute_raw_sql(
-#         """INSTALL tpcds;
-# LOAD tpcds;
-# SELECT * FROM dsdgen(sf=1);"""
-#     )
-#     run_query(engine, number)
+def run_adhoc(number: int):
+    from trilogy import Environment, Dialects
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    env = Environment(working_path=Path(__file__).parent)
+    engine: Executor = Dialects.DUCK_DB.default_executor(
+        environment=env, hooks=[DebuggingHook()]
+    )
+    engine.execute_raw_sql(
+        """INSTALL tpcds;
+LOAD tpcds;
+SELECT * FROM dsdgen(sf=1);"""
+    )
+    run_query(engine, number)
 
 
-# if __name__ == "__main__":
-#     run_adhoc(10)
+if __name__ == "__main__":
+    run_adhoc(12)
