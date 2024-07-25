@@ -17,7 +17,7 @@ key top_ids <- filter id where sum(comment_count) by id >50;
 
 datasource posts (
     raw('''abc'''):constant,
-    owner_user_id: Partial[user.id],
+    owner_user_id: ~user.id,
     id: id,
     body: text,
     creation_date: creation_date,
@@ -30,7 +30,7 @@ datasource posts (
 
 datasource post_tags (
     id: id,
-    owner_user_id: Partial[user.id],
+    owner_user_id: ~user.id,
     tag: tag.name,
     creation_date: creation_date
     )

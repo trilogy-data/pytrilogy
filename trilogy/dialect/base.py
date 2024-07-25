@@ -59,7 +59,7 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
 
 
 def window_factory(string: str, include_concept: bool = False) -> Callable:
-    def render_window(concept: str, window: str, sort: str, offset:int | None) -> str:
+    def render_window(concept: str, window: str, sort: str, offset:int | None = None) -> str:
         if not include_concept:
             concept = ""
         if offset:
@@ -114,10 +114,10 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
     # math
-    FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
-    FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",
-    FunctionType.DIVIDE: lambda x: f"({x[0]} / {x[1]})",
-    FunctionType.MULTIPLY: lambda x: f"({x[0]} * {x[1]})",
+    FunctionType.ADD: lambda x: f"{x[0]} + {x[1]}",
+    FunctionType.SUBTRACT: lambda x: f"{x[0]} - {x[1]}",
+    FunctionType.DIVIDE: lambda x: f"{x[0]} / {x[1]}",
+    FunctionType.MULTIPLY: lambda x: f"{x[0]} * {x[1]}",
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     # aggregate types

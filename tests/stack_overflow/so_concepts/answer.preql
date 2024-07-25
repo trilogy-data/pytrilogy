@@ -23,7 +23,7 @@ property id.view_count	string	;
 datasource post_answer_edits (
     id:id,
     parent_id: question.id,
-    last_editor_user_id: Partial[user.id],
+    last_editor_user_id: ~user.id,
     last_editor_display_name: last_editor_display_name
 )
     grain (id)
@@ -33,7 +33,7 @@ datasource post_answers (
     id:id,
     comment_count:comment_count,
     parent_id: question.id,
-    owner_user_id: Partial[user.id],
+    owner_user_id: ~user.id,
     owner_display_name: owner_display_name,
     )
     grain (id)

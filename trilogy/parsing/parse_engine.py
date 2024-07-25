@@ -118,7 +118,7 @@ from trilogy.parsing.common import (
 CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
 
 grammar = r"""
-    !start: ( block | show_statement | comment )*
+    !start: ( _newline | block | show_statement )*
     block: statement _TERMINATOR comment?
     ?statement: concept
     | datasource
@@ -144,7 +144,8 @@ grammar = r"""
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<" "-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
-    constant_derivation: CONST IDENTIFIER "<" "-" literal
+    constant_derivation: CONST IDENTIFIER "<-" (literal | _constant_functions)
+
     concept_nullable_modifier: "?"
     concept:  (concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
     
@@ -160,7 +161,7 @@ grammar = r"""
     
     query: "query" MULTILINE_STRING
     
-    concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" ) | (SHORTHAND_MODIFIER concept_assignment  )
+    concept_assignment: SHORTHAND_MODIFIER? IDENTIFIER 
     
     //column_assignment: ((IDENTIFIER | raw_column_assignment | _static_functions ) ":" concept_assignment) 
     # TODO: figure out if we want static
@@ -202,7 +203,7 @@ grammar = r"""
     // rank/lag/lead
     WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i)  /[\s]+/
     
-    window_item: WINDOW_TYPE int_lit? (IDENTIFIER | select_transform | comment+ ) window_item_over? window_item_order?
+    window_item: WINDOW_TYPE int_lit? CONCEPT window_item_over? window_item_order?
     
     window_item_over: ("OVER"i over_list)
     
@@ -254,7 +255,9 @@ grammar = r"""
 
     subselect_comparison: expr array_comparison expr
     
-    expr_tuple: "("  expr ("," expr)* ","?  ")"
+    expr_tuple: "("  expr ("," expr)+ ","?  ")"
+
+    parenthetical: "(" expr ")"
 
     //unnesting is a function
     unnest: "UNNEST"i "(" expr ")"
@@ -262,7 +265,7 @@ grammar = r"""
     index_access: expr "[" int_lit "]"
     attr_access: expr  "[" _string_lit "]"
 
-    expr:  window_item | filter_item | subselect_comparison | between_comparison | comparison |  fgroup | conditional |  aggregate_functions | unnest | _static_functions |  literal |  CONCEPT  | index_access | attr_access |  expr_tuple
+    expr:  window_item | filter_item | subselect_comparison | between_comparison | comparison |  fgroup | conditional |  aggregate_functions | unnest | _static_functions |  literal |  CONCEPT  | index_access | attr_access | parenthetical | expr_tuple
     
     // functions
     
@@ -274,7 +277,7 @@ grammar = r"""
     fround: "round"i "(" expr "," expr ")"
     fabs: "abs"i "(" expr ")"
         
-    _math_functions: fadd | fsub | fmul | fdiv | fround | fmod | fabs
+    _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs
     
     //generic
     fcast: "cast"i "(" expr "as"i data_type ")"
@@ -289,8 +292,8 @@ grammar = r"""
     _generic_functions: fcast | concat | fcoalesce | fcase | len | fnot
 
     //constant
-    fcurrent_date: "current_date"i "(" ")"
-    fcurrent_datetime: "current_datetime"i "(" ")"
+    fcurrent_date: "current_date()"i
+    fcurrent_datetime: "current_datetime()"i
 
     _constant_functions: fcurrent_date | fcurrent_datetime
     
@@ -345,7 +348,7 @@ grammar = r"""
     
     _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
-    _static_functions: _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions
+    _static_functions: _constant_functions| _string_functions | _math_functions | _generic_functions |  _date_functions
 
     // base language constructs
     IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
@@ -370,9 +373,9 @@ grammar = r"""
     
     !bool_lit: "True"i | "False"i
 
-    !null_lit: "null"i
+    !null_lit.1: "null"i
     
-    literal: _string_lit | int_lit | float_lit | bool_lit | null_lit | array_lit
+    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit
 
     MODIFIER: "Optional"i | "Partial"i | "Nullable"i
 
@@ -385,7 +388,7 @@ grammar = r"""
 
     !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | struct_type | list_type
     
-    PURPOSE:  "key"i | "metric"i | "const"i | "constant"i
+    PURPOSE:  "key"i | "metric"i  | CONST
     PROPERTY: "property"i
     CONST: "const"i | "constant"i
     AUTO: "AUTO"i 
@@ -393,7 +396,7 @@ grammar = r"""
     // meta functions
     CONCEPTS: "CONCEPTS"i
     DATASOURCES: "DATASOURCES"i
-
+    _newline: ( /\r?\n[\t ]*/ | comment )+
     show_category: CONCEPTS | DATASOURCES
 
     show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
@@ -628,15 +631,16 @@ class ParseToObjects(Transformer):
     def column_assignment(self, meta: Meta, args):
         # TODO -> deal with conceptual modifiers
         modifiers = []
-        concept = args[1]
+        alias = args[0]
+        concept_list = args[1]
         # recursively collect modifiers
-        while len(concept) > 1:
-            modifiers.append(concept[0])
-            concept = concept[1]
+        if len(concept_list)>1:
+            modifiers += concept_list[:-1]
+        concept = concept_list[-1]
         resolved = self.environment.concepts.__getitem__(  # type: ignore
-            key=concept[0], line_no=meta.line
+            key=concept, line_no=meta.line
         )
-        return ColumnAssignment(alias=args[0], modifiers=modifiers, concept=resolved)
+        return ColumnAssignment(alias=alias, modifiers=modifiers, concept=resolved)
 
     def _TERMINATOR(self, args):
         return None
@@ -1334,6 +1338,8 @@ class ParseToObjects(Transformer):
                 over = item.contents
             elif isinstance(item, str):
                 concept = self.environment.concepts[item]
+            elif isinstance(item, Concept):
+                concept = item
         assert concept
         return WindowItem(type=type, content=concept, over=over, order_by=order_by, index=index)
 
@@ -1949,7 +1955,7 @@ def unpack_visit_error(e: VisitError):
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
         raise e.orig_exc
     elif isinstance(e.orig_exc, (ValidationError, TypeError)):
-        raise InvalidSyntaxException(str(e.orig_exc))
+        raise InvalidSyntaxException(str(e.orig_exc) + str(e.rule) + str(e.obj))
     raise e
 
 

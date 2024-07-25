@@ -2915,6 +2915,7 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         float,
         list,
         bool,
+        MagicConstants,
         Concept,
         Comparison,
         "Conditional",
@@ -2928,11 +2929,14 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         float,
         list,
         bool,
+        MagicConstants,
         Concept,
         Comparison,
         "Conditional",
         "Parenthetical",
         Function,
+        FilterItem,
+
     ]
     operator: BooleanOperator
 
