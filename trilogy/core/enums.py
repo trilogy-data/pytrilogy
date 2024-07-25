@@ -76,6 +76,13 @@ class JoinType(Enum):
 class Ordering(Enum):
     ASCENDING = "asc"
     DESCENDING = "desc"
+    ASC_NULLS_AUTO = "asc nulls auto"
+    ASC_NULLS_FIRST = "asc nulls first"
+    ASC_NULLS_LAST = "asc nulls last"
+    DESC_NULLS_FIRST = "desc nulls first"
+    DESC_NULLS_LAST = "desc nulls last"
+    DESC_NULLS_AUTO = "desc nulls auto"
+
 
 
 class WindowType(Enum):
@@ -220,6 +227,7 @@ class ComparisonOperator(Enum):
     ILIKE = "ilike"
     CONTAINS = "contains"
     ELSE = "else"
+    BETWEEN = "between"
 
     @classmethod
     def _missing_(cls, value):

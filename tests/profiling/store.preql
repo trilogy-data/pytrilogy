@@ -1,0 +1,38 @@
+import date as date;
+
+key id int;
+property id.text_id string;
+property id.name string;
+property id.employees int;
+property id.floor_space int;
+property id.hours string;
+property id.store_manager string;
+property id.market_id int;
+property id.geography_class string;
+property id.market_manager string;
+property id.tax_percentage float;
+property id.county string;
+property id.state string;
+property id.city string;
+property id.zip string;
+
+datasource store (
+    S_STORE_SK: id,
+    S_STORE_ID: text_id,
+    S_CLOSED_DATE: date.id,
+    S_STORE_NAME: name,
+    S_EMPLOYEES: employees,
+    S_FLOOR_SPACE: floor_space,
+    S_HOURS: hours,
+    S_STORE_MANAGER: store_manager,
+    S_MARKET_ID: market_id,
+    S_GEOGRAPHY_CLASS: geography_class,
+    S_MARKET_MANAGER: market_manager,
+    S_TAX_PERCENTAGE: tax_percentage,
+    S_CITY: city,
+    S_STATE: state,
+    S_COUNTY: county,
+    S_ZIP: zip,
+)
+grain (id)
+address memory.store;

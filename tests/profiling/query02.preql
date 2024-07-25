@@ -2,6 +2,11 @@ import store_sales as store_sales;
 import web_sales as web_sales;
 import date as date;
 
+# query 2
+#Report the ratios of weekly web and catalog sales increases from one year to the next year for each week. That
+#is, compute the increase of Monday, Tuesday, ... Sunday sales from one year to the following
+# trilogy run C:\Users\ethan\coding_projects\pypreql-etl\tests\tcp-ds\query02.preql snowflake --username EFROMVT --account DHZVXJH-DE83081 --password <>
+
 #merge date.id,store_sales.date.id;
 
 rowset merged_sales <- select 

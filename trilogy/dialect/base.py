@@ -10,6 +10,7 @@ from trilogy.core.enums import (
     WindowType,
     DatePart,
     PurposeLineage,
+    ComparisonOperator,
 )
 from trilogy.core.models import (
     ListType,
@@ -58,17 +59,21 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
 
 
 def window_factory(string: str, include_concept: bool = False) -> Callable:
-    def render_window(concept: str, window: str, sort: str) -> str:
+    def render_window(concept: str, window: str, sort: str, offset:int | None) -> str:
         if not include_concept:
             concept = ""
-        if window and sort:
-            return f"{string}({concept}) over (partition by {window} order by {sort} )"
-        elif window:
-            return f"{string}({concept}) over (partition by {window})"
-        elif sort:
-            return f"{string}({concept}) over (order by {sort} )"
+        if offset:
+            base = f"{string}({concept}, {offset})"
         else:
-            return f"{string}({concept}) over ()"
+            base = f"{string}({concept})"
+        if window and sort:
+            return f"{base} over (partition by {window} order by {sort} )"
+        elif window:
+            return f"{base} over (partition by {window})"
+        elif sort:
+            return f"{base} over (order by {sort} )"
+        else:
+            return f"{base} over ()"
 
     return render_window
 
@@ -362,10 +367,12 @@ class BaseDialect:
             else:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
         elif isinstance(e, Comparison):
+            if e.operator ==ComparisonOperator.BETWEEN:
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right.left, cte=cte, cte_map=cte_map) and self.render_expr(e.right.right, cte=cte, cte_map=cte_map)}"
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
-            return f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
+            return f" {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} "
         elif isinstance(e, WindowItem):
             rendered_order_components = [
                 f"{self.render_expr(x.expr, cte, cte_map=cte_map)} {x.order.value}"

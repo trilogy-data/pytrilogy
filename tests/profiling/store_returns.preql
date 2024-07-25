@@ -1,0 +1,21 @@
+import store as store;
+import store_sales as store_sales;
+import item as item;
+import date as return_date;
+import time as time;
+import customer as customer;
+
+
+property <store_sales.ticket_number, item.id>.return_amount float;
+
+datasource store_returns(
+    SR_RETURNED_DATE_SK: return_date.id,
+    SR_RETURN_TIME_SK: time.id,
+    SR_ITEM_SK: item.id,
+    SR_CUSTOMER_SK: customer.id,
+    SR_RETURN_AMT: return_amount,
+    SR_TICKET_NUMBER: store_sales.ticket_number,
+    SR_STORE_SK: store.id,
+)
+grain (store_sales.ticket_number, item.id)
+address memory.store_returns;

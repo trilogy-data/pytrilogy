@@ -996,6 +996,7 @@ class WindowItem(Namespaced, SelectGrain, BaseModel):
     content: Concept
     order_by: List["OrderItem"]
     over: List["Concept"] = Field(default_factory=list)
+    index: Optional[int] = None
 
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem(
@@ -2735,6 +2736,11 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
             raise SyntaxError(
                 f"Cannot compare {self.left} and {self.right} of different types"
             )
+        if self.operator == ComparisonOperator.BETWEEN:
+            if not isinstance(self.right, ComparisonOperator) and self.right.operator == BooleanOperator.AND:
+                raise SyntaxError(
+                    f"Between operator must have two operands with and, not {self.right}"
+                )
 
     def __add__(self, other):
         if not isinstance(other, (Comparison, Conditional, Parenthetical)):

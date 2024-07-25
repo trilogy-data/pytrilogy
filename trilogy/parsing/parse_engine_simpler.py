@@ -140,7 +140,7 @@ grammar = r"""
     //<customer_id,country>.property local_alias STRING
     concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
     //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | IDENTIFIER) "<-" expr
+    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | IDENTIFIER) "<" "-" expr
 
     rowset_derivation_statement: ("rowset"i IDENTIFIER "<" "-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
     
@@ -149,7 +149,7 @@ grammar = r"""
     concept:  (concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
     
     //concept property
-    prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
+    prop_ident: "<" (IDENTIFIER ",")* IDENTIFIER ","? ">" "." IDENTIFIER
 
     // datasource concepts
     datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
@@ -162,13 +162,11 @@ grammar = r"""
     
     concept_assignment: IDENTIFIER | (MODIFIER "[" concept_assignment "]" ) | (SHORTHAND_MODIFIER concept_assignment  )
     
-    //column_assignment: ((IDENTIFIER | raw_column_assignment | _static_functions ) ":" concept_assignment) 
-    # TODO: figure out if we want static
-    column_assignment: ((IDENTIFIER | raw_column_assignment ) ":" concept_assignment) 
+    column_assignment: ((IDENTIFIER | raw_column_assignment | _static_functions ) ":" concept_assignment) 
 
     raw_column_assignment: "raw" "(" MULTILINE_STRING ")"
     
-    column_assignment_list : column_assignment (","  column_assignment)* ","?
+    column_assignment_list : (column_assignment "," )* column_assignment ","?
     
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
     
@@ -178,10 +176,10 @@ grammar = r"""
     persist_statement: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select_statement grain_clause?
 
     // select statement
-    select_statement: "select"i select_list  where?  order_by?  limit? 
+    select_statement: "select"i select_list  where? comment* order_by? comment* limit? comment*
 
     // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? order_by?  limit? 
+    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? comment* order_by? comment* limit? comment*
 
     align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)* ","?
 
@@ -193,8 +191,8 @@ grammar = r"""
     // FUNCTION blocks
     function: raw_function
     function_binding_item: IDENTIFIER ":" data_type
-    function_binding_list: function_binding_item ("," function_binding_item )* ","?
-    raw_function: "bind" "sql"  IDENTIFIER  "("  function_binding_list ")" "->" data_type "as"i MULTILINE_STRING
+    function_binding_list: (function_binding_item ",")* function_binding_item ","?
+    raw_function: "bind" "sql"  IDENTIFIER  "("  function_binding_list ")" "-" ">" data_type "as"i MULTILINE_STRING
     
     // user_id where state = Mexico
     filter_item: "filter"i IDENTIFIER where
@@ -210,12 +208,12 @@ grammar = r"""
     
     select_hide_modifier: "--"
     select_partial_modifier: "~"
-    select_item: (select_hide_modifier | select_partial_modifier)? (CONCEPT | select_transform | comment+ )
+    select_item: (select_hide_modifier | select_partial_modifier)? (IDENTIFIER | select_transform | comment+ )
     
-    select_list:  select_item ("," select_item )* ","?
+    select_list:  ( select_item "," )* select_item ","?
     
     //  count(post_id) -> post_count
-    _assignment: ("->") | "as"i
+    _assignment: ("-" ">") | "as"
     select_transform : expr _assignment IDENTIFIER metadata?
     
     metadata: "metadata" "(" IDENTIFIER "=" _string_lit ")"
@@ -228,7 +226,7 @@ grammar = r"""
     
     window_order_by: "BY"i column_list
     
-    order_list: expr ordering (","  expr ordering)* ","?
+    order_list: (expr ordering "," )* expr ordering ","?
     
     over_list: (IDENTIFIER "," )* IDENTIFIER ","?
     
@@ -238,23 +236,25 @@ grammar = r"""
     
     //WHERE STATEMENT
     
-    !logical_operator: "and"i | "or"i
+    LOGICAL_OPERATOR: "AND"i | "OR"i
     
-    conditional: expr logical_operator expr
+    conditional: expr LOGICAL_OPERATOR (conditional | expr)
     
-    where: "WHERE"i expr+
+    where: "WHERE"i (expr | conditional)
     
+    expr_reference: IDENTIFIER
+
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
 
-    COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!=")
+    COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!="  )
     
-    comparison: expr COMPARISON_OPERATOR expr
+    comparison: (expr COMPARISON_OPERATOR expr) 
 
-    between_comparison: expr "between"i expr "and"i expr
+    between_comparison: expr "BETWEEN"i expr "AND"i expr
 
-    subselect_comparison: expr array_comparison expr
+    subselect_comparison: expr array_comparison expr | (expr array_comparison expr_tuple)
     
-    expr_tuple: "("  expr ("," expr)* ","?  ")"
+    expr_tuple: "("  (expr ",")* expr ","?  ")"
 
     //unnesting is a function
     unnest: "UNNEST"i "(" expr ")"
@@ -262,7 +262,9 @@ grammar = r"""
     index_access: expr "[" int_lit "]"
     attr_access: expr  "[" _string_lit "]"
 
-    expr:  window_item | filter_item | subselect_comparison | between_comparison | comparison |  fgroup | conditional |  aggregate_functions | unnest | _static_functions |  literal |  CONCEPT  | index_access | attr_access |  expr_tuple
+    parenthetical: "(" (conditional | expr) ")"
+    
+    expr:  window_item | filter_item | between_comparison | comparison | subselect_comparison | aggregate_functions | unnest | _static_functions |  literal |  expr_reference  | index_access | attr_access |  parenthetical
     
     // functions
     
@@ -277,7 +279,7 @@ grammar = r"""
     _math_functions: fadd | fsub | fmul | fdiv | fround | fmod | fabs
     
     //generic
-    fcast: "cast"i "(" expr "as"i data_type ")"
+    fcast: "cast"i "(" expr "AS"i data_type ")"
     concat: ("concat"i "(" (expr ",")* expr ")") | (expr "||" expr)
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fcase_when: "WHEN"i (expr | conditional) "THEN"i expr
@@ -312,44 +314,28 @@ grammar = r"""
     count: "count"i "(" expr ")"
     count_distinct: "count_distinct"i "(" expr ")"
     
-    sum: "sum"i "(" expr ")"
-    avg: "avg"i "(" expr ")"
-    max: "max"i "(" expr ")"
-    min: "min"i "(" expr ")"
+
     
     //aggregates can force a grain
     aggregate_all: "*"
     aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min) aggregate_over?
+    aggregate_functions: gen_func aggregate_over?
 
     // date functions
-    fdate: "date"i "(" expr ")"
-    fdatetime: "datetime"i "(" expr ")"
-    ftimestamp: "timestamp"i "(" expr ")"
-    
-    fsecond: "second"i "(" expr ")"
-    fminute: "minute"i "(" expr ")"
-    fhour: "hour"i "(" expr ")"
-    fday: "day"i "(" expr ")"
-    fday_of_week: "day_of_week"i "(" expr ")"
-    fweek: "week"i "(" expr ")"
-    fmonth: "month"i "(" expr ")"
-    fquarter: "quarter"i  "(" expr ")"
-    fyear: "year"i "(" expr ")"
+
     
     DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i | "MINUTE"i | "HOUR"i | "SECOND"i
     fdate_trunc: "date_trunc"i "(" expr "," DATE_PART ")"
     fdate_part: "date_part"i "(" expr "," DATE_PART ")"
     fdate_add: "date_add"i "(" expr "," DATE_PART "," int_lit ")"
     fdate_diff: "date_diff"i "(" expr "," expr "," DATE_PART ")"
+
     
-    _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
-    
-    _static_functions: _string_functions | _math_functions | _generic_functions | _constant_functions| _date_functions
+    gen_func: IDENTIFIER "(" (expr ",")* expr ")"
+    _static_functions: gen_func | _string_functions | _math_functions | _generic_functions | _constant_functions
 
     // base language constructs
     IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
-    CONCEPT: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
     ADDRESS: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*/ | /`[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*`/
 
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
@@ -378,12 +364,11 @@ grammar = r"""
 
     SHORTHAND_MODIFIER: "~"
 
-    struct_type: "struct" "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
+    struct_type: "struct" "<" (IDENTIFIER ",")* IDENTIFIER ","? ">" 
 
     list_type: "list" "<" data_type ">"
 
-
-    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | struct_type | list_type
+    !data_type: IDENTIFIER | struct_type | list_type
     
     PURPOSE:  "key"i | "metric"i | "const"i | "constant"i
     PROPERTY: "property"i
@@ -404,8 +389,7 @@ grammar = r"""
 """  # noqa: E501
 
 PARSER = Lark(
-    grammar, start="start", propagate_positions=True, g_regex_flags=IGNORECASE, parser='lalr',
-    cache=True
+    grammar, start="start", propagate_positions=True, g_regex_flags=IGNORECASE, parser='lalr'
 )
 
 
@@ -569,9 +553,6 @@ class ParseToObjects(Transformer):
 
     def IDENTIFIER(self, args) -> str:
         return args.value
-    
-    def CONCEPT(self, args) -> Concept:
-        return self.environment.concepts.__getitem__(args.value)
 
     def ADDRESS(self, args) -> str:
         return args.value
@@ -640,9 +621,6 @@ class ParseToObjects(Transformer):
 
     def _TERMINATOR(self, args):
         return None
-    
-    def _static_functions(self, args):
-        return args[0]
 
     def MODIFIER(self, args) -> Modifier:
         return Modifier(args.value)
@@ -971,7 +949,7 @@ class ParseToObjects(Transformer):
         if isinstance(content, ConceptTransform):
             return SelectItem(content=content, modifiers=modifiers)
         return SelectItem(
-            content=content,
+            content=self.environment.concepts.__getitem__(content, meta.line),
             modifiers=modifiers,
         )
 
@@ -1058,7 +1036,7 @@ class ParseToObjects(Transformer):
                 self.parsed = {**self.parsed, **nparser.parsed}
             except Exception as e:
                 raise ImportError(
-                    f"Unable to import file {target}, parsing error: {e}"
+                    f"Unable to import file {dirname(target)}, parsing error: {e}"
                 )
 
         for _, concept in nparser.environment.concepts.items():
@@ -1533,9 +1511,6 @@ class ParseToObjects(Transformer):
         )
         return SubString(args)
 
-    def logical_operator(self, args):
-        return BooleanOperator(args[0].value.lower())
-    
     @v_args(meta=True)
     def lower(self, meta, args):
         args = self.process_function_args(args, meta=meta)
