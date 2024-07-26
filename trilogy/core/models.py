@@ -2834,9 +2834,9 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         return output
 
     @property
-    def existence_arguments(self) -> List[Tuple[Concept,...]]:
+    def existence_arguments(self) -> List[Tuple[Concept, ...]]:
         """Return concepts directly referenced in where clause"""
-        output:List[Tuple[Concept,...]] = []
+        output: List[Tuple[Concept, ...]] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, ConceptArgs):
