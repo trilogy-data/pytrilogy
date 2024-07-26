@@ -211,7 +211,7 @@
     aggregate_functions: (count | count_distinct | sum | avg | max | min) aggregate_over?
 
     // date functions
-    _DATE.1: "date()"i
+    _DATE.1: "date("i
     fdate:  _DATE expr ")"
     fdatetime: "datetime"i "(" expr ")"
     ftimestamp: "timestamp"i "(" expr ")"
