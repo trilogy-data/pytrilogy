@@ -40,7 +40,7 @@ setuptools.setup(
         ]
     ),
     package_data={
-        "": ["*.tf", "*.jinja", "py.typed", ".lark"],
+        "": ["*.tf", "*.jinja", "py.typed", "*.lark"],
     },
     install_requires=install_requires,
     extras_require={
