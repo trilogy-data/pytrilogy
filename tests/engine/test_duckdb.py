@@ -6,12 +6,14 @@ from trilogy.core.models import ShowStatement, Concept, Grain
 from trilogy.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from trilogy.parser import parse_text
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
-from trilogy.core.processing.node_generators.group_node import (
-    resolve_function_parent_concepts,
-)
+
 
 from trilogy import Dialects
-
+from trilogy.core.models import FilterItem, SubselectComparison
+from trilogy.core.processing.node_generators.common import (
+    resolve_filter_parent_concepts,
+    resolve_function_parent_concepts,
+)
 from trilogy.core.models import LooseConceptList
 
 
@@ -261,13 +263,8 @@ where
     assert len(results) == 3
 
 
-def test_array_inclusion_aggregate(default_duckdb_engine: Executor):
+def test_array_inclusion_aggregate_one(default_duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
-    from trilogy.core.models import FilterItem, SubselectComparison
-    from trilogy.core.processing.node_generators.common import (
-        resolve_filter_parent_concepts,
-        resolve_function_parent_concepts,
-    )
 
     default_duckdb_engine.hooks = [DebuggingHook()]
     test = """
@@ -295,6 +292,11 @@ select
     assert len(results) == 1
     assert results[0].f_ord_count == 3
 
+
+def test_array_inclusion_aggregate(default_duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
     test = """
 const list <- [1,2,3,4,5,6];
 const list_2 <- [1,2,3,4,5,6,7,8,9,10];
@@ -307,6 +309,7 @@ select
     count(filtered_even_orders)->f_ord_count
 ;
     """
+    _ = default_duckdb_engine.parse_text(test)[-1]
     env = default_duckdb_engine.environment
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg)[0]

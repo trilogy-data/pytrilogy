@@ -150,7 +150,7 @@ select
     order_id,
     total_revenue,
 where 
-(order_id =1 or order_id = 2) and total_revenue>30
+(order_id = 1 or order_id = 2) and total_revenue>30
 ;
 
 

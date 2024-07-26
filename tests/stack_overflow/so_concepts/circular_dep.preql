@@ -4,7 +4,7 @@ key id int;
 
 datasource posts (
     id: id,
-    id2: Partial[c1.id],
+    id2: ~c1.id,
     )
     grain (id)
     address bigquery-public-data.stackoverflow.posts_questions

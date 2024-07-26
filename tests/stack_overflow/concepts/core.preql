@@ -15,7 +15,7 @@ property post_length <- len(post_text);
 #metric user_post_count int grain user_id;
 
 datasource posts (
-    user_id: Partial[user_id],
+    user_id: ~user_id,
     id: post_id,
     text: post_text
     )

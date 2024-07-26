@@ -211,7 +211,7 @@ rowset test<- select
     ;
 
 select 
-    count(test.name) -> test_name_count;
+    count( test.name ) -> test_name_count;
 """
     )
     # assert output_purpose == Purpose.METRIC
@@ -240,3 +240,26 @@ def test_between():
     ), type(right)
     assert right.operator == ComparisonOperator.LTE
     assert right.right == 5
+
+
+def test_the_comments():
+    _, parsed = parse_text(
+        """const
+         # comment here?
+           order_id <- 4; SELECT 
+        # TOOD - add in more columns?
+        order_id   # this is the order id
+        WHERE 
+        # order_id should not be null
+        order_id
+        # in this comp
+          is not 
+        null; # nulls are the worst
+        
+        """
+    )
+    query = parsed[-1]
+    right = query.where_clause.conditional.right
+    assert isinstance(right, MagicConstants), type(right)
+    rendered = BaseDialect().render_expr(right)
+    assert rendered == "null"

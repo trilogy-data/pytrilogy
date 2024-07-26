@@ -812,6 +812,7 @@ class Function(Namespaced, SelectGrain, BaseModel):
             "Parenthetical",
             CaseWhen,
             "CaseElse",
+            list,
             ListWrapper[int],
             ListWrapper[str],
             ListWrapper[float],
@@ -996,6 +997,7 @@ class WindowItem(Namespaced, SelectGrain, BaseModel):
     content: Concept
     order_by: List["OrderItem"]
     over: List["Concept"] = Field(default_factory=list)
+    index: Optional[int] = None
 
     def with_namespace(self, namespace: str) -> "WindowItem":
         return WindowItem(
@@ -2735,6 +2737,14 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
             raise SyntaxError(
                 f"Cannot compare {self.left} and {self.right} of different types"
             )
+        if self.operator == ComparisonOperator.BETWEEN:
+            if (
+                not isinstance(self.right, ComparisonOperator)
+                and self.right.operator == BooleanOperator.AND
+            ):
+                raise SyntaxError(
+                    f"Between operator must have two operands with and, not {self.right}"
+                )
 
     def __add__(self, other):
         if not isinstance(other, (Comparison, Conditional, Parenthetical)):
@@ -2808,6 +2818,29 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         output = []
         output += get_concept_arguments(self.left)
         output += get_concept_arguments(self.right)
+        return output
+
+    @property
+    def row_arguments(self) -> List[Concept]:
+        output = []
+        if isinstance(self.left, ConceptArgs):
+            output += self.left.row_arguments
+        else:
+            output += get_concept_arguments(self.left)
+        if isinstance(self.right, ConceptArgs):
+            output += self.right.row_arguments
+        else:
+            output += get_concept_arguments(self.right)
+        return output
+
+    @property
+    def existence_arguments(self) -> List[Tuple[Concept, ...]]:
+        """Return concepts directly referenced in where clause"""
+        output: List[Tuple[Concept, ...]] = []
+        if isinstance(self.left, ConceptArgs):
+            output += self.left.existence_arguments
+        if isinstance(self.right, ConceptArgs):
+            output += self.right.existence_arguments
         return output
 
 
@@ -2909,6 +2942,7 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         float,
         list,
         bool,
+        MagicConstants,
         Concept,
         Comparison,
         "Conditional",
@@ -2922,11 +2956,13 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         float,
         list,
         bool,
+        MagicConstants,
         Concept,
         Comparison,
         "Conditional",
         "Parenthetical",
         Function,
+        FilterItem,
     ]
     operator: BooleanOperator
 

@@ -1,0 +1,23 @@
+import item as item;
+import date as date;
+import time as time;
+import customer as customer;
+
+key order_number int;
+property <order_number,item.id>.quantity int;
+property <order_number,item.id>.sales_price float;
+property <order_number,item.id>.external_sales_price float;
+
+datasource web_sales (
+    WS_SOLD_DATE_SK: date.id,
+    WS_SOLD_TIME_SK: time.id,
+    WS_BILL_CUSTOMER_SK: ~customer.id,
+    WS_ORDER_NUMBER: order_number,
+    WS_ITEM_SK:item.id,
+    WS_SALES_PRICE: sales_price,
+    WS_EXT_SALES_PRICE: external_sales_price
+
+)
+grain (order_number, item.id)
+address memory.web_sales
+;

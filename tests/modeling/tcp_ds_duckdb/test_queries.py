@@ -27,7 +27,9 @@ def run_query(engine: Executor, idx: int):
     if len(base_results) != len(comp_results):
         assert False, f"Row count mismatch: {len(base_results)} != {len(comp_results)}"
     for idx, row in enumerate(base_results):
-        assert row == comp_results[idx]
+        assert (
+            row == comp_results[idx]
+        ), f"Row mismatch (expected v actual): {row} != {comp_results[idx]}"
 
 
 def test_one(engine):
@@ -94,4 +96,4 @@ SELECT * FROM dsdgen(sf=1);"""
 
 
 if __name__ == "__main__":
-    run_adhoc(12)
+    run_adhoc(2)

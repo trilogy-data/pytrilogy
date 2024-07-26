@@ -61,7 +61,7 @@ datasource fact_items (
 ;
 
 datasource fact_discount (
-    item:Partial[item],
+    item:~item,
     value:discount_value,
     )
     grain (item)

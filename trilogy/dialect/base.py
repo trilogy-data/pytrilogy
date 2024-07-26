@@ -10,6 +10,7 @@ from trilogy.core.enums import (
     WindowType,
     DatePart,
     PurposeLineage,
+    ComparisonOperator,
 )
 from trilogy.core.models import (
     ListType,
@@ -58,17 +59,23 @@ def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
 
 
 def window_factory(string: str, include_concept: bool = False) -> Callable:
-    def render_window(concept: str, window: str, sort: str) -> str:
+    def render_window(
+        concept: str, window: str, sort: str, offset: int | None = None
+    ) -> str:
         if not include_concept:
             concept = ""
-        if window and sort:
-            return f"{string}({concept}) over (partition by {window} order by {sort} )"
-        elif window:
-            return f"{string}({concept}) over (partition by {window})"
-        elif sort:
-            return f"{string}({concept}) over (order by {sort} )"
+        if offset:
+            base = f"{string}({concept}, {offset})"
         else:
-            return f"{string}({concept}) over ()"
+            base = f"{string}({concept})"
+        if window and sort:
+            return f"{base} over (partition by {window} order by {sort} )"
+        elif window:
+            return f"{base} over (partition by {window})"
+        elif sort:
+            return f"{base} over (order by {sort} )"
+        else:
+            return f"{base} over ()"
 
     return render_window
 
@@ -109,10 +116,10 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
     # math
-    FunctionType.ADD: lambda x: f"({x[0]} + {x[1]})",
-    FunctionType.SUBTRACT: lambda x: f"({x[0]} - {x[1]})",
-    FunctionType.DIVIDE: lambda x: f"({x[0]} / {x[1]})",
-    FunctionType.MULTIPLY: lambda x: f"({x[0]} * {x[1]})",
+    FunctionType.ADD: lambda x: f"{x[0]} + {x[1]}",
+    FunctionType.SUBTRACT: lambda x: f"{x[0]} - {x[1]}",
+    FunctionType.DIVIDE: lambda x: f"{x[0]} / {x[1]}",
+    FunctionType.MULTIPLY: lambda x: f"{x[0]} * {x[1]}",
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     # aggregate types
@@ -355,17 +362,30 @@ class BaseDialect:
                     lookup = lookup_cte.existence_source_map[e.right.address]
 
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {lookup[0]}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {lookup[0]})"
-            elif isinstance(e.right, (ListWrapper, Parenthetical)):
+            elif isinstance(e.right, (ListWrapper, Parenthetical, list)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
-            elif isinstance(e.right, (str, int, bool, float, list)):
+
+            elif isinstance(
+                e.right,
+                (
+                    str,
+                    int,
+                    bool,
+                    float,
+                ),
+            ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
             else:
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map)})"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Comparison):
+            if e.operator == ComparisonOperator.BETWEEN:
+                right_comp = e.right
+                assert isinstance(right_comp, Conditional)
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(right_comp.left, cte=cte, cte_map=cte_map) and self.render_expr(right_comp.right, cte=cte, cte_map=cte_map)}"
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
-            return f"( {self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)} ) "
+            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
         elif isinstance(e, WindowItem):
             rendered_order_components = [
                 f"{self.render_expr(x.expr, cte, cte_map=cte_map)} {x.order.value}"
@@ -375,11 +395,11 @@ class BaseDialect:
                 self.render_expr(x, cte, cte_map=cte_map) for x in e.over
             ]
             return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
-        elif isinstance(e, FilterItem):
-            return f"CASE WHEN {self.render_expr(e.where.conditional, cte=cte, cte_map=cte_map)} THEN  {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ELSE 0 END"
         elif isinstance(e, Parenthetical):
             # conditions need to be nested in parentheses
-            return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} ) "
+            if isinstance(e.content, list):
+                return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e.content])} )"
+            return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} )"
         elif isinstance(e, CaseWhen):
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map) }"
         elif isinstance(e, CaseElse):
@@ -412,7 +432,7 @@ class BaseDialect:
         elif isinstance(e, ListWrapper):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         elif isinstance(e, list):
-            return f"{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
+            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         elif isinstance(e, DataType):
             return str(e.value)
         elif isinstance(e, DatePart):
