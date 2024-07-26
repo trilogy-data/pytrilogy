@@ -397,6 +397,8 @@ class BaseDialect:
             return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
         elif isinstance(e, Parenthetical):
             # conditions need to be nested in parentheses
+            if isinstance(e.content, list):
+                return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e.content])} )"
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map)} )"
         elif isinstance(e, CaseWhen):
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map) }"
@@ -430,7 +432,7 @@ class BaseDialect:
         elif isinstance(e, ListWrapper):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         elif isinstance(e, list):
-            return f"{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
+            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         elif isinstance(e, DataType):
             return str(e.value)
         elif isinstance(e, DatePart):

@@ -1,5 +1,5 @@
- !start: ( _newline | block | show_statement )*
-    block: statement _TERMINATOR comment?
+ !start: ( block | show_statement )*
+    block: statement _TERMINATOR PARSE_COMMENT?
     ?statement: concept
     | datasource
     | function
@@ -12,7 +12,7 @@
     
     _TERMINATOR:  ";"i /\s*/
     
-    comment:   /#.*(\n|$)/ |  /\/\/.*\n/  
+    PARSE_COMMENT.1:   /#.*(\n|$)/ |  /\/\/.*\n/  
     
     // property display_name string
     concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
@@ -69,7 +69,7 @@
     align_clause: align_item ("AND"i align_item)*  "AND"i?
 
     // merge statemment
-    merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? comment*
+    merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? 
 
     // FUNCTION blocks
     function: raw_function
@@ -91,7 +91,7 @@
     
     select_hide_modifier: "--"
     select_partial_modifier: "~"
-    select_item: (select_hide_modifier | select_partial_modifier)? (concept_lit  | select_transform | comment+ )
+    select_item: (select_hide_modifier | select_partial_modifier)? (concept_lit  | select_transform  )
     
     select_list:  select_item ("," select_item )* ","?
     
@@ -133,7 +133,7 @@
 
     between_comparison: expr "between"i expr "and"i expr
 
-    subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | concept_lit | filter_item | window_item | unnest | fgroup | parenthetical | expr_tuple )
+    subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | parenthetical )
     
     expr_tuple: "("  expr ("," expr)+ ","?  ")"
 
@@ -291,10 +291,10 @@
     // meta functions
     CONCEPTS: "CONCEPTS"i
     DATASOURCES: "DATASOURCES"i
-    _newline: ( /\r?\n[\t ]*/ | comment )+
     show_category: CONCEPTS | DATASOURCES
 
     show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
-
+   COMMENT: /#.*(\n|$)/ |  /\/\/.*\n/  
     %import common.WS
     %ignore WS
+    %ignore COMMENT

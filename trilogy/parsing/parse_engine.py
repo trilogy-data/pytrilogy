@@ -621,6 +621,9 @@ class ParseToObjects(Transformer):
         assert len(args) == 1
         return Comment(text=args[0].value)
 
+    def PARSE_COMMENT(self, args):
+        return Comment(text=args.value)
+
     @v_args(meta=True)
     def select_transform(self, meta, args) -> ConceptTransform:
 

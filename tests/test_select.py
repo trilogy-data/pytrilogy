@@ -37,6 +37,7 @@ datasource users (
     env, parsed = parse(declarations)
 
     q1 = """select
+    # a comment
     user_id,
     about_me,
     count(post_id)->post_count
