@@ -84,7 +84,6 @@ class Ordering(Enum):
     DESC_NULLS_AUTO = "desc nulls auto"
 
 
-
 class WindowType(Enum):
     ROW_NUMBER = "row_number"
     RANK = "rank"

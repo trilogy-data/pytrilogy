@@ -812,6 +812,7 @@ class Function(Namespaced, SelectGrain, BaseModel):
             "Parenthetical",
             CaseWhen,
             "CaseElse",
+            list,
             ListWrapper[int],
             ListWrapper[str],
             ListWrapper[float],
@@ -2737,7 +2738,10 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
                 f"Cannot compare {self.left} and {self.right} of different types"
             )
         if self.operator == ComparisonOperator.BETWEEN:
-            if not isinstance(self.right, ComparisonOperator) and self.right.operator == BooleanOperator.AND:
+            if (
+                not isinstance(self.right, ComparisonOperator)
+                and self.right.operator == BooleanOperator.AND
+            ):
                 raise SyntaxError(
                     f"Between operator must have two operands with and, not {self.right}"
                 )
@@ -2814,6 +2818,29 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         output = []
         output += get_concept_arguments(self.left)
         output += get_concept_arguments(self.right)
+        return output
+
+    @property
+    def row_arguments(self) -> List[Concept]:
+        output = []
+        if isinstance(self.left, ConceptArgs):
+            output += self.left.row_arguments
+        else:
+            output += get_concept_arguments(self.left)
+        if isinstance(self.right, ConceptArgs):
+            output += self.right.row_arguments
+        else:
+            output += get_concept_arguments(self.right)
+        return output
+
+    @property
+    def existence_arguments(self) -> List[Tuple[Concept,...]]:
+        """Return concepts directly referenced in where clause"""
+        output:List[Tuple[Concept,...]] = []
+        if isinstance(self.left, ConceptArgs):
+            output += self.left.existence_arguments
+        if isinstance(self.right, ConceptArgs):
+            output += self.right.existence_arguments
         return output
 
 
@@ -2936,7 +2963,6 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
         "Parenthetical",
         Function,
         FilterItem,
-
     ]
     operator: BooleanOperator
 

@@ -19,8 +19,8 @@ where
     store_sales.date.year in (2001,2002)
 align  
     year:web_sales.date.year,store_sales.date.year,
-    day_of_week:web_sales.date.day_of_week,store_sales.date.day_of_week,
-    d_week_seq1:web_sales.date.d_week_seq1,store_sales.date.d_week_seq1,
+    AND day_of_week:web_sales.date.day_of_week,store_sales.date.day_of_week,
+    AND d_week_seq1:web_sales.date.d_week_seq1,store_sales.date.d_week_seq1,
 
 ;
 

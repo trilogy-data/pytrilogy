@@ -41,7 +41,7 @@ def concept_list_to_keys(concepts: Tuple[Concept, ...]) -> Tuple[Concept, ...]:
 
 
 def constant_to_concept(
-    parent: ListWrapper | int | float | str,
+    parent: ListWrapper | list | int | float | str,
     name: str,
     namespace: str,
     purpose: Purpose | None = None,

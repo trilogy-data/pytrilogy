@@ -31,6 +31,7 @@ select
     sum(store_sales.sales_price) as yearly_store_sales
 align  
     date:web_sales.date.year,store_sales.date.year,
+    AND
     day_of_week:web_sales.date.day_of_week,store_sales.date.day_of_week,
 ;
 

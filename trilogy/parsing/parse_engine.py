@@ -114,302 +114,17 @@ from trilogy.parsing.common import (
     arbitrary_to_concept,
 )
 
+CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper)
 
-CONSTANT_TYPES = (int, float, str, bool, ListWrapper)
-
-grammar = r"""
-    !start: ( _newline | block | show_statement )*
-    block: statement _TERMINATOR comment?
-    ?statement: concept
-    | datasource
-    | function
-    | multi_select_statement
-    | select_statement
-    | persist_statement
-    | rowset_derivation_statement
-    | import_statement
-    | merge_statement
-    
-    _TERMINATOR:  ";"i /\s*/
-    
-    comment:   /#.*(\n|$)/ |  /\/\/.*\n/  
-    
-    // property display_name string
-    concept_declaration: PURPOSE IDENTIFIER data_type concept_nullable_modifier? metadata?
-    //customer_id.property first_name STRING;
-    //<customer_id,country>.property local_alias STRING
-    concept_property_declaration: PROPERTY (prop_ident | IDENTIFIER) data_type concept_nullable_modifier? metadata?
-    //metric post_length <- len(post_text);
-    concept_derivation:  (PURPOSE | AUTO | PROPERTY ) (prop_ident | IDENTIFIER) "<-" expr
-
-    rowset_derivation_statement: ("rowset"i IDENTIFIER "<" "-" (multi_select_statement | select_statement)) | ("with"i IDENTIFIER "as"i (multi_select_statement | select_statement))
-    
-    constant_derivation: CONST IDENTIFIER "<-" (literal | _constant_functions)
-
-    concept_nullable_modifier: "?"
-    concept:  (concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
-    
-    //concept property
-    prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
-
-    // datasource concepts
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
-    
-    grain_clause: "grain" "(" column_list ")"
-    
-    address: "address" ADDRESS
-    
-    query: "query" MULTILINE_STRING
-    
-    concept_assignment: SHORTHAND_MODIFIER? IDENTIFIER 
-    
-    //column_assignment: ((IDENTIFIER | raw_column_assignment | _static_functions ) ":" concept_assignment) 
-    # TODO: figure out if we want static
-    column_assignment: ((IDENTIFIER | raw_column_assignment ) ":" concept_assignment) 
-
-    raw_column_assignment: "raw" "(" MULTILINE_STRING ")"
-    
-    column_assignment_list : column_assignment (","  column_assignment)* ","?
-    
-    column_list : (IDENTIFIER "," )* IDENTIFIER ","?
-    
-    import_statement: "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
-
-    // persist_statement
-    persist_statement: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select_statement grain_clause?
-
-    // select statement
-    select_statement: "select"i select_list  where?  order_by?  limit? 
-
-    // multiple_selects
-    multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? order_by?  limit? 
-
-    align_item: IDENTIFIER ":" IDENTIFIER ("," IDENTIFIER)* ","?
-
-    align_clause: align_item ("," align_item)*  ","?
-
-    // merge statemment
-    merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? comment*
-
-    // FUNCTION blocks
-    function: raw_function
-    function_binding_item: IDENTIFIER ":" data_type
-    function_binding_list: function_binding_item ("," function_binding_item )* ","?
-    raw_function: "bind" "sql"  IDENTIFIER  "("  function_binding_list ")" "->" data_type "as"i MULTILINE_STRING
-    
-    // user_id where state = Mexico
-    filter_item: "filter"i IDENTIFIER where
-
-    // rank/lag/lead
-    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i)  /[\s]+/
-    
-    window_item: WINDOW_TYPE int_lit? CONCEPT window_item_over? window_item_order?
-    
-    window_item_over: ("OVER"i over_list)
-    
-    window_item_order: ("ORDER"i? "BY"i order_list)
-    
-    select_hide_modifier: "--"
-    select_partial_modifier: "~"
-    select_item: (select_hide_modifier | select_partial_modifier)? (CONCEPT | select_transform | comment+ )
-    
-    select_list:  select_item ("," select_item )* ","?
-    
-    //  count(post_id) -> post_count
-    _assignment: ("->") | "as"i
-    select_transform : expr _assignment IDENTIFIER metadata?
-    
-    metadata: "metadata" "(" IDENTIFIER "=" _string_lit ")"
-    
-    limit: "LIMIT"i /[0-9]+/
-    
-    !window_order: ("TOP"i | "BOTTOM"i)
-    
-    window: window_order /[0-9]+/
-    
-    window_order_by: "BY"i column_list
-    
-    order_list: expr ordering (","  expr ordering)* ","?
-    
-    over_list: (IDENTIFIER "," )* IDENTIFIER ","?
-    
-    !ordering: ("ASC"i | "DESC"i ) ("NULLS"i ("FIRST"i | "LAST"i | "AUTO"i) )?
-    
-    order_by: "ORDER"i "BY"i order_list
-    
-    //WHERE STATEMENT
-    
-    !logical_operator: "and"i | "or"i
-    
-    conditional: expr logical_operator expr
-    
-    where: "WHERE"i expr+
-    
-    !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
-
-    COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!=")
-    
-    comparison: expr COMPARISON_OPERATOR expr
-
-    between_comparison: expr "between"i expr "and"i expr
-
-    subselect_comparison: expr array_comparison expr
-    
-    expr_tuple: "("  expr ("," expr)+ ","?  ")"
-
-    parenthetical: "(" expr ")"
-
-    //unnesting is a function
-    unnest: "UNNEST"i "(" expr ")"
-    //indexing into an expression is a function
-    index_access: expr "[" int_lit "]"
-    attr_access: expr  "[" _string_lit "]"
-
-    expr:  window_item | filter_item | subselect_comparison | between_comparison | comparison |  fgroup | conditional |  aggregate_functions | unnest | _static_functions |  literal |  CONCEPT  | index_access | attr_access | parenthetical | expr_tuple
-    
-    // functions
-    
-    fadd: ("add"i "(" expr "," expr ")" ) | ( expr "+" expr )
-    fsub: ("subtract"i "(" expr "," expr ")" ) | ( expr "-" expr )
-    fmul: ("multiply"i "(" expr "," expr ")" ) | ( expr "*" expr )
-    fdiv: ( "divide"i "(" expr "," expr ")") | ( expr "/" expr )
-    fmod: ( "mod"i "(" expr "," expr ")") | ( expr "%" expr )
-    fround: "round"i "(" expr "," expr ")"
-    fabs: "abs"i "(" expr ")"
-        
-    _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs
-    
-    //generic
-    fcast: "cast"i "(" expr "as"i data_type ")"
-    concat: ("concat"i "(" (expr ",")* expr ")") | (expr "||" expr)
-    fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
-    fcase_when: "WHEN"i (expr | conditional) "THEN"i expr
-    fcase_else: "ELSE"i expr
-    fcase: "CASE"i (fcase_when)* (fcase_else)? "END"i
-    len: "len"i "(" expr ")"
-    fnot: "NOT"i expr
-
-    _generic_functions: fcast | concat | fcoalesce | fcase | len | fnot
-
-    //constant
-    fcurrent_date: "current_date()"i
-    fcurrent_datetime: "current_datetime()"i
-
-    _constant_functions: fcurrent_date | fcurrent_datetime
-    
-    //string
-    like: "like"i "(" expr "," _string_lit ")"
-    ilike: "ilike"i "(" expr "," _string_lit ")"
-    alt_like: expr "like"i expr
-    upper: "upper"i "(" expr ")"
-    lower: "lower"i "(" expr ")"    
-    fsplit: "split"i "(" expr "," _string_lit ")"
-    fstrpos: "strpos"i "(" expr "," expr ")"
-    fsubstring: "substring"i "(" expr "," expr "," expr ")"
-    
-    _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring | alt_like
-    
-    // special aggregate
-    fgroup: "group"i "(" expr ")" aggregate_over?
-    //aggregates
-    count: "count"i "(" expr ")"
-    count_distinct: "count_distinct"i "(" expr ")"
-    
-    sum: "sum"i "(" expr ")"
-    avg: "avg"i "(" expr ")"
-    max: "max"i "(" expr ")"
-    min: "min"i "(" expr ")"
-    
-    //aggregates can force a grain
-    aggregate_all: "*"
-    aggregate_over: ("BY"i (aggregate_all | over_list))
-    aggregate_functions: (count | count_distinct | sum | avg | max | min) aggregate_over?
-
-    // date functions
-    fdate: "date"i "(" expr ")"
-    fdatetime: "datetime"i "(" expr ")"
-    ftimestamp: "timestamp"i "(" expr ")"
-    
-    fsecond: "second"i "(" expr ")"
-    fminute: "minute"i "(" expr ")"
-    fhour: "hour"i "(" expr ")"
-    fday: "day"i "(" expr ")"
-    fday_of_week: "day_of_week"i "(" expr ")"
-    fweek: "week"i "(" expr ")"
-    fmonth: "month"i "(" expr ")"
-    fquarter: "quarter"i  "(" expr ")"
-    fyear: "year"i "(" expr ")"
-    
-    DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i | "MINUTE"i | "HOUR"i | "SECOND"i
-    fdate_trunc: "date_trunc"i "(" expr "," DATE_PART ")"
-    fdate_part: "date_part"i "(" expr "," DATE_PART ")"
-    fdate_add: "date_add"i "(" expr "," DATE_PART "," int_lit ")"
-    fdate_diff: "date_diff"i "(" expr "," expr "," DATE_PART ")"
-    
-    _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
-    
-    _static_functions: _constant_functions| _string_functions | _math_functions | _generic_functions |  _date_functions
-
-    // base language constructs
-    IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
-    CONCEPT: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-]*/
-    ADDRESS: /[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*/ | /`[a-zA-Z_][a-zA-Z0-9_\\-\\.\-\*]*`/
-
-    MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
-    
-    DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
-    SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '
-    _single_quote: "'" ( SINGLE_STRING_CHARS )* "'" 
-    _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
-    _string_lit: _single_quote | _double_quote
-
-    MINUS: "-"
-
-    int_lit: MINUS? /[0-9]+/
-    
-    float_lit: /[0-9]*\.[0-9]+/
-
-    array_lit: "[" (literal ",")* literal ","? "]"()
-    
-    !bool_lit: "True"i | "False"i
-
-    !null_lit.1: "null"i
-    
-    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit
-
-    MODIFIER: "Optional"i | "Partial"i | "Nullable"i
-
-    SHORTHAND_MODIFIER: "~"
-
-    struct_type: "struct" "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
-
-    list_type: "list" "<" data_type ">"
-
-
-    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | struct_type | list_type
-    
-    PURPOSE:  "key"i | "metric"i  | CONST
-    PROPERTY: "property"i
-    CONST: "const"i | "constant"i
-    AUTO: "AUTO"i 
-
-    // meta functions
-    CONCEPTS: "CONCEPTS"i
-    DATASOURCES: "DATASOURCES"i
-    _newline: ( /\r?\n[\t ]*/ | comment )+
-    show_category: CONCEPTS | DATASOURCES
-
-    show_statement: "show"i ( show_category | select_statement | persist_statement) _TERMINATOR
-
-    %import common.WS_INLINE -> _WHITESPACE
-    %import common.WS
-    %ignore WS
-"""  # noqa: E501
-
-PARSER = Lark(
-    grammar, start="start", propagate_positions=True, g_regex_flags=IGNORECASE, parser='lalr',
-    cache=True
-)
+with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
+    PARSER = Lark(
+        f.read(),
+        start="start",
+        propagate_positions=True,
+        g_regex_flags=IGNORECASE,
+        parser="lalr",
+        cache=True,
+    )
 
 
 def parse_concept_reference(
@@ -572,9 +287,9 @@ class ParseToObjects(Transformer):
 
     def IDENTIFIER(self, args) -> str:
         return args.value
-    
-    def CONCEPT(self, args) -> Concept:
-        return self.environment.concepts.__getitem__(args.value)
+
+    def concept_lit(self, args) -> Concept:
+        return self.environment.concepts.__getitem__(args[0])
 
     def ADDRESS(self, args) -> str:
         return args.value
@@ -634,7 +349,7 @@ class ParseToObjects(Transformer):
         alias = args[0]
         concept_list = args[1]
         # recursively collect modifiers
-        if len(concept_list)>1:
+        if len(concept_list) > 1:
             modifiers += concept_list[:-1]
         concept = concept_list[-1]
         resolved = self.environment.concepts.__getitem__(  # type: ignore
@@ -644,7 +359,7 @@ class ParseToObjects(Transformer):
 
     def _TERMINATOR(self, args):
         return None
-    
+
     def _static_functions(self, args):
         return args[0]
 
@@ -985,11 +700,11 @@ class ParseToObjects(Transformer):
     def limit(self, args):
         return Limit(count=int(args[0].value))
 
-    def ordering(self, args:list[str]):
+    def ordering(self, args: list[str]):
         base = args[0].lower()
-        if len(args)>1:
+        if len(args) > 1:
             null_sort = args[-1]
-            return Ordering(' '.join([base, 'nulls', null_sort.lower()]))
+            return Ordering(" ".join([base, "nulls", null_sort.lower()]))
         return Ordering(base)
 
     def order_list(self, args):
@@ -1018,7 +733,7 @@ class ParseToObjects(Transformer):
         return OrderBy(items=args[0])
 
     def over_list(self, args):
-        return [self.environment.concepts[x] for x in args]
+        return [x for x in args]
 
     @v_args(meta=True)
     def merge_statement(self, meta: Meta, args) -> MergeStatement:
@@ -1061,9 +776,7 @@ class ParseToObjects(Transformer):
                 # add the parsed objects of the import in
                 self.parsed = {**self.parsed, **nparser.parsed}
             except Exception as e:
-                raise ImportError(
-                    f"Unable to import file {target}, parsing error: {e}"
-                )
+                raise ImportError(f"Unable to import file {target}, parsing error: {e}")
 
         for _, concept in nparser.environment.concepts.items():
             self.environment.add_concept(concept.with_namespace(alias))
@@ -1341,7 +1054,9 @@ class ParseToObjects(Transformer):
             elif isinstance(item, Concept):
                 concept = item
         assert concept
-        return WindowItem(type=type, content=concept, over=over, order_by=order_by, index=index)
+        return WindowItem(
+            type=type, content=concept, over=over, order_by=order_by, index=index
+        )
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
@@ -1541,7 +1256,7 @@ class ParseToObjects(Transformer):
 
     def logical_operator(self, args):
         return BooleanOperator(args[0].value.lower())
-    
+
     @v_args(meta=True)
     def lower(self, meta, args):
         args = self.process_function_args(args, meta=meta)
@@ -1934,12 +1649,12 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fcurrent_date(self, meta, args):
         args = self.process_function_args(args, meta=meta)
-        return CurrentDate(args)
+        return CurrentDate([])
 
     @v_args(meta=True)
     def fcurrent_datetime(self, meta, args):
         args = self.process_function_args(args, meta=meta)
-        return CurrentDatetime(args)
+        return CurrentDatetime([])
 
     @v_args(meta=True)
     def fnot(self, meta, args):
@@ -1961,6 +1676,7 @@ def unpack_visit_error(e: VisitError):
 
 def parse_text_raw(text: str, environment: Optional[Environment] = None):
     PARSER.parse(text)
+
 
 def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
     Environment,

@@ -211,7 +211,7 @@ rowset test<- select
     ;
 
 select 
-    count(test.name) -> test_name_count;
+    count( test.name ) -> test_name_count;
 """
     )
     # assert output_purpose == Purpose.METRIC

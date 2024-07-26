@@ -465,7 +465,7 @@ ORDER BY
         == """
 SELECT
     raw_data."passengerid" as "passenger_id",
-    (raw_data."passengerid" + 1) as "id_one",
+    raw_data."passengerid" + 1 as "id_one",
     raw_data."name" as "passenger_name"
 FROM
     raw_titanic as raw_data

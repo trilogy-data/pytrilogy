@@ -389,7 +389,11 @@ grammar = r"""
 """  # noqa: E501
 
 PARSER = Lark(
-    grammar, start="start", propagate_positions=True, g_regex_flags=IGNORECASE, parser='lalr'
+    grammar,
+    start="start",
+    propagate_positions=True,
+    g_regex_flags=IGNORECASE,
+    parser="lalr",
 )
 
 
@@ -959,11 +963,11 @@ class ParseToObjects(Transformer):
     def limit(self, args):
         return Limit(count=int(args[0].value))
 
-    def ordering(self, args:list[str]):
+    def ordering(self, args: list[str]):
         base = args[0].lower()
-        if len(args)>1:
+        if len(args) > 1:
             null_sort = args[-1]
-            return Ordering(' '.join([base, 'nulls', null_sort.lower()]))
+            return Ordering(" ".join([base, "nulls", null_sort.lower()]))
         return Ordering(base)
 
     def order_list(self, args):
@@ -1313,7 +1317,9 @@ class ParseToObjects(Transformer):
             elif isinstance(item, str):
                 concept = self.environment.concepts[item]
         assert concept
-        return WindowItem(type=type, content=concept, over=over, order_by=order_by, index=index)
+        return WindowItem(
+            type=type, content=concept, over=over, order_by=order_by, index=index
+        )
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
@@ -1930,6 +1936,7 @@ def unpack_visit_error(e: VisitError):
 
 def parse_text_raw(text: str, environment: Optional[Environment] = None):
     PARSER.parse(text)
+
 
 def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
     Environment,
