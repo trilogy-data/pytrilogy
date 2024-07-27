@@ -2669,7 +2669,8 @@ class Environment(BaseModel):
 
 
 class LazyEnvironment(Environment):
-    """Variant of environment to defer parsing of a path"""
+    """Variant of environment to defer parsing of a path
+    until relevant attributes accessed."""
 
     load_path: Path
     loaded: bool = False
@@ -2681,6 +2682,7 @@ class LazyEnvironment(Environment):
             "working_path",
             "model_config",
             "model_fields",
+            "model_post_init",
         ) or name.startswith("_"):
             return super().__getattribute__(name)
         if not self.loaded:
