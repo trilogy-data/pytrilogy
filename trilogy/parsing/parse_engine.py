@@ -465,16 +465,19 @@ class ParseToObjects(Transformer):
         if purpose == Purpose.AUTO:
             purpose = None
         raw_name = args[1]
+        # abc.def.property pattern
         if isinstance(raw_name, str):
             lookup, namespace, name, parent_concept = parse_concept_reference(
                 raw_name, self.environment, purpose
             )
+        # <abc.def,zef.gf>.property pattern
         else:
             keys, name = raw_name
-            if "." in name:
-                namespace, name = name.rsplit(".", 1)
-            else:
+            namespaces = set([x.namespace for x in keys])
+            if not len(namespaces) == 1:
                 namespace = self.environment.namespace or DEFAULT_NAMESPACE
+            else:
+                namespace = namespaces.pop()
         source_value = args[2]
         # we need to strip off every parenthetical to see what is being assigned.
         while isinstance(source_value, Parenthetical):

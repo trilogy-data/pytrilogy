@@ -263,3 +263,32 @@ def test_the_comments():
     assert isinstance(right, MagicConstants), type(right)
     rendered = BaseDialect().render_expr(right)
     assert rendered == "null"
+
+
+def test_purpose_nesting():
+
+    env, parsed = parse_text(
+        """key year int;
+"""
+    )
+
+    env2: Environment = Environment()
+    env2.add_import("dates", env)
+
+    env2, _ = parse_text(
+        """
+property <dates.year>.generation <-
+CASE WHEN dates.year BETWEEN 1883 AND 1900 THEN 'Lost Generation'
+        WHEN dates.year BETWEEN 1901 AND 1927 THEN 'The Greatest Generation'
+        WHEN dates.year BETWEEN 1928 AND 1945 THEN 'The Silent Generation'
+        WHEN dates.year BETWEEN 1946 AND 1964 THEN 'Baby Boomer'
+        WHEN dates.year BETWEEN 1965 AND 1980 THEN 'Generation X'
+        WHEN dates.year BETWEEN 1981 AND 1996 THEN 'Millennials'
+        WHEN dates.year BETWEEN 1997 AND 2012 THEN 'Generation Z'
+        ELSE 'Unknown'
+    END;
+    """,
+        env2,
+    )
+
+    assert env2.concepts["dates.generation"].purpose == Purpose.PROPERTY
