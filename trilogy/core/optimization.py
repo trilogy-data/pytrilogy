@@ -8,7 +8,15 @@ from trilogy.core.models import (
 )
 from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger, CONFIG
-from trilogy.core.optimizations import OptimizationRule, InlineConstant, PredicatePushdown, InlineDatasource
+from trilogy.core.optimizations import (
+    OptimizationRule,
+    InlineConstant,
+    PredicatePushdown,
+    InlineDatasource,
+)
+
+
+MAX_OPTIMIZATION_LOOPS = 100
 
 
 def filter_irrelevant_ctes(
@@ -92,13 +100,15 @@ def optimize_ctes(
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.constant_inlining:
         REGISTERED_RULES.append(InlineConstant())
-    while not complete:
+    loops = 0
+    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
         actions_taken = False
         for rule in REGISTERED_RULES:
             for cte in input:
                 inverse_map = gen_inverse_map(input)
                 actions_taken = rule.optimize(cte, inverse_map)
         complete = not actions_taken
+        loops += 1
 
     if CONFIG.optimizations.direct_return and is_direct_return_eligible(
         root_cte, select

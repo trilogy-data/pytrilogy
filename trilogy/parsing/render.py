@@ -183,11 +183,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Address"):
         return f"address {arg.location}"
-    
+
     @to_string.register
     def _(self, arg: "RawSQLStatement"):
         return f"raw_sql('''{arg.text}''');"
-
 
     @to_string.register
     def _(self, arg: "MagicConstants"):

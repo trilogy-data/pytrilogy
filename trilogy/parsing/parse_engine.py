@@ -588,7 +588,7 @@ class ParseToObjects(Transformer):
 
     def MULTILINE_STRING(self, args) -> str:
         return args[3:-3]
-    
+
     def raw_column_assignment(self, args):
         return RawColumnExpr(text=args[0])
 
@@ -761,9 +761,8 @@ class ParseToObjects(Transformer):
         return merge
 
     @v_args(meta=True)
-    def rawsql_statement(self, meta: Meta, args) -> MergeStatement:
-        merge = RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
-        return merge
+    def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
+        return RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
 
     def import_statement(self, args: list[str]) -> ImportStatement:
         alias = args[-1]

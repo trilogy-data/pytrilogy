@@ -563,9 +563,17 @@ class BaseDialect:
             | RawSQLStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
-    ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | RawSQLStatement]:
+    ) -> List[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+    ]:
         output: List[
-            ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | RawSQLStatement
+            ProcessedQuery
+            | ProcessedQueryPersist
+            | ProcessedShowStatement
+            | ProcessedRawSQLStatement
         ] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
@@ -624,7 +632,13 @@ class BaseDialect:
         return output
 
     def compile_statement(
-        self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | ProcessedRawSQLStatement
+        self,
+        query: (
+            ProcessedQuery
+            | ProcessedQueryPersist
+            | ProcessedShowStatement
+            | ProcessedRawSQLStatement
+        ),
     ) -> str:
         if isinstance(query, ProcessedShowStatement):
             return ";\n".join([str(x) for x in query.output_values])

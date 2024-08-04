@@ -351,7 +351,7 @@ def test_render_persist_to_source():
 def test_render_raw_sqlpersist_to_source():
     test = Renderer().to_string(
         RawSQLStatement(
-            text= "SELECT * FROM test",
+            text="SELECT * FROM test",
         )
     )
 

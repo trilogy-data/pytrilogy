@@ -547,7 +547,6 @@ order by
     assert len(results) == 2
 
 
-
 def test_raw_sql():
     from trilogy.hooks.query_debugger import DebuggingHook
 

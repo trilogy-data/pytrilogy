@@ -304,4 +304,3 @@ select 1 as test;
 """
     )
     assert parsed[0].text == "select 1"
-

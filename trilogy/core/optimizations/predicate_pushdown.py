@@ -1,16 +1,12 @@
 from trilogy.core.models import (
     CTE,
-    SelectStatement,
-    PersistStatement,
-    Datasource,
-    MultiSelectStatement,
     Conditional,
     BooleanOperator,
 )
-from trilogy.core.enums import PurposeLineage
-from trilogy.constants import logger, CONFIG
-from abc import ABC
+from trilogy.constants import logger
 from trilogy.core.optimizations.base_optimization import OptimizationRule
+
+
 def decompose_condition(conditional: Conditional):
     chunks = []
     if conditional.operator == BooleanOperator.AND:

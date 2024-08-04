@@ -1,9 +1,10 @@
 from trilogy.core.optimization import (
     PredicatePushdown,
-
 )
-from trilogy.core.optimizations.predicate_pushdown import (    decompose_condition,
-    is_child_of)
+from trilogy.core.optimizations.predicate_pushdown import (
+    decompose_condition,
+    is_child_of,
+)
 from trilogy.core.models import (
     CTE,
     QueryDatasource,

@@ -1,17 +1,10 @@
 from trilogy.core.models import (
     CTE,
-    SelectStatement,
-    PersistStatement,
     Datasource,
-    MultiSelectStatement,
-    Conditional,
-    BooleanOperator,
 )
-from trilogy.core.enums import PurposeLineage
-from trilogy.constants import logger, CONFIG
-from abc import ABC
 
 from trilogy.core.optimizations.base_optimization import OptimizationRule
+
 
 class InlineDatasource(OptimizationRule):
 
