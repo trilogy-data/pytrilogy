@@ -44,6 +44,8 @@ from trilogy.core.models import (
     RowsetDerivationStatement,
     ConceptDeclarationStatement,
     ImportStatement,
+    RawSQLStatement,
+    ProcessedRawSQLStatement,
 )
 from trilogy.core.query_processor import process_query, process_persist
 from trilogy.dialect.common import render_join
@@ -558,11 +560,20 @@ class BaseDialect:
             | RowsetDerivationStatement
             | MergeStatement
             | ImportStatement
+            | RawSQLStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
-    ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
+    ) -> List[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+    ]:
         output: List[
-            ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+            ProcessedQuery
+            | ProcessedQueryPersist
+            | ProcessedShowStatement
+            | ProcessedRawSQLStatement
         ] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
@@ -604,6 +615,8 @@ class BaseDialect:
                     )
                 else:
                     raise NotImplementedError(type(statement))
+            elif isinstance(statement, RawSQLStatement):
+                output.append(ProcessedRawSQLStatement(text=statement.text))
             elif isinstance(
                 statement,
                 (
@@ -619,10 +632,18 @@ class BaseDialect:
         return output
 
     def compile_statement(
-        self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+        self,
+        query: (
+            ProcessedQuery
+            | ProcessedQueryPersist
+            | ProcessedShowStatement
+            | ProcessedRawSQLStatement
+        ),
     ) -> str:
         if isinstance(query, ProcessedShowStatement):
             return ";\n".join([str(x) for x in query.output_values])
+        elif isinstance(query, ProcessedRawSQLStatement):
+            return query.text
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()

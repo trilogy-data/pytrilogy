@@ -9,6 +9,7 @@ from trilogy.core.models import (
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedShowStatement,
+    ProcessedRawSQLStatement,
 )
 from trilogy.dialect.base import BaseDialect
 
@@ -81,7 +82,13 @@ class SqlServerDialect(BaseDialect):
     SQL_TEMPLATE = TSQL_TEMPLATE
 
     def compile_statement(
-        self, query: ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement
+        self,
+        query: (
+            ProcessedQuery
+            | ProcessedQueryPersist
+            | ProcessedShowStatement
+            | ProcessedRawSQLStatement
+        ),
     ) -> str:
         base = super().compile_statement(query)
         if isinstance(base, (ProcessedQuery, ProcessedQueryPersist)):

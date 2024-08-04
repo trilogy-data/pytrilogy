@@ -9,6 +9,8 @@ from trilogy.core.models import (
     ProcessedQuery,
     ProcessedShowStatement,
     ProcessedQueryPersist,
+    ProcessedRawSQLStatement,
+    RawSQLStatement,
     MultiSelectStatement,
     SelectStatement,
     PersistStatement,
@@ -113,6 +115,10 @@ class Executor(object):
         return self.execute_query(sql[0])
 
     @execute_query.register
+    def _(self, query: RawSQLStatement) -> CursorResult:
+        return self.execute_raw_sql(query.text)
+
+    @execute_query.register
     def _(self, query: ProcessedShowStatement) -> CursorResult:
         return generate_result_set(
             query.output_columns,
@@ -122,6 +128,10 @@ class Executor(object):
                 if isinstance(x, ProcessedQuery)
             ],
         )
+
+    @execute_query.register
+    def _(self, query: ProcessedRawSQLStatement) -> CursorResult:
+        return self.execute_raw_sql(query.text)
 
     @execute_query.register
     def _(self, query: ProcessedQuery) -> CursorResult:
@@ -195,7 +205,12 @@ class Executor(object):
 
     def parse_text(
         self, command: str, persist: bool = False
-    ) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement]:
+    ) -> List[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+    ]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
         generatable = [
@@ -208,6 +223,7 @@ class Executor(object):
                     PersistStatement,
                     MultiSelectStatement,
                     ShowStatement,
+                    RawSQLStatement,
                 ),
             )
         ]
@@ -222,10 +238,13 @@ class Executor(object):
             sql.append(x)
         return sql
 
-    def parse_text_generator(
-        self, command: str, persist: bool = False
-    ) -> Generator[
-        ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement, None, None
+    def parse_text_generator(self, command: str, persist: bool = False) -> Generator[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement,
+        None,
+        None,
     ]:
         """Process a preql text command"""
         _, parsed = parse_text(command, self.environment)
@@ -239,6 +258,7 @@ class Executor(object):
                     PersistStatement,
                     MultiSelectStatement,
                     ShowStatement,
+                    RawSQLStatement,
                 ),
             )
         ]

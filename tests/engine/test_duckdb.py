@@ -545,3 +545,20 @@ order by
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (4,)
     assert len(results) == 2
+
+
+def test_raw_sql():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    test = """
+raw_sql('''
+select unnest([1,2,3,4]) as x
+order by x asc
+''')
+;"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (1,)
+    assert len(results) == 4

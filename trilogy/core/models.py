@@ -1165,11 +1165,17 @@ class OrderBy(Namespaced, BaseModel):
         return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
 
 
+class RawSQLStatement(BaseModel):
+    text: str
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
+
 class SelectStatement(Namespaced, BaseModel):
     selection: List[SelectItem]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     def __str__(self):
         from trilogy.parsing.render import render_query
@@ -1371,6 +1377,7 @@ class MultiSelectStatement(Namespaced, BaseModel):
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
@@ -2038,6 +2045,40 @@ class CTE(BaseModel):
     def validate_output_columns(cls, v):
         return unique(v, "address")
 
+    def inline_constant(self, concept: Concept):
+        if not concept.derivation == PurposeLineage.CONSTANT:
+            return False
+        if not isinstance(concept.lineage, Function):
+            return False
+        if not concept.lineage.operator == FunctionType.CONSTANT:
+            return False
+        # remove the constant
+        removed: set = set()
+        if concept.address in self.source_map:
+            removed = removed.union(self.source_map[concept.address])
+            del self.source_map[concept.address]
+        # if we've entirely removed the need to join to someplace to get the concept
+        # drop the join as well.
+        for removed_cte in removed:
+            still_required = any([removed_cte in x for x in self.source_map.values()])
+            if not still_required:
+                self.joins = [
+                    join
+                    for join in self.joins
+                    if not isinstance(join, Join)
+                    or (
+                        join.right_cte.name != removed_cte
+                        and join.left_cte.name != removed_cte
+                    )
+                ]
+                self.parent_ctes = [
+                    x for x in self.parent_ctes if x.name != removed_cte
+                ]
+                if removed_cte == self.base_name_override:
+                    candidates = [x.name for x in self.parent_ctes]
+                    self.base_name_override = candidates[0] if candidates else None
+                    self.base_alias_override = candidates[0] if candidates else None
+
     def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
@@ -2185,6 +2226,11 @@ class CTE(BaseModel):
             and not self.parent_ctes
             and not self.group_to_grain
         ):
+            return False
+        # if we don't need to source any concepts from anywhere
+        # render without from
+        # most likely to happen from inlining constants
+        if not any([v for v in self.source_map.values()]):
             return False
         if (
             len(self.source.datasources) == 1
@@ -3184,6 +3230,10 @@ class ProcessedShowStatement(BaseModel):
     output_values: List[Union[Concept, Datasource, ProcessedQuery]]
 
 
+class ProcessedRawSQLStatement(BaseModel):
+    text: str
+
+
 class Limit(BaseModel):
     count: int
 
@@ -3386,6 +3436,7 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
 class PersistStatement(BaseModel):
     datasource: Datasource
     select: SelectStatement
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     @property
     def identifier(self):

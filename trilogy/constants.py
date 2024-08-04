@@ -22,6 +22,7 @@ NULL_VALUE = MagicConstants.NULL
 class Optimizations:
     predicate_pushdown: bool = True
     datasource_inlining: bool = True
+    constant_inlining: bool = True
     direct_return: bool = True
 
 

@@ -2,155 +2,21 @@ from trilogy.core.models import (
     CTE,
     SelectStatement,
     PersistStatement,
-    Datasource,
     MultiSelectStatement,
     Conditional,
     BooleanOperator,
 )
 from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger, CONFIG
-from abc import ABC
+from trilogy.core.optimizations import (
+    OptimizationRule,
+    InlineConstant,
+    PredicatePushdown,
+    InlineDatasource,
+)
 
 
-class OptimizationRule(ABC):
-
-    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
-        raise NotImplementedError
-
-    def log(self, message: str):
-        logger.info(f"[Optimization][{self.__class__.__name__}] {message}")
-
-    def debug(self, message: str):
-        logger.debug(f"[Optimization][{self.__class__.__name__}] {message}")
-
-
-class InlineDatasource(OptimizationRule):
-
-    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
-        if not cte.parent_ctes:
-            return False
-
-        optimized = False
-        self.log(
-            f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
-        )
-        to_inline: list[CTE] = []
-        force_group = False
-        for parent_cte in cte.parent_ctes:
-            if not parent_cte.is_root_datasource:
-                self.log(f"parent {parent_cte.name} is not root")
-                continue
-            if parent_cte.parent_ctes:
-                self.log(f"parent {parent_cte.name} has parents")
-                continue
-            raw_root = parent_cte.source.datasources[0]
-            if not isinstance(raw_root, Datasource):
-                self.log(f"parent {parent_cte.name} is not datasource")
-                continue
-            root: Datasource = raw_root
-            if not root.can_be_inlined:
-                self.log(f"parent {parent_cte.name} datasource is not inlineable")
-                continue
-            root_outputs = {x.address for x in root.output_concepts}
-            cte_outputs = {x.address for x in parent_cte.output_columns}
-            grain_components = {x.address for x in root.grain.components}
-            if not cte_outputs.issubset(root_outputs):
-                self.log(f"Not all {parent_cte.name} outputs are found on datasource")
-                continue
-            if not grain_components.issubset(cte_outputs):
-                self.log("Not all datasource components in cte outputs, forcing group")
-                force_group = True
-            to_inline.append(parent_cte)
-
-        for replaceable in to_inline:
-
-            result = cte.inline_parent_datasource(replaceable, force_group=force_group)
-            if result:
-                self.log(f"Inlined parent {replaceable.name}")
-            else:
-                self.log(f"Failed to inline {replaceable.name}")
-        return optimized
-
-
-def decompose_condition(conditional: Conditional):
-    chunks = []
-    if conditional.operator == BooleanOperator.AND:
-        for val in [conditional.left, conditional.right]:
-            if isinstance(val, Conditional):
-                chunks.extend(decompose_condition(val))
-            else:
-                chunks.append(val)
-    else:
-        chunks.append(conditional)
-    return chunks
-
-
-def is_child_of(a, comparison):
-    if isinstance(comparison, Conditional):
-        return (
-            is_child_of(a, comparison.left) or is_child_of(a, comparison.right)
-        ) and comparison.operator == BooleanOperator.AND
-    return comparison == a
-
-
-class PredicatePushdown(OptimizationRule):
-
-    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
-
-        if not cte.parent_ctes:
-            self.debug(f"No parent CTEs for {cte.name}")
-
-            return False
-
-        optimized = False
-        if not cte.condition:
-            self.debug(f"No CTE condition for {cte.name}")
-            return False
-        self.log(
-            f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
-        )
-        if isinstance(cte.condition, Conditional):
-            candidates = cte.condition.decompose()
-        else:
-            candidates = [cte.condition]
-        logger.info(f"Have {len(candidates)} candidates to try to push down")
-        for candidate in candidates:
-            conditions = {x.address for x in candidate.concept_arguments}
-            for parent_cte in cte.parent_ctes:
-                materialized = {k for k, v in parent_cte.source_map.items() if v != []}
-                if conditions.issubset(materialized):
-                    if all(
-                        [
-                            is_child_of(candidate, child.condition)
-                            for child in inverse_map[parent_cte.name]
-                        ]
-                    ):
-                        self.log(
-                            f"All concepts are found on {parent_cte.name} and all it's children include same filter; pushing up filter"
-                        )
-                        if parent_cte.condition:
-                            parent_cte.condition = Conditional(
-                                left=parent_cte.condition,
-                                operator=BooleanOperator.AND,
-                                right=candidate,
-                            )
-                        else:
-                            parent_cte.condition = candidate
-                        optimized = True
-                else:
-                    logger.info("conditions not subset of parent materialized")
-
-        if all(
-            [
-                is_child_of(cte.condition, parent_cte.condition)
-                for parent_cte in cte.parent_ctes
-            ]
-        ):
-            self.log("All parents have same filter, removing filter")
-            cte.condition = None
-            optimized = True
-
-        return optimized
+MAX_OPTIMIZATION_LOOPS = 100
 
 
 def filter_irrelevant_ctes(
@@ -232,14 +98,17 @@ def optimize_ctes(
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
-
-    while not complete:
+    if CONFIG.optimizations.constant_inlining:
+        REGISTERED_RULES.append(InlineConstant())
+    loops = 0
+    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
         actions_taken = False
         for rule in REGISTERED_RULES:
             for cte in input:
                 inverse_map = gen_inverse_map(input)
                 actions_taken = rule.optimize(cte, inverse_map)
         complete = not actions_taken
+        loops += 1
 
     if CONFIG.optimizations.direct_return and is_direct_return_eligible(
         root_cte, select

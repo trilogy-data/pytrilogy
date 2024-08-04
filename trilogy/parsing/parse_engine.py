@@ -82,6 +82,7 @@ from trilogy.core.models import (
     Parenthetical,
     PersistStatement,
     Query,
+    RawSQLStatement,
     SelectStatement,
     SelectItem,
     WhereClause,
@@ -585,8 +586,11 @@ class ParseToObjects(Transformer):
         #            namespace=self.environment.namespace,
         return Grain(components=[self.environment.concepts[a] for a in args[0]])
 
+    def MULTILINE_STRING(self, args) -> str:
+        return args[3:-3]
+
     def raw_column_assignment(self, args):
-        return RawColumnExpr(text=args[0][3:-3])
+        return RawColumnExpr(text=args[0])
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
@@ -756,6 +760,10 @@ class ParseToObjects(Transformer):
         self.environment.add_concept(new, meta=meta)
         return merge
 
+    @v_args(meta=True)
+    def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
+        return RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
+
     def import_statement(self, args: list[str]) -> ImportStatement:
         alias = args[-1]
         path = args[0].split(".")
@@ -822,7 +830,11 @@ class ParseToObjects(Transformer):
             address=Address(location=address),
             grain=grain,
         )
-        return PersistStatement(select=select, datasource=new_datasource)
+        return PersistStatement(
+            select=select,
+            datasource=new_datasource,
+            meta=Metadata(line_number=meta.line),
+        )
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:
@@ -864,6 +876,7 @@ class ParseToObjects(Transformer):
             where_clause=where,
             order_by=order_by,
             limit=limit,
+            meta=Metadata(line_number=meta.line),
         )
         for concept in multi.derived_concepts:
             self.environment.add_concept(concept, meta=meta)
@@ -887,7 +900,11 @@ class ParseToObjects(Transformer):
         if not select_items:
             raise ValueError("Malformed select, missing select items")
         output = SelectStatement(
-            selection=select_items, where_clause=where, limit=limit, order_by=order_by
+            selection=select_items,
+            where_clause=where,
+            limit=limit,
+            order_by=order_by,
+            meta=Metadata(line_number=meta.line),
         )
         for item in select_items:
             # we don't know the grain of an aggregate at assignment time
@@ -912,7 +929,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def query(self, meta: Meta, args):
-        return Query(text=args[0][3:-3])
+        return Query(text=args[0])
 
     def where(self, args):
         root = args[0]
@@ -1692,6 +1709,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         | SelectStatement
         | PersistStatement
         | ShowStatement
+        | RawSQLStatement
         | None
     ],
 ]:
