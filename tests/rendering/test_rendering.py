@@ -23,6 +23,7 @@ from trilogy.core.models import (
     MultiSelectStatement,
     AlignClause,
     AlignItem,
+    RawSQLStatement,
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -345,3 +346,13 @@ def test_render_merge():
 
 def test_render_persist_to_source():
     pass
+
+
+def test_render_raw_sqlpersist_to_source():
+    test = Renderer().to_string(
+        RawSQLStatement(
+            text= "SELECT * FROM test",
+        )
+    )
+
+    assert test == "raw_sql('''SELECT * FROM test''');"

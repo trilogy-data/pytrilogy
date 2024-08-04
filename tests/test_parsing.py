@@ -292,3 +292,16 @@ CASE WHEN dates.year BETWEEN 1883 AND 1900 THEN 'Lost Generation'
     )
 
     assert env2.concepts["dates.generation"].purpose == Purpose.PROPERTY
+
+
+def test_rawsql():
+    env, parsed = parse_text(
+        """
+raw_sql('''select 1''');
+
+select 1 as test;
+
+"""
+    )
+    assert parsed[0].text == "select 1"
+

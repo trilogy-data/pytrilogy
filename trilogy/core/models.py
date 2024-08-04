@@ -1165,11 +1165,16 @@ class OrderBy(Namespaced, BaseModel):
         return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
 
 
+class RawSQLStatement(BaseModel):
+    text:str
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
 class SelectStatement(Namespaced, BaseModel):
     selection: List[SelectItem]
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     def __str__(self):
         from trilogy.parsing.render import render_query
@@ -1371,6 +1376,7 @@ class MultiSelectStatement(Namespaced, BaseModel):
     where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
@@ -2037,6 +2043,17 @@ class CTE(BaseModel):
     @field_validator("output_columns")
     def validate_output_columns(cls, v):
         return unique(v, "address")
+    
+    def inline_constant(self, concept:Concept):
+        if not concept.derivation == PurposeLineage.CONSTANT:
+            return False
+        if not isinstance(concept.lineage, Function):
+            return False
+        if not concept.lineage.operator == FunctionType.CONSTANT:
+            return False
+        source_val = concept.lineage.arguments[0]
+        for x in self.output_columns:
+            
 
     def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         qds_being_inlined = parent.source
@@ -2421,6 +2438,7 @@ class ImportStatement(BaseModel):
     environment: Union["Environment", None] = None
     # TODO: this might result in a lot of duplication
     # environment:"Environment"
+
 
 
 class EnvironmentOptions(BaseModel):
@@ -3183,6 +3201,8 @@ class ProcessedShowStatement(BaseModel):
     output_columns: List[Concept]
     output_values: List[Union[Concept, Datasource, ProcessedQuery]]
 
+class ProcessedRawSQLStatement(BaseModel):
+    text: str
 
 class Limit(BaseModel):
     count: int
@@ -3386,6 +3406,7 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
 class PersistStatement(BaseModel):
     datasource: Datasource
     select: SelectStatement
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
     @property
     def identifier(self):

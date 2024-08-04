@@ -9,6 +9,7 @@
     | rowset_derivation_statement
     | import_statement
     | merge_statement
+    | rawsql_statement
     
     _TERMINATOR:  ";"i /\s*/
     
@@ -70,6 +71,9 @@
 
     // merge statemment
     merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? 
+
+    // raw sql statement
+    rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
 
     // FUNCTION blocks
     function: raw_function
