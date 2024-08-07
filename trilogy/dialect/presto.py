@@ -27,7 +27,7 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x: f"EXTRACT(WEEK from {x[0]})",
     FunctionType.QUARTER: lambda x: f"EXTRACT(QUARTER from {x[0]})",
     # math
-    FunctionType.DIVIDE: lambda x: f"SAFE_DIVIDE({x[0]},{x[1]})",
+    FunctionType.DIVIDE: lambda x: f"{x[0]}/{x[1]}",
     FunctionType.DATE_ADD: lambda x: f"DATE_ADD('{x[1]}', {x[2]}, {x[0]})",
     FunctionType.CURRENT_DATE: lambda x: "CURRENT_DATE",
     FunctionType.CURRENT_DATETIME: lambda x: "CURRENT_TIMESTAMP",
