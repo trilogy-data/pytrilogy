@@ -125,7 +125,6 @@ def optimize_ctes(
         complete = not actions_taken
         loops += 1
 
-
         sort_select_output(root_cte, select)
 
     return filter_irrelevant_ctes(input, root_cte)

@@ -4,7 +4,6 @@ from trilogy.core.models import (
     BooleanOperator,
     Datasource,
 )
-from trilogy.constants import logger
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 
 
@@ -58,12 +57,17 @@ class PredicatePushdown(OptimizationRule):
                 materialized = {k for k, v in parent_cte.source_map.items() if v != []}
                 # if it's a root datasource, we can filter on _any_ of the output concepts
                 if parent_cte.is_root_datasource:
-                    extra_check = {x.address for x in parent_cte.source.datasources[0].output_concepts}
+                    extra_check = {
+                        x.address
+                        for x in parent_cte.source.datasources[0].output_concepts
+                    }
                     if conditions.issubset(extra_check):
                         for x in conditions:
                             if x not in materialized:
                                 materialized.add(x)
-                                parent_cte.source_map[x] = [parent_cte.source.datasources[0].name]
+                                parent_cte.source_map[x] = [
+                                    parent_cte.source.datasources[0].name
+                                ]
                 if conditions.issubset(materialized):
                     if all(
                         [
@@ -84,7 +88,9 @@ class PredicatePushdown(OptimizationRule):
                             parent_cte.condition = candidate
                         optimized = True
                 else:
-                    self.log(f"conditions {conditions} not subset of parent {parent_cte.name} parent has {materialized} ")
+                    self.log(
+                        f"conditions {conditions} not subset of parent {parent_cte.name} parent has {materialized} "
+                    )
 
         if all(
             [
