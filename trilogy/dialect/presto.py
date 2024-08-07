@@ -4,6 +4,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, WindowType
 from trilogy.dialect.base import BaseDialect
+from trilogy.core.models import DataType
 
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -26,7 +27,7 @@ FUNCTION_MAP = {
     FunctionType.WEEK: lambda x: f"EXTRACT(WEEK from {x[0]})",
     FunctionType.QUARTER: lambda x: f"EXTRACT(QUARTER from {x[0]})",
     # math
-    FunctionType.DIVIDE: lambda x: f"SAFE_DIVIDE({x[0]},{x[1]})",
+    FunctionType.DIVIDE: lambda x: f"{x[0]}/{x[1]}",
     FunctionType.DATE_ADD: lambda x: f"DATE_ADD('{x[1]}', {x[2]}, {x[0]})",
     FunctionType.CURRENT_DATE: lambda x: "CURRENT_DATE",
     FunctionType.CURRENT_DATETIME: lambda x: "CURRENT_TIMESTAMP",
@@ -80,6 +81,7 @@ class PrestoDialect(BaseDialect):
     }
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SQL_TEMPLATE
+    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, DataType.NUMERIC: "DECIMAL"}
 
 
 class TrinoDialect(PrestoDialect):

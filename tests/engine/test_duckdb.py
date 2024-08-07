@@ -562,3 +562,21 @@ order by x asc
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (1,)
     assert len(results) == 4
+
+
+def test_numeric():
+    from trilogy.hooks.query_debugger import DebuggingHook
+    from decimal import Decimal
+
+    test = """
+const number <- 1.456789;
+const reduced <- cast(number as numeric(3,2));
+
+select reduced;
+"""
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+
+    default_duckdb_engine.hooks = [DebuggingHook()]
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+    assert results[0] == (Decimal("1.45"),)
+    assert len(results) == 1

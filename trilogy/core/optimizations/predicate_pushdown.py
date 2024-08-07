@@ -2,8 +2,8 @@ from trilogy.core.models import (
     CTE,
     Conditional,
     BooleanOperator,
+    Datasource,
 )
-from trilogy.constants import logger
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 
 
@@ -48,16 +48,31 @@ class PredicatePushdown(OptimizationRule):
             candidates = cte.condition.decompose()
         else:
             candidates = [cte.condition]
-        logger.info(f"Have {len(candidates)} candidates to try to push down")
+        self.log(f"Have {len(candidates)} candidates to try to push down")
         for candidate in candidates:
             conditions = {x.address for x in candidate.concept_arguments}
             for parent_cte in cte.parent_ctes:
+                if is_child_of(cte.condition, parent_cte.condition):
+                    continue
                 materialized = {k for k, v in parent_cte.source_map.items() if v != []}
+                # if it's a root datasource, we can filter on _any_ of the output concepts
+                if parent_cte.is_root_datasource:
+                    extra_check = {
+                        x.address
+                        for x in parent_cte.source.datasources[0].output_concepts
+                    }
+                    if conditions.issubset(extra_check):
+                        for x in conditions:
+                            if x not in materialized:
+                                materialized.add(x)
+                                parent_cte.source_map[x] = [
+                                    parent_cte.source.datasources[0].name
+                                ]
                 if conditions.issubset(materialized):
                     if all(
                         [
                             is_child_of(candidate, child.condition)
-                            for child in inverse_map[parent_cte.name]
+                            for child in inverse_map.get(parent_cte.name, [])
                         ]
                     ):
                         self.log(
@@ -73,14 +88,16 @@ class PredicatePushdown(OptimizationRule):
                             parent_cte.condition = candidate
                         optimized = True
                 else:
-                    logger.info("conditions not subset of parent materialized")
+                    self.log(
+                        f"conditions {conditions} not subset of parent {parent_cte.name} parent has {materialized} "
+                    )
 
         if all(
             [
                 is_child_of(cte.condition, parent_cte.condition)
                 for parent_cte in cte.parent_ctes
             ]
-        ):
+        ) and not any([isinstance(x, Datasource) for x in cte.source.datasources]):
             self.log("All parents have same filter, removing filter")
             cte.condition = None
             optimized = True
