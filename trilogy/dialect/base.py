@@ -426,8 +426,6 @@ class BaseDialect:
             if cte:
                 return self.render_concept_sql(e, cte, alias=False)
             elif cte_map:
-                if e.address not in cte_map:
-                    return f"UNKNOWN_PURPOSE.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
                 return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
