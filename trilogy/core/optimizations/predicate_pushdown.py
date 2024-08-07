@@ -72,7 +72,7 @@ class PredicatePushdown(OptimizationRule):
                     if all(
                         [
                             is_child_of(candidate, child.condition)
-                            for child in inverse_map[parent_cte.name]
+                            for child in inverse_map.get(parent_cte.name, [])
                         ]
                     ):
                         self.log(

@@ -50,7 +50,7 @@ def is_direct_return_eligible(
     if isinstance(select, (PersistStatement, MultiSelectStatement)):
         return False
     derived_concepts = [
-        c for c in cte.source.output_concepts if c not in cte.source.input_concepts
+        c for c in cte.source.output_concepts+cte.source.hidden_concepts if c not in cte.source.input_concepts
     ]
     eligible = True
     conditions = (

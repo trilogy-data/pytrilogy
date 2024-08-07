@@ -20,10 +20,10 @@ NULL_VALUE = MagicConstants.NULL
 
 @dataclass
 class Optimizations:
-    predicate_pushdown: bool = True
-    datasource_inlining: bool = True
-    constant_inlining: bool = True
-    direct_return: bool = True
+    predicate_pushdown: bool = False
+    datasource_inlining: bool = False
+    constant_inlining: bool = False
+    direct_return: bool = False
 
 
 # TODO: support loading from environments

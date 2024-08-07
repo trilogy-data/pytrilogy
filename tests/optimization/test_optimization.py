@@ -99,7 +99,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
         source=QueryDatasource(
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
-            datasources=[datasource],
+            datasources=[parent.source],
             grain=Grain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
@@ -184,66 +184,83 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
 
 
 def test_decomposition_pushdown(test_environment: Environment, test_environment_graph):
-    datasource = list(test_environment.datasources.values())[0]
-    outputs = [c.concept for c in datasource.columns]
-    concept_0 = outputs[0]
-    concept_1 = outputs[1]
-    cte_source_map = {output.address: [datasource.name] for output in outputs}
+    category_ds = test_environment.datasources["category"]
+    products = test_environment.datasources["products"]
+    product_id = test_environment.concepts["product_id"]
+    category_name = test_environment.concepts["category_name"]
+    category_id = test_environment.concepts["category_id"]
     parent1 = CTE(
-        name="parent1",
+        name="products",
         source=QueryDatasource(
-            input_concepts=[concept_0],
-            output_concepts=[concept_0],
-            datasources=[datasource],
+            input_concepts=[product_id, category_id],
+            output_concepts=[product_id, category_id],
+            datasources=[products],
             grain=Grain(),
             joins=[],
-            source_map={outputs[0].address: {datasource}},
+            source_map={
+                product_id.address: {products},
+                category_id.address: {products},
+            },
         ),
         output_columns=[],
-        condition=Comparison(left=outputs[0], right=1, operator=ComparisonOperator.EQ),
+        condition=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
         grain=Grain(),
-        source_map={outputs[0].address: [datasource.name]},
+        source_map={
+            product_id.address: [products.name],
+            category_id.address: [products.name],
+        },
     )
     parent2 = CTE(
         name="parent2",
         source=QueryDatasource(
-            input_concepts=[concept_1],
-            output_concepts=[concept_1],
-            datasources=[datasource],
+            input_concepts=[category_id, category_name],
+            output_concepts=[category_id, category_name],
+            datasources=[category_ds],
             grain=Grain(),
             joins=[],
-            source_map={concept_1.address: {datasource}},
+            source_map={
+                category_id.address: {category_ds},
+                category_name.address: {category_ds},
+            },
         ),
         output_columns=[],
         grain=Grain(),
-        source_map={concept_1.address: [datasource.name]},
+        source_map={
+            category_id.address: [category_ds.name],
+            category_name.address: [category_ds.name],
+        },
     )
     cte1 = CTE(
         name="test1",
         source=QueryDatasource(
-            input_concepts=[outputs[0], outputs[1]],
-            output_concepts=[outputs[0], concept_1],
-            datasources=[datasource],
+            input_concepts=[product_id, category_id, category_name],
+            output_concepts=[product_id, category_name],
+            datasources=[parent2.source, parent1.source],
             grain=Grain(),
             joins=[],
             source_map={
-                outputs[0].address: {datasource},
-                concept_1.address: {datasource},
+                product_id.address: {parent1.source},
+                category_name.address: {parent2.source},
+                category_id.address: {parent1.source, parent2.source},
             },
         ),
         output_columns=[],
         parent_ctes=[parent1, parent2],
         condition=Conditional(
             left=Comparison(
-                left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
+                left=product_id, right=product_id, operator=ComparisonOperator.EQ
             ),
             right=Comparison(
-                left=concept_1, right=concept_1, operator=ComparisonOperator.EQ
+                left=category_name, right=category_name, operator=ComparisonOperator.EQ
             ),
             operator=BooleanOperator.AND,
         ),
         grain=Grain(),
-        source_map=cte_source_map,
+        source_map={
+            product_id.address: [parent1.name],
+            category_name.address: [parent2.name],
+            category_id.address: [parent1.name, parent2.name],
+        },
     )
 
     inverse_map = {"parent1": [cte1], "parent2": [cte1]}
@@ -253,18 +270,20 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
     assert rule.optimize(cte1, inverse_map) is True
 
     assert parent1.condition == Conditional(
-        left=Comparison(left=outputs[0], right=1, operator=ComparisonOperator.EQ),
+        left=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
         right=Comparison(
-            left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
+            left=product_id, right=product_id, operator=ComparisonOperator.EQ
         ),
         operator=BooleanOperator.AND,
     )
     assert isinstance(parent2.condition, Comparison)
-    assert parent2.condition.left == concept_1
-    assert parent2.condition.right == concept_1
+    assert parent2.condition.left == category_name
+    assert parent2.condition.right == category_name
     assert parent2.condition.operator == ComparisonOperator.EQ
     assert str(parent2.condition) == str(
-        Comparison(left=outputs[1], right=outputs[1], operator=ComparisonOperator.EQ)
+        Comparison(
+            left=category_name, right=category_name, operator=ComparisonOperator.EQ
+        )
     )
     # we cannot safely remove this condition
     # as not all parents have both
