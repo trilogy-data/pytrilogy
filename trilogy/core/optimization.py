@@ -93,23 +93,6 @@ def optimize_ctes(
 ):
     complete = False
     REGISTERED_RULES: list["OptimizationRule"] = []
-
-    if CONFIG.optimizations.datasource_inlining:
-        REGISTERED_RULES.append(InlineDatasource())
-    if CONFIG.optimizations.predicate_pushdown:
-        REGISTERED_RULES.append(PredicatePushdown())
-    if CONFIG.optimizations.constant_inlining:
-        REGISTERED_RULES.append(InlineConstant())
-    loops = 0
-    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
-        actions_taken = False
-        for rule in REGISTERED_RULES:
-            for cte in input:
-                inverse_map = gen_inverse_map(input)
-                actions_taken = rule.optimize(cte, inverse_map)
-        complete = not actions_taken
-        loops += 1
-
     if CONFIG.optimizations.direct_return and is_direct_return_eligible(
         root_cte, select
     ):
@@ -126,6 +109,23 @@ def optimize_ctes(
             else:
                 root_cte.condition = select.where_clause.conditional
         root_cte.requires_nesting = False
+    if CONFIG.optimizations.datasource_inlining:
+        REGISTERED_RULES.append(InlineDatasource())
+    if CONFIG.optimizations.predicate_pushdown:
+        REGISTERED_RULES.append(PredicatePushdown())
+    if CONFIG.optimizations.constant_inlining:
+        REGISTERED_RULES.append(InlineConstant())
+    loops = 0
+    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
+        actions_taken = False
+        for rule in REGISTERED_RULES:
+            for cte in input:
+                inverse_map = gen_inverse_map(input)
+                actions_taken = actions_taken or rule.optimize(cte, inverse_map)
+        complete = not actions_taken
+        loops += 1
+
+
         sort_select_output(root_cte, select)
 
     return filter_irrelevant_ctes(input, root_cte)
