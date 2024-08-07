@@ -103,6 +103,7 @@ from trilogy.core.models import (
     RowsetDerivationStatement,
     LooseConceptList,
     list_to_wrapper,
+    NumericType,
 )
 from trilogy.parsing.exceptions import ParseError
 from trilogy.utility import string_to_hash
@@ -309,7 +310,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
-        final: list[DataType | MapType | ListType | StructType | Concept] = []
+        final: list[
+            DataType | MapType | ListType | StructType | NumericType | Concept
+        ] = []
         for arg in args:
             if not isinstance(arg, (DataType, ListType, StructType)):
                 new = self.environment.concepts.__getitem__(  # type: ignore
@@ -323,11 +326,16 @@ class ParseToObjects(Transformer):
     def list_type(self, args) -> ListType:
         return ListType(type=args[0])
 
-    def data_type(self, args) -> DataType | ListType | StructType:
+    def numeric_type(self, args) -> NumericType:
+        return NumericType(precision=args[0], scale=args[1])
+
+    def data_type(self, args) -> DataType | ListType | StructType | NumericType:
         resolved = args[0]
         if isinstance(resolved, StructType):
             return resolved
         elif isinstance(resolved, ListType):
+            return resolved
+        elif isinstance(resolved, NumericType):
             return resolved
         return DataType(args[0].lower())
 
@@ -1551,6 +1559,8 @@ class ParseToObjects(Transformer):
                 DataType.STRING,
                 DataType.FLOAT,
                 DataType.NUMBER,
+                DataType.NUMERIC,
+                DataType.BOOL,
             },
             arg_count=2,
         )

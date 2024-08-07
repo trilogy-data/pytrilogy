@@ -280,12 +280,14 @@
 
     SHORTHAND_MODIFIER: "~"
 
-    struct_type: "struct" "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
+    struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
 
-    list_type: "list" "<" data_type ">"
+    list_type: "list"i "<" data_type ">"
+
+    numeric_type: "numeric"i "(" int_lit "," int_lit ")"
 
 
-    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint" | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | struct_type | list_type
+    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | struct_type | list_type
     
     PURPOSE:  "key"i | "metric"i  | CONST
     PROPERTY: "property"i

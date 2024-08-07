@@ -9,6 +9,7 @@ from trilogy.core.models import (
     ListType,
     StructType,
     MapType,
+    NumericType,
 )
 from trilogy.core.enums import FunctionType, Purpose, Granularity, DatePart
 from trilogy.core.exceptions import InvalidSyntaxException
@@ -21,7 +22,9 @@ def create_function_derived_concept(
     namespace: str,
     operator: FunctionType,
     arguments: list[Concept],
-    output_type: Optional[DataType | ListType | StructType | MapType] = None,
+    output_type: Optional[
+        DataType | ListType | StructType | MapType | NumericType
+    ] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
     purpose = (
@@ -56,9 +59,7 @@ def argument_to_purpose(arg) -> Purpose:
         return Purpose.PROPERTY
     elif isinstance(arg, Concept):
         return arg.purpose
-    elif isinstance(arg, (int, float, str, bool, list)):
-        return Purpose.CONSTANT
-    elif isinstance(arg, DataType):
+    elif isinstance(arg, (int, float, str, bool, list, NumericType, DataType)):
         return Purpose.CONSTANT
     elif isinstance(arg, DatePart):
         return Purpose.CONSTANT

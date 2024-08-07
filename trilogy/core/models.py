@@ -105,7 +105,9 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
-ALL_TYPES = Union["DataType", "MapType", "ListType", "StructType", "Concept"]
+ALL_TYPES = Union[
+    "DataType", "MapType", "ListType", "NumericType", "StructType", "Concept"
+]
 
 NAMESPACED_TYPES = Union[
     "WindowItem",
@@ -176,6 +178,19 @@ class DataType(Enum):
         return self
 
 
+class NumericType(BaseModel):
+    precision: int = 20
+    scale: int = 5
+
+    @property
+    def data_type(self):
+        return DataType.NUMERIC
+
+    @property
+    def value(self):
+        return self.data_type.value
+
+
 class ListType(BaseModel):
     model_config = ConfigDict(frozen=True)
     type: ALL_TYPES
@@ -192,7 +207,9 @@ class ListType(BaseModel):
         return self.data_type.value
 
     @property
-    def value_data_type(self) -> DataType | StructType | MapType | ListType:
+    def value_data_type(
+        self,
+    ) -> DataType | StructType | MapType | ListType | NumericType:
         if isinstance(self.type, Concept):
             return self.type.datatype
         return self.type
@@ -270,7 +287,7 @@ def empty_grain() -> Grain:
 
 class Concept(Namespaced, SelectGrain, BaseModel):
     name: str
-    datatype: DataType | ListType | StructType | MapType
+    datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
     metadata: Optional[Metadata] = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
@@ -790,12 +807,12 @@ class LooseConceptList(BaseModel):
 class Function(Namespaced, SelectGrain, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
-    output_datatype: DataType | ListType | StructType | MapType
+    output_datatype: DataType | ListType | StructType | MapType | NumericType
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
-            Set[DataType | ListType | StructType],
-            List[Set[DataType | ListType | StructType]],
+            Set[DataType | ListType | StructType | NumericType],
+            List[Set[DataType | ListType | StructType] | NumericType],
         ]
     ] = None
     arguments: Sequence[
@@ -808,6 +825,7 @@ class Function(Namespaced, SelectGrain, BaseModel):
             str,
             DataType,
             ListType,
+            NumericType,
             DatePart,
             "Parenthetical",
             CaseWhen,
@@ -1499,7 +1517,7 @@ class DatasourceMetadata(BaseModel):
 
 class MergeStatement(Namespaced, BaseModel):
     concepts: List[Concept]
-    datatype: DataType | ListType | StructType | MapType
+    datatype: DataType | ListType | StructType | MapType | NumericType
 
     @cached_property
     def concepts_lcl(self):
@@ -3498,7 +3516,7 @@ def list_to_wrapper(args):
     return ListWrapper(args, type=types[0])
 
 
-def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
+def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | NumericType:
     if isinstance(arg, Function):
         return arg.output_datatype
     elif isinstance(arg, Concept):
@@ -3511,6 +3529,8 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType:
         return DataType.STRING
     elif isinstance(arg, float):
         return DataType.FLOAT
+    elif isinstance(arg, NumericType):
+        return arg
     elif isinstance(arg, ListWrapper):
         return ListType(type=arg.type)
     elif isinstance(arg, AggregateWrapper):

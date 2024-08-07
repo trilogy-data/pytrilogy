@@ -46,6 +46,7 @@ from trilogy.core.models import (
     ImportStatement,
     RawSQLStatement,
     ProcessedRawSQLStatement,
+    NumericType,
 )
 from trilogy.core.query_processor import process_query, process_persist
 from trilogy.dialect.common import render_join
@@ -97,6 +98,7 @@ DATATYPE_MAP = {
     DataType.INTEGER: "int",
     DataType.FLOAT: "float",
     DataType.BOOL: "bool",
+    DataType.NUMERIC: "numeric",
 }
 
 
@@ -334,6 +336,7 @@ class BaseDialect:
             Parenthetical,
             AggregateWrapper,
             MagicConstants,
+            NumericType,
             ListType,
             ListWrapper[int],
             ListWrapper[str],
@@ -439,6 +442,8 @@ class BaseDialect:
             return str(e.value)
         elif isinstance(e, DatePart):
             return str(e.value)
+        elif isinstance(e, NumericType):
+            return f"{self.DATATYPE_MAP[DataType.NUMERIC]}({e.precision},{e.scale})"
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"

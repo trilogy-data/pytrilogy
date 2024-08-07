@@ -39,6 +39,7 @@ from trilogy.core.models import (
     AlignClause,
     AlignItem,
     RawSQLStatement,
+    NumericType,
 )
 from trilogy.core.enums import Modifier
 
@@ -171,6 +172,10 @@ class Renderer:
     @to_string.register
     def _(self, arg: DataType):
         return arg.value
+
+    @to_string.register
+    def _(self, arg: "NumericType"):
+        return f"""Numeric({arg.precision},{arg.scale})"""
 
     @to_string.register
     def _(self, arg: ListWrapper):

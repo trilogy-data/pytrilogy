@@ -24,6 +24,7 @@ from trilogy.core.models import (
     AlignClause,
     AlignItem,
     RawSQLStatement,
+    NumericType,
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -356,3 +357,9 @@ def test_render_raw_sqlpersist_to_source():
     )
 
     assert test == "raw_sql('''SELECT * FROM test''');"
+
+
+def test_render_numeric():
+    test = Renderer().to_string(NumericType(precision=12, scale=3))
+
+    assert test == "Numeric(12,3)"
