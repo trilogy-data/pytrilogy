@@ -219,7 +219,7 @@ select
 
     executor.parse_text(test)
     ratio = env.concepts["ratio"]
-    assert ratio.purpose == Purpose.METRIC
+    assert ratio.purpose == Purpose.PROPERTY
     assert set(x.address for x in env.concepts["survivors"].keys) == {
         "passenger.class",
     }
@@ -243,7 +243,6 @@ select
         LooseConceptList(concepts=env.concepts["survivors"].grain.components).addresses
         == LooseConceptList(concepts=[env.concepts["passenger.class"]]).addresses
     )
-    # assert  LooseConceptList(concepts=env.concepts["ratio"].grain.components).addresses ==  LooseConceptList(concepts = [env.concepts["passenger.class"]]).addresses
     results = executor.execute_text(test)
 
     for row in results[0]:
