@@ -106,7 +106,6 @@ class Executor(object):
     def _(self, query: ConceptDeclarationStatement) -> CursorResult:
         concept = query.concept
         return MockResult(
-            ["address", "type", "purpose", "derivation"],
             [
                 {
                     "address": concept.address,
@@ -115,18 +114,19 @@ class Executor(object):
                     "derivation": concept.derivation.value,
                 }
             ],
+            ["address", "type", "purpose", "derivation"],
         )
 
     @execute_query.register
     def _(self, query: Datasource) -> CursorResult:
 
         return MockResult(
-            ["name"],
             [
                 {
                     "name": query.name,
                 }
             ],
+            ["name"],
         )
 
     @execute_query.register
