@@ -52,12 +52,22 @@ def argument_to_purpose(arg) -> Purpose:
     if isinstance(arg, Function):
         return arg.output_purpose
     elif isinstance(arg, AggregateWrapper):
+        base = arg.function.output_purpose
+        if arg.by and base == Purpose.METRIC:
+            return Purpose.PROPERTY
         return arg.function.output_purpose
     elif isinstance(arg, Parenthetical):
         return argument_to_purpose(arg.content)
     elif isinstance(arg, WindowItem):
         return Purpose.PROPERTY
     elif isinstance(arg, Concept):
+        base = arg.purpose
+        if (
+            isinstance(arg.lineage, AggregateWrapper)
+            and arg.lineage.by
+            and base == Purpose.METRIC
+        ):
+            return Purpose.PROPERTY
         return arg.purpose
     elif isinstance(arg, (int, float, str, bool, list, NumericType, DataType)):
         return Purpose.CONSTANT

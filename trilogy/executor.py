@@ -16,6 +16,8 @@ from trilogy.core.models import (
     PersistStatement,
     ShowStatement,
     Concept,
+    ConceptDeclarationStatement,
+    Datasource,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -99,6 +101,33 @@ class Executor(object):
     @singledispatchmethod
     def execute_query(self, query) -> CursorResult:
         raise NotImplementedError("Cannot execute type {}".format(type(query)))
+
+    @execute_query.register
+    def _(self, query: ConceptDeclarationStatement) -> CursorResult:
+        concept = query.concept
+        return MockResult(
+            ["address", "type", "purpose", "derivation"],
+            [
+                {
+                    "address": concept.address,
+                    "type": concept.datatype.value,
+                    "purpose": concept.purpose.value,
+                    "derivation": concept.derivation.value,
+                }
+            ],
+        )
+
+    @execute_query.register
+    def _(self, query: Datasource) -> CursorResult:
+
+        return MockResult(
+            ["name"],
+            [
+                {
+                    "name": query.name,
+                }
+            ],
+        )
 
     @execute_query.register
     def _(self, query: SelectStatement) -> CursorResult:
