@@ -149,6 +149,11 @@ class SelectGrain(ABC):
         raise NotImplementedError
 
 
+class ConstantInlineable(ABC):
+    def inline_concept(self, concept: Concept):
+        raise NotImplementedError
+
+
 class DataType(Enum):
     # PRIMITIVES
     STRING = "string"
@@ -2075,6 +2080,9 @@ class CTE(BaseModel):
         if concept.address in self.source_map:
             removed = removed.union(self.source_map[concept.address])
             del self.source_map[concept.address]
+
+        if self.condition:
+            self.condition = self.condition.inline_constant(concept)
         # if we've entirely removed the need to join to someplace to get the concept
         # drop the join as well.
         for removed_cte in removed:
@@ -2763,7 +2771,7 @@ class LazyEnvironment(Environment):
         return super().__getattribute__(name)
 
 
-class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
+class Comparison(ConceptArgs, Namespaced, ConstantInlineable, SelectGrain, BaseModel):
     left: Union[
         int,
         str,
@@ -2824,6 +2832,32 @@ class Comparison(ConceptArgs, Namespaced, SelectGrain, BaseModel):
 
     def __str__(self):
         return self.__repr__()
+
+    def inline_constant(self, constant: Concept) -> "Comparison":
+        assert isinstance(constant.lineage, Function)
+        new_val = constant.lineage.arguments[0]
+        if isinstance(self.left, ConstantInlineable):
+            new_left = self.left.inline_constant(constant)
+        elif self.left == constant:
+            new_left = new_val
+        else:
+            new_left = self.left
+
+        if isinstance(self.right, ConstantInlineable):
+            new_right = self.right.inline_constant(constant)
+        elif self.right == constant:
+            new_right = new_val
+        else:
+            new_right = self.right
+
+        if self.right == constant:
+            new_right = new_val
+
+        return Comparison(
+            left=new_left,
+            right=new_right,
+            operator=self.operator,
+        )
 
     def with_namespace(self, namespace: str):
         return self.__class__(
@@ -3001,7 +3035,7 @@ class CaseElse(Namespaced, SelectGrain, BaseModel):
         )
 
 
-class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
+class Conditional(ConceptArgs, Namespaced, ConstantInlineable, SelectGrain, BaseModel):
     left: Union[
         int,
         str,
@@ -3046,6 +3080,32 @@ class Conditional(ConceptArgs, Namespaced, SelectGrain, BaseModel):
 
     def __repr__(self):
         return f"{str(self.left)} {self.operator.value} {str(self.right)}"
+
+    def inline_constant(self, constant: Concept) -> "Conditional":
+        assert isinstance(constant.lineage, Function)
+        new_val = constant.lineage.arguments[0]
+        if isinstance(self.left, ConstantInlineable):
+            new_left = self.left.inline_constant(constant)
+        elif self.left == constant:
+            new_left = new_val
+        else:
+            new_left = self.left
+
+        if isinstance(self.right, ConstantInlineable):
+            new_right = self.right.inline_constant(constant)
+        elif self.right == constant:
+            new_right = new_val
+        else:
+            new_right = self.right
+
+        if self.right == constant:
+            new_right = new_val
+
+        return Conditional(
+            left=new_left,
+            right=new_right,
+            operator=self.operator,
+        )
 
     def with_namespace(self, namespace: str):
         return Conditional(
@@ -3386,7 +3446,9 @@ class RowsetItem(Namespaced, BaseModel):
         return [self.content]
 
 
-class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
+class Parenthetical(
+    ConceptArgs, Namespaced, ConstantInlineable, SelectGrain, BaseModel
+):
     content: "Expr"
 
     def __str__(self):
@@ -3416,6 +3478,15 @@ class Parenthetical(ConceptArgs, Namespaced, SelectGrain, BaseModel):
             content=(
                 self.content.with_select_grain(grain)
                 if isinstance(self.content, SelectGrain)
+                else self.content
+            )
+        )
+
+    def inline_constant(self, concept: Concept):
+        return Parenthetical(
+            content=(
+                self.content.inline_constant(concept)
+                if isinstance(self.content, ConstantInlineable)
                 else self.content
             )
         )
