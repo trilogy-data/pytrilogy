@@ -2,7 +2,7 @@ from datetime import datetime
 import networkx as nx
 from trilogy.core.env_processor import generate_graph
 from trilogy.executor import Executor
-from trilogy.core.models import ShowStatement, Concept, Grain
+from trilogy.core.models import ShowStatement, Concept, Grain, AggregateWrapper
 from trilogy.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from trilogy.parser import parse_text
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
@@ -619,5 +619,8 @@ order by
 
     duckdb_engine.hooks = [DebuggingHook()]
     results = duckdb_engine.execute_text(test)[0].fetchall()
+    derived = duckdb_engine.environment.concepts["all_store_count"]
+    assert isinstance(derived.lineage,AggregateWrapper)
+    assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
     assert len(results) == 1
     assert results[0] == ('hammer', 4)

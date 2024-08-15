@@ -893,6 +893,7 @@ class Function(Namespaced, SelectContext, BaseModel):
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
         )
+
         return Function(
             operator=self.operator,
             arguments=[
@@ -1340,10 +1341,10 @@ class SelectStatement(Namespaced, BaseModel):
         for item in self.output_components:
             if item.purpose == Purpose.KEY:
                 output.append(item)
-        if self.where_clause:
-            for item in self.where_clause.concept_arguments:
-                if item.purpose == Purpose.KEY:
-                    output.append(item)
+        # if self.where_clause:
+        #     for item in self.where_clause.concept_arguments:
+        #         if item.purpose == Purpose.KEY:
+        #             output.append(item)
                 # elif item.purpose == Purpose.PROPERTY and item.grain:
                 #     output += item.grain.components
             # TODO: handle other grain cases
@@ -3294,7 +3295,8 @@ class AggregateWrapper(Namespaced, SelectContext, BaseModel):
             by = grain.components_copy
         else:
             by = self.by
-        return AggregateWrapper(function=self.function.with_select_context(grain, conditional), by=by)
+        parent= self.function.with_select_context(grain, conditional)
+        return AggregateWrapper(function=parent, by=by)
 
 
 class WhereClause(ConceptArgs, Namespaced, SelectContext, BaseModel):
