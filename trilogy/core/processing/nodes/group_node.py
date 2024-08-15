@@ -15,6 +15,7 @@ from trilogy.core.processing.nodes.base_node import (
     resolve_concept_map,
     concept_list_to_grain,
 )
+from trilogy.utility import unique
 
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
@@ -109,7 +110,8 @@ class GroupNode(StrategyNode):
             source_type=source_type,
             source_map=resolve_concept_map(
                 parent_sources,
-                targets=self.output_concepts,
+                # targets = self.output_concepts,
+                targets=unique(self.output_concepts+self.conditions.concept_arguments, 'address') if self.conditions else self.output_concepts,
                 inherited_inputs=self.input_concepts,
             ),
             joins=[],

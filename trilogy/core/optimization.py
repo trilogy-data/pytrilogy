@@ -122,9 +122,15 @@ def optimize_ctes(
     while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
         actions_taken = False
         for rule in REGISTERED_RULES:
+            triggered = False
             for cte in input:
                 inverse_map = gen_inverse_map(input)
                 actions_taken = actions_taken or rule.optimize(cte, inverse_map)
+                if actions_taken:
+                    triggered = True
+                    break
+            if triggered:
+                break
         complete = not actions_taken
         loops += 1
 

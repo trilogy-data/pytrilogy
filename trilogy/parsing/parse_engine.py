@@ -892,7 +892,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_statement(self, meta: Meta, args) -> SelectStatement:
-        select_items = None
+        select_items: List[SelectItem] | None = None
         limit = None
         order_by = None
         where = None
@@ -919,7 +919,7 @@ class ParseToObjects(Transformer):
             # so rebuild at this point in the tree
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_select_grain(output.grain)
+                new_concept = item.content.output.with_select_context(output.grain, conditional = where.conditional if where else None)
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept
         if order_by:
@@ -1046,6 +1046,10 @@ class ParseToObjects(Transformer):
         return Parenthetical(content=args[0])
 
     def conditional(self, args):
+        if args[0] is None:
+            raise ValueError
+        elif args[2] is None:
+            raise ValueError
         return Conditional(left=args[0], right=args[2], operator=args[1])
 
     def window_order(self, args):

@@ -675,25 +675,25 @@ class BaseDialect:
         # where assignment
         output_where = False
         if query.where_clause:
-            found = False
-            filter = set(
-                [
-                    str(x.address)
-                    for x in query.where_clause.row_arguments
-                    if not x.derivation == PurposeLineage.CONSTANT
-                ]
-            )
-            query_output = set([str(z.address) for z in query.output_columns])
-            if filter.issubset(query_output):
-                output_where = True
-                found = True
+            # found = False
+            # filter = set(
+            #     [
+            #         str(x.address)
+            #         for x in query.where_clause.row_arguments
+            #         if not x.derivation == PurposeLineage.CONSTANT
+            #     ]
+            # )
+            # query_output = set([str(z.address) for z in query.output_columns])
+            # if filter.issubset(query_output):
+            #     output_where = True
+            #     found = True
 
-            if not found:
-                raise NotImplementedError(
-                    f"Cannot generate query with filtering on row arguments {filter} that is"
-                    f" not a subset of the query output grain {query_output}. Try a"
-                    " filtered concept instead, or include it in the select clause"
-                )
+            # if not found:
+            #     raise NotImplementedError(
+            #         f"Cannot generate query with filtering on row arguments {filter} that is"
+            #         f" not a subset of the query output grain {query_output}. Try a"
+            #         " filtered concept instead, or include it in the select clause"
+            #     )
             for ex_set in query.where_clause.existence_arguments:
                 for c in ex_set:
                     if c.address not in cte_output_map:

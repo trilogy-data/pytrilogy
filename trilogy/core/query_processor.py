@@ -4,8 +4,10 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.enums import PurposeLineage
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.models import (
+    Concept,
     Environment,
     PersistStatement,
     SelectStatement,
@@ -24,13 +26,14 @@ from trilogy.core.models import (
 )
 
 from trilogy.utility import unique
-from collections import defaultdict
+
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.constants import logger
-from random import shuffle
 from trilogy.core.ergonomics import CTE_NAMES
 from trilogy.core.optimization import optimize_ctes
 from math import ceil
+from collections import defaultdict
+from random import shuffle
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -318,11 +321,41 @@ def get_query_datasources(
     )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
-    ds = source_query_concepts(
-        statement.output_components,
+    
+    search_concepts:list[Concept] = statement.output_components
+    nest_where = False
+    where_delta = []
+    if statement.where_clause:
+        filter = set(
+            [
+                str(x.address)
+                for x in statement.where_clause.row_arguments
+                if not x.derivation == PurposeLineage.CONSTANT
+            ]
+        )
+        query_output = set([str(z.address) for z in statement.output_components])
+        if not filter.issubset(query_output):
+            search_concepts = unique(statement.where_clause.row_arguments + search_concepts, "address")
+            where_delta = [x for x in search_concepts if x.address not in [z.address for z in statement.output_components]]
+            nest_where = True
+
+    ods = source_query_concepts(
+        search_concepts,
         environment=environment,
         g=graph,
     )
+    if nest_where and statement.where_clause:
+        ods.conditions = statement.where_clause.conditional
+        ods.output_concepts = search_concepts
+        # ods.hidden_concepts = where_delta
+        ods.rebuild_cache()
+        from trilogy.core.processing.nodes import (
+        GroupNode,
+    )
+        ds = GroupNode(output_concepts=statement.output_components, input_concepts = search_concepts, parents=[ods],
+                       environment=ods.environment, g=ods.g, partial_concepts=ods.partial_concepts)
+    else:
+        ds = ods
     if hooks:
         for hook in hooks:
             hook.process_root_strategy_node(ds)

@@ -10,7 +10,7 @@ from trilogy.core.models import (
     DataType,
     Function,
     LooseConceptList,
-    SelectGrain,
+    SelectContext,
 )
 from trilogy.core.enums import Purpose, FunctionType
 from os.path import dirname
@@ -389,7 +389,7 @@ order by passenger.class desc
     srate = env.concepts["survival_rate_auto"]
     assert srate.lineage
     assert isinstance(srate.lineage, Function)
-    assert isinstance(srate.lineage, SelectGrain)
+    assert isinstance(srate.lineage, SelectContext)
     for agg in env.concepts["survival_rate_auto"].lineage.arguments:
         assert agg.grain.components == [env.concepts["passenger.class"]]
         assert len(agg.grain.components) == 1

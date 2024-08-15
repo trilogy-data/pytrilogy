@@ -88,7 +88,7 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         # insert two items into the table
         connection.execute(
             text(
-                "INSERT INTO items VALUES ('jeans', 20.0, 1, 1), ('hammer', 42.2, 2,1 ), ('hammer', 42.2, 2,2 )"
+                "INSERT INTO items VALUES ('jeans', 20.0, 1, 1), ('hammer', 42.2, 2,1 ), ('hammer', 42.2, 2,2 ), ('hammer', 42.2, 2,3 )"
             )
         )
         connection.commit()

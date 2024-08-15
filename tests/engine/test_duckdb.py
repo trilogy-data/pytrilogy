@@ -357,7 +357,7 @@ select
         "local.customer"
     }
 
-    customer_orders_2 = customer_orders.with_select_grain(Grain())
+    customer_orders_2 = customer_orders.with_select_context(Grain())
     assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x.address for x in customer_orders_2.grain.components]) == {
         "local.customer"
@@ -580,3 +580,44 @@ select reduced;
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (Decimal("1.45"),)
     assert len(results) == 1
+
+
+def test_filter_promotion(duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+    from decimal import Decimal
+
+    test = """
+SELECT
+    item
+where
+    value>1;
+
+"""
+    
+
+    duckdb_engine.hooks = [DebuggingHook()]
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 2
+
+
+
+def test_filter_promotion_complicated(duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+    from decimal import Decimal
+
+    test = """
+SELECT
+    item,
+    sum(count) ->all_store_count
+where
+    store_id in (1,3)
+    and item = 'hammer'
+order by
+    item desc;
+"""
+    
+
+    duckdb_engine.hooks = [DebuggingHook()]
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+    assert results[0] == ('hammer', 4)
