@@ -184,6 +184,12 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
 
 
 def test_decomposition_pushdown(test_environment: Environment, test_environment_graph):
+    from trilogy.constants import logger
+    from logging import DEBUG, StreamHandler
+
+    logger.setLevel(DEBUG)
+    logger.addHandler(StreamHandler())
+
     category_ds = test_environment.datasources["category"]
     products = test_environment.datasources["products"]
     product_id = test_environment.concepts["product_id"]
@@ -267,8 +273,10 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
 
     assert parent2.condition is None
     rule = PredicatePushdown()
+    # two to pushup, then last will fail
     assert rule.optimize(cte1, inverse_map) is True
-
+    assert rule.optimize(cte1, inverse_map) is True
+    assert rule.optimize(cte1, inverse_map) is False
     assert parent1.condition == Conditional(
         left=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
         right=Comparison(

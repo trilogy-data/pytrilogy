@@ -676,24 +676,18 @@ class BaseDialect:
         output_where = False
         if query.where_clause:
             # found = False
-            # filter = set(
-            #     [
-            #         str(x.address)
-            #         for x in query.where_clause.row_arguments
-            #         if not x.derivation == PurposeLineage.CONSTANT
-            #     ]
-            # )
-            # query_output = set([str(z.address) for z in query.output_columns])
-            # if filter.issubset(query_output):
-            #     output_where = True
-            #     found = True
-
-            # if not found:
-            #     raise NotImplementedError(
-            #         f"Cannot generate query with filtering on row arguments {filter} that is"
-            #         f" not a subset of the query output grain {query_output}. Try a"
-            #         " filtered concept instead, or include it in the select clause"
-            #     )
+            filter = set(
+                [
+                    str(x.address)
+                    for x in query.where_clause.row_arguments
+                    if not x.derivation == PurposeLineage.CONSTANT
+                ]
+            )
+            query_output = set([str(z.address) for z in query.output_columns])
+            # if it wasn't an output
+            # we would have forced it up earlier and we don't need to render at this point
+            if filter.issubset(query_output):
+                output_where = True
             for ex_set in query.where_clause.existence_arguments:
                 for c in ex_set:
                     if c.address not in cte_output_map:

@@ -5,8 +5,18 @@ from logging import StreamHandler, DEBUG
 
 from trilogy.constants import logger
 from trilogy.core.enums import Purpose
-from trilogy.core.optimizations.predicate_pushdown import is_child_of, decompose_condition
-from trilogy.core.models import Conditional, Comparison, ComparisonOperator, BooleanOperator, SubselectComparison
+from trilogy.core.optimizations.predicate_pushdown import (
+    is_child_of,
+    decompose_condition,
+)
+from trilogy.core.models import (
+    Conditional,
+    Comparison,
+    ComparisonOperator,
+    BooleanOperator,
+    SubselectComparison,
+)
+
 logger.setLevel(DEBUG)
 logger.addHandler(StreamHandler())
 
@@ -48,22 +58,24 @@ def test_child_of():
         text = f.read()
 
     env, queries = parse(text)
-    
+
     test = Conditional(
-        left=SubselectComparison(left=env.concepts['uuid'], right=2, operator=ComparisonOperator.EQ),
+        left=SubselectComparison(
+            left=env.concepts["uuid"], right=2, operator=ComparisonOperator.EQ
+        ),
         right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
 
     test2 = Conditional(
-        left=SubselectComparison(left=env.concepts['uuid'], right=2, operator=ComparisonOperator.EQ),
+        left=SubselectComparison(
+            left=env.concepts["uuid"], right=2, operator=ComparisonOperator.EQ
+        ),
         right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
-    assert is_child_of(test, test2) == True
+    assert is_child_of(test, test2) is True
 
     children = decompose_condition(test)
     for child in children:
-        assert is_child_of(child, test2) == True
-
-    
+        assert is_child_of(child, test2) is True

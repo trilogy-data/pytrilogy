@@ -9,6 +9,9 @@ from trilogy.core.models import (
     Concept,
     Environment,
     LooseConceptList,
+    Conditional,
+    Comparison,
+    Parenthetical,
 )
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
@@ -35,6 +38,7 @@ class GroupNode(StrategyNode):
         depth: int = 0,
         partial_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
+        conditions: Conditional | Comparison | Parenthetical | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -46,6 +50,7 @@ class GroupNode(StrategyNode):
             depth=depth,
             partial_concepts=partial_concepts,
             force_group=force_group,
+            conditions=conditions,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -111,7 +116,14 @@ class GroupNode(StrategyNode):
             source_map=resolve_concept_map(
                 parent_sources,
                 # targets = self.output_concepts,
-                targets=unique(self.output_concepts+self.conditions.concept_arguments, 'address') if self.conditions else self.output_concepts,
+                targets=(
+                    unique(
+                        self.output_concepts + self.conditions.concept_arguments,
+                        "address",
+                    )
+                    if self.conditions
+                    else self.output_concepts
+                ),
                 inherited_inputs=self.input_concepts,
             ),
             joins=[],

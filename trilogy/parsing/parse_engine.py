@@ -32,6 +32,7 @@ from trilogy.core.enums import (
     WindowType,
     DatePart,
     ShowCategory,
+    SelectFiltering,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -400,7 +401,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
 
-        metadata = None
+        metadata = Metadata()
         modifiers = []
         for arg in args:
             if isinstance(arg, Metadata):
@@ -439,7 +440,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
-        metadata = None
+        metadata = Metadata()
         modifiers = []
         for arg in args:
             if isinstance(arg, Metadata):
@@ -447,9 +448,7 @@ class ParseToObjects(Transformer):
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
         name = args[1]
-        lookup, namespace, name, parent = parse_concept_reference(
-            name, self.environment
-        )
+        _, namespace, name, _ = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -919,16 +918,24 @@ class ParseToObjects(Transformer):
             # so rebuild at this point in the tree
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_select_context(output.grain, conditional = where.conditional if where else None)
+                new_concept = item.content.output.with_select_context(
+                    output.grain,
+                    conditional=(
+                        output.where_clause.conditional
+                        if output.where_clause
+                        and output.where_clause_category == SelectFiltering.IMPLICIT
+                        else None
+                    ),
+                )
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept
         if order_by:
-            for item in order_by.items:
+            for orderitem in order_by.items:
                 if (
-                    isinstance(item.expr, Concept)
-                    and item.expr.purpose == Purpose.METRIC
+                    isinstance(orderitem.expr, Concept)
+                    and orderitem.expr.purpose == Purpose.METRIC
                 ):
-                    item.expr = item.expr.with_grain(output.grain)
+                    orderitem.expr = orderitem.expr.with_grain(output.grain)
         return output
 
     @v_args(meta=True)

@@ -53,6 +53,7 @@ def constant_to_concept(
         output_purpose=Purpose.CONSTANT,
         arguments=[parent],
     )
+    fmetadata = metadata or Metadata()
     return Concept(
         name=name,
         datatype=const_function.output_datatype,
@@ -60,7 +61,7 @@ def constant_to_concept(
         lineage=const_function,
         grain=const_function.output_grain,
         namespace=namespace,
-        metadata=metadata,
+        metadata=fmetadata,
     )
 
 
@@ -105,13 +106,13 @@ def filter_item_to_concept(
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
-
+    fmetadata = metadata or Metadata()
     return Concept(
         name=name,
         datatype=parent.content.datatype,
         purpose=parent.content.purpose,
         lineage=parent,
-        metadata=metadata,
+        metadata=fmetadata,
         namespace=namespace,
         # filtered copies cannot inherit keys
         keys=None,
@@ -130,6 +131,7 @@ def window_item_to_concept(
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
+    fmetadata = metadata or Metadata()
     local_purpose, keys = get_purpose_and_keys(purpose, (parent.content,))
     if parent.order_by:
         grain = parent.over + [parent.content.output]
@@ -142,7 +144,7 @@ def window_item_to_concept(
         datatype=parent.content.datatype,
         purpose=local_purpose,
         lineage=parent,
-        metadata=metadata,
+        metadata=fmetadata,
         # filters are implicitly at the grain of the base item
         grain=Grain(components=grain),
         namespace=namespace,
@@ -162,12 +164,13 @@ def agg_wrapper_to_concept(
     )
     # anything grouped to a grain should be a property
     # at that grain
+    fmetadata = metadata or Metadata()
     aggfunction = parent.function
     out = Concept(
         name=name,
         datatype=aggfunction.output_datatype,
         purpose=Purpose.METRIC,
-        metadata=metadata,
+        metadata=fmetadata,
         lineage=parent,
         grain=Grain(components=parent.by) if parent.by else Grain(),
         namespace=namespace,

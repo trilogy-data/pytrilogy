@@ -276,3 +276,9 @@ class SourceType(Enum):
 class ShowCategory(Enum):
     MODELS = "models"
     CONCEPTS = "concepts"
+
+
+class SelectFiltering(Enum):
+    NONE = "none"
+    EXPLICIT = "explicit"  # the filtering contains only selected values
+    IMPLICIT = "implicit"  # the filtering contains unselected values

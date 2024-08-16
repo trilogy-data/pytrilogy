@@ -4,8 +4,9 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import SelectFiltering
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
+from trilogy.core.processing.nodes import GroupNode, StrategyNode
 from trilogy.core.models import (
     Concept,
     Environment,
@@ -309,6 +310,28 @@ def datasource_to_ctes(
     return output
 
 
+def append_existence_check(
+    node: StrategyNode, environment: Environment, graph: ReferenceGraph
+):
+    # we if we have a where clause doing an existence check
+    # treat that as separate subquery
+    if (where := node.conditions) and where.existence_arguments:
+        for subselect in where.existence_arguments:
+            if not subselect:
+                continue
+            logger.info(
+                f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
+            )
+            eds = source_query_concepts([*subselect], environment=environment, g=graph)
+
+            final_eds = eds.resolve()
+            first_parent = node.resolve()
+            first_parent.datasources.append(final_eds)
+            for x in final_eds.output_concepts:
+                if x.address not in first_parent.existence_source_map:
+                    first_parent.existence_source_map[x.address] = {final_eds}
+
+
 def get_query_datasources(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
@@ -321,23 +344,14 @@ def get_query_datasources(
     )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
-    
-    search_concepts:list[Concept] = statement.output_components
-    nest_where = False
-    where_delta = []
-    if statement.where_clause:
-        filter = set(
-            [
-                str(x.address)
-                for x in statement.where_clause.row_arguments
-                if not x.derivation == PurposeLineage.CONSTANT
-            ]
+
+    search_concepts: list[Concept] = statement.output_components
+    nest_where = statement.where_clause_category == SelectFiltering.IMPLICIT
+    if nest_where and statement.where_clause:
+        search_concepts = unique(
+            statement.where_clause.row_arguments + search_concepts, "address"
         )
-        query_output = set([str(z.address) for z in statement.output_components])
-        if not filter.issubset(query_output):
-            search_concepts = unique(statement.where_clause.row_arguments + search_concepts, "address")
-            where_delta = [x for x in search_concepts if x.address not in [z.address for z in statement.output_components]]
-            nest_where = True
+        nest_where = True
 
     ods = source_query_concepts(
         search_concepts,
@@ -349,35 +363,32 @@ def get_query_datasources(
         ods.output_concepts = search_concepts
         # ods.hidden_concepts = where_delta
         ods.rebuild_cache()
-        from trilogy.core.processing.nodes import (
-        GroupNode,
-    )
-        ds = GroupNode(output_concepts=statement.output_components, input_concepts = search_concepts, parents=[ods],
-                       environment=ods.environment, g=ods.g, partial_concepts=ods.partial_concepts)
+        append_existence_check(ods, environment, graph)
+        ds = GroupNode(
+            output_concepts=statement.output_components,
+            input_concepts=search_concepts,
+            parents=[ods],
+            environment=ods.environment,
+            g=ods.g,
+            partial_concepts=ods.partial_concepts,
+        )
+        # we can still check existence here.
+
+    elif statement.where_clause:
+        ods.conditions = statement.where_clause.conditional
+        ods.rebuild_cache()
+        # check existence here
+        append_existence_check(ods, environment, graph)
+        ds = ods
+
     else:
         ds = ods
+
+    final_qds = ds.resolve()
     if hooks:
         for hook in hooks:
             hook.process_root_strategy_node(ds)
-    final_qds = ds.resolve()
 
-    # we if we have a where clause doing an existence check
-    # treat that as separate subquery
-    if (where := statement.where_clause) and where.existence_arguments:
-        for subselect in where.existence_arguments:
-            if not subselect:
-                continue
-            logger.info(
-                f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
-            )
-            eds = source_query_concepts([*subselect], environment=environment, g=graph)
-
-            final_eds = eds.resolve()
-            first_parent = final_qds
-            first_parent.datasources.append(final_eds)
-            for x in final_eds.output_concepts:
-                if x.address not in first_parent.existence_source_map:
-                    first_parent.existence_source_map[x.address] = {final_eds}
     return final_qds
 
 

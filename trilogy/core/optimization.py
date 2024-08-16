@@ -125,9 +125,9 @@ def optimize_ctes(
             triggered = False
             for cte in input:
                 inverse_map = gen_inverse_map(input)
-                actions_taken = actions_taken or rule.optimize(cte, inverse_map)
+                opt = rule.optimize(cte, inverse_map)
+                actions_taken = actions_taken or opt
                 if actions_taken:
-                    triggered = True
                     break
             if triggered:
                 break

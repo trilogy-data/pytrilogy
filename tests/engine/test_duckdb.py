@@ -584,7 +584,6 @@ select reduced;
 
 def test_filter_promotion(duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
-    from decimal import Decimal
 
     test = """
 SELECT
@@ -593,17 +592,14 @@ where
     value>1;
 
 """
-    
 
     duckdb_engine.hooks = [DebuggingHook()]
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 2
 
 
-
 def test_filter_promotion_complicated(duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
-    from decimal import Decimal
 
     test = """
 SELECT
@@ -615,12 +611,11 @@ where
 order by
     item desc;
 """
-    
 
     duckdb_engine.hooks = [DebuggingHook()]
     results = duckdb_engine.execute_text(test)[0].fetchall()
     derived = duckdb_engine.environment.concepts["all_store_count"]
-    assert isinstance(derived.lineage,AggregateWrapper)
+    assert isinstance(derived.lineage, AggregateWrapper)
     assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
     assert len(results) == 1
-    assert results[0] == ('hammer', 4)
+    assert results[0] == ("hammer", 4)

@@ -120,7 +120,7 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def expected_results():
-    yield {"total_count": 5, "avg_count_per_product": 2.5, "converted_total_count": 10}
+    yield {"total_count": 7, "avg_count_per_product": 3.5, "converted_total_count": 14}
 
 
 @fixture(scope="session")

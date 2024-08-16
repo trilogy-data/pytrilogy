@@ -30,7 +30,9 @@ def is_child_of(a, comparison):
         ) and comparison.operator == BooleanOperator.AND
     return base
 
+
 COUNT = 0
+
 
 class PredicatePushdown(OptimizationRule):
 
@@ -61,12 +63,7 @@ class PredicatePushdown(OptimizationRule):
                         ]
         if conditions.issubset(materialized):
             children = inverse_map.get(parent_cte.name, [])
-            if all(
-                [
-                    is_child_of(candidate, child.condition)
-                    for child in children
-                ]
-            ):
+            if all([is_child_of(candidate, child.condition) for child in children]):
                 self.log(
                     f"All concepts are found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
                 )
@@ -105,14 +102,19 @@ class PredicatePushdown(OptimizationRule):
         self.debug(f"Have {len(candidates)} candidates to try to push down")
         for candidate in candidates:
             for parent_cte in cte.parent_ctes:
-                optimized = self._check_parent(parent_cte=parent_cte, candidate=candidate, inverse_map=inverse_map)
+                optimized = self._check_parent(
+                    parent_cte=parent_cte, candidate=candidate, inverse_map=inverse_map
+                )
+                self.debug(f"Optimized {candidate} to {parent_cte.name}")
                 if optimized:
                     if all(
                         [
                             is_child_of(cte.condition, parent_cte.condition)
                             for parent_cte in cte.parent_ctes
                         ]
-                    ) and not any([isinstance(x, Datasource) for x in cte.source.datasources]):
+                    ) and not any(
+                        [isinstance(x, Datasource) for x in cte.source.datasources]
+                    ):
                         self.log("All parents have same filter, removing filter")
                         cte.condition = None
                     return True
