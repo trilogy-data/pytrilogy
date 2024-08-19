@@ -83,6 +83,7 @@ def base_join_to_join(
         right_cte=right_cte,
         joinkeys=[JoinKey(concept=concept) for concept in base_join.concepts],
         jointype=base_join.join_type,
+        joinkey_pairs=base_join.concept_pairs if base_join.concept_pairs else None,
     )
 
 

@@ -93,9 +93,11 @@ class History(BaseModel):
         environment: Environment,
         g,
         depth: int,
+        source_concepts,
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         accept_partial_optional: bool = False,
+
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 
@@ -117,6 +119,7 @@ class History(BaseModel):
             fail_if_not_found=fail_if_not_found,
             accept_partial=accept_partial,
             accept_partial_optional=accept_partial_optional,
+            source_concepts=source_concepts,
         )
         self.select_history[fingerprint] = gen
         return gen

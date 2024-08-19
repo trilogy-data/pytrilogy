@@ -70,7 +70,8 @@
     align_clause: align_item ("AND"i align_item)*  "AND"i?
 
     // merge statemment
-    merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? 
+    merge_statement_unit: IDENTIFIER ("," IDENTIFIER)* ","? 
+    merge_statement: "merge"i merge_statement_unit ("AND"i merge_statement_unit)* 
 
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"

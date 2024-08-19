@@ -344,7 +344,8 @@ class Concept(Namespaced, SelectContext, BaseModel):
             FilterItem,
             AggregateWrapper,
             RowsetItem,
-            MultiSelectStatement | MergeStatement,
+            MultiSelectStatement,
+            MergeUnit,
         ]
     ] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -572,7 +573,8 @@ class Concept(Namespaced, SelectContext, BaseModel):
                     FilterItem,
                     AggregateWrapper,
                     RowsetItem,
-                    MultiSelectStatement | MergeStatement,
+                    MultiSelectStatement,
+                    MergeUnit,
                 ],
                 output: List[Concept],
             ):
@@ -611,7 +613,7 @@ class Concept(Namespaced, SelectContext, BaseModel):
             return PurposeLineage.ROWSET
         elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
             return PurposeLineage.MULTISELECT
-        elif self.lineage and isinstance(self.lineage, MergeStatement):
+        elif self.lineage and isinstance(self.lineage, MergeUnit):
             return PurposeLineage.MERGE
         elif (
             self.lineage
@@ -708,7 +710,7 @@ class Grain(BaseModel):
                 if all([c in v2 for c in sub.keys]):
                     continue
             elif sub.derivation == PurposeLineage.MERGE and isinstance(
-                sub.lineage, MergeStatement
+                sub.lineage, MergeUnit
             ):
                 parents = sub.lineage.concepts
                 if any([p in v2 for p in parents]):
@@ -1290,7 +1292,6 @@ class RawSQLStatement(BaseModel):
 
 class SelectStatement(Namespaced, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
-    where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
@@ -1492,7 +1493,6 @@ class MultiSelectStatement(Namespaced, SelectTypeMixin, BaseModel):
     selects: List[SelectStatement]
     align: AlignClause
     namespace: str
-    where_clause: Optional["WhereClause"] = None
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
@@ -1613,26 +1613,82 @@ def safe_grain(v) -> Grain:
 class DatasourceMetadata(BaseModel):
     freshness_concept: Concept | None
     partition_fields: List[Concept] = Field(default_factory=list)
+    line_no: int | None = None
 
-
-class MergeStatement(Namespaced, BaseModel):
+class MergeUnit(Namespaced, BaseModel):
     concepts: List[Concept]
     datatype: DataType | ListType | StructType | MapType | NumericType
-
+    parent:MergeStatement | None = None
+    
     @cached_property
     def concepts_lcl(self):
         return LooseConceptList(concepts=self.concepts)
+    
+
+    # @property
+    # def merge_concept(self) -> Concept:
+    #     bridge_name = "_".join([c.safe_address for c in self.concepts])
+    #     return Concept(
+    #         name=f"__merge_{bridge_name}",
+    #         datatype=self.datatype,
+    #         purpose=Purpose.PROPERTY,
+    #         lineage=self,
+    #         keys=tuple(self.concepts),
+    #     )
+    def with_namespace(self, namespace: str) -> "MergeUnit":
+        return MergeUnit(
+            concepts=[c.with_namespace(namespace) for c in self.concepts],
+            datatype=self.datatype,
+            parent=None
+        )
+    
+    @property
+    def arguments(self) -> List[Concept]:
+        return self.concepts
 
     @property
-    def merge_concept(self) -> Concept:
-        bridge_name = "_".join([c.safe_address for c in self.concepts])
-        return Concept(
-            name=f"__merge_{bridge_name}",
-            datatype=self.datatype,
-            purpose=Purpose.PROPERTY,
-            lineage=self,
-            keys=tuple(self.concepts),
+    def concept_arguments(self) -> List[Concept]:
+        return self.concepts
+    
+    def find_source(self, concept: Concept, cte: CTE) -> Concept:
+        for x in self.concepts:
+            for z in cte.output_columns:
+                if z.address == x.address:
+                    return z
+        raise SyntaxError(
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte.name})"
         )
+class MergeStatement(Namespaced, BaseModel):
+    merges: List[MergeUnit]
+    namespace:str
+
+    def add_unit(self, unit: MergeUnit):
+        unit.parent = self
+        self.merges.append(unit)
+    
+   
+    def gen_merge_datasource(self, metadata:DatasourceMetadata)->Datasource:
+        return MergeDatasource(
+            identifier = 'merge_node',
+            columns = [ColumnAssignment(alias = c.safe_address, concept = c) for c in self.concepts],
+            address = 'funky monkey',
+            metadata=metadata,
+            namespace=self.namespace,
+            lineage=self
+        )
+
+
+    @cached_property
+    def concepts_lcl(self):
+        return sum([m.concepts_lcl for m in self.merges], LooseConceptList(concepts=[]))
+
+    @property
+    def concepts(self) -> List[Concept]:
+        base = []
+        for unit in self.merges:
+            base += unit.concepts
+        return base
+
 
     @property
     def arguments(self) -> List[Concept]:
@@ -1652,10 +1708,11 @@ class MergeStatement(Namespaced, BaseModel):
         )
 
     def with_namespace(self, namespace: str) -> "MergeStatement":
-        return MergeStatement(
-            concepts=[c.with_namespace(namespace) for c in self.concepts],
-            datatype=self.datatype,
-        )
+        children = [m.with_namespace(namespace) for m in self.merges]
+        new = MergeStatement(namespace=namespace)
+        for child in children:
+            new.add_unit(child)
+        return new
 
 
 class Datasource(Namespaced, BaseModel):
@@ -1814,6 +1871,24 @@ class Datasource(Namespaced, BaseModel):
         return self.address
 
 
+class MergeDatasource(Datasource):
+    lineage:MergeStatement
+
+
+    def with_namespace(self, namespace: str):
+        new_namespace = (
+            namespace + "." + self.namespace
+            if self.namespace and self.namespace != DEFAULT_NAMESPACE
+            else namespace
+        )
+        return MergeDatasource(
+            identifier=self.identifier,
+            namespace=new_namespace,
+            grain=self.grain.with_namespace(namespace),
+            address=self.address,
+            columns=[c.with_namespace(namespace) for c in self.columns],
+            lineage = self.lineage.with_namespace(namespace)
+        )
 class UnnestJoin(BaseModel):
     concept: Concept
     alias: str = "unnest"
@@ -1833,6 +1908,7 @@ class BaseJoin(BaseModel):
     concepts: List[Concept]
     join_type: JoinType
     filter_to_mutual: bool = False
+    concept_pairs: list[tuple[Concept, Concept]] | None = None
 
     def __init__(self, **data: Any):
         super().__init__(**data)
@@ -1842,6 +1918,11 @@ class BaseJoin(BaseModel):
                 f" {self.right_datasource}"
             )
         final_concepts = []
+
+        # if we have a list of concept pairs
+        if self.concept_pairs:
+            return
+
         for concept in self.concepts:
             include = True
             for ds in [self.left_datasource, self.right_datasource]:
@@ -2395,6 +2476,7 @@ class Join(BaseModel):
     right_cte: CTE | Datasource
     jointype: JoinType
     joinkeys: List[JoinKey]
+    joinkey_pairs: List[tuple[Concept, Concept]] | None = None
 
     @property
     def left_name(self) -> str:
@@ -2672,7 +2754,7 @@ class Environment(BaseModel):
         for concept in self.concepts.values():
             if concept.derivation == PurposeLineage.MERGE:
                 ms = concept.lineage
-                assert isinstance(ms, MergeStatement)
+                assert isinstance(ms, MergeUnit)
                 for parent in ms.concepts:
                     self.merged_concepts[parent.address] = concept
 

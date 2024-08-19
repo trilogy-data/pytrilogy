@@ -216,6 +216,7 @@ def generate_node(
         fail_if_not_found=False,
         accept_partial=accept_partial,
         accept_partial_optional=False,
+        source_concepts=source_concepts
     )
 
     if candidate:
@@ -250,7 +251,7 @@ def generate_node(
         # ex sum(x) * 2 w/ no grain should return sum(x) * 2, not sum(x*2)
         # these should always be sourceable independently
         agg_optional = [
-            x for x in local_optional if x.granularity != Granularity.SINGLE_ROW
+            x for x in local_optional if x.granularity != Granularity.SINGLE_ROW and x.derivation != PurposeLineage.AGGREGATE
         ]
 
         logger.info(
@@ -331,6 +332,7 @@ def generate_node(
             fail_if_not_found=False,
             accept_partial=accept_partial,
             accept_partial_optional=True,
+            source_concepts=source_concepts
         )
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")

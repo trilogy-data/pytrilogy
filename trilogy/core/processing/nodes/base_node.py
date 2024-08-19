@@ -59,7 +59,6 @@ def resolve_concept_map(
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
         for concept in input.output_concepts:
-            logger.info(concept.address)
             if concept.address not in input.non_partial_concept_addresses:
                 continue
             if concept.address not in inherited:
@@ -239,8 +238,11 @@ class NodeJoin:
     concepts: List[Concept]
     join_type: JoinType
     filter_to_mutual: bool = False
+    concept_pairs: list[tuple[Concept, Concept]] | None = None
 
     def __post_init__(self):
+        if self.concept_pairs:
+            return
         final_concepts = []
         for concept in self.concepts:
             include = True

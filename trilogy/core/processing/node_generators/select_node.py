@@ -8,6 +8,7 @@ from trilogy.core.models import (
     Grain,
     LooseConceptList,
     Datasource,
+    MergeDatasource,
 )
 from trilogy.core.processing.nodes import (
     StrategyNode,
@@ -15,7 +16,9 @@ from trilogy.core.processing.nodes import (
     MergeNode,
     GroupNode,
     ConstantNode,
+
 )
+from trilogy.core.processing.node_generators.environment_merge_node import gen_environment_merge_node
 from trilogy.core.exceptions import NoDatasourceException
 import networkx as nx
 from trilogy.core.graph_models import concept_to_node, datasource_to_node
@@ -233,7 +236,9 @@ def gen_select_node_from_table(
     environment: Environment,
     depth: int,
     target_grain: Grain,
+    source_concepts,
     accept_partial: bool = False,
+
 ) -> Optional[StrategyNode]:
     # if we have only constants
     # we don't need a table
@@ -343,18 +348,28 @@ def gen_select_node_from_table(
             )
             force_group = True
 
-        bcandidate: StrategyNode = SelectNode(
-            input_concepts=[c.concept for c in datasource.columns],
-            output_concepts=all_concepts,
-            environment=environment,
-            g=g,
-            parents=[],
-            depth=depth,
-            partial_concepts=[c for c in all_concepts if c in partial_lcl],
-            accept_partial=accept_partial,
-            datasource=datasource,
-            grain=Grain(components=all_concepts),
-        )
+        if isinstance(datasource, MergeDatasource):
+            # if we're within a namespace, don't find merge nodes
+            if len(set([x.namespace for x in all_concepts])) ==1:
+                continue
+            bcandidate: StrategyNode = gen_environment_merge_node(all_concepts=all_concepts, environment=environment, g = g, 
+                                                                  depth=depth,
+                                                                  datasource=datasource,
+                                                                  source_concepts=source_concepts,
+                                                                  )
+        else:
+            bcandidate: StrategyNode = SelectNode(
+                input_concepts=[c.concept for c in datasource.columns],
+                output_concepts=all_concepts,
+                environment=environment,
+                g=g,
+                parents=[],
+                depth=depth,
+                partial_concepts=[c for c in all_concepts if c in partial_lcl],
+                accept_partial=accept_partial,
+                datasource=datasource,
+                grain=Grain(components=all_concepts),
+            )
         # we need to nest the group node one further
         if force_group is True:
             candidate: StrategyNode = GroupNode(
@@ -454,6 +469,7 @@ def gen_select_node(
     environment: Environment,
     g,
     depth: int,
+    source_concepts,
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
     accept_partial_optional: bool = True,
@@ -495,6 +511,7 @@ def gen_select_node(
         depth=depth,
         accept_partial=accept_partial,
         target_grain=target_grain,
+        source_concepts=source_concepts,
     )
     if ds:
         logger.info(
@@ -503,7 +520,7 @@ def gen_select_node(
         return ds
     # if we cannot find a match
     all_found, found, parents = gen_select_nodes_from_tables_v2(
-        concept, all_concepts, g, environment, depth, target_grain, accept_partial
+        concept, all_concepts, g, environment, depth, target_grain, accept_partial, source_concepts=source_concepts
     )
     if parents and (all_found or accept_partial_optional):
         if all_found:
