@@ -30,6 +30,9 @@ class InlineDatasource(OptimizationRule):
             if parent_cte.parent_ctes:
                 self.log(f"parent {parent_cte.name} has parents")
                 continue
+            if parent_cte.condition:
+                self.log(f"parent {parent_cte.name} has condition, cannot be inlined")
+                continue
             raw_root = parent_cte.source.datasources[0]
             if not isinstance(raw_root, Datasource):
                 self.log(f"parent {parent_cte.name} is not datasource")

@@ -97,4 +97,4 @@ SELECT * FROM dsdgen(sf=1);"""
 
 
 if __name__ == "__main__":
-    run_adhoc(10)
+    run_adhoc(6)

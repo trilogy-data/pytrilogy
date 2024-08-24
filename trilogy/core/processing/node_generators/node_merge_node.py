@@ -129,62 +129,70 @@ def extract_ds_components(g: nx.DiGraph) -> list[list[str]]:
 def set_to_key(s: set[str]):
     return ",".join(sorted(s))
 
-def determine_induced_minimal_nodes(G, nodelist):
-    from itertools import combinations
+def determine_induced_minimal_nodes(G:nx.DiGraph, nodelist):
+    H:nx.Graph = nx.to_undirected(G).copy()
 
+    from networkx.algorithms import approximation as ax
 
-    print(nodelist)
-    paths = {}
-    for nodes in combinations(nodelist, r=2):
-        paths[nodes] = nx.shortest_path_length(G, *nodes)
+    H.remove_nodes_from(list(nx.isolates(H)))
 
-    H = nx.to_undirected(G)
-    if not paths:
-        raise nx.exception.NetworkXNoPath
-    max_path = max(paths.items(), key=lambda x: x[1])[0]
-    longest_induced_path = nx.shortest_path(H, *max_path)
-
-
-    sG = nx.subgraph(G, longest_induced_path)
-
-    return sG
+    H.remove_nodes_from(list(x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist))
+    # 
+    paths = nx.multi_source_dijkstra_path(H, nodelist)
+    H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
+    sG:nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
+    final:nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
+    for edge in G.edges:
+        if edge[1] in final.nodes and edge[0].startswith('ds~'):
+            # sG.add_node(edge[0])
+            final.add_edge(*edge)
+    print(list(final.nodes))
+    return final
 
 
 def resolve_weak_components(
     all_concepts: List[Concept], environment: Environment, environment_graph: nx.DiGraph
 ) -> list[list[Concept]] | None:
     candidate_subgraph_arrays: list[list[list[Concept]]] = []
-    for x in list(environment.concepts.values())+list(environment.alias_origin_lookup.values()):
-        # network = [x] + list(x.pseudonyms.values())
-        c_targets = [*all_concepts, x]
-        g = generate_adhoc_graph(
-            concepts=[*all_concepts, x],
-            datasources=list(environment.datasources.values()),
-            restrict_to_listed=True,
+    # for x in list(environment.concepts.values())+list(environment.alias_origin_lookup.values()):
+    #     # network = [x] + list(x.pseudonyms.values())
+    #     c_targets = [*all_concepts, x]
+    # g = generate_adhoc_graph(
+    #     concepts=[*all_concepts, x],
+    #     datasources=list(environment.datasources.values()),
+    #     restrict_to_listed=True,
+    # )
+    try:
+        g = determine_induced_minimal_nodes(environment_graph, [concept_to_node(c) for c in all_concepts if "__preql_internal" not in c.address])
+    except nx.exception.NetworkXNoPath:
+        return None
+    if not g.nodes:
+        return None
+    weak = nx.is_weakly_connected(g)
+    print('subgraph')
+    print(weak)
+    print(list(g.nodes()))
+    # if x.address == 'store_sales.date.id':
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g)
+    
+    if weak:
+        print('subgraph')
+        print(weak)
+        print(list(g.nodes()))
+    subgraphs: list[Concept] = []
+    # components = nx.strongly_connected_components(g)
+    components = extract_ds_components(g)
+    for component in components:
+        # we need to take unique again as different addresses may map to the same concept
+        sub_component = unique(
+            [extract_concept(x, environment) for x in component], "address"
         )
-        try:
-            g = determine_induced_minimal_nodes(environment_graph, [concept_to_node(c) for c in c_targets if "__preql_internal" not in c.address])
-        except nx.exception.NetworkXNoPath:
+        if not sub_component:
             continue
-        weak = nx.is_weakly_connected(g)
-        if x.address == 'store_sales.date.id':
-            from trilogy.hooks.graph_hook import GraphHook
-            GraphHook().query_graph_built(g)
-        
-        if weak:
-            subgraphs: list[Concept] = []
-            # components = nx.strongly_connected_components(g)
-            components = extract_ds_components(g)
-            for component in components:
-                # we need to take unique again as different addresses may map to the same concept
-                sub_component = unique(
-                    [extract_concept(x, environment) for x in component], "address"
-                )
-                if not sub_component:
-                    continue
-                subgraphs.append(sub_component)
-            if subgraphs:
-                candidate_subgraph_arrays.append(subgraphs)
+        subgraphs.append(sub_component)
+    if subgraphs:
+        candidate_subgraph_arrays.append(subgraphs)
 
     reduced_concept_sets: list[set[str]] = []
 
@@ -308,7 +316,7 @@ def gen_merge_node(
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
             )
-            # raise ValueError(f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}")
+            raise ValueError(f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}")
             return subgraphs_to_merge_node(
                 weak_resolve,
                 depth=depth,

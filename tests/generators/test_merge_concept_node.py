@@ -25,7 +25,7 @@ def test_merge_concepts():
             env,
         )
     env1.add_import("env2", env2)
-    env1.parse("""merge one, env2.one;""")
+    env1.parse("""merge_new one into env2.one;""")
     # c = test_environment.concepts['one']
 
     bd = BaseDialect()
@@ -38,5 +38,4 @@ def test_merge_concepts():
     queries = bd.generate_queries(environment=env1, statements=queries)
     for query in queries:
         compiled = bd.compile_statement(query)
-
-        assert "on num1.`one` =" in compiled
+        assert ' on ' not in compiled

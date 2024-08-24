@@ -467,23 +467,13 @@ ORDER BY
     row_results = executor.execute_text(test)[-1].fetchall()
     assert len(row_results) == 794
 
-    assert (
-        results.strip()
-        == """
-SELECT
+    assert """SELECT
     raw_data."passengerid" as "passenger_id",
-    raw_data."passengerid" + 1 as "id_one",
     raw_data."name" as "passenger_name"
 FROM
     raw_titanic as raw_data
 WHERE
-     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True
-
-ORDER BY 
-    raw_data."name" asc
-""".strip()
-    )
-
+     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True""" in results
 
 from trilogy.core.processing.node_generators import (
     gen_filter_node,

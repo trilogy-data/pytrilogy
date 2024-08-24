@@ -10,7 +10,7 @@ class GraphHook(BaseHook):
         except ImportError:
             raise ImportError("GraphHook requires matplotlib and scipy to be installed")
 
-    def query_graph_built(self, graph: nx.DiGraph, target: str | None = None):
+    def query_graph_built(self, graph: nx.DiGraph, target: str | None = None, highlight_nodes: list[str] | None = None):
         from matplotlib import pyplot as plt
 
         graph = graph.copy()
@@ -20,8 +20,11 @@ class GraphHook(BaseHook):
                 graph.remove_node(node)
         graph.remove_nodes_from(list(nx.isolates(graph)))
         color_map = []
+        highlight_nodes = highlight_nodes or []
         for node in graph:
-            if str(node).startswith("ds"):
+            if node in highlight_nodes:
+                color_map.append("orange")
+            elif str(node).startswith("ds"):
                 color_map.append("blue")
             else:
                 color_map.append("green")
