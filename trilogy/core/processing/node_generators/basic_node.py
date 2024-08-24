@@ -32,10 +32,20 @@ def gen_basic_node(
 
     output_concepts = [concept] + local_optional
     partials = []
+    local_optional_redundant = [x for x in local_optional if x in parent_concepts]
+    attempts = [(parent_concepts, [concept] + local_optional_redundant)]
+    from itertools import combinations
 
-    attempts = [(parent_concepts, [concept])]
     if local_optional:
-        attempts.append((parent_concepts + local_optional, local_optional + [concept]))
+        for combo in range(1, len(local_optional) + 1):
+            combos = combinations(local_optional, combo)
+            for optional_set in combos:
+                attempts.append(
+                    (
+                        unique(parent_concepts + list(optional_set), "address"),
+                        list(optional_set) + [concept],
+                    )
+                )
 
     for attempt, output in reversed(attempts):
         attempt = unique(attempt, "address")

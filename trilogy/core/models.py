@@ -1,6 +1,7 @@
 from __future__ import annotations
 import difflib
 import os
+import hashlib
 from enum import Enum
 from typing import (
     Dict,
@@ -127,6 +128,12 @@ NAMESPACED_TYPES = Union[
 class Namespaced(ABC):
 
     def with_namespace(self, namespace: str):
+        raise NotImplementedError
+
+
+class Mergeable(ABC):
+
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
 
 
@@ -329,7 +336,21 @@ def empty_grain() -> Grain:
     return Grain(components=[])
 
 
-class Concept(Namespaced, SelectContext, BaseModel):
+class MultiLineage(BaseModel):
+    lineages: list[
+        Union[
+            Function,
+            WindowItem,
+            FilterItem,
+            AggregateWrapper,
+            RowsetItem,
+            MultiSelectStatement,
+            MergeUnit,
+        ]
+    ]
+
+
+class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
@@ -352,9 +373,28 @@ class Concept(Namespaced, SelectContext, BaseModel):
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
     modifiers: Optional[List[Modifier]] = Field(default_factory=list)
+    pseudonyms: Optional[Dict[str, Concept]] = Field(default_factory=dict)
 
     def __hash__(self):
         return hash(str(self))
+
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        if self.address == source.address:
+            new = target.with_grain(self.grain.with_merge(source, target, modifiers))
+            new.pseudonyms[self.address] = self
+            return new
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage.with_merge(source, target, modifiers) if self.lineage else None,
+            grain=self.grain.with_merge(source, target, modifiers),
+            namespace=self.namespace,
+            keys=(x.with_merge(source, target, modifiers) for x in self.keys) if self.keys else None,
+            modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
+        )
 
     @field_validator("keys", mode="before")
     @classmethod
@@ -480,6 +520,9 @@ class Concept(Namespaced, SelectContext, BaseModel):
                 else None
             ),
             modifiers=self.modifiers,
+            pseudonyms={
+                k: v.with_namespace(namespace) for k, v in self.pseudonyms.items()
+            },
         )
 
     def with_select_context(
@@ -503,6 +546,7 @@ class Concept(Namespaced, SelectContext, BaseModel):
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
@@ -518,6 +562,7 @@ class Concept(Namespaced, SelectContext, BaseModel):
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
         )
 
     @cached_property
@@ -556,6 +601,7 @@ class Concept(Namespaced, SelectContext, BaseModel):
             keys=self.keys,
             namespace=self.namespace,
             modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
         )
 
     def with_default_grain(self) -> "Concept":
@@ -687,11 +733,12 @@ class Concept(Namespaced, SelectContext, BaseModel):
             grain=(self.grain if self.purpose == Purpose.PROPERTY else Grain()),
             namespace=self.namespace,
             modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
         )
         return new
 
 
-class Grain(BaseModel):
+class Grain(Mergeable, BaseModel):
     nested: bool = False
     components: List[Concept] = Field(default_factory=list, validate_default=True)
 
@@ -733,6 +780,16 @@ class Grain(BaseModel):
     def with_namespace(self, namespace: str) -> "Grain":
         return Grain(
             components=[c.with_namespace(namespace) for c in self.components],
+            nested=self.nested,
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "Grain":
+        return Grain(
+            components=[
+                x.with_merge(source, target, modifiers) for x in self.components
+            ],
             nested=self.nested,
         )
 
@@ -823,6 +880,15 @@ class ColumnAssignment(BaseModel):
             modifiers=self.modifiers,
         )
 
+    def with_merge(
+        self, concept: Concept, modifiers: List[Modifier]
+    ) -> "ColumnAssignment":
+        return ColumnAssignment(
+            alias=self.alias,
+            concept=concept,
+            modifiers=modifiers,
+        )
+
 
 class Statement(BaseModel):
     pass
@@ -873,7 +939,7 @@ class LooseConceptList(BaseModel):
         return self.addresses.isdisjoint(other.addresses)
 
 
-class Function(Namespaced, SelectContext, BaseModel):
+class Function(Mergeable, Namespaced, SelectContext, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1031,6 +1097,28 @@ class Function(Namespaced, SelectContext, BaseModel):
                     if isinstance(
                         c,
                         Namespaced,
+                    )
+                    else c
+                )
+                for c in self.arguments
+            ],
+            output_datatype=self.output_datatype,
+            output_purpose=self.output_purpose,
+            valid_inputs=self.valid_inputs,
+            arg_count=self.arg_count,
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "Function":
+        return Function(
+            operator=self.operator,
+            arguments=[
+                (
+                    c.with_merge(source, target, modifiers)
+                    if isinstance(
+                        c,
+                        Mergeable,
                     )
                     else c
                 )
@@ -1615,15 +1703,15 @@ class DatasourceMetadata(BaseModel):
     partition_fields: List[Concept] = Field(default_factory=list)
     line_no: int | None = None
 
+
 class MergeUnit(Namespaced, BaseModel):
     concepts: List[Concept]
     datatype: DataType | ListType | StructType | MapType | NumericType
-    parent:MergeStatement | None = None
-    
+    parent: MergeStatement | None = None
+
     @cached_property
     def concepts_lcl(self):
         return LooseConceptList(concepts=self.concepts)
-    
 
     # @property
     # def merge_concept(self) -> Concept:
@@ -1639,9 +1727,9 @@ class MergeUnit(Namespaced, BaseModel):
         return MergeUnit(
             concepts=[c.with_namespace(namespace) for c in self.concepts],
             datatype=self.datatype,
-            parent=None
+            parent=None,
         )
-    
+
     @property
     def arguments(self) -> List[Concept]:
         return self.concepts
@@ -1649,7 +1737,7 @@ class MergeUnit(Namespaced, BaseModel):
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.concepts
-    
+
     def find_source(self, concept: Concept, cte: CTE) -> Concept:
         for x in self.concepts:
             for z in cte.output_columns:
@@ -1658,25 +1746,33 @@ class MergeUnit(Namespaced, BaseModel):
         raise SyntaxError(
             f"Could not find upstream map for multiselect {str(concept)} on cte ({cte.name})"
         )
+
+
 class MergeStatement(Namespaced, BaseModel):
     merges: List[MergeUnit]
-    namespace:str
+    namespace: str
 
     def add_unit(self, unit: MergeUnit):
         unit.parent = self
         self.merges.append(unit)
-    
-   
-    def gen_merge_datasource(self, metadata:DatasourceMetadata)->Datasource:
+
+    def gen_merge_datasource(self, metadata: DatasourceMetadata) -> Datasource:
+        identifier = "_".join([c.safe_address for c in self.concepts])
+        hashed = hashlib.md5(identifier.encode()).hexdigest()
         return MergeDatasource(
-            identifier = 'merge_node',
-            columns = [ColumnAssignment(alias = c.safe_address, concept = c) for c in self.concepts],
-            address = 'funky monkey',
+            identifier=f"merge_node_{hashed}",
+            # columns = [ColumnAssignment(alias = c.safe_address, concept = c.with_default_grain()) for c in self.concepts],
+            columns=[
+                ColumnAssignment(
+                    alias=c.safe_address, concept=c.with_grain(Grain(components=[]))
+                )
+                for c in self.concepts
+            ],
+            address=f"virtual_mrege_node_{hashed}",
             metadata=metadata,
             namespace=self.namespace,
-            lineage=self
+            lineage=self,
         )
-
 
     @cached_property
     def concepts_lcl(self):
@@ -1687,8 +1783,8 @@ class MergeStatement(Namespaced, BaseModel):
         base = []
         for unit in self.merges:
             base += unit.concepts
-        return base
 
+        return base
 
     @property
     def arguments(self) -> List[Concept]:
@@ -1715,6 +1811,20 @@ class MergeStatement(Namespaced, BaseModel):
         return new
 
 
+class MergeStatementV2(Namespaced, BaseModel):
+    source: Concept
+    target: Concept
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    def with_namespace(self, namespace: str) -> "MergeStatementV2":
+        new = MergeStatementV2(
+            source=self.source.with_namespace(namespace),
+            target=self.target.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
+        return new
+
+
 class Datasource(Namespaced, BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
@@ -1726,6 +1836,24 @@ class Datasource(Namespaced, BaseModel):
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
+
+    def merge_concept(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ):
+        original = [c for c in self.columns if c.concept.address == source.address]
+        # map to the alias with the modifier, and the original
+        self.columns = [
+            c.with_merge(target, modifiers) if c.concept == source else c
+            for c in self.columns
+        ] + original
+        self.grain = self.grain.with_merge(source, target, modifiers)
+        del self.output_lcl
+
+    @property
+    def env_label(self) -> str:
+        if not self.namespace or self.namespace == DEFAULT_NAMESPACE:
+            return self.identifier
+        return f"{self.namespace}.{self.identifier}"
 
     @property
     def condition(self):
@@ -1872,8 +2000,11 @@ class Datasource(Namespaced, BaseModel):
 
 
 class MergeDatasource(Datasource):
-    lineage:MergeStatement
+    lineage: MergeStatement
 
+    @property
+    def can_be_inlined(self) -> bool:
+        return False
 
     def with_namespace(self, namespace: str):
         new_namespace = (
@@ -1887,8 +2018,10 @@ class MergeDatasource(Datasource):
             grain=self.grain.with_namespace(namespace),
             address=self.address,
             columns=[c.with_namespace(namespace) for c in self.columns],
-            lineage = self.lineage.with_namespace(namespace)
+            lineage=self.lineage.with_namespace(namespace),
         )
+
+
 class UnnestJoin(BaseModel):
     concept: Concept
     alias: str = "unnest"
@@ -1926,7 +2059,13 @@ class BaseJoin(BaseModel):
         for concept in self.concepts:
             include = True
             for ds in [self.left_datasource, self.right_datasource]:
-                if concept.address not in [c.address for c in ds.output_concepts]:
+                synonyms = []
+                for c in ds.output_concepts:
+                    synonyms += list(c.pseudonyms.keys())
+                if (
+                    concept.address not in [c.address for c in ds.output_concepts]
+                    and concept.address not in synonyms
+                ):
                     if self.filter_to_mutual:
                         include = False
                     else:
@@ -2164,7 +2303,7 @@ class QueryDatasource(BaseModel):
         )
         # partial = "_".join([str(c.address).replace(".", "_") for c in self.partial_concepts])
         return (
-            "_join_".join([d.name for d in self.datasources])
+            "_join_".join([d.full_name for d in self.datasources])
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
             # + (f"_partial_{partial}" if partial else "")
@@ -2420,6 +2559,40 @@ class CTE(BaseModel):
             return source
         except ValueError as e:
             return f"INVALID_ALIAS: {str(e)}"
+
+    @property
+    def group_concepts(self) -> List[Concept]:
+        return (
+            unique(
+                self.grain.components
+                + [
+                    c
+                    for c in self.output_columns
+                    if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
+                    and c.address not in [x.address for x in self.grain.components]
+                ]
+                + [
+                    c
+                    for c in self.output_columns
+                    if c.purpose == Purpose.METRIC
+                    and any(
+                        [
+                            c.with_grain(cte.grain) in cte.output_columns
+                            for cte in self.parent_ctes
+                        ]
+                    )
+                ]
+                + [
+                    c
+                    for c in self.output_columns
+                    if c.purpose == Purpose.CONSTANT
+                    and self.source_map[c.address] != []
+                ],
+                "address",
+            )
+            if self.group_to_grain
+            else []
+        )
 
     @property
     def render_from_clause(self) -> bool:
@@ -2708,6 +2881,7 @@ class Environment(BaseModel):
 
     materialized_concepts: List[Concept] = Field(default_factory=list)
     merged_concepts: Dict[str, Concept] = Field(default_factory=dict)
+    alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     _parse_count: int = 0
 
     @classmethod
@@ -2743,6 +2917,10 @@ class Environment(BaseModel):
         current_mat = [x.address for x in self.materialized_concepts]
         self.materialized_concepts = [
             c for c in self.concepts.values() if c.address in concrete_addresses
+        ]
+        # include aliased concepts
+        self.materialized_concepts += [
+            c for c in self.alias_origin_lookup.values() if c.address in concrete_addresses
         ]
         new = [
             x.address
@@ -2899,13 +3077,8 @@ class Environment(BaseModel):
         datasource: Datasource,
         meta: Meta | None = None,
     ):
-        if not datasource.namespace or datasource.namespace == DEFAULT_NAMESPACE:
-            self.datasources[datasource.name] = datasource
-            self.gen_concept_list_caches()
-            return datasource
-        self.datasources[datasource.namespace + "." + datasource.identifier] = (
-            datasource
-        )
+
+        self.datasources[datasource.env_label] = datasource
         self.gen_concept_list_caches()
         return datasource
 
@@ -2919,6 +3092,24 @@ class Environment(BaseModel):
             self.gen_concept_list_caches()
             return True
         return False
+
+    def merge_concept(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ):
+        replacements = {}
+        source_address = source.address
+        target_address = target.address
+        self.alias_origin_lookup[source.address] = source
+        for k, v in self.concepts.items():
+            if v.address == target.address:
+                target.pseudonyms[source.address] = source
+            if v.address == source.address:
+                replacements[k] = target
+        self.concepts.update(replacements)
+
+        for k, v in self.datasources.items():
+            if source.address in v.output_lcl:
+                v.merge_concept(source, target, modifiers=modifiers)
 
 
 class LazyEnvironment(Environment):
@@ -3245,7 +3436,7 @@ class CaseElse(Namespaced, SelectContext, BaseModel):
 
 
 class Conditional(
-    ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel
+    Mergeable, ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel
 ):
     left: Union[
         int,
@@ -3343,6 +3534,21 @@ class Conditional(
             operator=self.operator,
         )
 
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return Conditional(
+            left=(
+                self.left.with_merge(source, target, modifiers)
+                if isinstance(self.left, Mergeable)
+                else self.left
+            ),
+            right=(
+                self.right.with_merge(source, target, modifiers)
+                if isinstance(self.right, Mergeable)
+                else self.right
+            ),
+            operator=self.operator,
+        )
+
     def with_select_context(
         self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
     ):
@@ -3417,7 +3623,7 @@ class Conditional(
         return chunks
 
 
-class AggregateWrapper(Namespaced, SelectContext, BaseModel):
+class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
     function: Function
     by: List[Concept] = Field(default_factory=list)
 
@@ -3444,6 +3650,12 @@ class AggregateWrapper(Namespaced, SelectContext, BaseModel):
     @property
     def arguments(self):
         return self.function.arguments
+
+    def with_merge(self, source: Concept, target: Concept):
+        return AggregateWrapper(
+            function=self.function.with_merge(source, target),
+            by=[c.with_merge(source, target) for c in self.by] if self.by else [],
+        )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
         return AggregateWrapper(

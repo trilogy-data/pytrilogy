@@ -17,6 +17,14 @@ from os.path import dirname
 from pathlib import PurePath
 from trilogy.hooks.query_debugger import DebuggingHook
 from logging import INFO
+from trilogy.core.models import Environment, MergeDatasource
+from trilogy.core.env_processor import (
+    generate_graph,
+    datasource_to_node,
+    generate_adhoc_graph,
+)
+from trilogy.hooks.graph_hook import GraphHook
+import networkx as nx
 
 
 def setup_engine(debug_flag: bool = True) -> Executor:
@@ -477,10 +485,90 @@ ORDER BY
     )
 
 
-def test_merge(base_test_env):
+from trilogy.core.processing.node_generators import (
+    gen_filter_node,
+    gen_window_node,
+    gen_group_node,
+    gen_basic_node,
+    gen_unnest_node,
+    gen_merge_node,
+    gen_group_to_node,
+    gen_rowset_node,
+    gen_multiselect_node,
+    gen_concept_merge_node,
+)
+from trilogy.core.processing.concept_strategies_v3 import (
+    GroupNode,
+    search_concepts,
+)
+
+
+def test_merge_basic(base_test_env: Environment):
     executor = setup_engine(debug_flag=True)
     executor.environment = base_test_env
-    cmd = """MERGE passenger.last_name, rich_info.last_name;
+    rich_name = base_test_env.concepts["rich_info.full_name"]
+    # node = gen_basic_node(base_test_env.concepts['passneger.name'], [base_test_env.concepts['rich_info.split_name']], base_test_env, depth=0, g = generate_graph(base_test_env),
+    #                       source_concepts=search_concepts )
+
+    # assert set([x.address for x in node.output_concepts]) == set(['rich_info.last_name', 'rich_info.split_name', 'rich_info.full_name'])
+    executor.parse_text("""MERGE_NEW rich_info.last_name into ~passenger.last_name;""")
+
+    g = generate_graph(base_test_env)
+    # concepts = [base_test_env.concepts[x] for x in[ 'rich_info.net_worth_1918_dollars', 'passenger.last_name']]
+    g = generate_adhoc_graph(
+        concepts=base_test_env.concepts.values(),
+        datasources=list(base_test_env.datasources.values()),
+    )
+
+    # GraphHook().query_graph_built(g)
+    cmd = """
+
+SELECT
+    passenger.name,
+    rich_info.full_name
+where
+    rich_info.full_name is not null
+    and passenger.name is not null
+;"""
+    results = executor.execute_text(cmd)[-1].fetchall()
+
+    assert len(results) == 17
+
+
+def test_merge(base_test_env: Environment):
+    executor = setup_engine(debug_flag=True)
+    executor.environment = base_test_env
+    rich_name = base_test_env.concepts["rich_info.full_name"]
+    assert rich_name in base_test_env.concepts["rich_info.last_name"].sources
+    assert rich_name in base_test_env.concepts["rich_info.split_name"].sources
+    executor.parse_text("""MERGE_NEW rich_info.last_name into ~passenger.last_name;""")
+    # merge_ds = [x for x in base_test_env.datasources.values() if isinstance(x, MergeDatasource)][0]
+    raw_data = base_test_env.datasources["raw_data"]
+
+    g = generate_graph(base_test_env)
+    # concepts = [base_test_env.concepts[x] for x in[ 'rich_info.net_worth_1918_dollars', 'passenger.last_name']]
+    g = generate_adhoc_graph(
+        concepts=base_test_env.concepts.values(),
+        datasources=list(base_test_env.datasources.values()),
+    )
+
+    # for x in base_test_env.concepts.values():
+    #     g = generate_adhoc_graph(concepts = [*concepts, x], datasources= list(base_test_env.datasources.values()), restrict_to_listed=True)
+    #     weak = nx.is_weakly_connected(g)
+    #     print(weak, x.address)
+    #     if weak:
+    #         break
+
+    GraphHook().query_graph_built(g, target=datasource_to_node(raw_data))
+    targets = [
+        base_test_env.concepts[x]
+        for x in base_test_env.concepts
+        if x in ["passenger.name", "passenger.id", "rich_info.net_worth_1918_dollars"]
+    ]
+    # path = identify_ds_join_paths(targets, g, raw_data, accept_partial=False, fail=True)
+
+    # assert path is not None
+    cmd = """
 
 SELECT
     passenger.last_name,

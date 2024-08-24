@@ -16,7 +16,8 @@ from trilogy.core.processing.node_generators.common import concept_to_relevant_j
 from itertools import combinations
 from trilogy.core.processing.node_generators.common import resolve_join_order
 from trilogy.utility import unique
-
+from trilogy.core.env_processor import generate_graph
+from trilogy.constants import DEFAULT_NAMESPACE
 
 LOGGER_PREFIX = "[GEN_CONCEPT_MERGE_NODE]"
 
@@ -28,8 +29,8 @@ def merge_joins(
     for left, right in combinations(parents, 2):
         tuples = []
         for item in merge_statement.merges:
-            left_c = [x for x in item.concepts if x in left.output_concepts]
-            right_c = [x for x in item.concepts if x in right.output_concepts]
+            left_c = [x for x in item.concepts if x in left.output_concepts].pop()
+            right_c = [x for x in item.concepts if x in right.output_concepts].pop()
             tuples.append((left_c, right_c))
         output.append(
             NodeJoin(
@@ -45,26 +46,35 @@ def merge_joins(
 
 def gen_environment_merge_node(
     all_concepts: List[Concept],
-    datasource:MergeDatasource,
+    datasource: MergeDatasource,
     environment: Environment,
     g,
     depth: int,
     source_concepts,
-    history: History | None = None,
+    # history: History | None = None,
 ) -> MergeNode | None:
     lineage: MergeStatement = datasource.lineage
 
     base_parents: List[StrategyNode] = []
-    
+
     target_namespaces = set(x.namespace for x in lineage.concepts)
+
+    # copy our environment, purge the merge datasource to prevent infiniste recurison
+    environment = environment.model_copy(deep=True)
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} remove datasource {datasource.env_label} to avoid recursion"
+    )
+    del environment.datasources[datasource.env_label]
+    environment.gen_concept_list_caches()
+    g = generate_graph(environment)
+    print(g.nodes())
 
     for namespace in target_namespaces:
 
-        sub_optional = [
-            x
-            for x in lineage.concepts if x.namespace == namespace
-        ]
-
+        sub_optional = [x for x in lineage.concepts if x.namespace == namespace]
+        # c~rich_info.last_name@Grain<rich_info.full_name>
+        #'c~rich_info.full_name@Grain<rich_info.full_name>'
+        # c~passenger.last_name@Grain<passenger.id>
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} generating concept merge parent node with {[x.address for x in sub_optional]}"
         )
@@ -73,7 +83,7 @@ def gen_environment_merge_node(
             environment=environment,
             g=g,
             depth=depth + 1,
-            history=history,
+            # history=history,
         )
 
         if not snode:
@@ -83,12 +93,9 @@ def gen_environment_merge_node(
             return None
         base_parents.append(snode)
 
-    node_joins = merge_joins(
-        base_parents,
-        datasource.lineage
-    )
+    node_joins = merge_joins(base_parents, datasource.lineage)
 
-    return  MergeNode(
+    return MergeNode(
         input_concepts=datasource.concepts,
         output_concepts=all_concepts,
         environment=environment,

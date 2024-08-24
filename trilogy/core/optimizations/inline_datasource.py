@@ -4,15 +4,20 @@ from trilogy.core.models import (
 )
 
 from trilogy.core.optimizations.base_optimization import OptimizationRule
+from collections import defaultdict
 
 
 class InlineDatasource(OptimizationRule):
+
+    def __init__(self):
+        super().__init__()
+        self.candidates = defaultdict(lambda: set())
+        self.count = defaultdict(lambda: 0)
 
     def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
         if not cte.parent_ctes:
             return False
 
-        optimized = False
         self.log(
             f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
         )
@@ -44,11 +49,21 @@ class InlineDatasource(OptimizationRule):
                 force_group = True
             to_inline.append(parent_cte)
 
+        optimized = False
         for replaceable in to_inline:
-
+            if replaceable.name not in self.candidates[cte.name]:
+                self.candidates[cte.name].add(replaceable.name)
+                self.count[replaceable.name] += 1
+                return True
+            if self.count[replaceable.name] > 1:
+                self.log(
+                    f"Skipping inlining raw datasource {replaceable.source.name} ({replaceable.name}) due to multiple references"
+                )
+                continue
             result = cte.inline_parent_datasource(replaceable, force_group=force_group)
             if result:
                 self.log(f"Inlined parent {replaceable.name}")
+                optimized = True
             else:
                 self.log(f"Failed to inline {replaceable.name}")
         return optimized

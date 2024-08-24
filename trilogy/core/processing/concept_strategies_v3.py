@@ -216,7 +216,7 @@ def generate_node(
         fail_if_not_found=False,
         accept_partial=accept_partial,
         accept_partial_optional=False,
-        source_concepts=source_concepts
+        source_concepts=source_concepts,
     )
 
     if candidate:
@@ -251,7 +251,7 @@ def generate_node(
         # ex sum(x) * 2 w/ no grain should return sum(x) * 2, not sum(x*2)
         # these should always be sourceable independently
         agg_optional = [
-            x for x in local_optional if x.granularity != Granularity.SINGLE_ROW and x.derivation != PurposeLineage.AGGREGATE
+            x for x in local_optional if x.granularity != Granularity.SINGLE_ROW
         ]
 
         logger.info(
@@ -274,14 +274,6 @@ def generate_node(
         return gen_multiselect_node(
             concept, local_optional, environment, g, depth + 1, source_concepts, history
         )
-    elif concept.derivation == PurposeLineage.MERGE:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating multiselect node with optional {[x.address for x in local_optional]}"
-        )
-        node = gen_concept_merge_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
-        )
-        return node
     elif concept.derivation == PurposeLineage.CONSTANT:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating constant node"
@@ -332,10 +324,51 @@ def generate_node(
             fail_if_not_found=False,
             accept_partial=accept_partial,
             accept_partial_optional=True,
-            source_concepts=source_concepts
+            source_concepts=source_concepts,
         )
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")
+
+
+def validate_concept(
+    concept: Concept,
+    node: StrategyNode,
+    found_addresses: set[str],
+    non_partial_addresses: set[str],
+    partial_addresses: set[str],
+    virtual_addresses: set[str],
+    found_map: dict[str, set[str]],
+    accept_partial: bool,
+):
+    found_map[str(node)].add(concept)
+    if concept not in node.partial_concepts:
+        found_addresses.add(concept.address)
+        non_partial_addresses.add(concept.address)
+        # remove it from our partial tracking
+        if concept.address in partial_addresses:
+            partial_addresses.remove(concept.address)
+        if concept.address in virtual_addresses:
+            virtual_addresses.remove(concept.address)
+    if concept in node.partial_concepts:
+        if concept.address in non_partial_addresses:
+            return None
+        partial_addresses.add(concept.address)
+        if accept_partial:
+            found_addresses.add(concept.address)
+            found_map[str(node)].add(concept)
+    for _, v in concept.pseudonyms.items():
+        if v.address == concept.address:
+            return
+        validate_concept(
+            v,
+            node,
+            found_addresses,
+            non_partial_addresses,
+            partial_addresses,
+            virtual_addresses,
+            found_map,
+            accept_partial,
+        )
 
 
 def validate_stack(
@@ -351,22 +384,16 @@ def validate_stack(
     for node in stack:
         resolved = node.resolve()
         for concept in resolved.output_concepts:
-            found_map[str(node)].add(concept)
-            if concept not in node.partial_concepts:
-                found_addresses.add(concept.address)
-                non_partial_addresses.add(concept.address)
-                # remove it from our partial tracking
-                if concept.address in partial_addresses:
-                    partial_addresses.remove(concept.address)
-                if concept.address in virtual_addresses:
-                    virtual_addresses.remove(concept.address)
-            if concept in node.partial_concepts:
-                if concept.address in non_partial_addresses:
-                    continue
-                partial_addresses.add(concept.address)
-                if accept_partial:
-                    found_addresses.add(concept.address)
-                    found_map[str(node)].add(concept)
+            validate_concept(
+                concept,
+                node,
+                found_addresses,
+                non_partial_addresses,
+                partial_addresses,
+                virtual_addresses,
+                found_map,
+                accept_partial,
+            )
         for concept in node.virtual_output_concepts:
             if concept.address in non_partial_addresses:
                 continue
@@ -417,7 +444,7 @@ def search_concepts(
     hist = history.get_history(mandatory_list, accept_partial)
     if hist is not False:
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history ({'exists' if hist is not None else 'does not exist'}) for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
         )
         assert not isinstance(hist, bool)
         return hist
@@ -446,8 +473,15 @@ def _search_concepts(
     accept_partial: bool = False,
 ) -> StrategyNode | None:
 
-    mandatory_list = unique(mandatory_list, "address")
+    mandatory_list: list[Concept] = unique(mandatory_list, "address")
+    synonyms: list[Concept] = []
+    for c in mandatory_list:
+        for _, v in c.pseudonyms.items():
+            synonyms.append(v)
+    logger.info(f'{depth_to_prefix(depth)}{LOGGER_PREFIX} Have {len(synonyms)} additional synonyms')
+    all_list = unique(mandatory_list + synonyms, "address")
     all_mandatory = set(c.address for c in mandatory_list)
+    all_possible = set(c.address for c in all_list)
     attempted: set[str] = set()
 
     found: set[str] = set()
@@ -457,28 +491,29 @@ def _search_concepts(
 
     while attempted != all_mandatory:
         priority_concept = get_priority_concept(
-            mandatory_list, attempted, found_concepts=found, depth=depth
+            all_list, attempted, found_concepts=found, depth=depth
         )
+
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)}"
         )
 
         candidates = [
-            c for c in mandatory_list if c.address != priority_concept.address
+            c for c in all_list if c.address != priority_concept.address
         ]
         candidate_lists = generate_candidates_restrictive(
             priority_concept, candidates, skip
         )
         for list in candidate_lists:
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial} optional {[str(v) for v in list]}, exhausted {[str(c) for c in skip]}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial}, optional {[str(v) for v in list]}, exhausted {[str(c) for c in skip]}"
             )
             node = generate_node(
                 priority_concept,
                 list,
                 environment,
                 g,
-                depth + 1,
+                depth,
                 source_concepts=search_concepts,
                 accept_partial=accept_partial,
                 history=history,
@@ -506,7 +541,7 @@ def _search_concepts(
         )
 
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} flag for accepting partial addresses is "
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} flag for accepting partial addresses is"
             f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial} virtual {virtual}), attempted {attempted}"
         )
         # early exit if we have a complete stack with one node

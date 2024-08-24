@@ -9,6 +9,7 @@
     | rowset_derivation_statement
     | import_statement
     | merge_statement
+    | merge_statement_v2
     | rawsql_statement
     
     _TERMINATOR:  ";"i /\s*/
@@ -72,6 +73,9 @@
     // merge statemment
     merge_statement_unit: IDENTIFIER ("," IDENTIFIER)* ","? 
     merge_statement: "merge"i merge_statement_unit ("AND"i merge_statement_unit)* 
+
+    // merge_v2
+    merge_statement_v2: "merge_new"i  IDENTIFIER "into"i SHORTHAND_MODIFIER? IDENTIFIER 
 
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"

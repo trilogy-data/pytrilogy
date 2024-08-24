@@ -97,7 +97,6 @@ class History(BaseModel):
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         accept_partial_optional: bool = False,
-
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 

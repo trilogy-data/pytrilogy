@@ -509,35 +509,7 @@ class BaseDialect:
                         set(
                             [
                                 self.render_concept_sql(c, cte, alias=False)
-                                for c in unique(
-                                    cte.grain.components
-                                    + [
-                                        c
-                                        for c in cte.output_columns
-                                        if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
-                                        and c.address
-                                        not in [x.address for x in cte.grain.components]
-                                    ]
-                                    + [
-                                        c
-                                        for c in cte.output_columns
-                                        if c.purpose == Purpose.METRIC
-                                        and any(
-                                            [
-                                                c.with_grain(cte.grain)
-                                                in cte.output_columns
-                                                for cte in cte.parent_ctes
-                                            ]
-                                        )
-                                    ]
-                                    + [
-                                        c
-                                        for c in cte.output_columns
-                                        if c.purpose == Purpose.CONSTANT
-                                        and cte.source_map[c.address] != []
-                                    ],
-                                    "address",
-                                )
+                                for c in cte.group_concepts
                             ]
                         )
                     )

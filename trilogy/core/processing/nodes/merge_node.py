@@ -149,6 +149,7 @@ class MergeNode(StrategyNode):
                     right_datasource=right,
                     join_type=join.join_type,
                     concepts=join.concepts,
+                    concept_pairs=join.concept_pairs,
                 )
             )
         return joins
@@ -318,7 +319,7 @@ class MergeNode(StrategyNode):
 
         qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
         source_map = resolve_concept_map(
-            parent_sources,
+            list(merged.values()),
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,

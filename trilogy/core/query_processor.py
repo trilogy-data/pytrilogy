@@ -112,7 +112,9 @@ def generate_source_map(
             matches = [cte for cte in all_new_ctes if cte.source.name in names]
 
             if not matches and names:
-                raise SyntaxError(query_datasource.source_map)
+                raise SyntaxError(
+                    f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.name for cte in all_new_ctes]}"
+                )
             for cte in matches:
                 output_address = [
                     x.address

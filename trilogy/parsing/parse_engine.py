@@ -70,6 +70,7 @@ from trilogy.core.models import (
     Conditional,
     Datasource,
     MergeStatement,
+    MergeStatementV2,
     MergeUnit,
     Environment,
     FilterItem,
@@ -774,8 +775,30 @@ class ParseToObjects(Transformer):
         merge = MergeStatement(namespace=self.environment.namespace, merges=[])
         for unit in args:
             merge.add_unit(unit)
-        self.environment.add_datasource(merge.gen_merge_datasource(metadata=DatasourceMetadata(line_no = meta.line, freshness_concept=None)), meta=meta)
+        self.environment.add_datasource(
+            merge.gen_merge_datasource(
+                metadata=DatasourceMetadata(line_no=meta.line, freshness_concept=None)
+            ),
+            meta=meta,
+        )
         return merge
+
+    @v_args(meta=True)
+    def merge_statement_v2(self, meta: Meta, args) -> MergeStatement:
+        modifiers = []
+        concepts = []
+        for arg in args:
+            if isinstance(arg, Modifier):
+                modifiers.append(arg)
+            else:
+                concepts.append(self.environment.concepts[arg])
+        new = MergeStatementV2(
+            source=concepts[0], target=concepts[1], modifiers=modifiers
+        )
+
+        self.environment.merge_concept(new.source, new.target, modifiers)
+
+        return new
 
     @v_args(meta=True)
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:

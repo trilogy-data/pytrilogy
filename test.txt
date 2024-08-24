@@ -1,0 +1,6 @@
+[MODELS] Concept customer.address_id<customer.id> not found on customers; have
+ ['customer.id<customer.id>', 'store_sales.customer.text_id<customer.id>', 
+ 'store_sales.customer.last_name<customer.id>', 'store_sales.customer.first_name<customer.id>', 
+ 'store_sales.customer.address_id<customer.id>', 'store_sales.customer.demographics.id<customer.id>', 
+ 'store_sales.customer.preferred_cust_flag<customer.id>', 
+ 'store_sales.customer.id<customer.id>'].

@@ -123,12 +123,11 @@ def optimize_ctes(
         actions_taken = False
         for rule in REGISTERED_RULES:
             triggered = False
+            # assume we go through all CTEs once
             for cte in input:
                 inverse_map = gen_inverse_map(input)
                 opt = rule.optimize(cte, inverse_map)
                 actions_taken = actions_taken or opt
-                if actions_taken:
-                    break
             if triggered:
                 break
         complete = not actions_taken

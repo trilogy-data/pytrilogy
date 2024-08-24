@@ -25,6 +25,7 @@ from trilogy.core.models import (
     AlignItem,
     RawSQLStatement,
     NumericType,
+    MergeUnit,
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -314,31 +315,36 @@ def test_render_anon(test_environment: Environment):
 def test_render_merge():
     test = Renderer().to_string(
         MergeStatement(
-            datatype=DataType.INTEGER,
-            concepts=[
-                Concept(
-                    name="materialized",
-                    purpose=Purpose.CONSTANT,
+            namespace="test",
+            merges=[
+                MergeUnit(
                     datatype=DataType.INTEGER,
-                    lineage=Function(
-                        arguments=[[1, 2, 3, 4]],
-                        operator=FunctionType.CONSTANT,
-                        output_purpose=Purpose.CONSTANT,
-                        output_datatype=DataType.ARRAY,
-                    ),
-                ),
-                Concept(
-                    name="materialized",
-                    purpose=Purpose.CONSTANT,
-                    namespace="test",
-                    datatype=DataType.INTEGER,
-                    lineage=Function(
-                        arguments=[[1, 2, 3, 4]],
-                        operator=FunctionType.CONSTANT,
-                        output_purpose=Purpose.CONSTANT,
-                        output_datatype=DataType.ARRAY,
-                    ),
-                ),
+                    concepts=[
+                        Concept(
+                            name="materialized",
+                            purpose=Purpose.CONSTANT,
+                            datatype=DataType.INTEGER,
+                            lineage=Function(
+                                arguments=[[1, 2, 3, 4]],
+                                operator=FunctionType.CONSTANT,
+                                output_purpose=Purpose.CONSTANT,
+                                output_datatype=DataType.ARRAY,
+                            ),
+                        ),
+                        Concept(
+                            name="materialized",
+                            purpose=Purpose.CONSTANT,
+                            namespace="test",
+                            datatype=DataType.INTEGER,
+                            lineage=Function(
+                                arguments=[[1, 2, 3, 4]],
+                                operator=FunctionType.CONSTANT,
+                                output_purpose=Purpose.CONSTANT,
+                                output_datatype=DataType.ARRAY,
+                            ),
+                        ),
+                    ],
+                )
             ],
         )
     )

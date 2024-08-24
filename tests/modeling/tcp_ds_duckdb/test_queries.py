@@ -82,10 +82,11 @@ def test_fifteen(engine):
 def run_adhoc(number: int):
     from trilogy import Environment, Dialects
     from trilogy.hooks.query_debugger import DebuggingHook
+    from logging import DEBUG
 
     env = Environment(working_path=Path(__file__).parent)
     engine: Executor = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook()]
+        environment=env, hooks=[DebuggingHook(DEBUG)]
     )
     engine.execute_raw_sql(
         """INSTALL tpcds;
@@ -96,4 +97,4 @@ SELECT * FROM dsdgen(sf=1);"""
 
 
 if __name__ == "__main__":
-    run_adhoc(2)
+    run_adhoc(10)

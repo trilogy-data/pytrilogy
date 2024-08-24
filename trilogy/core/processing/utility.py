@@ -123,6 +123,19 @@ def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
     return final_joins
 
 
+def add_node_join_concept(graph, concept, datasource, concepts):
+    # we don't need to join on a concept if all of the keys exist in the grain
+    # if concept.keys and all([x in grain for x in concept.keys]):
+    #     continue
+    concepts.append(concept)
+
+    graph.add_node(concept.address, type=NodeType.CONCEPT)
+    graph.add_edge(datasource.identifier, concept.address)
+    for k, v in concept.pseudonyms.items():
+        if v.address != concept.address:
+            add_node_join_concept(graph, v, datasource, concepts)
+
+
 def get_node_joins(
     datasources: List[QueryDatasource],
     grain: List[Concept],
@@ -133,12 +146,14 @@ def get_node_joins(
     for datasource in datasources:
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
+            add_node_join_concept(graph, concept, datasource, concepts)
             # we don't need to join on a concept if all of the keys exist in the grain
             # if concept.keys and all([x in grain for x in concept.keys]):
             #     continue
-            concepts.append(concept)
-            graph.add_node(concept.address, type=NodeType.CONCEPT)
-            graph.add_edge(datasource.identifier, concept.address)
+            # concepts.append(concept)
+
+            # graph.add_node(concept.address, type=NodeType.CONCEPT)
+            # graph.add_edge(datasource.identifier, concept.address)
 
     # add edges for every constant to every datasource
     for datasource in datasources:
@@ -203,14 +218,49 @@ def get_node_joins(
                 c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
 
-            # if concept.keys and all([x in grain for x in concept.keys]):
-            #     continue
+        relevant = concept_to_relevant_joins(local_concepts)
+        left_datasource = identifier_map[left]
+        right_datasource = identifier_map[right]
+        join_tuples = []
+        for joinc in relevant:
+            left_arg = joinc
+            right_arg = joinc
+            if joinc.address not in [
+                c.address for c in left_datasource.output_concepts
+            ]:
+                try:
+                    left_arg = [
+                        x
+                        for x in left_datasource.output_concepts
+                        if x.address in joinc.pseudonyms
+                        or joinc.address in x.pseudonyms
+                    ].pop()
+                except IndexError:
+                    raise SyntaxError(
+                        f"Could not find {joinc.address} in {left_datasource.identifier} output {[c.address for c in left_datasource.output_concepts]}"
+                    )
+            if joinc.address not in [
+                c.address for c in right_datasource.output_concepts
+            ]:
+                try:
+                    right_arg = [
+                        x
+                        for x in right_datasource.output_concepts
+                        if x.address in joinc.pseudonyms
+                        or joinc.address in x.pseudonyms
+                    ].pop()
+                except IndexError:
+                    raise SyntaxError(
+                        f"Could not find {joinc.address} in {right_datasource.identifier} output {[c.address for c in right_datasource.output_concepts]}"
+                    )
+            join_tuples.append((left_arg, right_arg))
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],
                 right_datasource=identifier_map[right],
                 join_type=join_type,
-                concepts=concept_to_relevant_joins(local_concepts),
+                concepts=[],
+                concept_pairs=join_tuples,
             )
         )
     final_joins = resolve_join_order(final_joins_pre)
