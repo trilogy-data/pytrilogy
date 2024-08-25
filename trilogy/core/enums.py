@@ -263,7 +263,6 @@ class DatePart(Enum):
 class SourceType(Enum):
     FILTER = "filter"
     SELECT = "select"
-    MERGE = "merge"
     ABSTRACT = "abstract"
     DIRECT_SELECT = "direct_select"
     GROUP = "group"

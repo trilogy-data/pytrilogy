@@ -57,7 +57,6 @@ def get_priority_concept(
     attempted_addresses: set[str],
     found_concepts: set[str],
     depth: int,
-    synonyms: List[Concept],
 ) -> Concept:
     # optimized search for missing concepts
     pass_one = [
@@ -68,8 +67,7 @@ def get_priority_concept(
     # sometimes we need to scan intermediate concepts to get merge keys, so fall back
     # to exhaustive search
     pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
-    pass_three = [c for c in synonyms if c.address not in attempted_addresses]
-    for remaining_concept in (pass_one, pass_two, pass_three):
+    for remaining_concept in (pass_one, pass_two):
         priority = (
             # find anything that needs no joins first, so we can exit early
             [
@@ -177,7 +175,6 @@ def generate_candidates_restrictive(
     priority_concept: Concept,
     candidates: list[Concept],
     exhausted: set[str],
-    synonyms: list[Concept],
 ) -> List[List[Concept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
@@ -193,8 +190,6 @@ def generate_candidates_restrictive(
     if priority_concept.derivation in (PurposeLineage.BASIC, PurposeLineage.ROOT):
         combos.append(local_candidates)
     combos.append(Grain(components=[*local_candidates]).components_copy)
-    if synonyms:
-        combos.append(Grain(components=[*local_candidates, *synonyms]).components_copy)
     # append the empty set for sourcing concept by itself last
     combos.append([])
     return combos
@@ -342,7 +337,7 @@ def validate_concept(
     non_partial_addresses: set[str],
     partial_addresses: set[str],
     virtual_addresses: set[str],
-    found_map: dict[str, set[str]],
+    found_map: dict[str, set[Concept]],
     accept_partial: bool,
 ):
     found_map[str(node)].add(concept)
@@ -381,7 +376,7 @@ def validate_stack(
     concepts: List[Concept],
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map = defaultdict(set)
+    found_map:dict[str, set[str]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
@@ -479,7 +474,7 @@ def _search_concepts(
     accept_partial: bool = False,
 ) -> StrategyNode | None:
 
-    mandatory_list: list[Concept] = unique(mandatory_list, "address")
+    mandatory_list = unique(mandatory_list, "address")
 
     all_mandatory = set(c.address for c in mandatory_list)
     attempted: set[str] = set()
@@ -491,7 +486,7 @@ def _search_concepts(
 
     while attempted != all_mandatory:
         priority_concept = get_priority_concept(
-            mandatory_list, attempted, found_concepts=found, depth=depth, synonyms=[]
+            mandatory_list, attempted, found_concepts=found, depth=depth
         )
 
         logger.info(
@@ -502,15 +497,15 @@ def _search_concepts(
             c for c in mandatory_list if c.address != priority_concept.address
         ]
         candidate_lists = generate_candidates_restrictive(
-            priority_concept, candidates, skip, []
+            priority_concept, candidates, skip
         )
-        for list in candidate_lists:
+        for clist in candidate_lists:
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial}, optional {[str(v) for v in list]}, exhausted {[str(c) for c in skip]}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial}, optional {[str(v) for v in clist]}, exhausted {[str(c) for c in skip]}"
             )
             node = generate_node(
                 priority_concept,
-                list,
+                clist,
                 environment,
                 g,
                 depth,
@@ -531,7 +526,6 @@ def _search_concepts(
                     PurposeLineage.ROWSET,
                     PurposeLineage.BASIC,
                     PurposeLineage.MULTISELECT,
-                    PurposeLineage.MERGE,
                 ]:
                     skip.add(priority_concept.address)
                 break

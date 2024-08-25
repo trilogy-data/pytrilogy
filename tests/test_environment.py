@@ -51,7 +51,7 @@ key  order_id int;
 
     env1.add_import("replacements", env2)
 
-    merged = env1.merge_concept(
+    _ = env1.merge_concept(
         env1.concepts["replacements.order_id"],
         env1.concepts["order_id"],
         modifiers=[Modifier.PARTIAL],

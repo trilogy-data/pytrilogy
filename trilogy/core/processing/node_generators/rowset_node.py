@@ -113,7 +113,6 @@ def gen_rowset_node(
         node.output_concepts, parent_sources=node.resolution_cache.datasources
     )
 
-
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:
         logger.info(

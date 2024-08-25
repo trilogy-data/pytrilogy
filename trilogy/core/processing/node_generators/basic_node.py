@@ -4,7 +4,7 @@ from typing import List
 from trilogy.core.models import (
     Concept,
 )
-from trilogy.core.processing.nodes import StrategyNode, History, MergeNode
+from trilogy.core.processing.nodes import StrategyNode, History
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )

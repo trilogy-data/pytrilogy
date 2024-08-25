@@ -752,7 +752,6 @@ class ParseToObjects(Transformer):
     def over_list(self, args):
         return [x for x in args]
 
-
     @v_args(meta=True)
     def merge_statement_v2(self, meta: Meta, args) -> MergeStatementV2:
         modifiers = []

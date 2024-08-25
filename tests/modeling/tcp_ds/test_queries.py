@@ -2,12 +2,7 @@ from trilogy import parse
 from pathlib import Path
 
 from trilogy import Environment, Dialects
-from trilogy.core.env_processor import generate_graph
-from trilogy.core.processing.nodes import GroupNode, SelectNode, MergeNode, StrategyNode
-from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
-from trilogy.core.models import Concept
 from trilogy.hooks.query_debugger import DebuggingHook
-from tests.utility import validate_shape
 
 working_path = Path(__file__).parent
 test = working_path / "store.preql"
@@ -52,9 +47,8 @@ def test_one():
         )
         == 7
     )
-    g = generate_graph(env)
 
-    parsed = exec.parse_text(
+    _ = exec.parse_text(
         """select
     returns.customer.id,
     returns.store.id,

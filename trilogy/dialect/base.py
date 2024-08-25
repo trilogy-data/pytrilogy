@@ -5,7 +5,6 @@ from jinja2 import Template
 from trilogy.constants import CONFIG, logger, MagicConstants
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.enums import (
-    Purpose,
     FunctionType,
     WindowType,
     DatePart,
@@ -40,18 +39,17 @@ from trilogy.core.models import (
     ShowStatement,
     RowsetItem,
     MultiSelectStatement,
-    MergeStatement,
     RowsetDerivationStatement,
     ConceptDeclarationStatement,
     ImportStatement,
     RawSQLStatement,
     ProcessedRawSQLStatement,
     NumericType,
+    MergeStatementV2,
 )
 from trilogy.core.query_processor import process_query, process_persist
 from trilogy.dialect.common import render_join
 from trilogy.hooks.base_hook import BaseHook
-from trilogy.utility import unique
 from trilogy.core.enums import UnnestMode
 
 LOGGER_PREFIX = "[RENDERING]"
@@ -274,8 +272,6 @@ class BaseDialect:
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, MultiSelectStatement):
-                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
-            elif isinstance(c.lineage, MergeStatement):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [
@@ -538,9 +534,9 @@ class BaseDialect:
             | ShowStatement
             | ConceptDeclarationStatement
             | RowsetDerivationStatement
-            | MergeStatement
             | ImportStatement
             | RawSQLStatement
+            | MergeStatementV2
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[
@@ -601,7 +597,7 @@ class BaseDialect:
                 statement,
                 (
                     ConceptDeclarationStatement,
-                    MergeStatement,
+                    MergeStatementV2,
                     ImportStatement,
                     RowsetDerivationStatement,
                 ),

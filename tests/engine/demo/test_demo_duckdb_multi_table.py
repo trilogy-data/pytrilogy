@@ -1,14 +1,9 @@
-from trilogy.core.models import Environment
 from trilogy.core.models import (
-    Concept,
     CTE,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
-from trilogy.core.processing.nodes import GroupNode, SelectNode, MergeNode, WindowNode
-from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.processing.nodes import SelectNode
 from trilogy.core.enums import Purpose
-from trilogy.core.env_processor import generate_graph
-from tests.utility import validate_shape
 
 
 def fingerprint(node: StrategyNode) -> str:
@@ -105,7 +100,7 @@ limit 5;"""
 
     # actual = executor.generate_sql(sql)
     # assert actual == ''
-    g = generate_graph(env)
+    # g = generate_graph(env)
     # validate_shape(
     #     sql.output_columns,
     #     env,

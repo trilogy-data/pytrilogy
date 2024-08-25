@@ -1,13 +1,7 @@
 from trilogy.core.models import Environment
 from trilogy import Executor
 from trilogy import Dialects
-from trilogy.core.models import Environment
-from trilogy.core.processing.node_generators.node_merge_node import (
-    gen_merge_node,
-    identify_ds_join_paths,
-)
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
-from trilogy.core.env_processor import generate_graph
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_merge_discovery(test_environment: Environment, test_executor: Executor):
@@ -16,7 +10,7 @@ def test_merge_discovery(test_environment: Environment, test_executor: Executor)
     test_select = """
 
 auto product_store_name <- store_name || product_name;
-auto filtered <- filter product_store_name where store_id = 2;
+auto filtered <- filter product_store_name  where store_id = 2;
 SELECT
     filtered
 where 
@@ -75,10 +69,6 @@ select
     assert len(list(exec.execute_text(test_select)[0].fetchall())) == 3
 
 
-from trilogy.hooks.query_debugger import DebuggingHook
-from trilogy.hooks.graph_hook import GraphHook
-
-
 def test_merge_grain_two():
     # test keys
 
@@ -116,10 +106,6 @@ merge p2.lastname  into p1.lastname;
 
 """
     )
-
-    # raw = executor.generate_sql(test)
-    g = generate_graph(base)
-    from trilogy.hooks.graph_hook import GraphHook
 
     # GraphHook().query_graph_built(g)
     exec = Dialects.DUCK_DB.default_executor(environment=base, hooks=[DebuggingHook()])

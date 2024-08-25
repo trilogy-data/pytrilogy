@@ -3,8 +3,6 @@ from trilogy.core.models import (
     SelectStatement,
     PersistStatement,
     MultiSelectStatement,
-    Conditional,
-    BooleanOperator,
 )
 from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger, CONFIG
@@ -94,7 +92,6 @@ def optimize_ctes(
     input: list[CTE], root_cte: CTE, select: SelectStatement | MultiSelectStatement
 ) -> list[CTE]:
 
-
     if CONFIG.optimizations.direct_return and is_direct_return_eligible(
         root_cte, select
     ):
@@ -121,7 +118,6 @@ def optimize_ctes(
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
 
-    
     for rule in REGISTERED_RULES:
         loops = 0
         complete = False

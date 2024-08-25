@@ -1,2 +1,0 @@
-    [CONCEPT DETAIL - MERGE NODE] no parents include full grain Grain<Abstract> and pregrain Grain<returns.store.id,returns.customer.text_id,returns.return_date.year> does not match,
-     assume must group to grain. Have ['Grain<returns.store.id,returns.customer.text_id,returns.return_date.year>', 'Grain<returns.store.id>']

@@ -17,7 +17,6 @@ from trilogy.core.models import (
 from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
 from dataclasses import dataclass
-from trilogy.constants import logger
 
 
 def concept_list_to_grain(

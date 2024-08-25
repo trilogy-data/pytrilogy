@@ -1,4 +1,3 @@
-
 from trilogy.core.models import Environment
 from trilogy import parse
 from trilogy.dialect.base import BaseDialect

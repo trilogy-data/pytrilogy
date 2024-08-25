@@ -361,6 +361,7 @@ def get_query_datasources(
         environment=environment,
         g=graph,
     )
+    ds: GroupNode | SelectNode
     if nest_where and statement.where_clause:
         ods.conditions = statement.where_clause.conditional
         ods.output_concepts = search_concepts

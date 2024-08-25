@@ -12,10 +12,7 @@ from trilogy.core.processing.utility import padding
 from trilogy.core.processing.graph_utils import extract_mandatory_subgraphs
 from networkx.algorithms import approximation as ax
 from trilogy.core.enums import PurposeLineage
-import random
-random.seed(246) 
-import numpy
-numpy.random.seed(4812)
+
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 AMBIGUITY_CHECK_LIMIT = 20
@@ -106,7 +103,7 @@ def extract_concept(node: str, env: Environment):
 
 
 def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
-    unique_graphs = []
+    unique_graphs:list[str] = []
     for graph in graphs:
         if not any(set(graph).issubset(x) for x in unique_graphs):
             unique_graphs.append(set(graph))
@@ -129,7 +126,6 @@ def extract_ds_components(g: nx.DiGraph) -> list[list[str]]:
                 ]
             )
 
-
     graphs = filter_unique_graphs(graphs)
     return graphs
 
@@ -138,13 +134,27 @@ def set_to_key(s: set[str]):
     return ",".join(sorted(s))
 
 
-def determine_induced_minimal_nodes(G: nx.DiGraph, nodelist) -> nx.DiGraph | None:
+def determine_induced_minimal_nodes(
+    G: nx.DiGraph, nodelist, filter_downstream: bool
+) -> nx.DiGraph | None:
     H: nx.Graph = nx.to_undirected(G).copy()
     nodes_to_remove = []
     concepts = nx.get_node_attributes(G, "concept")
     for node in G.nodes:
-        if concepts.get(node) and concepts[node].derivation not in (PurposeLineage.BASIC, PurposeLineage.ROOT):
-            nodes_to_remove.append(node)
+        if concepts.get(node):
+            lookup = concepts[node]
+            if lookup.derivation not in (PurposeLineage.BASIC, PurposeLineage.ROOT):
+                nodes_to_remove.append(node)
+            elif lookup.derivation == PurposeLineage.BASIC and G.out_degree(node) == 0:
+                nodes_to_remove.append(node)
+            # purge a node if we're already looking for all it's parents
+            elif (
+                filter_downstream
+                and lookup.derivation == PurposeLineage.BASIC
+                and all([concept_to_node(x) in nodelist for x in lookup.sources])
+            ):
+                nodes_to_remove.append(node)
+
     H.remove_nodes_from(nodes_to_remove)
 
     H.remove_nodes_from(list(nx.isolates(H)))
@@ -190,7 +200,10 @@ def detect_ambiguity_and_raise(all_concepts, reduced_concept_sets) -> None:
 
 
 def resolve_weak_components(
-    all_concepts: List[Concept], environment: Environment, environment_graph: nx.DiGraph
+    all_concepts: List[Concept],
+    environment: Environment,
+    environment_graph: nx.DiGraph,
+    filter_downstream: bool = True,
 ) -> list[list[Concept]] | None:
 
     break_flag = False
@@ -214,6 +227,7 @@ def resolve_weak_components(
                     for c in all_concepts
                     if "__preql_internal" not in c.address
                 ],
+                filter_downstream=filter_downstream,
             )
 
             if not g or not g.nodes:
@@ -358,22 +372,25 @@ def gen_merge_node(
 
     # inject new concepts into search, and identify if two dses can reach there
     if not join_candidates:
-        weak_resolve = resolve_weak_components(all_concepts, environment, g)
-        if weak_resolve:
-            log_graph = [[y.address for y in x] for x in weak_resolve]
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
+        for filter_downstream in [True, False]:
+            weak_resolve = resolve_weak_components(
+                all_concepts, environment, g, filter_downstream=filter_downstream
             )
-            return subgraphs_to_merge_node(
-                weak_resolve,
-                depth=depth,
-                all_concepts=all_concepts,
-                environment=environment,
-                g=g,
-                source_concepts=source_concepts,
-                history=history,
-                conditions=conditions,
-            )
+            if weak_resolve:
+                log_graph = [[y.address for y in x] for x in weak_resolve]
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
+                )
+                return subgraphs_to_merge_node(
+                    weak_resolve,
+                    depth=depth,
+                    all_concepts=all_concepts,
+                    environment=environment,
+                    g=g,
+                    source_concepts=source_concepts,
+                    history=history,
+                    conditions=conditions,
+                )
     if not join_candidates:
         return None
     join_additions: list[set[str]] = []

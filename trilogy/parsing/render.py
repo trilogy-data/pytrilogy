@@ -145,15 +145,7 @@ class Renderer:
         components = ",".join(self.to_string(x) for x in arg.components)
         return f"grain ({components})"
 
-    @to_string.register
-    def _(self, arg: MergeUnit):
-        components = ", ".join(self.to_string(x) for x in arg.concepts)
-        return f"{components}"
 
-    @to_string.register
-    def _(self, arg: MergeStatement):
-        components = " AND ".join(self.to_string(x) for x in arg.merges)
-        return f"merge {components};"
 
     @to_string.register
     def _(self, arg: "Query"):
