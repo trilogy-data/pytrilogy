@@ -30,8 +30,6 @@ def gen_basic_node(
         f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}"
     )
 
-    output_concepts = [concept] + local_optional
-    partials = []
     local_optional_redundant = [x for x in local_optional if x in parent_concepts]
     attempts = [(parent_concepts, [concept] + local_optional_redundant)]
     from itertools import combinations
@@ -47,9 +45,10 @@ def gen_basic_node(
                     )
                 )
 
-    for attempt, output in reversed(attempts):
+    for attempt, basic_output in reversed(attempts):
+        partials = []
         attempt = unique(attempt, "address")
-        parent_node = source_concepts(
+        parent_node: StrategyNode = source_concepts(
             mandatory_list=attempt,
             environment=environment,
             g=g,
@@ -59,24 +58,28 @@ def gen_basic_node(
         if not parent_node:
             continue
         parents: List[StrategyNode] = [parent_node]
-        for x in output_concepts:
+        for x in basic_output:
             sources = [p for p in parents if x in p.output_concepts]
             if not sources:
                 continue
             if all(x in source.partial_concepts for source in sources):
                 partials.append(x)
+        outputs = parent_node.output_concepts + [concept]
         logger.info(
-            f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept} with attempted extra {[x.address for x in attempt]}"
+            f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept} with attempted extra {[x.address for x in attempt]}, output {[x.address for x in outputs]}"
         )
-        return MergeNode(
-            input_concepts=attempt,
-            output_concepts=output,
-            environment=environment,
-            g=g,
-            parents=parents,
-            depth=depth,
-            partial_concepts=partials,
+        # parents.resolve()
+
+        parent_node.add_output_concept(concept)
+
+        parent_node.hide_output_concepts(
+            [
+                x
+                for x in parent_node.output_concepts
+                if x.address not in [y.address for y in basic_output]
+            ]
         )
+        return parent_node
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
     )

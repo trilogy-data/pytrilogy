@@ -13,6 +13,9 @@ from trilogy.core.models import (
     Environment,
     UnnestJoin,
     Datasource,
+    Conditional,
+    Comparison,
+    Parenthetical,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -43,6 +46,7 @@ class SelectNode(StrategyNode):
         accept_partial: bool = False,
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
+        conditions: Conditional | Comparison | Parenthetical | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -55,6 +59,7 @@ class SelectNode(StrategyNode):
             partial_concepts=partial_concepts,
             force_group=force_group,
             grain=grain,
+            conditions=conditions,
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
@@ -87,6 +92,8 @@ class SelectNode(StrategyNode):
                 PurposeLineage.MULTISELECT,
                 PurposeLineage.MERGE,
                 PurposeLineage.FILTER,
+                PurposeLineage.BASIC,
+                PurposeLineage.ROWSET,
             ):
                 source_map[x.address] = set()
 
@@ -158,7 +165,7 @@ class SelectNode(StrategyNode):
                 return resolution
         required = [c.address for c in self.all_concepts]
         raise NoDatasourceException(
-            f"Could not find any way to associate required concepts {required}"
+            f"Could not find any way to resolve datasources for required concepts {required} with derivation {[x.derivation for x in self.all_concepts]}"
         )
 
     def copy(self) -> "SelectNode":
@@ -175,6 +182,7 @@ class SelectNode(StrategyNode):
             accept_partial=self.accept_partial,
             grain=self.grain,
             force_group=self.force_group,
+            conditions=self.conditions,
         )
 
 
@@ -190,4 +198,5 @@ class ConstantNode(SelectNode):
             datasource=self.datasource,
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
+            conditions=self.conditions,
         )

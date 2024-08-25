@@ -27,7 +27,6 @@ from trilogy.core.processing.node_generators import (
     gen_group_to_node,
     gen_rowset_node,
     gen_multiselect_node,
-    gen_concept_merge_node,
 )
 
 from enum import Enum
@@ -58,6 +57,7 @@ def get_priority_concept(
     attempted_addresses: set[str],
     found_concepts: set[str],
     depth: int,
+    synonyms: List[Concept],
 ) -> Concept:
     # optimized search for missing concepts
     pass_one = [
@@ -68,8 +68,8 @@ def get_priority_concept(
     # sometimes we need to scan intermediate concepts to get merge keys, so fall back
     # to exhaustive search
     pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
-
-    for remaining_concept in (pass_one, pass_two):
+    pass_three = [c for c in synonyms if c.address not in attempted_addresses]
+    for remaining_concept in (pass_one, pass_two, pass_three):
         priority = (
             # find anything that needs no joins first, so we can exit early
             [
@@ -174,7 +174,10 @@ def get_priority_concept(
 
 
 def generate_candidates_restrictive(
-    priority_concept: Concept, candidates: list[Concept], exhausted: set[str]
+    priority_concept: Concept,
+    candidates: list[Concept],
+    exhausted: set[str],
+    synonyms: list[Concept],
 ) -> List[List[Concept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
@@ -190,6 +193,8 @@ def generate_candidates_restrictive(
     if priority_concept.derivation in (PurposeLineage.BASIC, PurposeLineage.ROOT):
         combos.append(local_candidates)
     combos.append(Grain(components=[*local_candidates]).components_copy)
+    if synonyms:
+        combos.append(Grain(components=[*local_candidates, *synonyms]).components_copy)
     # append the empty set for sourcing concept by itself last
     combos.append([])
     return combos
@@ -408,6 +413,7 @@ def validate_stack(
             partial_addresses,
             virtual_addresses,
         )
+
     graph_count, graphs = get_disconnected_components(found_map)
     if graph_count in (0, 1):
         return (
@@ -474,14 +480,8 @@ def _search_concepts(
 ) -> StrategyNode | None:
 
     mandatory_list: list[Concept] = unique(mandatory_list, "address")
-    synonyms: list[Concept] = []
-    for c in mandatory_list:
-        for _, v in c.pseudonyms.items():
-            synonyms.append(v)
-    logger.info(f'{depth_to_prefix(depth)}{LOGGER_PREFIX} Have {len(synonyms)} additional synonyms')
-    all_list = unique(mandatory_list + synonyms, "address")
+
     all_mandatory = set(c.address for c in mandatory_list)
-    all_possible = set(c.address for c in all_list)
     attempted: set[str] = set()
 
     found: set[str] = set()
@@ -491,7 +491,7 @@ def _search_concepts(
 
     while attempted != all_mandatory:
         priority_concept = get_priority_concept(
-            all_list, attempted, found_concepts=found, depth=depth
+            mandatory_list, attempted, found_concepts=found, depth=depth, synonyms=[]
         )
 
         logger.info(
@@ -499,10 +499,10 @@ def _search_concepts(
         )
 
         candidates = [
-            c for c in all_list if c.address != priority_concept.address
+            c for c in mandatory_list if c.address != priority_concept.address
         ]
         candidate_lists = generate_candidates_restrictive(
-            priority_concept, candidates, skip
+            priority_concept, candidates, skip, []
         )
         for list in candidate_lists:
             logger.info(

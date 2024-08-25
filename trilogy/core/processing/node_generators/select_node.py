@@ -16,9 +16,6 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     ConstantNode,
 )
-from trilogy.core.processing.node_generators.environment_merge_node import (
-    gen_environment_merge_node,
-)
 from trilogy.core.exceptions import NoDatasourceException
 import networkx as nx
 from trilogy.core.graph_models import concept_to_node, datasource_to_node
@@ -302,6 +299,7 @@ def gen_select_node_from_table(
                     try:
                         g.nodes[ncandidate]
                     except KeyError:
+                        raise nx.exception.NetworkXNoPath
                         raise SyntaxError(
                             f"Could not find node {ncandidate}, have {list(g.nodes())}"
                         )

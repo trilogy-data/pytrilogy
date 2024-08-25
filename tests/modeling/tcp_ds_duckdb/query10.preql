@@ -8,9 +8,9 @@ import catalog_sales as catalog_sales;
 # have purchased from both stores and another sales channel during a three month time period of a given year.
 
 
-merge_new catalog_sales.customer.id into ~customer.id;
-merge_new web_sales.customer.id into ~customer.id;
-merge_new store_sales.customer.id into ~customer.id;
+merge catalog_sales.customer.id into ~customer.id;
+merge web_sales.customer.id into ~customer.id;
+merge store_sales.customer.id into ~customer.id;
 
 auto relevant_customers <- filter 
     customer.id 

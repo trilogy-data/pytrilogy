@@ -10,7 +10,12 @@ class GraphHook(BaseHook):
         except ImportError:
             raise ImportError("GraphHook requires matplotlib and scipy to be installed")
 
-    def query_graph_built(self, graph: nx.DiGraph, target: str | None = None, highlight_nodes: list[str] | None = None):
+    def query_graph_built(
+        self,
+        graph: nx.DiGraph,
+        target: str | None = None,
+        highlight_nodes: list[str] | None = None,
+    ):
         from matplotlib import pyplot as plt
 
         graph = graph.copy()
@@ -43,7 +48,7 @@ class GraphHook(BaseHook):
                     edge_colors.append("green")
                 else:
                     edge_colors.append("black")
-            kwargs["edge_colors"] = edge_colors
+            kwargs["edge_color"] = edge_colors
         nx.draw(
             graph,
             pos=pos,

@@ -85,7 +85,10 @@ class GroupNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} No group by required, returning parent node"
                 )
-                return parent_sources[0]
+                will_return: QueryDatasource = parent_sources[0]
+                if self.conditions:
+                    will_return.condition = self.conditions + will_return.condition
+                return will_return
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
@@ -143,4 +146,5 @@ class GroupNode(StrategyNode):
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
             force_group=self.force_group,
+            conditions=self.conditions,
         )

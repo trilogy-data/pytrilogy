@@ -69,9 +69,7 @@ from trilogy.core.models import (
     ConceptTransform,
     Conditional,
     Datasource,
-    MergeStatement,
     MergeStatementV2,
-    MergeUnit,
     Environment,
     FilterItem,
     Function,
@@ -107,7 +105,6 @@ from trilogy.core.models import (
     LooseConceptList,
     list_to_wrapper,
     NumericType,
-    DatasourceMetadata,
 )
 from trilogy.parsing.exceptions import ParseError
 from trilogy.utility import string_to_hash
@@ -755,36 +752,9 @@ class ParseToObjects(Transformer):
     def over_list(self, args):
         return [x for x in args]
 
-    @v_args(meta=True)
-    def merge_statement_unit(self, meta: Meta, args) -> MergeUnit:
-        parsed = [self.environment.concepts[x] for x in args]
-        datatypes = {x.datatype for x in parsed}
-        if not len(datatypes) == 1 and self.environment.concepts.fail_on_missing:
-            type_dict = {x.address: x.datatype for x in parsed}
-            raise SyntaxError(
-                f"Cannot merge concepts with different datatype"
-                f"line: {meta.line} concepts: {type_dict}"
-            )
-        merge = MergeUnit(concepts=parsed, datatype=datatypes.pop())
-        # new = merge.merge_concept
-        # self.environment.add_concept(new, meta=meta)
-        return merge
 
     @v_args(meta=True)
-    def merge_statement(self, meta: Meta, args) -> MergeStatement:
-        merge = MergeStatement(namespace=self.environment.namespace, merges=[])
-        for unit in args:
-            merge.add_unit(unit)
-        self.environment.add_datasource(
-            merge.gen_merge_datasource(
-                metadata=DatasourceMetadata(line_no=meta.line, freshness_concept=None)
-            ),
-            meta=meta,
-        )
-        return merge
-
-    @v_args(meta=True)
-    def merge_statement_v2(self, meta: Meta, args) -> MergeStatement:
+    def merge_statement_v2(self, meta: Meta, args) -> MergeStatementV2:
         modifiers = []
         concepts = []
         for arg in args:

@@ -58,8 +58,8 @@ SELECT 'John' as firstname, 'Smith' as lastname
 
     exec = Dialects.DUCK_DB.default_executor(environment=base)
     test_select = """
-merge p1.firstname, p2.firstname;
-merge p1.lastname, p2.lastname;
+merge p1.firstname into p2.firstname;
+merge p1.lastname into p2.lastname;
 
 select
     p1.firstname,
@@ -111,7 +111,8 @@ SELECT 'John' as firstname, 'Smith' as lastname
     # merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
     base.parse(
         """
-merge p1.firstname, p2.firstname and p1.lastname, p2.lastname;
+merge  p2.firstname into p1.firstname;
+merge p2.lastname  into p1.lastname;
 
 """
     )
@@ -123,8 +124,10 @@ merge p1.firstname, p2.firstname and p1.lastname, p2.lastname;
     # GraphHook().query_graph_built(g)
     exec = Dialects.DUCK_DB.default_executor(environment=base, hooks=[DebuggingHook()])
     test_select = """
-merge p1.firstname, p2.firstname and p1.lastname, p2.lastname;
-merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
+merge p2.firstname into p1.firstname; 
+merge p2.lastname into p1.lastname;
+merge p3.firstname into p1.firstname ;
+merge p3.lastname into p1.lastname ;
 select
     p1.firstname,
     count(p2.lastname) -> lastname_count,

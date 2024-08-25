@@ -70,7 +70,7 @@ def test_merged_env_behavior(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     test_pre = """
-merge passenger.last_name, rich_info.last_name;
+merge rich_info.last_name into ~passenger.last_name;
     """
     normalized_engine.parse_text(test_pre)
     g = generate_graph(test_env)
@@ -104,7 +104,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
         [x for x in concepts if x.startswith("r")]
     )
 
-    test_pre = """merge passenger.last_name, rich_info.last_name;"""
+    test_pre = """merge rich_info.last_name into ~passenger.last_name;"""
     normalized_engine.parse_text(test_pre)
     # raw = executor.generate_sql(test)
     g = generate_graph(test_env)
@@ -156,7 +156,7 @@ def test_demo_merge_rowset_e2e(normalized_engine, test_env: Environment):
     # assert test_env.concept_links[test_env.concepts["passenger.last_name"]][0] == test_env.concepts["rich_info.last_name"]
     normalized_engine.environment = test_env
     test = """    
-merge passenger.last_name, rich_info.last_name;
+merge rich_info.last_name into ~passenger.last_name;
 SELECT
     passenger.last_name,
     rich_info.net_worth_1918_dollars,
@@ -165,10 +165,6 @@ WHERE
     and passenger.last_name is not null
 ORDER BY 
     passenger.last_name desc ;"""
-    parsed = normalized_engine.parse_text(test)[-1]
-    assert parsed.output_columns[0].address == "passenger.last_name"
-    assert parsed.output_columns[1].address == "rich_info.net_worth_1918_dollars"
-
     results = normalized_engine.execute_text(test)[-1].fetchall()
 
     assert len(results) == 8

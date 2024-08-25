@@ -66,6 +66,7 @@ def gen_filter_node(
             parent.conditions = where.conditional
         parent.output_concepts = [concept]
         parent.rebuild_cache()
+
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
         )

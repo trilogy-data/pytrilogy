@@ -242,27 +242,30 @@ def setup_titanic_distributed(env: Environment):
         datatype=DataType.STRING,
         keys=[id],
     )
+
+    split_name = function_to_concept(
+        Function(
+            operator=FunctionType.SPLIT,
+            arguments=[name, ","],
+            output_datatype=DataType.ARRAY,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+        name="split_name",
+        namespace=namespace,
+        # keys = (id,)
+    )
+    assert split_name.keys == (id,)
     last_name = Concept(
         name="last_name",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=(name,),
+        keys=(id,),
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                function_to_concept(
-                    Function(
-                        operator=FunctionType.SPLIT,
-                        arguments=[name, ","],
-                        output_datatype=DataType.ARRAY,
-                        output_purpose=Purpose.PROPERTY,
-                        arg_count=2,
-                    ),
-                    name="split_name",
-                    namespace=namespace,
-                    # keys = (name,)
-                ),
+                split_name,
                 1,
             ],
             output_datatype=DataType.STRING,

@@ -467,13 +467,18 @@ ORDER BY
     row_results = executor.execute_text(test)[-1].fetchall()
     assert len(row_results) == 794
 
-    assert """SELECT
+    assert (
+        """SELECT
     raw_data."passengerid" as "passenger_id",
-    raw_data."name" as "passenger_name"
+    raw_data."name" as "passenger_name",
+    raw_data."passengerid" + 1 as "id_one"
 FROM
     raw_titanic as raw_data
 WHERE
-     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True""" in results
+     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True"""
+        in results
+    )
+
 
 from trilogy.core.processing.node_generators import (
     gen_filter_node,
@@ -501,7 +506,7 @@ def test_merge_basic(base_test_env: Environment):
     #                       source_concepts=search_concepts )
 
     # assert set([x.address for x in node.output_concepts]) == set(['rich_info.last_name', 'rich_info.split_name', 'rich_info.full_name'])
-    executor.parse_text("""MERGE_NEW rich_info.last_name into ~passenger.last_name;""")
+    executor.parse_text("""MERGE rich_info.last_name into ~passenger.last_name;""")
 
     g = generate_graph(base_test_env)
     # concepts = [base_test_env.concepts[x] for x in[ 'rich_info.net_worth_1918_dollars', 'passenger.last_name']]
@@ -531,7 +536,7 @@ def test_merge(base_test_env: Environment):
     rich_name = base_test_env.concepts["rich_info.full_name"]
     assert rich_name in base_test_env.concepts["rich_info.last_name"].sources
     assert rich_name in base_test_env.concepts["rich_info.split_name"].sources
-    executor.parse_text("""MERGE_NEW rich_info.last_name into ~passenger.last_name;""")
+    executor.parse_text("""MERGE rich_info.last_name into ~passenger.last_name;""")
     # merge_ds = [x for x in base_test_env.datasources.values() if isinstance(x, MergeDatasource)][0]
     raw_data = base_test_env.datasources["raw_data"]
 
@@ -549,7 +554,7 @@ def test_merge(base_test_env: Environment):
     #     if weak:
     #         break
 
-    GraphHook().query_graph_built(g, target=datasource_to_node(raw_data))
+    # GraphHook().query_graph_built(g, target=datasource_to_node(raw_data))
     targets = [
         base_test_env.concepts[x]
         for x in base_test_env.concepts

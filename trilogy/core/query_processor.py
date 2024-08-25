@@ -6,7 +6,7 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.enums import SelectFiltering
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
-from trilogy.core.processing.nodes import GroupNode, StrategyNode
+from trilogy.core.processing.nodes import GroupNode, SelectNode, StrategyNode
 from trilogy.core.models import (
     Concept,
     Environment,
@@ -267,7 +267,7 @@ def datasource_to_ctes(
 
     human_id = generate_cte_name(query_datasource.full_name, name_map)
     logger.info(
-        f"Finished building source map for {human_id} with {len(parents)} parents, have {source_map}, parent had non-empty keys {[k for k, v in query_datasource.source_map.items() if v]} "
+        f"Finished building source map for {human_id} with {len(parents)} parents, have {source_map}, query_datasource had non-empty keys {[k for k, v in query_datasource.source_map.items() if v]} "
     )
     final_joins = [
         x
@@ -378,11 +378,16 @@ def get_query_datasources(
         # we can still check existence here.
 
     elif statement.where_clause:
-        ods.conditions = statement.where_clause.conditional
-        ods.rebuild_cache()
-        # check existence here
-        append_existence_check(ods, environment, graph)
-        ds = ods
+        ds = SelectNode(
+            output_concepts=statement.output_components,
+            input_concepts=ods.input_concepts,
+            parents=[ods],
+            environment=ods.environment,
+            g=ods.g,
+            partial_concepts=ods.partial_concepts,
+            conditions=statement.where_clause.conditional,
+        )
+        append_existence_check(ds, environment, graph)
 
     else:
         ds = ods

@@ -91,27 +91,28 @@ def gen_rowset_node(
         x for x in select.output_components if x.address in enrichment
     ]
     # add in other other concepts
-    for item in rowset_relevant:
-        node.output_concepts.append(item)
-    for item in additional_relevant:
-        node.output_concepts.append(item)
+
+    node.add_output_concepts(rowset_relevant + additional_relevant)
     if select.where_clause:
         for item in additional_relevant:
             node.partial_concepts.append(item)
-    node.hidden_concepts = rowset_hidden + [
-        x
-        for x in node.output_concepts
-        if x.address not in [y.address for y in local_optional + [concept]]
-        and x.derivation != PurposeLineage.ROWSET
-    ]
+    node.hide_output_concepts(
+        rowset_hidden
+        + [
+            x
+            for x in node.output_concepts
+            if x.address not in [y.address for y in local_optional + [concept]]
+            and x.derivation != PurposeLineage.ROWSET
+        ]
+    )
     # assume grain to be output of select
     # but don't include anything aggregate at this point
-    node.rebuild_cache()
     assert node.resolution_cache
 
     node.resolution_cache.grain = concept_list_to_grain(
         node.output_concepts, parent_sources=node.resolution_cache.datasources
     )
+
 
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:

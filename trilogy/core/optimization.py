@@ -93,35 +93,40 @@ def sort_select_output(cte: CTE, query: SelectStatement | MultiSelectStatement):
 def optimize_ctes(
     input: list[CTE], root_cte: CTE, select: SelectStatement | MultiSelectStatement
 ) -> list[CTE]:
-    complete = False
-    REGISTERED_RULES: list["OptimizationRule"] = []
+
+
     if CONFIG.optimizations.direct_return and is_direct_return_eligible(
         root_cte, select
     ):
         root_cte.order_by = select.order_by
         root_cte.limit = select.limit
-        if select.where_clause:
+        # if select.where_clause:
 
-            if root_cte.condition:
-                root_cte.condition = Conditional(
-                    left=root_cte.condition,
-                    operator=BooleanOperator.AND,
-                    right=select.where_clause.conditional,
-                )
-            else:
-                root_cte.condition = select.where_clause.conditional
+        #     if root_cte.condition:
+        #         root_cte.condition = Conditional(
+        #             left=root_cte.condition,
+        #             operator=BooleanOperator.AND,
+        #             right=select.where_clause.conditional,
+        #         )
+        #     else:
+        #         root_cte.condition = select.where_clause.conditional
         root_cte.requires_nesting = False
         sort_select_output(root_cte, select)
+
+    REGISTERED_RULES: list["OptimizationRule"] = []
+    if CONFIG.optimizations.constant_inlining:
+        REGISTERED_RULES.append(InlineConstant())
     if CONFIG.optimizations.datasource_inlining:
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
-    if CONFIG.optimizations.constant_inlining:
-        REGISTERED_RULES.append(InlineConstant())
-    loops = 0
-    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
-        actions_taken = False
-        for rule in REGISTERED_RULES:
+
+    
+    for rule in REGISTERED_RULES:
+        loops = 0
+        complete = False
+        while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
+            actions_taken = False
             triggered = False
             # assume we go through all CTEs once
             for cte in input:
@@ -130,7 +135,7 @@ def optimize_ctes(
                 actions_taken = actions_taken or opt
             if triggered:
                 break
-        complete = not actions_taken
-        loops += 1
+            complete = not actions_taken
+            loops += 1
 
     return filter_irrelevant_ctes(input, root_cte)

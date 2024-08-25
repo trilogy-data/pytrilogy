@@ -151,9 +151,22 @@ class StrategyNode:
             if not parent:
                 raise SyntaxError("Unresolvable parent")
 
-    def add_output_concept(self, concept: Concept):
-        self.output_concepts.append(concept)
+    def add_output_concepts(self, concepts: List[Concept]):
+        for concept in concepts:
+            self.output_concepts.append(concept)
         self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.rebuild_cache()
+
+    def add_output_concept(self, concept: Concept):
+        self.add_output_concepts([concept])
+
+    def hide_output_concepts(self, concepts: List[Concept]):
+        for x in concepts:
+            if x.address in [c.address for c in self.output_concepts]:
+                self.hidden_concepts.append(x)
+                self.output_concepts = [
+                    y for y in self.output_concepts if y.address != x.address
+                ]
         self.rebuild_cache()
 
     @property

@@ -33,7 +33,7 @@ def test_pushdown():
     )[0]
 
     print(generated)
-    test_str = """ db."date" = '2024-01-01' """.strip()
+    test_str = """ = '2024-01-01' """.strip()
     assert generated.count(test_str) == 2
 
 

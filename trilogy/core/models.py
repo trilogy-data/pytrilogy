@@ -388,10 +388,18 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
-            lineage=self.lineage.with_merge(source, target, modifiers) if self.lineage else None,
+            lineage=(
+                self.lineage.with_merge(source, target, modifiers)
+                if self.lineage
+                else None
+            ),
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
-            keys=(x.with_merge(source, target, modifiers) for x in self.keys) if self.keys else None,
+            keys=(
+                (x.with_merge(source, target, modifiers) for x in self.keys)
+                if self.keys
+                else None
+            ),
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
@@ -682,6 +690,13 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
 
         elif self.lineage and isinstance(self.lineage, Function):
             if not self.lineage.concept_arguments:
+                return PurposeLineage.CONSTANT
+            elif all(
+                [
+                    x.derivation == PurposeLineage.CONSTANT
+                    for x in self.lineage.concept_arguments
+                ]
+            ):
                 return PurposeLineage.CONSTANT
             return PurposeLineage.BASIC
         elif self.purpose == Purpose.CONSTANT:
@@ -2460,6 +2475,12 @@ class CTE(BaseModel):
                 ]
             elif v == parent.name:
                 self.source_map[k] = ds_being_inlined.name
+
+        # zip in any required values for lookups
+        for k in ds_being_inlined.output_lcl.addresses:
+            if k in self.source_map and self.source_map[k]:
+                continue
+            self.source_map[k] = ds_being_inlined.name
         self.parent_ctes = [x for x in self.parent_ctes if x.name != parent.name]
         if force_group:
             self.group_to_grain = True
@@ -2575,12 +2596,12 @@ class CTE(BaseModel):
                     c
                     for c in self.output_columns
                     if c.purpose == Purpose.METRIC
-                    and any(
+                    and (any(
                         [
                             c.with_grain(cte.grain) in cte.output_columns
                             for cte in self.parent_ctes
                         ]
-                    )
+                    ) or c.derivation == PurposeLineage.ROWSET)
                 ]
                 + [
                     c
@@ -2920,7 +2941,9 @@ class Environment(BaseModel):
         ]
         # include aliased concepts
         self.materialized_concepts += [
-            c for c in self.alias_origin_lookup.values() if c.address in concrete_addresses
+            c
+            for c in self.alias_origin_lookup.values()
+            if c.address in concrete_addresses
         ]
         new = [
             x.address
@@ -3193,6 +3216,8 @@ class Comparison(ConceptArgs, Namespaced, ConstantInlineable, SelectContext, Bas
                 )
 
     def __add__(self, other):
+        if other is None:
+            return self
         if not isinstance(other, (Comparison, Conditional, Parenthetical)):
             raise ValueError("Cannot add Comparison to non-Comparison")
         if other == self:

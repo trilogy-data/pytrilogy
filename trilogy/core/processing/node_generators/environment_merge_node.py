@@ -67,7 +67,6 @@ def gen_environment_merge_node(
     del environment.datasources[datasource.env_label]
     environment.gen_concept_list_caches()
     g = generate_graph(environment)
-    print(g.nodes())
 
     for namespace in target_namespaces:
 
