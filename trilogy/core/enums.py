@@ -43,7 +43,6 @@ class PurposeLineage(Enum):
     ROOT = "root"
     ROWSET = "rowset"
     MULTISELECT = "multiselect"
-    MERGE = "merge"
 
 
 class Granularity(Enum):
@@ -270,6 +269,7 @@ class SourceType(Enum):
     UNNEST = "unnest"
     CONSTANT = "constant"
     ROWSET = "rowset"
+    MERGE = "merge"
 
 
 class ShowCategory(Enum):

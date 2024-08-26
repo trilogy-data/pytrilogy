@@ -26,7 +26,7 @@ def filter_pseudonyms_for_source(ds_graph: nx.DiGraph, node: str):
             lengths = {}
             for n in edge:
                 lengths[n] = nx.shortest_path_length(ds_graph, node, n)
-            to_remove.add(max(lengths, key=lengths.get))
+            to_remove.add(max(lengths, key=lambda x: lengths.get(x, 0)))
     for node in to_remove:
         ds_graph.remove_node(node)
 
@@ -103,7 +103,7 @@ def extract_concept(node: str, env: Environment):
 
 
 def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
-    unique_graphs:list[str] = []
+    unique_graphs:list[set[str]] = []
     for graph in graphs:
         if not any(set(graph).issubset(x) for x in unique_graphs):
             unique_graphs.append(set(graph))
@@ -256,13 +256,6 @@ def resolve_weak_components(
                 node = concept_to_node(n)
                 if node in search_graph:
                     search_graph.remove_node(node)
-
-            # skip any new concepts being used to connect that are downstream of what we need to find
-            # so continue the search as if we found nothing
-            # if any([search_concept in new_concept.sources for new_concept in new for search_concept in all_concepts]):
-            #     continue
-            # if any([new_concept in search_concept.sources for new_concept in new for search_concept in all_concepts]):
-            #     continue
             # TODO: figure out better place for debugging
             # from trilogy.hooks.graph_hook import GraphHook
             # GraphHook().query_graph_built(g, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
@@ -271,7 +264,7 @@ def resolve_weak_components(
 
         except nx.exception.NetworkXNoPath:
             break_flag = True
-        if not g.nodes:
+        if g and not g.nodes:
             break_flag = True
     if not found:
         return None
@@ -281,7 +274,7 @@ def resolve_weak_components(
     # take our first one as the actual graph
     g = found[0]
 
-    subgraphs: list[Concept] = []
+    subgraphs: list[list[Concept]] = []
     # components = nx.strongly_connected_components(g)
     components = extract_ds_components(g)
     for component in components:

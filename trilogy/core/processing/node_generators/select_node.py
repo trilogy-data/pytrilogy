@@ -7,7 +7,6 @@ from trilogy.core.models import (
     Grain,
     LooseConceptList,
     Datasource,
-    MergeDatasource,
 )
 from trilogy.core.processing.nodes import (
     StrategyNode,
@@ -187,10 +186,6 @@ def gen_select_nodes_from_tables_v2(
                 continue
             except nx.exception.NetworkXNoPath:
                 continue
-            # don't include merge datasources within same namespace
-            if isinstance(datasource, MergeDatasource):
-                if len(set([x.namespace for x in all_concepts])) == 1:
-                    continue
         dm = DatasourceMatch(
             key=k,
             datasource=datasource,

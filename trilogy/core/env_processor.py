@@ -59,5 +59,5 @@ def generate_graph(
 ) -> ReferenceGraph:
 
     return generate_adhoc_graph(
-        environment.concepts.values(), environment.datasources.values()
+        list(environment.concepts.values()), list(environment.datasources.values())
     )

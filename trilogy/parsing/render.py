@@ -33,15 +33,12 @@ from trilogy.core.models import (
     PersistStatement,
     ListWrapper,
     RowsetDerivationStatement,
-    MergeStatement,
-    MergeUnit,
     MultiSelectStatement,
     OrderBy,
     AlignClause,
     AlignItem,
     RawSQLStatement,
     NumericType,
-    MergeDatasource,
 )
 from trilogy.core.enums import Modifier
 
@@ -115,7 +112,6 @@ class Renderer:
             self.to_string(datasource) + "\n"
             for datasource in arg.datasources.values()
             if datasource.namespace == DEFAULT_NAMESPACE
-            and not isinstance(datasource, MergeDatasource)
         ]
         rendered_imports = [
             self.to_string(import_statement)

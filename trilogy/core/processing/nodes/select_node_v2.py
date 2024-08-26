@@ -87,13 +87,12 @@ class SelectNode(StrategyNode):
             for x in c.alias.concept_arguments:
                 source_map[x.address] = {datasource}
         for x in all_concepts_final:
-            # add in any derived concepts to support a merge node
             if x.address not in source_map and x.derivation in (
                 PurposeLineage.MULTISELECT,
-                PurposeLineage.MERGE,
                 PurposeLineage.FILTER,
                 PurposeLineage.BASIC,
                 PurposeLineage.ROWSET,
+                PurposeLineage.BASIC,
             ):
                 source_map[x.address] = set()
 

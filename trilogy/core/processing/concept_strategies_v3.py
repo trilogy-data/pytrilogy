@@ -77,9 +77,6 @@ def get_priority_concept(
                 and c.granularity == Granularity.SINGLE_ROW
             ]
             +
-            # anything that requires merging concept universes
-            [c for c in remaining_concept if c.derivation == PurposeLineage.MERGE]
-            +
             # then multiselects to remove them from scope
             [c for c in remaining_concept if c.derivation == PurposeLineage.MULTISELECT]
             +
@@ -340,8 +337,9 @@ def validate_concept(
     found_map: dict[str, set[Concept]],
     accept_partial: bool,
 ):
-    found_map[str(node)].add(concept)
+
     if concept not in node.partial_concepts:
+        found_map[str(node)].add(concept)
         found_addresses.add(concept.address)
         non_partial_addresses.add(concept.address)
         # remove it from our partial tracking
@@ -376,7 +374,7 @@ def validate_stack(
     concepts: List[Concept],
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map:dict[str, set[str]] = defaultdict(set)
+    found_map:dict[str, set[Concept]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
@@ -409,7 +407,7 @@ def validate_stack(
             virtual_addresses,
         )
 
-    graph_count, graphs = get_disconnected_components(found_map)
+    graph_count, _ = get_disconnected_components(found_map)
     if graph_count in (0, 1):
         return (
             ValidationResult.COMPLETE,

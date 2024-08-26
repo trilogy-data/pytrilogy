@@ -371,7 +371,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
     modifiers: Optional[List[Modifier]] = Field(default_factory=list)
-    pseudonyms: Optional[Dict[str, Concept]] = Field(default_factory=dict)
+    pseudonyms: Dict[str, Concept] = Field(default_factory=dict)
 
     def __hash__(self):
         return hash(str(self))
@@ -394,7 +394,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
             keys=(
-                (x.with_merge(source, target, modifiers) for x in self.keys)
+                tuple(x.with_merge(source, target, modifiers) for x in self.keys)
                 if self.keys
                 else None
             ),
@@ -1174,6 +1174,12 @@ class ConceptTransform(Namespaced, BaseModel):
     def input(self) -> List[Concept]:
         return [v for v in self.function.arguments if isinstance(v, Concept)]
 
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return ConceptTransform(
+            function=self.function.with_merge(source, target, modifiers),
+            output=self.output.with_merge(source, target, modifiers),
+            modifiers=self.modifiers + modifiers,
+        )
     def with_namespace(self, namespace: str) -> "ConceptTransform":
         return ConceptTransform(
             function=self.function.with_namespace(namespace),
@@ -1284,6 +1290,13 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
 
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "FilterItem":
+        return FilterItem(
+            content=source.with_merge(source, target, modifiers),
+            where=self.where.with_merge(source, target, modifiers),
+        )
     def with_namespace(self, namespace: str) -> "FilterItem":
         return FilterItem(
             content=self.content.with_namespace(namespace),
@@ -1336,7 +1349,7 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
         return [self.content] + self.where.concept_arguments
 
 
-class SelectItem(Namespaced, BaseModel):
+class SelectItem(Mergeable, Namespaced, BaseModel):
     content: Union[Concept, ConceptTransform]
     modifiers: List[Modifier] = Field(default_factory=list)
 
@@ -1351,6 +1364,12 @@ class SelectItem(Namespaced, BaseModel):
     @property
     def input(self) -> List[Concept]:
         return self.content.input
+    
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "SelectItem":
+        return SelectItem(
+            content=self.content.with_merge(source, target, modifiers),
+            modifiers=modifiers,
+        )
 
     def with_namespace(self, namespace: str) -> "SelectItem":
         return SelectItem(
@@ -1403,7 +1422,7 @@ class RawSQLStatement(BaseModel):
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
 
-class SelectStatement(Namespaced, SelectTypeMixin, BaseModel):
+class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -1433,6 +1452,17 @@ class SelectStatement(Namespaced, SelectTypeMixin, BaseModel):
             else:
                 new.append(item)
         return new
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "SelectStatement":
+        return SelectStatement(
+            selection=[x.with_merge(source, target, modifiers) for x in self.selection],
+            order_by=self.order_by.with_merge(source, target, modifiers)
+            if self.order_by
+            else None,
+            limit=self.limit,
+        )
 
     @property
     def input_components(self) -> List[Concept]:
@@ -1609,6 +1639,7 @@ class MultiSelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    where_clause: Optional[WhereClause] = None
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
@@ -1640,7 +1671,8 @@ class MultiSelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             namespace=self.namespace,
             order_by=self.order_by.with_merge(source, target, modifiers) if self.order_by else None,
             limit =self.limit,
-            meta=self.meta
+            meta=self.meta,
+            where_clause=self.where_clause.with_merge(source, target, modifiers) if self.where_clause else None,    
         )
         return new
 
@@ -1655,6 +1687,10 @@ class MultiSelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             namespace=namespace,
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            limit=self.limit,
+            meta=self.meta,
+            where_clause=self.where_clause.with_namespace(namespace) if self.where_clause else None,
         )
 
     @property
@@ -1929,29 +1965,6 @@ class Datasource(Namespaced, BaseModel):
         if isinstance(self.address, Address):
             return self.address.location
         return self.address
-
-
-class MergeDatasource(Datasource):
-    lineage: MergeStatement
-
-    @property
-    def can_be_inlined(self) -> bool:
-        return False
-
-    def with_namespace(self, namespace: str):
-        new_namespace = (
-            namespace + "." + self.namespace
-            if self.namespace and self.namespace != DEFAULT_NAMESPACE
-            else namespace
-        )
-        return MergeDatasource(
-            identifier=self.identifier,
-            namespace=new_namespace,
-            grain=self.grain.with_namespace(namespace),
-            address=self.address,
-            columns=[c.with_namespace(namespace) for c in self.columns],
-            lineage=self.lineage.with_namespace(namespace),
-        )
 
 
 class UnnestJoin(BaseModel):
@@ -2627,7 +2640,7 @@ class Join(BaseModel):
         )
 
 
-class UndefinedConcept(Concept):
+class UndefinedConcept( Concept, Mergeable, Namespaced):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     environment: "EnvironmentConceptDict"
@@ -2635,6 +2648,32 @@ class UndefinedConcept(Concept):
     datatype: DataType = DataType.UNKNOWN
     purpose: Purpose = Purpose.KEY
 
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "UndefinedConcept":
+        if self.address == source.address:
+            new = target.with_grain(self.grain.with_merge(source, target, modifiers))
+            new.pseudonyms[self.address] = self
+            return new
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=(
+                self.lineage.with_merge(source, target, modifiers)
+                if self.lineage
+                else None
+            ),
+            grain=self.grain.with_merge(source, target, modifiers),
+            namespace=self.namespace,
+            keys=(
+                (x.with_merge(source, target, modifiers) for x in self.keys)
+                if self.keys
+                else None
+            ),
+            environment=self.environment,
+            line_no=self.line_no,
+        )
+    
     def with_namespace(self, namespace: str) -> "UndefinedConcept":
         return self.__class__(
             name=self.name,
@@ -2679,7 +2718,7 @@ class UndefinedConcept(Concept):
             environment=self.environment,
         )
 
-    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+    def with_grain(self, grain: Optional["Grain"] = None) -> "UndefinedConcept":
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -2693,7 +2732,7 @@ class UndefinedConcept(Concept):
             line_no=self.line_no,
         )
 
-    def with_default_grain(self) -> "Concept":
+    def with_default_grain(self) -> "UndefinedConcept":
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
             grain = Grain(components=[self.with_grain(Grain())], nested=True)
@@ -2755,6 +2794,8 @@ class EnvironmentConceptDict(dict):
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
+                if key in self.undefined:
+                    return self.undefined[key]
                 undefined = UndefinedConcept(
                     name=key,
                     line_no=line_no,
@@ -2778,7 +2819,7 @@ class EnvironmentConceptDict(dict):
         matches = difflib.get_close_matches(concept_name, self.keys())
         return matches
 
-    def items(self) -> ItemsView[str, Concept | UndefinedConcept]:  # type: ignore
+    def items(self) -> ItemsView[str, Concept]:  # type: ignore
         return super().items()
 
 
@@ -3078,7 +3119,7 @@ class LazyEnvironment(Environment):
         return super().__getattribute__(name)
 
 
-class Comparison(ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel):
+class Comparison(ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel):
     left: Union[
         int,
         str,
@@ -3174,6 +3215,21 @@ class Comparison(ConceptArgs, Namespaced, ConstantInlineable, SelectContext, Bas
         return Comparison(
             left=new_left,
             right=new_right,
+            operator=self.operator,
+        )
+
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return self.__class__(
+            left=(
+                self.left.with_merge(source, target, modifiers)
+                if isinstance(self.left, Mergeable)
+                else self.left
+            ),
+            right=(
+                self.right.with_merge(source, target, modifiers)
+                if isinstance(self.right, Mergeable)
+                else self.right
+            ),
             operator=self.operator,
         )
 
@@ -3588,10 +3644,10 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
     def arguments(self):
         return self.function.arguments
 
-    def with_merge(self, source: Concept, target: Concept):
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return AggregateWrapper(
-            function=self.function.with_merge(source, target),
-            by=[c.with_merge(source, target) for c in self.by] if self.by else [],
+            function=self.function.with_merge(source, target, modifiers=modifiers),
+            by=[c.with_merge(source, target, modifiers) for c in self.by] if self.by else [],
         )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
@@ -3611,7 +3667,7 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
         return AggregateWrapper(function=parent, by=by)
 
 
-class WhereClause(ConceptArgs, Namespaced, SelectContext, BaseModel):
+class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
     conditional: Union[SubselectComparison, Comparison, Conditional, "Parenthetical"]
 
     @property
@@ -3629,6 +3685,11 @@ class WhereClause(ConceptArgs, Namespaced, SelectContext, BaseModel):
     @property
     def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return self.conditional.existence_arguments
+    
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return WhereClause(
+            conditional=self.conditional.with_merge(source, target, modifiers)
+        )   
 
     def with_namespace(self, namespace: str) -> WhereClause:
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
@@ -3766,7 +3827,7 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
         )
 
 
-class RowsetItem(Namespaced, BaseModel):
+class RowsetItem(Mergeable, Namespaced, BaseModel):
     content: Concept
     rowset: RowsetDerivationStatement
     where: Optional["WhereClause"] = None
@@ -3774,6 +3835,13 @@ class RowsetItem(Namespaced, BaseModel):
     def __repr__(self):
         return (
             f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
+        )
+    
+    def with_merge (self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return RowsetItem(
+            content=self.content.with_merge(source, target, modifiers),
+            rowset=self.rowset,
+            where=self.where.with_merge(source, target, modifiers) if self.where else None,
         )
 
     def with_namespace(self, namespace: str) -> "RowsetItem":
@@ -3826,7 +3894,7 @@ class RowsetItem(Namespaced, BaseModel):
 
 
 class Parenthetical(
-    ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel
+    ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel
 ):
     content: "Expr"
 
@@ -3851,7 +3919,10 @@ class Parenthetical(
                 else self.content
             )
         )
-
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return Parenthetical(
+            content=self.content.with_merge(source, target, modifiers)
+        )
     def with_select_context(
         self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
     ):
