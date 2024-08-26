@@ -374,7 +374,7 @@ def validate_stack(
     concepts: List[Concept],
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map:dict[str, set[Concept]] = defaultdict(set)
+    found_map: dict[str, set[Concept]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()

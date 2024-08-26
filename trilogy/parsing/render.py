@@ -141,8 +141,6 @@ class Renderer:
         components = ",".join(self.to_string(x) for x in arg.components)
         return f"grain ({components})"
 
-
-
     @to_string.register
     def _(self, arg: "Query"):
         return f"""query {arg.text}"""

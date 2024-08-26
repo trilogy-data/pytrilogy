@@ -103,7 +103,7 @@ def extract_concept(node: str, env: Environment):
 
 
 def filter_unique_graphs(graphs: list[list[str]]) -> list[list[str]]:
-    unique_graphs:list[set[str]] = []
+    unique_graphs: list[set[str]] = []
     for graph in graphs:
         if not any(set(graph).issubset(x) for x in unique_graphs):
             unique_graphs.append(set(graph))
