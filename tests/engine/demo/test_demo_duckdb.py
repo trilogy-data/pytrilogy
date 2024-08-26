@@ -318,6 +318,7 @@ order by survivors.passenger.name desc
 limit 5;"""
     raw = executor.generate_sql(test)[-1]
     assert raw.count("STRING_SPLIT") == 1
+    assert raw.count('"eldest" = 1') == 1, "should only filter to eldest once"
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 5

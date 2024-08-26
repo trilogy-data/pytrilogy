@@ -31,10 +31,11 @@ def is_child_of(a, comparison):
     return base
 
 
-COUNT = 0
-
-
 class PredicatePushdown(OptimizationRule):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.complete: dict[str, bool] = {}
 
     def _check_parent(
         self,
@@ -82,16 +83,39 @@ class PredicatePushdown(OptimizationRule):
         return False
 
     def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+        optimized = False
 
         if not cte.parent_ctes:
             self.debug(f"No parent CTEs for {cte.name}")
 
             return False
 
-        optimized = False
         if not cte.condition:
             self.debug(f"No CTE condition for {cte.name}")
             return False
+        if all(
+            [
+                is_child_of(cte.condition, parent_cte.condition)
+                for parent_cte in cte.parent_ctes
+            ]
+        ) and not any([isinstance(x, Datasource) for x in cte.source.datasources]):
+            self.log(
+                f"All parents of {cte.name} have same filter, removing filter from {cte.name}"
+            )
+            cte.condition = None
+            return True
+        else:
+            mapping = {
+                parent.name: is_child_of(cte.condition, parent.condition)
+                for parent in cte.parent_ctes
+            }
+            self.log(
+                f"Could not remove filter from {cte.name}, as not all parents have the same filter: {mapping}"
+            )
+        if self.complete.get(cte.name):
+            self.debug("Have done this CTE before")
+            return False
+
         self.debug(
             f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
         )
@@ -99,23 +123,23 @@ class PredicatePushdown(OptimizationRule):
             candidates = cte.condition.decompose()
         else:
             candidates = [cte.condition]
-        self.debug(f"Have {len(candidates)} candidates to try to push down")
+        self.debug(
+            f"Have {len(candidates)} candidates to try to push down from parent {type(cte.condition)}"
+        )
+        optimized = False
         for candidate in candidates:
+            self.debug(f"Checking candidate {candidate}")
             for parent_cte in cte.parent_ctes:
-                optimized = self._check_parent(
+                local_pushdown = self._check_parent(
                     parent_cte=parent_cte, candidate=candidate, inverse_map=inverse_map
                 )
-                self.debug(f"Optimized {candidate} to {parent_cte.name}")
-                if optimized:
-                    if all(
-                        [
-                            is_child_of(cte.condition, parent_cte.condition)
-                            for parent_cte in cte.parent_ctes
-                        ]
-                    ) and not any(
-                        [isinstance(x, Datasource) for x in cte.source.datasources]
-                    ):
-                        self.log("All parents have same filter, removing filter")
-                        cte.condition = None
-                    return True
+                optimized = optimized or local_pushdown
+                if local_pushdown:
+                    # taint a CTE again when something is pushed up to it.
+                    self.complete[parent_cte.name] = False
+                self.debug(
+                    f"Pushed down {candidate} from {cte.name} to {parent_cte.name}"
+                )
+
+        self.complete[cte.name] = True
         return optimized

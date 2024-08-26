@@ -47,6 +47,7 @@ class SelectNode(StrategyNode):
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        hidden_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -60,6 +61,7 @@ class SelectNode(StrategyNode):
             force_group=force_group,
             grain=grain,
             conditions=conditions,
+            hidden_concepts=hidden_concepts,
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
@@ -117,6 +119,7 @@ class SelectNode(StrategyNode):
             condition=self.conditions,
             # select nodes should never group
             force_group=self.force_group,
+            hidden_concepts=self.hidden_concepts,
         )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
@@ -133,6 +136,7 @@ class SelectNode(StrategyNode):
             joins=[],
             partial_concepts=[],
             source_type=SourceType.CONSTANT,
+            hidden_concepts=self.hidden_concepts,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -182,6 +186,7 @@ class SelectNode(StrategyNode):
             grain=self.grain,
             force_group=self.force_group,
             conditions=self.conditions,
+            hidden_concepts=self.hidden_concepts,
         )
 
 
@@ -198,4 +203,5 @@ class ConstantNode(SelectNode):
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
             conditions=self.conditions,
+            hidden_concepts=self.hidden_concepts,
         )

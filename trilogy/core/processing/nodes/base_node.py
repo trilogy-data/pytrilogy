@@ -161,11 +161,13 @@ class StrategyNode:
 
     def hide_output_concepts(self, concepts: List[Concept]):
         for x in concepts:
-            if x.address in [c.address for c in self.output_concepts]:
-                self.hidden_concepts.append(x)
-                self.output_concepts = [
-                    y for y in self.output_concepts if y.address != x.address
-                ]
+            self.hidden_concepts.append(x)
+        self.rebuild_cache()
+
+    def remove_output_concepts(self, concepts: List[Concept]):
+        for x in concepts:
+            self.hidden_concepts.append(x)
+        self.output_concepts = [x for x in self.output_concepts if x not in concepts]
         self.rebuild_cache()
 
     @property
@@ -207,6 +209,7 @@ class StrategyNode:
             condition=self.conditions,
             partial_concepts=self.partial_concepts,
             force_group=self.force_group,
+            hidden_concepts=self.hidden_concepts,
         )
 
     def rebuild_cache(self) -> QueryDatasource:

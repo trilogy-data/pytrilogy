@@ -381,8 +381,8 @@ def test_constant_group(default_duckdb_engine: Executor):
 const x <- 1;
 const x2 <- x+1;
 
-key orid <- unnest([1,2,3]);
-property orid.mod_two <- orid % 2;
+key constan_group_orid <- unnest([1,2,3]);
+property constan_group_orid.mod_two <- constan_group_orid % 2;
 
 select 
     mod_two,

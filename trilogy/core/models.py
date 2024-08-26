@@ -164,7 +164,7 @@ class ConstantInlineable(ABC):
         raise NotImplementedError
 
 
-class SelectTypeMixin(ABC):
+class SelectTypeMixin(BaseModel):
     where_clause: Union["WhereClause", None] = Field(default=None)
 
     @property
@@ -1640,14 +1640,13 @@ class AlignClause(Namespaced, BaseModel):
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class MultiSelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
+class MultiSelectStatement(SelectTypeMixin, Mergeable, Namespaced, BaseModel):
     selects: List[SelectStatement]
     align: AlignClause
     namespace: str
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-    where_clause: Optional[WhereClause] = None
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
@@ -2552,7 +2551,9 @@ class CTE(BaseModel):
                                 for cte in self.parent_ctes
                             ]
                         )
-                        or c.derivation == PurposeLineage.ROWSET
+                        # if we have this metric from a source
+                        # it isn't derived here and must be grouped on
+                        or len(self.source_map[c.address]) > 0
                     )
                 ]
                 + [
@@ -2787,6 +2788,21 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         )
 
 
+class EnvironmentDatasourceDict(dict):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(self, *args, **kwargs)
+
+    def __getitem__(self, key: str) -> Datasource:
+        try:
+            return super(EnvironmentDatasourceDict, self).__getitem__(key)
+        except KeyError:
+            if DEFAULT_NAMESPACE + "." + key in self:
+                return self.__getitem__(DEFAULT_NAMESPACE + "." + key)
+            if "." in key and key.split(".")[0] == DEFAULT_NAMESPACE:
+                return self.__getitem__(key.split(".")[1])
+            raise
+
+
 class EnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(self, *args, **kwargs)
@@ -2866,13 +2882,25 @@ def validate_concepts(v) -> EnvironmentConceptDict:
     raise ValueError
 
 
+def validate_datasources(v) -> EnvironmentDatasourceDict:
+    if isinstance(v, EnvironmentDatasourceDict):
+        return v
+    elif isinstance(v, dict):
+        return EnvironmentDatasourceDict(
+            **{x: Datasource.model_validate(y) for x, y in v.items()}
+        )
+    raise ValueError
+
+
 class Environment(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
 
     concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
         Field(default_factory=EnvironmentConceptDict)
     )
-    datasources: Dict[str, Datasource] = Field(default_factory=dict)
+    datasources: Annotated[
+        EnvironmentDatasourceDict, PlainValidator(validate_datasources)
+    ] = Field(default_factory=EnvironmentDatasourceDict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, ImportStatement] = Field(default_factory=dict)
@@ -3534,7 +3562,7 @@ class Conditional(
             operator=self.operator,
         )
 
-    def with_namespace(self, namespace: str):
+    def with_namespace(self, namespace: str) -> "Conditional":
         return Conditional(
             left=(
                 self.left.with_namespace(namespace)
@@ -3549,7 +3577,9 @@ class Conditional(
             operator=self.operator,
         )
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "Conditional":
         return Conditional(
             left=(
                 self.left.with_merge(source, target, modifiers)

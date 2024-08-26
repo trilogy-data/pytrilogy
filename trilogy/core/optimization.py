@@ -58,8 +58,6 @@ def is_direct_return_eligible(
         if select.where_clause
         else set()
     )
-    if conditions and select.limit:
-        return False
     for x in derived_concepts:
         if x.derivation == PurposeLineage.WINDOW:
             return False
@@ -69,7 +67,7 @@ def is_direct_return_eligible(
             if x.address in conditions:
                 return False
     logger.info(
-        f"Upleveling output select to final CTE with derived_concepts {[x.address for x in derived_concepts]}"
+        f"[Optimization][EarlyReturn] Upleveling output select to final CTE with derived_concepts {[x.address for x in derived_concepts]}"
     )
     return eligible
 
@@ -123,15 +121,14 @@ def optimize_ctes(
         complete = False
         while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
             actions_taken = False
-            triggered = False
             # assume we go through all CTEs once
-            for cte in input:
-                inverse_map = gen_inverse_map(input)
+            look_at = [root_cte, *input]
+            inverse_map = gen_inverse_map(look_at)
+            for cte in look_at:
                 opt = rule.optimize(cte, inverse_map)
                 actions_taken = actions_taken or opt
-            if triggered:
-                break
             complete = not actions_taken
             loops += 1
+        logger.info(f"finished checking for {type(rule).__name__} in {loops} loops")
 
     return filter_irrelevant_ctes(input, root_cte)

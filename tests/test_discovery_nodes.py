@@ -39,7 +39,11 @@ def test_group_node_property(test_environment: Environment, test_environment_gra
         source_concepts=search_concepts,
         depth=0,
     )
-    input_concept_names = {x.name for x in group_node.parents[0].output_concepts}
+    input_concept_names = {
+        x.name
+        for x in group_node.parents[0].output_concepts
+        if x not in group_node.parents[0].hidden_concepts
+    }
     assert input_concept_names == {"category_name_length", "category_id"}
     # assert len(input_concept.grain.components) == 1
     # assert input_concept.grain.components[0].name == "category_id"
@@ -60,7 +64,11 @@ def test_group_node_property_all(test_environment: Environment, test_environment
         source_concepts=search_concepts,
         depth=0,
     )
-    input_concept_names = {x.name for x in group_node.parents[0].output_concepts}
+    input_concept_names = {
+        x.name
+        for x in group_node.parents[0].output_concepts
+        if x not in group_node.parents[0].hidden_concepts
+    }
     assert input_concept_names == {"category_name_length", "category_id"}
     final = group_node.resolve()
     assert len(final.datasources) == 1

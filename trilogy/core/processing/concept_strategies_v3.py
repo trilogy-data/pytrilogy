@@ -337,9 +337,9 @@ def validate_concept(
     found_map: dict[str, set[Concept]],
     accept_partial: bool,
 ):
-
+    found_map[str(node)].add(concept)
     if concept not in node.partial_concepts:
-        found_map[str(node)].add(concept)
+
         found_addresses.add(concept.address)
         non_partial_addresses.add(concept.address)
         # remove it from our partial tracking
@@ -397,6 +397,7 @@ def validate_stack(
                 continue
             found_addresses.add(concept.address)
             virtual_addresses.add(concept.address)
+
     # zip in those we know we found
     if not all([c.address in found_addresses for c in concepts]):
         return (

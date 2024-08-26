@@ -24,9 +24,9 @@ class InlineConstant(OptimizationRule):
                 self.log(f"Attempting to inline constant {c.address} on {cte.name}")
                 test = cte.inline_constant(c)
                 if test:
-                    self.log("Successfully inlined constant to starling")
+                    self.log(f"Successfully inlined constant to {cte.name}")
                     inlined = True
                 else:
-                    self.log("Could not inline constant")
+                    self.log(f"Could not inline constant to {cte.name}")
             return inlined
         return False

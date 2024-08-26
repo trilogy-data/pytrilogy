@@ -1,9 +1,7 @@
 from trilogy import parse, Dialects
 
 from pathlib import Path
-from logging import StreamHandler, DEBUG
 
-from trilogy.constants import logger
 from trilogy.core.enums import Purpose
 from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
@@ -16,9 +14,6 @@ from trilogy.core.models import (
     BooleanOperator,
     SubselectComparison,
 )
-
-logger.setLevel(DEBUG)
-logger.addHandler(StreamHandler())
 
 
 def test_pushdown():

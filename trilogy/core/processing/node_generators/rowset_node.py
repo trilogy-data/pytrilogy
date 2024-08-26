@@ -96,15 +96,14 @@ def gen_rowset_node(
     if select.where_clause:
         for item in additional_relevant:
             node.partial_concepts.append(item)
-    node.hide_output_concepts(
-        rowset_hidden
-        + [
-            x
-            for x in node.output_concepts
-            if x.address not in [y.address for y in local_optional + [concept]]
-            and x.derivation != PurposeLineage.ROWSET
-        ]
-    )
+
+    final_hidden = rowset_hidden + [
+        x
+        for x in node.output_concepts
+        if x.address not in [y.address for y in local_optional + [concept]]
+        and x.derivation != PurposeLineage.ROWSET
+    ]
+    node.hide_output_concepts(final_hidden)
     # assume grain to be output of select
     # but don't include anything aggregate at this point
     assert node.resolution_cache
@@ -143,7 +142,6 @@ def gen_rowset_node(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node"
         )
         return node
-
     return MergeNode(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
         output_concepts=node.output_concepts + local_optional,

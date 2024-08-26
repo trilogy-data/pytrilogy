@@ -1054,12 +1054,20 @@ class ParseToObjects(Transformer):
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
 
+    def condition_parenthetical(self, args):
+        return Parenthetical(content=args[0])
+
     def conditional(self, args):
-        if args[0] is None:
-            raise ValueError
-        elif args[2] is None:
-            raise ValueError
-        return Conditional(left=args[0], right=args[2], operator=args[1])
+        def munch_args(args):
+            while args:
+                if len(args) == 1:
+                    return args[0]
+                else:
+                    return Conditional(
+                        left=args[0], operator=args[1], right=munch_args(args[2:])
+                    )
+
+        return munch_args(args)
 
     def window_order(self, args):
         return WindowOrder(args[0])
@@ -1736,7 +1744,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         | None
     ],
 ]:
-    environment = environment or Environment(datasources={})
+    environment = environment or Environment()
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
 
     try:

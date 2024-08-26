@@ -39,6 +39,7 @@ from trilogy.core.models import (
     AlignItem,
     RawSQLStatement,
     NumericType,
+    MergeStatementV2,
 )
 from trilogy.core.enums import Modifier
 
@@ -334,6 +335,18 @@ class Renderer:
         if arg.by:
             return f"{self.to_string(arg.function)} by {self.to_string(arg.by)}"
         return f"{self.to_string(arg.function)}"
+
+    @to_string.register
+    def _(self, arg: MergeStatementV2):
+        return f"MERGE {self.to_string(arg.source)} into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{self.to_string(arg.target)};"
+
+    @to_string.register
+    def _(self, arg: Modifier):
+        if arg == Modifier.PARTIAL:
+            return "~"
+        if arg == Modifier.HIDDEN:
+            return "--"
+        return arg.value
 
     @to_string.register
     def _(self, arg: int):

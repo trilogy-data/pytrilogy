@@ -72,7 +72,7 @@ def gen_basic_node(
 
         parent_node.add_output_concept(concept)
 
-        parent_node.hide_output_concepts(
+        parent_node.remove_output_concepts(
             [
                 x
                 for x in parent_node.output_concepts
