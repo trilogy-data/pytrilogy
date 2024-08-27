@@ -3,6 +3,9 @@ from pathlib import Path
 
 from trilogy import Environment, Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.core.processing.nodes import SelectNode, MergeNode, GroupNode
+from trilogy.core.env_processor import generate_graph
+from tests.utility import validate_shape
 
 working_path = Path(__file__).parent
 test = working_path / "store.preql"
@@ -47,8 +50,9 @@ def test_one():
         )
         == 7
     )
+    g = generate_graph(env)
 
-    _ = exec.parse_text(
+    parsed = exec.parse_text(
         """select
     returns.customer.id,
     returns.store.id,
@@ -60,26 +64,25 @@ where
     and returns.store.state = 'CA';"""
     )
 
-    # validate_shape(
-    #     parsed[-1].output_columns,
-    #     env,
-    #     g,
-    #     levels=[
-    #         SelectNode,  # select store
-    #         SelectNode,  # select store
-    #         SelectNode,  # select year
-    #         SelectNode,  # select fact
-    #         MergeNode,  # merge year into fact
-    #         MergeNode,  # merge year into fac
-    #                 MergeNode,  # merge year into fac
-    #                         MergeNode,  # merge year into fac
-    #         GroupNode,  # calculate aggregate
-    #         MergeNode,  # enrich store name
-    #         GroupNode,  # final node
-    #         # MergeNode,  # enrich store name
-    #         # GroupNode,  # final node
-    #     ],
-    # )
+    validate_shape(
+        parsed[-1].output_columns,
+        env,
+        g,
+        levels=[
+            SelectNode,
+            SelectNode,  # select store
+            SelectNode,  # select store
+            SelectNode,  # select year
+            MergeNode,  # merge year into fact
+            MergeNode,
+            MergeNode,  # merge year into fac
+            GroupNode,  # calculate aggregate
+            MergeNode,  # enrich store name
+            GroupNode,  # final node
+            # MergeNode,  # enrich store name
+            # GroupNode,  # final node
+        ],
+    )
 
     sql = exec.generate_sql(
         """import customer as customer;
