@@ -236,6 +236,7 @@ def resolve_weak_components(
         # we need to take unique again as different addresses may map to the same concept
         sub_component = unique(
             # sorting here is required for reproducibility
+            # todo: we should sort in an optimized order
             [extract_concept(x, environment) for x in sorted(component)],
             "address",
         )
