@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Conditional,
     Comparison,
     Parenthetical,
+    Grain,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -34,6 +35,7 @@ class FilterNode(StrategyNode):
         conditions: Conditional | Comparison | Parenthetical | None = None,
         partial_concepts: List[Concept] | None = None,
         force_group: bool | None = False,
+        grain: Grain | None = None,
     ):
         super().__init__(
             output_concepts=output_concepts,
@@ -46,6 +48,7 @@ class FilterNode(StrategyNode):
             conditions=conditions,
             partial_concepts=partial_concepts,
             force_group=force_group,
+            grain=grain,
         )
 
     def copy(self) -> "FilterNode":

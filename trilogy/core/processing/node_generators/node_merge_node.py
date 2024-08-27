@@ -240,7 +240,6 @@ def resolve_weak_components(
         if not sub_component:
             continue
         subgraphs.append(sub_component)
-
     return subgraphs
 
 

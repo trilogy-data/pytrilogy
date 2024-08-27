@@ -180,7 +180,7 @@ class StrategyNode:
 
     @property
     def all_used_concepts(self) -> list[Concept]:
-        return [*self.input_concepts]
+        return [*self.input_concepts, *self.existence_concepts]
 
     def __repr__(self):
         concepts = self.all_concepts

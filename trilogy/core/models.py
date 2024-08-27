@@ -1822,14 +1822,20 @@ class Datasource(Namespaced, BaseModel):
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
+    pseudonyms: List[str] = Field(default_factory=list)
 
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         original = [c for c in self.columns if c.concept.address == source.address]
+        self.pseudonyms.append(source)
         # map to the alias with the modifier, and the original
         self.columns = [
-            c.with_merge(target, modifiers) if c.concept == source else c
+            (
+                c.with_merge(target, modifiers)
+                if c.concept.address == source.address
+                else c
+            )
             for c in self.columns
         ] + original
         self.grain = self.grain.with_merge(source, target, modifiers)
@@ -1946,6 +1952,10 @@ class Datasource(Namespaced, BaseModel):
     @property
     def partial_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
+
+    @property
+    def pseudonymized_concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns if c.concept.address in self.pseudonyms]
 
     def get_alias(
         self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
@@ -3126,7 +3136,7 @@ class Environment(BaseModel):
         self.alias_origin_lookup[source.address] = source
         for k, v in self.concepts.items():
             if v.address == target.address:
-                target.pseudonyms[source.address] = source
+                v.pseudonyms[source.address] = source
             if v.address == source.address:
                 replacements[k] = target
         self.concepts.update(replacements)

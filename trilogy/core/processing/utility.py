@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Concept,
     QueryDatasource,
     LooseConceptList,
+    Environment,
 )
 
 from trilogy.core.enums import Purpose, Granularity
@@ -139,6 +140,7 @@ def add_node_join_concept(graph, concept, datasource, concepts):
 def get_node_joins(
     datasources: List[QueryDatasource],
     grain: List[Concept],
+    environment: Environment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
@@ -164,15 +166,53 @@ def get_node_joins(
                         graph.add_edge(node, concept.address)
 
     joins: defaultdict[str, set] = defaultdict(set)
-    identifier_map = {x.identifier: x for x in datasources}
+    identifier_map: dict[str, Datasource] = {x.identifier: x for x in datasources}
+
+    grain_pseudonyms = set()
+    for g in grain:
+        env_lookup = environment.concepts[g.address]
+        # if we're looking up a pseudonym, we would have gotten the remapped value
+        # so double check we got what we were looking for
+        if env_lookup.address == g.address:
+            grain_pseudonyms.update(env_lookup.pseudonyms.keys())
 
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
         # sort so that anything with a partial match on the target is later
         key=lambda x: len(
-            [x for x in identifier_map[x].partial_concepts if x in grain]
+            [
+                partial
+                for partial in identifier_map[x].partial_concepts
+                if partial in grain
+            ]
+            + [
+                output
+                for output in identifier_map[x].output_concepts
+                if output.address in grain_pseudonyms
+            ]
         ),
     )
+
+    node_map = {
+        x[0:20]: len(
+            [
+                partial
+                for partial in identifier_map[x].partial_concepts
+                if partial in grain
+            ]
+            + [
+                output
+                for output in identifier_map[x].output_concepts
+                if output.address in grain_pseudonyms
+            ]
+        )
+        for x in node_list
+    }
+    print("NODE MAP")
+    print(node_map)
+    print([x.address for x in grain])
+    print(grain_pseudonyms)
+
     for left in node_list:
         # the constant dataset is a special case
         # and can never be on the left of a join

@@ -2,7 +2,7 @@ from typing import List
 
 
 from trilogy.core.enums import JoinType
-from trilogy.core.models import Concept, Environment, FilterItem
+from trilogy.core.models import Concept, Environment, FilterItem, Grain
 from trilogy.core.processing.nodes import (
     FilterNode,
     MergeNode,
@@ -65,6 +65,7 @@ def gen_filter_node(
         else:
             parent.conditions = where.conditional
         parent.output_concepts = [concept]
+        parent.grain = Grain(components=[concept])
         parent.rebuild_cache()
 
         logger.info(

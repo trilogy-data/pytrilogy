@@ -35,7 +35,7 @@ def gen_rowset_node(
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivationStatement = lineage.rowset
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
-    parents: List[StrategyNode] = []
+    existence_parents: List[StrategyNode] = []
     if where := select.where_clause:
         targets = select.output_components + where.conditional.row_arguments
         for sub_select in where.conditional.existence_arguments:
@@ -54,7 +54,7 @@ def gen_rowset_node(
                     f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent existence node for rowset node for {concept}"
                 )
                 return None
-            parents.append(parent_check)
+            existence_parents.append(parent_check)
     else:
         targets = select.output_components
     node: StrategyNode = source_concepts(
@@ -65,18 +65,22 @@ def gen_rowset_node(
         history=history,
     )
 
-    # add our existence concepts in
-    if parents:
-        node.parents += parents
-        for parent in parents:
-            for x in parent.output_concepts:
-                if x.address not in node.output_lcl:
-                    node.existence_concepts.append(x)
     if not node:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
         )
         return None
+    # add our existence concepts in
+    if existence_parents:
+        node.parents += existence_parents
+        # we don't need to join to any existence parents
+        if isinstance(node, MergeNode):
+            node.node_joins = []
+        for parent in existence_parents:
+            for x in parent.output_concepts:
+                if x.address not in node.output_lcl:
+                    node.existence_concepts.append(x)
+
     node.conditions = select.where_clause.conditional if select.where_clause else None
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
