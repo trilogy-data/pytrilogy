@@ -1822,13 +1822,11 @@ class Datasource(Namespaced, BaseModel):
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
-    pseudonyms: List[str] = Field(default_factory=list)
 
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         original = [c for c in self.columns if c.concept.address == source.address]
-        self.pseudonyms.append(source)
         # map to the alias with the modifier, and the original
         self.columns = [
             (
@@ -1952,10 +1950,6 @@ class Datasource(Namespaced, BaseModel):
     @property
     def partial_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
-
-    @property
-    def pseudonymized_concepts(self) -> List[Concept]:
-        return [c.concept for c in self.columns if c.concept.address in self.pseudonyms]
 
     def get_alias(
         self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False

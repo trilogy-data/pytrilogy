@@ -166,9 +166,11 @@ def get_node_joins(
                         graph.add_edge(node, concept.address)
 
     joins: defaultdict[str, set] = defaultdict(set)
-    identifier_map: dict[str, Datasource] = {x.identifier: x for x in datasources}
+    identifier_map: dict[str, Datasource | QueryDatasource] = {
+        x.identifier: x for x in datasources
+    }
 
-    grain_pseudonyms = set()
+    grain_pseudonyms: set[str] = set()
     for g in grain:
         env_lookup = environment.concepts[g.address]
         # if we're looking up a pseudonym, we would have gotten the remapped value
