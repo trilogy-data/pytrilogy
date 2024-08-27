@@ -88,7 +88,7 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
         # insert two items into the table
         connection.execute(
             text(
-                "INSERT INTO items VALUES ('jeans', 20.0, 1, 1), ('hammer', 42.2, 2,1 ), ('hammer', 42.2, 2,2 )"
+                "INSERT INTO items VALUES ('jeans', 20.0, 1, 1), ('hammer', 42.2, 2,1 ), ('hammer', 42.2, 2,2 ), ('hammer', 42.2, 2,3 )"
             )
         )
         connection.commit()
@@ -120,7 +120,7 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def expected_results():
-    yield {"total_count": 5, "avg_count_per_product": 2.5, "converted_total_count": 10}
+    yield {"total_count": 7, "avg_count_per_product": 3.5, "converted_total_count": 14}
 
 
 @fixture(scope="session")

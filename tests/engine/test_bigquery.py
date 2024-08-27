@@ -22,6 +22,7 @@ def test_date_diff_rendering():
 def test_readme():
 
     environment = Environment()
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     environment.parse(
         """
@@ -43,7 +44,9 @@ def test_readme():
 
     """
     )
-    executor = Dialects.BIGQUERY.default_executor(environment=environment)
+    executor = Dialects.BIGQUERY.default_executor(
+        environment=environment, hooks=[DebuggingHook()]
+    )
 
     results = executor.execute_text(
         """SELECT

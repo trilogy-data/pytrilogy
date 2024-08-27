@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Concept,
     QueryDatasource,
     LooseConceptList,
+    Environment,
 )
 
 from trilogy.core.enums import Purpose, Granularity
@@ -123,9 +124,23 @@ def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
     return final_joins
 
 
+def add_node_join_concept(graph, concept, datasource, concepts):
+    # we don't need to join on a concept if all of the keys exist in the grain
+    # if concept.keys and all([x in grain for x in concept.keys]):
+    #     continue
+    concepts.append(concept)
+
+    graph.add_node(concept.address, type=NodeType.CONCEPT)
+    graph.add_edge(datasource.identifier, concept.address)
+    for k, v in concept.pseudonyms.items():
+        if v.address != concept.address:
+            add_node_join_concept(graph, v, datasource, concepts)
+
+
 def get_node_joins(
     datasources: List[QueryDatasource],
     grain: List[Concept],
+    environment: Environment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
@@ -133,12 +148,14 @@ def get_node_joins(
     for datasource in datasources:
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
+            add_node_join_concept(graph, concept, datasource, concepts)
             # we don't need to join on a concept if all of the keys exist in the grain
             # if concept.keys and all([x in grain for x in concept.keys]):
             #     continue
-            concepts.append(concept)
-            graph.add_node(concept.address, type=NodeType.CONCEPT)
-            graph.add_edge(datasource.identifier, concept.address)
+            # concepts.append(concept)
+
+            # graph.add_node(concept.address, type=NodeType.CONCEPT)
+            # graph.add_edge(datasource.identifier, concept.address)
 
     # add edges for every constant to every datasource
     for datasource in datasources:
@@ -149,15 +166,55 @@ def get_node_joins(
                         graph.add_edge(node, concept.address)
 
     joins: defaultdict[str, set] = defaultdict(set)
-    identifier_map = {x.identifier: x for x in datasources}
+    identifier_map: dict[str, Datasource | QueryDatasource] = {
+        x.identifier: x for x in datasources
+    }
+
+    grain_pseudonyms: set[str] = set()
+    for g in grain:
+        env_lookup = environment.concepts[g.address]
+        # if we're looking up a pseudonym, we would have gotten the remapped value
+        # so double check we got what we were looking for
+        if env_lookup.address == g.address:
+            grain_pseudonyms.update(env_lookup.pseudonyms.keys())
 
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
         # sort so that anything with a partial match on the target is later
         key=lambda x: len(
-            [x for x in identifier_map[x].partial_concepts if x in grain]
+            [
+                partial
+                for partial in identifier_map[x].partial_concepts
+                if partial in grain
+            ]
+            + [
+                output
+                for output in identifier_map[x].output_concepts
+                if output.address in grain_pseudonyms
+            ]
         ),
     )
+
+    node_map = {
+        x[0:20]: len(
+            [
+                partial
+                for partial in identifier_map[x].partial_concepts
+                if partial in grain
+            ]
+            + [
+                output
+                for output in identifier_map[x].output_concepts
+                if output.address in grain_pseudonyms
+            ]
+        )
+        for x in node_list
+    }
+    print("NODE MAP")
+    print(node_map)
+    print([x.address for x in grain])
+    print(grain_pseudonyms)
+
     for left in node_list:
         # the constant dataset is a special case
         # and can never be on the left of a join
@@ -203,14 +260,49 @@ def get_node_joins(
                 c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
 
-            # if concept.keys and all([x in grain for x in concept.keys]):
-            #     continue
+        relevant = concept_to_relevant_joins(local_concepts)
+        left_datasource = identifier_map[left]
+        right_datasource = identifier_map[right]
+        join_tuples = []
+        for joinc in relevant:
+            left_arg = joinc
+            right_arg = joinc
+            if joinc.address not in [
+                c.address for c in left_datasource.output_concepts
+            ]:
+                try:
+                    left_arg = [
+                        x
+                        for x in left_datasource.output_concepts
+                        if x.address in joinc.pseudonyms
+                        or joinc.address in x.pseudonyms
+                    ].pop()
+                except IndexError:
+                    raise SyntaxError(
+                        f"Could not find {joinc.address} in {left_datasource.identifier} output {[c.address for c in left_datasource.output_concepts]}"
+                    )
+            if joinc.address not in [
+                c.address for c in right_datasource.output_concepts
+            ]:
+                try:
+                    right_arg = [
+                        x
+                        for x in right_datasource.output_concepts
+                        if x.address in joinc.pseudonyms
+                        or joinc.address in x.pseudonyms
+                    ].pop()
+                except IndexError:
+                    raise SyntaxError(
+                        f"Could not find {joinc.address} in {right_datasource.identifier} output {[c.address for c in right_datasource.output_concepts]}"
+                    )
+            join_tuples.append((left_arg, right_arg))
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],
                 right_datasource=identifier_map[right],
                 join_type=join_type,
-                concepts=concept_to_relevant_joins(local_concepts),
+                concepts=[],
+                concept_pairs=join_tuples,
             )
         )
     final_joins = resolve_join_order(final_joins_pre)

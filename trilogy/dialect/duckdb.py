@@ -59,7 +59,7 @@ SELECT
     {{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
-{% endif %}
+{% endif -%}
 {%- if group_by %}
 GROUP BY {% for group in group_by %}
     {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}

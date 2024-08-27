@@ -43,7 +43,6 @@ class PurposeLineage(Enum):
     ROOT = "root"
     ROWSET = "rowset"
     MULTISELECT = "multiselect"
-    MERGE = "merge"
 
 
 class Granularity(Enum):
@@ -263,7 +262,6 @@ class DatePart(Enum):
 class SourceType(Enum):
     FILTER = "filter"
     SELECT = "select"
-    MERGE = "merge"
     ABSTRACT = "abstract"
     DIRECT_SELECT = "direct_select"
     GROUP = "group"
@@ -271,8 +269,15 @@ class SourceType(Enum):
     UNNEST = "unnest"
     CONSTANT = "constant"
     ROWSET = "rowset"
+    MERGE = "merge"
 
 
 class ShowCategory(Enum):
     MODELS = "models"
     CONCEPTS = "concepts"
+
+
+class SelectFiltering(Enum):
+    NONE = "none"
+    EXPLICIT = "explicit"  # the filtering contains only selected values
+    IMPLICIT = "implicit"  # the filtering contains unselected values

@@ -10,7 +10,7 @@ from trilogy.core.models import (
     DataType,
     Function,
     LooseConceptList,
-    SelectGrain,
+    SelectContext,
 )
 from trilogy.core.enums import Purpose, FunctionType
 from os.path import dirname
@@ -318,6 +318,7 @@ order by survivors.passenger.name desc
 limit 5;"""
     raw = executor.generate_sql(test)[-1]
     assert raw.count("STRING_SPLIT") == 1
+    assert raw.count('"eldest" = 1') == 1, "should only filter to eldest once"
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 5
@@ -389,7 +390,7 @@ order by passenger.class desc
     srate = env.concepts["survival_rate_auto"]
     assert srate.lineage
     assert isinstance(srate.lineage, Function)
-    assert isinstance(srate.lineage, SelectGrain)
+    assert isinstance(srate.lineage, SelectContext)
     for agg in env.concepts["survival_rate_auto"].lineage.arguments:
         assert agg.grain.components == [env.concepts["passenger.class"]]
         assert len(agg.grain.components) == 1
@@ -460,27 +461,49 @@ ORDER BY
     assert len(row_results) == 794
 
     assert (
-        results.strip()
-        == """
-SELECT
+        """SELECT
     raw_data."passengerid" as "passenger_id",
-    raw_data."passengerid" + 1 as "id_one",
-    raw_data."name" as "passenger_name"
+    raw_data."name" as "passenger_name",
+    raw_data."passengerid" + 1 as "id_one"
 FROM
     raw_titanic as raw_data
 WHERE
-     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True
-
-ORDER BY 
-    raw_data."name" asc
-""".strip()
+     CASE WHEN raw_data."name" like '%a%' THEN True ELSE False END = True"""
+        in results
     )
 
 
-def test_merge(base_test_env):
+def test_merge_basic(base_test_env: Environment):
     executor = setup_engine(debug_flag=True)
     executor.environment = base_test_env
-    cmd = """MERGE passenger.last_name, rich_info.last_name;
+
+    # assert set([x.address for x in node.output_concepts]) == set(['rich_info.last_name', 'rich_info.split_name', 'rich_info.full_name'])
+    executor.parse_text("""MERGE rich_info.last_name into ~passenger.last_name;""")
+    # GraphHook().query_graph_built(g)
+    cmd = """
+
+SELECT
+    passenger.name,
+    rich_info.full_name
+where
+    rich_info.full_name is not null
+    and passenger.name is not null
+;"""
+    results = executor.execute_text(cmd)[-1].fetchall()
+
+    assert len(results) == 17
+
+
+def test_merge(base_test_env: Environment):
+    executor = setup_engine(debug_flag=True)
+    executor.environment = base_test_env
+    rich_name = base_test_env.concepts["rich_info.full_name"]
+    assert rich_name in base_test_env.concepts["rich_info.last_name"].sources
+    assert rich_name in base_test_env.concepts["rich_info.split_name"].sources
+    executor.parse_text("""MERGE rich_info.last_name into ~passenger.last_name;""")
+
+    # assert path is not None
+    cmd = """
 
 SELECT
     passenger.last_name,

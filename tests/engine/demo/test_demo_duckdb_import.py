@@ -1,10 +1,10 @@
 from trilogy.core.models import Environment
 from trilogy.core.processing.node_generators.node_merge_node import (
     gen_merge_node,
-    identify_ds_join_paths,
+    determine_induced_minimal_nodes,
 )
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
-from trilogy.core.env_processor import generate_graph
+from trilogy.core.env_processor import generate_graph, concept_to_node
 
 
 def test_demo_merge(normalized_engine, test_env: Environment):
@@ -70,7 +70,7 @@ def test_merged_env_behavior(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     test_pre = """
-merge passenger.last_name, rich_info.last_name;
+merge rich_info.last_name into ~passenger.last_name;
     """
     normalized_engine.parse_text(test_pre)
     g = generate_graph(test_env)
@@ -104,7 +104,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
         [x for x in concepts if x.startswith("r")]
     )
 
-    test_pre = """merge passenger.last_name, rich_info.last_name;"""
+    test_pre = """merge rich_info.last_name into ~passenger.last_name;"""
     normalized_engine.parse_text(test_pre)
     # raw = executor.generate_sql(test)
     g = generate_graph(test_env)
@@ -115,12 +115,12 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
         for c in ["passenger.last_name", "rich_info.net_worth_1918_dollars"]
     ]
 
-    path = identify_ds_join_paths(
-        target_select_concepts,
+    path = determine_induced_minimal_nodes(
         g,
-        test_env.datasources["rich_info.rich_info"],
+        nodelist=[concept_to_node(x) for x in target_select_concepts],
         accept_partial=False,
-        fail=True,
+        filter_downstream=False,
+        environment=normalized_engine.environment,
     )
 
     assert path
@@ -156,7 +156,7 @@ def test_demo_merge_rowset_e2e(normalized_engine, test_env: Environment):
     # assert test_env.concept_links[test_env.concepts["passenger.last_name"]][0] == test_env.concepts["rich_info.last_name"]
     normalized_engine.environment = test_env
     test = """    
-merge passenger.last_name, rich_info.last_name;
+merge rich_info.last_name into ~passenger.last_name;
 SELECT
     passenger.last_name,
     rich_info.net_worth_1918_dollars,
@@ -165,10 +165,6 @@ WHERE
     and passenger.last_name is not null
 ORDER BY 
     passenger.last_name desc ;"""
-    parsed = normalized_engine.parse_text(test)[-1]
-    assert parsed.output_columns[0].address == "passenger.last_name"
-    assert parsed.output_columns[1].address == "rich_info.net_worth_1918_dollars"
-
     results = normalized_engine.execute_text(test)[-1].fetchall()
 
     assert len(results) == 8

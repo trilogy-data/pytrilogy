@@ -116,6 +116,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     inverse_map = {"parent": [cte2]}
     rule = PredicatePushdown()
     assert rule.optimize(cte2, inverse_map) is True
+    assert rule.optimize(cte2, inverse_map) is True
     assert (
         cte2.condition is None
     ), f"{cte2.condition}, {parent.condition}, {is_child_of(cte2.condition, parent.condition)}"
@@ -184,6 +185,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
 
 
 def test_decomposition_pushdown(test_environment: Environment, test_environment_graph):
+
     category_ds = test_environment.datasources["category"]
     products = test_environment.datasources["products"]
     product_id = test_environment.concepts["product_id"]
@@ -267,8 +269,9 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
 
     assert parent2.condition is None
     rule = PredicatePushdown()
+    # two to pushup, then last will fail
     assert rule.optimize(cte1, inverse_map) is True
-
+    assert rule.optimize(cte1, inverse_map) is False
     assert parent1.condition == Conditional(
         left=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
         right=Comparison(

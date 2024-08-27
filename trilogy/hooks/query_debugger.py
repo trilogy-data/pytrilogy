@@ -130,4 +130,5 @@ class DebuggingHook(BaseHook):
         if self.process_nodes != PrintMode.OFF:
             printed = print_recursive_nodes(node, mode=self.process_nodes)
             for row in printed:
+                logger.info("".join([str(v) for v in row]))
                 print("".join([str(v) for v in row]))

@@ -8,7 +8,8 @@
     | persist_statement
     | rowset_derivation_statement
     | import_statement
-    | merge_statement
+
+    | merge_statement_v2
     | rawsql_statement
     
     _TERMINATOR:  ";"i /\s*/
@@ -69,8 +70,8 @@
 
     align_clause: align_item ("AND"i align_item)*  "AND"i?
 
-    // merge statemment
-    merge_statement: "merge" IDENTIFIER ("," IDENTIFIER)* ","? 
+    // merge_v2
+    merge_statement_v2: "merge"i  IDENTIFIER "into"i SHORTHAND_MODIFIER? IDENTIFIER 
 
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
@@ -125,9 +126,13 @@
     
     !logical_operator: "and"i | "or"i
     
-    conditional: expr logical_operator expr
+    condition_parenthetical: "(" conditional ")"
+
+    _condition_unit: (expr | condition_parenthetical)
+
+    conditional: _condition_unit (logical_operator _condition_unit)*
     
-    where: "WHERE"i expr+
+    where: "WHERE"i conditional
     
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
 
@@ -150,7 +155,7 @@
     index_access: expr "[" int_lit "]"
     attr_access: expr  "[" _string_lit "]"
 
-    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | _static_functions |  literal |  concept_lit  | index_access | attr_access | parenthetical | expr_tuple | comparison | conditional | alt_like 
+    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | _static_functions |  literal |  concept_lit  | index_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like 
     
     // functions
     
@@ -168,7 +173,7 @@
     fcast: "cast"i "(" expr "as"i data_type ")"
     concat: ("concat"i "(" (expr ",")* expr ")") | (expr "||" expr)
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
-    fcase_when: "WHEN"i (expr | conditional) "THEN"i expr
+    fcase_when: "WHEN"i conditional "THEN"i expr
     fcase_else: "ELSE"i expr
     fcase: "CASE"i (fcase_when)* (fcase_else)? "END"i
     len: "len"i "(" expr ")"

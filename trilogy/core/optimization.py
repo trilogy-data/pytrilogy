@@ -3,8 +3,6 @@ from trilogy.core.models import (
     SelectStatement,
     PersistStatement,
     MultiSelectStatement,
-    Conditional,
-    BooleanOperator,
 )
 from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger, CONFIG
@@ -60,8 +58,6 @@ def is_direct_return_eligible(
         if select.where_clause
         else set()
     )
-    if conditions and select.limit:
-        return False
     for x in derived_concepts:
         if x.derivation == PurposeLineage.WINDOW:
             return False
@@ -71,7 +67,7 @@ def is_direct_return_eligible(
             if x.address in conditions:
                 return False
     logger.info(
-        f"Upleveling output select to final CTE with derived_concepts {[x.address for x in derived_concepts]}"
+        f"[Optimization][EarlyReturn] Upleveling output select to final CTE with derived_concepts {[x.address for x in derived_concepts]}"
     )
     return eligible
 
@@ -93,39 +89,46 @@ def sort_select_output(cte: CTE, query: SelectStatement | MultiSelectStatement):
 def optimize_ctes(
     input: list[CTE], root_cte: CTE, select: SelectStatement | MultiSelectStatement
 ) -> list[CTE]:
-    complete = False
-    REGISTERED_RULES: list["OptimizationRule"] = []
+
     if CONFIG.optimizations.direct_return and is_direct_return_eligible(
         root_cte, select
     ):
         root_cte.order_by = select.order_by
         root_cte.limit = select.limit
-        if select.where_clause:
+        # if select.where_clause:
 
-            if root_cte.condition:
-                root_cte.condition = Conditional(
-                    left=root_cte.condition,
-                    operator=BooleanOperator.AND,
-                    right=select.where_clause.conditional,
-                )
-            else:
-                root_cte.condition = select.where_clause.conditional
+        #     if root_cte.condition:
+        #         root_cte.condition = Conditional(
+        #             left=root_cte.condition,
+        #             operator=BooleanOperator.AND,
+        #             right=select.where_clause.conditional,
+        #         )
+        #     else:
+        #         root_cte.condition = select.where_clause.conditional
         root_cte.requires_nesting = False
         sort_select_output(root_cte, select)
+
+    REGISTERED_RULES: list["OptimizationRule"] = []
+    if CONFIG.optimizations.constant_inlining:
+        REGISTERED_RULES.append(InlineConstant())
     if CONFIG.optimizations.datasource_inlining:
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
-    if CONFIG.optimizations.constant_inlining:
-        REGISTERED_RULES.append(InlineConstant())
-    loops = 0
-    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
-        actions_taken = False
-        for rule in REGISTERED_RULES:
-            for cte in input:
-                inverse_map = gen_inverse_map(input)
-                actions_taken = actions_taken or rule.optimize(cte, inverse_map)
-        complete = not actions_taken
-        loops += 1
+
+    for rule in REGISTERED_RULES:
+        loops = 0
+        complete = False
+        while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
+            actions_taken = False
+            # assume we go through all CTEs once
+            look_at = [root_cte, *input]
+            inverse_map = gen_inverse_map(look_at)
+            for cte in look_at:
+                opt = rule.optimize(cte, inverse_map)
+                actions_taken = actions_taken or opt
+            complete = not actions_taken
+            loops += 1
+        logger.info(f"finished checking for {type(rule).__name__} in {loops} loops")
 
     return filter_irrelevant_ctes(input, root_cte)

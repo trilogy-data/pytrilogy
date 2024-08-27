@@ -3,6 +3,7 @@ from trilogy.core.enums import Purpose
 from trilogy import parse, Executor
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
 import pytest
 
 
@@ -83,6 +84,7 @@ def test_source_outputs(test_environment: Environment, test_executor: Executor):
         g=generate_graph(test_environment),
         depth=0,
         accept_partial=True,
+        source_concepts=search_concepts,
     )
 
     found = False

@@ -2,30 +2,13 @@ from trilogy import parse
 from pathlib import Path
 
 from trilogy import Environment, Dialects
-from trilogy.core.env_processor import generate_graph
-from trilogy.core.processing.nodes import GroupNode, SelectNode, MergeNode, StrategyNode
-from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
-from trilogy.core.models import Concept
 from trilogy.hooks.query_debugger import DebuggingHook
-
+from trilogy.core.processing.nodes import SelectNode, MergeNode, GroupNode
+from trilogy.core.env_processor import generate_graph
+from tests.utility import validate_shape
 
 working_path = Path(__file__).parent
 test = working_path / "store.preql"
-
-
-def get_parents(node: StrategyNode):
-    output = [node.__class__]
-    for parent in node.parents:
-        output = get_parents(parent) + output
-    return output
-
-
-def validate_shape(input: list[Concept], environment: Environment, g, levels):
-    """test that our query resolves to the expected CTES"""
-    base: GroupNode = source_query_concepts(input, environment, g)
-    final = get_parents(base)
-
-    assert final == levels
 
 
 def test_one():
@@ -69,7 +52,7 @@ def test_one():
     )
     g = generate_graph(env)
 
-    sql = exec.parse_text(
+    parsed = exec.parse_text(
         """select
     returns.customer.id,
     returns.store.id,
@@ -82,17 +65,22 @@ where
     )
 
     validate_shape(
-        sql[-1].output_columns,
+        parsed[-1].output_columns,
         env,
         g,
         levels=[
+            SelectNode,
+            SelectNode,  # select store
             SelectNode,  # select store
             SelectNode,  # select year
-            SelectNode,  # select fact
             MergeNode,  # merge year into fact
+            MergeNode,
+            MergeNode,  # merge year into fac
             GroupNode,  # calculate aggregate
             MergeNode,  # enrich store name
             GroupNode,  # final node
+            # MergeNode,  # enrich store name
+            # GroupNode,  # final node
         ],
     )
 

@@ -4,8 +4,11 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.enums import SelectFiltering
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
+from trilogy.core.processing.nodes import GroupNode, SelectNode, StrategyNode
 from trilogy.core.models import (
+    Concept,
     Environment,
     PersistStatement,
     SelectStatement,
@@ -24,13 +27,14 @@ from trilogy.core.models import (
 )
 
 from trilogy.utility import unique
-from collections import defaultdict
+
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.constants import logger
-from random import shuffle
 from trilogy.core.ergonomics import CTE_NAMES
 from trilogy.core.optimization import optimize_ctes
 from math import ceil
+from collections import defaultdict
+from random import shuffle
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -79,6 +83,7 @@ def base_join_to_join(
         right_cte=right_cte,
         joinkeys=[JoinKey(concept=concept) for concept in base_join.concepts],
         jointype=base_join.join_type,
+        joinkey_pairs=base_join.concept_pairs if base_join.concept_pairs else None,
     )
 
 
@@ -107,7 +112,9 @@ def generate_source_map(
             matches = [cte for cte in all_new_ctes if cte.source.name in names]
 
             if not matches and names:
-                raise SyntaxError(query_datasource.source_map)
+                raise SyntaxError(
+                    f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.name for cte in all_new_ctes]}"
+                )
             for cte in matches:
                 output_address = [
                     x.address
@@ -260,7 +267,7 @@ def datasource_to_ctes(
 
     human_id = generate_cte_name(query_datasource.full_name, name_map)
     logger.info(
-        f"Finished building source map for {human_id} with {len(parents)} parents, have {source_map}, parent had non-empty keys {[k for k, v in query_datasource.source_map.items() if v]} "
+        f"Finished building source map for {human_id} with {len(parents)} parents, have {source_map}, query_datasource had non-empty keys {[k for k, v in query_datasource.source_map.items() if v]} "
     )
     final_joins = [
         x
@@ -306,6 +313,28 @@ def datasource_to_ctes(
     return output
 
 
+def append_existence_check(
+    node: StrategyNode, environment: Environment, graph: ReferenceGraph
+):
+    # we if we have a where clause doing an existence check
+    # treat that as separate subquery
+    if (where := node.conditions) and where.existence_arguments:
+        for subselect in where.existence_arguments:
+            if not subselect:
+                continue
+            logger.info(
+                f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
+            )
+            eds = source_query_concepts([*subselect], environment=environment, g=graph)
+
+            final_eds = eds.resolve()
+            first_parent = node.resolve()
+            first_parent.datasources.append(final_eds)
+            for x in final_eds.output_concepts:
+                if x.address not in first_parent.existence_source_map:
+                    first_parent.existence_source_map[x.address] = {final_eds}
+
+
 def get_query_datasources(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
@@ -318,33 +347,57 @@ def get_query_datasources(
     )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
-    ds = source_query_concepts(
-        statement.output_components,
+
+    search_concepts: list[Concept] = statement.output_components
+    nest_where = statement.where_clause_category == SelectFiltering.IMPLICIT
+    if nest_where and statement.where_clause:
+        search_concepts = unique(
+            statement.where_clause.row_arguments + search_concepts, "address"
+        )
+        nest_where = True
+
+    ods = source_query_concepts(
+        search_concepts,
         environment=environment,
         g=graph,
     )
+    ds: GroupNode | SelectNode
+    if nest_where and statement.where_clause:
+        ods.conditions = statement.where_clause.conditional
+        ods.output_concepts = search_concepts
+        # ods.hidden_concepts = where_delta
+        ods.rebuild_cache()
+        append_existence_check(ods, environment, graph)
+        ds = GroupNode(
+            output_concepts=statement.output_components,
+            input_concepts=search_concepts,
+            parents=[ods],
+            environment=ods.environment,
+            g=ods.g,
+            partial_concepts=ods.partial_concepts,
+        )
+        # we can still check existence here.
+
+    elif statement.where_clause:
+        ds = SelectNode(
+            output_concepts=statement.output_components,
+            input_concepts=ods.input_concepts,
+            parents=[ods],
+            environment=ods.environment,
+            g=ods.g,
+            partial_concepts=ods.partial_concepts,
+            conditions=statement.where_clause.conditional,
+        )
+        append_existence_check(ds, environment, graph)
+
+    else:
+        ds = ods
+
+    final_qds = ds.resolve()
     if hooks:
         for hook in hooks:
             hook.process_root_strategy_node(ds)
-    final_qds = ds.resolve()
 
-    # we if we have a where clause doing an existence check
-    # treat that as separate subquery
-    if (where := statement.where_clause) and where.existence_arguments:
-        for subselect in where.existence_arguments:
-            if not subselect:
-                continue
-            logger.info(
-                f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
-            )
-            eds = source_query_concepts([*subselect], environment=environment, g=graph)
-
-            final_eds = eds.resolve()
-            first_parent = final_qds
-            first_parent.datasources.append(final_eds)
-            for x in final_eds.output_concepts:
-                if x.address not in first_parent.existence_source_map:
-                    first_parent.existence_source_map[x.address] = {final_eds}
     return final_qds
 
 

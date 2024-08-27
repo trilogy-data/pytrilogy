@@ -39,6 +39,17 @@ def render_join(
         )
         for key in join.joinkeys
     ]
+    if join.joinkey_pairs:
+        base_joinkeys.extend(
+            [
+                null_wrapper(
+                    f"{left_name}.{quote_character}{join.left_cte.get_alias(left_concept) if isinstance(join.left_cte, Datasource) else left_concept.safe_address}{quote_character}",
+                    f"{right_name}.{quote_character}{join.right_cte.get_alias(right_concept) if isinstance(join.right_cte, Datasource) else right_concept.safe_address}{quote_character}",
+                    left_concept,
+                )
+                for left_concept, right_concept in join.joinkey_pairs
+            ]
+        )
     if not base_joinkeys:
         base_joinkeys = ["1=1"]
     joinkeys = " AND ".join(base_joinkeys)

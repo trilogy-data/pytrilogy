@@ -5,7 +5,7 @@ import store_sales as store_sales;
 import item as item;
 
 
-merge store_sales.item.id, item.id; # merge models for this query to get avg price of all items, not just sold items
+merge store_sales.item.id into ~item.id; # merge models for this query to get avg price of all items, not just sold items
 
 SELECT
     store_sales.customer.state,

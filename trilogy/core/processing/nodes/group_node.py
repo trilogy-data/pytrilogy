@@ -9,12 +9,16 @@ from trilogy.core.models import (
     Concept,
     Environment,
     LooseConceptList,
+    Conditional,
+    Comparison,
+    Parenthetical,
 )
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
     concept_list_to_grain,
 )
+from trilogy.utility import unique
 
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
@@ -34,6 +38,7 @@ class GroupNode(StrategyNode):
         depth: int = 0,
         partial_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
+        conditions: Conditional | Comparison | Parenthetical | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -45,6 +50,7 @@ class GroupNode(StrategyNode):
             depth=depth,
             partial_concepts=partial_concepts,
             force_group=force_group,
+            conditions=conditions,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -79,7 +85,10 @@ class GroupNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} No group by required, returning parent node"
                 )
-                return parent_sources[0]
+                will_return: QueryDatasource = parent_sources[0]
+                if self.conditions:
+                    will_return.condition = self.conditions + will_return.condition
+                return will_return
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
@@ -109,7 +118,15 @@ class GroupNode(StrategyNode):
             source_type=source_type,
             source_map=resolve_concept_map(
                 parent_sources,
-                targets=self.output_concepts,
+                # targets = self.output_concepts,
+                targets=(
+                    unique(
+                        self.output_concepts + self.conditions.concept_arguments,
+                        "address",
+                    )
+                    if self.conditions
+                    else self.output_concepts
+                ),
                 inherited_inputs=self.input_concepts,
             ),
             joins=[],
@@ -129,4 +146,5 @@ class GroupNode(StrategyNode):
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
             force_group=self.force_group,
+            conditions=self.conditions,
         )

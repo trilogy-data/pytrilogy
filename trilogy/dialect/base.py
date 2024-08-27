@@ -5,7 +5,6 @@ from jinja2 import Template
 from trilogy.constants import CONFIG, logger, MagicConstants
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.enums import (
-    Purpose,
     FunctionType,
     WindowType,
     DatePart,
@@ -40,18 +39,17 @@ from trilogy.core.models import (
     ShowStatement,
     RowsetItem,
     MultiSelectStatement,
-    MergeStatement,
     RowsetDerivationStatement,
     ConceptDeclarationStatement,
     ImportStatement,
     RawSQLStatement,
     ProcessedRawSQLStatement,
     NumericType,
+    MergeStatementV2,
 )
 from trilogy.core.query_processor import process_query, process_persist
 from trilogy.dialect.common import render_join
 from trilogy.hooks.base_hook import BaseHook
-from trilogy.utility import unique
 from trilogy.core.enums import UnnestMode
 
 LOGGER_PREFIX = "[RENDERING]"
@@ -264,15 +262,16 @@ class BaseDialect:
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
                 # for cases when we've optimized this
-                if len(cte.output_columns) == 1:
+                if (
+                    len(cte.output_columns) == 1
+                    and cte.condition == c.lineage.where.conditional
+                ):
                     rval = self.render_expr(c.lineage.content, cte=cte)
                 else:
                     rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False)}"
             elif isinstance(c.lineage, MultiSelectStatement):
-                rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
-            elif isinstance(c.lineage, MergeStatement):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False)}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [
@@ -509,35 +508,7 @@ class BaseDialect:
                         set(
                             [
                                 self.render_concept_sql(c, cte, alias=False)
-                                for c in unique(
-                                    cte.grain.components
-                                    + [
-                                        c
-                                        for c in cte.output_columns
-                                        if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
-                                        and c.address
-                                        not in [x.address for x in cte.grain.components]
-                                    ]
-                                    + [
-                                        c
-                                        for c in cte.output_columns
-                                        if c.purpose == Purpose.METRIC
-                                        and any(
-                                            [
-                                                c.with_grain(cte.grain)
-                                                in cte.output_columns
-                                                for cte in cte.parent_ctes
-                                            ]
-                                        )
-                                    ]
-                                    + [
-                                        c
-                                        for c in cte.output_columns
-                                        if c.purpose == Purpose.CONSTANT
-                                        and cte.source_map[c.address] != []
-                                    ],
-                                    "address",
-                                )
+                                for c in cte.group_concepts
                             ]
                         )
                     )
@@ -563,9 +534,9 @@ class BaseDialect:
             | ShowStatement
             | ConceptDeclarationStatement
             | RowsetDerivationStatement
-            | MergeStatement
             | ImportStatement
             | RawSQLStatement
+            | MergeStatementV2
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[
@@ -626,7 +597,7 @@ class BaseDialect:
                 statement,
                 (
                     ConceptDeclarationStatement,
-                    MergeStatement,
+                    MergeStatementV2,
                     ImportStatement,
                     RowsetDerivationStatement,
                 ),
@@ -675,7 +646,7 @@ class BaseDialect:
         # where assignment
         output_where = False
         if query.where_clause:
-            found = False
+            # found = False
             filter = set(
                 [
                     str(x.address)
@@ -684,16 +655,10 @@ class BaseDialect:
                 ]
             )
             query_output = set([str(z.address) for z in query.output_columns])
+            # if it wasn't an output
+            # we would have forced it up earlier and we don't need to render at this point
             if filter.issubset(query_output):
                 output_where = True
-                found = True
-
-            if not found:
-                raise NotImplementedError(
-                    f"Cannot generate query with filtering on row arguments {filter} that is"
-                    f" not a subset of the query output grain {query_output}. Try a"
-                    " filtered concept instead, or include it in the select clause"
-                )
             for ex_set in query.where_clause.existence_arguments:
                 for c in ex_set:
                     if c.address not in cte_output_map:

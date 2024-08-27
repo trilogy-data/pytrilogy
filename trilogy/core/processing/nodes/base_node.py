@@ -17,7 +17,6 @@ from trilogy.core.models import (
 from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
 from dataclasses import dataclass
-from trilogy.constants import logger
 
 
 def concept_list_to_grain(
@@ -59,7 +58,6 @@ def resolve_concept_map(
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
         for concept in input.output_concepts:
-            logger.info(concept.address)
             if concept.address not in input.non_partial_concept_addresses:
                 continue
             if concept.address not in inherited:
@@ -152,9 +150,24 @@ class StrategyNode:
             if not parent:
                 raise SyntaxError("Unresolvable parent")
 
-    def add_output_concept(self, concept: Concept):
-        self.output_concepts.append(concept)
+    def add_output_concepts(self, concepts: List[Concept]):
+        for concept in concepts:
+            self.output_concepts.append(concept)
         self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.rebuild_cache()
+
+    def add_output_concept(self, concept: Concept):
+        self.add_output_concepts([concept])
+
+    def hide_output_concepts(self, concepts: List[Concept]):
+        for x in concepts:
+            self.hidden_concepts.append(x)
+        self.rebuild_cache()
+
+    def remove_output_concepts(self, concepts: List[Concept]):
+        for x in concepts:
+            self.hidden_concepts.append(x)
+        self.output_concepts = [x for x in self.output_concepts if x not in concepts]
         self.rebuild_cache()
 
     @property
@@ -167,7 +180,7 @@ class StrategyNode:
 
     @property
     def all_used_concepts(self) -> list[Concept]:
-        return [*self.input_concepts]
+        return [*self.input_concepts, *self.existence_concepts]
 
     def __repr__(self):
         concepts = self.all_concepts
@@ -196,6 +209,7 @@ class StrategyNode:
             condition=self.conditions,
             partial_concepts=self.partial_concepts,
             force_group=self.force_group,
+            hidden_concepts=self.hidden_concepts,
         )
 
     def rebuild_cache(self) -> QueryDatasource:
@@ -239,8 +253,11 @@ class NodeJoin:
     concepts: List[Concept]
     join_type: JoinType
     filter_to_mutual: bool = False
+    concept_pairs: list[tuple[Concept, Concept]] | None = None
 
     def __post_init__(self):
+        if self.concept_pairs:
+            return
         final_concepts = []
         for concept in self.concepts:
             include = True

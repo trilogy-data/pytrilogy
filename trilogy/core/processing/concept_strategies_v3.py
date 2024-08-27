@@ -27,7 +27,6 @@ from trilogy.core.processing.node_generators import (
     gen_group_to_node,
     gen_rowset_node,
     gen_multiselect_node,
-    gen_concept_merge_node,
 )
 
 from enum import Enum
@@ -68,7 +67,6 @@ def get_priority_concept(
     # sometimes we need to scan intermediate concepts to get merge keys, so fall back
     # to exhaustive search
     pass_two = [c for c in all_concepts if c.address not in attempted_addresses]
-
     for remaining_concept in (pass_one, pass_two):
         priority = (
             # find anything that needs no joins first, so we can exit early
@@ -78,9 +76,6 @@ def get_priority_concept(
                 if c.derivation == PurposeLineage.CONSTANT
                 and c.granularity == Granularity.SINGLE_ROW
             ]
-            +
-            # anything that requires merging concept universes
-            [c for c in remaining_concept if c.derivation == PurposeLineage.MERGE]
             +
             # then multiselects to remove them from scope
             [c for c in remaining_concept if c.derivation == PurposeLineage.MULTISELECT]
@@ -174,7 +169,9 @@ def get_priority_concept(
 
 
 def generate_candidates_restrictive(
-    priority_concept: Concept, candidates: list[Concept], exhausted: set[str]
+    priority_concept: Concept,
+    candidates: list[Concept],
+    exhausted: set[str],
 ) -> List[List[Concept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
@@ -216,6 +213,7 @@ def generate_node(
         fail_if_not_found=False,
         accept_partial=accept_partial,
         accept_partial_optional=False,
+        source_concepts=source_concepts,
     )
 
     if candidate:
@@ -273,14 +271,6 @@ def generate_node(
         return gen_multiselect_node(
             concept, local_optional, environment, g, depth + 1, source_concepts, history
         )
-    elif concept.derivation == PurposeLineage.MERGE:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating multiselect node with optional {[x.address for x in local_optional]}"
-        )
-        node = gen_concept_merge_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
-        )
-        return node
     elif concept.derivation == PurposeLineage.CONSTANT:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating constant node"
@@ -331,9 +321,52 @@ def generate_node(
             fail_if_not_found=False,
             accept_partial=accept_partial,
             accept_partial_optional=True,
+            source_concepts=source_concepts,
         )
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")
+
+
+def validate_concept(
+    concept: Concept,
+    node: StrategyNode,
+    found_addresses: set[str],
+    non_partial_addresses: set[str],
+    partial_addresses: set[str],
+    virtual_addresses: set[str],
+    found_map: dict[str, set[Concept]],
+    accept_partial: bool,
+):
+    found_map[str(node)].add(concept)
+    if concept not in node.partial_concepts:
+
+        found_addresses.add(concept.address)
+        non_partial_addresses.add(concept.address)
+        # remove it from our partial tracking
+        if concept.address in partial_addresses:
+            partial_addresses.remove(concept.address)
+        if concept.address in virtual_addresses:
+            virtual_addresses.remove(concept.address)
+    if concept in node.partial_concepts:
+        if concept.address in non_partial_addresses:
+            return None
+        partial_addresses.add(concept.address)
+        if accept_partial:
+            found_addresses.add(concept.address)
+            found_map[str(node)].add(concept)
+    for _, v in concept.pseudonyms.items():
+        if v.address == concept.address:
+            return
+        validate_concept(
+            v,
+            node,
+            found_addresses,
+            non_partial_addresses,
+            partial_addresses,
+            virtual_addresses,
+            found_map,
+            accept_partial,
+        )
 
 
 def validate_stack(
@@ -341,7 +374,7 @@ def validate_stack(
     concepts: List[Concept],
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map = defaultdict(set)
+    found_map: dict[str, set[Concept]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
@@ -349,27 +382,22 @@ def validate_stack(
     for node in stack:
         resolved = node.resolve()
         for concept in resolved.output_concepts:
-            found_map[str(node)].add(concept)
-            if concept not in node.partial_concepts:
-                found_addresses.add(concept.address)
-                non_partial_addresses.add(concept.address)
-                # remove it from our partial tracking
-                if concept.address in partial_addresses:
-                    partial_addresses.remove(concept.address)
-                if concept.address in virtual_addresses:
-                    virtual_addresses.remove(concept.address)
-            if concept in node.partial_concepts:
-                if concept.address in non_partial_addresses:
-                    continue
-                partial_addresses.add(concept.address)
-                if accept_partial:
-                    found_addresses.add(concept.address)
-                    found_map[str(node)].add(concept)
+            validate_concept(
+                concept,
+                node,
+                found_addresses,
+                non_partial_addresses,
+                partial_addresses,
+                virtual_addresses,
+                found_map,
+                accept_partial,
+            )
         for concept in node.virtual_output_concepts:
             if concept.address in non_partial_addresses:
                 continue
             found_addresses.add(concept.address)
             virtual_addresses.add(concept.address)
+
     # zip in those we know we found
     if not all([c.address in found_addresses for c in concepts]):
         return (
@@ -379,7 +407,8 @@ def validate_stack(
             partial_addresses,
             virtual_addresses,
         )
-    graph_count, graphs = get_disconnected_components(found_map)
+
+    graph_count, _ = get_disconnected_components(found_map)
     if graph_count in (0, 1):
         return (
             ValidationResult.COMPLETE,
@@ -415,7 +444,7 @@ def search_concepts(
     hist = history.get_history(mandatory_list, accept_partial)
     if hist is not False:
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history ({'exists' if hist is not None else 'does not exist'}) for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
         )
         assert not isinstance(hist, bool)
         return hist
@@ -445,6 +474,7 @@ def _search_concepts(
 ) -> StrategyNode | None:
 
     mandatory_list = unique(mandatory_list, "address")
+
     all_mandatory = set(c.address for c in mandatory_list)
     attempted: set[str] = set()
 
@@ -457,6 +487,7 @@ def _search_concepts(
         priority_concept = get_priority_concept(
             mandatory_list, attempted, found_concepts=found, depth=depth
         )
+
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)}"
         )
@@ -467,16 +498,16 @@ def _search_concepts(
         candidate_lists = generate_candidates_restrictive(
             priority_concept, candidates, skip
         )
-        for list in candidate_lists:
+        for clist in candidate_lists:
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial} optional {[str(v) for v in list]}, exhausted {[str(c) for c in skip]}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {str(priority_concept)}, accept_partial {accept_partial}, optional {[str(v) for v in clist]}, exhausted {[str(c) for c in skip]}"
             )
             node = generate_node(
                 priority_concept,
-                list,
+                clist,
                 environment,
                 g,
-                depth + 1,
+                depth,
                 source_concepts=search_concepts,
                 accept_partial=accept_partial,
                 history=history,
@@ -494,7 +525,6 @@ def _search_concepts(
                     PurposeLineage.ROWSET,
                     PurposeLineage.BASIC,
                     PurposeLineage.MULTISELECT,
-                    PurposeLineage.MERGE,
                 ]:
                     skip.add(priority_concept.address)
                 break
@@ -504,7 +534,7 @@ def _search_concepts(
         )
 
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} flag for accepting partial addresses is "
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished concept loop for {priority_concept} flag for accepting partial addresses is"
             f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial} virtual {virtual}), attempted {attempted}"
         )
         # early exit if we have a complete stack with one node

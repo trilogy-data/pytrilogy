@@ -7,8 +7,10 @@ import catalog_sales as catalog_sales;
 #dependent count, employed dependent count and college dependent count who live in certain counties and who
 # have purchased from both stores and another sales channel during a three month time period of a given year.
 
-merge catalog_sales.customer.id, web_sales.customer.id, store_sales.customer.id, customer.id;
 
+merge catalog_sales.customer.id into ~customer.id;
+merge web_sales.customer.id into ~customer.id;
+merge store_sales.customer.id into ~customer.id;
 
 auto relevant_customers <- filter 
     customer.id 
@@ -57,7 +59,9 @@ SELECT
      ) as cnt5,
     base.customer.demographics.college_dependent_count,
             count(base.customer.id
-     ) as cnt6,
+     ) as cnt6
+WHERE
+    base.customer.demographics.gender is not null
 ORDER BY
     base.customer.demographics.gender asc,
     base.customer.demographics.marital_status asc,

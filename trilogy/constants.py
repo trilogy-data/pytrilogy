@@ -1,6 +1,7 @@
 from logging import getLogger
 from dataclasses import dataclass, field
 from enum import Enum
+import random
 
 logger = getLogger("trilogy")
 
@@ -34,7 +35,12 @@ class Config:
     validate_missing: bool = True
     optimizations: Optimizations = field(default_factory=Optimizations)
 
+    def set_random_seed(self, seed: int):
+        random.seed(seed)
+
 
 CONFIG = Config()
+
+CONFIG.set_random_seed(42)
 
 CONFIG.strict_mode = True

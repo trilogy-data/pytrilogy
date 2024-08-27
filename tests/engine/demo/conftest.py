@@ -136,6 +136,18 @@ def setup_richest_environment(env: Environment):
         purpose=Purpose.PROPERTY,
         keys=(name,),
     )
+    split_name = function_to_concept(
+        Function(
+            operator=FunctionType.SPLIT,
+            arguments=[name, " "],
+            output_datatype=DataType.ARRAY,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+        name="split_name",
+        namespace=namespace,
+        # keys = (name,)
+    )
     last_name = Concept(
         name="last_name",
         namespace=namespace,
@@ -145,18 +157,7 @@ def setup_richest_environment(env: Environment):
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                function_to_concept(
-                    Function(
-                        operator=FunctionType.SPLIT,
-                        arguments=[name, " "],
-                        output_datatype=DataType.ARRAY,
-                        output_purpose=Purpose.PROPERTY,
-                        arg_count=2,
-                    ),
-                    name="split_name",
-                    namespace=namespace,
-                    # keys = (name,)
-                ),
+                split_name,
                 -1,
             ],
             output_datatype=DataType.STRING,
@@ -164,7 +165,7 @@ def setup_richest_environment(env: Environment):
             arg_count=2,
         ),
     )
-    for x in [name, money, last_name]:
+    for x in [name, money, last_name, split_name]:
         env.add_concept(x)
 
     env.add_datasource(
@@ -241,27 +242,30 @@ def setup_titanic_distributed(env: Environment):
         datatype=DataType.STRING,
         keys=[id],
     )
+
+    split_name = function_to_concept(
+        Function(
+            operator=FunctionType.SPLIT,
+            arguments=[name, ","],
+            output_datatype=DataType.ARRAY,
+            output_purpose=Purpose.PROPERTY,
+            arg_count=2,
+        ),
+        name="split_name",
+        namespace=namespace,
+        # keys = (id,)
+    )
+    assert split_name.keys == (id,)
     last_name = Concept(
         name="last_name",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=(name,),
+        keys=(id,),
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                function_to_concept(
-                    Function(
-                        operator=FunctionType.SPLIT,
-                        arguments=[name, ","],
-                        output_datatype=DataType.ARRAY,
-                        output_purpose=Purpose.PROPERTY,
-                        arg_count=2,
-                    ),
-                    name="split_name",
-                    namespace=namespace,
-                    # keys = (name,)
-                ),
+                split_name,
                 1,
             ],
             output_datatype=DataType.STRING,

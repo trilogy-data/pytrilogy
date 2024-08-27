@@ -15,6 +15,7 @@ from trilogy.parsing.parse_engine import (
 )
 from trilogy.constants import MagicConstants
 from trilogy.dialect.base import BaseDialect
+from trilogy.core.enums import BooleanOperator
 
 
 def test_in():
@@ -125,6 +126,15 @@ def test_show(test_environment):
         query.content.output_components[0].address
         == test_environment.concepts["order_id"].address
     )
+
+
+def test_conditional(test_environment):
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  WHERE order_id =4 and order_id = 10;"
+    )
+    query = parsed[-1]
+    assert isinstance(query, SelectStatement)
+    assert query.where_clause.conditional.operator == BooleanOperator.AND
 
 
 def test_as_transform(test_environment):

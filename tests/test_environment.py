@@ -1,5 +1,6 @@
 from trilogy.core.models import Environment
 from pathlib import Path
+from trilogy.core.enums import Modifier
 
 
 def test_environment_serialization(test_environment: Environment):
@@ -20,3 +21,44 @@ def test_environment_from_path():
     env = Environment.from_file(Path(__file__).parent / "test_env.preql")
 
     assert "id" in env.concepts
+
+
+def test_environment_merge():
+    env1: Environment
+    env1, _ = Environment().parse(
+        """
+key  order_id int;   
+                                
+                                datasource orders
+                                (order_id:order_id)
+                                grain (order_id)
+                                address orders;
+"""
+    )
+
+    env2, _ = Environment().parse(
+        """
+                                key order_id int;
+                                                                
+                                datasource replacements
+                                (order_id:order_id)
+                                grain (order_id)
+                                address replacements;
+
+                                
+"""
+    )
+
+    env1.add_import("replacements", env2)
+
+    _ = env1.merge_concept(
+        env1.concepts["replacements.order_id"],
+        env1.concepts["order_id"],
+        modifiers=[Modifier.PARTIAL],
+    )
+
+    assert env1.concepts["order_id"] == env1.concepts["replacements.order_id"]
+
+    order_id = env1.datasources["replacements.replacements"].columns[0]
+    assert order_id.concept == env1.concepts["order_id"]
+    assert order_id.modifiers == [Modifier.PARTIAL]

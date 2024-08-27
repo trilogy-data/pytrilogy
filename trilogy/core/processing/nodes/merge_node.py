@@ -14,6 +14,7 @@ from trilogy.core.models import (
     Conditional,
     Comparison,
     Parenthetical,
+    Environment,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import (
@@ -108,6 +109,7 @@ class MergeNode(StrategyNode):
         conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
+        existence_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -123,18 +125,19 @@ class MergeNode(StrategyNode):
             conditions=conditions,
             hidden_concepts=hidden_concepts,
             virtual_output_concepts=virtual_output_concepts,
+            existence_concepts=existence_concepts,
         )
         self.join_concepts = join_concepts
         self.force_join_type = force_join_type
-        self.node_joins = node_joins
+        self.node_joins: List[NodeJoin] | None = node_joins
 
-        final_joins = []
-        if self.node_joins:
+        final_joins: List[NodeJoin] = []
+        if self.node_joins is not None:
             for join in self.node_joins:
                 if join.left_node.resolve().name == join.right_node.resolve().name:
                     continue
                 final_joins.append(join)
-        self.node_joins = final_joins
+            self.node_joins = final_joins
 
     def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
         joins = []
@@ -149,6 +152,7 @@ class MergeNode(StrategyNode):
                     right_datasource=right,
                     join_type=join.join_type,
                     concepts=join.concepts,
+                    concept_pairs=join.concept_pairs,
                 )
             )
         return joins
@@ -175,7 +179,12 @@ class MergeNode(StrategyNode):
         return joins
 
     def generate_joins(
-        self, final_datasets, final_joins, pregrain: Grain, grain: Grain
+        self,
+        final_datasets,
+        final_joins: List[NodeJoin] | None,
+        pregrain: Grain,
+        grain: Grain,
+        environment: Environment,
     ) -> List[BaseJoin]:
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource] = sorted(
@@ -186,15 +195,14 @@ class MergeNode(StrategyNode):
             f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
         )
         for item in dataset_list:
-            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} for {item.full_name}")
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} partial concepts {[x.address for x in item.partial_concepts]}"
+                f"{self.logging_prefix}{LOGGER_PREFIX} for {item.full_name} partial concepts {[x.address for x in item.partial_concepts]}"
             )
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address+str(x.purpose) for x in item.output_concepts]} partial {[x.address for x in item.partial_concepts]}"
             )
 
-        if not final_joins:
+        if final_joins is None:
             if not pregrain.components:
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} no grain components, doing full join"
@@ -204,7 +212,7 @@ class MergeNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {str(grain)}"
                 )
-                joins = get_node_joins(dataset_list, grain.components)
+                joins = get_node_joins(dataset_list, grain.components, environment)
         elif final_joins:
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(final_joins)}"
@@ -224,7 +232,7 @@ class MergeNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
         merged: dict[str, QueryDatasource | Datasource] = {}
-        final_joins = self.node_joins
+        final_joins: List[NodeJoin] | None = self.node_joins
         for source in parent_sources:
             if source.full_name in merged:
                 logger.info(
@@ -280,12 +288,16 @@ class MergeNode(StrategyNode):
         for source in final_datasets:
             pregrain += source.grain
 
-        grain = Grain(
-            components=[
-                c
-                for c in pregrain.components
-                if c.address in [x.address for x in self.output_concepts]
-            ]
+        grain = (
+            self.grain
+            if self.grain
+            else Grain(
+                components=[
+                    c
+                    for c in pregrain.components
+                    if c.address in [x.address for x in self.output_concepts]
+                ]
+            )
         )
 
         logger.info(
@@ -293,7 +305,9 @@ class MergeNode(StrategyNode):
         )
 
         if len(final_datasets) > 1:
-            joins = self.generate_joins(final_datasets, final_joins, pregrain, grain)
+            joins = self.generate_joins(
+                final_datasets, final_joins, pregrain, grain, self.environment
+            )
         else:
             joins = []
 
@@ -318,7 +332,7 @@ class MergeNode(StrategyNode):
 
         qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
         source_map = resolve_concept_map(
-            parent_sources,
+            list(merged.values()),
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,

@@ -163,6 +163,7 @@ def Max(args: list[Concept]) -> Function:
             DataType.DATE,
             DataType.DATETIME,
             DataType.TIMESTAMP,
+            DataType.BOOL,
         },
         arg_count=1,
         # output_grain=Grain(components=arguments),

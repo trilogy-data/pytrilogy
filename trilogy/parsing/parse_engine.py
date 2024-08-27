@@ -32,6 +32,7 @@ from trilogy.core.enums import (
     WindowType,
     DatePart,
     ShowCategory,
+    SelectFiltering,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -68,7 +69,7 @@ from trilogy.core.models import (
     ConceptTransform,
     Conditional,
     Datasource,
-    MergeStatement,
+    MergeStatementV2,
     Environment,
     FilterItem,
     Function,
@@ -400,7 +401,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
 
-        metadata = None
+        metadata = Metadata()
         modifiers = []
         for arg in args:
             if isinstance(arg, Metadata):
@@ -439,7 +440,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_declaration(self, meta: Meta, args) -> ConceptDeclarationStatement:
-        metadata = None
+        metadata = Metadata()
         modifiers = []
         for arg in args:
             if isinstance(arg, Metadata):
@@ -447,9 +448,7 @@ class ParseToObjects(Transformer):
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
         name = args[1]
-        lookup, namespace, name, parent = parse_concept_reference(
-            name, self.environment
-        )
+        _, namespace, name, _ = parse_concept_reference(name, self.environment)
         concept = Concept(
             name=name,
             datatype=args[2],
@@ -754,19 +753,21 @@ class ParseToObjects(Transformer):
         return [x for x in args]
 
     @v_args(meta=True)
-    def merge_statement(self, meta: Meta, args) -> MergeStatement:
-        parsed = [self.environment.concepts[x] for x in args]
-        datatypes = {x.datatype for x in parsed}
-        if not len(datatypes) == 1 and self.environment.concepts.fail_on_missing:
-            type_dict = {x.address: x.datatype for x in parsed}
-            raise SyntaxError(
-                f"Cannot merge concepts with different datatype"
-                f"line: {meta.line} concepts: {type_dict}"
-            )
-        merge = MergeStatement(concepts=parsed, datatype=datatypes.pop())
-        new = merge.merge_concept
-        self.environment.add_concept(new, meta=meta)
-        return merge
+    def merge_statement_v2(self, meta: Meta, args) -> MergeStatementV2:
+        modifiers = []
+        concepts = []
+        for arg in args:
+            if isinstance(arg, Modifier):
+                modifiers.append(arg)
+            else:
+                concepts.append(self.environment.concepts[arg])
+        new = MergeStatementV2(
+            source=concepts[0], target=concepts[1], modifiers=modifiers
+        )
+
+        self.environment.merge_concept(new.source, new.target, modifiers)
+
+        return new
 
     @v_args(meta=True)
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
@@ -892,7 +893,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_statement(self, meta: Meta, args) -> SelectStatement:
-        select_items = None
+        select_items: List[SelectItem] | None = None
         limit = None
         order_by = None
         where = None
@@ -919,16 +920,24 @@ class ParseToObjects(Transformer):
             # so rebuild at this point in the tree
             # TODO: simplify
             if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_select_grain(output.grain)
+                new_concept = item.content.output.with_select_context(
+                    output.grain,
+                    conditional=(
+                        output.where_clause.conditional
+                        if output.where_clause
+                        and output.where_clause_category == SelectFiltering.IMPLICIT
+                        else None
+                    ),
+                )
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept
         if order_by:
-            for item in order_by.items:
+            for orderitem in order_by.items:
                 if (
-                    isinstance(item.expr, Concept)
-                    and item.expr.purpose == Purpose.METRIC
+                    isinstance(orderitem.expr, Concept)
+                    and orderitem.expr.purpose == Purpose.METRIC
                 ):
-                    item.expr = item.expr.with_grain(output.grain)
+                    orderitem.expr = orderitem.expr.with_grain(output.grain)
         return output
 
     @v_args(meta=True)
@@ -1045,8 +1054,20 @@ class ParseToObjects(Transformer):
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
 
+    def condition_parenthetical(self, args):
+        return Parenthetical(content=args[0])
+
     def conditional(self, args):
-        return Conditional(left=args[0], right=args[2], operator=args[1])
+        def munch_args(args):
+            while args:
+                if len(args) == 1:
+                    return args[0]
+                else:
+                    return Conditional(
+                        left=args[0], operator=args[1], right=munch_args(args[2:])
+                    )
+
+        return munch_args(args)
 
     def window_order(self, args):
         return WindowOrder(args[0])
@@ -1723,7 +1744,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         | None
     ],
 ]:
-    environment = environment or Environment(datasources={})
+    environment = environment or Environment()
     parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
 
     try:

@@ -29,10 +29,10 @@ def extract_required_subgraphs(
 def extract_mandatory_subgraphs(paths: Dict[str, List[str]], g) -> List[List[Concept]]:
     final: list[list[str]] = []
     assocs: defaultdict[str, list] = defaultdict(list)
-    for path in paths:
-        extract_required_subgraphs(assocs, paths[path])
+    for path in paths.values():
+        extract_required_subgraphs(assocs, path)
 
-    for k, v in assocs.items():
+    for _, v in assocs.items():
         final.append(v)
     final_concepts = []
     for value in final:
