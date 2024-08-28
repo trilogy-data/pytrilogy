@@ -619,3 +619,39 @@ order by
     assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
     assert len(results) == 1
     assert results[0] == ("hammer", 4)
+
+
+def test_filtered_datasource(default_duckdb_engine: Executor):
+
+    test = """key orid int;
+key store string;
+key customer int;
+
+auto customer_orders <- count(orid) by customer;
+datasource filtered_orders(
+  orid: orid,
+  store: store,
+  customer:customer,
+)
+grain(orid)
+query '''
+select 1 orid, 'store1' store, 145 customer
+union all
+select 2, 'store2', 244
+union all
+select 3, 'store2', 244
+union all
+select 4, 'store3', 244
+'''
+where store = 'store2';
+
+
+select 
+    avg(customer_orders) -> avg_customer_orders,
+    avg(count(orid) by store) -> avg_store_orders,
+;"""
+    results = default_duckdb_engine.execute_text(test)[0].fetchall()
+
+    assert len(results) == 1
+    assert results[0].avg_customer_orders == 2
+    assert round(results[0].avg_store_orders, 2) == 2

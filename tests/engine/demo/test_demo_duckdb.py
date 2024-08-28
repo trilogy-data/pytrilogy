@@ -517,3 +517,36 @@ ORDER BY
     results = executor.execute_text(cmd)[-1].fetchall()
 
     assert len(results) == 8
+
+
+def test_demo_rowset_two(base_test_env: Environment):
+    executor = setup_engine(debug_flag=True)
+    executor.environment = base_test_env
+    cmd = """with survivors as
+SELECT
+    passenger.last_name, 
+    passenger.name,
+    passenger.id, 
+    passenger.survived,
+    passenger.age,  
+where 
+    passenger.survived =1; 
+
+# now we can reference our rowset derived concepts like any other concept
+select 
+    --survivors.passenger.id,
+    survivors.passenger.name,
+    survivors.passenger.last_name,
+    survivors.passenger.age,
+    --row_number survivors.passenger.id over 
+        survivors.passenger.last_name
+        order by survivors.passenger.age desc 
+    as eldest
+where 
+    eldest = 1
+order by survivors.passenger.last_name desc
+limit 5;"""
+
+    results = executor.execute_text(cmd)[-1].fetchall()
+
+    assert len(results) == 5
