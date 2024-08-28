@@ -25,6 +25,9 @@ from trilogy.core.models import (
     AlignItem,
     RawSQLStatement,
     NumericType,
+    Datasource,
+    ColumnAssignment,
+    Grain,
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -361,3 +364,45 @@ def test_render_numeric():
     test = Renderer().to_string(NumericType(precision=12, scale=3))
 
     assert test == "Numeric(12,3)"
+
+
+def test_render_datasource():
+    user_id = Concept(
+        name="user_id",
+        purpose=Purpose.KEY,
+        datatype=DataType.INTEGER,
+        lineage=None,
+    )
+    test = Renderer().to_string(
+        Datasource(
+            identifier="useful_data",
+            columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+            address="customers.dim_customers",
+            grain=Grain(components=[user_id]),
+            where=WhereClause(
+                conditional=Conditional(
+                    left=Comparison(
+                        left=user_id,
+                        right=123,
+                        operator=ComparisonOperator.EQ,
+                    ),
+                    right=Comparison(
+                        left=user_id,
+                        right=456,
+                        operator=ComparisonOperator.EQ,
+                    ),
+                    operator=BooleanOperator.OR,
+                ),
+            ),
+        )
+    )
+    print(test)
+    assert (
+        test
+        == """datasource useful_data (
+    user_id: user_id
+    ) 
+grain (user_id) 
+address customers.dim_customers
+(user_id = 123 or user_id = 456);"""
+    )

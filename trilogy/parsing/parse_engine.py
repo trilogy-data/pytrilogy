@@ -605,6 +605,7 @@ class ParseToObjects(Transformer):
         columns: List[ColumnAssignment] = args[1]
         grain: Optional[Grain] = None
         address: Optional[Address] = None
+        where: Optional[WhereClause] = None
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
@@ -612,6 +613,8 @@ class ParseToObjects(Transformer):
                 grain = val
             elif isinstance(val, Query):
                 address = Address(location=f"({val.text})", is_query=True)
+            elif isinstance(val, WhereClause):
+                where = val
         if not address:
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"
@@ -624,6 +627,7 @@ class ParseToObjects(Transformer):
             grain=grain,  # type: ignore
             address=address,
             namespace=self.environment.namespace,
+            where=where,
         )
         for column in columns:
             column.concept = column.concept.with_grain(datasource.grain)

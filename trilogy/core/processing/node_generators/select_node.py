@@ -89,6 +89,7 @@ def dm_to_strategy_node(
         accept_partial=accept_partial,
         datasource=datasource,
         grain=datasource.grain,
+        conditions=datasource.where.conditional if datasource.where else None,
     )
     # we need to nest the group node one further
     if force_group is True:
@@ -295,9 +296,6 @@ def gen_select_node_from_table(
                         g.nodes[ncandidate]
                     except KeyError:
                         raise nx.exception.NetworkXNoPath
-                        raise SyntaxError(
-                            f"Could not find node {ncandidate}, have {list(g.nodes())}"
-                        )
                 raise e
             except nx.exception.NetworkXNoPath:
                 all_found = False
@@ -372,6 +370,7 @@ def gen_select_node_from_table(
             accept_partial=accept_partial,
             datasource=datasource,
             grain=Grain(components=all_concepts),
+            conditions=datasource.where.conditional if datasource.where else None,
         )
         # we need to nest the group node one further
         if force_group is True:

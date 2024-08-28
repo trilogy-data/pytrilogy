@@ -41,3 +41,22 @@ datasource posts (
 ;
 """
     parse(text)
+
+
+def test_datasource_where():
+    text = """key user_id int metadata(description="the description");
+property user_id.display_name string metadata(description="The display name ");
+property user_id.about_me string metadata(description="User provided description");
+key post_id int;
+
+
+datasource x_posts (
+    user_id: user_id,
+    id: post_id
+    )
+    grain (post_id)
+    address bigquery-public-data.stackoverflow.post_history
+    where post_id = 2
+;
+"""
+    parse(text)

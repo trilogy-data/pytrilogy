@@ -35,7 +35,7 @@
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
 
     // datasource concepts
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query)
+    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query) where?
     
     grain_clause: "grain" "(" column_list ")"
     

@@ -1822,6 +1822,7 @@ class Datasource(Namespaced, BaseModel):
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
+    where: Optional[WhereClause] = None
 
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -1837,6 +1838,9 @@ class Datasource(Namespaced, BaseModel):
             for c in self.columns
         ] + original
         self.grain = self.grain.with_merge(source, target, modifiers)
+        self.where = (
+            self.where.with_merge(source, target, modifiers) if self.where else None
+        )
         del self.output_lcl
 
     @property
@@ -1929,6 +1933,7 @@ class Datasource(Namespaced, BaseModel):
             grain=self.grain.with_namespace(namespace),
             address=self.address,
             columns=[c.with_namespace(namespace) for c in self.columns],
+            where=self.where.with_namespace(namespace) if self.where else None,
         )
 
     @cached_property
@@ -2805,6 +2810,9 @@ class EnvironmentDatasourceDict(dict):
             if "." in key and key.split(".")[0] == DEFAULT_NAMESPACE:
                 return self.__getitem__(key.split(".")[1])
             raise
+
+    def values(self) -> ValuesView[Datasource]:  # type: ignore
+        return super().values()
 
 
 class EnvironmentConceptDict(dict):

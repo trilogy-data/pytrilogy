@@ -131,11 +131,15 @@ class Renderer:
     @to_string.register
     def _(self, arg: Datasource):
         assignments = ",\n\t".join([self.to_string(x) for x in arg.columns])
-        return f"""datasource {arg.name} (
+        base = f"""datasource {arg.name} (
     {assignments}
     ) 
 {self.to_string(arg.grain)} 
-{self.to_string(arg.address)};"""
+{self.to_string(arg.address)}"""
+        if arg.where:
+            base += f"\n{self.to_string(arg.where)}"
+        base += ";"
+        return base
 
     @to_string.register
     def _(self, arg: "Grain"):
@@ -196,7 +200,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ColumnAssignment"):
-        return f"{arg.alias}:{self.to_string(arg.concept)}"
+        return f"{arg.alias}: {self.to_string(arg.concept)}"
 
     @to_string.register
     def _(self, arg: "ConceptDeclarationStatement"):
