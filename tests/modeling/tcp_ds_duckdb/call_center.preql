@@ -1,0 +1,12 @@
+
+
+key id int;
+property id.county string;
+
+datasource call_center(
+    CC_CALL_CENTER_SK: id,
+    CC_COUNTY: county,
+)
+
+grain (id)
+address memory.call_center;

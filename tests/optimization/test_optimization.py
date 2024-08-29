@@ -12,8 +12,16 @@ from trilogy.core.models import (
     Environment,
     Grain,
     Comparison,
+    Function,
+    DataType,
 )
-from trilogy.core.enums import BooleanOperator, ComparisonOperator
+
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    Purpose,
+)
 
 
 def test_is_child_function():
@@ -179,8 +187,65 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
 
     inverse_map = {"parent": [cte1, cte2]}
     rule = PredicatePushdown()
+    # we cannot push down as not all children have the same filter
     assert rule.optimize(cte1, inverse_map) is False
     assert cte1.condition is None
+    assert cte2.condition is not None
+
+
+def test_invalid_aggregate_pushdown(
+    test_environment: Environment, test_environment_graph
+):
+    datasource = list(test_environment.datasources.values())[0]
+    outputs = [c.concept for c in datasource.columns]
+    cte_source_map = {outputs[0].address: [datasource.name]}
+    parent = CTE(
+        name="parent",
+        source=QueryDatasource(
+            input_concepts=[outputs[0]],
+            output_concepts=[outputs[0]],
+            datasources=[datasource],
+            grain=Grain(),
+            joins=[],
+            source_map={outputs[0].address: {datasource}},
+        ),
+        output_columns=[],
+        grain=Grain(),
+        source_map=cte_source_map,
+    )
+
+    cte2 = CTE(
+        name="test2",
+        source=QueryDatasource(
+            input_concepts=[outputs[0]],
+            output_concepts=[outputs[0]],
+            datasources=[datasource],
+            grain=Grain(),
+            joins=[],
+            source_map={outputs[0].address: {datasource}},
+        ),
+        output_columns=[],
+        parent_ctes=[parent],
+        condition=Comparison(
+            left=Function(
+                operator=FunctionType.COUNT,
+                arguments=[outputs[0]],
+                output_datatype=DataType.INTEGER,
+                output_purpose=Purpose.METRIC,
+            ),
+            right=12,
+            operator=ComparisonOperator.EQ,
+        ),
+        grain=Grain(),
+        source_map=cte_source_map,
+        existence_source_map={},
+    )
+
+    inverse_map = {"parent": [cte2]}
+    # we cannot push down as the condition is on an aggregate
+    rule = PredicatePushdown()
+    assert rule.optimize(cte2, inverse_map) is False
+    assert parent.condition is None
     assert cte2.condition is not None
 
 

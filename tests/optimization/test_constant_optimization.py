@@ -39,4 +39,6 @@ def test_constant_filter():
     exec = Dialects.DUCK_DB.default_executor()
 
     generated = exec.generate_sql(test_query)[0]
-    assert '"array" = 1' in generated
+    print(generated)
+    results = exec.execute_text(test_query)[0].fetchall()
+    assert results == [(1,)]

@@ -1,0 +1,17 @@
+
+
+key id int;
+property id.string_id string;
+property id.name string;
+property id.square_feet int;
+
+
+datasource warehouse (
+    w_warehouse_sk: id,
+    w_warehouse_id: string_id,
+    w_warehouse_name:name,
+    w_warehouse_sq_ft: square_feet
+    )
+grain (id)
+address memory.warehouse
+;

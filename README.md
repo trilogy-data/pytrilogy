@@ -218,7 +218,7 @@ N/A, only supports default auth. In python you can pass in a custom client.
 
 
 > [!TIP]
-> The CLI can also be used for formatting. PreQL has a default formatting style that should always be adhered to. `trilogy fmt <path to trilogy file>`
+> The CLI can also be used for formatting. Trilogy has a default formatting style that should always be adhered to. `trilogy fmt <path to trilogy file>`
 
 
 ## More Examples
@@ -255,7 +255,7 @@ but all are worth checking out. Please open PRs/comment for anything missed!
 
 #### CONCEPT
 
-Types: `string | int | float | bool | date | datetime | time | timestamp | interval`;
+Types: `string | int | float | bool | date | datetime | time | numeric(scale, precision) | timestamp | interval`;
 
 Key:
 `key <name> <type>;`

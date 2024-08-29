@@ -8,7 +8,6 @@ from trilogy.core.enums import (
     FunctionType,
     WindowType,
     DatePart,
-    PurposeLineage,
     ComparisonOperator,
 )
 from trilogy.core.models import (
@@ -189,14 +188,13 @@ TOP {{ limit }}{% endif %}
 \t{{ select }}{% if not loop.last %},{% endif %}{% endfor %}
 {% if base %}FROM
 \t{{ base }}{% endif %}{% if joins %}{% for join in joins %}
-\t{{ join }}{% endfor %}{% endif %}
-{% if where %}WHERE
-\t{{ where }}
-{% endif %}{%- if group_by %}GROUP BY {% for group in group_by %}
-\t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if order_by %}
-ORDER BY {% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}
+\t{{ join }}{% endfor %}{% endif %}{% if where %}
+WHERE
+\t{{ where }}{% endif %}{%- if group_by %}
+GROUP BY {% for group in group_by %}
+\t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if order_by %}
+ORDER BY{% for order in order_by %}
+\t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{% endif %}
 """
 )
@@ -643,82 +641,20 @@ class BaseDialect:
                 f" {selected}"
             )
 
-        # where assignment
-        output_where = False
-        if query.where_clause:
-            # found = False
-            filter = set(
-                [
-                    str(x.address)
-                    for x in query.where_clause.row_arguments
-                    if not x.derivation == PurposeLineage.CONSTANT
-                ]
-            )
-            query_output = set([str(z.address) for z in query.output_columns])
-            # if it wasn't an output
-            # we would have forced it up earlier and we don't need to render at this point
-            if filter.issubset(query_output):
-                output_where = True
-            for ex_set in query.where_clause.existence_arguments:
-                for c in ex_set:
-                    if c.address not in cte_output_map:
-                        cts = [
-                            ct
-                            for ct in query.ctes
-                            if ct.name in query.base.existence_source_map[c.address]
-                        ]
-                        if not cts:
-                            raise ValueError(query.base.existence_source_map[c.address])
-                        cte_output_map[c.address] = cts[0]
-
         compiled_ctes = self.generate_ctes(query)
 
         # restort selections by the order they were written in
         sorted_select: List[str] = []
         for output_c in output_addresses:
             sorted_select.append(select_columns[output_c])
-        if not query.base.requires_nesting:
-            final = self.SQL_TEMPLATE.render(
-                output=(
-                    query.output_to
-                    if isinstance(query, ProcessedQueryPersist)
-                    else None
-                ),
-                full_select=compiled_ctes[-1].statement,
-                ctes=compiled_ctes[:-1],
-            )
-        else:
-            final = self.SQL_TEMPLATE.render(
-                output=(
-                    query.output_to
-                    if isinstance(query, ProcessedQueryPersist)
-                    else None
-                ),
-                select_columns=sorted_select,
-                base=query.base.name,
-                joins=[
-                    render_join(join, self.QUOTE_CHARACTER, None)
-                    for join in query.joins
-                ],
-                ctes=compiled_ctes,
-                limit=query.limit,
-                # move up to CTEs
-                where=(
-                    self.render_expr(
-                        query.where_clause.conditional, cte_map=cte_output_map
-                    )
-                    if query.where_clause and output_where
-                    else None
-                ),
-                order_by=(
-                    [
-                        self.render_order_item(i, query.base, final=True)
-                        for i in query.order_by.items
-                    ]
-                    if query.order_by
-                    else None
-                ),
-            )
+
+        final = self.SQL_TEMPLATE.render(
+            output=(
+                query.output_to if isinstance(query, ProcessedQueryPersist) else None
+            ),
+            full_select=compiled_ctes[-1].statement,
+            ctes=compiled_ctes[:-1],
+        )
 
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
             raise ValueError(
