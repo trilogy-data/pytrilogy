@@ -124,15 +124,20 @@ def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
     return final_joins
 
 
-def add_node_join_concept(graph, concept, datasource, concepts):
-    # we don't need to join on a concept if all of the keys exist in the grain
-    # if concept.keys and all([x in grain for x in concept.keys]):
-    #     continue
+def add_node_join_concept(
+    graph: nx.DiGraph,
+    concept: Concept,
+    datasource: Datasource | QueryDatasource,
+    concepts: List[Concept],
+):
+
     concepts.append(concept)
 
     graph.add_node(concept.address, type=NodeType.CONCEPT)
     graph.add_edge(datasource.identifier, concept.address)
-    for k, v in concept.pseudonyms.items():
+    for _, v in concept.pseudonyms.items():
+        if v in concepts:
+            continue
         if v.address != concept.address:
             add_node_join_concept(graph, v, datasource, concepts)
 
@@ -149,13 +154,6 @@ def get_node_joins(
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
             add_node_join_concept(graph, concept, datasource, concepts)
-            # we don't need to join on a concept if all of the keys exist in the grain
-            # if concept.keys and all([x in grain for x in concept.keys]):
-            #     continue
-            # concepts.append(concept)
-
-            # graph.add_node(concept.address, type=NodeType.CONCEPT)
-            # graph.add_edge(datasource.identifier, concept.address)
 
     # add edges for every constant to every datasource
     for datasource in datasources:

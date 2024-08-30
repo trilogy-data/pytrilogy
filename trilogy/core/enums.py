@@ -119,6 +119,7 @@ class FunctionType(Enum):
 
     # COMPLEX
     INDEX_ACCESS = "index_access"
+    MAP_ACCESS = "map_access"
     ATTR_ACCESS = "attr_access"
 
     # TEXT AND MAYBE MORE

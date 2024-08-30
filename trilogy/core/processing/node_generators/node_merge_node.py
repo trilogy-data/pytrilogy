@@ -342,9 +342,9 @@ def gen_merge_node(
         concept = all_concepts[0]
         for k, v in concept.pseudonyms.items():
             test = subgraphs_to_merge_node(
-                [[concept,v]],
+                [[concept, v]],
                 g=g,
-                all_concepts = [concept],
+                all_concepts=[concept],
                 environment=environment,
                 depth=depth,
                 source_concepts=source_concepts,

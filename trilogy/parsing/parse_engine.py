@@ -43,6 +43,7 @@ from trilogy.core.functions import (
     Min,
     Split,
     IndexAccess,
+    MapAccess,
     AttrAccess,
     Abs,
     Unnest,
@@ -94,6 +95,7 @@ from trilogy.core.models import (
     RawColumnExpr,
     arg_to_datatype,
     ListWrapper,
+    MapWrapper,
     MapType,
     ShowStatement,
     DataType,
@@ -104,6 +106,7 @@ from trilogy.core.models import (
     RowsetDerivationStatement,
     LooseConceptList,
     list_to_wrapper,
+    dict_to_map_wrapper,
     NumericType,
 )
 from trilogy.parsing.exceptions import ParseError
@@ -117,7 +120,7 @@ from trilogy.parsing.common import (
     arbitrary_to_concept,
 )
 
-CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper)
+CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
@@ -253,7 +256,7 @@ class ParseToObjects(Transformer):
                 self.environment.add_concept(concept, meta=meta)
                 final.append(concept)
             elif isinstance(
-                arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper)
+                arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
             ):
                 id_hash = string_to_hash(str(arg))
                 concept = arbitrary_to_concept(
@@ -330,13 +333,20 @@ class ParseToObjects(Transformer):
     def numeric_type(self, args) -> NumericType:
         return NumericType(precision=args[0], scale=args[1])
 
-    def data_type(self, args) -> DataType | ListType | StructType | NumericType:
+    def map_type(self, args) -> MapType:
+        return MapType(key_type=args[0], value_type=args[1])
+
+    def data_type(
+        self, args
+    ) -> DataType | ListType | StructType | MapType | NumericType:
         resolved = args[0]
         if isinstance(resolved, StructType):
             return resolved
         elif isinstance(resolved, ListType):
             return resolved
         elif isinstance(resolved, NumericType):
+            return resolved
+        elif isinstance(resolved, MapType):
             return resolved
         return DataType(args[0].lower())
 
@@ -490,7 +500,6 @@ class ParseToObjects(Transformer):
         # we need to strip off every parenthetical to see what is being assigned.
         while isinstance(source_value, Parenthetical):
             source_value = source_value.content
-
         if isinstance(
             source_value, (FilterItem, WindowItem, AggregateWrapper, Function)
         ):
@@ -549,7 +558,7 @@ class ParseToObjects(Transformer):
         else:
             metadata = None
         name = args[1]
-        constant: Union[str, float, int, bool] = args[2]
+        constant: Union[str, float, int, bool, MapWrapper, ListWrapper] = args[2]
         lookup, namespace, name, parent = parse_concept_reference(
             name, self.environment
         )
@@ -1007,6 +1016,11 @@ class ParseToObjects(Transformer):
     def array_lit(self, args):
         return list_to_wrapper(args)
 
+    def map_lit(self, args):
+        parsed = dict(zip(args[::2], args[1::2]))
+        wrapped = dict_to_map_wrapper(parsed)
+        return wrapped
+
     def literal(self, args):
         return args[0]
 
@@ -1144,6 +1158,8 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def index_access(self, meta, args):
         args = self.process_function_args(args, meta=meta)
+        if args[0].datatype == DataType.MAP or isinstance(args[0].datatype, MapType):
+            return MapAccess(args)
         return IndexAccess(args)
 
     @v_args(meta=True)

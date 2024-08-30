@@ -17,6 +17,11 @@ def add_concept(concept: Concept, g: ReferenceGraph):
     for _, pseudonym in concept.pseudonyms.items():
         pseudonym = pseudonym.with_default_grain()
         pseudonym_node = concept_to_node(pseudonym)
+        if (pseudonym_node, node_name) in g.edges and (
+            node_name,
+            pseudonym_node,
+        ) in g.edges:
+            continue
         if pseudonym_node.split("@")[0] == node_name.split("@")[0]:
             continue
         g.add_edge(pseudonym_node, node_name, pseudonym=True)

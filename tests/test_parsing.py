@@ -18,6 +18,7 @@ from trilogy.dialect.base import BaseDialect
 from trilogy.core.enums import BooleanOperator
 from trilogy import Dialects
 
+
 def test_in():
     _, parsed = parse_text(
         "const order_id <- 3; SELECT order_id  WHERE order_id IN (1,2,3);"
@@ -316,11 +317,10 @@ select 1 as test;
     assert parsed[0].text == "select 1"
 
 
-
-
 def test_circular_aliasing():
     from trilogy.hooks.query_debugger import DebuggingHook
-    executor  = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+
+    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
     test_case = """key composite_id string;
 
 property composite_id.first <- split(composite_id, '-')[1];
@@ -358,10 +358,13 @@ select first, second;
 
     results = executor.execute_text(test_case)[0].fetchall()
 
-    assert results == [('123', 'abc')]
+    assert results == [("123", "abc")]
+
+
 def test_circular_aliasing_inverse():
     from trilogy.hooks.query_debugger import DebuggingHook
-    executor  = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+
+    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
     test_case = """key composite_id string;
 
 property composite_id.first <- split(composite_id, '-')[1];
@@ -391,4 +394,4 @@ select composite_id;
 
     results = executor.execute_text(test_case)[0].fetchall()
 
-    assert results == [('123-abc',)]
+    assert results == [("123-abc",)]

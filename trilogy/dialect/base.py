@@ -35,6 +35,7 @@ from trilogy.core.models import (
     Environment,
     RawColumnExpr,
     ListWrapper,
+    MapWrapper,
     ShowStatement,
     RowsetItem,
     MultiSelectStatement,
@@ -44,6 +45,7 @@ from trilogy.core.models import (
     RawSQLStatement,
     ProcessedRawSQLStatement,
     NumericType,
+    MapType,
     MergeStatementV2,
 )
 from trilogy.core.query_processor import process_query, process_persist
@@ -96,6 +98,7 @@ DATATYPE_MAP = {
     DataType.FLOAT: "float",
     DataType.BOOL: "bool",
     DataType.NUMERIC: "numeric",
+    DataType.MAP: "map",
 }
 
 
@@ -115,6 +118,7 @@ FUNCTION_MAP = {
     FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
     # complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
+    FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
     # math
     FunctionType.ADD: lambda x: f"{x[0]} + {x[1]}",
@@ -214,7 +218,7 @@ def safe_get_cte_value(coalesce, cte: CTE, c: Concept, quote_char: str):
     if not raw:
         for k, v in c.pseudonyms.items():
             if cte.source_map.get(k):
-                c = v    
+                c = v
                 raw = cte.source_map[k]
                 break
         if not raw:
@@ -295,6 +299,7 @@ class BaseDialect:
                     self.render_expr(v, cte)  # , alias=False)
                     for v in c.lineage.arguments
                 ]
+
                 if cte.group_to_grain:
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
                 else:
@@ -339,11 +344,11 @@ class BaseDialect:
             Parenthetical,
             AggregateWrapper,
             MagicConstants,
+            MapWrapper[Any, Any],
+            MapType,
             NumericType,
             ListType,
-            ListWrapper[int],
-            ListWrapper[str],
-            ListWrapper[float],
+            ListWrapper[Any],
             DatePart,
             CaseWhen,
             CaseElse,
@@ -439,6 +444,8 @@ class BaseDialect:
             return str(e)
         elif isinstance(e, ListWrapper):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+        elif isinstance(e, MapWrapper):
+            return f"MAP {{{','.join([f'{self.render_expr(k, cte=cte, cte_map=cte_map)}:{self.render_expr(v, cte=cte, cte_map=cte_map)}' for k, v in e.items()])}}}"
         elif isinstance(e, list):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
         elif isinstance(e, DataType):
