@@ -395,3 +395,15 @@ select composite_id;
     results = executor.execute_text(test_case)[0].fetchall()
 
     assert results == [("123-abc",)]
+
+
+def test_map_definition():
+    env, parsed = parse_text(
+        """
+key id int;
+property id.labels map<string, int>;
+
+"""
+    )
+    assert env.concepts["labels"].datatype.key_type == DataType.STRING
+    assert env.concepts["labels"].datatype.value_type == DataType.INTEGER
