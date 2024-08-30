@@ -15,6 +15,7 @@ FUNCTION_MAP = {
     FunctionType.LENGTH: lambda x: f"length({x[0]})",
     FunctionType.AVG: lambda x: f"avg({x[0]})",
     FunctionType.INDEX_ACCESS: lambda x: f"element_at({x[0]},{x[1]})",
+    FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.LIKE: lambda x: (
         f" CASE WHEN {x[0]} like {x[1]} THEN True ELSE False END"
     ),

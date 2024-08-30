@@ -202,15 +202,21 @@ def Split(args: list[Concept]) -> Function:
     )
 
 
+def get_index_output_type(
+    arg: Concept,
+) -> DataType | StructType | MapType | ListType | NumericType:
+    if isinstance(arg.datatype, ListType):
+        return arg.datatype.value_data_type
+    elif isinstance(arg.datatype, MapType):
+        return arg.datatype.value_data_type
+    return arg.datatype
+
+
 def IndexAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.INDEX_ACCESS,
         arguments=args,
-        output_datatype=(
-            args[0].datatype.value_data_type
-            if isinstance(args[0].datatype, ListType)
-            else args[0].datatype
-        ),
+        output_datatype=get_index_output_type(args[0]),
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
             {
@@ -220,6 +226,25 @@ def IndexAccess(args: list[Concept]):
             },
             {
                 DataType.INTEGER,
+            },
+        ],
+        arg_count=2,
+    )
+
+
+def MapAccess(args: list[Concept]):
+    return Function(
+        operator=FunctionType.MAP_ACCESS,
+        arguments=args,
+        output_datatype=get_index_output_type(args[0]),
+        output_purpose=Purpose.PROPERTY,
+        valid_inputs=[
+            {
+                DataType.MAP,
+            },
+            {
+                DataType.INTEGER,
+                DataType.STRING,
             },
         ],
         arg_count=2,

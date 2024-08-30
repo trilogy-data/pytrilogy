@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Metadata,
     FilterItem,
     ListWrapper,
+    MapWrapper,
     WindowItem,
 )
 from typing import List, Tuple
@@ -41,7 +42,7 @@ def concept_list_to_keys(concepts: Tuple[Concept, ...]) -> Tuple[Concept, ...]:
 
 
 def constant_to_concept(
-    parent: ListWrapper | list | int | float | str,
+    parent: ListWrapper | MapWrapper | list | int | float | str,
     name: str,
     namespace: str,
     purpose: Purpose | None = None,
@@ -53,6 +54,7 @@ def constant_to_concept(
         output_purpose=Purpose.CONSTANT,
         arguments=[parent],
     )
+    assert const_function.arguments[0] == parent, const_function.arguments[0]
     fmetadata = metadata or Metadata()
     return Concept(
         name=name,
@@ -186,6 +188,7 @@ def arbitrary_to_concept(
         | FilterItem
         | Function
         | ListWrapper
+        | MapWrapper
         | int
         | float
         | str

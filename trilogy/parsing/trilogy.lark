@@ -274,12 +274,14 @@
     float_lit: /[0-9]*\.[0-9]+/
 
     array_lit: "[" (literal ",")* literal ","? "]"()
+
+    map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
     
     !bool_lit: "True"i | "False"i
 
     !null_lit.1: "null"i
     
-    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit
+    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit
 
     MODIFIER: "Optional"i | "Partial"i | "Nullable"i
 
@@ -291,8 +293,9 @@
 
     numeric_type: "numeric"i "(" int_lit "," int_lit ")"
 
+    map_type: "map"i "<" data_type "," data_type ">"
 
-    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | struct_type | list_type
+    !data_type: "string"i | "number"i | "numeric"i | "map"i | "list"i | "array"i | "any"i | "int"i | "bigint"i | "date"i | "datetime"i | "timestamp"i | "float"i | "bool"i | numeric_type | map_type | struct_type | list_type
     
     PURPOSE:  "key"i | "metric"i  | CONST
     PROPERTY: "property"i

@@ -67,7 +67,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from trilogy.utility import unique
-from collections import UserList
+from collections import UserList, UserDict
 from functools import cached_property
 from abc import ABC
 
@@ -267,7 +267,7 @@ class ListType(BaseModel):
 
 class MapType(BaseModel):
     key_type: DataType
-    content_type: ALL_TYPES
+    value_type: ALL_TYPES
 
     @property
     def data_type(self):
@@ -276,6 +276,22 @@ class MapType(BaseModel):
     @property
     def value(self):
         return self.data_type.value
+
+    @property
+    def value_data_type(
+        self,
+    ) -> DataType | StructType | MapType | ListType | NumericType:
+        if isinstance(self.value_type, Concept):
+            return self.value_type.datatype
+        return self.value_type
+
+    @property
+    def key_data_type(
+        self,
+    ) -> DataType | StructType | MapType | ListType | NumericType:
+        if isinstance(self.key_type, Concept):
+            return self.key_type.datatype
+        return self.key_type
 
 
 class StructType(BaseModel):
@@ -312,6 +328,34 @@ class ListWrapper(Generic[VT], UserList):
     @classmethod
     def validate(cls, v):
         return cls(v, type=arg_to_datatype(v[0]))
+
+
+class MapWrapper(Generic[KT, VT], UserDict):
+    """Used to distinguish parsed map objects from other dicts"""
+
+    def __init__(self, *args, key_type: DataType, value_type: DataType, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.key_type = key_type
+        self.value_type = value_type
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    ) -> core_schema.CoreSchema:
+        args = get_args(source_type)
+        if args:
+            schema = handler(Dict[args])  # type: ignore
+        else:
+            schema = handler(Dict)
+        return core_schema.no_info_after_validator_function(cls.validate, schema)
+
+    @classmethod
+    def validate(cls, v):
+        return cls(
+            v,
+            key_type=arg_to_datatype(list(v.keys()).pop()),
+            value_type=arg_to_datatype(list(v.values()).pop()),
+        )
 
 
 class Metadata(BaseModel):
@@ -949,8 +993,8 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
-            Set[DataType | ListType | StructType | NumericType],
-            List[Set[DataType | ListType | StructType] | NumericType],
+            Set[DataType | ListType | StructType | MapType | NumericType],
+            List[Set[DataType | ListType | StructType | MapType | NumericType]],
         ]
     ] = None
     arguments: Sequence[
@@ -961,17 +1005,17 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             int,
             float,
             str,
+            MapWrapper[Any, Any],
             DataType,
             ListType,
+            MapType,
             NumericType,
             DatePart,
             "Parenthetical",
             CaseWhen,
             "CaseElse",
             list,
-            ListWrapper[int],
-            ListWrapper[str],
-            ListWrapper[float],
+            ListWrapper[Any],
         ]
     ]
 
@@ -3140,6 +3184,7 @@ class Environment(BaseModel):
                 v.pseudonyms[source.address] = source
             if v.address == source.address:
                 replacements[k] = target
+                v.pseudonyms[target.address] = target
         self.concepts.update(replacements)
 
         for k, ds in self.datasources.items():
@@ -4114,6 +4159,15 @@ def list_to_wrapper(args):
     return ListWrapper(args, type=types[0])
 
 
+def dict_to_map_wrapper(arg):
+    key_types = [arg_to_datatype(arg) for arg in arg.keys()]
+
+    value_types = [arg_to_datatype(arg) for arg in arg.values()]
+    assert len(set(key_types)) == 1
+    assert len(set(key_types)) == 1
+    return MapWrapper(arg, key_type=key_types[0], value_type=value_types[0])
+
+
 def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | NumericType:
     if isinstance(arg, Function):
         return arg.output_datatype
@@ -4142,5 +4196,7 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | Numeric
     elif isinstance(arg, list):
         wrapper = list_to_wrapper(arg)
         return ListType(type=wrapper.type)
+    elif isinstance(arg, MapWrapper):
+        return MapType(key_type=arg.key_type, value_type=arg.value_type)
     else:
         raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

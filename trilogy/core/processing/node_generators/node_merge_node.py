@@ -4,7 +4,6 @@ from trilogy.core.models import Concept, Environment, Conditional
 from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
 import networkx as nx
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.processing.utility import PathInfo
 from trilogy.constants import logger
 from trilogy.utility import unique
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
@@ -63,7 +62,9 @@ def extract_ds_components(g: nx.DiGraph, nodelist: list[str]) -> list[list[str]]
                     if not str(x).startswith("ds~")
                 ]
             )
-
+    # if we had no ego graphs, return all concepts
+    if not graphs:
+        return [[extract_address(node) for node in nodelist]]
     graphs = filter_unique_graphs(graphs)
     for node in nodelist:
         parsed = extract_address(node)
@@ -82,6 +83,7 @@ def determine_induced_minimal_nodes(
     H: nx.Graph = nx.to_undirected(G).copy()
     nodes_to_remove = []
     concepts = nx.get_node_attributes(G, "concept")
+
     for node in G.nodes:
         if concepts.get(node):
             lookup = concepts[node]
@@ -107,9 +109,11 @@ def determine_induced_minimal_nodes(
         paths = nx.multi_source_dijkstra_path(H, nodelist)
     except nx.exception.NodeNotFound:
         return None
+
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
+
     for edge in G.edges:
         if edge[1] in final.nodes and edge[0].startswith("ds~"):
             ds_name = extract_address(edge[0])
@@ -125,6 +129,7 @@ def determine_induced_minimal_nodes(
         [final.in_degree(node) > 0 for node in final.nodes if node.startswith("c~")]
     ):
         return None
+
     if not all([node in final.nodes for node in nodelist]):
         return None
     return final
@@ -308,111 +313,44 @@ def gen_merge_node(
     history: History | None = None,
     conditions: Conditional | None = None,
 ) -> Optional[MergeNode]:
-    join_candidates: List[PathInfo] = []
 
-    # inject new concepts into search, and identify if two dses can reach there
-    if not join_candidates:
-        for filter_downstream in [True, False]:
-            weak_resolve = resolve_weak_components(
-                all_concepts,
-                environment,
-                g,
-                filter_downstream=filter_downstream,
-                accept_partial=accept_partial,
+    for filter_downstream in [True, False]:
+        weak_resolve = resolve_weak_components(
+            all_concepts,
+            environment,
+            g,
+            filter_downstream=filter_downstream,
+            accept_partial=accept_partial,
+        )
+        if weak_resolve:
+            log_graph = [[y.address for y in x] for x in weak_resolve]
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
             )
-            if weak_resolve:
-                log_graph = [[y.address for y in x] for x in weak_resolve]
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
-                )
-                return subgraphs_to_merge_node(
-                    weak_resolve,
-                    depth=depth,
-                    all_concepts=all_concepts,
-                    environment=environment,
-                    g=g,
-                    source_concepts=source_concepts,
-                    history=history,
-                    conditions=conditions,
-                )
-    if not join_candidates:
-        return None
-    join_additions: list[set[str]] = []
-    for candidate in join_candidates:
-        join_additions.append(candidate.reduced_concepts)
-
-    common: set[str] = set()
-    final_candidates: list[set[str]] = []
-    # find all values that show up in every join_additions
-    for ja in join_additions:
-        if not common:
-            common = ja
-        else:
-            common = common.intersection(ja)
-        if all(ja.issubset(y) for y in join_additions):
-            final_candidates.append(ja)
-
-    if not final_candidates:
-        filtered_paths = [x.difference(common) for x in join_additions]
-        raise AmbiguousRelationshipResolutionException(
-            f"Ambiguous concept join resolution fetching {[x.address for x in all_concepts]} - unique values in possible paths = {filtered_paths}. Include an additional concept to disambiguate",
-            join_additions,
-        )
-    if not join_candidates:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} No additional join candidates could be found"
-        )
-        return None
-    shortest: PathInfo = sorted(
-        [x for x in join_candidates if x.reduced_concepts in final_candidates],
-        key=lambda x: len(x.reduced_concepts),
-    )[0]
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} final path is {shortest.paths}")
-
-    return subgraphs_to_merge_node(
-        shortest.concept_subgraphs,
-        depth=depth,
-        all_concepts=all_concepts,
-        environment=environment,
-        g=g,
-        source_concepts=source_concepts,
-        history=history,
-        conditions=conditions,
-    )
-    # parents = []
-    # for graph in shortest.concept_subgraphs:
-    #     logger.info(
-    #         f"{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]}"
-    #     )
-    #     parent = source_concepts(
-    #         mandatory_list=graph,
-    #         environment=environment,
-    #         g=g,
-    #         depth=depth + 1,
-    #         history=history,
-    #     )
-    #     if not parent:
-    #         logger.info(
-    #             f"{padding(depth)}{LOGGER_PREFIX} Unable to instantiate target subgraph"
-    #         )
-    #         return None
-    #     logger.info(
-    #         f"{padding(depth)}{LOGGER_PREFIX} finished subgraph fetch for {[c.address for c in graph]}, have parent {type(parent)}"
-    #     )
-    #     parents.append(parent)
-
-    # return MergeNode(
-    #     input_concepts=[
-    #         environment.concepts[x]
-    #         for x in shortest.reduced_concepts
-    #         if environment.concepts[x].derivation != PurposeLineage.MERGE
-    #     ],
-    #     output_concepts=[
-    #         x for x in all_concepts if x.derivation != PurposeLineage.MERGE
-    #     ],
-    #     environment=environment,
-    #     g=g,
-    #     parents=parents,
-    #     depth=depth,
-    #     conditions=conditions,
-    # )
+            return subgraphs_to_merge_node(
+                weak_resolve,
+                depth=depth,
+                all_concepts=all_concepts,
+                environment=environment,
+                g=g,
+                source_concepts=source_concepts,
+                history=history,
+                conditions=conditions,
+            )
+    # one concept handling may need to be kicked to alias
+    if len(all_concepts) == 1:
+        concept = all_concepts[0]
+        for k, v in concept.pseudonyms.items():
+            test = subgraphs_to_merge_node(
+                [[concept, v]],
+                g=g,
+                all_concepts=[concept],
+                environment=environment,
+                depth=depth,
+                source_concepts=source_concepts,
+                history=history,
+                conditions=conditions,
+            )
+            if test:
+                return test
+    return None

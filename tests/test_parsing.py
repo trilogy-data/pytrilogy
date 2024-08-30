@@ -16,6 +16,7 @@ from trilogy.parsing.parse_engine import (
 from trilogy.constants import MagicConstants
 from trilogy.dialect.base import BaseDialect
 from trilogy.core.enums import BooleanOperator
+from trilogy import Dialects
 
 
 def test_in():
@@ -314,3 +315,95 @@ select 1 as test;
 """
     )
     assert parsed[0].text == "select 1"
+
+
+def test_circular_aliasing():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    test_case = """key composite_id string;
+
+property composite_id.first <- split(composite_id, '-')[1];
+property composite_id.second <- split(composite_id, '-')[2];
+
+key composite_id_alt <- concat(first, '-', second);
+
+merge composite_id_alt into composite_id;
+
+datasource random (
+    first:first,
+    second:second
+)
+grain (composite_id)
+query '''
+select '123' as first, 'abc' as second
+'''
+;
+
+datasource metrics (
+    composite_id: composite_id,
+)
+grain (composite_id)
+query '''
+select '123-abc' as composite_id
+'''
+;
+
+
+select first, second;
+
+
+"""
+    executor.parse_text(test_case)
+
+    results = executor.execute_text(test_case)[0].fetchall()
+
+    assert results == [("123", "abc")]
+
+
+def test_circular_aliasing_inverse():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    executor = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
+    test_case = """key composite_id string;
+
+property composite_id.first <- split(composite_id, '-')[1];
+property composite_id.second <- split(composite_id, '-')[2];
+
+key composite_id_alt <- concat(first, '-', second);
+
+merge composite_id_alt into composite_id;
+
+
+datasource metrics (
+    first:first,
+    second:second
+)
+grain (composite_id)
+query '''
+select '123' as first, 'abc' as second
+'''
+;
+
+
+select composite_id;
+
+
+"""
+    executor.parse_text(test_case)
+
+    results = executor.execute_text(test_case)[0].fetchall()
+
+    assert results == [("123-abc",)]
+
+
+def test_map_definition():
+    env, parsed = parse_text(
+        """
+key id int;
+property id.labels map<string, int>;
+
+"""
+    )
+    assert env.concepts["labels"].datatype.key_type == DataType.STRING
+    assert env.concepts["labels"].datatype.value_type == DataType.INTEGER

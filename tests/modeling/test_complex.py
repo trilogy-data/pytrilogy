@@ -1,5 +1,5 @@
 from trilogy.core.models import Environment, SelectStatement
-from trilogy import parse, Executor
+from trilogy import parse, Executor, Dialects
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
@@ -164,3 +164,18 @@ def test_window_alt(test_environment: Environment, test_executor: Executor):
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0] == (1,)
+
+
+def test_maps():
+
+    test_executor = Dialects.DUCK_DB.default_executor()
+    test_select = """
+    const num_map <- {1: 10, 2: 20};
+
+    SELECT
+        num_map[1] -> num_map_1
+    ;"""
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == (10,)
