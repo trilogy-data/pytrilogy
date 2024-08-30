@@ -467,9 +467,11 @@ def process_query(
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: List[CTE] = list(seen.values())
+    root_cte.order_by = statement.order_by
+    root_cte.limit = statement.limit
+    root_cte.hidden_concepts = [x for x in statement.hidden_components]
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
-
     return ProcessedQuery(
         order_by=statement.order_by,
         grain=statement.grain,

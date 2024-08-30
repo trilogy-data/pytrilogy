@@ -2342,7 +2342,6 @@ class CTE(BaseModel):
     hidden_concepts: List[Concept] = Field(default_factory=list)
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    requires_nesting: bool = True
     base_name_override: Optional[str] = None
     base_alias_override: Optional[str] = None
 

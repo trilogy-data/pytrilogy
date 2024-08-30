@@ -22,7 +22,7 @@ datasource customers (
     C_CUSTOMER_ID: text_id,
     C_LAST_NAME: last_name,
     C_FIRST_NAME: first_name,
-    C_CURRENT_ADDR_SK: address_id,
+    C_CURRENT_ADDR_SK: ~address_id,
     C_CURRENT_CDEMO_SK: demographics.id,
     C_PREFERRED_CUST_FLAG: preferred_cust_flag
 )

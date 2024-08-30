@@ -195,26 +195,6 @@ def get_node_joins(
         ),
     )
 
-    node_map = {
-        x[0:20]: len(
-            [
-                partial
-                for partial in identifier_map[x].partial_concepts
-                if partial in grain
-            ]
-            + [
-                output
-                for output in identifier_map[x].output_concepts
-                if output.address in grain_pseudonyms
-            ]
-        )
-        for x in node_list
-    }
-    print("NODE MAP")
-    print(node_map)
-    print([x.address for x in grain])
-    print(grain_pseudonyms)
-
     for left in node_list:
         # the constant dataset is a special case
         # and can never be on the left of a join

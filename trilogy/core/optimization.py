@@ -1,10 +1,10 @@
 from trilogy.core.models import (
     CTE,
     SelectStatement,
-    PersistStatement,
     MultiSelectStatement,
+    Conditional,
 )
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import PurposeLineage, BooleanOperator
 from trilogy.constants import logger, CONFIG
 from trilogy.core.optimizations import (
     OptimizationRule,
@@ -42,34 +42,45 @@ def gen_inverse_map(input: list[CTE]) -> dict[str, list[CTE]]:
     return inverse_map
 
 
-def is_direct_return_eligible(
-    cte: CTE, select: SelectStatement | PersistStatement | MultiSelectStatement
-) -> bool:
-    if isinstance(select, (PersistStatement, MultiSelectStatement)):
-        return False
+def is_direct_return_eligible(cte: CTE) -> CTE | None:
+    # if isinstance(select, (PersistStatement, MultiSelectStatement)):
+    #     return False
+    if len(cte.parent_ctes) != 1:
+        return None
+    direct_parent = cte.parent_ctes[0]
+
+    output_addresses = set([x.address for x in cte.output_columns])
+    parent_output_addresses = set([x.address for x in direct_parent.output_columns])
+    if not output_addresses.issubset(parent_output_addresses):
+        return None
+    if not direct_parent.grain == cte.grain:
+        return None
     derived_concepts = [
         c
         for c in cte.source.output_concepts + cte.source.hidden_concepts
         if c not in cte.source.input_concepts
     ]
-    eligible = True
     conditions = (
-        set(x.address for x in select.where_clause.concept_arguments)
-        if select.where_clause
+        set(x.address for x in direct_parent.condition.concept_arguments)
+        if direct_parent.condition
         else set()
     )
     for x in derived_concepts:
         if x.derivation == PurposeLineage.WINDOW:
-            return False
+            return None
         if x.derivation == PurposeLineage.UNNEST:
-            return False
+            return None
         if x.derivation == PurposeLineage.AGGREGATE:
             if x.address in conditions:
-                return False
+                return None
+    # handling top level nodes that require unpacking
+    for x in cte.output_columns:
+        if x.derivation == PurposeLineage.UNNEST:
+            return None
     logger.info(
-        f"[Optimization][EarlyReturn] Upleveling output select to final CTE with derived_concepts {[x.address for x in derived_concepts]}"
+        f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}"
     )
-    return eligible
+    return direct_parent
 
 
 def sort_select_output(cte: CTE, query: SelectStatement | MultiSelectStatement):
@@ -90,23 +101,27 @@ def optimize_ctes(
     input: list[CTE], root_cte: CTE, select: SelectStatement | MultiSelectStatement
 ) -> list[CTE]:
 
-    if CONFIG.optimizations.direct_return and is_direct_return_eligible(
-        root_cte, select
+    direct_parent: CTE | None = root_cte
+    while CONFIG.optimizations.direct_return and (
+        direct_parent := is_direct_return_eligible(root_cte)
     ):
-        root_cte.order_by = select.order_by
-        root_cte.limit = select.limit
-        # if select.where_clause:
+        direct_parent.order_by = root_cte.order_by
+        direct_parent.limit = root_cte.limit
+        direct_parent.hidden_concepts = (
+            root_cte.hidden_concepts + direct_parent.hidden_concepts
+        )
+        if root_cte.condition:
+            if direct_parent.condition:
+                direct_parent.condition = Conditional(
+                    left=direct_parent.condition,
+                    operator=BooleanOperator.AND,
+                    right=root_cte.condition,
+                )
+            else:
+                direct_parent.condition = root_cte.condition
+        root_cte = direct_parent
 
-        #     if root_cte.condition:
-        #         root_cte.condition = Conditional(
-        #             left=root_cte.condition,
-        #             operator=BooleanOperator.AND,
-        #             right=select.where_clause.conditional,
-        #         )
-        #     else:
-        #         root_cte.condition = select.where_clause.conditional
-        root_cte.requires_nesting = False
-        sort_select_output(root_cte, select)
+    sort_select_output(root_cte, select)
 
     REGISTERED_RULES: list["OptimizationRule"] = []
     if CONFIG.optimizations.constant_inlining:
