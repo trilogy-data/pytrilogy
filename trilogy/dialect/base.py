@@ -212,7 +212,13 @@ def safe_get_cte_value(coalesce, cte: CTE, c: Concept, quote_char: str):
     raw = cte.source_map.get(address, None)
 
     if not raw:
-        return INVALID_REFERENCE_STRING("Missing source reference")
+        for k, v in c.pseudonyms.items():
+            if cte.source_map.get(k):
+                c = v    
+                raw = cte.source_map[k]
+                break
+        if not raw:
+            return INVALID_REFERENCE_STRING("Missing source reference")
     if isinstance(raw, str):
         rendered = cte.get_alias(c, raw)
         return f"{raw}.{safe_quote(rendered, quote_char)}"

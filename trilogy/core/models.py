@@ -3140,6 +3140,7 @@ class Environment(BaseModel):
                 v.pseudonyms[source.address] = source
             if v.address == source.address:
                 replacements[k] = target
+                v.pseudonyms[target.address] = target
         self.concepts.update(replacements)
 
         for k, ds in self.datasources.items():

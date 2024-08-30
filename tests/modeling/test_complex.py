@@ -164,3 +164,19 @@ def test_window_alt(test_environment: Environment, test_executor: Executor):
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0] == (1,)
+
+
+
+
+def test_maps(test_environment: Environment, test_executor: Executor):
+    test_select = """
+    auto num_map <- {1: 10, 2: 20};
+
+    SELECT
+        num_map[1]
+    ;"""
+    _, statements = parse(test_select, test_environment)
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == (10,)

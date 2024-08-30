@@ -44,7 +44,7 @@ def gen_basic_node(
                         list(optional_set) + [concept],
                     )
                 )
-
+    # check for the concept by itself
     for attempt, basic_output in reversed(attempts):
         partials = []
         attempt = unique(attempt, "address")

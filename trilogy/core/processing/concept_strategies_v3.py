@@ -336,8 +336,12 @@ def validate_concept(
     virtual_addresses: set[str],
     found_map: dict[str, set[Concept]],
     accept_partial: bool,
+    seen: set[str],
 ):
+    if concept.address in seen:
+        return
     found_map[str(node)].add(concept)
+    seen.add(concept.address)
     if concept not in node.partial_concepts:
 
         found_addresses.add(concept.address)
@@ -366,6 +370,7 @@ def validate_concept(
             virtual_addresses,
             found_map,
             accept_partial,
+            seen=seen
         )
 
 
@@ -379,8 +384,10 @@ def validate_stack(
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
     virtual_addresses: set[str] = set()
+    seen: set[str] = set()
     for node in stack:
         resolved = node.resolve()
+
         for concept in resolved.output_concepts:
             validate_concept(
                 concept,
@@ -391,6 +398,7 @@ def validate_stack(
                 virtual_addresses,
                 found_map,
                 accept_partial,
+                seen
             )
         for concept in node.virtual_output_concepts:
             if concept.address in non_partial_addresses:
