@@ -7,6 +7,7 @@ class UnnestMode(Enum):
     DIRECT = "direct"
     CROSS_APPLY = "cross_apply"
     CROSS_JOIN = "cross_join"
+    CROSS_JOIN_ALIAS = "cross_join_alias"
 
 
 class ConceptSource(Enum):

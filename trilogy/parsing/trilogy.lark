@@ -39,7 +39,7 @@
     
     grain_clause: "grain" "(" column_list ")"
     
-    address: "address" ADDRESS
+    address: "address" (QUOTED_ADDRESS | ADDRESS)
     
     query: "query" MULTILINE_STRING
     
@@ -258,7 +258,8 @@
     // base language constructs
     concept_lit: IDENTIFIER
     IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\-]*/
-    ADDRESS: IDENTIFIER | /`[a-zA-Z\_][a-zA-Z0-9\_\-\.\-\*]*`/
+    QUOTED_ADDRESS:  /`[a-zA-Z\_][a-zA-Z0-9\_\-\.\-\*\:]*`/
+    ADDRESS: IDENTIFIER
 
     MULTILINE_STRING: /\'{3}(.*?)\'{3}/s
     

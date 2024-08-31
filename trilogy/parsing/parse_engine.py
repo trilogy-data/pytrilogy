@@ -297,8 +297,11 @@ class ParseToObjects(Transformer):
     def concept_lit(self, args) -> Concept:
         return self.environment.concepts.__getitem__(args[0])
 
-    def ADDRESS(self, args) -> str:
-        return args.value
+    def ADDRESS(self, args) -> Address:
+        return Address(location=args.value, quoted=False)
+
+    def QUOTED_ADDRESS(self, args) -> Address:
+        return Address(location=args.value[1:-1], quoted=True)
 
     def STRING_CHARS(self, args) -> str:
         return args.value
@@ -1010,7 +1013,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def address(self, meta: Meta, args):
-        return Address(location=args[0])
+        return args[0]
 
     @v_args(meta=True)
     def query(self, meta: Meta, args):

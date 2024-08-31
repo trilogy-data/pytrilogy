@@ -448,3 +448,46 @@ select
         {"a": 1, "b": 2, "c": 3},
         1,
     )
+
+
+def test_datasource_colon():
+
+    text = """
+key x int;
+key y int;
+
+datasource test (
+x:x,
+y:y)
+grain(x)
+address `abc:def`
+;
+
+
+select x;
+"""
+    env, parsed = parse_text(text)
+
+    results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
+
+    assert '"abc:def" as test' in results
+
+    text = """
+key x int;
+key y int;
+
+datasource test (
+x:x,
+y:y)
+grain(x)
+address abcdef
+;
+
+
+select x;
+"""
+    env, parsed = parse_text(text)
+
+    results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
+
+    assert "abcdef as test" in results, results

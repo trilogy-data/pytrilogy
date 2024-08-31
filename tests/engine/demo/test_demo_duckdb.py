@@ -566,5 +566,4 @@ order by
     engine.environment = base_test_env
     results = engine.execute_text(query)
 
-
     assert len(results[0].fetchall()) == 3
