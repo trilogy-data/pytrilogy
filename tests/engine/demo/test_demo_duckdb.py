@@ -1,7 +1,5 @@
-import pandas as pd
-from trilogy import Executor, Dialects
+from trilogy import Executor
 from trilogy.core.models import Environment
-from sqlalchemy import create_engine
 from trilogy.core.models import (
     Datasource,
     Concept,
@@ -13,39 +11,6 @@ from trilogy.core.models import (
     SelectContext,
 )
 from trilogy.core.enums import Purpose, FunctionType
-from os.path import dirname
-from pathlib import PurePath
-from trilogy.hooks.query_debugger import DebuggingHook
-from logging import INFO
-
-
-def setup_engine(debug_flag: bool = True) -> Executor:
-    engine = create_engine(r"duckdb:///:memory:", future=True)
-    csv = PurePath(dirname(__file__)) / "train.csv"
-    df = pd.read_csv(csv)
-    _ = df
-    output = Executor(
-        engine=engine,
-        dialect=Dialects.DUCK_DB,
-        hooks=(
-            [
-                DebuggingHook(
-                    level=INFO,
-                    process_other=False,
-                    process_datasources=False,
-                    process_ctes=False,
-                )
-            ]
-            if debug_flag
-            else []
-        ),
-    )
-
-    output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
-    df2 = pd.read_csv(PurePath(dirname(__file__)) / "richest.csv")
-    _ = df2
-    output.execute_raw_sql("CREATE TABLE rich_info AS SELECT * FROM df2")
-    return output
 
 
 def setup_titanic(env: Environment):
@@ -178,8 +143,8 @@ def setup_titanic(env: Environment):
     return env
 
 
-def test_demo_e2e():
-    executor = setup_engine()
+def test_demo_e2e(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -199,8 +164,8 @@ select
     # confirm we can still get results
 
 
-def test_demo_aggregates():
-    executor = setup_engine()
+def test_demo_aggregates(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -249,8 +214,8 @@ select
         assert row.survival_rate < 100
 
 
-def test_demo_filter():
-    executor = setup_engine(debug_flag=False)
+def test_demo_filter(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -280,8 +245,8 @@ def test_demo_filter():
     assert results[0].surviving_size == 4
 
 
-def test_demo_const():
-    executor = setup_engine(debug_flag=False)
+def test_demo_const(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -291,8 +256,8 @@ def test_demo_const():
     executor.execute_text(test)[-1].fetchall()
 
 
-def test_demo_rowset():
-    executor = setup_engine(debug_flag=True)
+def test_demo_rowset(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -325,8 +290,8 @@ limit 5;"""
     assert len(results[0]) == 3
 
 
-def test_demo_duplication():
-    executor = setup_engine(debug_flag=False)
+def test_demo_duplication(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -349,8 +314,8 @@ limit 5;"""
     assert first_row.surviving_size == 2
 
 
-def test_demo_suggested_answer():
-    executor = setup_engine(debug_flag=False)
+def test_demo_suggested_answer(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -371,8 +336,8 @@ order by passenger.decade desc
     assert len(results) == 10
 
 
-def test_demo_suggested_answer_failing():
-    executor = setup_engine(debug_flag=True)
+def test_demo_suggested_answer_failing(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -417,8 +382,8 @@ order by passenger.class desc
     assert round(results[0].survival_rate_auto_two, 2) == 1.24
 
 
-def test_demo_suggested_answer_failing_intentional():
-    executor = setup_engine(debug_flag=True)
+def test_demo_suggested_answer_failing_intentional(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -438,8 +403,8 @@ order by passenger.class desc
     assert len(results) == 3
 
 
-def test_demo_basic():
-    executor = setup_engine(debug_flag=True)
+def test_demo_basic(engine):
+    executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -477,8 +442,8 @@ ORDER BY
     )
 
 
-def test_merge_basic(base_test_env: Environment):
-    executor = setup_engine(debug_flag=True)
+def test_merge_basic(engine, base_test_env: Environment):
+    executor = engine
     executor.environment = base_test_env
 
     # assert set([x.address for x in node.output_concepts]) == set(['rich_info.last_name', 'rich_info.split_name', 'rich_info.full_name'])
@@ -498,8 +463,8 @@ where
     assert len(results) == 17
 
 
-def test_merge(base_test_env: Environment):
-    executor = setup_engine(debug_flag=True)
+def test_merge(base_test_env: Environment, engine):
+    executor = engine
     executor.environment = base_test_env
     rich_name = base_test_env.concepts["rich_info.full_name"]
     assert rich_name in base_test_env.concepts["rich_info.last_name"].sources
@@ -523,8 +488,8 @@ ORDER BY
     assert len(results) == 8
 
 
-def test_demo_rowset_two(base_test_env: Environment):
-    executor = setup_engine(debug_flag=True)
+def test_demo_rowset_two(base_test_env: Environment, engine):
+    executor = engine
     executor.environment = base_test_env
     cmd = """with survivors as
 SELECT
@@ -554,3 +519,30 @@ limit 5;"""
     results = executor.execute_text(cmd)[-1].fetchall()
 
     assert len(results) == 5
+
+
+def test_demo_brevity(base_test_env, engine: Executor):
+    query = """select 
+    passenger.survived, 
+    passenger.id.count, 
+    count(passenger.id) as passenger_count_alt, 
+    count(passenger.id) -> passenger_count_alt_2
+;"""
+
+    engine.environment = base_test_env
+    sql = engine.generate_sql(query)
+
+    assert (
+        sql[-1].strip()
+        == """SELECT
+    raw_data."survived" as "passenger_survived",
+    count(raw_data."passengerid") as "passenger_id_count",
+    count(raw_data."passengerid") as "passenger_count_alt",
+    count(raw_data."passengerid") as "passenger_count_alt_2"
+FROM
+    raw_titanic as raw_data
+
+GROUP BY 
+    raw_data."survived"
+""".strip()
+    )

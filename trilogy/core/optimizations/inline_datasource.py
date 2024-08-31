@@ -43,10 +43,14 @@ class InlineDatasource(OptimizationRule):
                 continue
             root_outputs = {x.address for x in root.output_concepts}
             cte_outputs = {x.address for x in cte.output_columns}
+            inherited = {x for x, v in cte.source_map.items() if v}
             # cte_inherited_outputs = {x.address for x in parent_cte.output_columns if parent_cte.source_map.get(x.address)}
             grain_components = {x.address for x in root.grain.components}
-            if not cte_outputs.issubset(root_outputs):
-                self.log(f"Not all {parent_cte.name} outputs are found on datasource")
+            if not inherited.issubset(root_outputs):
+                cte_missing = inherited - root_outputs
+                self.log(
+                    f"Not all {parent_cte.name} require inputs are found on datasource, missing {cte_missing}"
+                )
                 continue
             if not grain_components.issubset(cte_outputs):
                 self.log("Not all datasource components in cte outputs, forcing group")

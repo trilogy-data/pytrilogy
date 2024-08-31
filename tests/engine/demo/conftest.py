@@ -88,6 +88,35 @@ def setup_normalized_engine() -> Executor:
     return output
 
 
+def setup_engine(debug_flag: bool = True) -> Executor:
+    engine = create_engine(r"duckdb:///:memory:", future=True)
+    csv = PurePath(dirname(__file__)) / "train.csv"
+    df = pd.read_csv(csv)
+    _ = df
+    output = Executor(
+        engine=engine,
+        dialect=Dialects.DUCK_DB,
+        hooks=(
+            [
+                DebuggingHook(
+                    level=INFO,
+                    process_other=False,
+                    process_datasources=False,
+                    process_ctes=False,
+                )
+            ]
+            if debug_flag
+            else []
+        ),
+    )
+
+    output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
+    df2 = pd.read_csv(PurePath(dirname(__file__)) / "richest.csv")
+    _ = df2
+    output.execute_raw_sql("CREATE TABLE rich_info AS SELECT * FROM df2")
+    return output
+
+
 def create_function_derived_concept(
     name: str,
     namespace: str,
@@ -481,6 +510,12 @@ def setup_titanic(env: Environment):
 @fixture
 def normalized_engine():
     executor = setup_normalized_engine()
+    yield executor
+
+
+@fixture
+def engine():
+    executor = setup_engine()
     yield executor
 
 
