@@ -74,27 +74,29 @@ def gen_filter_node(
         return parent
 
     core_parents.append(parent)
-    if parent_existence_concepts:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} fetching filter node existence parents {[x.address for x in parent_existence_concepts]}"
-        )
-        parent_existence = source_concepts(
-            mandatory_list=parent_existence_concepts,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            history=history,
-        )
-        if not parent_existence:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} filter existence node parents could not be found"
-            )
-            return None
-        core_parents.append(parent_existence)
 
+    if parent_existence_concepts:
+        for existince_tuple in parent_existence_concepts:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} fetching filter node existence parents {[x.address for x in existince_tuple]}"
+            )
+            parent_existence = source_concepts(
+                mandatory_list=list(existince_tuple),
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+                history=history,
+            )
+            if not parent_existence:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} filter existence node parents could not be found"
+                )
+                return None
+            core_parents.append(parent_existence)
+    flattened_existence = [x for y in parent_existence_concepts for x in y]
     filter_node = FilterNode(
         input_concepts=unique(
-            [immediate_parent] + parent_row_concepts + parent_existence_concepts,
+            [immediate_parent] + parent_row_concepts + flattened_existence,
             "address",
         ),
         output_concepts=[concept, immediate_parent] + parent_row_concepts,

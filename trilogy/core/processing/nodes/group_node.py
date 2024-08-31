@@ -19,7 +19,7 @@ from trilogy.core.processing.nodes.base_node import (
     concept_list_to_grain,
 )
 from trilogy.utility import unique
-
+from trilogy.core.processing.utility import is_scalar_condition
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
@@ -111,7 +111,8 @@ class GroupNode(StrategyNode):
                     f" {parent.grain}"
                 )
             source_type = SourceType.GROUP
-        return QueryDatasource(
+
+        base = QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=self.output_concepts,
             datasources=parent_sources,
@@ -134,6 +135,31 @@ class GroupNode(StrategyNode):
             partial_concepts=self.partial_concepts,
             condition=self.conditions,
         )
+        # if there is a condition on a group node and it's not scalar
+        # inject an additional CTE
+        if self.conditions:
+            logger.info("CONDITIONS")
+            logger.info(str(self.conditions))
+            logger.info(is_scalar_condition(self.conditions))
+        if self.conditions and not is_scalar_condition(self.conditions):
+            base.condition = None
+            base.output_concepts = self.output_concepts + self.conditions.row_arguments
+            return QueryDatasource(
+                input_concepts=base.output_concepts,
+                output_concepts=self.output_concepts,
+                datasources=[base],
+                source_type=SourceType.SELECT,
+                source_map=resolve_concept_map(
+                    [base],
+                    targets=self.output_concepts,
+                    inherited_inputs=base.output_concepts,
+                ),
+                joins=[],
+                grain=grain,
+                partial_concepts=self.partial_concepts,
+                condition=self.conditions,
+            )
+        return base
 
     def copy(self) -> "GroupNode":
         return GroupNode(

@@ -6,16 +6,9 @@ from trilogy.core.models import (
     SubselectComparison,
     Comparison,
     Parenthetical,
-    Function,
-    FilterItem,
-    MagicConstants,
-    Concept,
-    WindowItem,
-    AggregateWrapper,
-    DataType,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule
-from trilogy.core.enums import FunctionClass
+from trilogy.core.processing.utility import is_scalar_condition
 
 
 def decompose_condition(
@@ -54,40 +47,6 @@ def is_child_of(a, comparison):
             is_child_of(a, comparison.left) or is_child_of(a, comparison.right)
         ) and comparison.operator == BooleanOperator.AND
     return base
-
-
-def is_basic(
-    element: (
-        int
-        | str
-        | float
-        | list
-        | WindowItem
-        | FilterItem
-        | Concept
-        | Comparison
-        | Conditional
-        | Parenthetical
-        | Function
-        | AggregateWrapper
-        | MagicConstants
-        | DataType
-    ),
-) -> bool:
-    if isinstance(element, Parenthetical):
-        return is_basic(element.content)
-    elif isinstance(element, SubselectComparison):
-        return True
-    elif isinstance(element, Comparison):
-        return is_basic(element.left) and is_basic(element.right)
-    elif isinstance(element, Function):
-        if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return False
-    elif isinstance(element, AggregateWrapper):
-        return is_basic(element.function)
-    elif isinstance(element, Conditional):
-        return is_basic(element.left) and is_basic(element.right)
-    return True
 
 
 class PredicatePushdown(OptimizationRule):
@@ -187,13 +146,13 @@ class PredicatePushdown(OptimizationRule):
         )
         optimized = False
         for candidate in candidates:
-            if not is_basic(candidate):
+            if not is_scalar_condition(candidate):
                 self.debug(
                     f"Skipping {candidate} as not a basic [no aggregate, etc] condition"
                 )
                 continue
             self.log(
-                f"Checking candidate {candidate}, {type(candidate)}, {is_basic(candidate)}"
+                f"Checking candidate {candidate}, {type(candidate)}, scalar: {is_scalar_condition(candidate)}"
             )
             for parent_cte in cte.parent_ctes:
                 local_pushdown = self._check_parent(

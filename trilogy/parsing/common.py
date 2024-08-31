@@ -198,6 +198,7 @@ def arbitrary_to_concept(
     metadata: Metadata | None = None,
     purpose: Purpose | None = None,
 ) -> Concept:
+
     if isinstance(parent, AggregateWrapper):
         return agg_wrapper_to_concept(parent, namespace, name, metadata, purpose)
     elif isinstance(parent, WindowItem):

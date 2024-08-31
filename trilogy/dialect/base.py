@@ -2,6 +2,7 @@ from typing import List, Union, Optional, Dict, Any, Sequence, Callable
 
 from jinja2 import Template
 
+from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.constants import CONFIG, logger, MagicConstants
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.enums import (
@@ -46,6 +47,7 @@ from trilogy.core.models import (
     ProcessedRawSQLStatement,
     NumericType,
     MapType,
+    StructType,
     MergeStatementV2,
 )
 from trilogy.core.query_processor import process_query, process_persist
@@ -106,6 +108,10 @@ def render_case(args):
     return "CASE\n\t" + "\n\t".join(args) + "\n\tEND"
 
 
+def struct_arg(args):
+    return [f"{x[0]}: {x[1]}" for x in zip(args[::2], args[1::2])]
+
+
 FUNCTION_MAP = {
     # generic types
     FunctionType.ALIAS: lambda x: f"{x[0]}",
@@ -120,6 +126,8 @@ FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
+    FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
+    FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
     # math
     FunctionType.ADD: lambda x: f"{x[0]} + {x[1]}",
     FunctionType.SUBTRACT: lambda x: f"{x[0]} - {x[1]}",
@@ -164,7 +172,6 @@ FUNCTION_MAP = {
     # constant types
     FunctionType.CURRENT_DATE: lambda x: "current_date()",
     FunctionType.CURRENT_DATETIME: lambda x: "current_datetime()",
-    FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -196,7 +203,9 @@ TOP {{ limit }}{% endif %}
 WHERE
 \t{{ where }}{% endif %}{%- if group_by %}
 GROUP BY {% for group in group_by %}
-\t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if order_by %}
+\t{{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
+HAVING
+\t{{ having }}{% endif %}{%- if order_by %}
 ORDER BY{% for order in order_by %}
 \t{{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{% endif %}
@@ -347,6 +356,7 @@ class BaseDialect:
             MapWrapper[Any, Any],
             MapType,
             NumericType,
+            StructType,
             ListType,
             ListWrapper[Any],
             DatePart,
@@ -370,11 +380,18 @@ class BaseDialect:
                     lookup_cte = cte_map.get(e.right.address)
                 assert lookup_cte, "Subselects must be rendered with a CTE in context"
                 if e.right.address not in lookup_cte.existence_source_map:
-                    lookup = lookup_cte.source_map[e.right.address]
+                    lookup = lookup_cte.source_map.get(
+                        e.right.address,
+                        [
+                            INVALID_REFERENCE_STRING(
+                                f"Missing source reference to {e.right.name}"
+                            )
+                        ],
+                    )
                 else:
                     lookup = lookup_cte.existence_source_map[e.right.address]
 
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {lookup[0]}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {lookup[0]})"
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {lookup[0]}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {lookup[0]} where {lookup[0]}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
             elif isinstance(e.right, (ListWrapper, Parenthetical, list)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
 
@@ -418,6 +435,7 @@ class BaseDialect:
         elif isinstance(e, CaseElse):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map) }"
         elif isinstance(e, Function):
+
             if cte and cte.group_to_grain:
                 return self.FUNCTION_MAP[e.operator](
                     [self.render_expr(z, cte=cte, cte_map=cte_map) for z in e.arguments]
@@ -507,8 +525,15 @@ class BaseDialect:
                     if j
                 ],
                 where=(
-                    self.render_expr(cte.condition, cte) if cte.condition else None
-                ),  # source_map=cte_output_map)
+                    self.render_expr(cte.condition, cte)
+                    if cte.condition and is_scalar_condition(cte.condition)
+                    else None
+                ),
+                having=(
+                    self.render_expr(cte.condition, cte)
+                    if cte.condition and not is_scalar_condition(cte.condition)
+                    else None
+                ),
                 order_by=(
                     [self.render_order_item(i, cte) for i in cte.order_by.items]
                     if cte.order_by

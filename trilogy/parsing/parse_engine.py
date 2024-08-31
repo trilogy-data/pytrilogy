@@ -500,7 +500,53 @@ class ParseToObjects(Transformer):
         # we need to strip off every parenthetical to see what is being assigned.
         while isinstance(source_value, Parenthetical):
             source_value = source_value.content
-        if isinstance(
+
+        if (
+            isinstance(source_value, Function)
+            and source_value.operator == FunctionType.STRUCT
+        ):
+            concept = arbitrary_to_concept(
+                source_value,
+                name=name,
+                namespace=namespace,
+                purpose=purpose,
+                metadata=metadata,
+            )
+
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
+            self.environment.add_concept(concept, meta=meta)
+            assert isinstance(concept.datatype, StructType)
+            for key, value in concept.datatype.fields_map.items():
+                args = self.process_function_args([concept, key], meta=meta)
+                self.environment.add_concept(
+                    Concept(
+                        name=key,
+                        datatype=arg_to_datatype(value),
+                        purpose=Purpose.PROPERTY,
+                        namespace=self.environment.namespace + "." + name,
+                        lineage=AttrAccess(args),
+                    )
+                )
+            return ConceptDerivation(concept=concept)
+        elif (
+            isinstance(source_value, Function)
+            and source_value.operator == FunctionType.ALIAS
+        ):
+            concept = arbitrary_to_concept(
+                source_value,
+                name=name,
+                namespace=namespace,
+                purpose=purpose,
+                metadata=metadata,
+            )
+
+            if concept.metadata:
+                concept.metadata.line_number = meta.line
+            self.environment.add_concept(concept, meta=meta)
+            return ConceptDerivation(concept=concept)
+
+        elif isinstance(
             source_value, (FilterItem, WindowItem, AggregateWrapper, Function)
         ):
             concept = arbitrary_to_concept(
@@ -515,6 +561,7 @@ class ParseToObjects(Transformer):
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivation(concept=concept)
+
         elif isinstance(source_value, CONSTANT_TYPES):
             concept = constant_to_concept(
                 source_value,
@@ -950,7 +997,15 @@ class ParseToObjects(Transformer):
                     isinstance(orderitem.expr, Concept)
                     and orderitem.expr.purpose == Purpose.METRIC
                 ):
-                    orderitem.expr = orderitem.expr.with_grain(output.grain)
+                    orderitem.expr = orderitem.expr.with_select_context(
+                        output.grain,
+                        conditional=(
+                            output.where_clause.conditional
+                            if output.where_clause
+                            and output.where_clause_category == SelectFiltering.IMPLICIT
+                            else None
+                        ),
+                    )
         return output
 
     @v_args(meta=True)
@@ -1015,6 +1070,18 @@ class ParseToObjects(Transformer):
 
     def array_lit(self, args):
         return list_to_wrapper(args)
+
+    def struct_lit(self, args):
+
+        zipped = dict(zip(args[::2], args[1::2]))
+        types = [arg_to_datatype(x) for x in args[1::2]]
+        return Function(
+            operator=FunctionType.STRUCT,
+            output_datatype=StructType(fields=types, fields_map=zipped),
+            output_purpose=function_args_to_output_purpose(args),
+            arguments=args,
+            arg_count=-1,
+        )
 
     def map_lit(self, args):
         parsed = dict(zip(args[::2], args[1::2]))
@@ -1161,6 +1228,11 @@ class ParseToObjects(Transformer):
         if args[0].datatype == DataType.MAP or isinstance(args[0].datatype, MapType):
             return MapAccess(args)
         return IndexAccess(args)
+
+    @v_args(meta=True)
+    def map_key_access(self, meta, args):
+        args = self.process_function_args(args, meta=meta)
+        return MapAccess(args)
 
     @v_args(meta=True)
     def attr_access(self, meta, args):

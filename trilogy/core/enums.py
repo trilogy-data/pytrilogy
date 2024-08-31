@@ -121,6 +121,7 @@ class FunctionType(Enum):
     INDEX_ACCESS = "index_access"
     MAP_ACCESS = "map_access"
     ATTR_ACCESS = "attr_access"
+    STRUCT = "struct"
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"

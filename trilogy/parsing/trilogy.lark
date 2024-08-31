@@ -153,9 +153,10 @@
     unnest: _UNNEST expr ")"
     //indexing into an expression is a function
     index_access: expr "[" int_lit "]"
-    attr_access: expr  "[" _string_lit "]"
+    map_key_access: expr "[" _string_lit "]"
+    attr_access: expr  "." _string_lit 
 
-    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | _static_functions |  literal |  concept_lit  | index_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like 
+    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like 
     
     // functions
     
@@ -276,12 +277,15 @@
     array_lit: "[" (literal ",")* literal ","? "]"()
 
     map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
+
+   
+    struct_lit: "struct" "(" (IDENTIFIER "=" literal ",")* IDENTIFIER "=" literal ","? ")"
     
     !bool_lit: "True"i | "False"i
 
     !null_lit.1: "null"i
     
-    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit
+    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit | struct_lit
 
     MODIFIER: "Optional"i | "Partial"i | "Nullable"i
 

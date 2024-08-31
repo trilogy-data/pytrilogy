@@ -47,7 +47,7 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
 
 def resolve_filter_parent_concepts(
     concept: Concept,
-) -> Tuple[Concept, List[Concept], List[Concept]]:
+) -> Tuple[Concept, List[Concept], List[Tuple[Concept]]]:
     if not isinstance(concept.lineage, FilterItem):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
@@ -58,7 +58,7 @@ def resolve_filter_parent_concepts(
     base_rows += concept.lineage.where.row_arguments
     # TODO: pass tuple groups through
     for ctuple in concept.lineage.where.existence_arguments:
-        base_existence += list(ctuple)
+        base_existence.append(ctuple)
     if direct_parent.grain:
         base_rows += direct_parent.grain.components_copy
     if (
@@ -71,7 +71,7 @@ def resolve_filter_parent_concepts(
         return (
             concept.lineage.content,
             unique(base_rows, "address"),
-            unique(base_existence, "address"),
+            base_existence,
         )
     return concept.lineage.content, unique(base_rows, "address"), []
 
