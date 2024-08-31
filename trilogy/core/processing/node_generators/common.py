@@ -47,7 +47,7 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
 
 def resolve_filter_parent_concepts(
     concept: Concept,
-) -> Tuple[Concept, List[Concept], List[Tuple[Concept]]]:
+) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
     if not isinstance(concept.lineage, FilterItem):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"

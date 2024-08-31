@@ -76,12 +76,14 @@ def gen_filter_node(
     core_parents.append(parent)
 
     if parent_existence_concepts:
-        for existince_tuple in parent_existence_concepts:
+        for existence_tuple in parent_existence_concepts:
+            if not existence_tuple:
+                continue
             logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} fetching filter node existence parents {[x.address for x in existince_tuple]}"
+                f"{padding(depth)}{LOGGER_PREFIX} fetching filter node existence parents {[x.address for x in existence_tuple]}"
             )
             parent_existence = source_concepts(
-                mandatory_list=list(existince_tuple),
+                mandatory_list=list(existence_tuple),
                 environment=environment,
                 g=g,
                 depth=depth + 1,
