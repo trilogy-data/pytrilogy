@@ -1817,6 +1817,7 @@ class MultiSelectStatement(SelectTypeMixin, Mergeable, Namespaced, BaseModel):
 class Address(BaseModel):
     location: str
     is_query: bool = False
+    quoted: bool = False
 
 
 class Query(BaseModel):
@@ -2578,6 +2579,16 @@ class CTE(BaseModel):
         elif self.relevant_base_ctes:
             return self.relevant_base_ctes[0].name
         return self.source.name
+
+    @property
+    def quote_address(self) -> bool:
+        if self.is_root_datasource:
+            candidate = self.source.datasources[0]
+            if isinstance(candidate, Datasource) and isinstance(
+                candidate.address, Address
+            ):
+                return candidate.address.quoted
+        return False
 
     @property
     def base_alias(self) -> str:

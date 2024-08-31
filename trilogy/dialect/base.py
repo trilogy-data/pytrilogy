@@ -499,10 +499,12 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.hidden_concepts]
             ]
-        if cte.base_name == cte.base_alias:
-            source = cte.base_name
+        if cte.quote_address:
+            source = f"{self.QUOTE_CHARACTER}{cte.base_name}{self.QUOTE_CHARACTER}"
         else:
-            source = f"{cte.base_name} as {cte.base_alias}"
+            source = cte.base_name
+        if cte.base_name != cte.base_alias:
+            source = f"{source} as {cte.base_alias}"
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(

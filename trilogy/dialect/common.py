@@ -26,7 +26,8 @@ def render_join(
             raise ValueError("must provide a cte to build an unnest joins")
         if unnest_mode == UnnestMode.CROSS_JOIN:
             return f"CROSS JOIN {render_func(join.concept, cte, False)} as {quote_character}{join.concept.safe_address}{quote_character}"
-
+        if unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
+            return f"CROSS JOIN {render_func(join.concept, cte, False)} as array_unnest ({quote_character}{join.concept.safe_address}{quote_character})"
         return f"FULL JOIN {render_func(join.concept, cte, False)} as unnest_wrapper({quote_character}{join.concept.safe_address}{quote_character})"
     left_name = join.left_name
     right_name = join.right_name

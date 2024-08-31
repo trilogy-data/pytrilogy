@@ -5,7 +5,7 @@ from jinja2 import Template
 from trilogy.core.enums import FunctionType, WindowType
 from trilogy.dialect.base import BaseDialect
 from trilogy.core.models import DataType
-
+from trilogy.core.enums import UnnestMode
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -86,6 +86,7 @@ class PrestoDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SQL_TEMPLATE
     DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, DataType.NUMERIC: "DECIMAL"}
+    UNNEST_MODE = UnnestMode.CROSS_JOIN
 
 
 class TrinoDialect(PrestoDialect):
