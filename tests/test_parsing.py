@@ -160,7 +160,8 @@ address `preqldata.analytics_411641820.events_*`
 ;"""
     )
     query = parsed[-1]
-    assert query.address.location == "`preqldata.analytics_411641820.events_*`"
+    assert query.address.quoted is True
+    assert query.address.location == "preqldata.analytics_411641820.events_*"
 
 
 def test_purpose_and_keys():
