@@ -4,6 +4,7 @@ import date as date;
 import time as time;
 
 property<sales.order_number,item.id>.net_loss float;
+property<sales.order_number,item.id>.had_return bool;
 
 datasource catalog_returns (
     CR_RETURNED_DATE_SK: date.id,
@@ -11,6 +12,7 @@ datasource catalog_returns (
     CR_ITEM_SK: item.id,
     CR_ORDER_NUMBER: sales.order_number,
     CR_NET_LOSS: net_loss,
+    raw('''true'''): had_return,
 
 )
 grain (sales.order_number, item.id)

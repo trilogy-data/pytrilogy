@@ -3,6 +3,7 @@ from trilogy.core.models import SelectStatement, Grain, Parenthetical
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
 from trilogy.parser import parse
+from trilogy.core.processing.utility import is_scalar_condition
 
 
 def test_select_where(test_environment):
@@ -44,6 +45,8 @@ where
 
 
 def test_select_where_agg(test_environment):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
     declarations = """
 property my_favorite_order_revenue <- filter revenue where order_id in (1,2,3);
 
@@ -54,10 +57,15 @@ select
 
 
     """
-    env, parsed = parse(declarations, environment=test_environment)
+    env, parsed = parse(
+        declarations,
+        environment=test_environment,
+    )
     select: SelectStatement = parsed[-1]
 
-    BaseDialect().compile_statement(process_query(test_environment, select))
+    BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
 
 
 def test_select_where_joins(test_environment):
@@ -205,3 +213,19 @@ where
 
     """
     env, parsed = parse(declarations, environment=test_environment)
+
+
+def test_where_scalar(test_environment):
+    declarations = """
+select
+    category_name
+where
+    count(order_id) > 1
+;
+"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+
+    assert is_scalar_condition(select.where_clause.conditional) is False
+    query = BaseDialect().compile_statement(process_query(test_environment, select))
+    print(query)

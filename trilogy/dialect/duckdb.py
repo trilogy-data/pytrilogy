@@ -59,11 +59,12 @@ SELECT
     {{ join }}{% endfor %}{% endif %}
 {% if where %}WHERE
     {{ where }}
-{% endif -%}
-{%- if group_by %}
+{% endif -%}{%- if group_by %}
 GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{%- if order_by %}
+    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
+HAVING
+    {{ having }}
+{% endif %}{%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if limit is not none %}

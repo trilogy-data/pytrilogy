@@ -407,3 +407,44 @@ property id.labels map<string, int>;
     )
     assert env.concepts["labels"].datatype.key_type == DataType.STRING
     assert env.concepts["labels"].datatype.value_type == DataType.INTEGER
+
+
+def test_map_string_access():
+    env, parsed = parse_text(
+        """
+const labels <- { 'a': 1, 'b': 2, 'c': 3 };
+
+
+select
+    labels['a'] as label_a,
+;
+
+"""
+    )
+    assert env.concepts["labels"].datatype.key_type == DataType.STRING
+    assert env.concepts["labels"].datatype.value_type == DataType.INTEGER
+
+
+def test_struct_attr_access():
+
+    text = """
+const labels <- struct(a=1, b=2, c=3);
+
+
+select
+    labels,
+    labels.a as label_a
+;
+
+"""
+    env, parsed = parse_text(text)
+    assert env.concepts["labels"].datatype.fields_map["a"] == 1
+
+    assert env.concepts["labels.a"].concept_arguments[0].name == "labels"
+
+    results = Dialects.DUCK_DB.default_executor().execute_text(text)[0]
+
+    assert results.fetchall()[0] == (
+        {"a": 1, "b": 2, "c": 3},
+        1,
+    )

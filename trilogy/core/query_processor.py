@@ -350,7 +350,11 @@ def get_query_datasources(
 
     search_concepts: list[Concept] = statement.output_components
     nest_where = statement.where_clause_category == SelectFiltering.IMPLICIT
-    if nest_where and statement.where_clause:
+
+    # if all are aggregates, we've pushed the filtering inside the aggregates anyway
+    all_aggregate = all([x.is_aggregate for x in search_concepts])
+
+    if nest_where and statement.where_clause and not all_aggregate:
         search_concepts = unique(
             statement.where_clause.row_arguments + search_concepts, "address"
         )
@@ -363,7 +367,8 @@ def get_query_datasources(
     )
     ds: GroupNode | SelectNode
     if nest_where and statement.where_clause:
-        ods.conditions = statement.where_clause.conditional
+        if not all_aggregate:
+            ods.conditions = statement.where_clause.conditional
         ods.output_concepts = search_concepts
         # ods.hidden_concepts = where_delta
         ods.rebuild_cache()

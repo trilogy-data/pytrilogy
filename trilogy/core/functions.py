@@ -251,11 +251,19 @@ def MapAccess(args: list[Concept]):
     )
 
 
+def get_attr_datatype(
+    arg: Concept, lookup
+) -> DataType | ListType | StructType | MapType | NumericType:
+    if isinstance(arg.datatype, StructType):
+        return arg_to_datatype(arg.datatype.fields_map[lookup])
+    return arg.datatype
+
+
 def AttrAccess(args: list[Concept]):
     return Function(
         operator=FunctionType.ATTR_ACCESS,
         arguments=args,
-        output_datatype=args[0].field_map[args[1]].datatype,  # type: ignore
+        output_datatype=get_attr_datatype(args[0], args[1]),  # type: ignore
         output_purpose=Purpose.PROPERTY,
         valid_inputs=[
             {DataType.STRUCT},

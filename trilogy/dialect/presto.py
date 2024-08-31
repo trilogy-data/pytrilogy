@@ -63,7 +63,9 @@ SELECT
     {{ where }}
 {% endif %}
 {%- if group_by %}GROUP BY {% for group in group_by %}
-    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}
+    {{group}}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{% if having %}
+HAVING
+\t{{ having }}{% endif %}
 {%- if order_by %}
 ORDER BY {% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}

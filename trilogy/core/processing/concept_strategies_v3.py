@@ -489,6 +489,7 @@ def _search_concepts(
 
     found: set[str] = set()
     skip: set[str] = set()
+    virtual: set[str] = set()
     stack: List[StrategyNode] = []
     complete = ValidationResult.INCOMPLETE
 

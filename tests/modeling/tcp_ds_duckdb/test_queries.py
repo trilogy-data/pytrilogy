@@ -79,7 +79,7 @@ def test_fifteen(engine):
     run_query(engine, 15)
 
 
-@pytest.mark.skip(reason="Fix lateral join issues")
+# @pytest.mark.skip(reason="Fix lateral join issues")
 def test_sixteen(engine):
     run_query(engine, 16)
 

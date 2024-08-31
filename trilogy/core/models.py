@@ -296,7 +296,7 @@ class MapType(BaseModel):
 
 class StructType(BaseModel):
     fields: List[ALL_TYPES]
-    fields_map: Dict[str, Concept] = Field(default_factory=dict)
+    fields_map: Dict[str, Concept | int | float | str] = Field(default_factory=dict)
 
     @property
     def data_type(self):
@@ -418,6 +418,23 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
 
     def __hash__(self):
         return hash(str(self))
+
+    @property
+    def is_aggregate(self):
+        if (
+            self.lineage
+            and isinstance(self.lineage, Function)
+            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return True
+        if (
+            self.lineage
+            and isinstance(self.lineage, AggregateWrapper)
+            and self.lineage.function.operator
+            in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return True
+        return False
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         if self.address == source.address:

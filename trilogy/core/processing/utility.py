@@ -8,6 +8,16 @@ from trilogy.core.models import (
     QueryDatasource,
     LooseConceptList,
     Environment,
+    Conditional,
+    SubselectComparison,
+    Comparison,
+    Parenthetical,
+    Function,
+    FilterItem,
+    MagicConstants,
+    WindowItem,
+    AggregateWrapper,
+    DataType,
 )
 
 from trilogy.core.enums import Purpose, Granularity
@@ -17,6 +27,8 @@ from trilogy.utility import unique
 from collections import defaultdict
 from logging import Logger
 from pydantic import BaseModel
+
+from trilogy.core.enums import FunctionClass
 
 
 class NodeType(Enum):
@@ -332,3 +344,37 @@ def get_disconnected_components(
         x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts) > 0
     ]
     return len(sub_graphs), sub_graphs
+
+
+def is_scalar_condition(
+    element: (
+        int
+        | str
+        | float
+        | list
+        | WindowItem
+        | FilterItem
+        | Concept
+        | Comparison
+        | Conditional
+        | Parenthetical
+        | Function
+        | AggregateWrapper
+        | MagicConstants
+        | DataType
+    ),
+) -> bool:
+    if isinstance(element, Parenthetical):
+        return is_scalar_condition(element.content)
+    elif isinstance(element, SubselectComparison):
+        return True
+    elif isinstance(element, Comparison):
+        return is_scalar_condition(element.left) and is_scalar_condition(element.right)
+    elif isinstance(element, Function):
+        if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            return False
+    elif isinstance(element, AggregateWrapper):
+        return is_scalar_condition(element.function)
+    elif isinstance(element, Conditional):
+        return is_scalar_condition(element.left) and is_scalar_condition(element.right)
+    return True
