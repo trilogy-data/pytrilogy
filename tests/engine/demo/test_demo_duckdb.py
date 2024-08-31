@@ -546,3 +546,25 @@ GROUP BY
     raw_data."survived"
 """.strip()
     )
+
+
+def test_demo_averages(base_test_env, engine: Executor):
+    query = """select 
+    passenger.class,
+    max(
+        count(passenger.id) by passenger.last_name
+    ) by passenger.class
+     as max_family_size_per_class,
+     avg(
+        count(passenger.id) by passenger.last_name
+    ) by passenger.class
+    -> avg_family_size_per_class, 
+    
+order by 
+    passenger.class asc
+;"""
+    engine.environment = base_test_env
+    results = engine.execute_text(query)
+
+
+    assert len(results[0].fetchall()) == 3
