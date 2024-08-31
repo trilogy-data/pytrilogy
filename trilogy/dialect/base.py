@@ -188,10 +188,11 @@ FUNCTION_GRAIN_MATCH_MAP = {
 GENERIC_SQL_TEMPLATE = Template(
     """{%- if ctes %}
 WITH {% for cte in ctes %}
-{{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
+{{cte.name}} as (
+{{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
 {%- if full_select -%}
 {{full_select}}
-{%- else -%}
+{% else -%}
 SELECT
 {%- if limit is not none %}
 TOP {{ limit }}{% endif %}

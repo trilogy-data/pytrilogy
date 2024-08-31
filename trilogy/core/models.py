@@ -2433,7 +2433,13 @@ class CTE(BaseModel):
         # if we've entirely removed the need to join to someplace to get the concept
         # drop the join as well.
         for removed_cte in removed:
-            still_required = any([removed_cte in x for x in self.source_map.values()])
+            still_required = any(
+                [
+                    removed_cte in x
+                    for x in self.source_map.values()
+                    or self.existence_source_map.values()
+                ]
+            )
             if not still_required:
                 self.joins = [
                     join
@@ -2451,6 +2457,7 @@ class CTE(BaseModel):
                     candidates = [x.name for x in self.parent_ctes]
                     self.base_name_override = candidates[0] if candidates else None
                     self.base_alias_override = candidates[0] if candidates else None
+        return True
 
     def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         qds_being_inlined = parent.source
@@ -3315,7 +3322,7 @@ class Comparison(
             and self.operator == other.operator
         )
 
-    def inline_constant(self, constant: Concept) -> "Comparison":
+    def inline_constant(self, constant: Concept):
         assert isinstance(constant.lineage, Function)
         new_val = constant.lineage.arguments[0]
         if isinstance(self.left, ConstantInlineable):
@@ -3332,10 +3339,7 @@ class Comparison(
         else:
             new_right = self.right
 
-        if self.right == constant:
-            new_right = new_val
-
-        return Comparison(
+        return self.__class__(
             left=new_left,
             right=new_right,
             operator=self.operator,

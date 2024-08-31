@@ -227,5 +227,34 @@ where
     select: SelectStatement = parsed[-1]
 
     assert is_scalar_condition(select.where_clause.conditional) is False
-    query = BaseDialect().compile_statement(process_query(test_environment, select))
-    print(query)
+    _ = BaseDialect().compile_statement(process_query(test_environment, select))
+
+
+def test_case_where(test_environment):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    declarations = """property order_id_even_name <- CASE
+    when order_id %2 = 0 then 'even'
+    else 'odd'
+    END;
+
+const test <- 1;
+    
+auto order_even_class_filter <- filter category_id where order_id_even_name = 'even' and 1= test; 
+
+select
+    category_id,
+    category_name
+where
+    category_name like '%abc%' and category_id not in order_even_class_filter
+    and category_id = test
+;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+
+    query = BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
+
+    # check to make sure our subselect is well-formed
+    assert "`category_id` not in (select" in query, query
