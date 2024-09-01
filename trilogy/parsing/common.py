@@ -117,7 +117,11 @@ def filter_item_to_concept(
         metadata=fmetadata,
         namespace=namespace,
         # filtered copies cannot inherit keys
-        keys=parent.content.keys if parent.content.purpose == Purpose.PROPERTY else (parent.content,),
+        keys=(
+            parent.content.keys
+            if parent.content.purpose == Purpose.PROPERTY
+            else (parent.content,)
+        ),
         grain=(
             parent.content.grain
             if parent.content.purpose == Purpose.PROPERTY

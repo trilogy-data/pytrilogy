@@ -181,10 +181,11 @@ def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
         return new_name
     else:
         return full_name.replace("<", "").replace(">", "").replace(",", "_")
-    
+
+
 def resolve_cte_base_name_and_alias_v2(
     name: str,
-    source:QueryDatasource,
+    source: QueryDatasource,
     source_map: Dict[str, list[str]],
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
@@ -196,8 +197,8 @@ def resolve_cte_base_name_and_alias_v2(
     ):
         ds = source.datasources[0]
         return ds.safe_location, ds.identifier
-    
-    if joins and len(joins) > 0:   
+
+    if joins and len(joins) > 0:
         candidates = [x.left_cte.name for x in joins]
         disallowed = [x.right_cte.name for x in joins]
         try:
@@ -206,9 +207,9 @@ def resolve_cte_base_name_and_alias_v2(
         except IndexError:
             raise SyntaxError(
                 f"Invalid join configuration {candidates} {disallowed} for {name}",
-            ) 
-    
-    counts = defaultdict(lambda: 0)
+            )
+
+    counts: dict[str, int] = defaultdict(lambda: 0)
     output_addresses = [x.address for x in source.output_concepts]
     for k, v in source_map.items():
         for vx in v:
@@ -217,7 +218,7 @@ def resolve_cte_base_name_and_alias_v2(
             else:
                 counts[vx] = counts[vx]
     if counts:
-        return max(counts, key=counts.get), max(counts, key=counts.get)
+        return max(counts, key=counts.get), max(counts, key=counts.get)  # type: ignore
     return None, None
 
 

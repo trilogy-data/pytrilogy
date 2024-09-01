@@ -32,6 +32,7 @@ def run_query(engine: Executor, idx: int):
         ), f"Row mismatch (expected v actual): {row} != {comp_results[idx]}"
     return query
 
+
 def test_one(engine):
     run_query(engine, 1)
 
@@ -57,7 +58,8 @@ def test_five(engine):
 
 def test_six(engine):
     query = run_query(engine, 6)
-    assert len(query)<2500, query
+    assert len(query) < 2500, query
+
 
 def test_seven(engine):
     run_query(engine, 7)
@@ -82,7 +84,7 @@ def test_fifteen(engine):
 def test_sixteen(engine):
     query = run_query(engine, 16)
     # size gating
-    assert len(query)<7500, query
+    assert len(query) < 7500, query
 
 
 def run_adhoc(number: int):
