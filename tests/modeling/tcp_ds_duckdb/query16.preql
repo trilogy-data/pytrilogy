@@ -2,7 +2,6 @@ import catalog_sales as cs;
 import catalog_returns as cr;
 
 auto multi_warehouse_sales <- filter cs.order_number where count(cs.warehouse.id)  by cs.order_number > 1;
-auto returned_sales <- filter cr.sales.order_number where cr.had_return;
 
 SELECT
     count_distinct(cs.order_number) -> order_count,
@@ -12,7 +11,7 @@ WHERE
     cs.ship_date.date  BETWEEN cast('2002-02-01' as date) AND cast('2002-04-02' AS date) 
     AND cs.customer.state = 'GA' 
     AND cs.call_center.county = 'Williamson County'
-    AND cs.order_number not in returned_sales
+    AND cs.order_number not in cr.order_number
     AND cs.order_number in multi_warehouse_sales
 ORDER BY
     order_count desc limit 100

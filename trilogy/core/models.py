@@ -2460,6 +2460,13 @@ class CTE(BaseModel):
                     self.base_alias_override = candidates[0] if candidates else None
         return True
 
+    @property
+    def comment(self) -> str:
+        base = f"Target: {str(self.grain)}."
+        if self.parent_ctes:
+            base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
+        return base
+
     def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
@@ -2550,6 +2557,10 @@ class CTE(BaseModel):
         self.hidden_concepts = unique(
             self.hidden_concepts + other.hidden_concepts, "address"
         )
+        self.existence_source_map = {
+            **self.existence_source_map,
+            **other.existence_source_map,
+        }
         return self
 
     @property

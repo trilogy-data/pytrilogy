@@ -181,51 +181,43 @@ def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
         return new_name
     else:
         return full_name.replace("<", "").replace(">", "").replace(",", "_")
-
-
-def resolve_cte_base_name_and_alias(
+    
+def resolve_cte_base_name_and_alias_v2(
     name: str,
-    source: QueryDatasource,
-    parents: List[CTE],
-    joins: List[Join | InstantiatedUnnestJoin],
+    source:QueryDatasource,
+    source_map: Dict[str, list[str]],
+    raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
-
-    valid_joins: List[Join] = [join for join in joins if isinstance(join, Join)]
-    relevant_parent_sources = set()
-    for k, v in source.source_map.items():
-        if v:
-            relevant_parent_sources.update(v)
-    eligible = [x for x in source.datasources if x in relevant_parent_sources]
+    joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if (
-        len(eligible) == 1
-        and isinstance(eligible[0], Datasource)
-        and not eligible[0].name == CONSTANT_DATASET
+        len(source.datasources) == 1
+        and isinstance(source.datasources[0], Datasource)
+        and not source.datasources[0].name == CONSTANT_DATASET
     ):
-        ds = eligible[0]
+        ds = source.datasources[0]
         return ds.safe_location, ds.identifier
-
-    # if we have multiple joined CTEs, pick the base
-    # as the root
-    elif len(eligible) == 1 and len(parents) == 1:
-        return parents[0].name, parents[0].name
-    elif valid_joins and len(valid_joins) > 0:
-        candidates = [x.left_cte.name for x in valid_joins]
-        disallowed = [x.right_cte.name for x in valid_joins]
+    
+    if joins and len(joins) > 0:   
+        candidates = [x.left_cte.name for x in joins]
+        disallowed = [x.right_cte.name for x in joins]
         try:
             cte = [y for y in candidates if y not in disallowed][0]
             return cte, cte
         except IndexError:
             raise SyntaxError(
-                f"Invalid join configuration {candidates} {disallowed} with all parents {[x.base_name for x in parents]}"
-            )
-    elif eligible:
-        matched = [x for x in parents if x.source.name == eligible[0].name]
-        if matched:
-            return matched[0].name, matched[0].name
-
-    logger.info(
-        f"Could not determine CTE base name for {name} with relevant sources {relevant_parent_sources}"
-    )
+                f"Invalid join configuration {candidates} {disallowed} for {name}",
+            ) 
+    
+    counts = defaultdict(lambda: 0)
+    output_addresses = [x.address for x in source.output_concepts]
+    for k, v in source_map.items():
+        for vx in v:
+            if k in output_addresses:
+                counts[vx] = counts[vx] + 1
+            else:
+                counts[vx] = counts[vx]
+    if counts:
+        return max(counts, key=counts.get), max(counts, key=counts.get)
     return None, None
 
 
@@ -274,8 +266,8 @@ def datasource_to_ctes(
         for x in [base_join_to_join(join, parents) for join in query_datasource.joins]
         if x
     ]
-    base_name, base_alias = resolve_cte_base_name_and_alias(
-        human_id, query_datasource, parents, final_joins
+    base_name, base_alias = resolve_cte_base_name_and_alias_v2(
+        human_id, query_datasource, source_map, final_joins
     )
     cte = CTE(
         name=human_id,

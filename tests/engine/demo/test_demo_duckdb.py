@@ -541,7 +541,6 @@ def test_demo_brevity(base_test_env, engine: Executor):
     count(raw_data."passengerid") as "passenger_count_alt_2"
 FROM
     raw_titanic as raw_data
-
 GROUP BY 
     raw_data."survived"
 """.strip()
