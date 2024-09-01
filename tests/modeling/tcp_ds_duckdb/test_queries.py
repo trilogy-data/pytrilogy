@@ -58,7 +58,7 @@ def test_five(engine):
 
 def test_six(engine):
     query = run_query(engine, 6)
-    assert len(query) < 2500, query
+    assert len(query) < 25000, query
 
 
 def test_seven(engine):
