@@ -54,6 +54,8 @@ def test_cte_merge(test_environment, test_environment_graph):
     merged = a + b
     assert merged.output_columns == outputs
 
+    assert "Target: Grain<Abstract>." in merged.comment
+
 
 def test_concept(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[0]
