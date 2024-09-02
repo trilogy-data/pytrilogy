@@ -209,6 +209,7 @@ def gen_enrichment_node(
         environment=environment,
         g=g,
         parents=[enrich_node, base_node],
+        force_group=False,
         node_joins=[
             NodeJoin(
                 left_node=enrich_node,

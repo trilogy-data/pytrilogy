@@ -78,7 +78,7 @@ def deduplicate_nodes_and_joins(
         duplicates = False
         duplicates, merged, removed = deduplicate_nodes(merged, logging_prefix)
         # filter out any removed joins
-        if joins:
+        if joins is not None:
             joins = [
                 j
                 for j in joins
@@ -138,6 +138,16 @@ class MergeNode(StrategyNode):
                     continue
                 final_joins.append(join)
             self.node_joins = final_joins
+        partial_lookup: list[Concept] = []
+        non_partial: List[Concept] = []
+        for node in parents or []:
+            partial_lookup += node.partial_concepts
+            non_partial += [
+                x for x in node.output_concepts if x not in node.partial_concepts
+            ]
+
+        final_partial = [x for x in partial_lookup if x not in non_partial]
+        self.partial_concepts = final_partial
 
     def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
         joins = []
@@ -219,12 +229,13 @@ class MergeNode(StrategyNode):
             )
             joins = self.translate_node_joins(final_joins)
         else:
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} Final joins is not null {final_joins} but is empty, skipping join generation"
+            )
             return []
 
         for join in joins:
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} final join {join.join_type} {[str(c) for c in join.concepts]}"
-            )
+            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} final join {str(join)}")
         return joins
 
     def _resolve(self) -> QueryDatasource:
@@ -248,6 +259,12 @@ class MergeNode(StrategyNode):
         )
         # early exit if we can just return the parent
         final_datasets: List[QueryDatasource | Datasource] = list(merged.values())
+
+        existence_final = [
+            x
+            for x in final_datasets
+            if all([y in self.existence_concepts for y in x.output_concepts])
+        ]
 
         if len(merged.keys()) == 1:
             final: QueryDatasource | Datasource = list(merged.values())[0]
@@ -288,34 +305,25 @@ class MergeNode(StrategyNode):
         for source in final_datasets:
             pregrain += source.grain
 
-        grain = (
-            self.grain
-            if self.grain
-            else Grain(
-                components=[
-                    c
-                    for c in pregrain.components
-                    if c.address in [x.address for x in self.output_concepts]
-                ]
-            )
-        )
+        grain = self.grain if self.grain else pregrain
 
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {pregrain} and final merge node grain {grain}"
         )
-
-        if len(final_datasets) > 1:
+        join_candidates = [x for x in final_datasets if x not in existence_final]
+        if len(join_candidates) > 1:
             joins = self.generate_joins(
-                final_datasets, final_joins, pregrain, grain, self.environment
+                join_candidates, final_joins, pregrain, grain, self.environment
             )
         else:
             joins = []
-
+        logger.info(
+            f"{self.logging_prefix}{LOGGER_PREFIX} Final join count for CTE parent count {len(join_candidates)} is {len(joins)}"
+        )
         full_join_concepts = []
         for join in joins:
             if join.join_type == JoinType.FULL:
                 full_join_concepts += join.concepts
-
         if self.whole_grain:
             force_group = False
         elif self.force_group is False:
@@ -336,9 +344,6 @@ class MergeNode(StrategyNode):
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
-        )
-        logger.info(
-            f"{self.logging_prefix}{LOGGER_PREFIX} source_map {str(source_map)}"
         )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),

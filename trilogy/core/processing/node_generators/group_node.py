@@ -29,7 +29,7 @@ def gen_group_node(
         resolve_function_parent_concepts(concept), "address"
     )
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} parent_concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
+        f"{padding(depth)}{LOGGER_PREFIX} parent concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select

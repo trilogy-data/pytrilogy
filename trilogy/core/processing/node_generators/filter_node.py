@@ -116,9 +116,18 @@ def gen_filter_node(
     if not local_optional or all(
         [x.address in [y.address for y in parent_row_concepts] for x in local_optional]
     ):
+        outputs = [
+            x
+            for x in filter_node.output_concepts
+            if x.address in [y.address for y in local_optional]
+        ]
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichrment needed for filter node"
+            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node"
         )
+        filter_node.output_concepts = [
+            concept,
+        ] + outputs
+        filter_node.rebuild_cache()
         return filter_node
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

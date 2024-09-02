@@ -18,7 +18,7 @@ from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.query_processor import datasource_to_ctes, get_query_datasources
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
-from trilogy.core.processing.nodes import GroupNode, MergeNode, SelectNode
+from trilogy.core.processing.nodes import MergeNode, SelectNode
 
 
 @pytest.mark.adventureworks
@@ -255,15 +255,14 @@ def test_group_to_grain(environment: Environment):
     assert test.whole_grain is True
     assert len(test.parents) == 2
     resolved = test.resolve()
-    [x for x in test.parents if isinstance(x, GroupNode)][0]
-    [x for x in test.parents if isinstance(x, MergeNode)][0]
-
-    assert resolved.grain == Grain(
-        concepts=[
-            environment.concepts["internet_sales.order_number"],
+    expected_grain = Grain(
+        components=[
+            environment.concepts["internet_sales.dates.order_key"],
             environment.concepts["internet_sales.order_line_number"],
+            environment.concepts["internet_sales.order_number"],
         ]
     )
+    assert resolved.grain == expected_grain, [resolved.grain.set, expected_grain.set]
     assert resolved.force_group is False
     assert resolved.group_required is False
 

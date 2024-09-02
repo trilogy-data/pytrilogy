@@ -59,6 +59,13 @@ key  order_id int;
 
     assert env1.concepts["order_id"] == env1.concepts["replacements.order_id"]
 
-    order_id = env1.datasources["replacements.replacements"].columns[0]
-    assert order_id.concept == env1.concepts["order_id"]
-    assert order_id.modifiers == [Modifier.PARTIAL]
+    found = False
+    for x in env1.datasources["replacements.replacements"].columns:
+        if (
+            x.alias == "order_id"
+            and x.concept.address == env1.concepts["order_id"].address
+        ):
+            assert x.concept == env1.concepts["order_id"]
+            assert x.modifiers == [Modifier.PARTIAL]
+            found = True
+    assert found

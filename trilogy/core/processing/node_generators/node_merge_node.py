@@ -260,6 +260,7 @@ def subgraphs_to_merge_node(
     source_concepts,
     history,
     conditions,
+    enable_early_exit: bool = True,
 ):
     parents: List[StrategyNode] = []
     logger.info(
@@ -290,6 +291,8 @@ def subgraphs_to_merge_node(
     for x in parents:
         for y in x.output_concepts:
             input_c.append(y)
+    if len(parents) == 1 and enable_early_exit:
+        return parents[0]
 
     return MergeNode(
         input_concepts=unique(input_c, "address"),
@@ -350,6 +353,7 @@ def gen_merge_node(
                 source_concepts=source_concepts,
                 history=history,
                 conditions=conditions,
+                enable_early_exit=False,
             )
             if test:
                 return test

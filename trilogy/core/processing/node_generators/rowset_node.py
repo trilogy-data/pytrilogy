@@ -74,8 +74,9 @@ def gen_rowset_node(
     if existence_parents:
         node.parents += existence_parents
         # we don't need to join to any existence parents
-        if isinstance(node, MergeNode):
-            node.node_joins = []
+        # if isinstance(node, MergeNode) and node.node_joins is None:
+        #     # set it explicitly to empty to avoid inference
+        #     node.node_joins = []
         for parent in existence_parents:
             for x in parent.output_concepts:
                 if x.address not in node.output_lcl:

@@ -43,5 +43,3 @@ class Config:
 CONFIG = Config()
 
 CONFIG.set_random_seed(42)
-
-CONFIG.strict_mode = True

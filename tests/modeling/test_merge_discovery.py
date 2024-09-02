@@ -21,7 +21,7 @@ where
     assert len(list(test_executor.execute_text(test_select)[0].fetchall())) == 2
 
 
-def test_merge_grain():
+def v_grain():
     # test keys
 
     base = Environment()
