@@ -42,12 +42,9 @@ class InlineDatasource(OptimizationRule):
                 self.log(f"parent {parent_cte.name} datasource is not inlineable")
                 continue
             root_outputs = {x.address for x in root.output_concepts}
-            cte_outputs = {x.address for x in cte.output_columns}
             inherited = {
                 x for x, v in cte.source_map.items() if v and parent_cte.name in v
             }
-            # cte_inherited_outputs = {x.address for x in parent_cte.output_columns if parent_cte.source_map.get(x.address)}
-            grain_components = {x.address for x in root.grain.components}
             if not inherited.issubset(root_outputs):
                 cte_missing = inherited - root_outputs
                 self.log(
