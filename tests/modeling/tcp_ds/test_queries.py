@@ -73,7 +73,6 @@ where
             SelectNode,  # select store
             SelectNode,  # select store
             SelectNode,  # select year
-            MergeNode,  # merge year into fact
             MergeNode,
             MergeNode,  # merge year into fac
             GroupNode,  # calculate aggregate

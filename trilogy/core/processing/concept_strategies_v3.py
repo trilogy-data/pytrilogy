@@ -612,9 +612,19 @@ def _search_concepts(
         )
 
         if expanded:
-            expanded.resolve()
+            # we don't need to return the entire list; just the ones we needed pre-expansion
+            ex_resolve = expanded.resolve()
+            extra = [
+                x
+                for x in ex_resolve.output_concepts
+                if x.address not in [y.address for y in mandatory_list]
+                and x not in ex_resolve.grain.components
+            ]
+            expanded.output_concepts = mandatory_list
+            expanded.rebuild_cache()
+
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found connections for {[c.address for c in mandatory_list]} via concept addition;"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found connections for {[c.address for c in mandatory_list]} via concept addition; removing extra {[c.address for c in extra]}"
             )
             return expanded
     # if we can't find it after expanding to a merge, then

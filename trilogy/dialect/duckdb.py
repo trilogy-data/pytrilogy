@@ -47,8 +47,9 @@ CREATE OR REPLACE TABLE {{ output.address.location }} AS
 {% endif %}{%- if ctes %}
 WITH {% for cte in ctes %}
 {{cte.name}} as ({{cte.statement}}){% if not loop.last %},{% endif %}{% endfor %}{% endif %}
-{% if full_select -%}{{full_select}}
-{% else -%}
+{%- if full_select -%}{{full_select}}
+{%- else -%}{%- if comment %}
+-- {{ comment }}{% endif %}
 SELECT
 {%- for select in select_columns %}
     {{ select }}{% if not loop.last %},{% endif %}{% endfor %}
@@ -56,7 +57,8 @@ SELECT
     {{ base }}{% endif %}{% if joins %}
 {%- for join in joins %}
     {{ join }}{% endfor %}{% endif %}
-{% if where %}WHERE
+{%- if where %}
+WHERE
     {{ where }}
 {% endif -%}{%- if group_by %}
 GROUP BY {% for group in group_by %}

@@ -63,4 +63,5 @@ class FilterNode(StrategyNode):
             conditions=self.conditions,
             partial_concepts=list(self.partial_concepts),
             force_group=self.force_group,
+            grain=self.grain,
         )

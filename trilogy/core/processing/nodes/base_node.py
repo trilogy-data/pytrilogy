@@ -192,7 +192,7 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        grain = Grain(components=self.output_concepts)
+        grain = self.grain if self.grain else Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
             parent_sources,
             self.output_concepts,

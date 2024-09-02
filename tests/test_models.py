@@ -10,6 +10,8 @@ from trilogy.core.models import (
     UndefinedConcept,
     BaseJoin,
     Comparison,
+    Join,
+    JoinKey,
 )
 
 
@@ -53,6 +55,8 @@ def test_cte_merge(test_environment, test_environment_graph):
 
     merged = a + b
     assert merged.output_columns == outputs
+
+    assert "Target: Grain<Abstract>." in merged.comment
 
 
 def test_concept(test_environment, test_environment_graph):
@@ -191,3 +195,54 @@ def test_comparison():
         Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
     except Exception as exc:
         assert isinstance(exc, SyntaxError)
+
+
+def test_join(test_environment: Environment):
+    datasource = list(test_environment.datasources.values())[0]
+    outputs = [c.concept for c in datasource.columns]
+    output_map = {
+        c.address: {
+            datasource,
+        }
+        for c in outputs
+    }
+    a = CTE(
+        name="test",
+        output_columns=[outputs[0]],
+        grain=Grain(),
+        source=QueryDatasource(
+            input_concepts=[outputs[0]],
+            output_concepts=[outputs[0]],
+            datasources=[datasource],
+            grain=Grain(),
+            joins=[],
+            source_map={outputs[0].address: {datasource}},
+        ),
+        source_map={c.address: [datasource.identifier] for c in outputs},
+    )
+
+    b = CTE(
+        name="testb",
+        output_columns=outputs,
+        grain=Grain(),
+        source=QueryDatasource(
+            input_concepts=outputs,
+            output_concepts=outputs,
+            datasources=[datasource],
+            grain=Grain(),
+            joins=[],
+            source_map=output_map,
+        ),
+        source_map={c.address: [datasource.identifier] for c in outputs},
+    )
+    test = Join(
+        left_cte=a,
+        right_cte=b,
+        joinkeys=[JoinKey(concept=x) for x in outputs],
+        jointype=JoinType.RIGHT_OUTER,
+    )
+
+    assert (
+        str(test)
+        == "right outer JOIN test and testb on local.product_id<local.product_id>,local.category_id<local.category_id>"
+    ), str(test)

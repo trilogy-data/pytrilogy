@@ -152,7 +152,6 @@ SELECT
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
     assert set([x.address for x in statement.grain.components]) == {
-        "local.even_order_id",
         "local.order_id",
     }
     results = list(test_executor.execute_text(test_select)[0].fetchall())

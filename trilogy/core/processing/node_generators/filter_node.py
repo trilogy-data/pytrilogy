@@ -105,10 +105,29 @@ def gen_filter_node(
         environment=environment,
         g=g,
         parents=core_parents,
+        grain=Grain(
+            components=[immediate_parent] + parent_row_concepts,
+        ),
+    )
+
+    assert filter_node.resolve().grain == Grain(
+        components=[immediate_parent] + parent_row_concepts,
     )
     if not local_optional or all(
         [x.address in [y.address for y in parent_row_concepts] for x in local_optional]
     ):
+        outputs = [
+            x
+            for x in filter_node.output_concepts
+            if x.address in [y.address for y in local_optional]
+        ]
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node"
+        )
+        filter_node.output_concepts = [
+            concept,
+        ] + outputs
+        filter_node.rebuild_cache()
         return filter_node
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query

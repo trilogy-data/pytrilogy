@@ -95,5 +95,4 @@ def gen_group_to_node(
         ],
         whole_grain=True,
         depth=depth,
-        partial_concepts=group_node.partial_concepts,
     )

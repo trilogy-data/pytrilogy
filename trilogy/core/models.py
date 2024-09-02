@@ -945,12 +945,14 @@ class ColumnAssignment(BaseModel):
         )
 
     def with_merge(
-        self, concept: Concept, modifiers: List[Modifier]
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "ColumnAssignment":
         return ColumnAssignment(
             alias=self.alias,
-            concept=concept,
-            modifiers=modifiers,
+            concept=self.concept.with_merge(source, target, modifiers),
+            modifiers=(
+                modifiers if self.concept.address == source.address else self.modifiers
+            ),
         )
 
 
@@ -1890,20 +1892,22 @@ class Datasource(Namespaced, BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         original = [c for c in self.columns if c.concept.address == source.address]
+        if len(original) != 1:
+            raise ValueError(
+                f"Expected exactly one column to merge, got {len(original)} for {source.address}, {[x.alias for x in original]}"
+            )
         # map to the alias with the modifier, and the original
         self.columns = [
-            (
-                c.with_merge(target, modifiers)
-                if c.concept.address == source.address
-                else c
-            )
+            c.with_merge(source, target, modifiers)
             for c in self.columns
+            if c.concept.address != source.address
         ] + original
         self.grain = self.grain.with_merge(source, target, modifiers)
         self.where = (
             self.where.with_merge(source, target, modifiers) if self.where else None
         )
-        del self.output_lcl
+
+        self.add_column(target, original[0].alias, modifiers)
 
     @property
     def env_label(self) -> str:
@@ -1915,7 +1919,7 @@ class Datasource(Namespaced, BaseModel):
     def condition(self):
         return None
 
-    @cached_property
+    @property
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
 
@@ -1923,9 +1927,9 @@ class Datasource(Namespaced, BaseModel):
     def can_be_inlined(self) -> bool:
         if isinstance(self.address, Address) and self.address.is_query:
             return False
-        for x in self.columns:
-            if not isinstance(x.alias, str):
-                return False
+        # for x in self.columns:
+        #     if not isinstance(x.alias, str):
+        #         return False
         return True
 
     @property
@@ -1960,12 +1964,15 @@ class Datasource(Namespaced, BaseModel):
             )
         return grain
 
-    def add_column(self, concept: Concept, alias: str, modifiers=None):
+    def add_column(
+        self,
+        concept: Concept,
+        alias: str | RawColumnExpr | Function,
+        modifiers: List[Modifier] | None = None,
+    ):
         self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers)
+            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or [])
         )
-        # force refresh
-        del self.output_lcl
 
     def __add__(self, other):
         if not other == self:
@@ -1998,7 +2005,7 @@ class Datasource(Namespaced, BaseModel):
             where=self.where.with_namespace(namespace) if self.where else None,
         )
 
-    @cached_property
+    @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
 
@@ -2149,6 +2156,12 @@ class BaseJoin(BaseModel):
         )
 
     def __str__(self):
+        if self.concept_pairs:
+            return (
+                f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
+                f" {self.right_datasource.identifier} on"
+                f" {','.join([str(k[0])+'='+str(k[1]) for k in self.concept_pairs])}"
+            )
         return (
             f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
             f" {self.right_datasource.identifier} on"
@@ -2460,6 +2473,19 @@ class CTE(BaseModel):
                     self.base_alias_override = candidates[0] if candidates else None
         return True
 
+    @property
+    def comment(self) -> str:
+        base = f"Target: {str(self.grain)}."
+        if self.parent_ctes:
+            base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
+        if self.joins:
+            base += f"\n-- Joins: {', '.join([str(x) for x in self.joins])}."
+        if self.partial_concepts:
+            base += (
+                f"\n-- Partials: {', '.join([str(x) for x in self.partial_concepts])}."
+            )
+        return base
+
     def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
@@ -2550,6 +2576,10 @@ class CTE(BaseModel):
         self.hidden_concepts = unique(
             self.hidden_concepts + other.hidden_concepts, "address"
         )
+        self.existence_source_map = {
+            **self.existence_source_map,
+            **other.existence_source_map,
+        }
         return self
 
     @property
@@ -2741,6 +2771,12 @@ class Join(BaseModel):
         return self.left_name + self.right_name + self.jointype.value
 
     def __str__(self):
+        if self.joinkey_pairs:
+            return (
+                f"{self.jointype.value} JOIN {self.left_name} and"
+                f" {self.right_name} on"
+                f" {','.join([str(k[0])+'='+str(k[1]) for k in self.joinkey_pairs])}"
+            )
         return (
             f"{self.jointype.value} JOIN {self.left_name} and"
             f" {self.right_name} on {','.join([str(k) for k in self.joinkeys])}"
@@ -3002,6 +3038,7 @@ class Environment(BaseModel):
 
     materialized_concepts: List[Concept] = Field(default_factory=list)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
+    canonical_map: Dict[str, str] = Field(default_factory=dict)
     _parse_count: int = 0
 
     @classmethod
@@ -3050,7 +3087,7 @@ class Environment(BaseModel):
             if x.address not in current_mat
         ]
         if new:
-            logger.info(f"Environment added new materialized concepts {new}")
+            logger.debug(f"Environment added new materialized concepts {new}")
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing: Concept = self.concepts.get(lookup)  # type: ignore
@@ -3213,13 +3250,22 @@ class Environment(BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         replacements = {}
+        # exit early if we've run this
+        if source.address in self.alias_origin_lookup:
+            if self.concepts[source.address] == target:
+                return
         self.alias_origin_lookup[source.address] = source
         for k, v in self.concepts.items():
+
             if v.address == target.address:
                 v.pseudonyms[source.address] = source
             if v.address == source.address:
                 replacements[k] = target
+                self.canonical_map[k] = target.address
                 v.pseudonyms[target.address] = target
+            # we need to update keys and grains of all concepts
+            else:
+                replacements[k] = v.with_merge(source, target, modifiers)
         self.concepts.update(replacements)
 
         for k, ds in self.datasources.items():

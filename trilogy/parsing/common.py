@@ -112,12 +112,16 @@ def filter_item_to_concept(
     return Concept(
         name=name,
         datatype=parent.content.datatype,
-        purpose=parent.content.purpose,
+        purpose=Purpose.PROPERTY,
         lineage=parent,
         metadata=fmetadata,
         namespace=namespace,
         # filtered copies cannot inherit keys
-        keys=None,
+        keys=(
+            parent.content.keys
+            if parent.content.purpose == Purpose.PROPERTY
+            else (parent.content,)
+        ),
         grain=(
             parent.content.grain
             if parent.content.purpose == Purpose.PROPERTY
