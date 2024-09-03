@@ -94,7 +94,7 @@ def gen_filter_node(
         parent.parents +=core_parents
         parent.partial_concepts = parent.partial_concepts or [] + local_optional
         parent.output_concepts = [concept] + local_optional
-        parent.input_concepts = parent.input_concepts +flattened_existence
+        parent.input_concepts = parent.input_concepts
         parent.existence_concepts = (parent.existence_concepts or []) + flattened_existence
         parent.grain = Grain(components=list(immediate_parent.keys) if immediate_parent.keys else [immediate_parent])
         parent.rebuild_cache()
