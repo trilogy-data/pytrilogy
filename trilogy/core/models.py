@@ -166,7 +166,7 @@ class ConstantInlineable(ABC):
 
 class SelectTypeMixin(BaseModel):
     where_clause: Union["WhereClause", None] = Field(default=None)
-
+    having_clause: Union["HavingClause", None] = Field(default=None)
     @property
     def output_components(self) -> List[Concept]:
         raise NotImplementedError
@@ -3450,7 +3450,11 @@ class Comparison(
                 else self.left
             ),
             # the right side does NOT need to inherit select grain
-            right=self.right,
+            right=(
+                self.right.with_select_context(grain, conditional)
+                if isinstance(self.right, SelectContext)
+                else self.right
+            ),
             operator=self.operator,
         )
 
@@ -3536,7 +3540,7 @@ class SubselectComparison(Comparison):
     def with_select_context(
         self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
     ):
-        # there's no need to pass the select grain through to a subselect comparison
+        # there's no need to pass the select grain through to a subselect comparison on the right
         return self.__class__(
             left=(
                 self.left.with_select_context(grain, conditional)
@@ -3909,6 +3913,8 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
                 output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
 
+class HavingClause(WhereClause):
+    pass
 
 class MaterializedDataset(BaseModel):
     address: Address
@@ -3928,6 +3934,7 @@ class ProcessedQuery(BaseModel):
     hidden_columns: List[Concept] = Field(default_factory=list)
     limit: Optional[int] = None
     where_clause: Optional[WhereClause] = None
+    having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
 
 

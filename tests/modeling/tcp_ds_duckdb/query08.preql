@@ -3,7 +3,7 @@
 import store_sales as store_sales;
 import customer as customer;
 
-const zips_pre <- ['24128',
+const zips_pre <- unnest(['24128',
                                      '76232',
                                      '65084',
                                      '87816',
@@ -403,9 +403,9 @@ const zips_pre <- ['24128',
                                      '31387',
                                      '35458',
                                      '35576'
-        ];
+        ]);
 
-auto zips <- substring(cast(unnest(zips_pre) as string),1,5);
+auto zips <- substring(cast(zips_pre as string),1,5);
 
 auto zip_p_count <- count(filter customer.id where customer.preferred_cust_flag = 'Y')  by customer.zip;
 

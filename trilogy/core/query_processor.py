@@ -4,7 +4,7 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
-from trilogy.core.enums import SelectFiltering
+from trilogy.core.enums import SelectFiltering, BooleanOperator
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.processing.nodes import GroupNode, SelectNode, StrategyNode
 from trilogy.core.models import (
@@ -24,6 +24,7 @@ from trilogy.core.models import (
     Datasource,
     BaseJoin,
     InstantiatedUnnestJoin,
+    Conditional
 )
 
 from trilogy.utility import unique
@@ -336,7 +337,7 @@ def get_query_datasources(
 ) -> QueryDatasource:
     graph = graph or generate_graph(environment)
     logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with output {[str(c) for c in statement.output_components]}"
+        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and output {[str(c) for c in statement.output_components]}"
     )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
@@ -362,13 +363,13 @@ def get_query_datasources(
     if nest_where and statement.where_clause:
         if not all_aggregate:
             ods.conditions = statement.where_clause.conditional
-        ods.output_concepts = search_concepts
+        ods.output_concepts = statement.output_components
         # ods.hidden_concepts = where_delta
         ods.rebuild_cache()
         append_existence_check(ods, environment, graph)
         ds = GroupNode(
             output_concepts=statement.output_components,
-            input_concepts=search_concepts,
+            input_concepts=statement.output_components,
             parents=[ods],
             environment=ods.environment,
             g=ods.g,
@@ -390,7 +391,11 @@ def get_query_datasources(
 
     else:
         ds = ods
-
+    if statement.having_clause:
+        if ds.conditions:
+            ds.conditions = Conditional(left=ds.conditions, right=statement.having_clause.conditional, operator = BooleanOperator.AND)
+        else:
+            ds.conditions = statement.having_clause.conditional
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:
@@ -475,6 +480,7 @@ def process_query(
         grain=statement.grain,
         limit=statement.limit,
         where_clause=statement.where_clause,
+        having_clause=statement.having_clause,
         output_columns=statement.output_components,
         ctes=final_ctes,
         base=root_cte,

@@ -61,7 +61,7 @@
     persist_statement: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select_statement grain_clause?
 
     // select statement
-    select_statement: "select"i select_list  where?  order_by?  limit? 
+    select_statement: where? "select"i select_list where?  having?  order_by?  limit? 
 
     // multiple_selects
     multi_select_statement: select_statement ("merge" select_statement)+ "align"i align_clause  where? order_by?  limit? 
@@ -134,6 +134,8 @@
     
     where: "WHERE"i conditional
     
+    having: "HAVING"i conditional
+
     !array_comparison: ( ("NOT"i "IN"i) | "IN"i)
 
     COMPARISON_OPERATOR: (/is[\s]+not/ | "is" |"=" | ">" | "<" | ">=" | "<=" | "!=")

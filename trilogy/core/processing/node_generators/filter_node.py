@@ -48,33 +48,7 @@ def gen_filter_node(
         history=history,
     )
 
-    if not parent:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
-        )
-        return None
-
-    if not local_optional and not parent_existence_concepts:
-        optimized_pushdown = True
-    else:
-        optimized_pushdown = False
-
-    if optimized_pushdown:
-        if parent.conditions:
-            parent.conditions = parent.conditions + where.conditional
-        else:
-            parent.conditions = where.conditional
-        parent.output_concepts = [concept]
-        parent.grain = Grain(components=[concept])
-        parent.rebuild_cache()
-
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
-        )
-        return parent
-
-    core_parents.append(parent)
-
+    flattened_existence = [x for y in parent_existence_concepts for x in y]
     if parent_existence_concepts:
         for existence_tuple in parent_existence_concepts:
             if not existence_tuple:
@@ -95,7 +69,37 @@ def gen_filter_node(
                 )
                 return None
             core_parents.append(parent_existence)
-    flattened_existence = [x for y in parent_existence_concepts for x in y]
+    if not parent:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
+        )
+        return None
+    
+    non_parent_optional = [x for x in local_optional if x.address not in [y.address for y in parent_row_concepts]]
+    if not non_parent_optional:
+        optimized_pushdown = True
+    else:
+        optimized_pushdown = False
+    if optimized_pushdown:
+        if parent.conditions:
+            parent.conditions = parent.conditions + where.conditional
+        else:
+            parent.conditions = where.conditional
+        # add our existence concepts to the parent
+        parent.parents +=core_parents
+        parent.output_concepts = [concept] + local_optional
+        parent.input_concepts = parent.input_concepts +flattened_existence
+        parent.existence_concepts = (parent.existence_concepts or []) + flattened_existence
+        parent.grain = Grain(components=list(immediate_parent.keys) if immediate_parent.keys else [immediate_parent])
+        parent.rebuild_cache()
+
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
+        )
+        return parent
+    # append this now
+    core_parents.append(parent)
+
     filter_node = FilterNode(
         input_concepts=unique(
             [immediate_parent] + parent_row_concepts + flattened_existence,
