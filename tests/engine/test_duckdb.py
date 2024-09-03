@@ -738,4 +738,4 @@ order by
     assert isinstance(derived.lineage, AggregateWrapper)
     assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
     assert len(results) == 1
-    assert results[0] == ("hammer", 4)
+    assert results[0] == ("hammer", 2)

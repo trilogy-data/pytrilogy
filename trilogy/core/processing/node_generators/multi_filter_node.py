@@ -12,6 +12,7 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
+    resolve_condition_parent_concepts
 )
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding, unique
@@ -21,27 +22,24 @@ LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
 
 def gen_filter_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concepts: List[Concept],
+    condition: FilterItem,
     environment: Environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
 ) -> StrategyNode | None:
-    immediate_parent, parent_row_concepts, parent_existence_concepts = (
-        resolve_filter_parent_concepts(concept)
+    parent_row_concepts, parent_existence_concepts = (
+        resolve_condition_parent_concepts(condition)
     )
-    if not isinstance(concept.lineage, FilterItem):
-        raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
-    where = concept.lineage.where
 
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching filter node row parents {[x.address for x in parent_row_concepts]}"
     )
     core_parents = []
     parent: StrategyNode = source_concepts(
-        mandatory_list=parent_row_concepts,
+        mandatory_list=concepts+ parent_row_concepts,
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -87,7 +85,6 @@ def gen_filter_node(
             parent.conditions = where.conditional
         # add our existence concepts to the parent
         parent.parents +=core_parents
-        parent.partial_concepts = parent.partial_concepts or [] + local_optional
         parent.output_concepts = [concept] + local_optional
         parent.input_concepts = parent.input_concepts +flattened_existence
         parent.existence_concepts = (parent.existence_concepts or []) + flattened_existence

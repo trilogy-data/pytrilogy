@@ -9,6 +9,7 @@ from trilogy.core.models import (
     FilterItem,
     Environment,
     LooseConceptList,
+    WhereClause
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -44,6 +45,15 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
 
+def resolve_condition_parent_concepts(
+        condition:WhereClause
+)->Tuple[List[Concept], List[Tuple[Concept, ...]]]:
+    base_existence = []
+    base_rows  = []
+    base_rows += condition.row_arguments
+    for ctuple in condition.existence_arguments:
+        base_existence.append(ctuple)
+    return unique(base_rows, "address"), base_existence
 
 def resolve_filter_parent_concepts(
     concept: Concept,
@@ -55,10 +65,9 @@ def resolve_filter_parent_concepts(
     direct_parent = concept.lineage.content
     base_existence = []
     base_rows = [direct_parent]
-    base_rows += concept.lineage.where.row_arguments
-    # TODO: pass tuple groups through
-    for ctuple in concept.lineage.where.existence_arguments:
-        base_existence.append(ctuple)
+    condition_rows, condition_existence = resolve_condition_parent_concepts(concept.lineage.where)
+    base_rows += condition_rows
+    base_existence += condition_existence
     if direct_parent.grain:
         base_rows += direct_parent.grain.components_copy
     if (
