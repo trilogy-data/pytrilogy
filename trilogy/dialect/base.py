@@ -51,7 +51,7 @@ from trilogy.core.models import (
     MergeStatementV2,
 )
 from trilogy.core.query_processor import process_query, process_persist
-from trilogy.dialect.common import render_join
+from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.core.enums import UnnestMode
 
@@ -128,6 +128,7 @@ FUNCTION_MAP = {
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
+    FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
     # math
     FunctionType.ADD: lambda x: f"{x[0]} + {x[1]}",
     FunctionType.SUBTRACT: lambda x: f"{x[0]} - {x[1]}",
@@ -466,7 +467,7 @@ class BaseDialect:
         elif isinstance(e, MapWrapper):
             return f"MAP {{{','.join([f'{self.render_expr(k, cte=cte, cte_map=cte_map)}:{self.render_expr(v, cte=cte, cte_map=cte_map)}' for k, v in e.items()])}}}"
         elif isinstance(e, list):
-            return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
         elif isinstance(e, DataType):
             return str(e.value)
         elif isinstance(e, DatePart):
@@ -480,8 +481,12 @@ class BaseDialect:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
     def render_cte(self, cte: CTE):
-        if self.UNNEST_MODE in (UnnestMode.CROSS_APPLY, UnnestMode.CROSS_JOIN):
-            # for a cross apply, derviation happens in the join
+        if self.UNNEST_MODE in (
+            UnnestMode.CROSS_APPLY,
+            UnnestMode.CROSS_JOIN,
+            UnnestMode.CROSS_JOIN_ALIAS,
+        ):
+            # for a cross apply, derivation happens in the join
             # so we only use the alias to select
             select_columns = [
                 self.render_concept_sql(c, cte)
@@ -499,17 +504,38 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.hidden_concepts]
             ]
-        if cte.quote_address:
-            source = f"{self.QUOTE_CHARACTER}{cte.base_name}{self.QUOTE_CHARACTER}"
+        source: str | None = cte.base_name
+        if not cte.render_from_clause:
+            if len(cte.joins) > 0:
+                if cte.join_derived_concepts and self.UNNEST_MODE in (
+                    UnnestMode.CROSS_JOIN_ALIAS,
+                    UnnestMode.CROSS_JOIN,
+                    UnnestMode.CROSS_APPLY,
+                ):
+                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
+                # direct - eg DUCK DB - can be directly selected inline
+                elif cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT:
+                    source = None
+                else:
+                    raise SyntaxError("CTE has joins but no from clause")
+            else:
+                source = None
         else:
-            source = cte.base_name
-        if cte.base_name != cte.base_alias:
-            source = f"{source} as {cte.base_alias}"
+            if cte.quote_address:
+                source = f"{self.QUOTE_CHARACTER}{cte.base_name}{self.QUOTE_CHARACTER}"
+            else:
+                source = cte.base_name
+            if cte.base_name != cte.base_alias:
+                source = f"{source} as {cte.base_alias}"
+        if not cte.render_from_clause:
+            final_joins = []
+        else:
+            final_joins = cte.joins or []
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
                 select_columns=select_columns,
-                base=(f"{source}" if cte.render_from_clause else None),
+                base=f"{source}" if source else None,
                 grain=cte.grain,
                 limit=cte.limit,
                 # some joins may not need to be rendered
@@ -524,7 +550,7 @@ class BaseDialect:
                             cte,
                             self.UNNEST_MODE,
                         )
-                        for join in (cte.joins or [])
+                        for join in final_joins
                     ]
                     if j
                 ],

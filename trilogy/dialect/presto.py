@@ -33,6 +33,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_ADD: lambda x: f"DATE_ADD('{x[1]}', {x[2]}, {x[0]})",
     FunctionType.CURRENT_DATE: lambda x: "CURRENT_DATE",
     FunctionType.CURRENT_DATETIME: lambda x: "CURRENT_TIMESTAMP",
+    FunctionType.ARRAY: lambda x: f"ARRAY[{', '.join(x)}]",
 }
 
 FUNCTION_GRAIN_MATCH_MAP = {
@@ -86,7 +87,7 @@ class PrestoDialect(BaseDialect):
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = SQL_TEMPLATE
     DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, DataType.NUMERIC: "DECIMAL"}
-    UNNEST_MODE = UnnestMode.CROSS_JOIN
+    UNNEST_MODE = UnnestMode.CROSS_JOIN_ALIAS
 
 
 class TrinoDialect(PrestoDialect):

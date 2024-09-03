@@ -123,6 +123,7 @@ class FunctionType(Enum):
     MAP_ACCESS = "map_access"
     ATTR_ACCESS = "attr_access"
     STRUCT = "struct"
+    ARRAY = "array"
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"

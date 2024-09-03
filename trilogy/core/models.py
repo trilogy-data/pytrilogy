@@ -2066,6 +2066,7 @@ class Datasource(Namespaced, BaseModel):
 class UnnestJoin(BaseModel):
     concept: Concept
     alias: str = "unnest"
+    rendering_required: bool = True
 
     def __hash__(self):
         return (self.alias + self.concept.address).__hash__()
@@ -2460,10 +2461,17 @@ class CTE(BaseModel):
                     for join in self.joins
                     if not isinstance(join, Join)
                     or (
-                        join.right_cte.name != removed_cte
-                        and join.left_cte.name != removed_cte
+                        isinstance(join, Join)
+                        and (
+                            join.right_cte.name != removed_cte
+                            and join.left_cte.name != removed_cte
+                        )
                     )
                 ]
+                for join in self.joins:
+                    if isinstance(join, UnnestJoin) and join.concept == concept:
+                        join.rendering_required = False
+
                 self.parent_ctes = [
                     x for x in self.parent_ctes if x.name != removed_cte
                 ]
