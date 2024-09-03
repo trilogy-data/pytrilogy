@@ -9,6 +9,18 @@ def null_wrapper(lval: str, rval: str, concept: Concept) -> str:
     return f"{lval} = {rval}"
 
 
+def render_unnest(
+    unnest_mode: UnnestMode,
+    quote_character: str,
+    concept: Concept,
+    render_func: Callable[[Concept, CTE, bool], str],
+    cte: CTE,
+):
+    if unnest_mode == UnnestMode.CROSS_JOIN:
+        return f"{render_func(concept, cte, False)} as {quote_character}{concept.safe_address}{quote_character}"
+    return f"{render_func(concept, cte, False)} as unnest_wrapper ({quote_character}{concept.safe_address}{quote_character})"
+
+
 def render_join(
     join: Join | InstantiatedUnnestJoin,
     quote_character: str,
@@ -25,10 +37,10 @@ def render_join(
         if not cte:
             raise ValueError("must provide a cte to build an unnest joins")
         if unnest_mode == UnnestMode.CROSS_JOIN:
-            return f"CROSS JOIN {render_func(join.concept, cte, False)} as {quote_character}{join.concept.safe_address}{quote_character}"
+            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept, render_func, cte)}"
         if unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
-            return f"CROSS JOIN {render_func(join.concept, cte, False)} as array_unnest ({quote_character}{join.concept.safe_address}{quote_character})"
-        return f"FULL JOIN {render_func(join.concept, cte, False)} as unnest_wrapper({quote_character}{join.concept.safe_address}{quote_character})"
+            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept, render_func, cte)}"
+        return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.concept, render_func, cte)}"
     left_name = join.left_name
     right_name = join.right_name
     right_base = join.right_ref
