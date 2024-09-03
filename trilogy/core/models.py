@@ -2460,7 +2460,7 @@ class CTE(BaseModel):
                     for join in self.joins
                     if (
                         isinstance(join, Join)
-                        and not (
+                        and (
                             join.right_cte.name != removed_cte
                             and join.left_cte.name != removed_cte
                         )
