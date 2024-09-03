@@ -256,7 +256,7 @@ def test_demo_const(engine):
     executor.execute_text(test)[-1].fetchall()
 
 
-def test_demo_rowset(engine):
+d in gdef test_demo_rowset(engine):
     executor = engine
     env = Environment()
     setup_titanic(env)

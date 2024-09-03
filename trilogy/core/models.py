@@ -811,6 +811,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
 class Grain(Mergeable, BaseModel):
     nested: bool = False
     components: List[Concept] = Field(default_factory=list, validate_default=True)
+    where_clause: Optional[WhereClause] = Field(default=None)
 
     @field_validator("components")
     def component_validator(cls, v, info: ValidationInfo):
@@ -836,10 +837,12 @@ class Grain(Mergeable, BaseModel):
 
     def __str__(self):
         if self.abstract:
-            return (
-                "Grain<Abstract" + ",".join([c.address for c in self.components]) + ">"
-            )
-        return "Grain<" + ",".join([c.address for c in self.components]) + ">"
+            base = "Grain<Abstract>"
+        else:
+            base = "Grain<" + ",".join([c.address for c in self.components]) + ">"
+        if self.where_clause:
+            base += f"|{str(self.where_clause)}"
+        return base
 
     def with_namespace(self, namespace: str) -> "Grain":
         return Grain(
@@ -1643,7 +1646,7 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
                 )
             ):
                 output.append(item)
-        return Grain(components=unique(output, "address"))
+        return Grain(components=unique(output, "address"), where_clause = self.where_clause)
 
     def with_namespace(self, namespace: str) -> "SelectStatement":
         return SelectStatement(

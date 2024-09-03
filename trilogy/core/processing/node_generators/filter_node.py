@@ -2,7 +2,7 @@ from typing import List
 
 
 from trilogy.core.enums import JoinType
-from trilogy.core.models import Concept, Environment, FilterItem, Grain
+from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
 from trilogy.core.processing.nodes import (
     FilterNode,
     MergeNode,
@@ -28,6 +28,7 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept)
@@ -35,6 +36,7 @@ def gen_filter_node(
     if not isinstance(concept.lineage, FilterItem):
         raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
+
 
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} fetching filter node row parents {[x.address for x in parent_row_concepts]}"
@@ -75,10 +77,13 @@ def gen_filter_node(
         )
         return None
     
-    non_parent_optional = [x for x in local_optional if x.address not in [y.address for y in parent_row_concepts]]
-    if not non_parent_optional:
+    optimized_pushdown = False
+    if not local_optional:
         optimized_pushdown = True
-    else:
+    elif conditions and conditions == where:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
+        )
         optimized_pushdown = False
     if optimized_pushdown:
         if parent.conditions:

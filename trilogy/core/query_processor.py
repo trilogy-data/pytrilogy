@@ -358,6 +358,7 @@ def get_query_datasources(
         search_concepts,
         environment=environment,
         g=graph,
+        conditions = statement.where_clause.conditional if statement.where_clause else None,
     )
     ds: GroupNode | SelectNode
     if nest_where and statement.where_clause:

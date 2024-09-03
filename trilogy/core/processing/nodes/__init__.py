@@ -6,7 +6,7 @@ from .window_node import WindowNode
 from .base_node import StrategyNode, NodeJoin
 from .unnest_node import UnnestNode
 from pydantic import BaseModel, Field, ConfigDict
-from trilogy.core.models import Concept, Environment
+from trilogy.core.models import Concept, Environment, WhereClause
 
 
 class History(BaseModel):
@@ -15,23 +15,27 @@ class History(BaseModel):
     started: set[str] = Field(default_factory=set)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def _concepts_to_lookup(self, search: list[Concept], accept_partial: bool) -> str:
-        return "-".join([c.address for c in search]) + str(accept_partial)
+    def _concepts_to_lookup(self, search: list[Concept], accept_partial: bool, conditions:WhereClause | None = None) -> str:
+        if conditions:
+            return "-".join([c.address for c in search]) + str(accept_partial) + str(conditions)
+        return "-".join([c.address for c in search]) + str(accept_partial),
 
     def search_to_history(
-        self, search: list[Concept], accept_partial: bool, output: StrategyNode | None
+        self, search: list[Concept], accept_partial: bool, output: StrategyNode | None, conditions: WhereClause | None = None
     ):
         self.history[self._concepts_to_lookup(search, accept_partial)] = output
 
     def get_history(
         self,
         search: list[Concept],
+        conditions: WhereClause = None,
         accept_partial: bool = False,
         parent_key: str = "",
     ) -> StrategyNode | None | bool:
         key = self._concepts_to_lookup(
             search,
             accept_partial,
+            conditions,
         )
         if parent_key and parent_key == key:
             raise ValueError(

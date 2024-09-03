@@ -5,7 +5,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage, Granularity, FunctionType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models import Concept, Environment, Function, Grain
+from trilogy.core.models import Concept, Environment, Function, Grain, WhereClause
 from trilogy.core.processing.utility import (
     get_disconnected_components,
 )
@@ -201,6 +201,7 @@ def generate_node(
     source_concepts: Callable,
     accept_partial: bool = False,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
     history = history or History()
@@ -232,7 +233,7 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating filter node with optional {[x.address for x in local_optional]}"
         )
         return gen_filter_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
+            concept, local_optional, environment, g, depth + 1, source_concepts, history, conditions
         )
     elif concept.derivation == PurposeLineage.UNNEST:
         logger.info(
@@ -447,10 +448,11 @@ def search_concepts(
     g: ReferenceGraph,
     accept_partial: bool = False,
     history: History | None = None,
+    conditions: WhereClause | None = None
 ) -> StrategyNode | None:
 
     history = history or History()
-    hist = history.get_history(mandatory_list, accept_partial)
+    hist = history.get_history(mandatory_list, accept_partial, conditions)
     if hist is not False:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history ({'exists' if hist is not None else 'does not exist'}) for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
@@ -465,10 +467,11 @@ def search_concepts(
         g=g,
         accept_partial=accept_partial,
         history=history,
+        conditions = conditions
     )
     # a node may be mutated after be cached; always store a copy
     history.search_to_history(
-        mandatory_list, accept_partial, result.copy() if result else None
+        mandatory_list, accept_partial, result.copy() if result else None, conditions=conditions
     )
     return result
 
@@ -480,6 +483,7 @@ def _search_concepts(
     g: ReferenceGraph,
     history: History,
     accept_partial: bool = False,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
 
     mandatory_list = unique(mandatory_list, "address")
@@ -521,6 +525,7 @@ def _search_concepts(
                 source_concepts=search_concepts,
                 accept_partial=accept_partial,
                 history=history,
+                conditions=conditions,
             )
             if node:
                 stack.append(node)
@@ -657,6 +662,7 @@ def source_query_concepts(
     output_concepts: List[Concept],
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
+    conditions: Optional[WhereClause] = None
 ):
     if not g:
         g = generate_graph(environment)
@@ -669,6 +675,8 @@ def source_query_concepts(
         g=g,
         depth=0,
         history=history,
+        conditions = conditions
+
     )
 
     if not root:
