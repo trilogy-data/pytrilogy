@@ -467,7 +467,7 @@ class BaseDialect:
         elif isinstance(e, MapWrapper):
             return f"MAP {{{','.join([f'{self.render_expr(k, cte=cte, cte_map=cte_map)}:{self.render_expr(v, cte=cte, cte_map=cte_map)}' for k, v in e.items()])}}}"
         elif isinstance(e, list):
-            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}]"
+            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e])}"
         elif isinstance(e, DataType):
             return str(e.value)
         elif isinstance(e, DatePart):

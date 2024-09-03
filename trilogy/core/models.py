@@ -2458,11 +2458,14 @@ class CTE(BaseModel):
                 self.joins = [
                     join
                     for join in self.joins
-                    if not isinstance(join, Join)
-                    or (
-                        join.right_cte.name != removed_cte
-                        and join.left_cte.name != removed_cte
+                    if (
+                        isinstance(join, Join)
+                        and not (
+                            join.right_cte.name != removed_cte
+                            and join.left_cte.name != removed_cte
+                        )
                     )
+                    or (isinstance(join, UnnestJoin) and not join.concept == concept)
                 ]
                 self.parent_ctes = [
                     x for x in self.parent_ctes if x.name != removed_cte
