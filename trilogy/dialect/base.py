@@ -504,6 +504,7 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.hidden_concepts]
             ]
+        source: str | None = cte.base_name
         if not cte.render_from_clause:
             if len(cte.joins) > 0:
                 if cte.join_derived_concepts and self.UNNEST_MODE in (
