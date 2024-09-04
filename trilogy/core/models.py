@@ -2232,17 +2232,14 @@ class QueryDatasource(BaseModel):
     @classmethod
     def validate_source_map(cls, v, info: ValidationInfo):
         values = info.data
-        expected = {c.address for c in values["output_concepts"]}.union(
-            c.address for c in values["input_concepts"]
-        )
-        seen = set()
-        for k, _ in v.items():
-            seen.add(k)
-        for x in expected:
-            if x not in seen and CONFIG.validate_missing:
-                raise SyntaxError(
-                    f"source map missing {x} on (expected {expected}, have {seen})"
-                )
+        for key in ("input_concepts", "output_concepts"):
+            if not values.get(key):
+                continue
+            for concept in values[key]:
+                if concept.address not in v and CONFIG.validate_missing:
+                    raise SyntaxError(
+                        f"Missing source map for {concept.address} on {key}"
+                    )
         return v
 
     def __str__(self):
