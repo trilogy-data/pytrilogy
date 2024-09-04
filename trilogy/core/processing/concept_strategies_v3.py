@@ -215,6 +215,7 @@ def generate_node(
         accept_partial=accept_partial,
         accept_partial_optional=False,
         source_concepts=source_concepts,
+        conditions=conditions
     )
 
     if candidate:
@@ -323,6 +324,7 @@ def generate_node(
             accept_partial=accept_partial,
             accept_partial_optional=True,
             source_concepts=source_concepts,
+            conditions=conditions,
         )
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")
@@ -601,7 +603,7 @@ def _search_concepts(
         return output
 
     # check that we're not already in a discovery loop
-    if not history.check_started(mandatory_list, accept_partial):
+    if not history.check_started(mandatory_list, accept_partial, conditions=conditions):
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Stack is not connected graph, flag for accepting partial addresses is {accept_partial}, checking for expanded concepts"
         )
@@ -646,6 +648,7 @@ def _search_concepts(
             g=g,
             accept_partial=True,
             history=history,
+            conditions=conditions,
         )
         if partial_search:
             logger.info(

@@ -2238,7 +2238,7 @@ class QueryDatasource(BaseModel):
             for concept in values[key]:
                 if concept.address not in v and CONFIG.validate_missing:
                     raise SyntaxError(
-                        f"Missing source map for {concept.address} on {key}"
+                        f"Missing source map for {concept.address} on {key}, have {v}"
                     )
         return v
 

@@ -23,7 +23,7 @@ class History(BaseModel):
     def search_to_history(
         self, search: list[Concept], accept_partial: bool, output: StrategyNode | None, conditions: WhereClause | None = None
     ):
-        self.history[self._concepts_to_lookup(search, accept_partial)] = output
+        self.history[self._concepts_to_lookup(search, accept_partial, conditions=conditions)] = output
 
     def get_history(
         self,
@@ -64,11 +64,13 @@ class History(BaseModel):
         self,
         search: list[Concept],
         accept_partial: bool = False,
+        conditions: WhereClause | None = None
     ):
         return (
             self._concepts_to_lookup(
                 search,
                 accept_partial,
+                conditions=conditions,
             )
             in self.started
         )
@@ -80,6 +82,7 @@ class History(BaseModel):
         accept_partial: bool,
         fail_if_not_found: bool,
         accept_partial_optional: bool,
+        conditions: WhereClause | None = None,
     ) -> str:
         return (
             str(main.address)
@@ -88,6 +91,7 @@ class History(BaseModel):
             + str(accept_partial)
             + str(fail_if_not_found)
             + str(accept_partial_optional)
+            + str(conditions)
         )
 
     def gen_select_node(
@@ -101,6 +105,7 @@ class History(BaseModel):
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         accept_partial_optional: bool = False,
+        conditions: WhereClause | None = None,
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 
@@ -110,6 +115,7 @@ class History(BaseModel):
             accept_partial,
             fail_if_not_found,
             accept_partial_optional,
+            conditions
         )
         if fingerprint in self.select_history:
             return self.select_history[fingerprint]

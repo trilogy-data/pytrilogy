@@ -62,7 +62,7 @@ def create_log_lambda(prefix: str, depth: int, logger: Logger):
     pad = padding(depth)
 
     def log_lambda(msg: str):
-        logger.info(f"{pad} {prefix} {msg}")
+        logger.info(f"{pad}{prefix} {msg}")
 
     return log_lambda
 
