@@ -488,7 +488,6 @@ def gen_select_node(
         if len(parents) == 1:
             candidate = parents[0]
         else:
-
             candidate = MergeNode(
                 output_concepts=[concept] + found,
                 input_concepts=[concept] + found,
@@ -499,8 +498,8 @@ def gen_select_node(
                 partial_concepts=all_partial,
                 grain=inferred_grain,
             )
+
         candidate.depth += 1
-        # source_grain = candidate.grain
         if force_group:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} datasource grain {inferred_grain} does not match target grain {target_grain} for select, adding group node"

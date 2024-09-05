@@ -183,10 +183,12 @@ def generate_candidates_restrictive(
         if x.address not in exhausted and x.granularity != Granularity.SINGLE_ROW
     ]
     combos: list[list[Concept]] = []
+    grain_check = Grain(components=[*local_candidates]).components_copy
     # for simple operations these, fetch as much as possible.
     if priority_concept.derivation in (PurposeLineage.BASIC, PurposeLineage.ROOT):
-        combos.append(local_candidates)
-    combos.append(Grain(components=[*local_candidates]).components_copy)
+        if set([x.address for x in grain_check]) != set([x.address for x in local_candidates]):
+            combos.append(local_candidates)
+    combos.append(grain_check)
     # append the empty set for sourcing concept by itself last
     combos.append([])
     return combos
@@ -581,7 +583,7 @@ def _search_concepts(
         if len(stack) == 1:
             output = stack[0]
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)} with output {[x.address for x in output.output_concepts]}"
             )
             return output
 

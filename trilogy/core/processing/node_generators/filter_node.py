@@ -9,6 +9,7 @@ from trilogy.core.processing.nodes import (
     NodeJoin,
     History,
     StrategyNode,
+    SelectNode,
 )
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -37,12 +38,11 @@ def gen_filter_node(
         raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
 
-
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} fetching filter node row parents {[x.address for x in parent_row_concepts]}"
+        f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
     core_parents = []
-    parent: StrategyNode = source_concepts(
+    row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,
         g=g,
@@ -71,12 +71,12 @@ def gen_filter_node(
                 )
                 return None
             core_parents.append(parent_existence)
-    if not parent:
+    if not row_parent:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
         )
         return None
-    
+
     optimized_pushdown = False
     if not local_optional:
         optimized_pushdown = True
@@ -84,19 +84,34 @@ def gen_filter_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
         )
-        optimized_pushdown = False
+        optimized_pushdown = True
+
     if optimized_pushdown:
-        if parent.conditions:
-            parent.conditions = parent.conditions + where.conditional
+        if isinstance(row_parent, SelectNode):
+            parent = StrategyNode(
+                input_concepts=row_parent.output_concepts,
+                output_concepts=[concept] + local_optional,
+                environment=row_parent.environment,
+                g=row_parent.g,
+                parents=[row_parent] + core_parents,
+                depth=row_parent.depth,
+                partial_concepts=row_parent.partial_concepts,
+                force_group=False,
+                conditions=(
+                    row_parent.conditions + where.conditional
+                    if row_parent.conditions
+                    else where.conditional
+                ),
+            )
         else:
-            parent.conditions = where.conditional
-        # add our existence concepts to the parent
-        parent.parents +=core_parents
-        parent.partial_concepts = parent.partial_concepts or [] + local_optional
+            parent = row_parent
+        
+        parent.add_parents(core_parents)
+        parent.add_condition(where.conditional)
+        # parent.partial_concepts = (parent.partial_concepts or []) + local_optional
         parent.output_concepts = [concept] + local_optional
-        parent.input_concepts = parent.input_concepts
-        parent.existence_concepts = (parent.existence_concepts or []) + flattened_existence
-        parent.grain = Grain(components=list(immediate_parent.keys) if immediate_parent.keys else [immediate_parent])
+        parent.set_output_concepts([concept] + local_optional)
+        parent.add_existence_concepts(flattened_existence)
         parent.rebuild_cache()
 
         logger.info(
@@ -104,7 +119,7 @@ def gen_filter_node(
         )
         return parent
     # append this now
-    core_parents.append(parent)
+    core_parents.append(row_parent)
 
     filter_node = FilterNode(
         input_concepts=unique(

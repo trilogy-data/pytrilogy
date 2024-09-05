@@ -17,6 +17,8 @@ from trilogy.core.models import (
 from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
 from dataclasses import dataclass
+from trilogy.core.enums import BooleanOperator
+from trilogy.constants import logger
 
 
 def concept_list_to_grain(
@@ -57,6 +59,7 @@ def resolve_concept_map(
     full_addresses = {c.address for c in full_joins} if full_joins else set()
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
+        logger.info(input.name)
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
@@ -71,7 +74,6 @@ def resolve_concept_map(
                 concept_map[concept.address].add(input)
             elif concept.address not in concept_map:
                 concept_map[concept.address].add(input)
-
     # second loop, include partials
     for input in inputs:
         for concept in input.output_concepts:
@@ -98,7 +100,13 @@ def get_all_parent_partial(all_concepts: List[Concept], parents: List["StrategyN
         for c in all_concepts
         if len([c.address in [x.address for x in p.partial_concepts] for p in parents])
         >= 1
-        and all([c.address in [x.address for x in p.partial_concepts] for p in parents])
+        and all(
+            [
+                c.address in [x.address for x in p.partial_concepts]
+                for p in parents
+                if c.address in [x.address for x in p.output_concepts]
+            ]
+        )
     ]
 
 
@@ -137,7 +145,7 @@ class StrategyNode:
         self.partial_concepts = partial_concepts or get_all_parent_partial(
             self.output_concepts, self.parents
         )
-        self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
+
         self.depth = depth
         self.conditions = conditions
         self.grain = grain
@@ -146,13 +154,50 @@ class StrategyNode:
         self.hidden_concepts = hidden_concepts or []
         self.existence_concepts = existence_concepts or []
         self.virtual_output_concepts = virtual_output_concepts or []
+        self.validate_parents()
+
+    def add_parents(self, parents: list["StrategyNode"]):
+        self.parents += parents
+        self.validate_parents()
+
+    def add_condition(self, condition: Conditional | Comparison | Parenthetical):
+        if self.conditions:
+            self.conditions = Conditional(
+                left=self.conditions, right=condition, operator=BooleanOperator.AND
+            )
+        else:
+            self.conditions = condition
+
+    def validate_parents(self):
+        # validate parents exist
+        # assign partial values where needed
         for parent in self.parents:
             if not parent:
                 raise SyntaxError("Unresolvable parent")
 
+        # TODO: make this accurate
+        if self.parents:
+            self.partial_concepts = get_all_parent_partial(
+                self.output_concepts, self.parents
+            )
+
+        self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
+
     def add_output_concepts(self, concepts: List[Concept]):
         for concept in concepts:
-            self.output_concepts.append(concept)
+            if concept.address not in self.output_lcl.addresses:
+                self.output_concepts.append(concept)
+        self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        self.rebuild_cache()
+
+    def add_existence_concepts(self, concepts: List[Concept]):
+        for concept in concepts:
+            if concept.address not in [x.address for x in self.output_concepts]:
+                self.existence_concepts.append(concept)
+        self.rebuild_cache()
+
+    def set_output_concepts(self, concepts: List[Concept]):
+        self.output_concepts = concepts
         self.output_lcl = LooseConceptList(concepts=self.output_concepts)
         self.rebuild_cache()
 
@@ -195,8 +240,8 @@ class StrategyNode:
         grain = self.grain if self.grain else Grain(components=self.output_concepts)
         source_map = resolve_concept_map(
             parent_sources,
-            self.output_concepts,
-            self.input_concepts + self.existence_concepts,
+            targets=self.output_concepts,
+            inherited_inputs=self.input_concepts + self.existence_concepts,
         )
         return QueryDatasource(
             input_concepts=self.input_concepts,

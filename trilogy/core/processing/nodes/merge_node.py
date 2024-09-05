@@ -138,16 +138,6 @@ class MergeNode(StrategyNode):
                     continue
                 final_joins.append(join)
             self.node_joins = final_joins
-        partial_lookup: list[Concept] = []
-        non_partial: List[Concept] = []
-        for node in parents or []:
-            partial_lookup += node.partial_concepts
-            non_partial += [
-                x for x in node.output_concepts if x not in node.partial_concepts
-            ]
-
-        final_partial = [x for x in partial_lookup if x not in non_partial]
-        self.partial_concepts = final_partial
 
     def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
         joins = []

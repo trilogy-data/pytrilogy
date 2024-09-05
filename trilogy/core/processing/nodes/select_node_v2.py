@@ -166,6 +166,7 @@ class SelectNode(StrategyNode):
             resolution = self.resolve_from_provided_datasource()
             if resolution:
                 return resolution
+
         required = [c.address for c in self.all_concepts]
         raise NoDatasourceException(
             f"Could not find any way to resolve datasources for required concepts {required} with derivation {[x.derivation for x in self.all_concepts]}"

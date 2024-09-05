@@ -320,21 +320,15 @@ def append_existence_check(
                 f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
             )
             eds = source_query_concepts([*subselect], environment=environment, g=graph)
-
-            final_eds = eds.resolve()
-            first_parent = node.resolve()
-            first_parent.datasources.append(final_eds)
-            for x in final_eds.output_concepts:
-                if x.address not in first_parent.existence_source_map:
-                    first_parent.existence_source_map[x.address] = {final_eds}
+            node.add_parents([eds])
+            node.add_existence_concepts([x for x in eds.output_concepts])
 
 
-def get_query_datasources(
+def get_query_node(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
     graph: Optional[ReferenceGraph] = None,
-    hooks: Optional[List[BaseHook]] = None,
-) -> QueryDatasource:
+) -> StrategyNode:
     graph = graph or generate_graph(environment)
     logger.info(
         f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and output {[str(c) for c in statement.output_components]}"
@@ -397,6 +391,17 @@ def get_query_datasources(
             ds.conditions = Conditional(left=ds.conditions, right=statement.having_clause.conditional, operator = BooleanOperator.AND)
         else:
             ds.conditions = statement.having_clause.conditional
+    return ds
+
+
+def get_query_datasources(
+    environment: Environment,
+    statement: SelectStatement | MultiSelectStatement,
+    graph: Optional[ReferenceGraph] = None,
+    hooks: Optional[List[BaseHook]] = None,
+) -> QueryDatasource:
+    
+    ds = get_query_node(environment, statement, graph)
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:

@@ -40,7 +40,7 @@ def gen_window_node(
     history: History | None = None,
 ) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
-
+    print([x.address for x in parent_concepts])
     parent_node = source_concepts(
         mandatory_list=parent_concepts,
         environment=environment,
@@ -51,6 +51,11 @@ def gen_window_node(
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
         return None
+    parent_node.resolve()
+    if not all([x.address in [y.address for y in parent_node.output_concepts] for x in parent_concepts]):
+        missing = [x for x in parent_concepts if x.address not in [y.address for y in parent_node.output_concepts]]
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable, missing {missing}")
+        raise SyntaxError
     _window_node = WindowNode(
         input_concepts=parent_concepts,
         output_concepts=[concept] + parent_concepts,
@@ -61,6 +66,8 @@ def gen_window_node(
         ],
         depth=depth,
     )
+    _window_node.rebuild_cache()
+    _window_node.resolve()
     window_node = MergeNode(
         parents=[_window_node],
         environment=environment,
@@ -71,6 +78,7 @@ def gen_window_node(
         force_group=False,
         depth=depth,
     )
+    window_node.resolve()
     if not local_optional:
         return window_node
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node requires enrichment")

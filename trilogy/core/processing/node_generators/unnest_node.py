@@ -46,7 +46,7 @@ def gen_unnest_node(
     # we need to sometimes nest an unnest node,
     # as unnest operations are not valid in all situations
     # TODO: inline this node when we can detect it's safe
-    new = SelectNode(
+    new = StrategyNode(
         input_concepts=[concept] + local_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
