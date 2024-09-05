@@ -619,12 +619,12 @@ def _search_concepts(
         return output
 
     # check that we're not already in a discovery loop
-    if not history.check_started(mandatory_list, accept_partial, conditions=conditions):
+    if not history.check_started(mandatory_list, accept_partial=accept_partial, conditions=conditions):
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Stack is not connected graph, flag for accepting partial addresses is {accept_partial}, checking for expanded concepts"
         )
         # gate against further recursion into this
-        history.log_start(mandatory_list, accept_partial)
+        history.log_start(mandatory_list, accept_partial=accept_partial, conditions=conditions)
         expanded = gen_merge_node(
             all_concepts=mandatory_list,
             environment=environment,

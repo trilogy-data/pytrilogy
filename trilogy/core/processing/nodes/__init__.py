@@ -67,11 +67,13 @@ class History(BaseModel):
         self,
         search: list[Concept],
         accept_partial: bool = False,
+        conditions: WhereClause | None = None
     ):
         self.started.add(
             self._concepts_to_lookup(
                 search,
-                accept_partial,
+                accept_partial=accept_partial,
+                conditions=conditions,
             )
         )
 
@@ -129,8 +131,8 @@ class History(BaseModel):
             local_optional,
             accept_partial,
             fail_if_not_found,
-            accept_partial_optional,
-            conditions,
+            accept_partial_optional=accept_partial_optional,
+            conditions=conditions,
         )
         if fingerprint in self.select_history:
             return self.select_history[fingerprint]
