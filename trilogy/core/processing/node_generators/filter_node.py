@@ -105,7 +105,7 @@ def gen_filter_node(
             )
         else:
             parent = row_parent
-        
+
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
         # parent.partial_concepts = (parent.partial_concepts or []) + local_optional

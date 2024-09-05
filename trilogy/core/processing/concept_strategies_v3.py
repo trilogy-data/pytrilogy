@@ -186,7 +186,9 @@ def generate_candidates_restrictive(
     grain_check = Grain(components=[*local_candidates]).components_copy
     # for simple operations these, fetch as much as possible.
     if priority_concept.derivation in (PurposeLineage.BASIC, PurposeLineage.ROOT):
-        if set([x.address for x in grain_check]) != set([x.address for x in local_candidates]):
+        if set([x.address for x in grain_check]) != set(
+            [x.address for x in local_candidates]
+        ):
             combos.append(local_candidates)
     combos.append(grain_check)
     # append the empty set for sourcing concept by itself last
@@ -217,7 +219,7 @@ def generate_node(
         accept_partial=accept_partial,
         accept_partial_optional=False,
         source_concepts=source_concepts,
-        conditions=conditions
+        conditions=conditions,
     )
 
     if candidate:
@@ -236,7 +238,14 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating filter node with optional {[x.address for x in local_optional]}"
         )
         return gen_filter_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history, conditions
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions,
         )
     elif concept.derivation == PurposeLineage.UNNEST:
         logger.info(
@@ -452,11 +461,13 @@ def search_concepts(
     g: ReferenceGraph,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: WhereClause | None = None
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
 
     history = history or History()
-    hist = history.get_history(mandatory_list, accept_partial, conditions)
+    hist = history.get_history(
+        search=mandatory_list, accept_partial=accept_partial, conditions=conditions
+    )
     if hist is not False:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history ({'exists' if hist is not None else 'does not exist'}) for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
@@ -471,11 +482,14 @@ def search_concepts(
         g=g,
         accept_partial=accept_partial,
         history=history,
-        conditions = conditions
+        conditions=conditions,
     )
     # a node may be mutated after be cached; always store a copy
     history.search_to_history(
-        mandatory_list, accept_partial, result.copy() if result else None, conditions=conditions
+        mandatory_list,
+        accept_partial,
+        result.copy() if result else None,
+        conditions=conditions,
     )
     return result
 
@@ -667,7 +681,7 @@ def source_query_concepts(
     output_concepts: List[Concept],
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
-    conditions: Optional[WhereClause] = None
+    conditions: Optional[WhereClause] = None,
 ):
     if not g:
         g = generate_graph(environment)
@@ -680,8 +694,7 @@ def source_query_concepts(
         g=g,
         depth=0,
         history=history,
-        conditions = conditions
-
+        conditions=conditions,
     )
 
     if not root:

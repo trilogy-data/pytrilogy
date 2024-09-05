@@ -52,7 +52,9 @@ class InlineDatasource(OptimizationRule):
                 )
                 continue
             if not root.grain.issubset(parent_cte.grain):
-                self.log(f"{parent_cte.name} is at wrong grain to inline ({root.grain} vs {parent_cte.grain})")
+                self.log(
+                    f"{parent_cte.name} is at wrong grain to inline ({root.grain} vs {parent_cte.grain})"
+                )
                 continue
             to_inline.append(parent_cte)
 

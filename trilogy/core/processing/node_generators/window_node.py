@@ -52,9 +52,20 @@ def gen_window_node(
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
         return None
     parent_node.resolve()
-    if not all([x.address in [y.address for y in parent_node.output_concepts] for x in parent_concepts]):
-        missing = [x for x in parent_concepts if x.address not in [y.address for y in parent_node.output_concepts]]
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable, missing {missing}")
+    if not all(
+        [
+            x.address in [y.address for y in parent_node.output_concepts]
+            for x in parent_concepts
+        ]
+    ):
+        missing = [
+            x
+            for x in parent_concepts
+            if x.address not in [y.address for y in parent_node.output_concepts]
+        ]
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable, missing {missing}"
+        )
         raise SyntaxError
     _window_node = WindowNode(
         input_concepts=parent_concepts,

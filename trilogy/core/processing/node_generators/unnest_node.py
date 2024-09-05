@@ -2,7 +2,7 @@ from typing import List
 
 
 from trilogy.core.models import Concept, Function
-from trilogy.core.processing.nodes import SelectNode, UnnestNode, History, StrategyNode
+from trilogy.core.processing.nodes import UnnestNode, History, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.constants import logger
 

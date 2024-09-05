@@ -15,20 +15,35 @@ class History(BaseModel):
     started: set[str] = Field(default_factory=set)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def _concepts_to_lookup(self, search: list[Concept], accept_partial: bool, conditions:WhereClause | None = None) -> str:
+    def _concepts_to_lookup(
+        self,
+        search: list[Concept],
+        accept_partial: bool,
+        conditions: WhereClause | None = None,
+    ) -> str:
         if conditions:
-            return "-".join([c.address for c in search]) + str(accept_partial) + str(conditions)
-        return "-".join([c.address for c in search]) + str(accept_partial),
+            return (
+                "-".join([c.address for c in search])
+                + str(accept_partial)
+                + str(conditions)
+            )
+        return "-".join([c.address for c in search]) + str(accept_partial)
 
     def search_to_history(
-        self, search: list[Concept], accept_partial: bool, output: StrategyNode | None, conditions: WhereClause | None = None
+        self,
+        search: list[Concept],
+        accept_partial: bool,
+        output: StrategyNode | None,
+        conditions: WhereClause | None = None,
     ):
-        self.history[self._concepts_to_lookup(search, accept_partial, conditions=conditions)] = output
+        self.history[
+            self._concepts_to_lookup(search, accept_partial, conditions=conditions)
+        ] = output
 
     def get_history(
         self,
         search: list[Concept],
-        conditions: WhereClause = None,
+        conditions: WhereClause | None = None,
         accept_partial: bool = False,
         parent_key: str = "",
     ) -> StrategyNode | None | bool:
@@ -64,7 +79,7 @@ class History(BaseModel):
         self,
         search: list[Concept],
         accept_partial: bool = False,
-        conditions: WhereClause | None = None
+        conditions: WhereClause | None = None,
     ):
         return (
             self._concepts_to_lookup(
@@ -115,7 +130,7 @@ class History(BaseModel):
             accept_partial,
             fail_if_not_found,
             accept_partial_optional,
-            conditions
+            conditions,
         )
         if fingerprint in self.select_history:
             return self.select_history[fingerprint]

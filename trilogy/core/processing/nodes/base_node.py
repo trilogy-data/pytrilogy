@@ -94,20 +94,24 @@ def resolve_concept_map(
     return concept_map
 
 
-def get_all_parent_partial(all_concepts: List[Concept], parents: List["StrategyNode"]):
-    return [
-        c
-        for c in all_concepts
-        if len([c.address in [x.address for x in p.partial_concepts] for p in parents])
-        >= 1
-        and all(
-            [
-                c.address in [x.address for x in p.partial_concepts]
-                for p in parents
-                if c.address in [x.address for x in p.output_concepts]
-            ]
-        )
-    ]
+def get_all_parent_partial(
+    all_concepts: List[Concept], parents: List["StrategyNode"]
+) -> List[Concept]:
+    return unique(
+        [
+            c
+            for c in all_concepts
+            if len([c.address in p.partial_lcl for p in parents]) >= 1
+            and all(
+                [
+                    c.address in p.partial_lcl
+                    for p in parents
+                    if c.address in p.output_lcl
+                ]
+            )
+        ],
+        "address",
+    )
 
 
 class StrategyNode:

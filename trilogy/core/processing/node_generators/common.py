@@ -9,7 +9,7 @@ from trilogy.core.models import (
     FilterItem,
     Environment,
     LooseConceptList,
-    WhereClause
+    WhereClause,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -45,15 +45,17 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
 
+
 def resolve_condition_parent_concepts(
-        condition:WhereClause
-)->Tuple[List[Concept], List[Tuple[Concept, ...]]]:
+    condition: WhereClause,
+) -> Tuple[List[Concept], List[Tuple[Concept, ...]]]:
     base_existence = []
-    base_rows  = []
+    base_rows = []
     base_rows += condition.row_arguments
     for ctuple in condition.existence_arguments:
         base_existence.append(ctuple)
     return unique(base_rows, "address"), base_existence
+
 
 def resolve_filter_parent_concepts(
     concept: Concept,
@@ -65,7 +67,9 @@ def resolve_filter_parent_concepts(
     direct_parent = concept.lineage.content
     base_existence = []
     base_rows = [direct_parent]
-    condition_rows, condition_existence = resolve_condition_parent_concepts(concept.lineage.where)
+    condition_rows, condition_existence = resolve_condition_parent_concepts(
+        concept.lineage.where
+    )
     base_rows += condition_rows
     base_existence += condition_existence
     if direct_parent.grain:
@@ -244,11 +248,13 @@ def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
     for join in joins:
         left.add(join.left_node)
         right.add(join.right_node)
-    
+
     potential_basis = left.difference(right)
     base_candidates = [x for x in final_joins_pre if x.left_node in potential_basis]
     if not base_candidates:
-        raise SyntaxError(f'Unresolvable join dependencies, left requires {left} and right requires {right}')
+        raise SyntaxError(
+            f"Unresolvable join dependencies, left requires {left} and right requires {right}"
+        )
     base = base_candidates[0]
     final_joins.append(base)
     available_aliases.add(base.left_node)

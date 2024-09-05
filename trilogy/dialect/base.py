@@ -514,7 +514,9 @@ class BaseDialect:
                 ):
                     source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
                 # direct - eg DUCK DB - can be directly selected inline
-                elif cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT:
+                elif (
+                    cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT
+                ):
                     source = None
                 else:
                     raise SyntaxError("CTE has joins but no from clause")

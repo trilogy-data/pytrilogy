@@ -8,7 +8,7 @@ from trilogy.core.models import (
     Grain,
     AggregateWrapper,
     Environment,
-    SelectStatement
+    SelectStatement,
 )
 from trilogy.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from trilogy.parser import parse_text
@@ -727,11 +727,13 @@ order by
 
     duckdb_engine.hooks = [DebuggingHook()]
 
-    parsed:SelectStatement = duckdb_engine.parse_text(test)[0]
+    parsed: SelectStatement = duckdb_engine.parse_text(test)[0]
     row_args = parsed.where_clause.row_arguments
     assert parsed.having_clause
-    assert parsed.grain == Grain(components = [duckdb_engine.environment.concepts['item']])
-    assert len(row_args) ==1
+    assert parsed.grain == Grain(
+        components=[duckdb_engine.environment.concepts["item"]]
+    )
+    assert len(row_args) == 1
     # assert target.grain.components == [duckdb_engine.environment.concepts["item"]]
     results = duckdb_engine.execute_text(test)[0].fetchall()
     derived = duckdb_engine.environment.concepts["local.all_store_count"]

@@ -12,7 +12,7 @@ from typing import List
 
 from trilogy.core.enums import JoinType, PurposeLineage
 from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, unique
+from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
 
 

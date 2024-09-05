@@ -24,7 +24,7 @@ from trilogy.core.models import (
     Datasource,
     BaseJoin,
     InstantiatedUnnestJoin,
-    Conditional
+    Conditional,
 )
 
 from trilogy.utility import unique
@@ -352,7 +352,7 @@ def get_query_node(
         search_concepts,
         environment=environment,
         g=graph,
-        conditions = statement.where_clause.conditional if statement.where_clause else None,
+        conditions=(statement.where_clause if statement.where_clause else None),
     )
     ds: GroupNode | SelectNode
     if nest_where and statement.where_clause:
@@ -388,7 +388,11 @@ def get_query_node(
         ds = ods
     if statement.having_clause:
         if ds.conditions:
-            ds.conditions = Conditional(left=ds.conditions, right=statement.having_clause.conditional, operator = BooleanOperator.AND)
+            ds.conditions = Conditional(
+                left=ds.conditions,
+                right=statement.having_clause.conditional,
+                operator=BooleanOperator.AND,
+            )
         else:
             ds.conditions = statement.having_clause.conditional
     return ds
@@ -400,7 +404,7 @@ def get_query_datasources(
     graph: Optional[ReferenceGraph] = None,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-    
+
     ds = get_query_node(environment, statement, graph)
     final_qds = ds.resolve()
     if hooks:

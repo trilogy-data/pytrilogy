@@ -1036,7 +1036,7 @@ class ParseToObjects(Transformer):
                     operator=ComparisonOperator.IS_NOT,
                 )
         return WhereClause(conditional=root)
-    
+
     def having(self, args):
         root = args[0]
         if not isinstance(root, (Comparison, Conditional, Parenthetical)):

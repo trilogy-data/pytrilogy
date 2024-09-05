@@ -167,6 +167,7 @@ class ConstantInlineable(ABC):
 class SelectTypeMixin(BaseModel):
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
+
     @property
     def output_components(self) -> List[Concept]:
         raise NotImplementedError
@@ -1646,7 +1647,9 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
                 )
             ):
                 output.append(item)
-        return Grain(components=unique(output, "address"), where_clause = self.where_clause)
+        return Grain(
+            components=unique(output, "address"), where_clause=self.where_clause
+        )
 
     def with_namespace(self, namespace: str) -> "SelectStatement":
         return SelectStatement(
@@ -3913,8 +3916,10 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
                 output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
 
+
 class HavingClause(WhereClause):
     pass
+
 
 class MaterializedDataset(BaseModel):
     address: Address
