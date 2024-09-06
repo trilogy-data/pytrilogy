@@ -81,6 +81,8 @@ def gen_rowset_node(
 
     node.rebuild_cache()
 
+    assert len(node.partial_concepts) == 0, [x.address for x in node.partial_concepts]
+
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional or all(
         x.address in [y.address for y in node.output_concepts] for x in local_optional

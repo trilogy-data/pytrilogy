@@ -67,7 +67,7 @@ class History(BaseModel):
         self,
         search: list[Concept],
         accept_partial: bool = False,
-        conditions: WhereClause | None = None
+        conditions: WhereClause | None = None,
     ):
         self.started.add(
             self._concepts_to_lookup(

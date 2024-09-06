@@ -101,7 +101,14 @@ def get_all_parent_partial(
         [
             c
             for c in all_concepts
-            if len([c.address in p.partial_lcl for p in parents]) >= 1
+            if len(
+                [
+                    p
+                    for p in parents
+                    if c.address in [x.address for x in p.partial_concepts]
+                ]
+            )
+            >= 1
             and all(
                 [
                     c.address in p.partial_lcl
