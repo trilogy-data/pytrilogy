@@ -1116,7 +1116,25 @@ class ParseToObjects(Transformer):
     def comparison(self, args) -> Comparison:
         if args[1] == ComparisonOperator.IN:
             raise SyntaxError
-        return Comparison(left=args[0], right=args[2], operator=args[1])
+        if isinstance(args[0], AggregateWrapper):
+            left = arbitrary_to_concept(
+                args[0],
+                namespace=self.environment.namespace,
+                name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(args[0]))}",
+            )
+            self.environment.add_concept(left)
+        else:
+            left = args[0]
+        if isinstance(args[2], AggregateWrapper):
+            right = arbitrary_to_concept(
+                args[2],
+                namespace=self.environment.namespace,
+                name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(args[2]))}",
+            )
+            self.environment.add_concept(right)
+        else:
+            right = args[2]
+        return Comparison(left=left, right=right, operator=args[1])
 
     def between_comparison(self, args) -> Conditional:
         left_bound = args[1]

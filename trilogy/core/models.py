@@ -70,7 +70,7 @@ from trilogy.utility import unique
 from collections import UserList, UserDict
 from functools import cached_property
 from abc import ABC
-
+from collections import defaultdict
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -2027,7 +2027,7 @@ class Datasource(Namespaced, BaseModel):
         return self.__repr__()
 
     def __hash__(self):
-        return (self.namespace + self.identifier).__hash__()
+        return self.full_name.__hash__()
 
     def with_namespace(self, namespace: str):
         new_namespace = (
@@ -2212,9 +2212,9 @@ class BaseJoin(BaseModel):
 class QueryDatasource(BaseModel):
     input_concepts: List[Concept]
     output_concepts: List[Concept]
+    datasources: List[Union[Datasource, "QueryDatasource"]]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
 
-    datasources: List[Union[Datasource, "QueryDatasource"]]
     grain: Grain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
@@ -2266,7 +2266,7 @@ class QueryDatasource(BaseModel):
 
     @field_validator("source_map")
     @classmethod
-    def validate_source_map(cls, v, info: ValidationInfo):
+    def validate_source_map(cls, v: dict, info: ValidationInfo):
         values = info.data
         for key in ("input_concepts", "output_concepts"):
             if not values.get(key):
@@ -2344,11 +2344,23 @@ class QueryDatasource(BaseModel):
         )
 
         merged_datasources = {}
+
         for ds in [*self.datasources, *other.datasources]:
             if ds.full_name in merged_datasources:
                 merged_datasources[ds.full_name] = merged_datasources[ds.full_name] + ds
             else:
                 merged_datasources[ds.full_name] = ds
+
+        final_source_map = defaultdict(set)
+        for key in self.source_map:
+            final_source_map[key] = self.source_map[key].union(
+                other.source_map.get(key, set())
+            )
+        for key in other.source_map:
+            if key not in final_source_map:
+                final_source_map[key] = other.source_map[key]
+        for k, v in final_source_map.items():
+            final_source_map[k] = set(merged_datasources[x.full_name] for x in list(v))
         qds = QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -2356,7 +2368,7 @@ class QueryDatasource(BaseModel):
             output_concepts=unique(
                 self.output_concepts + other.output_concepts, "address"
             ),
-            source_map={**self.source_map, **other.source_map},
+            source_map=final_source_map,
             datasources=list(merged_datasources.values()),
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),

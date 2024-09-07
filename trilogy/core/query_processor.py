@@ -261,7 +261,7 @@ def datasource_to_ctes(
 
     human_id = generate_cte_name(query_datasource.full_name, name_map)
     logger.info(
-        f"Finished building source map for {human_id} with {len(parents)} parents, have {source_map}, query_datasource had non-empty keys {[k for k, v in query_datasource.source_map.items() if v]} "
+        f"Finished building source map for {human_id} with {len(parents)} parents, have {source_map}, query_datasource had non-empty keys {[k for k, v in query_datasource.source_map.items() if v]} and existence had non-empty keys {[k for k, v in query_datasource.existence_source_map.items() if v]} "
     )
     final_joins = [
         x
