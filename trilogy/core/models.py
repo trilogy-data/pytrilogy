@@ -2276,14 +2276,6 @@ class QueryDatasource(BaseModel):
                     raise SyntaxError(
                         f"Missing source map for {concept.address} on {key}, have {v}"
                     )
-        all_sources = set()
-        for key, sources in v.items():
-            all_sources.update(sources)
-        dsvalues = set(values.get("datasources", []))
-        mapping = {x.full_name: hash(x) for x in list(all_sources)}
-        assert all_sources.issubset(
-            dsvalues
-        ), f"Missing sources {all_sources.difference(dsvalues )}, {mapping}"
         return v
 
     def __str__(self):

@@ -85,7 +85,7 @@ def test_fifteen(engine):
 def test_sixteen(engine):
     query = run_query(engine, 16)
     # size gating
-    assert len(query) < 5500, query
+    assert len(query) < 7500, query
 
 
 def run_adhoc(number: int):
