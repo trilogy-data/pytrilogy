@@ -2,13 +2,14 @@ from typing import List
 
 
 from trilogy.core.enums import JoinType
-from trilogy.core.models import Concept, Environment, FilterItem, Grain
+from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
 from trilogy.core.processing.nodes import (
     FilterNode,
     MergeNode,
     NodeJoin,
     History,
     StrategyNode,
+    SelectNode,
 )
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -28,6 +29,7 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept)
@@ -37,10 +39,10 @@ def gen_filter_node(
     where = concept.lineage.where
 
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} fetching filter node row parents {[x.address for x in parent_row_concepts]}"
+        f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
     core_parents = []
-    parent: StrategyNode = source_concepts(
+    row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,
         g=g,
@@ -48,33 +50,7 @@ def gen_filter_node(
         history=history,
     )
 
-    if not parent:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
-        )
-        return None
-
-    if not local_optional and not parent_existence_concepts:
-        optimized_pushdown = True
-    else:
-        optimized_pushdown = False
-
-    if optimized_pushdown:
-        if parent.conditions:
-            parent.conditions = parent.conditions + where.conditional
-        else:
-            parent.conditions = where.conditional
-        parent.output_concepts = [concept]
-        parent.grain = Grain(components=[concept])
-        parent.rebuild_cache()
-
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
-        )
-        return parent
-
-    core_parents.append(parent)
-
+    flattened_existence = [x for y in parent_existence_concepts for x in y]
     if parent_existence_concepts:
         for existence_tuple in parent_existence_concepts:
             if not existence_tuple:
@@ -95,26 +71,91 @@ def gen_filter_node(
                 )
                 return None
             core_parents.append(parent_existence)
-    flattened_existence = [x for y in parent_existence_concepts for x in y]
-    filter_node = FilterNode(
-        input_concepts=unique(
-            [immediate_parent] + parent_row_concepts + flattened_existence,
-            "address",
-        ),
-        output_concepts=[concept, immediate_parent] + parent_row_concepts,
-        environment=environment,
-        g=g,
-        parents=core_parents,
-        grain=Grain(
-            components=[immediate_parent] + parent_row_concepts,
-        ),
-    )
+    if not row_parent:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
+        )
+        return None
 
-    assert filter_node.resolve().grain == Grain(
-        components=[immediate_parent] + parent_row_concepts,
-    )
+    optimized_pushdown = False
+    if not local_optional:
+        optimized_pushdown = True
+    elif conditions and conditions == where:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
+        )
+        optimized_pushdown = True
+
+    if optimized_pushdown:
+        if isinstance(row_parent, SelectNode):
+            parent = StrategyNode(
+                input_concepts=row_parent.output_concepts,
+                output_concepts=[concept] + row_parent.output_concepts,
+                environment=row_parent.environment,
+                g=row_parent.g,
+                parents=[row_parent] + core_parents,
+                depth=row_parent.depth,
+                partial_concepts=row_parent.partial_concepts,
+                force_group=False,
+                conditions=(
+                    row_parent.conditions + where.conditional
+                    if row_parent.conditions
+                    else where.conditional
+                ),
+                existence_concepts=row_parent.existence_concepts,
+            )
+        else:
+            parent = row_parent
+
+        expected_output = [concept] + [
+            x
+            for x in local_optional
+            if x.address in [y.address for y in parent.output_concepts]
+        ]
+        parent.add_parents(core_parents)
+        parent.add_condition(where.conditional)
+        parent.add_existence_concepts(flattened_existence)
+        parent.set_output_concepts(expected_output)
+        parent.grain = Grain(
+            components=(
+                list(immediate_parent.keys)
+                if immediate_parent.keys
+                else [immediate_parent]
+            )
+            + [
+                x
+                for x in local_optional
+                if x.address in [y.address for y in parent.output_concepts]
+            ]
+        )
+        parent.rebuild_cache()
+
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
+        )
+        filter_node = parent
+    else:
+        core_parents.append(row_parent)
+
+        filter_node = FilterNode(
+            input_concepts=unique(
+                [immediate_parent] + parent_row_concepts + flattened_existence,
+                "address",
+            ),
+            output_concepts=[concept, immediate_parent] + parent_row_concepts,
+            environment=environment,
+            g=g,
+            parents=core_parents,
+            grain=Grain(
+                components=[immediate_parent] + parent_row_concepts,
+            ),
+        )
+
     if not local_optional or all(
-        [x.address in [y.address for y in parent_row_concepts] for x in local_optional]
+        [
+            x.address in [y.address for y in filter_node.output_concepts]
+            for x in local_optional
+        ]
     ):
         outputs = [
             x

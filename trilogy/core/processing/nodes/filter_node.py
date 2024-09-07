@@ -36,6 +36,7 @@ class FilterNode(StrategyNode):
         partial_concepts: List[Concept] | None = None,
         force_group: bool | None = False,
         grain: Grain | None = None,
+        existence_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             output_concepts=output_concepts,
@@ -49,6 +50,7 @@ class FilterNode(StrategyNode):
             partial_concepts=partial_concepts,
             force_group=force_group,
             grain=grain,
+            existence_concepts=existence_concepts,
         )
 
     def copy(self) -> "FilterNode":
@@ -64,4 +66,5 @@ class FilterNode(StrategyNode):
             partial_concepts=list(self.partial_concepts),
             force_group=self.force_group,
             grain=self.grain,
+            existence_concepts=list(self.existence_concepts),
         )

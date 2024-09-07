@@ -9,6 +9,7 @@ from trilogy.core.models import (
     FilterItem,
     Environment,
     LooseConceptList,
+    WhereClause,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -45,6 +46,17 @@ def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
     return unique(concept.lineage.concept_arguments, "address")
 
 
+def resolve_condition_parent_concepts(
+    condition: WhereClause,
+) -> Tuple[List[Concept], List[Tuple[Concept, ...]]]:
+    base_existence = []
+    base_rows = []
+    base_rows += condition.row_arguments
+    for ctuple in condition.existence_arguments:
+        base_existence.append(ctuple)
+    return unique(base_rows, "address"), base_existence
+
+
 def resolve_filter_parent_concepts(
     concept: Concept,
 ) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
@@ -55,10 +67,11 @@ def resolve_filter_parent_concepts(
     direct_parent = concept.lineage.content
     base_existence = []
     base_rows = [direct_parent]
-    base_rows += concept.lineage.where.row_arguments
-    # TODO: pass tuple groups through
-    for ctuple in concept.lineage.where.existence_arguments:
-        base_existence.append(ctuple)
+    condition_rows, condition_existence = resolve_condition_parent_concepts(
+        concept.lineage.where
+    )
+    base_rows += condition_rows
+    base_existence += condition_existence
     if direct_parent.grain:
         base_rows += direct_parent.grain.components_copy
     if (
@@ -84,6 +97,7 @@ def gen_property_enrichment_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
@@ -102,6 +116,7 @@ def gen_property_enrichment_node(
             g=g,
             depth=depth + 1,
             history=history,
+            conditions=conditions,
         )
         final_nodes.append(enrich_node)
         node_joins.append(
@@ -147,11 +162,12 @@ def gen_enrichment_node(
     source_concepts,
     log_lambda,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ):
 
     local_opts = LooseConceptList(concepts=local_optional)
 
-    if local_opts.issubset(LooseConceptList(concepts=base_node.output_concepts)):
+    if local_opts.issubset(base_node.output_lcl):
         log_lambda(
             f"{str(type(base_node).__name__)} has all optional { base_node.output_lcl}, skipping enrichmennt"
         )
@@ -180,6 +196,7 @@ def gen_enrichment_node(
                 depth,
                 source_concepts,
                 history=history,
+                conditions=conditions,
             )
 
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
@@ -189,6 +206,7 @@ def gen_enrichment_node(
         g=g,
         depth=depth,
         history=history,
+        conditions=conditions,
     )
     if not enrich_node:
         log_lambda(
@@ -225,17 +243,31 @@ def gen_enrichment_node(
 
 
 def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
+    if not joins:
+        return []
     available_aliases: set[StrategyNode] = set()
     final_joins_pre = [*joins]
     final_joins = []
+    left = set()
+    right = set()
+    for join in joins:
+        left.add(join.left_node)
+        right.add(join.right_node)
+
+    potential_basis = left.difference(right)
+    base_candidates = [x for x in final_joins_pre if x.left_node in potential_basis]
+    if not base_candidates:
+        raise SyntaxError(
+            f"Unresolvable join dependencies, left requires {left} and right requires {right}"
+        )
+    base = base_candidates[0]
+    final_joins.append(base)
+    available_aliases.add(base.left_node)
+    available_aliases.add(base.right_node)
     while final_joins_pre:
         new_final_joins_pre: List[NodeJoin] = []
         for join in final_joins_pre:
-            if not available_aliases:
-                final_joins.append(join)
-                available_aliases.add(join.left_node)
-                available_aliases.add(join.right_node)
-            elif join.left_node in available_aliases:
+            if join.left_node in available_aliases:
                 # we don't need to join twice
                 # so whatever join we found first, works
                 if join.right_node in available_aliases:
@@ -245,11 +277,5 @@ def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
                 available_aliases.add(join.right_node)
             else:
                 new_final_joins_pre.append(join)
-        if len(new_final_joins_pre) == len(final_joins_pre):
-            remaining = [join.left_node for join in new_final_joins_pre]
-            remaining_right = [join.right_node for join in new_final_joins_pre]
-            raise SyntaxError(
-                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
-            )
         final_joins_pre = new_final_joins_pre
     return final_joins

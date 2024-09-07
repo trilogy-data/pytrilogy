@@ -108,6 +108,7 @@ from trilogy.core.models import (
     list_to_wrapper,
     dict_to_map_wrapper,
     NumericType,
+    HavingClause,
 )
 from trilogy.parsing.exceptions import ParseError
 from trilogy.utility import string_to_hash
@@ -960,6 +961,7 @@ class ParseToObjects(Transformer):
         limit = None
         order_by = None
         where = None
+        having = None
         for arg in args:
             if isinstance(arg, List):
                 select_items = arg
@@ -967,13 +969,16 @@ class ParseToObjects(Transformer):
                 limit = arg.count
             elif isinstance(arg, OrderBy):
                 order_by = arg
-            elif isinstance(arg, WhereClause):
+            elif isinstance(arg, WhereClause) and not isinstance(arg, HavingClause):
                 where = arg
+            elif isinstance(arg, HavingClause):
+                having = arg
         if not select_items:
             raise ValueError("Malformed select, missing select items")
         output = SelectStatement(
             selection=select_items,
             where_clause=where,
+            having_clause=having,
             limit=limit,
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
@@ -991,6 +996,7 @@ class ParseToObjects(Transformer):
                         and output.where_clause_category == SelectFiltering.IMPLICIT
                         else None
                     ),
+                    environment=self.environment,
                 )
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept
@@ -1031,6 +1037,19 @@ class ParseToObjects(Transformer):
                     operator=ComparisonOperator.IS_NOT,
                 )
         return WhereClause(conditional=root)
+
+    def having(self, args):
+        root = args[0]
+        if not isinstance(root, (Comparison, Conditional, Parenthetical)):
+            if arg_to_datatype(root) == DataType.BOOL:
+                root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
+            else:
+                root = Comparison(
+                    left=root,
+                    right=MagicConstants.NULL,
+                    operator=ComparisonOperator.IS_NOT,
+                )
+        return HavingClause(conditional=root)
 
     @v_args(meta=True)
     def function_binding_list(self, meta: Meta, args) -> Concept:

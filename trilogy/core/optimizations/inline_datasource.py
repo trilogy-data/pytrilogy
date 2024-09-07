@@ -5,6 +5,7 @@ from trilogy.core.models import (
 
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 from collections import defaultdict
+from trilogy.constants import CONFIG
 
 
 class InlineDatasource(OptimizationRule):
@@ -18,28 +19,28 @@ class InlineDatasource(OptimizationRule):
         if not cte.parent_ctes:
             return False
 
-        self.log(
+        self.debug(
             f"Checking {cte.name} for consolidating inline tables with {len(cte.parent_ctes)} parents"
         )
         to_inline: list[CTE] = []
         force_group = False
         for parent_cte in cte.parent_ctes:
             if not parent_cte.is_root_datasource:
-                self.log(f"parent {parent_cte.name} is not root")
+                self.debug(f"parent {parent_cte.name} is not root")
                 continue
             if parent_cte.parent_ctes:
-                self.log(f"parent {parent_cte.name} has parents")
+                self.debug(f"parent {parent_cte.name} has parents")
                 continue
             if parent_cte.condition:
-                self.log(f"parent {parent_cte.name} has condition, cannot be inlined")
+                self.debug(f"parent {parent_cte.name} has condition, cannot be inlined")
                 continue
             raw_root = parent_cte.source.datasources[0]
             if not isinstance(raw_root, Datasource):
-                self.log(f"parent {parent_cte.name} is not datasource")
+                self.debug(f"Parent {parent_cte.name} is not datasource")
                 continue
             root: Datasource = raw_root
             if not root.can_be_inlined:
-                self.log(f"parent {parent_cte.name} datasource is not inlineable")
+                self.debug(f"Parent {parent_cte.name} datasource is not inlineable")
                 continue
             root_outputs = {x.address for x in root.output_concepts}
             inherited = {
@@ -52,7 +53,9 @@ class InlineDatasource(OptimizationRule):
                 )
                 continue
             if not root.grain.issubset(parent_cte.grain):
-                self.log(f"Not all {parent_cte.name} is at wrong grain to inline")
+                self.log(
+                    f"{parent_cte.name} is at wrong grain to inline ({root.grain} vs {parent_cte.grain})"
+                )
                 continue
             to_inline.append(parent_cte)
 
@@ -62,7 +65,10 @@ class InlineDatasource(OptimizationRule):
                 self.candidates[cte.name].add(replaceable.name)
                 self.count[replaceable.source.name] += 1
                 return True
-            if self.count[replaceable.source.name] > 1:
+            if (
+                self.count[replaceable.source.name]
+                > CONFIG.optimizations.constant_inline_cutoff
+            ):
                 self.log(
                     f"Skipping inlining raw datasource {replaceable.source.name} ({replaceable.name}) due to multiple references"
                 )

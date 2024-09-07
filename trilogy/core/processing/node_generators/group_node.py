@@ -1,4 +1,4 @@
-from trilogy.core.models import Concept, Environment, LooseConceptList
+from trilogy.core.models import Concept, Environment, LooseConceptList, WhereClause
 from trilogy.utility import unique
 from trilogy.core.processing.nodes import GroupNode, StrategyNode, History
 from typing import List
@@ -22,6 +22,7 @@ def gen_group_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ):
     # aggregates MUST always group to the proper grain
     # except when the
@@ -53,6 +54,7 @@ def gen_group_node(
             g=g,
             depth=depth,
             history=history,
+            conditions=conditions,
         )
         if not parent:
             logger.info(

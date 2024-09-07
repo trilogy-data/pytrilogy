@@ -386,14 +386,19 @@ class BaseDialect:
                         e.right.address,
                         [
                             INVALID_REFERENCE_STRING(
-                                f"Missing source reference to {e.right.name}"
+                                f"Missing source reference to {e.right.address}"
                             )
                         ],
                     )
                 else:
                     lookup = lookup_cte.existence_source_map[e.right.address]
-
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {lookup[0]}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {lookup[0]} where {lookup[0]}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
+                if len(lookup) > 0:
+                    target = lookup[0]
+                else:
+                    target = INVALID_REFERENCE_STRING(
+                        f"Missing source CTE for {e.right.address}"
+                    )
+                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
             elif isinstance(e.right, (ListWrapper, Parenthetical, list)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map)}"
 
@@ -514,7 +519,9 @@ class BaseDialect:
                 ):
                     source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_concept_sql, cte)}"
                 # direct - eg DUCK DB - can be directly selected inline
-                elif cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT:
+                elif (
+                    cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT
+                ):
                     source = None
                 else:
                     raise SyntaxError("CTE has joins but no from clause")

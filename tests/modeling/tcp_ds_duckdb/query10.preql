@@ -27,6 +27,7 @@ where
 
 with base as select 
     customer.id,
+    customer.demographics.id,
     customer.demographics.gender,
     customer.demographics.marital_status,
     customer.demographics.education_status,
@@ -36,7 +37,7 @@ with base as select
     customer.demographics.employed_dependent_count,
     customer.demographics.college_dependent_count,
 WHERE
-customer.id in relevant_customers
+    customer.id in relevant_customers
 ;
 
 SELECT

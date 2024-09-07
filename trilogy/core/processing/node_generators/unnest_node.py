@@ -1,8 +1,8 @@
 from typing import List
 
 
-from trilogy.core.models import Concept, Function
-from trilogy.core.processing.nodes import SelectNode, UnnestNode, History, StrategyNode
+from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.processing.nodes import UnnestNode, History, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.constants import logger
 
@@ -17,6 +17,7 @@ def gen_unnest_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     arguments = []
     if isinstance(concept.lineage, Function):
@@ -28,6 +29,7 @@ def gen_unnest_node(
             g=g,
             depth=depth + 1,
             history=history,
+            conditions=conditions,
         )
         if not parent:
             logger.info(
@@ -46,7 +48,7 @@ def gen_unnest_node(
     # we need to sometimes nest an unnest node,
     # as unnest operations are not valid in all situations
     # TODO: inline this node when we can detect it's safe
-    new = SelectNode(
+    new = StrategyNode(
         input_concepts=[concept] + local_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,

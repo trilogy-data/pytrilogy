@@ -12,7 +12,7 @@ from typing import List
 
 from trilogy.core.enums import JoinType, PurposeLineage
 from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, unique
+from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
 
 
@@ -28,6 +28,8 @@ def gen_rowset_node(
     source_concepts,
     history: History | None = None,
 ) -> StrategyNode | None:
+    from trilogy.core.query_processor import get_query_node
+
     if not isinstance(concept.lineage, RowsetItem):
         raise SyntaxError(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
@@ -35,54 +37,14 @@ def gen_rowset_node(
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivationStatement = lineage.rowset
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
-    existence_parents: List[StrategyNode] = []
-    if where := select.where_clause:
-        targets = select.output_components + where.conditional.row_arguments
-        for sub_select in where.conditional.existence_arguments:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} generating parent existence node with {[x.address for x in sub_select]}"
-            )
-            parent_check = source_concepts(
-                mandatory_list=sub_select,
-                environment=environment,
-                g=g,
-                depth=depth + 1,
-                history=history,
-            )
-            if not parent_check:
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent existence node for rowset node for {concept}"
-                )
-                return None
-            existence_parents.append(parent_check)
-    else:
-        targets = select.output_components
-    node: StrategyNode = source_concepts(
-        mandatory_list=unique(targets, "address"),
-        environment=environment,
-        g=g,
-        depth=depth + 1,
-        history=history,
-    )
+    node = get_query_node(environment, select, graph=g, history=history)
 
     if not node:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset node for {concept}"
+            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent rowset node for {concept}"
         )
         return None
-    # add our existence concepts in
-    if existence_parents:
-        node.parents += existence_parents
-        # we don't need to join to any existence parents
-        # if isinstance(node, MergeNode) and node.node_joins is None:
-        #     # set it explicitly to empty to avoid inference
-        #     node.node_joins = []
-        for parent in existence_parents:
-            for x in parent.output_concepts:
-                if x.address not in node.output_lcl:
-                    node.existence_concepts.append(x)
 
-    node.conditions = select.where_clause.conditional if select.where_clause else None
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
     select_hidden = set([x.address for x in select.hidden_components])
@@ -113,26 +75,23 @@ def gen_rowset_node(
     # but don't include anything aggregate at this point
     assert node.resolution_cache
 
-    node.resolution_cache.grain = concept_list_to_grain(
+    node.grain = concept_list_to_grain(
         node.output_concepts, parent_sources=node.resolution_cache.datasources
     )
 
+    node.rebuild_cache()
+
     possible_joins = concept_to_relevant_joins(additional_relevant)
-    if not local_optional:
+    if not local_optional or all(
+        x.address in [y.address for y in node.output_concepts] for x in local_optional
+    ):
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no enriched required for rowset node; exiting early"
+            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional found or no optional; exiting early."
         )
         return node
     if not possible_joins:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node; exiting early"
-        )
-        return node
-    if all(
-        [x.address in [y.address for y in node.output_concepts] for x in local_optional]
-    ):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base rowset node; exiting early"
+            f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
         )
         return node
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys

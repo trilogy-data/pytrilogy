@@ -138,16 +138,6 @@ class MergeNode(StrategyNode):
                     continue
                 final_joins.append(join)
             self.node_joins = final_joins
-        partial_lookup: list[Concept] = []
-        non_partial: List[Concept] = []
-        for node in parents or []:
-            partial_lookup += node.partial_concepts
-            non_partial += [
-                x for x in node.output_concepts if x not in node.partial_concepts
-            ]
-
-        final_partial = [x for x in partial_lookup if x not in non_partial]
-        self.partial_concepts = final_partial
 
     def translate_node_joins(self, node_joins: List[NodeJoin]) -> List[BaseJoin]:
         joins = []
@@ -265,7 +255,6 @@ class MergeNode(StrategyNode):
             for x in final_datasets
             if all([y in self.existence_concepts for y in x.output_concepts])
         ]
-
         if len(merged.keys()) == 1:
             final: QueryDatasource | Datasource = list(merged.values())[0]
             if (
@@ -378,4 +367,5 @@ class MergeNode(StrategyNode):
             node_joins=self.node_joins,
             join_concepts=list(self.join_concepts) if self.join_concepts else None,
             force_join_type=self.force_join_type,
+            existence_concepts=list(self.existence_concepts),
         )

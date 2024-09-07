@@ -3,39 +3,13 @@ from trilogy.core.models import (
     Conditional,
     BooleanOperator,
     Datasource,
-    SubselectComparison,
+    ConceptArgs,
     Comparison,
     Parenthetical,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 from trilogy.core.processing.utility import is_scalar_condition
-
-
-def decompose_condition(
-    conditional: Conditional,
-) -> list[SubselectComparison | Comparison | Conditional | Parenthetical]:
-    chunks: list[SubselectComparison | Comparison | Conditional | Parenthetical] = []
-    if conditional.operator == BooleanOperator.AND:
-        if not (
-            isinstance(
-                conditional.left,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
-            )
-            and isinstance(
-                conditional.right,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
-            )
-        ):
-            chunks.append(conditional)
-        else:
-            for val in [conditional.left, conditional.right]:
-                if isinstance(val, Conditional):
-                    chunks.extend(decompose_condition(val))
-                else:
-                    chunks.append(val)
-    else:
-        chunks.append(conditional)
-    return chunks
+from trilogy.utility import unique
 
 
 def is_child_of(a, comparison):
@@ -57,35 +31,51 @@ class PredicatePushdown(OptimizationRule):
 
     def _check_parent(
         self,
+        cte: CTE,
         parent_cte: CTE,
-        candidate: Conditional,
+        candidate: Conditional | Comparison | Parenthetical | None,
         inverse_map: dict[str, list[CTE]],
     ):
-        conditions = {x.address for x in candidate.concept_arguments}
+        if not isinstance(candidate, ConceptArgs):
+            return False
+        row_conditions = {x.address for x in candidate.row_arguments}
+        existence_conditions = {
+            y.address for x in candidate.existence_arguments for y in x
+        }
+        all_inputs = {x.address for x in candidate.concept_arguments}
         if is_child_of(candidate, parent_cte.condition):
             return False
 
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}
-        if not conditions or not materialized:
+        if not row_conditions or not materialized:
+            return False
+        output_addresses = {x.address for x in parent_cte.output_columns}
+        # if any of the existence conditions are created on the asset, we can't push up to it
+        if existence_conditions and existence_conditions.intersection(output_addresses):
             return False
         # if it's a root datasource, we can filter on _any_ of the output concepts
         if parent_cte.is_root_datasource:
             extra_check = {
                 x.address for x in parent_cte.source.datasources[0].output_concepts
             }
-            if conditions.issubset(extra_check):
-                for x in conditions:
+            if row_conditions.issubset(extra_check):
+                for x in row_conditions:
                     if x not in materialized:
                         materialized.add(x)
                         parent_cte.source_map[x] = [
                             parent_cte.source.datasources[0].name
                         ]
-        if conditions.issubset(materialized):
+        if row_conditions.issubset(materialized):
             children = inverse_map.get(parent_cte.name, [])
             if all([is_child_of(candidate, child.condition) for child in children]):
                 self.log(
                     f"All concepts are found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
                 )
+                if parent_cte.condition and not is_scalar_condition(
+                    parent_cte.condition
+                ):
+                    self.log("Parent condition is not scalar, not safe to push up")
+                    return False
                 if parent_cte.condition:
                     parent_cte.condition = Conditional(
                         left=parent_cte.condition,
@@ -94,9 +84,22 @@ class PredicatePushdown(OptimizationRule):
                     )
                 else:
                     parent_cte.condition = candidate
+                # promote up existence sources
+                if all_inputs.difference(row_conditions):
+                    for x in all_inputs.difference(row_conditions):
+                        if x not in parent_cte.source_map and x in cte.source_map:
+                            sources = [
+                                parent
+                                for parent in cte.parent_ctes
+                                if parent.name in cte.source_map[x]
+                            ]
+                            parent_cte.source_map[x] = cte.source_map[x]
+                            parent_cte.parent_ctes = unique(
+                                parent_cte.parent_ctes + sources, "name"
+                            )
                 return True
         self.debug(
-            f"conditions {conditions} not subset of parent {parent_cte.name} parent has {materialized} "
+            f"conditions {row_conditions} not subset of parent {parent_cte.name} parent has {materialized} "
         )
         return False
 
@@ -111,24 +114,47 @@ class PredicatePushdown(OptimizationRule):
         if not cte.condition:
             self.debug(f"No CTE condition for {cte.name}")
             return False
+
+        parent_filter_status = {
+            parent.name: is_child_of(cte.condition, parent.condition)
+            for parent in cte.parent_ctes
+        }
+        # flatten existnce argument tuples to a list
+
+        flattened_existence = [
+            x.address for y in cte.condition.existence_arguments for x in y
+        ]
+
+        existence_only = [
+            parent.name
+            for parent in cte.parent_ctes
+            if all([x.address in flattened_existence for x in parent.output_columns])
+            and len(flattened_existence) > 0
+        ]
         if all(
             [
-                is_child_of(cte.condition, parent_cte.condition)
-                for parent_cte in cte.parent_ctes
+                value
+                for key, value in parent_filter_status.items()
+                if key not in existence_only
             ]
         ) and not any([isinstance(x, Datasource) for x in cte.source.datasources]):
             self.log(
-                f"All parents of {cte.name} have same filter, removing filter from {cte.name}"
+                f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
             )
             cte.condition = None
+            # remove any "parent" CTEs that provided only existence inputs
+            if existence_only:
+                original = [y.name for y in cte.parent_ctes]
+                cte.parent_ctes = [
+                    x for x in cte.parent_ctes if x.name not in existence_only
+                ]
+                self.log(
+                    f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
+                )
             return True
         else:
-            mapping = {
-                parent.name: is_child_of(cte.condition, parent.condition)
-                for parent in cte.parent_ctes
-            }
             self.log(
-                f"Could not remove filter from {cte.name}, as not all parents have the same filter: {mapping}"
+                f"Could not remove filter from {cte.name}, as not all parents have the same filter: {parent_filter_status}"
             )
         if self.complete.get(cte.name):
             self.debug("Have done this CTE before")
@@ -156,7 +182,10 @@ class PredicatePushdown(OptimizationRule):
             )
             for parent_cte in cte.parent_ctes:
                 local_pushdown = self._check_parent(
-                    parent_cte=parent_cte, candidate=candidate, inverse_map=inverse_map
+                    cte=cte,
+                    parent_cte=parent_cte,
+                    candidate=candidate,
+                    inverse_map=inverse_map,
                 )
                 optimized = optimized or local_pushdown
                 if local_pushdown:

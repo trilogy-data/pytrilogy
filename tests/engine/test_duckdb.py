@@ -8,6 +8,7 @@ from trilogy.core.models import (
     Grain,
     AggregateWrapper,
     Environment,
+    SelectStatement,
 )
 from trilogy.core.enums import Purpose, Granularity, PurposeLineage, FunctionType
 from trilogy.parser import parse_text
@@ -707,3 +708,36 @@ select
 
     assert len(results) == 1
     assert round(results[0].orders_145_store_order_count, 2) == 1
+
+
+def test_filter_promotion_inline_aggregate_filtered(duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    test = """
+WHERE
+    store_id = 1
+SELECT
+    item,
+    sum(count) ->all_store_count
+having
+    all_store_count > 1
+order by
+    item desc;
+"""
+
+    duckdb_engine.hooks = [DebuggingHook()]
+
+    parsed: SelectStatement = duckdb_engine.parse_text(test)[0]
+    row_args = parsed.where_clause.row_arguments
+    assert parsed.having_clause
+    assert parsed.grain == Grain(
+        components=[duckdb_engine.environment.concepts["item"]]
+    )
+    assert len(row_args) == 1
+    # assert target.grain.components == [duckdb_engine.environment.concepts["item"]]
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    derived = duckdb_engine.environment.concepts["local.all_store_count"]
+    assert isinstance(derived.lineage, AggregateWrapper)
+    assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
+    assert len(results) == 1
+    assert results[0] == ("hammer", 2)

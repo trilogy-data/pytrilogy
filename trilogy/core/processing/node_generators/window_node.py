@@ -1,7 +1,7 @@
 from typing import List
 
 
-from trilogy.core.models import Concept, WindowItem, Environment
+from trilogy.core.models import Concept, WindowItem, Environment, WhereClause
 from trilogy.utility import unique
 from trilogy.core.processing.nodes import (
     WindowNode,
@@ -38,19 +38,36 @@ def gen_window_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
-
     parent_node = source_concepts(
         mandatory_list=parent_concepts,
         environment=environment,
         g=g,
         depth=depth + 1,
         history=history,
+        conditions=conditions,
     )
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
         return None
+    parent_node.resolve()
+    if not all(
+        [
+            x.address in [y.address for y in parent_node.output_concepts]
+            for x in parent_concepts
+        ]
+    ):
+        missing = [
+            x
+            for x in parent_concepts
+            if x.address not in [y.address for y in parent_node.output_concepts]
+        ]
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable, missing {missing}"
+        )
+        raise SyntaxError
     _window_node = WindowNode(
         input_concepts=parent_concepts,
         output_concepts=[concept] + parent_concepts,
@@ -61,6 +78,8 @@ def gen_window_node(
         ],
         depth=depth,
     )
+    _window_node.rebuild_cache()
+    _window_node.resolve()
     window_node = MergeNode(
         parents=[_window_node],
         environment=environment,
@@ -71,6 +90,7 @@ def gen_window_node(
         force_group=False,
         depth=depth,
     )
+    window_node.resolve()
     if not local_optional:
         return window_node
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node requires enrichment")
@@ -84,4 +104,5 @@ def gen_window_node(
         source_concepts=source_concepts,
         log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
         history=history,
+        conditions=conditions,
     )

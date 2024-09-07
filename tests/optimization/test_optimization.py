@@ -2,9 +2,9 @@ from trilogy.core.optimization import (
     PredicatePushdown,
 )
 from trilogy.core.optimizations.predicate_pushdown import (
-    decompose_condition,
     is_child_of,
 )
+from trilogy.core.processing.utility import decompose_condition
 from trilogy.core.models import (
     CTE,
     QueryDatasource,
@@ -15,6 +15,8 @@ from trilogy.core.models import (
     Function,
     DataType,
 )
+
+from trilogy import parse
 
 from trilogy.core.enums import (
     BooleanOperator,
@@ -66,6 +68,45 @@ def test_is_child_function():
         )
         is False
     )
+
+
+def test_child_of_complex():
+    #   monitor."customer_count" > 10 and monitor."store_sales_date_year" = 2001 and monitor."store_sales_date_month_of_year" = 1 and monitor."store_sales_item_current_price" > 1.2 * monitor."_virtual_6264207893106521"
+    env, _ = parse(
+        """
+key customer_count int;
+key year int;    
+                   key avg_price float;
+                   key current_price float;               
+"""
+    )
+    comp = Conditional(
+        left=Conditional(
+            left=Comparison(
+                left=env.concepts["customer_count"],
+                right=10,
+                operator=ComparisonOperator.GT,
+            ),
+            right=Comparison(
+                left=env.concepts["year"], right=2001, operator=ComparisonOperator.EQ
+            ),
+            operator=BooleanOperator.AND,
+        ),
+        right=Comparison(
+            left=env.concepts["current_price"],
+            right=Function(
+                operator=FunctionType.MULTIPLY,
+                output_purpose=Purpose.PROPERTY,
+                output_datatype=DataType.FLOAT,
+                arguments=[1.2, env.concepts["avg_price"]],
+                arg_count=2,
+            ),
+            operator=ComparisonOperator.GT,
+        ),
+        operator=BooleanOperator.AND,
+    )
+
+    assert is_child_of(comp, comp) is True
 
 
 def test_decomposition_function():

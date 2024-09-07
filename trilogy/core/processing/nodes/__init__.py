@@ -6,7 +6,7 @@ from .window_node import WindowNode
 from .base_node import StrategyNode, NodeJoin
 from .unnest_node import UnnestNode
 from pydantic import BaseModel, Field, ConfigDict
-from trilogy.core.models import Concept, Environment
+from trilogy.core.models import Concept, Environment, WhereClause
 
 
 class History(BaseModel):
@@ -15,23 +15,42 @@ class History(BaseModel):
     started: set[str] = Field(default_factory=set)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def _concepts_to_lookup(self, search: list[Concept], accept_partial: bool) -> str:
+    def _concepts_to_lookup(
+        self,
+        search: list[Concept],
+        accept_partial: bool,
+        conditions: WhereClause | None = None,
+    ) -> str:
+        if conditions:
+            return (
+                "-".join([c.address for c in search])
+                + str(accept_partial)
+                + str(conditions)
+            )
         return "-".join([c.address for c in search]) + str(accept_partial)
 
     def search_to_history(
-        self, search: list[Concept], accept_partial: bool, output: StrategyNode | None
+        self,
+        search: list[Concept],
+        accept_partial: bool,
+        output: StrategyNode | None,
+        conditions: WhereClause | None = None,
     ):
-        self.history[self._concepts_to_lookup(search, accept_partial)] = output
+        self.history[
+            self._concepts_to_lookup(search, accept_partial, conditions=conditions)
+        ] = output
 
     def get_history(
         self,
         search: list[Concept],
+        conditions: WhereClause | None = None,
         accept_partial: bool = False,
         parent_key: str = "",
     ) -> StrategyNode | None | bool:
         key = self._concepts_to_lookup(
             search,
             accept_partial,
+            conditions,
         )
         if parent_key and parent_key == key:
             raise ValueError(
@@ -48,11 +67,13 @@ class History(BaseModel):
         self,
         search: list[Concept],
         accept_partial: bool = False,
+        conditions: WhereClause | None = None,
     ):
         self.started.add(
             self._concepts_to_lookup(
                 search,
-                accept_partial,
+                accept_partial=accept_partial,
+                conditions=conditions,
             )
         )
 
@@ -60,11 +81,13 @@ class History(BaseModel):
         self,
         search: list[Concept],
         accept_partial: bool = False,
+        conditions: WhereClause | None = None,
     ):
         return (
             self._concepts_to_lookup(
                 search,
                 accept_partial,
+                conditions=conditions,
             )
             in self.started
         )
@@ -76,6 +99,7 @@ class History(BaseModel):
         accept_partial: bool,
         fail_if_not_found: bool,
         accept_partial_optional: bool,
+        conditions: WhereClause | None = None,
     ) -> str:
         return (
             str(main.address)
@@ -84,6 +108,7 @@ class History(BaseModel):
             + str(accept_partial)
             + str(fail_if_not_found)
             + str(accept_partial_optional)
+            + str(conditions)
         )
 
     def gen_select_node(
@@ -97,6 +122,7 @@ class History(BaseModel):
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         accept_partial_optional: bool = False,
+        conditions: WhereClause | None = None,
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 
@@ -105,7 +131,8 @@ class History(BaseModel):
             local_optional,
             accept_partial,
             fail_if_not_found,
-            accept_partial_optional,
+            accept_partial_optional=accept_partial_optional,
+            conditions=conditions,
         )
         if fingerprint in self.select_history:
             return self.select_history[fingerprint]
@@ -119,6 +146,7 @@ class History(BaseModel):
             accept_partial=accept_partial,
             accept_partial_optional=accept_partial_optional,
             source_concepts=source_concepts,
+            conditions=conditions,
         )
         self.select_history[fingerprint] = gen
         return gen

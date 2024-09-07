@@ -17,19 +17,58 @@ from trilogy.core.optimizations import (
 MAX_OPTIMIZATION_LOOPS = 100
 
 
+# other optimizations may make a CTE a pure passthrough
+# remove those
+# def is_locally_irrelevant(cte: CTE) -> CTE | bool:
+#     if not len(cte.parent_ctes) == 1:
+#         return False
+#     parent = cte.parent_ctes[0]
+#     if not parent.output_columns == cte.output_columns:
+#         return False
+#     if cte.condition is not None:
+#         return False
+#     if cte.group_to_grain:
+#         return False
+#     if len(cte.joins)>1:
+#         return False
+#     return parent
+
+
 def filter_irrelevant_ctes(
     input: list[CTE],
     root_cte: CTE,
 ):
     relevant_ctes = set()
 
-    def recurse(cte: CTE):
+    def recurse(cte: CTE, inverse_map: dict[str, list[CTE]]):
+        # TODO: revisit this
+        # if parent := is_locally_irrelevant(cte):
+        #     logger.info(
+        #         f"[Optimization][Irrelevent CTE filtering] Removing redundant CTE {cte.name} and replacing with {parent.name}"
+        #     )
+        #     for child in inverse_map.get(cte.name, []):
+        #         child.parent_ctes = [
+        #             x for x in child.parent_ctes if x.name != cte.name
+        #         ] + [parent]
+        #         for x in child.source_map:
+        #             if cte.name in child.source_map[x]:
+        #                 child.source_map[x].remove(cte.name)
+        #                 child.source_map[x].append(parent.name)
+        #         for x2 in child.existence_source_map:
+        #             if cte.name in child.existence_source_map[x2]:
+        #                 child.existence_source_map[x2].remove(cte.name)
+        #                 child.existence_source_map[x2].append(parent.name)
+        # else:
         relevant_ctes.add(cte.name)
         for cte in cte.parent_ctes:
-            recurse(cte)
+            recurse(cte, inverse_map)
 
-    recurse(root_cte)
-    return [cte for cte in input if cte.name in relevant_ctes]
+    inverse_map = gen_inverse_map(input)
+    recurse(root_cte, inverse_map)
+    final = [cte for cte in input if cte.name in relevant_ctes]
+    if len(final) == len(input):
+        return input
+    return filter_irrelevant_ctes(final, root_cte)
 
 
 def gen_inverse_map(input: list[CTE]) -> dict[str, list[CTE]]:

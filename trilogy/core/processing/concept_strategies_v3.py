@@ -5,7 +5,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage, Granularity, FunctionType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models import Concept, Environment, Function, Grain
+from trilogy.core.models import Concept, Environment, Function, Grain, WhereClause
 from trilogy.core.processing.utility import (
     get_disconnected_components,
 )
@@ -183,10 +183,14 @@ def generate_candidates_restrictive(
         if x.address not in exhausted and x.granularity != Granularity.SINGLE_ROW
     ]
     combos: list[list[Concept]] = []
+    grain_check = Grain(components=[*local_candidates]).components_copy
     # for simple operations these, fetch as much as possible.
     if priority_concept.derivation in (PurposeLineage.BASIC, PurposeLineage.ROOT):
-        combos.append(local_candidates)
-    combos.append(Grain(components=[*local_candidates]).components_copy)
+        if set([x.address for x in grain_check]) != set(
+            [x.address for x in local_candidates]
+        ):
+            combos.append(local_candidates)
+    combos.append(grain_check)
     # append the empty set for sourcing concept by itself last
     combos.append([])
     return combos
@@ -201,6 +205,7 @@ def generate_node(
     source_concepts: Callable,
     accept_partial: bool = False,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
     history = history or History()
@@ -214,6 +219,7 @@ def generate_node(
         accept_partial=accept_partial,
         accept_partial_optional=False,
         source_concepts=source_concepts,
+        conditions=conditions,
     )
 
     if candidate:
@@ -224,7 +230,14 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating window node with optional {[x.address for x in local_optional]}"
         )
         return gen_window_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
         )
 
     elif concept.derivation == PurposeLineage.FILTER:
@@ -232,14 +245,28 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating filter node with optional {[x.address for x in local_optional]}"
         )
         return gen_filter_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts=source_concepts,
+            history=history,
+            conditions=conditions,
         )
     elif concept.derivation == PurposeLineage.UNNEST:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating unnest node with optional {[x.address for x in local_optional]}"
         )
         return gen_unnest_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
         )
     elif concept.derivation == PurposeLineage.AGGREGATE:
         # don't push constants up before aggregation
@@ -255,7 +282,14 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x.address for x in agg_optional]}"
         )
         return gen_group_node(
-            concept, agg_optional, environment, g, depth + 1, source_concepts, history
+            concept,
+            agg_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
         )
     elif concept.derivation == PurposeLineage.ROWSET:
         logger.info(
@@ -322,6 +356,7 @@ def generate_node(
             accept_partial=accept_partial,
             accept_partial_optional=True,
             source_concepts=source_concepts,
+            conditions=conditions,
         )
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")
@@ -447,10 +482,13 @@ def search_concepts(
     g: ReferenceGraph,
     accept_partial: bool = False,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
 
     history = history or History()
-    hist = history.get_history(mandatory_list, accept_partial)
+    hist = history.get_history(
+        search=mandatory_list, accept_partial=accept_partial, conditions=conditions
+    )
     if hist is not False:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Returning search node from history ({'exists' if hist is not None else 'does not exist'}) for {[c.address for c in mandatory_list]} with accept_partial {accept_partial}"
@@ -465,10 +503,14 @@ def search_concepts(
         g=g,
         accept_partial=accept_partial,
         history=history,
+        conditions=conditions,
     )
     # a node may be mutated after be cached; always store a copy
     history.search_to_history(
-        mandatory_list, accept_partial, result.copy() if result else None
+        mandatory_list,
+        accept_partial,
+        result.copy() if result else None,
+        conditions=conditions,
     )
     return result
 
@@ -480,6 +522,7 @@ def _search_concepts(
     g: ReferenceGraph,
     history: History,
     accept_partial: bool = False,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
 
     mandatory_list = unique(mandatory_list, "address")
@@ -521,6 +564,7 @@ def _search_concepts(
                 source_concepts=search_concepts,
                 accept_partial=accept_partial,
                 history=history,
+                conditions=conditions,
             )
             if node:
                 stack.append(node)
@@ -559,22 +603,11 @@ def _search_concepts(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all_mandatory - found}), attempted {attempted}, virtual {virtual}"
     )
     if complete == ValidationResult.COMPLETE:
-        all_partial = [
-            c
-            for c in mandatory_list
-            if all(
-                [
-                    c.address in [x.address for x in p.partial_concepts]
-                    for p in stack
-                    if [c in p.output_concepts]
-                ]
-            )
-        ]
         non_virtual = [c for c in mandatory_list if c.address not in virtual]
         if len(stack) == 1:
             output = stack[0]
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)} with output {[x.address for x in output.output_concepts]}"
             )
             return output
 
@@ -585,23 +618,26 @@ def _search_concepts(
             g=g,
             parents=stack,
             depth=depth,
-            partial_concepts=all_partial,
         )
 
         # ensure we can resolve our final merge
         output.resolve()
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning merge node, partial {[c.address for c in all_partial]}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning merge node, partial {[c.address for c in output.partial_concepts]}"
         )
         return output
 
     # check that we're not already in a discovery loop
-    if not history.check_started(mandatory_list, accept_partial):
+    if not history.check_started(
+        mandatory_list, accept_partial=accept_partial, conditions=conditions
+    ):
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Stack is not connected graph, flag for accepting partial addresses is {accept_partial}, checking for expanded concepts"
         )
         # gate against further recursion into this
-        history.log_start(mandatory_list, accept_partial)
+        history.log_start(
+            mandatory_list, accept_partial=accept_partial, conditions=conditions
+        )
         expanded = gen_merge_node(
             all_concepts=mandatory_list,
             environment=environment,
@@ -641,6 +677,7 @@ def _search_concepts(
             g=g,
             accept_partial=True,
             history=history,
+            conditions=conditions,
         )
         if partial_search:
             logger.info(
@@ -657,18 +694,22 @@ def source_query_concepts(
     output_concepts: List[Concept],
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
+    conditions: Optional[WhereClause] = None,
+    history: Optional[History] = None,
 ):
-    if not g:
-        g = generate_graph(environment)
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
-    history = History()
+    if not g:
+        g = generate_graph(environment)
+
+    history = history or History()
     root = search_concepts(
         mandatory_list=output_concepts,
         environment=environment,
         g=g,
         depth=0,
         history=history,
+        conditions=conditions,
     )
 
     if not root:

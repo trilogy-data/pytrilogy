@@ -5,7 +5,6 @@ from pathlib import Path
 from trilogy.core.enums import Purpose
 from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
-    decompose_condition,
 )
 from trilogy.core.models import (
     Conditional,
@@ -14,6 +13,7 @@ from trilogy.core.models import (
     BooleanOperator,
     SubselectComparison,
 )
+from trilogy.core.processing.utility import decompose_condition
 
 
 def test_pushdown():
