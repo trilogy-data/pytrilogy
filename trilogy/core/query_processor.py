@@ -6,7 +6,7 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.enums import SelectFiltering, BooleanOperator
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
-from trilogy.core.processing.nodes import GroupNode, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import GroupNode, SelectNode, StrategyNode, History
 from trilogy.core.models import (
     Concept,
     Environment,
@@ -308,7 +308,10 @@ def datasource_to_ctes(
 
 
 def append_existence_check(
-    node: StrategyNode, environment: Environment, graph: ReferenceGraph
+    node: StrategyNode,
+    environment: Environment,
+    graph: ReferenceGraph,
+    history: History | None = None,
 ):
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
@@ -319,15 +322,18 @@ def append_existence_check(
             logger.info(
                 f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
             )
-            eds = source_query_concepts([*subselect], environment=environment, g=graph)
+            eds = source_query_concepts(
+                [*subselect], environment=environment, g=graph, history=history
+            )
             node.add_parents([eds])
-            node.add_existence_concepts([x for x in eds.output_concepts])
+            node.add_existence_concepts([*subselect])
 
 
 def get_query_node(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
     graph: Optional[ReferenceGraph] = None,
+    history: History | None = None,
 ) -> StrategyNode:
     graph = graph or generate_graph(environment)
     logger.info(
@@ -348,20 +354,25 @@ def get_query_node(
         )
         nest_where = True
 
-    ods = source_query_concepts(
+    ods: StrategyNode = source_query_concepts(
         search_concepts,
         environment=environment,
         g=graph,
         conditions=(statement.where_clause if statement.where_clause else None),
+        history=history,
     )
-    ds: GroupNode | SelectNode
+    if not ods:
+        raise ValueError(
+            f"Could not find source query concepts for {[x.address for x in search_concepts]}"
+        )
+    ds: StrategyNode
     if nest_where and statement.where_clause:
         if not all_aggregate:
             ods.conditions = statement.where_clause.conditional
         ods.output_concepts = statement.output_components
         # ods.hidden_concepts = where_delta
         ods.rebuild_cache()
-        append_existence_check(ods, environment, graph)
+        append_existence_check(ods, environment, graph, history)
         ds = GroupNode(
             output_concepts=statement.output_components,
             input_concepts=statement.output_components,

@@ -39,6 +39,7 @@ class GroupNode(StrategyNode):
         partial_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        existence_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -51,6 +52,7 @@ class GroupNode(StrategyNode):
             partial_concepts=partial_concepts,
             force_group=force_group,
             conditions=conditions,
+            existence_concepts=existence_concepts,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -173,4 +175,5 @@ class GroupNode(StrategyNode):
             partial_concepts=list(self.partial_concepts),
             force_group=self.force_group,
             conditions=self.conditions,
+            existence_concepts=list(self.existence_concepts),
         )

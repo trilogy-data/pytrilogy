@@ -230,7 +230,14 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating window node with optional {[x.address for x in local_optional]}"
         )
         return gen_window_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
         )
 
     elif concept.derivation == PurposeLineage.FILTER:
@@ -243,16 +250,23 @@ def generate_node(
             environment,
             g,
             depth + 1,
-            source_concepts,
-            history,
-            conditions,
+            source_concepts=source_concepts,
+            history=history,
+            conditions=conditions,
         )
     elif concept.derivation == PurposeLineage.UNNEST:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating unnest node with optional {[x.address for x in local_optional]}"
         )
         return gen_unnest_node(
-            concept, local_optional, environment, g, depth + 1, source_concepts, history
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
         )
     elif concept.derivation == PurposeLineage.AGGREGATE:
         # don't push constants up before aggregation
@@ -268,7 +282,14 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating aggregate node with {[x.address for x in agg_optional]}"
         )
         return gen_group_node(
-            concept, agg_optional, environment, g, depth + 1, source_concepts, history
+            concept,
+            agg_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
         )
     elif concept.derivation == PurposeLineage.ROWSET:
         logger.info(
@@ -582,17 +603,6 @@ def _search_concepts(
         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} finished sourcing loop (complete: {complete}), have {found} from {[n for n in stack]} (missing {all_mandatory - found}), attempted {attempted}, virtual {virtual}"
     )
     if complete == ValidationResult.COMPLETE:
-        all_partial = [
-            c
-            for c in mandatory_list
-            if all(
-                [
-                    c.address in [x.address for x in p.partial_concepts]
-                    for p in stack
-                    if [c in p.output_concepts]
-                ]
-            )
-        ]
         non_virtual = [c for c in mandatory_list if c.address not in virtual]
         if len(stack) == 1:
             output = stack[0]
@@ -608,13 +618,12 @@ def _search_concepts(
             g=g,
             parents=stack,
             depth=depth,
-            partial_concepts=all_partial,
         )
 
         # ensure we can resolve our final merge
         output.resolve()
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning merge node, partial {[c.address for c in all_partial]}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning merge node, partial {[c.address for c in output.partial_concepts]}"
         )
         return output
 
@@ -686,12 +695,14 @@ def source_query_concepts(
     environment: Environment,
     g: Optional[ReferenceGraph] = None,
     conditions: Optional[WhereClause] = None,
+    history: Optional[History] = None,
 ):
-    if not g:
-        g = generate_graph(environment)
     if not output_concepts:
         raise ValueError(f"No output concepts provided {output_concepts}")
-    history = History()
+    if not g:
+        g = generate_graph(environment)
+
+    history = history or History()
     root = search_concepts(
         mandatory_list=output_concepts,
         environment=environment,

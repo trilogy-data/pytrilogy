@@ -3302,7 +3302,9 @@ class LazyEnvironment(Environment):
         ) or name.startswith("_"):
             return super().__getattribute__(name)
         if not self.loaded:
-            print(f"lazily evaluating load path {self.load_path} to access {name}")
+            logger.info(
+                f"lazily evaluating load path {self.load_path} to access {name}"
+            )
             from trilogy import parse
 
             env = Environment(working_path=str(self.working_path))
@@ -3915,6 +3917,18 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
             elif item.purpose == Purpose.PROPERTY:
                 output += item.grain.components if item.grain else []
         return Grain(components=list(set(output)))
+
+    @property
+    def components(self):
+        from trilogy.core.processing.utility import decompose_condition
+
+        return decompose_condition(self.conditional)
+
+    @property
+    def is_scalar(self):
+        from trilogy.core.processing.utility import is_scalar_condition
+
+        return is_scalar_condition(self.conditional)
 
 
 class HavingClause(WhereClause):

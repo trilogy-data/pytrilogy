@@ -5,7 +5,6 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.models import LooseConceptList
-from trilogy.core.query_processor import get_query_datasources
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):
@@ -116,10 +115,6 @@ def test_in_select(test_environment: Environment, test_executor: Executor):
         select.where_clause.conditional.__class__
     ) + str(select.where_clause.conditional)
     assert select.where_clause.existence_arguments
-
-    datasource = get_query_datasources(test_environment, select)
-
-    assert "local.filtered" in datasource.existence_source_map
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2

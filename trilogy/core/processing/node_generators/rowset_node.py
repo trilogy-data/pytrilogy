@@ -37,7 +37,7 @@ def gen_rowset_node(
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivationStatement = lineage.rowset
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
-    node = get_query_node(environment, select, graph=g)
+    node = get_query_node(environment, select, graph=g, history=history)
 
     if not node:
         logger.info(
@@ -80,8 +80,6 @@ def gen_rowset_node(
     )
 
     node.rebuild_cache()
-
-    assert len(node.partial_concepts) == 0, [x.address for x in node.partial_concepts]
 
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional or all(

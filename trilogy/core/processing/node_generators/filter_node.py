@@ -102,16 +102,24 @@ def gen_filter_node(
                     if row_parent.conditions
                     else where.conditional
                 ),
+                existence_concepts=row_parent.existence_concepts,
             )
         else:
             parent = row_parent
 
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
-        # parent.partial_concepts = (parent.partial_concepts or []) + local_optional
         parent.output_concepts = [concept] + local_optional
-        parent.set_output_concepts([concept] + local_optional)
         parent.add_existence_concepts(flattened_existence)
+        parent.set_output_concepts([concept] + local_optional)
+        parent.grain = Grain(
+            components=(
+                list(immediate_parent.keys)
+                if immediate_parent.keys
+                else [immediate_parent]
+            )
+            + local_optional
+        )
         parent.rebuild_cache()
 
         logger.info(

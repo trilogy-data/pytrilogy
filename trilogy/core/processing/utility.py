@@ -20,7 +20,7 @@ from trilogy.core.models import (
     DataType,
 )
 
-from trilogy.core.enums import Purpose, Granularity
+from trilogy.core.enums import Purpose, Granularity, BooleanOperator
 from trilogy.core.constants import CONSTANT_DATASET
 from enum import Enum
 from trilogy.utility import unique
@@ -328,14 +328,6 @@ def get_disconnected_components(
     for datasource, concepts in concept_map.items():
         graph.add_node(datasource, type=NodeType.NODE)
         for concept in concepts:
-            # TODO: determine if this is the right way to handle things
-            # if concept.derivation in (PurposeLineage.FILTER, PurposeLineage.WINDOW):
-            #     if isinstance(concept.lineage, FilterItem):
-            #         graph.add_node(concept.lineage.content.address, type=NodeType.CONCEPT)
-            #         graph.add_edge(datasource, concept.lineage.content.address)
-            #     if isinstance(concept.lineage, WindowItem):
-            #         graph.add_node(concept.lineage.content.address, type=NodeType.CONCEPT)
-            #         graph.add_edge(datasource, concept.lineage.content.address)
             graph.add_node(concept.address, type=NodeType.CONCEPT)
             graph.add_edge(datasource, concept.address)
             all_concepts.add(concept)
@@ -378,3 +370,30 @@ def is_scalar_condition(
     elif isinstance(element, Conditional):
         return is_scalar_condition(element.left) and is_scalar_condition(element.right)
     return True
+
+
+def decompose_condition(
+    conditional: Conditional,
+) -> list[SubselectComparison | Comparison | Conditional | Parenthetical]:
+    chunks: list[SubselectComparison | Comparison | Conditional | Parenthetical] = []
+    if conditional.operator == BooleanOperator.AND:
+        if not (
+            isinstance(
+                conditional.left,
+                (SubselectComparison, Comparison, Conditional, Parenthetical),
+            )
+            and isinstance(
+                conditional.right,
+                (SubselectComparison, Comparison, Conditional, Parenthetical),
+            )
+        ):
+            chunks.append(conditional)
+        else:
+            for val in [conditional.left, conditional.right]:
+                if isinstance(val, Conditional):
+                    chunks.extend(decompose_condition(val))
+                else:
+                    chunks.append(val)
+    else:
+        chunks.append(conditional)
+    return chunks

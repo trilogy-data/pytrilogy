@@ -97,6 +97,7 @@ def gen_property_enrichment_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
@@ -115,6 +116,7 @@ def gen_property_enrichment_node(
             g=g,
             depth=depth + 1,
             history=history,
+            conditions=conditions,
         )
         final_nodes.append(enrich_node)
         node_joins.append(
@@ -160,6 +162,7 @@ def gen_enrichment_node(
     source_concepts,
     log_lambda,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ):
 
     local_opts = LooseConceptList(concepts=local_optional)
@@ -193,6 +196,7 @@ def gen_enrichment_node(
                 depth,
                 source_concepts,
                 history=history,
+                conditions=conditions,
             )
 
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
@@ -202,6 +206,7 @@ def gen_enrichment_node(
         g=g,
         depth=depth,
         history=history,
+        conditions=conditions,
     )
     if not enrich_node:
         log_lambda(

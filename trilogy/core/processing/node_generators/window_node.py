@@ -1,7 +1,7 @@
 from typing import List
 
 
-from trilogy.core.models import Concept, WindowItem, Environment
+from trilogy.core.models import Concept, WindowItem, Environment, WhereClause
 from trilogy.utility import unique
 from trilogy.core.processing.nodes import (
     WindowNode,
@@ -38,15 +38,16 @@ def gen_window_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
-    print([x.address for x in parent_concepts])
     parent_node = source_concepts(
         mandatory_list=parent_concepts,
         environment=environment,
         g=g,
         depth=depth + 1,
         history=history,
+        conditions=conditions,
     )
     if not parent_node:
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
@@ -103,4 +104,5 @@ def gen_window_node(
         source_concepts=source_concepts,
         log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
         history=history,
+        conditions=conditions,
     )

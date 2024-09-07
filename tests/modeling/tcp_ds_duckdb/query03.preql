@@ -8,9 +8,9 @@ SELECT
     store_sales.date.year,
     store_sales.item.brand_id,
     store_sales.item.brand_name,
-    sum(filter store_sales.ext_sales_price where store_sales.date.month_of_year=11 and store_sales.item.manufacturer_id=128)->sum_agg
+    sum(store_sales.ext_sales_price)->sum_agg
 WHERE 
-    sum_agg>0
+    store_sales.date.month_of_year=11 and store_sales.item.manufacturer_id=128
 ORDER BY 
     store_sales.date.year asc,
     sum_agg desc,

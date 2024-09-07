@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Grain,
     LooseConceptList,
     Datasource,
+    WhereClause,
 )
 from trilogy.core.processing.nodes import (
     StrategyNode,
@@ -67,17 +68,6 @@ def dm_to_strategy_node(
             f"{padding(depth)}{LOGGER_PREFIX} target grain is not subset of datasource grain {datasource.grain}, required to group"
         )
         force_group = True
-    # if isinstance(datasource, MergeDatasource):
-    #     # if we're within a namespace, don't find merge nodes
-    #     bcandidate: StrategyNode = gen_environment_merge_node(
-    #         all_concepts=dm.matched.concepts,
-    #         environment=environment,
-    #         g=g,
-    #         depth=depth,
-    #         datasource=datasource,
-    #         source_concepts=source_concepts,
-    #     )
-    # else:
     bcandidate: StrategyNode = SelectNode(
         input_concepts=[c.concept for c in datasource.columns],
         output_concepts=dm.matched.concepts,
@@ -116,6 +106,7 @@ def gen_select_nodes_from_tables_v2(
     target_grain: Grain,
     source_concepts: Callable,
     accept_partial: bool = False,
+    conditions: WhereClause | None = None,
 ) -> tuple[bool, list[Concept], list[StrategyNode]]:
     # if we have only constants
     # we don't need a table
@@ -252,6 +243,7 @@ def gen_select_node_from_table(
     target_grain: Grain,
     source_concepts,
     accept_partial: bool = False,
+    conditions: WhereClause | None = None,
 ) -> Optional[StrategyNode]:
     # if we have only constants
     # we don't need a table
@@ -372,6 +364,9 @@ def gen_select_node_from_table(
             grain=Grain(components=all_concepts),
             conditions=datasource.where.conditional if datasource.where else None,
         )
+        # if conditions:
+        #     for component in conditions.components:
+        #         if
         # we need to nest the group node one further
         if force_group is True:
             candidate: StrategyNode = GroupNode(
@@ -407,6 +402,7 @@ def gen_select_node(
     fail_if_not_found: bool = True,
     accept_partial_optional: bool = True,
     target_grain: Grain | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
     all_lcl = LooseConceptList(concepts=all_concepts)
@@ -445,6 +441,7 @@ def gen_select_node(
         accept_partial=accept_partial,
         target_grain=target_grain,
         source_concepts=source_concepts,
+        conditions=conditions,
     )
     if ds:
         logger.info(
@@ -461,6 +458,7 @@ def gen_select_node(
         target_grain=target_grain,
         accept_partial=accept_partial,
         source_concepts=source_concepts,
+        conditions=conditions,
     )
     if parents and (all_found or accept_partial_optional):
         all_partial = [

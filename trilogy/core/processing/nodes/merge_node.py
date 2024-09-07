@@ -256,6 +256,10 @@ class MergeNode(StrategyNode):
             if all([y in self.existence_concepts for y in x.output_concepts])
         ]
 
+        logger.info("DEBUG EXISTENCE")
+        logger.info([x.name for x in existence_final])
+        logger.info([y.address for y in self.existence_concepts])
+
         if len(merged.keys()) == 1:
             final: QueryDatasource | Datasource = list(merged.values())[0]
             if (
@@ -368,4 +372,5 @@ class MergeNode(StrategyNode):
             node_joins=self.node_joins,
             join_concepts=list(self.join_concepts) if self.join_concepts else None,
             force_join_type=self.force_join_type,
+            existence_concepts=list(self.existence_concepts),
         )

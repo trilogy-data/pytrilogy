@@ -33,7 +33,7 @@ class Config:
     strict_mode: bool = True
     human_identifiers: bool = True
     validate_missing: bool = True
-    show_comments: bool = True
+    show_comments: bool = False
     optimizations: Optimizations = field(default_factory=Optimizations)
 
     def set_random_seed(self, seed: int):
