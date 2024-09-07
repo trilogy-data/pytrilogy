@@ -2,7 +2,7 @@ from typing import List, Union, Optional, Dict, Any, Sequence, Callable
 
 from jinja2 import Template
 
-from trilogy.core.processing.utility import is_scalar_condition
+from trilogy.core.processing.utility import is_scalar_condition, decompose_condition
 from trilogy.constants import CONFIG, logger, MagicConstants
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.enums import (
@@ -538,6 +538,20 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
+        where: Conditional | Parenthetical | Comparison | None = None
+        having: Conditional | Parenthetical | Comparison | None = None
+        materialized = {x for x, v in cte.source_map.items() if v}
+        if cte.condition:
+            if is_scalar_condition(cte.condition, materialized=materialized):
+                where = cte.condition
+            else:
+                components = decompose_condition(cte.condition)
+                for x in components:
+                    if is_scalar_condition(x, materialized=materialized):
+                        where = where + x if where else x
+                    else:
+                        having = having + x if having else x
+
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(
@@ -561,16 +575,8 @@ class BaseDialect:
                     ]
                     if j
                 ],
-                where=(
-                    self.render_expr(cte.condition, cte)
-                    if cte.condition and is_scalar_condition(cte.condition)
-                    else None
-                ),
-                having=(
-                    self.render_expr(cte.condition, cte)
-                    if cte.condition and not is_scalar_condition(cte.condition)
-                    else None
-                ),
+                where=(self.render_expr(where, cte) if where else None),
+                having=(self.render_expr(having, cte) if having else None),
                 order_by=(
                     [self.render_order_item(i, cte) for i in cte.order_by.items]
                     if cte.order_by

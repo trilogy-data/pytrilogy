@@ -24,7 +24,7 @@ class Optimizations:
     predicate_pushdown: bool = True
     datasource_inlining: bool = True
     constant_inlining: bool = True
-    constant_inline_cutoff: int = 2
+    constant_inline_cutoff: int = 4
     direct_return: bool = True
 
 
@@ -34,7 +34,7 @@ class Config:
     strict_mode: bool = True
     human_identifiers: bool = True
     validate_missing: bool = True
-    show_comments: bool = False
+    show_comments: bool = True
     optimizations: Optimizations = field(default_factory=Optimizations)
 
     def set_random_seed(self, seed: int):

@@ -355,27 +355,40 @@ def is_scalar_condition(
         | MagicConstants
         | DataType
     ),
+    materialized: set[str] | None = None,
 ) -> bool:
     if isinstance(element, Parenthetical):
-        return is_scalar_condition(element.content)
+        return is_scalar_condition(element.content, materialized)
     elif isinstance(element, SubselectComparison):
         return True
     elif isinstance(element, Comparison):
-        return is_scalar_condition(element.left) and is_scalar_condition(element.right)
+        return is_scalar_condition(element.left, materialized) and is_scalar_condition(
+            element.right, materialized
+        )
     elif isinstance(element, Function):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
+    elif isinstance(element, Concept):
+        if materialized and element.address in materialized:
+            return True
+        if element.lineage and isinstance(element.lineage, AggregateWrapper):
+            return is_scalar_condition(element.lineage, materialized)
+        return True
     elif isinstance(element, AggregateWrapper):
-        return is_scalar_condition(element.function)
+        return is_scalar_condition(element.function, materialized)
     elif isinstance(element, Conditional):
-        return is_scalar_condition(element.left) and is_scalar_condition(element.right)
+        return is_scalar_condition(element.left, materialized) and is_scalar_condition(
+            element.right, materialized
+        )
     return True
 
 
 def decompose_condition(
-    conditional: Conditional,
+    conditional: Conditional | Comparison | Parenthetical,
 ) -> list[SubselectComparison | Comparison | Conditional | Parenthetical]:
     chunks: list[SubselectComparison | Comparison | Conditional | Parenthetical] = []
+    if not isinstance(conditional, Conditional):
+        return [conditional]
     if conditional.operator == BooleanOperator.AND:
         if not (
             isinstance(

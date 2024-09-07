@@ -37,7 +37,7 @@ datasource catalog_sales (
     CS_CALL_CENTER_SK: call_center.id,
     CS_EXT_SHIP_COST: extra_ship_cost,
     CS_NET_PROFIT: net_profit,
-    CS_WAREHOUSE_SK: ~warehouse.id,
+    CS_WAREHOUSE_SK: warehouse.id,
 
 )
 grain (order_number, item.id)

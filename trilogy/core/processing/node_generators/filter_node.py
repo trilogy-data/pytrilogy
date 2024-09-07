@@ -17,6 +17,7 @@ from trilogy.core.processing.node_generators.common import (
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding, unique
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
+from trilogy.core.processing.utility import is_scalar_condition
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
@@ -78,16 +79,20 @@ def gen_filter_node(
         return None
 
     optimized_pushdown = False
-    if not local_optional:
+    if not is_scalar_condition(where.conditional):
+        optimized_pushdown = False
+    elif not local_optional:
         optimized_pushdown = True
     elif conditions and conditions == where:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
         )
         optimized_pushdown = True
-
     if optimized_pushdown:
         if isinstance(row_parent, SelectNode):
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} nesting select node in strategy node"
+            )
             parent = StrategyNode(
                 input_concepts=row_parent.output_concepts,
                 output_concepts=[concept] + row_parent.output_concepts,

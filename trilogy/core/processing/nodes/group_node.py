@@ -130,7 +130,7 @@ class GroupNode(StrategyNode):
                     if self.conditions
                     else self.output_concepts
                 ),
-                inherited_inputs=self.input_concepts,
+                inherited_inputs=self.input_concepts + self.existence_concepts,
             ),
             joins=[],
             grain=grain,
@@ -139,10 +139,6 @@ class GroupNode(StrategyNode):
         )
         # if there is a condition on a group node and it's not scalar
         # inject an additional CTE
-        if self.conditions:
-            logger.info("CONDITIONS")
-            logger.info(str(self.conditions))
-            logger.info(is_scalar_condition(self.conditions))
         if self.conditions and not is_scalar_condition(self.conditions):
             base.condition = None
             base.output_concepts = self.output_concepts + self.conditions.row_arguments
