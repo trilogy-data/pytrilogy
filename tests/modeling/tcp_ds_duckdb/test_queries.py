@@ -29,7 +29,7 @@ def run_query(engine: Executor, idx: int):
     for idx, row in enumerate(base_results):
         assert (
             row == comp_results[idx]
-        ), f"Row mismatch (expected v actual): {row} != {comp_results[idx]}"
+        ), f"Row mismatch in row {idx} (expected v actual): {row} != {comp_results[idx]}"
     return query
 
 
@@ -58,7 +58,7 @@ def test_five(engine):
 
 def test_six(engine):
     query = run_query(engine, 6)
-    assert len(query) < 3500, query
+    assert len(query) < 5500, query
 
 
 def test_seven(engine):

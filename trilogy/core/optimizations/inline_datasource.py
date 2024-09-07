@@ -5,6 +5,7 @@ from trilogy.core.models import (
 
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 from collections import defaultdict
+from trilogy.constants import CONFIG
 
 
 class InlineDatasource(OptimizationRule):
@@ -64,7 +65,10 @@ class InlineDatasource(OptimizationRule):
                 self.candidates[cte.name].add(replaceable.name)
                 self.count[replaceable.source.name] += 1
                 return True
-            if self.count[replaceable.source.name] > 1:
+            if (
+                self.count[replaceable.source.name]
+                > CONFIG.optimizations.constant_inline_cutoff
+            ):
                 self.log(
                     f"Skipping inlining raw datasource {replaceable.source.name} ({replaceable.name}) due to multiple references"
                 )

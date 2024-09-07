@@ -996,6 +996,7 @@ class ParseToObjects(Transformer):
                         and output.where_clause_category == SelectFiltering.IMPLICIT
                         else None
                     ),
+                    environment=self.environment,
                 )
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept

@@ -154,7 +154,10 @@ class ConceptArgs(ABC):
 class SelectContext(ABC):
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ):
         raise NotImplementedError
 
@@ -596,13 +599,16 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         self,
         grain: Optional["Grain"] = None,
         conditional: Conditional | Comparison | Parenthetical | None = None,
+        environment: Environment | None = None,
     ) -> "Concept":
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
         new_grain = grain or self.grain
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectContext):
-            new_lineage = self.lineage.with_select_context(new_grain, conditional)
+            new_lineage = self.lineage.with_select_context(
+                new_grain, conditional, environment=environment
+            )
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -789,7 +795,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         return Granularity.MULTI_ROW
 
     def with_filter(
-        self, condition: "Conditional | Comparison | Parenthetical"
+        self,
+        condition: "Conditional | Comparison | Parenthetical",
+        environment: Environment | None = None,
     ) -> "Concept":
         from trilogy.utility import string_to_hash
 
@@ -806,6 +814,8 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
+        if environment:
+            environment.add_concept(new)
         return new
 
 
@@ -1050,12 +1060,15 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         return self.output_datatype
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> Function:
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value and conditional:
             base = [
                 (
-                    c.with_select_context(grain, conditional)
+                    c.with_select_context(grain, conditional, environment)
                     if isinstance(
                         c,
                         SelectContext,
@@ -1065,7 +1078,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
                 for c in self.arguments
             ]
             final = [
-                c.with_filter(conditional) if isinstance(c, Concept) else c
+                c.with_filter(conditional, environment) if isinstance(c, Concept) else c
                 for c in base
             ]
             return Function(
@@ -1081,7 +1094,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             operator=self.operator,
             arguments=[
                 (
-                    c.with_select_context(grain, conditional)
+                    c.with_select_context(grain, conditional, environment)
                     if isinstance(
                         c,
                         SelectContext,
@@ -1297,13 +1310,22 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> "WindowItem":
         return WindowItem(
             type=self.type,
-            content=self.content.with_select_context(grain, conditional),
-            over=[x.with_select_context(grain, conditional) for x in self.over],
-            order_by=[x.with_select_context(grain, conditional) for x in self.order_by],
+            content=self.content.with_select_context(grain, conditional, environment),
+            over=[
+                x.with_select_context(grain, conditional, environment)
+                for x in self.over
+            ],
+            order_by=[
+                x.with_select_context(grain, conditional, environment)
+                for x in self.order_by
+            ],
         )
 
     @property
@@ -1372,11 +1394,14 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> FilterItem:
         return FilterItem(
-            content=self.content.with_select_context(grain, conditional),
-            where=self.where.with_select_context(grain, conditional),
+            content=self.content.with_select_context(grain, conditional, environment),
+            where=self.where.with_select_context(grain, conditional, environment),
         )
 
     @property
@@ -1456,9 +1481,17 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         return OrderItem(expr=self.expr.with_namespace(namespace), order=self.order)
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> "OrderItem":
-        return OrderItem(expr=self.expr.with_grain(grain), order=self.order)
+        return OrderItem(
+            expr=self.expr.with_select_context(
+                grain, conditional=conditional, environment=environment
+            ),
+            order=self.order,
+        )
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -2852,6 +2885,7 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         self,
         grain: Optional["Grain"] = None,
         conditional: Conditional | Comparison | Parenthetical | None = None,
+        environment: Environment | None = None,
     ) -> "UndefinedConcept":
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
@@ -2859,7 +2893,9 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         if self.lineage:
             new_lineage = self.lineage
             if isinstance(self.lineage, SelectContext):
-                new_lineage = self.lineage.with_select_context(new_grain, conditional)
+                new_lineage = self.lineage.with_select_context(
+                    new_grain, conditional, environment
+                )
         else:
             new_lineage = None
         return self.__class__(
@@ -3446,17 +3482,20 @@ class Comparison(
         )
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ):
         return self.__class__(
             left=(
-                self.left.with_select_context(grain, conditional)
+                self.left.with_select_context(grain, conditional, environment)
                 if isinstance(self.left, SelectContext)
                 else self.left
             ),
             # the right side does NOT need to inherit select grain
             right=(
-                self.right.with_select_context(grain, conditional)
+                self.right.with_select_context(grain, conditional, environment)
                 if isinstance(self.right, SelectContext)
                 else self.right
             ),
@@ -3543,12 +3582,15 @@ class SubselectComparison(Comparison):
         return [tuple(get_concept_arguments(self.right))]
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ):
         # there's no need to pass the select grain through to a subselect comparison on the right
         return self.__class__(
             left=(
-                self.left.with_select_context(grain, conditional)
+                self.left.with_select_context(grain, conditional, environment)
                 if isinstance(self.left, SelectContext)
                 else self.left
             ),
@@ -3579,12 +3621,17 @@ class CaseWhen(Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> CaseWhen:
         return CaseWhen(
-            comparison=self.comparison.with_select_context(grain, conditional),
+            comparison=self.comparison.with_select_context(
+                grain, conditional, environment
+            ),
             expr=(
-                (self.expr.with_select_context(grain, conditional))
+                (self.expr.with_select_context(grain, conditional, environment))
                 if isinstance(self.expr, SelectContext)
                 else self.expr
             ),
@@ -3601,12 +3648,15 @@ class CaseElse(Namespaced, SelectContext, BaseModel):
         return get_concept_arguments(self.expr)
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> CaseElse:
         return CaseElse(
             discriminant=self.discriminant,
             expr=(
-                self.expr.with_select_context(grain, conditional)
+                self.expr.with_select_context(grain, conditional, environment)
                 if isinstance(
                     self.expr,
                     SelectContext,
@@ -3746,16 +3796,19 @@ class Conditional(
         )
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ):
         return Conditional(
             left=(
-                self.left.with_select_context(grain, conditional)
+                self.left.with_select_context(grain, conditional, environment)
                 if isinstance(self.left, SelectContext)
                 else self.left
             ),
             right=(
-                self.right.with_select_context(grain, conditional)
+                self.right.with_select_context(grain, conditional, environment)
                 if isinstance(self.right, SelectContext)
                 else self.right
             ),
@@ -3864,13 +3917,16 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> AggregateWrapper:
         if not self.by:
             by = grain.components_copy
         else:
             by = self.by
-        parent = self.function.with_select_context(grain, conditional)
+        parent = self.function.with_select_context(grain, conditional, environment)
         return AggregateWrapper(function=parent, by=by)
 
 
@@ -3902,10 +3958,15 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ) -> WhereClause:
         return WhereClause(
-            conditional=self.conditional.with_select_context(grain, conditional)
+            conditional=self.conditional.with_select_context(
+                grain, conditional, environment
+            )
         )
 
     @property
@@ -4156,11 +4217,14 @@ class Parenthetical(
         )
 
     def with_select_context(
-        self, grain: Grain, conditional: Conditional | Comparison | Parenthetical | None
+        self,
+        grain: Grain,
+        conditional: Conditional | Comparison | Parenthetical | None,
+        environment: Environment | None = None,
     ):
         return Parenthetical(
             content=(
-                self.content.with_select_context(grain, conditional)
+                self.content.with_select_context(grain, conditional, environment)
                 if isinstance(self.content, SelectContext)
                 else self.content
             )

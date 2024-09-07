@@ -90,7 +90,7 @@ def gen_filter_node(
         if isinstance(row_parent, SelectNode):
             parent = StrategyNode(
                 input_concepts=row_parent.output_concepts,
-                output_concepts=[concept] + local_optional,
+                output_concepts=[concept] + row_parent.output_concepts,
                 environment=row_parent.environment,
                 g=row_parent.g,
                 parents=[row_parent] + core_parents,
@@ -107,47 +107,55 @@ def gen_filter_node(
         else:
             parent = row_parent
 
+        expected_output = [concept] + [
+            x
+            for x in local_optional
+            if x.address in [y.address for y in parent.output_concepts]
+        ]
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
-        parent.output_concepts = [concept] + local_optional
         parent.add_existence_concepts(flattened_existence)
-        parent.set_output_concepts([concept] + local_optional)
+        parent.set_output_concepts(expected_output)
         parent.grain = Grain(
             components=(
                 list(immediate_parent.keys)
                 if immediate_parent.keys
                 else [immediate_parent]
             )
-            + local_optional
+            + [
+                x
+                for x in local_optional
+                if x.address in [y.address for y in parent.output_concepts]
+            ]
         )
         parent.rebuild_cache()
 
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
         )
-        return parent
-    # append this now
-    core_parents.append(row_parent)
+        filter_node = parent
+    else:
+        core_parents.append(row_parent)
 
-    filter_node = FilterNode(
-        input_concepts=unique(
-            [immediate_parent] + parent_row_concepts + flattened_existence,
-            "address",
-        ),
-        output_concepts=[concept, immediate_parent] + parent_row_concepts,
-        environment=environment,
-        g=g,
-        parents=core_parents,
-        grain=Grain(
-            components=[immediate_parent] + parent_row_concepts,
-        ),
-    )
+        filter_node = FilterNode(
+            input_concepts=unique(
+                [immediate_parent] + parent_row_concepts + flattened_existence,
+                "address",
+            ),
+            output_concepts=[concept, immediate_parent] + parent_row_concepts,
+            environment=environment,
+            g=g,
+            parents=core_parents,
+            grain=Grain(
+                components=[immediate_parent] + parent_row_concepts,
+            ),
+        )
 
-    assert filter_node.resolve().grain == Grain(
-        components=[immediate_parent] + parent_row_concepts,
-    )
     if not local_optional or all(
-        [x.address in [y.address for y in parent_row_concepts] for x in local_optional]
+        [
+            x.address in [y.address for y in filter_node.output_concepts]
+            for x in local_optional
+        ]
     ):
         outputs = [
             x

@@ -9,20 +9,22 @@ rowset tn_2000 <-select
     returns.customer.text_id,
     returns.store.id,
     returns.store.state,
-    returns.return_date.year,
     sum(returns.return_amount)-> total_returns
 where
     returns.return_date.year = 2000
-    and returns.store.state = 'TN';
+    and returns.store.state = 'TN'
+;
 
 auto avg_store_returns <- avg(tn_2000.total_returns) by tn_2000.returns.store.id;
 
 select
     tn_2000.returns.customer.text_id,
-    --tn_2000.total_returns,
-    --avg_store_returns,
+    # this is required to get the right grain in the output
+    # as there are duplicate customer ids in the input
+    --tn_2000.returns.store.id,
 where
     tn_2000.total_returns > (1.2*avg_store_returns)
+    
 order by 
     tn_2000.returns.customer.text_id asc
 limit 100;

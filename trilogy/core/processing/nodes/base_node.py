@@ -18,7 +18,6 @@ from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
 from dataclasses import dataclass
 from trilogy.core.enums import BooleanOperator
-from trilogy.constants import logger
 
 
 def concept_list_to_grain(
@@ -59,7 +58,6 @@ def resolve_concept_map(
     full_addresses = {c.address for c in full_joins} if full_joins else set()
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
-        logger.info(input.name)
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
