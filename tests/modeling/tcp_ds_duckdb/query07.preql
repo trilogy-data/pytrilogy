@@ -5,23 +5,13 @@
 import store_sales as store_sales;
 
 
-
-
 with filtered_sales as 
-    SELECT
-    store_sales.ticket_number,
-    store_sales.item.id,
+SELECT
     store_sales.item.name,
     store_sales.quantity,
     store_sales.list_price,
     store_sales.coupon_amt,
     store_sales.sales_price,
-    --store_sales.promotion.channel_email,
-    --store_sales.promotion.channel_event,
-    --store_sales.date.year,
-    --store_sales.customer_demographic.gender,
-    --store_sales.customer_demographic.marital_status,
-    --store_sales.customer_demographic.education_status
 WHERE
     store_sales.customer_demographic.gender = 'M'
     and store_sales.customer_demographic.marital_status = 'S'

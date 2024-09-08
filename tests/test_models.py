@@ -70,16 +70,22 @@ def test_concept(test_environment, test_environment_graph):
     )
 
 
-
 def test_concept_filter(test_environment, test_environment_graph):
-    test_concept:Concept = list(test_environment.concepts.values())[0]
-    new = test_concept.with_filter(Comparison(left=1, right="abc", operator=ComparisonOperator.EQ))
-    new2 = test_concept.with_filter(Comparison(left=1, right="abc", operator=ComparisonOperator.EQ))
+    test_concept: Concept = list(test_environment.concepts.values())[0]
+    new = test_concept.with_filter(
+        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+    )
+    new2 = test_concept.with_filter(
+        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+    )
 
     assert new.name == new2.name != test_concept.name
 
-    new3 = new.with_filter(Comparison(left=1, right="abc", operator=ComparisonOperator.EQ))
+    new3 = new.with_filter(
+        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+    )
     assert new3 == new
+
 
 def test_conditional(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[-1]
