@@ -36,12 +36,11 @@ def test_gen_filter_node(test_environment, test_environment_graph):
 
 
 def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
-
     conditional = Comparison(
-        left=test_environment.concepts["category_name"],
-        operator=ComparisonOperator.LIKE,
-        right="%abc%",
-    )
+            left=test_environment.concepts["category_name"],
+            operator=ComparisonOperator.LIKE,
+            right="%abc%",
+        )
     node = gen_filter_node(
         concept=test_environment.concepts["product_id"].with_filter(
             conditional, test_environment
@@ -56,5 +55,4 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
         depth=0,
         source_concepts=search_concepts,
     )
-    assert 1 == 0
     assert node.conditions == conditional
