@@ -4,6 +4,7 @@ import pytest
 from trilogy.hooks.query_debugger import DebuggingHook
 from pathlib import Path
 from logging import INFO
+from tests.modeling.tcp_ds_duckdb.analyze_test_results import analyze
 
 working_path = Path(__file__).parent
 
@@ -31,3 +32,11 @@ def engine():
         EXPORT DATABASE '{working_path / "memory"}' (FORMAT PARQUET);"""
         )
     yield engine
+
+
+@pytest.fixture(autouse=True, scope="session")
+def my_fixture():
+    # setup_stuff
+    yield
+    # teardown_stuff
+    analyze()

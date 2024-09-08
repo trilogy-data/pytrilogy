@@ -39,7 +39,7 @@ def gen_filter_node(
         raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
 
-    optional_included = []
+    optional_included: list[Concept] = []
     for x in local_optional:
         if isinstance(x.lineage, FilterItem):
             if concept.lineage.where == where:

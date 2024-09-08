@@ -1,18 +1,22 @@
 from pathlib import Path
+import os
+import pandas as pd
+import json
+import matplotlib.pyplot as plt
 
 
-if __name__ == "__main__":
-    import os
-    import pandas as pd
-    import json
-    import matplotlib.pyplot as plt
+def analyze(show: bool = False):
 
     results = []
     root = Path(__file__).parent
     for filename in os.listdir(root):
         if filename.endswith(".log"):
             with open(root / filename, "r") as f:
-                loaded = json.loads(f.read())
+                try:
+                    loaded = json.loads(f.read())
+                except json.decoder.JSONDecodeError:
+                    print(f"Error loading {filename}")
+                    continue
                 results.append(loaded)
                 print(f"----{filename}----")
                 print(loaded["generated_sql"])
@@ -36,5 +40,11 @@ if __name__ == "__main__":
     ax.boxplot(
         [df["exec_time"], df["comp_time"]], tick_labels=["Trilogy", "DuckDBDefault"]
     )
+    if show:
+        plt.show()
+    else:
+        plt.savefig("tcp-ds-perf.png")
 
-    plt.show()
+
+if __name__ == "__main__":
+    analyze(show=True)
