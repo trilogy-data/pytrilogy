@@ -43,7 +43,7 @@ def analyze(show: bool = False):
     if show:
         plt.show()
     else:
-        plt.savefig("tcp-ds-perf.png")
+        plt.savefig(root / "tcp-ds-perf.png")
 
 
 if __name__ == "__main__":
