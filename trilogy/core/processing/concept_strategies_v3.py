@@ -646,7 +646,7 @@ def _search_concepts(
             depth=depth,
             source_concepts=search_concepts,
             history=history,
-            conditions=conditions,
+            search_conditions=conditions,
         )
 
         if expanded:

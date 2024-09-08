@@ -215,13 +215,17 @@ def resolve_cte_base_name_and_alias_v2(
             )
 
     counts: dict[str, int] = defaultdict(lambda: 0)
-    output_addresses = [x.address for x in source.input_concepts]
+    output_addresses = [x.address for x in source.output_concepts]
+    input_address = [x.address for x in source.input_concepts]
     for k, v in source_map.items():
         for vx in v:
             if k in output_addresses:
                 counts[vx] = counts[vx] + 1
-            else:
-                counts[vx] = counts[vx]
+
+            if k in input_address:
+                counts[vx] = counts[vx] + 1
+
+            counts[vx] = counts[vx]
     if counts:
         return max(counts, key=counts.get), max(counts, key=counts.get)  # type: ignore
     return None, None
