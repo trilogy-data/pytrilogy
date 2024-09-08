@@ -416,15 +416,12 @@ auto final_zips <-substring(filter zips where zips in substring(p_cust_zip, 1,5)
 
 SELECT
     store_sales.store.name,
-    sum(filter store_sales.net_profit
-        where  
+    sum(store_sales.net_profit
+    ) ->store_net_profit
+where 
         store_sales.date.quarter = 2
         and store_sales.date.year = 1998
         and substring(store_sales.store.zip, 1, 2) in final_zips
-
-    ) ->store_net_profit
-where 
-    store_net_profit is not null
 order by
     store_sales.store.name asc
 limit 100

@@ -983,6 +983,7 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
+
         for item in select_items:
             # we don't know the grain of an aggregate at assignment time
             # so rebuild at this point in the tree
@@ -1000,21 +1001,43 @@ class ParseToObjects(Transformer):
                 )
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept
+            # TODO: revisit if we can push down every filter
+            # else:
+            #     item.content = (
+            #         item.content.with_filter(
+            #             output.where_clause.conditional, environment=self.environment
+            #         )
+            #         if output.where_clause
+            #         and output.where_clause_category == SelectFiltering.IMPLICIT
+            #         else item.content
+            #     )
+
         if order_by:
             for orderitem in order_by.items:
-                if (
-                    isinstance(orderitem.expr, Concept)
-                    and orderitem.expr.purpose == Purpose.METRIC
-                ):
-                    orderitem.expr = orderitem.expr.with_select_context(
-                        output.grain,
-                        conditional=(
-                            output.where_clause.conditional
-                            if output.where_clause
-                            and output.where_clause_category == SelectFiltering.IMPLICIT
-                            else None
-                        ),
-                    )
+                if isinstance(orderitem.expr, Concept):
+                    if orderitem.expr.purpose == Purpose.METRIC:
+                        orderitem.expr = orderitem.expr.with_select_context(
+                            output.grain,
+                            conditional=(
+                                output.where_clause.conditional
+                                if output.where_clause
+                                and output.where_clause_category
+                                == SelectFiltering.IMPLICIT
+                                else None
+                            ),
+                            environment=self.environment,
+                        )
+                    # TODO :push down every filter
+                    # else:
+                    #     orderitem.expr = (
+                    #         orderitem.expr.with_filter(
+                    #             output.where_clause.conditional,
+                    #             environment=self.environment,
+                    #         )
+                    #         if output.where_clause
+                    #         and output.where_clause_category == SelectFiltering.IMPLICIT
+                    #         else orderitem.expr
+                    #     )
         return output
 
     @v_args(meta=True)
@@ -1237,7 +1260,11 @@ class ParseToObjects(Transformer):
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
-        string_concept, where = args
+        string_concept, raw = args
+        if isinstance(raw, WhereClause):
+            where = raw
+        else:
+            where = WhereClause(conditional=raw)
         concept = self.environment.concepts[string_concept]
         return FilterItem(content=concept, where=where)
 

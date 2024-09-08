@@ -191,6 +191,7 @@ def generate_candidates_restrictive(
         ):
             combos.append(local_candidates)
     combos.append(grain_check)
+    # combos.append(local_candidates)
     # append the empty set for sourcing concept by itself last
     combos.append([])
     return combos
@@ -645,6 +646,7 @@ def _search_concepts(
             depth=depth,
             source_concepts=search_concepts,
             history=history,
+            search_conditions=conditions,
         )
 
         if expanded:

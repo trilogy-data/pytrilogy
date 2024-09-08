@@ -281,10 +281,7 @@ class BaseDialect:
                 rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
                 # for cases when we've optimized this
-                if (
-                    len(cte.output_columns) == 1
-                    and cte.condition == c.lineage.where.conditional
-                ):
+                if cte.condition == c.lineage.where.conditional:
                     rval = self.render_expr(c.lineage.content, cte=cte)
                 else:
                     rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False)} ELSE NULL END"

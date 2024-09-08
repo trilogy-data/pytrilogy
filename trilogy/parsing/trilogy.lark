@@ -83,7 +83,11 @@
     raw_function: "bind" "sql"  IDENTIFIER  "("  function_binding_list ")" "->" data_type "as"i MULTILINE_STRING
     
     // user_id where state = Mexico
-    filter_item: "filter"i IDENTIFIER where
+    _filter_alt: IDENTIFIER "?" conditional
+    _filter_base: "filter"i IDENTIFIER where
+    filter_item: _filter_base | _filter_alt
+
+
 
     // rank/lag/lead
     WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i)  /[\s]+/

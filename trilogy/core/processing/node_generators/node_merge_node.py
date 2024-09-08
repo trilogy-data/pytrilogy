@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from trilogy.core.models import Concept, Environment, Conditional
+from trilogy.core.models import Concept, Environment, Conditional, WhereClause
 from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
 import networkx as nx
 from trilogy.core.graph_models import concept_to_node
@@ -260,6 +260,7 @@ def subgraphs_to_merge_node(
     source_concepts,
     history,
     conditions,
+    search_conditions: WhereClause | None = None,
     enable_early_exit: bool = True,
 ):
     parents: List[StrategyNode] = []
@@ -277,6 +278,7 @@ def subgraphs_to_merge_node(
             g=g,
             depth=depth + 1,
             history=history,
+            conditions=search_conditions,
         )
         if not parent:
             logger.info(
@@ -315,6 +317,7 @@ def gen_merge_node(
     accept_partial: bool = False,
     history: History | None = None,
     conditions: Conditional | None = None,
+    search_conditions: WhereClause | None = None,
 ) -> Optional[MergeNode]:
 
     for filter_downstream in [True, False]:
@@ -339,6 +342,7 @@ def gen_merge_node(
                 source_concepts=source_concepts,
                 history=history,
                 conditions=conditions,
+                search_conditions=search_conditions,
             )
     # one concept handling may need to be kicked to alias
     if len(all_concepts) == 1:
@@ -354,6 +358,7 @@ def gen_merge_node(
                 history=history,
                 conditions=conditions,
                 enable_early_exit=False,
+                search_conditions=search_conditions,
             )
             if test:
                 return test
