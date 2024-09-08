@@ -145,7 +145,9 @@ def generate_source_map(
         names = set([x.name for x in ev])
         ematches = [cte.name for cte in all_new_ctes if cte.source.name in names]
         existence_source_map[ek] = ematches
-    return {k: [] if not v else v for k, v in source_map.items()}, existence_source_map
+    return {
+        k: [] if not v else list(set(v)) for k, v in source_map.items()
+    }, existence_source_map
 
 
 def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
@@ -191,6 +193,8 @@ def resolve_cte_base_name_and_alias_v2(
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
     joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
+    # INFO     trilogy:query_processor.py:263 Finished building source map for civet with 3 parents, have {'local.relevant_customers': ['fowl', 'fowl'],
+    # 'customer.demographics.gender': ['mandrill'], 'customer.id': ['mandrill'], 'customer.demographics.id': ['mandrill'], 'customer.id_9268029262289908': [], 'customer.demographics.gender_1513806568509111': []}, query_datasource had non-empty keys ['local.relevant_customers', 'customer.demographics.gender', 'customer.id', 'customer.demographics.id'] and existence had non-empty keys []
     if (
         len(source.datasources) == 1
         and isinstance(source.datasources[0], Datasource)
@@ -211,7 +215,7 @@ def resolve_cte_base_name_and_alias_v2(
             )
 
     counts: dict[str, int] = defaultdict(lambda: 0)
-    output_addresses = [x.address for x in source.output_concepts]
+    output_addresses = [x.address for x in source.input_concepts]
     for k, v in source_map.items():
         for vx in v:
             if k in output_addresses:

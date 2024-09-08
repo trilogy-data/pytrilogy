@@ -39,6 +39,15 @@ def gen_filter_node(
         raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
 
+    optional_included = []
+    for x in local_optional:
+        if isinstance(x.lineage, FilterItem):
+            if concept.lineage.where == where:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "
+                )
+                parent_row_concepts.append(x.lineage.content)
+                optional_included.append(x)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
@@ -49,6 +58,7 @@ def gen_filter_node(
         g=g,
         depth=depth + 1,
         history=history,
+        conditions=conditions,
     )
 
     flattened_existence = [x for y in parent_existence_concepts for x in y]
@@ -88,6 +98,11 @@ def gen_filter_node(
             f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
         )
         optimized_pushdown = True
+    elif optional_included == local_optional:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
+        )
+        optimized_pushdown = True
     if optimized_pushdown:
         if isinstance(row_parent, SelectNode):
             logger.info(
@@ -116,6 +131,7 @@ def gen_filter_node(
             x
             for x in local_optional
             if x.address in [y.address for y in parent.output_concepts]
+            or x.address in [y.address for y in optional_included]
         ]
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
@@ -175,6 +191,7 @@ def gen_filter_node(
         ] + outputs
         filter_node.rebuild_cache()
         return filter_node
+
     enrich_node = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=[immediate_parent] + parent_row_concepts + local_optional,
@@ -182,10 +199,11 @@ def gen_filter_node(
         g=g,
         depth=depth + 1,
         history=history,
+        conditions=conditions,
     )
     if not enrich_node:
         return filter_node
-    x = MergeNode(
+    return MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,
         output_concepts=[
             concept,
@@ -206,8 +224,7 @@ def gen_filter_node(
                     [immediate_parent] + parent_row_concepts
                 ),
                 join_type=JoinType.LEFT_OUTER,
-                filter_to_mutual=False,
+                filter_to_mutual=True,
             )
         ],
     )
-    return x

@@ -801,15 +801,18 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     ) -> "Concept":
         from trilogy.utility import string_to_hash
 
-        name = string_to_hash(self.name + str(condition))
+        if self.lineage and isinstance(self.lineage, FilterItem):
+            if self.lineage.where.conditional == condition:
+                return self
+        hash = string_to_hash(self.name + str(condition))
         new = Concept(
-            name=f"{self.name}_{name}",
+            name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=FilterItem(content=self, where=WhereClause(conditional=condition)),
-            keys=None,
-            grain=(self.grain if self.purpose == Purpose.PROPERTY else Grain()),
+            keys=(self.keys if self.purpose == Purpose.PROPERTY else None),
+            grain=self.grain if self.grain else Grain(components=[]),
             namespace=self.namespace,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
@@ -841,6 +844,16 @@ class Grain(Mergeable, BaseModel):
             final.append(sub)
         v2 = sorted(final, key=lambda x: x.name)
         return v2
+
+    def with_filter(
+        self,
+        condition: "Conditional | Comparison | Parenthetical",
+        environment: Environment | None = None,
+    ) -> "Grain":
+        return Grain(
+            components=[c.with_filter(condition, environment) for c in self.components],
+            nested=self.nested,
+        )
 
     @property
     def components_copy(self) -> List[Concept]:
@@ -1680,6 +1693,9 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
                 )
             ):
                 output.append(item)
+        # TODO: explore implicit filtering more
+        # if self.where_clause.conditional and self.where_clause_category == SelectFiltering.IMPLICIT:
+        #     output =[x.with_filter(self.where_clause.conditional) for x in output]
         return Grain(
             components=unique(output, "address"), where_clause=self.where_clause
         )
@@ -4074,8 +4090,13 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
         output: list[Concept] = []
         orig: dict[str, Concept] = {}
         for orig_concept in self.select.output_components:
+            name = orig_concept.name
+            if isinstance(orig_concept.lineage, FilterItem):
+                if orig_concept.lineage.where == self.select.where_clause:
+                    name = orig_concept.lineage.content.name
+
             new_concept = Concept(
-                name=orig_concept.name,
+                name=name,
                 datatype=orig_concept.datatype,
                 purpose=orig_concept.purpose,
                 lineage=RowsetItem(

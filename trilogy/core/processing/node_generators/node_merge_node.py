@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from trilogy.core.models import Concept, Environment, Conditional
+from trilogy.core.models import Concept, Environment, WhereClause
 from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
 import networkx as nx
 from trilogy.core.graph_models import concept_to_node
@@ -314,7 +314,7 @@ def gen_merge_node(
     source_concepts,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: Conditional | None = None,
+    conditions: WhereClause | None = None,
 ) -> Optional[MergeNode]:
 
     for filter_downstream in [True, False]:

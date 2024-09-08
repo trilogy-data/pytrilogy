@@ -2,7 +2,8 @@ from pathlib import Path
 
 from trilogy import Executor
 import pytest
-
+from datetime import datetime
+import json
 
 working_path = Path(__file__).parent
 
@@ -13,23 +14,43 @@ def run_query(engine: Executor, idx: int):
         text = f.read()
 
     # fetch our results
+    parse_start = datetime.now()
     query = engine.generate_sql(text)[-1]
+    parse_time = datetime.now() - parse_start
     # raise SyntaxError(query)
-    results = engine.execute_text(text)
+    exec_start = datetime.now()
+    results = engine.execute_raw_sql(query)
+    exec_time = datetime.now() - exec_start
     # assert results == ''
-    comp_results = list(results[-1].fetchall())
+    comp_results = list(results.fetchall())
     assert len(comp_results) > 0, "No results returned"
     # run the built-in comp
+    comp_start = datetime.now()
     base = engine.execute_raw_sql(f"PRAGMA tpcds({idx});")
     base_results = list(base.fetchall())
+    comp_time = datetime.now() - comp_start
 
     # # check we got it
     if len(base_results) != len(comp_results):
         assert False, f"Row count mismatch: {len(base_results)} != {len(comp_results)}"
-    for idx, row in enumerate(base_results):
+    for qidx, row in enumerate(base_results):
         assert (
-            row == comp_results[idx]
-        ), f"Row mismatch in row {idx} (expected v actual): {row} != {comp_results[idx]}"
+            row == comp_results[qidx]
+        ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
+
+    with open(working_path / f"zquery{idx:02d}.log", "w") as f:
+        f.write(
+            json.dumps(
+                {
+                    "query_id": idx,
+                    "parse_time": parse_time.total_seconds(),
+                    "exec_time": exec_time.total_seconds(),
+                    "comp_time": comp_time.total_seconds(),
+                    "generated_sql": query,
+                },
+                indent=4,
+            )
+        )
     return query
 
 

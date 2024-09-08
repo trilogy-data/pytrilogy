@@ -492,3 +492,27 @@ select x;
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
     assert "abcdef as test" in results, results
+
+
+def test_filter_concise():
+
+    text = """
+key x int;
+key y int;
+
+datasource test (
+x:x,
+y:y)
+grain(x)
+address `abc:def`
+;
+
+auto filtered_test <- x ? y > 10;
+
+select filtered_test;
+"""
+    env, parsed = parse_text(text)
+
+    results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
+
+    assert "filtered_test" in results, results
