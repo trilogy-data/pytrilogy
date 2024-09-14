@@ -3431,14 +3431,6 @@ class Comparison(
             raise SyntaxError(
                 f"Cannot compare {self.left} and {self.right} of different types"
             )
-        if self.operator == ComparisonOperator.BETWEEN:
-            if (
-                not isinstance(self.right, ComparisonOperator)
-                and self.right.operator == BooleanOperator.AND
-            ):
-                raise SyntaxError(
-                    f"Between operator must have two operands with and, not {self.right}"
-                )
 
     def __add__(self, other):
         if other is None:

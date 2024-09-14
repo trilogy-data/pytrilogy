@@ -229,7 +229,6 @@ class ComparisonOperator(Enum):
     ILIKE = "ilike"
     CONTAINS = "contains"
     ELSE = "else"
-    BETWEEN = "between"
 
     @classmethod
     def _missing_(cls, value):
