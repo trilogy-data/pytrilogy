@@ -9,7 +9,6 @@ from trilogy.core.enums import (
     FunctionType,
     WindowType,
     DatePart,
-    ComparisonOperator,
 )
 from trilogy.core.models import (
     ListType,
