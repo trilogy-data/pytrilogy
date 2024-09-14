@@ -1,6 +1,15 @@
-from trilogy.core.models import DataType, Concept, Environment, Function, Metadata
+from trilogy.core.models import (
+    DataType,
+    Concept,
+    Environment,
+    Function,
+    Metadata,
+    StructType,
+)
+from trilogy.core.functions import AttrAccess
 from trilogy.core.enums import Purpose, FunctionType, ConceptSource
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.parsing.common import process_function_args, arg_to_datatype, Meta
 
 
 def generate_date_concepts(concept: Concept, environment: Environment):
@@ -142,15 +151,44 @@ def generate_key_concepts(concept: Concept, environment: Environment):
         environment.add_concept(new_concept, add_derived=False)
 
 
-def generate_related_concepts(concept: Concept, environment: Environment):
+def generate_related_concepts(
+    concept: Concept,
+    environment: Environment,
+    meta: Meta | None = None,
+    add_derived: bool = False,
+):
     """Auto populate common derived concepts on types"""
-    if concept.purpose == Purpose.KEY:
+    if concept.purpose == Purpose.KEY and add_derived:
         generate_key_concepts(concept, environment)
-    if concept.datatype == DataType.DATE:
+
+    # datatype types
+    if concept.datatype == DataType.DATE and add_derived:
         generate_date_concepts(concept, environment)
-    elif concept.datatype == DataType.DATETIME:
+    elif concept.datatype == DataType.DATETIME and add_derived:
         generate_date_concepts(concept, environment)
         generate_datetime_concepts(concept, environment)
-    elif concept.datatype == DataType.TIMESTAMP:
+    elif concept.datatype == DataType.TIMESTAMP and add_derived:
         generate_date_concepts(concept, environment)
         generate_datetime_concepts(concept, environment)
+
+    if isinstance(concept.datatype, StructType):
+        for key, value in concept.datatype.fields_map.items():
+            args = process_function_args(
+                [concept, key], meta=meta, environment=environment
+            )
+            auto = Concept(
+                name=key,
+                datatype=arg_to_datatype(value),
+                purpose=Purpose.PROPERTY,
+                namespace=(
+                    environment.namespace + "." + concept.name
+                    if environment.namespace
+                    and environment.namespace != DEFAULT_NAMESPACE
+                    else concept.name
+                ),
+                lineage=AttrAccess(args),
+            )
+            environment.add_concept(auto, meta=meta)
+            if isinstance(value, Concept):
+                environment.merge_concept(auto, value, modifiers=[])
+                assert value.pseudonyms is not None

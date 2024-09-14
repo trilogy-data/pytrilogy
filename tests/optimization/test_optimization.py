@@ -1,5 +1,6 @@
 from trilogy.core.optimization import (
     PredicatePushdown,
+    PredicatePushdownRemove,
 )
 from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
@@ -164,8 +165,10 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     )
     inverse_map = {"parent": [cte2]}
     rule = PredicatePushdown()
+    rule2 = PredicatePushdownRemove()
     assert rule.optimize(cte2, inverse_map) is True
-    assert rule.optimize(cte2, inverse_map) is True
+    assert rule.optimize(cte2, inverse_map) is False
+    assert rule2.optimize(cte2, inverse_map) is True
     assert (
         cte2.condition is None
     ), f"{cte2.condition}, {parent.condition}, {is_child_of(cte2.condition, parent.condition)}"

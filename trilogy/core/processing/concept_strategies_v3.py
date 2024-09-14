@@ -180,7 +180,10 @@ def generate_candidates_restrictive(
     local_candidates = [
         x
         for x in list(candidates)
-        if x.address not in exhausted and x.granularity != Granularity.SINGLE_ROW
+        if x.address not in exhausted
+        and x.granularity != Granularity.SINGLE_ROW
+        and x.address not in priority_concept.pseudonyms
+        and priority_concept.address not in x.pseudonyms
     ]
     combos: list[list[Concept]] = []
     grain_check = Grain(components=[*local_candidates]).components_copy
@@ -608,7 +611,7 @@ def _search_concepts(
         if len(stack) == 1:
             output = stack[0]
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)} with output {[x.address for x in output.output_concepts]}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)} with output {[x.address for x in output.output_concepts]} and {output.resolve().source_map}"
             )
             return output
 
@@ -658,8 +661,7 @@ def _search_concepts(
                 if x.address not in [y.address for y in mandatory_list]
                 and x not in ex_resolve.grain.components
             ]
-            expanded.output_concepts = mandatory_list
-            expanded.rebuild_cache()
+            expanded.set_output_concepts(mandatory_list)
 
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found connections for {[c.address for c in mandatory_list]} via concept addition; removing extra {[c.address for c in extra]}"

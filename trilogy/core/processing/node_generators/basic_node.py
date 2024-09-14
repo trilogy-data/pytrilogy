@@ -10,6 +10,7 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.utility import unique
 from trilogy.constants import logger
+from itertools import combinations
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
@@ -31,12 +32,17 @@ def gen_basic_node(
     )
 
     local_optional_redundant = [x for x in local_optional if x in parent_concepts]
-    attempts = [(parent_concepts, [concept] + local_optional_redundant)]
-    from itertools import combinations
+    attempts: List[tuple[list[Concept], list[Concept]]] = [
+        (parent_concepts, [concept] + local_optional_redundant)
+    ]
+    equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]
+    non_equivalent_optional = [
+        x for x in local_optional if x not in equivalent_optional
+    ]
 
     if local_optional:
-        for combo in range(1, len(local_optional) + 1):
-            combos = combinations(local_optional, combo)
+        for combo in range(1, len(non_equivalent_optional) + 1):
+            combos = combinations(non_equivalent_optional, combo)
             for optional_set in combos:
                 attempts.append(
                     (
@@ -64,13 +70,10 @@ def gen_basic_node(
                 continue
             if all(x in source.partial_concepts for source in sources):
                 partials.append(x)
-        outputs = parent_node.output_concepts + [concept]
-        logger.info(
-            f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept} with attempted extra {[x.address for x in attempt]}, output {[x.address for x in outputs]}"
-        )
-        # parents.resolve()
 
         parent_node.add_output_concept(concept)
+        for x in equivalent_optional:
+            parent_node.add_output_concept(x)
 
         parent_node.remove_output_concepts(
             [
@@ -78,6 +81,9 @@ def gen_basic_node(
                 for x in parent_node.output_concepts
                 if x.address not in [y.address for y in basic_output]
             ]
+        )
+        logger.info(
+            f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept} with attempted extra {[x.address for x in attempt]}, output {[x.address for x in parent_node.output_concepts]}"
         )
         return parent_node
     logger.info(

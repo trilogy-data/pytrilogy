@@ -86,7 +86,7 @@ def determine_induced_minimal_nodes(
 
     for node in G.nodes:
         if concepts.get(node):
-            lookup = concepts[node]
+            lookup: Concept = concepts[node]
             if lookup.derivation not in (PurposeLineage.BASIC, PurposeLineage.ROOT):
                 nodes_to_remove.append(node)
             elif lookup.derivation == PurposeLineage.BASIC and G.out_degree(node) == 0:
@@ -153,6 +153,26 @@ def detect_ambiguity_and_raise(all_concepts, reduced_concept_sets) -> None:
             message=f"Multiple possible concept injections found for {[x.address for x in all_concepts]}, got {' or '.join([str(x) for x in reduced_concept_sets])}",
             parents=filtered_paths,
         )
+
+
+def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
+    return any(
+        c.address in concept.pseudonyms or concept.address in c.pseudonyms
+        for sublist in others
+        for c in sublist
+    )
+
+
+def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Concept]]:
+    return [
+        subgraph
+        for subgraph in subgraphs
+        if len(subgraph) > 1
+        or (
+            len(subgraph) == 1
+            and not has_synonym(subgraph[0], [x for x in subgraphs if x != subgraph])
+        )
+    ]
 
 
 def resolve_weak_components(
@@ -249,6 +269,7 @@ def resolve_weak_components(
             continue
         subgraphs.append(sub_component)
     return subgraphs
+    # return filter_relevant_subgraphs(subgraphs)
 
 
 def subgraphs_to_merge_node(

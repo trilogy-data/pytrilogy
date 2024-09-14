@@ -24,7 +24,6 @@ from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
     InfiniteFunctionArgs,
-    FunctionClass,
     Modifier,
     Ordering,
     Purpose,
@@ -104,7 +103,6 @@ from trilogy.core.models import (
     ConceptDeclarationStatement,
     ConceptDerivation,
     RowsetDerivationStatement,
-    LooseConceptList,
     list_to_wrapper,
     dict_to_map_wrapper,
     NumericType,
@@ -119,6 +117,7 @@ from trilogy.parsing.common import (
     filter_item_to_concept,
     constant_to_concept,
     arbitrary_to_concept,
+    process_function_args,
 )
 
 CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
@@ -230,50 +229,6 @@ class ParseToObjects(Transformer):
         self.environment.concepts.undefined = {}
         return reparsed
 
-    def process_function_args(
-        self, args, meta: Meta, concept_arguments: Optional[LooseConceptList] = None
-    ):
-        final: List[Concept | Function] = []
-        for arg in args:
-            # if a function has an anonymous function argument
-            # create an implicit concept
-            while isinstance(arg, Parenthetical):
-                arg = arg.content
-            if isinstance(arg, Function):
-                # if it's not an aggregate function, we can skip the virtual concepts
-                # to simplify anonymous function handling
-                if arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value:
-                    final.append(arg)
-                    continue
-                id_hash = string_to_hash(str(arg))
-                concept = function_to_concept(
-                    arg,
-                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    namespace=self.environment.namespace,
-                )
-                # to satisfy mypy, concept will always have metadata
-                if concept.metadata:
-                    concept.metadata.line_number = meta.line
-                self.environment.add_concept(concept, meta=meta)
-                final.append(concept)
-            elif isinstance(
-                arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
-            ):
-                id_hash = string_to_hash(str(arg))
-                concept = arbitrary_to_concept(
-                    arg,
-                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                    namespace=self.environment.namespace,
-                )
-                if concept.metadata:
-                    concept.metadata.line_number = meta.line
-                self.environment.add_concept(concept, meta=meta)
-                final.append(concept)
-
-            else:
-                final.append(arg)
-        return final
-
     def start(self, args):
         return args
 
@@ -318,18 +273,14 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
-        final: list[
-            DataType | MapType | ListType | StructType | NumericType | Concept
-        ] = []
+        final: list[Concept] = []
         for arg in args:
-            if not isinstance(arg, (DataType, ListType, StructType)):
-                new = self.environment.concepts.__getitem__(  # type: ignore
-                    key=arg, line_no=meta.line
-                )
-                final.append(new)
-            else:
-                final.append(arg)
-        return StructType(fields=final)
+            new = self.environment.concepts.__getitem__(  # type: ignore
+                key=arg, line_no=meta.line
+            )
+            final.append(new)
+
+        return StructType(fields=final, fields_map={x.name: x for x in final})
 
     def list_type(self, args) -> ListType:
         return ListType(type=args[0])
@@ -520,18 +471,6 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            assert isinstance(concept.datatype, StructType)
-            for key, value in concept.datatype.fields_map.items():
-                args = self.process_function_args([concept, key], meta=meta)
-                self.environment.add_concept(
-                    Concept(
-                        name=key,
-                        datatype=arg_to_datatype(value),
-                        purpose=Purpose.PROPERTY,
-                        namespace=self.environment.namespace + "." + name,
-                        lineage=AttrAccess(args),
-                    )
-                )
             return ConceptDerivation(concept=concept)
         elif (
             isinstance(source_value, Function)
@@ -1001,6 +940,12 @@ class ParseToObjects(Transformer):
                 )
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept
+            elif isinstance(item.content, Concept):
+                # Sometimes cached values here don't have the latest info
+                # bug we can't just use environment, as it might not have the right grain.
+                item.content = self.environment.concepts[
+                    item.content.address
+                ].with_grain(item.content.grain)
             # TODO: revisit if we can push down every filter
             # else:
             #     item.content = (
@@ -1291,57 +1236,58 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def index_access(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         if args[0].datatype == DataType.MAP or isinstance(args[0].datatype, MapType):
             return MapAccess(args)
         return IndexAccess(args)
 
     @v_args(meta=True)
     def map_key_access(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return MapAccess(args)
 
     @v_args(meta=True)
     def attr_access(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return AttrAccess(args)
 
     @v_args(meta=True)
     def fcoalesce(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Coalesce(args)
 
     @v_args(meta=True)
     def unnest(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Unnest(args)
 
     @v_args(meta=True)
     def count(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Count(args)
 
     @v_args(meta=True)
     def fgroup(self, meta, args):
         if len(args) == 2:
-            args = self.process_function_args([args[0]] + args[1], meta=meta)
+            fargs = [args[0]] + args[1]
         else:
-            args = self.process_function_args([args[0]], meta=meta)
+            fargs = [args[0]]
+        args = process_function_args(fargs, meta=meta, environment=self.environment)
         return Group(args)
 
     @v_args(meta=True)
     def fabs(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Abs(args)
 
     @v_args(meta=True)
     def count_distinct(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return CountDistinct(args)
 
     @v_args(meta=True)
     def sum(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.SUM,
             arguments=args,
@@ -1352,7 +1298,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def avg(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         arg = args[0]
 
         return Function(
@@ -1366,17 +1312,17 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def max(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Max(args)
 
     @v_args(meta=True)
     def min(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Min(args)
 
     @v_args(meta=True)
     def len(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.LENGTH,
             arguments=args,
@@ -1388,12 +1334,12 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fsplit(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Split(args)
 
     @v_args(meta=True)
     def concat(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.CONCAT,
             arguments=args,
@@ -1406,7 +1352,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def like(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.LIKE,
             arguments=args,
@@ -1418,7 +1364,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def alt_like(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.LIKE,
             arguments=args,
@@ -1430,7 +1376,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def ilike(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.ILIKE,
             arguments=args,
@@ -1442,7 +1388,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def upper(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.UPPER,
             arguments=args,
@@ -1454,15 +1400,12 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fstrpos(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return StrPos(args)
 
     @v_args(meta=True)
     def fsubstring(self, meta, args):
-        args = self.process_function_args(
-            args,
-            meta=meta,
-        )
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return SubString(args)
 
     def logical_operator(self, args):
@@ -1470,7 +1413,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def lower(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.LOWER,
             arguments=args,
@@ -1483,7 +1426,7 @@ class ParseToObjects(Transformer):
     # date functions
     @v_args(meta=True)
     def fdate(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DATE,
             arguments=args,
@@ -1503,7 +1446,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fdate_trunc(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DATE_TRUNCATE,
             arguments=args,
@@ -1523,7 +1466,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fdate_part(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DATE_PART,
             arguments=args,
@@ -1543,7 +1486,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fdate_add(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DATE_ADD,
             arguments=args,
@@ -1564,7 +1507,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fdate_diff(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         purpose = function_args_to_output_purpose(args)
         return Function(
             operator=FunctionType.DATE_DIFF,
@@ -1589,7 +1532,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fdatetime(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DATETIME,
             arguments=args,
@@ -1606,7 +1549,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def ftimestamp(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.TIMESTAMP,
             arguments=args,
@@ -1618,7 +1561,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fsecond(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.SECOND,
             arguments=args,
@@ -1630,7 +1573,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fminute(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.MINUTE,
             arguments=args,
@@ -1642,7 +1585,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fhour(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.HOUR,
             arguments=args,
@@ -1654,7 +1597,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fday(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DAY,
             arguments=args,
@@ -1666,7 +1609,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fday_of_week(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DAY_OF_WEEK,
             arguments=args,
@@ -1678,7 +1621,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fweek(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.WEEK,
             arguments=args,
@@ -1690,7 +1633,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fmonth(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.MONTH,
             arguments=args,
@@ -1702,7 +1645,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fquarter(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.QUARTER,
             arguments=args,
@@ -1714,7 +1657,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fyear(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.YEAR,
             arguments=args,
@@ -1727,7 +1670,7 @@ class ParseToObjects(Transformer):
     # utility functions
     @v_args(meta=True)
     def fcast(self, meta, args) -> Function:
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         output_datatype = args[1]
         return Function(
             operator=FunctionType.CAST,
@@ -1748,7 +1691,7 @@ class ParseToObjects(Transformer):
     # math functions
     @v_args(meta=True)
     def fadd(self, meta, args) -> Function:
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         output_datatype = arg_to_datatype(args[0])
         # TODO: check for valid transforms?
         return Function(
@@ -1762,7 +1705,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fsub(self, meta, args) -> Function:
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.SUBTRACT,
@@ -1775,7 +1718,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fmul(self, meta, args) -> Function:
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.MULTIPLY,
@@ -1789,7 +1732,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fdiv(self, meta: Meta, args):
         output_datatype = arg_to_datatype(args[0])
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.DIVIDE,
             arguments=args,
@@ -1802,7 +1745,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fmod(self, meta: Meta, args):
         output_datatype = arg_to_datatype(args[0])
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.MOD,
             arguments=args,
@@ -1817,7 +1760,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fround(self, meta, args) -> Function:
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         output_datatype = arg_to_datatype(args[0])
         return Function(
             operator=FunctionType.ROUND,
@@ -1851,27 +1794,27 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fcase_when(self, meta, args) -> CaseWhen:
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return CaseWhen(comparison=args[0], expr=args[1])
 
     @v_args(meta=True)
     def fcase_else(self, meta, args) -> CaseElse:
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return CaseElse(expr=args[0])
 
     @v_args(meta=True)
     def fcurrent_date(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return CurrentDate([])
 
     @v_args(meta=True)
     def fcurrent_datetime(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return CurrentDatetime([])
 
     @v_args(meta=True)
     def fnot(self, meta, args):
-        args = self.process_function_args(args, meta=meta)
+        args = process_function_args(args, meta=meta, environment=self.environment)
         return IsNull(args)
 
 

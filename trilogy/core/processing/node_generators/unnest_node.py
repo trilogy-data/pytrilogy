@@ -22,9 +22,14 @@ def gen_unnest_node(
     arguments = []
     if isinstance(concept.lineage, Function):
         arguments = concept.lineage.concept_arguments
+
+    equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]
+    non_equivalent_optional = [
+        x for x in local_optional if x not in equivalent_optional
+    ]
     if arguments or local_optional:
         parent = source_concepts(
-            mandatory_list=arguments + local_optional,
+            mandatory_list=arguments + non_equivalent_optional,
             environment=environment,
             g=g,
             depth=depth + 1,
@@ -38,8 +43,8 @@ def gen_unnest_node(
             return None
 
     base = UnnestNode(
-        unnest_concept=concept,
-        input_concepts=arguments + local_optional,
+        unnest_concepts=[concept] + equivalent_optional,
+        input_concepts=arguments + non_equivalent_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
         g=g,
@@ -57,4 +62,6 @@ def gen_unnest_node(
     )
     qds = new.resolve()
     assert qds.source_map[concept.address] == {base.resolve()}
+    for x in equivalent_optional:
+        assert qds.source_map[x.address] == {base.resolve()}
     return new

@@ -61,17 +61,22 @@ def resolve_concept_map(
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
-            if concept.address not in inherited:
-                continue
+
             if (
                 isinstance(input, QueryDatasource)
                 and concept.address in input.hidden_concepts
             ):
                 continue
             if concept.address in full_addresses:
+
                 concept_map[concept.address].add(input)
             elif concept.address not in concept_map:
+                # equi_targets = [x for x in targets if concept.address in x.pseudonyms or x.address in concept.pseudonyms]
+                # if equi_targets:
+                #     for equi in equi_targets:
+                #         concept_map[equi.address] = set()
                 concept_map[concept.address].add(input)
+
     # second loop, include partials
     for input in inputs:
         for concept in input.output_concepts:

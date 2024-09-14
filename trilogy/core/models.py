@@ -299,8 +299,8 @@ class MapType(BaseModel):
 
 
 class StructType(BaseModel):
-    fields: List[ALL_TYPES]
-    fields_map: Dict[str, Concept | int | float | str] = Field(default_factory=dict)
+    fields: List[Concept]
+    fields_map: Dict[str, Concept]
 
     @property
     def data_type(self):
@@ -2119,16 +2119,19 @@ class Datasource(Namespaced, BaseModel):
 
 
 class UnnestJoin(BaseModel):
-    concept: Concept
+    concepts: list[Concept]
+    parent: Function
     alias: str = "unnest"
     rendering_required: bool = True
 
     def __hash__(self):
-        return (self.alias + self.concept.address).__hash__()
+        return (
+            self.alias + "".join([str(s.address) for s in self.concepts])
+        ).__hash__()
 
 
 class InstantiatedUnnestJoin(BaseModel):
-    concept: Concept
+    concept_to_unnest: Concept
     alias: str = "unnest"
 
 
@@ -2268,6 +2271,7 @@ class QueryDatasource(BaseModel):
                 raise SyntaxError(
                     f"Cannot join a datasource to itself, joining {join.left_datasource}"
                 )
+
         return v
 
     @field_validator("input_concepts")
@@ -2287,8 +2291,13 @@ class QueryDatasource(BaseModel):
         for key in ("input_concepts", "output_concepts"):
             if not values.get(key):
                 continue
+            concept: Concept
             for concept in values[key]:
-                if concept.address not in v and CONFIG.validate_missing:
+                if (
+                    concept.address not in v
+                    and not any(x in v for x in concept.pseudonyms)
+                    and CONFIG.validate_missing
+                ):
                     raise SyntaxError(
                         f"Missing source map for {concept.address} on {key}, have {v}"
                     )
@@ -2533,7 +2542,7 @@ class CTE(BaseModel):
                     )
                 ]
                 for join in self.joins:
-                    if isinstance(join, UnnestJoin) and join.concept == concept:
+                    if isinstance(join, UnnestJoin) and concept in join.concepts:
                         join.rendering_required = False
 
                 self.parent_ctes = [
@@ -2996,8 +3005,8 @@ class EnvironmentDatasourceDict(dict):
         except KeyError:
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key)
-            if "." in key and key.split(".")[0] == DEFAULT_NAMESPACE:
-                return self.__getitem__(key.split(".")[1])
+            if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
+                return self.__getitem__(key.split(".", 1)[1])
             raise
 
     def values(self) -> ValuesView[Datasource]:  # type: ignore
@@ -3027,8 +3036,8 @@ class EnvironmentConceptDict(dict):
             return super(EnvironmentConceptDict, self).__getitem__(key)
 
         except KeyError:
-            if "." in key and key.split(".")[0] == DEFAULT_NAMESPACE:
-                return self.__getitem__(key.split(".")[1], line_no)
+            if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
+                return self.__getitem__(key.split(".", 1)[1], line_no)
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
@@ -3293,10 +3302,9 @@ class Environment(BaseModel):
             self.concepts[concept.name] = concept
         else:
             self.concepts[concept.address] = concept
-        if add_derived:
-            from trilogy.core.environment_helpers import generate_related_concepts
+        from trilogy.core.environment_helpers import generate_related_concepts
 
-            generate_related_concepts(concept, self)
+        generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
         self.gen_concept_list_caches()
         return concept
 

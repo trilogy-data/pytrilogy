@@ -37,10 +37,10 @@ def render_join(
         if not cte:
             raise ValueError("must provide a cte to build an unnest joins")
         if unnest_mode == UnnestMode.CROSS_JOIN:
-            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept, render_func, cte)}"
+            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
         if unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
-            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept, render_func, cte)}"
-        return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.concept, render_func, cte)}"
+            return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
+        return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
     left_name = join.left_name
     right_name = join.right_name
     right_base = join.right_ref
