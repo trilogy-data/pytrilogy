@@ -154,6 +154,10 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
 
 def test_demo_merge_rowset_e2e(normalized_engine, test_env: Environment):
     # assert test_env.concept_links[test_env.concepts["passenger.last_name"]][0] == test_env.concepts["rich_info.last_name"]
+    from logging import DEBUG
+    from trilogy.constants import logger
+
+    logger.setLevel(DEBUG)
     normalized_engine.environment = test_env
     test = """    
 merge rich_info.last_name into ~passenger.last_name;

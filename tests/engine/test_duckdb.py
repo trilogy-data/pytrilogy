@@ -32,7 +32,9 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
     assert results[0].total_count == expected_results["total_count"]
 
 
-def test_concept_derivation(duckdb_engine: Executor):
+def test_concept_derivation():
+
+    duckdb_engine = Dialects.DUCK_DB.default_executor()
     test_datetime = datetime(hour=12, day=1, month=2, year=2022, second=34)
 
     duckdb_engine.execute_text(
@@ -47,14 +49,17 @@ def test_concept_derivation(duckdb_engine: Executor):
         ["month", test_datetime.month],
     ]:
         # {test_datetime.isoformat()}
-        results = duckdb_engine.execute_text(
-            f""" 
+        test_query = f""" 
 
 
-        select test.{property};
+        select local.test.{property};
         
         """
-        )[0].fetchall()
+        query = duckdb_engine.parse_text(test_query)
+        name = f"local.test.{property}"
+        assert duckdb_engine.environment.concepts[name].address == name
+        assert query[-1].output_columns[0].address == f"local.test.{property}"
+        results = duckdb_engine.execute_text(test_query)[0].fetchall()
         assert results[0][0] == check
 
 

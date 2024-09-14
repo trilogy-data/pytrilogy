@@ -28,14 +28,18 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
 def deduplicate_nodes(
-    merged: dict[str, QueryDatasource | Datasource], logging_prefix: str
+    merged: dict[str, QueryDatasource | Datasource],
+    logging_prefix: str,
+    environment: Environment,
 ) -> tuple[bool, dict[str, QueryDatasource | Datasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
     for k, v in merged.items():
         unique_outputs = [
-            x.address for x in v.output_concepts if x not in v.partial_concepts
+            environment.concepts[x.address].address
+            for x in v.output_concepts
+            if x not in v.partial_concepts
         ]
         set_map[k] = set(unique_outputs)
     for k1, v1 in set_map.items():
@@ -71,12 +75,15 @@ def deduplicate_nodes_and_joins(
     joins: List[NodeJoin] | None,
     merged: dict[str, QueryDatasource | Datasource],
     logging_prefix: str,
+    environment: Environment,
 ) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | Datasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
     while duplicates:
         duplicates = False
-        duplicates, merged, removed = deduplicate_nodes(merged, logging_prefix)
+        duplicates, merged, removed = deduplicate_nodes(
+            merged, logging_prefix, environment=environment
+        )
         # filter out any removed joins
         if joins is not None:
             joins = [
@@ -245,7 +252,7 @@ class MergeNode(StrategyNode):
 
         # it's possible that we have more sources than we need
         final_joins, merged = deduplicate_nodes_and_joins(
-            final_joins, merged, self.logging_prefix
+            final_joins, merged, self.logging_prefix, self.environment
         )
         # early exit if we can just return the parent
         final_datasets: List[QueryDatasource | Datasource] = list(merged.values())

@@ -1,7 +1,7 @@
 import catalog_sales as cs;
 import catalog_returns as cr;
 
-auto multi_warehouse_sales <- filter cs.order_number where count(cs.warehouse.id)  by cs.order_number, > 1;
+auto multi_warehouse_sales <- filter cs.order_number where count(cs.warehouse.id)  by cs.order_number > 1;
 
 SELECT
     count_distinct(cs.order_number) -> order_count,

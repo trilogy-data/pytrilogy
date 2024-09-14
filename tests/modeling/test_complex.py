@@ -174,3 +174,18 @@ def test_maps():
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 1
     assert results[0] == (10,)
+
+
+def test_anon_agg():
+
+    test_executor = Dialects.DUCK_DB.default_executor()
+    test_select = """
+    auto nums <- [1,2];
+
+    SELECT
+    sum(unnest(nums)+1) -> sum_plus_1
+    ;"""
+
+    results = list(test_executor.execute_text(test_select)[0].fetchall())
+    assert len(results) == 1
+    assert results[0] == (5,)

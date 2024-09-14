@@ -46,7 +46,10 @@ def base_join_to_join(
     """This function converts joins at the datasource level
     to joins at the CTE level"""
     if isinstance(base_join, UnnestJoin):
-        return InstantiatedUnnestJoin(concept=base_join.concept, alias=base_join.alias)
+        return InstantiatedUnnestJoin(
+            concept_to_unnest=base_join.parent.concept_arguments[0],
+            alias=base_join.alias,
+        )
     if base_join.left_datasource.identifier == base_join.right_datasource.identifier:
         raise ValueError(f"Joining on same datasource {base_join}")
     left_ctes = [
@@ -306,7 +309,11 @@ def datasource_to_ctes(
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
     for x in cte.output_columns:
-        if x.address not in cte.source_map and CONFIG.validate_missing:
+        if (
+            x.address not in cte.source_map
+            and not any(y in cte.source_map for y in x.pseudonyms)
+            and CONFIG.validate_missing
+        ):
             raise ValueError(
                 f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
             )

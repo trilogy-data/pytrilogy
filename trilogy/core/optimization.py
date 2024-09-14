@@ -10,6 +10,7 @@ from trilogy.core.optimizations import (
     OptimizationRule,
     InlineConstant,
     PredicatePushdown,
+    PredicatePushdownRemove,
     InlineDatasource,
 )
 
@@ -32,6 +33,31 @@ MAX_OPTIMIZATION_LOOPS = 100
 #     if len(cte.joins)>1:
 #         return False
 #     return parent
+
+
+def reorder_ctes(
+    input: list[CTE],
+):
+    import networkx as nx
+
+    # Create a directed graph
+    G = nx.DiGraph()
+    mapping: dict[str, CTE] = {}
+    for cte in input:
+        mapping[cte.name] = cte
+        for parent in cte.parent_ctes:
+            G.add_edge(parent.name, cte.name)
+    # Perform topological sort (only works for DAGs)
+    try:
+        topological_order = list(nx.topological_sort(G))
+        if not topological_order:
+            return input
+        return [mapping[x] for x in topological_order]
+    except nx.NetworkXUnfeasible as e:
+        print(
+            "The graph is not a DAG (contains cycles) and cannot be topologically sorted."
+        )
+        raise e
 
 
 def filter_irrelevant_ctes(
@@ -169,20 +195,22 @@ def optimize_ctes(
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
-
+    if CONFIG.optimizations.predicate_pushdown:
+        REGISTERED_RULES.append(PredicatePushdownRemove())
     for rule in REGISTERED_RULES:
         loops = 0
         complete = False
         while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
             actions_taken = False
             # assume we go through all CTEs once
-            look_at = [root_cte, *input]
+            look_at = [root_cte, *reversed(input)]
             inverse_map = gen_inverse_map(look_at)
             for cte in look_at:
                 opt = rule.optimize(cte, inverse_map)
                 actions_taken = actions_taken or opt
             complete = not actions_taken
             loops += 1
+            input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
         logger.info(f"finished checking for {type(rule).__name__} in {loops} loops")
 
-    return filter_irrelevant_ctes(input, root_cte)
+    return reorder_ctes(filter_irrelevant_ctes(input, root_cte))

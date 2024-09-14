@@ -285,7 +285,9 @@ def get_node_joins(
                     raise SyntaxError(
                         f"Could not find {joinc.address} in {right_datasource.identifier} output {[c.address for c in right_datasource.output_concepts]}"
                     )
-            join_tuples.append((left_arg, right_arg))
+            narg = (left_arg, right_arg)
+            if narg not in join_tuples:
+                join_tuples.append((left_arg, right_arg))
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],

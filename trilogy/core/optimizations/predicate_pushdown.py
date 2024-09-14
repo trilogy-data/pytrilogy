@@ -114,48 +114,6 @@ class PredicatePushdown(OptimizationRule):
         if not cte.condition:
             self.debug(f"No CTE condition for {cte.name}")
             return False
-
-        parent_filter_status = {
-            parent.name: is_child_of(cte.condition, parent.condition)
-            for parent in cte.parent_ctes
-        }
-        # flatten existnce argument tuples to a list
-
-        flattened_existence = [
-            x.address for y in cte.condition.existence_arguments for x in y
-        ]
-
-        existence_only = [
-            parent.name
-            for parent in cte.parent_ctes
-            if all([x.address in flattened_existence for x in parent.output_columns])
-            and len(flattened_existence) > 0
-        ]
-        if all(
-            [
-                value
-                for key, value in parent_filter_status.items()
-                if key not in existence_only
-            ]
-        ) and not any([isinstance(x, Datasource) for x in cte.source.datasources]):
-            self.log(
-                f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
-            )
-            cte.condition = None
-            # remove any "parent" CTEs that provided only existence inputs
-            if existence_only:
-                original = [y.name for y in cte.parent_ctes]
-                cte.parent_ctes = [
-                    x for x in cte.parent_ctes if x.name not in existence_only
-                ]
-                self.log(
-                    f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
-                )
-            return True
-        else:
-            self.log(
-                f"Could not remove filter from {cte.name}, as not all parents have the same filter: {parent_filter_status}"
-            )
         if self.complete.get(cte.name):
             self.debug("Have done this CTE before")
             return False
@@ -194,6 +152,66 @@ class PredicatePushdown(OptimizationRule):
                 self.debug(
                     f"Pushed down {candidate} from {cte.name} to {parent_cte.name}"
                 )
+
+        self.complete[cte.name] = True
+        return optimized
+
+
+class PredicatePushdownRemove(OptimizationRule):
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.complete: dict[str, bool] = {}
+
+    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+        optimized = False
+
+        if not cte.parent_ctes:
+            self.debug(f"No parent CTEs for {cte.name}")
+
+            return False
+
+        if not cte.condition:
+            self.debug(f"No CTE condition for {cte.name}")
+            return False
+
+        parent_filter_status = {
+            parent.name: is_child_of(cte.condition, parent.condition)
+            for parent in cte.parent_ctes
+        }
+        # flatten existnce argument tuples to a list
+
+        flattened_existence = [
+            x.address for y in cte.condition.existence_arguments for x in y
+        ]
+
+        existence_only = [
+            parent.name
+            for parent in cte.parent_ctes
+            if all([x.address in flattened_existence for x in parent.output_columns])
+            and len(flattened_existence) > 0
+        ]
+        if all(
+            [
+                value
+                for key, value in parent_filter_status.items()
+                if key not in existence_only
+            ]
+        ) and not any([isinstance(x, Datasource) for x in cte.source.datasources]):
+            self.log(
+                f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
+            )
+            cte.condition = None
+            # remove any "parent" CTEs that provided only existence inputs
+            if existence_only:
+                original = [y.name for y in cte.parent_ctes]
+                cte.parent_ctes = [
+                    x for x in cte.parent_ctes if x.name not in existence_only
+                ]
+                self.log(
+                    f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
+                )
+            return True
 
         self.complete[cte.name] = True
         return optimized

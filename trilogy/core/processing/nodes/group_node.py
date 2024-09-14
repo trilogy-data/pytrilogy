@@ -121,7 +121,6 @@ class GroupNode(StrategyNode):
             source_type=source_type,
             source_map=resolve_concept_map(
                 parent_sources,
-                # targets = self.output_concepts,
                 targets=(
                     unique(
                         self.output_concepts + self.conditions.concept_arguments,

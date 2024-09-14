@@ -18,9 +18,6 @@ def analyze(show: bool = False):
                     print(f"Error loading {filename}")
                     continue
                 results.append(loaded)
-                print(f"----{filename}----")
-                print(loaded["generated_sql"])
-                print("-------")
 
     df = pd.DataFrame.from_records(results)
 
