@@ -184,3 +184,19 @@ order by x asc;"""
     results = exec.execute_text(declarations)
     select = results[-1]
     assert [row.x for row in select] == [1, 2, 2, 3]
+
+
+def test_inline_window():
+    declarations = """
+const x <- unnest([1,2,3,4]);
+
+
+select 
+    x, 
+    row_number x order by x asc -> z,
+order by x desc;"""
+    exec = Dialects.DUCK_DB.default_executor()
+    results = exec.execute_text(declarations)
+    select = results[-1].fetchall()
+    assert [row.x for row in select] == [4, 3, 2, 1]
+    assert [row.z for row in select] == [4, 3, 2, 1]

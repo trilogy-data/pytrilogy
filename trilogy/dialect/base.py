@@ -445,10 +445,6 @@ class BaseDialect:
             else:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, Comparison):
-            if e.operator == ComparisonOperator.BETWEEN:
-                right_comp = e.right
-                assert isinstance(right_comp, Conditional)
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(right_comp.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) and self.render_expr(right_comp.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
