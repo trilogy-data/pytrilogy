@@ -273,14 +273,19 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
-        final: list[Concept] = []
+        final: list[
+            DataType | MapType | ListType | NumericType | StructType | Concept
+        ] = []
         for arg in args:
             new = self.environment.concepts.__getitem__(  # type: ignore
                 key=arg, line_no=meta.line
             )
             final.append(new)
 
-        return StructType(fields=final, fields_map={x.name: x for x in final})
+        return StructType(
+            fields=final,
+            fields_map={x.name: x for x in final if isinstance(x, Concept)},
+        )
 
     def list_type(self, args) -> ListType:
         return ListType(type=args[0])

@@ -299,8 +299,8 @@ class MapType(BaseModel):
 
 
 class StructType(BaseModel):
-    fields: List[Concept]
-    fields_map: Dict[str, Concept]
+    fields: List[ALL_TYPES]
+    fields_map: Dict[str, Concept | int | float | str]
 
     @property
     def data_type(self):
