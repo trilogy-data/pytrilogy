@@ -41,7 +41,10 @@ def process_function_args(
         if isinstance(arg, Function):
             # if it's not an aggregate function, we can skip the virtual concepts
             # to simplify anonymous function handling
-            if arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            if (
+                arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value
+                and arg.operator != FunctionType.UNNEST
+            ):
                 final.append(arg)
                 continue
             id_hash = string_to_hash(str(arg))
