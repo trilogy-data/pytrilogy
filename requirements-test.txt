@@ -12,3 +12,4 @@ sqlalchemy-bigquery
 snowflake-sqlalchemy
 fakesnow
 matplotlib
+tomli-w

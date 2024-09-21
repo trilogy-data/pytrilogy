@@ -1,7 +1,128 @@
-{
-    "query_id": 16,
-    "parse_time": 22.708343,
-    "exec_time": 0.431613,
-    "comp_time": 0.148199,
-    "generated_sql": "\nWITH \nhuman as (\nSELECT\n    catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"\nFROM\n    memory.catalog_returns as catalog_returns\nGROUP BY \n    catalog_returns.\"CR_ORDER_NUMBER\"),\ntenuous as (\nSELECT\n    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",\n    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"\nFROM\n    memory.catalog_sales as catalog_sales\nWHERE\n    catalog_sales.\"CS_ORDER_NUMBER\" not in (select human.\"cr_order_number\" from human where human.\"cr_order_number\" is not null)\n\nGROUP BY \n    catalog_sales.\"CS_ORDER_NUMBER\",\n    catalog_sales.\"CS_WAREHOUSE_SK\"),\nquick as (\nSELECT\n    count(tenuous.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",\n    tenuous.\"cs_order_number\" as \"cs_order_number\"\nFROM\n    tenuous\nGROUP BY \n    tenuous.\"cs_order_number\"),\ncloudy as (\nSELECT\n    CASE WHEN quick.\"_agg_count_6430482449237259\" > 1 THEN quick.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"\nFROM\n    quick),\ncuckoo as (\nSELECT\n    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",\n    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",\n    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",\n    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"\nFROM\n    memory.catalog_sales as catalog_sales\nWHERE\n    catalog_sales.\"CS_ORDER_NUMBER\" not in (select human.\"cr_order_number\" from human where human.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select cloudy.\"multi_warehouse_sales\" from cloudy where cloudy.\"multi_warehouse_sales\" is not null)\n\nGROUP BY \n    catalog_sales.\"CS_CALL_CENTER_SK\",\n    catalog_sales.\"CS_SHIP_ADDR_SK\",\n    catalog_sales.\"CS_ORDER_NUMBER\",\n    catalog_sales.\"CS_SHIP_DATE_SK\"),\nlate as (\nSELECT\n    customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",\n    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",\n    customer_address.\"CA_STATE\" as \"cs_customer_state\",\n    catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",\n    catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",\n    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",\n    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",\n    catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\"\nFROM\n    memory.catalog_sales as catalog_sales\n    FULL JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"\nWHERE\n    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select human.\"cr_order_number\" from human where human.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select cloudy.\"multi_warehouse_sales\" from cloudy where cloudy.\"multi_warehouse_sales\" is not null)\n),\nostrich as (\nSELECT\n    customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",\n    cuckoo.\"cs_call_center_id\" as \"cs_call_center_id\",\n    customer_address.\"CA_STATE\" as \"cs_customer_state\",\n    cuckoo.\"cs_order_number\" as \"cs_order_number\",\n    cuckoo.\"cs_ship_date_id\" as \"cs_ship_date_id\"\nFROM\n    memory.customer_address as customer_address\n    LEFT OUTER JOIN cuckoo on customer_address.\"CA_ADDRESS_SK\" = cuckoo.\"cs_customer_address_id\"\nWHERE\n    customer_address.\"CA_STATE\" = 'GA' and cuckoo.\"cs_order_number\" not in (select human.\"cr_order_number\" from human where human.\"cr_order_number\" is not null) and cuckoo.\"cs_order_number\" in (select cloudy.\"multi_warehouse_sales\" from cloudy where cloudy.\"multi_warehouse_sales\" is not null)\n),\nspiritual as (\nSELECT\n    late.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",\n    late.\"cs_item_id\" as \"cs_item_id\",\n    late.\"cs_order_number\" as \"cs_order_number\",\n    late.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"\nFROM\n    late\n    LEFT OUTER JOIN memory.call_center as call_center on late.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"\n    LEFT OUTER JOIN memory.date_dim as date on late.\"cs_ship_date_id\" = date.\"D_DATE_SK\"\nWHERE\n    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and late.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and late.\"cs_order_number\" not in (select human.\"cr_order_number\" from human where human.\"cr_order_number\" is not null) and late.\"cs_order_number\" in (select cloudy.\"multi_warehouse_sales\" from cloudy where cloudy.\"multi_warehouse_sales\" is not null)\n),\nugly as (\nSELECT\n    ostrich.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"\nFROM\n    memory.call_center as call_center\n    LEFT OUTER JOIN ostrich on call_center.\"CC_CALL_CENTER_SK\" = ostrich.\"cs_call_center_id\"\n    LEFT OUTER JOIN memory.date_dim as date on ostrich.\"cs_ship_date_id\" = date.\"D_DATE_SK\"\nWHERE\n    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and ostrich.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and ostrich.\"cs_order_number\" not in (select human.\"cr_order_number\" from human where human.\"cr_order_number\" is not null) and ostrich.\"cs_order_number\" in (select cloudy.\"multi_warehouse_sales\" from cloudy where cloudy.\"multi_warehouse_sales\" is not null)\n),\ncougar as (\nSELECT\n    sum(spiritual.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",\n    sum(spiritual.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"\nFROM\n    spiritual),\nsalamander as (\nSELECT\n    count(distinct ugly.\"cs_order_number_filter_929116887065743\") as \"order_count\"\nFROM\n    ugly)\nSELECT\n    salamander.\"order_count\" as \"order_count\",\n    cougar.\"total_shipping_cost\" as \"total_shipping_cost\",\n    cougar.\"total_net_profit\" as \"total_net_profit\"\nFROM\n    salamander\n    FULL JOIN cougar on 1=1\nORDER BY \n    salamander.\"order_count\" desc\nLIMIT (100)"
-}
+query_id = 16
+parse_time = 14.918515
+exec_time = 0.349752
+comp_time = 0.141344
+generated_sql = """
+
+WITH 
+bewildered as (
+SELECT
+    catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
+FROM
+    memory.catalog_returns as catalog_returns
+GROUP BY 
+    catalog_returns.\"CR_ORDER_NUMBER\"),
+parakeet as (
+SELECT
+    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+FROM
+    memory.catalog_sales as catalog_sales
+WHERE
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null)
+
+GROUP BY 
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_WAREHOUSE_SK\"),
+starling as (
+SELECT
+    count(parakeet.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    parakeet.\"cs_order_number\" as \"cs_order_number\"
+FROM
+    parakeet
+GROUP BY 
+    parakeet.\"cs_order_number\"),
+rambunctious as (
+SELECT
+    CASE WHEN starling.\"_agg_count_6430482449237259\" > 1 THEN starling.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+FROM
+    starling),
+boa as (
+SELECT
+    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
+FROM
+    memory.catalog_sales as catalog_sales
+WHERE
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select rambunctious.\"multi_warehouse_sales\" from rambunctious where rambunctious.\"multi_warehouse_sales\" is not null)
+
+GROUP BY 
+    catalog_sales.\"CS_SHIP_DATE_SK\",
+    catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_CALL_CENTER_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\"),
+falcon as (
+SELECT
+    customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    customer_address.\"CA_STATE\" as \"cs_customer_state\",
+    catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
+    catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
+    catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\"
+FROM
+    memory.catalog_sales as catalog_sales
+    FULL JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
+WHERE
+    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select rambunctious.\"multi_warehouse_sales\" from rambunctious where rambunctious.\"multi_warehouse_sales\" is not null)
+),
+dingo as (
+SELECT
+    customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
+    boa.\"cs_call_center_id\" as \"cs_call_center_id\",
+    customer_address.\"CA_STATE\" as \"cs_customer_state\",
+    boa.\"cs_order_number\" as \"cs_order_number\",
+    boa.\"cs_ship_date_id\" as \"cs_ship_date_id\"
+FROM
+    memory.customer_address as customer_address
+    LEFT OUTER JOIN boa on customer_address.\"CA_ADDRESS_SK\" = boa.\"cs_customer_address_id\"
+WHERE
+    customer_address.\"CA_STATE\" = 'GA' and boa.\"cs_order_number\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and boa.\"cs_order_number\" in (select rambunctious.\"multi_warehouse_sales\" from rambunctious where rambunctious.\"multi_warehouse_sales\" is not null)
+),
+resonant as (
+SELECT
+    falcon.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",
+    falcon.\"cs_item_id\" as \"cs_item_id\",
+    falcon.\"cs_order_number\" as \"cs_order_number\",
+    falcon.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"
+FROM
+    falcon
+    LEFT OUTER JOIN memory.call_center as call_center on falcon.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    LEFT OUTER JOIN memory.date_dim as date on falcon.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+WHERE
+    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and falcon.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and falcon.\"cs_order_number\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and falcon.\"cs_order_number\" in (select rambunctious.\"multi_warehouse_sales\" from rambunctious where rambunctious.\"multi_warehouse_sales\" is not null)
+),
+fossa as (
+SELECT
+    dingo.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
+FROM
+    memory.call_center as call_center
+    LEFT OUTER JOIN dingo on call_center.\"CC_CALL_CENTER_SK\" = dingo.\"cs_call_center_id\"
+    LEFT OUTER JOIN memory.date_dim as date on dingo.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+WHERE
+    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and dingo.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and dingo.\"cs_order_number\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and dingo.\"cs_order_number\" in (select rambunctious.\"multi_warehouse_sales\" from rambunctious where rambunctious.\"multi_warehouse_sales\" is not null)
+),
+juicy as (
+SELECT
+    sum(resonant.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
+    sum(resonant.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
+FROM
+    resonant),
+chicken as (
+SELECT
+    count(distinct fossa.\"cs_order_number_filter_929116887065743\") as \"order_count\"
+FROM
+    fossa)
+SELECT
+    chicken.\"order_count\" as \"order_count\",
+    juicy.\"total_shipping_cost\" as \"total_shipping_cost\",
+    juicy.\"total_net_profit\" as \"total_net_profit\"
+FROM
+    chicken
+    FULL JOIN juicy on 1=1
+ORDER BY 
+    chicken.\"order_count\" desc
+LIMIT (100)"""

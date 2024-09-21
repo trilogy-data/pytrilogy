@@ -1,7 +1,136 @@
-{
-    "query_id": 12,
-    "parse_time": 3.308144,
-    "exec_time": 1.189378,
-    "comp_time": 0.130803,
-    "generated_sql": "\nWITH \ntrite as (\nSELECT\n    web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",\n    date.\"D_DATE\" as \"web_sales_date_date\",\n    items.\"I_CATEGORY\" as \"web_sales_item_category\",\n    items.\"I_CLASS\" as \"web_sales_item_class\",\n    items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",\n    items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",\n    items.\"I_ITEM_ID\" as \"web_sales_item_name\",\n    web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",\n    web_sales.\"WS_ITEM_SK\" as \"web_sales_item_id\"\nFROM\n    memory.web_sales as web_sales\n    LEFT OUTER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"\n    LEFT OUTER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"),\nmartin as (\nSELECT\n    items.\"I_CLASS\" as \"web_sales_item_class\",\n    items.\"I_CATEGORY\" as \"web_sales_item_category\",\n    items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",\n    items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",\n    items.\"I_ITEM_ID\" as \"web_sales_item_name\"\nFROM\n    memory.item as items\nGROUP BY \n    items.\"I_ITEM_DESC\",\n    items.\"I_CURRENT_PRICE\",\n    items.\"I_ITEM_ID\",\n    items.\"I_CATEGORY\",\n    items.\"I_CLASS\"),\npelican as (\nSELECT\n    CASE WHEN trite.\"web_sales_date_date\" >= cast('1999-02-22' as date) and trite.\"web_sales_date_date\" <= cast('1999-03-24' as date) and trite.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN trite.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",\n    trite.\"web_sales_order_number\" as \"web_sales_order_number\",\n    trite.\"web_sales_item_id\" as \"web_sales_item_id\"\nFROM\n    trite),\nshrike as (\nSELECT\n    pelican.\"relevant_sales\" as \"relevant_sales\",\n    items.\"I_CATEGORY\" as \"web_sales_item_category\",\n    items.\"I_CLASS\" as \"web_sales_item_class\",\n    items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",\n    items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",\n    items.\"I_ITEM_ID\" as \"web_sales_item_name\",\n    pelican.\"web_sales_order_number\" as \"web_sales_order_number\",\n    pelican.\"web_sales_item_id\" as \"web_sales_item_id\"\nFROM\n    pelican\n    LEFT OUTER JOIN memory.item as items on pelican.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),\ncivet as (\nSELECT\n    sum(shrike.\"relevant_sales\") as \"itemrevenue\",\n    shrike.\"web_sales_item_category\" as \"web_sales_item_category\",\n    shrike.\"web_sales_item_class\" as \"web_sales_item_class\",\n    shrike.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",\n    shrike.\"web_sales_item_desc\" as \"web_sales_item_desc\",\n    shrike.\"web_sales_item_name\" as \"web_sales_item_name\",\n    sum(shrike.\"relevant_sales\") as \"_virtual_1496978012803723\"\nFROM\n    shrike\nGROUP BY \n    shrike.\"web_sales_item_desc\",\n    shrike.\"web_sales_item_class\",\n    shrike.\"web_sales_item_current_price\",\n    shrike.\"web_sales_item_name\",\n    shrike.\"web_sales_item_category\"),\nyellow as (\nSELECT\n    sum(shrike.\"relevant_sales\") as \"_virtual_341251569527357\",\n    shrike.\"web_sales_item_class\" as \"web_sales_item_class\"\nFROM\n    shrike\nGROUP BY \n    shrike.\"web_sales_item_class\"),\nrambunctious as (\nSELECT\n    martin.\"web_sales_item_class\" as \"web_sales_item_class\",\n    martin.\"web_sales_item_category\" as \"web_sales_item_category\",\n    martin.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",\n    martin.\"web_sales_item_desc\" as \"web_sales_item_desc\",\n    martin.\"web_sales_item_name\" as \"web_sales_item_name\",\n    yellow.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"\nFROM\n    martin\n    LEFT OUTER JOIN yellow on ((martin.\"web_sales_item_class\" is null and yellow.\"web_sales_item_class\" is null) or (martin.\"web_sales_item_class\" = yellow.\"web_sales_item_class\"))),\nlion as (\nSELECT\n    civet.\"web_sales_item_category\" as \"web_sales_item_category\",\n    civet.\"web_sales_item_class\" as \"web_sales_item_class\",\n    civet.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",\n    civet.\"web_sales_item_desc\" as \"web_sales_item_desc\",\n    civet.\"web_sales_item_name\" as \"web_sales_item_name\",\n    civet.\"_virtual_1496978012803723\" * 100.0 / rambunctious.\"_virtual_341251569527357\" as \"revenueratio\"\nFROM\n    civet\n    LEFT OUTER JOIN rambunctious on ((civet.\"web_sales_item_category\" is null and rambunctious.\"web_sales_item_category\" is null) or (civet.\"web_sales_item_category\" = rambunctious.\"web_sales_item_category\")) AND ((civet.\"web_sales_item_class\" is null and rambunctious.\"web_sales_item_class\" is null) or (civet.\"web_sales_item_class\" = rambunctious.\"web_sales_item_class\")) AND ((civet.\"web_sales_item_current_price\" is null and rambunctious.\"web_sales_item_current_price\" is null) or (civet.\"web_sales_item_current_price\" = rambunctious.\"web_sales_item_current_price\")) AND ((civet.\"web_sales_item_desc\" is null and rambunctious.\"web_sales_item_desc\" is null) or (civet.\"web_sales_item_desc\" = rambunctious.\"web_sales_item_desc\")) AND civet.\"web_sales_item_name\" = rambunctious.\"web_sales_item_name\"),\ntearful as (\nSELECT\n    lion.\"web_sales_item_category\" as \"web_sales_item_category\",\n    lion.\"web_sales_item_class\" as \"web_sales_item_class\",\n    lion.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",\n    lion.\"web_sales_item_desc\" as \"web_sales_item_desc\",\n    lion.\"web_sales_item_name\" as \"web_sales_item_name\",\n    lion.\"revenueratio\" as \"revenueratio\",\n    civet.\"itemrevenue\" as \"itemrevenue\"\nFROM\n    lion\n    LEFT OUTER JOIN civet on ((lion.\"web_sales_item_category\" is null and civet.\"web_sales_item_category\" is null) or (lion.\"web_sales_item_category\" = civet.\"web_sales_item_category\")) AND ((lion.\"web_sales_item_class\" is null and civet.\"web_sales_item_class\" is null) or (lion.\"web_sales_item_class\" = civet.\"web_sales_item_class\")) AND ((lion.\"web_sales_item_current_price\" is null and civet.\"web_sales_item_current_price\" is null) or (lion.\"web_sales_item_current_price\" = civet.\"web_sales_item_current_price\")) AND ((lion.\"web_sales_item_desc\" is null and civet.\"web_sales_item_desc\" is null) or (lion.\"web_sales_item_desc\" = civet.\"web_sales_item_desc\")) AND lion.\"web_sales_item_name\" = civet.\"web_sales_item_name\")\nSELECT\n    tearful.\"web_sales_item_name\" as \"web_sales_item_name\",\n    tearful.\"web_sales_item_desc\" as \"web_sales_item_desc\",\n    tearful.\"web_sales_item_category\" as \"web_sales_item_category\",\n    tearful.\"web_sales_item_class\" as \"web_sales_item_class\",\n    tearful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",\n    tearful.\"itemrevenue\" as \"itemrevenue\",\n    tearful.\"revenueratio\" as \"revenueratio\"\nFROM\n    tearful\nWHERE\n    tearful.\"itemrevenue\" is not null\n\nORDER BY \n    tearful.\"web_sales_item_category\" asc,\n    tearful.\"web_sales_item_class\" asc,\n    tearful.\"web_sales_item_name\" asc,\n    tearful.\"web_sales_item_desc\" asc,\n    tearful.\"revenueratio\" asc\nLIMIT (100)"
-}
+query_id = 12
+parse_time = 3.6649
+exec_time = 0.929509
+comp_time = 0.068026
+generated_sql = """
+
+WITH 
+parrot as (
+SELECT
+    web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
+    date.\"D_DATE\" as \"web_sales_date_date\",
+    items.\"I_CATEGORY\" as \"web_sales_item_category\",
+    items.\"I_CLASS\" as \"web_sales_item_class\",
+    items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
+    items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
+    items.\"I_ITEM_ID\" as \"web_sales_item_name\",
+    web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
+    web_sales.\"WS_ITEM_SK\" as \"web_sales_item_id\"
+FROM
+    memory.web_sales as web_sales
+    LEFT OUTER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"),
+cougar as (
+SELECT
+    items.\"I_CLASS\" as \"web_sales_item_class\",
+    items.\"I_CATEGORY\" as \"web_sales_item_category\",
+    items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
+    items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
+    items.\"I_ITEM_ID\" as \"web_sales_item_name\"
+FROM
+    memory.item as items
+GROUP BY 
+    items.\"I_CLASS\",
+    items.\"I_ITEM_DESC\",
+    items.\"I_CATEGORY\",
+    items.\"I_ITEM_ID\",
+    items.\"I_CURRENT_PRICE\"),
+yellow as (
+SELECT
+    CASE WHEN parrot.\"web_sales_date_date\" >= cast('1999-02-22' as date) and parrot.\"web_sales_date_date\" <= cast('1999-03-24' as date) and parrot.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN parrot.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
+    parrot.\"web_sales_order_number\" as \"web_sales_order_number\",
+    parrot.\"web_sales_item_id\" as \"web_sales_item_id\"
+FROM
+    parrot),
+puffin as (
+SELECT
+    yellow.\"relevant_sales\" as \"relevant_sales\",
+    items.\"I_CATEGORY\" as \"web_sales_item_category\",
+    items.\"I_CLASS\" as \"web_sales_item_class\",
+    items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
+    items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
+    items.\"I_ITEM_ID\" as \"web_sales_item_name\",
+    yellow.\"web_sales_order_number\" as \"web_sales_order_number\",
+    yellow.\"web_sales_item_id\" as \"web_sales_item_id\"
+FROM
+    yellow
+    LEFT OUTER JOIN memory.item as items on yellow.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
+highfalutin as (
+SELECT
+    sum(puffin.\"relevant_sales\") as \"itemrevenue\",
+    puffin.\"web_sales_item_category\" as \"web_sales_item_category\",
+    puffin.\"web_sales_item_class\" as \"web_sales_item_class\",
+    puffin.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    puffin.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    puffin.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sum(puffin.\"relevant_sales\") as \"_virtual_1496978012803723\"
+FROM
+    puffin
+GROUP BY 
+    puffin.\"web_sales_item_class\",
+    puffin.\"web_sales_item_category\",
+    puffin.\"web_sales_item_name\",
+    puffin.\"web_sales_item_desc\",
+    puffin.\"web_sales_item_current_price\"),
+busy as (
+SELECT
+    sum(puffin.\"relevant_sales\") as \"_virtual_341251569527357\",
+    puffin.\"web_sales_item_class\" as \"web_sales_item_class\"
+FROM
+    puffin
+GROUP BY 
+    puffin.\"web_sales_item_class\"),
+stork as (
+SELECT
+    cougar.\"web_sales_item_class\" as \"web_sales_item_class\",
+    cougar.\"web_sales_item_category\" as \"web_sales_item_category\",
+    cougar.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    cougar.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    cougar.\"web_sales_item_name\" as \"web_sales_item_name\",
+    busy.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
+FROM
+    cougar
+    LEFT OUTER JOIN busy on ((cougar.\"web_sales_item_class\" is null and busy.\"web_sales_item_class\" is null) or (cougar.\"web_sales_item_class\" = busy.\"web_sales_item_class\"))),
+premium as (
+SELECT
+    highfalutin.\"web_sales_item_category\" as \"web_sales_item_category\",
+    highfalutin.\"web_sales_item_class\" as \"web_sales_item_class\",
+    highfalutin.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    highfalutin.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    highfalutin.\"web_sales_item_name\" as \"web_sales_item_name\",
+    highfalutin.\"_virtual_1496978012803723\" * 100.0 / stork.\"_virtual_341251569527357\" as \"revenueratio\"
+FROM
+    highfalutin
+    LEFT OUTER JOIN stork on ((highfalutin.\"web_sales_item_category\" is null and stork.\"web_sales_item_category\" is null) or (highfalutin.\"web_sales_item_category\" = stork.\"web_sales_item_category\")) AND ((highfalutin.\"web_sales_item_class\" is null and stork.\"web_sales_item_class\" is null) or (highfalutin.\"web_sales_item_class\" = stork.\"web_sales_item_class\")) AND ((highfalutin.\"web_sales_item_current_price\" is null and stork.\"web_sales_item_current_price\" is null) or (highfalutin.\"web_sales_item_current_price\" = stork.\"web_sales_item_current_price\")) AND ((highfalutin.\"web_sales_item_desc\" is null and stork.\"web_sales_item_desc\" is null) or (highfalutin.\"web_sales_item_desc\" = stork.\"web_sales_item_desc\")) AND highfalutin.\"web_sales_item_name\" = stork.\"web_sales_item_name\"),
+finch as (
+SELECT
+    premium.\"web_sales_item_category\" as \"web_sales_item_category\",
+    premium.\"web_sales_item_class\" as \"web_sales_item_class\",
+    premium.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    premium.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    premium.\"web_sales_item_name\" as \"web_sales_item_name\",
+    premium.\"revenueratio\" as \"revenueratio\",
+    highfalutin.\"itemrevenue\" as \"itemrevenue\"
+FROM
+    premium
+    LEFT OUTER JOIN highfalutin on ((premium.\"web_sales_item_category\" is null and highfalutin.\"web_sales_item_category\" is null) or (premium.\"web_sales_item_category\" = highfalutin.\"web_sales_item_category\")) AND ((premium.\"web_sales_item_class\" is null and highfalutin.\"web_sales_item_class\" is null) or (premium.\"web_sales_item_class\" = highfalutin.\"web_sales_item_class\")) AND ((premium.\"web_sales_item_current_price\" is null and highfalutin.\"web_sales_item_current_price\" is null) or (premium.\"web_sales_item_current_price\" = highfalutin.\"web_sales_item_current_price\")) AND ((premium.\"web_sales_item_desc\" is null and highfalutin.\"web_sales_item_desc\" is null) or (premium.\"web_sales_item_desc\" = highfalutin.\"web_sales_item_desc\")) AND premium.\"web_sales_item_name\" = highfalutin.\"web_sales_item_name\")
+SELECT
+    finch.\"web_sales_item_name\" as \"web_sales_item_name\",
+    finch.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    finch.\"web_sales_item_category\" as \"web_sales_item_category\",
+    finch.\"web_sales_item_class\" as \"web_sales_item_class\",
+    finch.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    finch.\"itemrevenue\" as \"itemrevenue\",
+    finch.\"revenueratio\" as \"revenueratio\"
+FROM
+    finch
+WHERE
+    finch.\"itemrevenue\" is not null
+
+ORDER BY 
+    finch.\"web_sales_item_category\" asc,
+    finch.\"web_sales_item_class\" asc,
+    finch.\"web_sales_item_name\" asc,
+    finch.\"web_sales_item_desc\" asc,
+    finch.\"revenueratio\" asc
+LIMIT (100)"""

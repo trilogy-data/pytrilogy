@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import json
 import matplotlib.pyplot as plt
-
+import tomllib
 
 def analyze(show: bool = False):
 
@@ -13,7 +13,7 @@ def analyze(show: bool = False):
         if filename.endswith(".log"):
             with open(root / filename, "r") as f:
                 try:
-                    loaded = json.loads(f.read())
+                    loaded = tomllib.load(f)
                 except json.decoder.JSONDecodeError:
                     print(f"Error loading {filename}")
                     continue

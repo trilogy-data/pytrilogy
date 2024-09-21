@@ -3,7 +3,7 @@ from pathlib import Path
 from trilogy import Executor
 import pytest
 from datetime import datetime
-import json
+import tomli_w
 
 working_path = Path(__file__).parent
 
@@ -40,16 +40,18 @@ def run_query(engine: Executor, idx: int):
 
     with open(working_path / f"zquery{idx:02d}.log", "w") as f:
         f.write(
-            json.dumps(
-                {
+            tomli_w.dumps({
                     "query_id": idx,
                     "parse_time": parse_time.total_seconds(),
                     "exec_time": exec_time.total_seconds(),
                     "comp_time": comp_time.total_seconds(),
+                    "gen_length": len(query),
                     "generated_sql": query,
-                },
-                indent=4,
-            )
+                }, multiline_strings=True)
+            # json.dumps(
+            #     ,
+            #     indent=4,
+            # )
         )
     return query
 
