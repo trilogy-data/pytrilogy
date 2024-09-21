@@ -35,7 +35,6 @@ from trilogy.core.ergonomics import CTE_NAMES
 from trilogy.core.optimization import optimize_ctes
 from math import ceil
 from collections import defaultdict
-from random import shuffle
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
