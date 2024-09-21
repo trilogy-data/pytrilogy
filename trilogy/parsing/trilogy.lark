@@ -90,9 +90,9 @@
 
 
     // rank/lag/lead
-    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i)  /[\s]+/
+    WINDOW_TYPE: ("row_number"i|"rank"i|"lag"i|"lead"i | "sum"i | "avg"i | "max"i | "min"i )  /[\s]+/
     
-    window_item: WINDOW_TYPE int_lit? concept_lit  window_item_over? window_item_order?
+    window_item: WINDOW_TYPE int_lit? expr  window_item_over? window_item_order?
     
     window_item_over: ("OVER"i over_list)
     
@@ -296,7 +296,7 @@
 
     MODIFIER: "Optional"i | "Partial"i | "Nullable"i
 
-    SHORTHAND_MODIFIER: "~"
+    SHORTHAND_MODIFIER: "~" | "?"
 
     struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
 

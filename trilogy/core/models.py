@@ -2264,6 +2264,7 @@ class QueryDatasource(BaseModel):
     @field_validator("joins")
     @classmethod
     def validate_joins(cls, v):
+        unique_pairs = set()
         for join in v:
             if not isinstance(join, BaseJoin):
                 continue
@@ -2271,7 +2272,16 @@ class QueryDatasource(BaseModel):
                 raise SyntaxError(
                     f"Cannot join a datasource to itself, joining {join.left_datasource}"
                 )
-
+            pairing = "".join(
+                sorted(
+                    [join.left_datasource.identifier, join.right_datasource.identifier]
+                )
+            )
+            if pairing in unique_pairs:
+                raise SyntaxError(
+                    f"Duplicate join {join.left_datasource.identifier} and {join.right_datasource.identifier}"
+                )
+            unique_pairs.add(pairing)
         return v
 
     @field_validator("input_concepts")
@@ -2386,6 +2396,11 @@ class QueryDatasource(BaseModel):
                 final_source_map[key] = other.source_map[key]
         for k, v in final_source_map.items():
             final_source_map[k] = set(merged_datasources[x.full_name] for x in list(v))
+        self_hidden = self.hidden_concepts or []
+        other_hidden = other.hidden_concepts or []
+        hidden = [
+            x for x in self_hidden if x.address in [y.address for y in other_hidden]
+        ]
         qds = QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -2409,9 +2424,7 @@ class QueryDatasource(BaseModel):
             ),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
-            hidden_concepts=unique(
-                self.hidden_concepts + other.hidden_concepts, "address"
-            ),
+            hidden_concepts=hidden,
         )
 
         return qds
@@ -2557,6 +2570,7 @@ class CTE(BaseModel):
     @property
     def comment(self) -> str:
         base = f"Target: {str(self.grain)}."
+        base += f" Source: {self.source.source_type}."
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
         if self.joins:
@@ -2565,6 +2579,11 @@ class CTE(BaseModel):
             base += (
                 f"\n-- Partials: {', '.join([str(x) for x in self.partial_concepts])}."
             )
+        base += f"\n-- Source Map: {self.source_map}."
+        base += f"\n-- Output: {', '.join([str(x) for x in self.output_columns])}."
+        if self.hidden_concepts:
+            base += f"\n-- Hidden: {', '.join([str(x) for x in self.hidden_concepts])}."
+
         return base
 
     def inline_parent_datasource(self, parent: CTE, force_group: bool = False) -> bool:
@@ -2632,6 +2651,10 @@ class CTE(BaseModel):
                 f" {self.name} {other.name} conditions {self.condition} {other.condition}"
             )
             raise ValueError(error)
+        mutually_hidden = []
+        for concept in self.hidden_concepts:
+            if concept in other.hidden_concepts:
+                mutually_hidden.append(concept)
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
@@ -2654,9 +2677,7 @@ class CTE(BaseModel):
         self.source.output_concepts = unique(
             self.source.output_concepts + other.source.output_concepts, "address"
         )
-        self.hidden_concepts = unique(
-            self.hidden_concepts + other.hidden_concepts, "address"
-        )
+        self.hidden_concepts = mutually_hidden
         self.existence_source_map = {
             **self.existence_source_map,
             **other.existence_source_map,
@@ -3011,6 +3032,9 @@ class EnvironmentDatasourceDict(dict):
 
     def values(self) -> ValuesView[Datasource]:  # type: ignore
         return super().values()
+
+    def items(self) -> ItemsView[str, Datasource]:  # type: ignore
+        return super().items()
 
 
 class EnvironmentConceptDict(dict):

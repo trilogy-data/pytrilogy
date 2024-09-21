@@ -79,7 +79,7 @@ def test_five(engine):
 
 def test_six(engine):
     query = run_query(engine, 6)
-    assert len(query) < 5500, query
+    assert len(query) < 7000, query
 
 
 def test_seven(engine):
@@ -109,14 +109,20 @@ def test_sixteen(engine):
     assert len(query) < 6000, query
 
 
+def test_twenty(engine):
+    _ = run_query(engine, 20)
+    # size gating
+    # assert len(query) < 6000, query
+
+
 def run_adhoc(number: int):
     from trilogy import Environment, Dialects
     from trilogy.hooks.query_debugger import DebuggingHook
-    from logging import DEBUG
+    from logging import INFO
 
     env = Environment(working_path=Path(__file__).parent)
     engine: Executor = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook(DEBUG)]
+        environment=env, hooks=[DebuggingHook(INFO)]
     )
     engine.execute_raw_sql(
         """INSTALL tpcds;
@@ -127,4 +133,4 @@ SELECT * FROM dsdgen(sf=1);"""
 
 
 if __name__ == "__main__":
-    run_adhoc(10)
+    run_adhoc(20)

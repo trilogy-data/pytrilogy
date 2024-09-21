@@ -1,6 +1,7 @@
 import item as item;
 import date as date;
 import date as ship_date;
+import date as sold_date;
 import time as time;
 import customer as customer;
 import customer as bill_customer;
@@ -24,6 +25,7 @@ property <order_number,item.id>.profit <- list_price - wholesale_cost - discount
 
 datasource catalog_sales (
     CS_SOLD_DATE_SK: date.id,
+    CS_SOLD_DATE_SK: sold_date.id,
     CS_SOLD_TIME_SK: time.id,
     CS_SHIP_DATE_SK: ship_date.id,
     CS_SHIP_CUSTOMER_SK: ~customer.id,
@@ -36,6 +38,7 @@ datasource catalog_sales (
     CS_EXT_WHOLESALE_COST: extra_wholesale_cost,
     CS_CALL_CENTER_SK: call_center.id,
     CS_EXT_SHIP_COST: extra_ship_cost,
+    CS_EXT_SALES_PRICE: extra_sales_price,
     CS_NET_PROFIT: net_profit,
     CS_WAREHOUSE_SK: warehouse.id,
 

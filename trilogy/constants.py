@@ -28,6 +28,11 @@ class Optimizations:
     direct_return: bool = True
 
 
+@dataclass
+class Comments:
+    pass
+
+
 # TODO: support loading from environments
 @dataclass
 class Config:

@@ -128,8 +128,6 @@ def generate_source_map(
                 if qdk in output_address:
                     source_map[qdk].append(cte.name)
             # now do a pass that accepts partials
-            # TODO: move this into a second loop by first creationg all sub sources
-            # then loop through this
             for cte in matches:
                 if qdk not in source_map:
                     source_map[qdk] = [cte.name]
@@ -334,11 +332,12 @@ def append_existence_check(
         for subselect in where.existence_arguments:
             if not subselect:
                 continue
-            logger.info(
-                f"{LOGGER_PREFIX} fetching existance clause inputs {[str(c) for c in subselect]}"
-            )
+
             eds = source_query_concepts(
                 [*subselect], environment=environment, g=graph, history=history
+            )
+            logger.info(
+                f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
             )
             node.add_parents([eds])
             node.add_existence_concepts([*subselect])
@@ -384,9 +383,7 @@ def get_query_node(
     if nest_where and statement.where_clause:
         if not all_aggregate:
             ods.conditions = statement.where_clause.conditional
-        ods.output_concepts = statement.output_components
-        # ods.hidden_concepts = where_delta
-        ods.rebuild_cache()
+        ods.set_output_concepts(statement.output_components)
         append_existence_check(ods, environment, graph, history)
         ds = GroupNode(
             output_concepts=statement.output_components,

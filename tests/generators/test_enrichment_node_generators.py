@@ -27,6 +27,7 @@ def test_gen_property_enrichment_node(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=1,
         source_concepts=search_concepts,
+        log_lambda=lambda x: x,
     )
 
     assert address_set(node.output_concepts) == address_set(

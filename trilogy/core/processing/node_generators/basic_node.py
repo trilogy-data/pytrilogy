@@ -10,6 +10,7 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.utility import unique
 from trilogy.constants import logger
+from trilogy.core.enums import SourceType
 from itertools import combinations
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
@@ -35,7 +36,11 @@ def gen_basic_node(
     attempts: List[tuple[list[Concept], list[Concept]]] = [
         (parent_concepts, [concept] + local_optional_redundant)
     ]
-    equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]
+    equivalent_optional = [
+        x
+        for x in local_optional
+        if x.lineage == concept.lineage and x.address != concept.address
+    ]
     non_equivalent_optional = [
         x for x in local_optional if x not in equivalent_optional
     ]
@@ -61,8 +66,10 @@ def gen_basic_node(
             depth=depth + 1,
             history=history,
         )
+
         if not parent_node:
             continue
+        parent_node.source_type = SourceType.BASIC
         parents: List[StrategyNode] = [parent_node]
         for x in basic_output:
             sources = [p for p in parents if x in p.output_concepts]
