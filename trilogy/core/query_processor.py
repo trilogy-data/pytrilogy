@@ -178,7 +178,6 @@ def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
             int = ceil(idx / len(CTE_NAMES))
             suffix = f"_{int}"
         valid = [x for x in CTE_NAMES if x + suffix not in name_map.values()]
-        shuffle(valid)
         lookup = valid[0]
         new_name = f"{lookup}{suffix}"
         name_map[full_name] = new_name
