@@ -70,20 +70,21 @@ def create_fact(
 
 
 def setup_normalized_engine() -> Executor:
+
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / "train.csv"
-    df = pd.read_csv(csv)
-    _ = df
     output = Executor(
         engine=engine, dialect=Dialects.DUCK_DB, hooks=[DebuggingHook(level=INFO)]
     )
-
+    df = pd.read_csv(csv)
+    output.execute_raw_sql("register(:name, :df)", {"name": "df", "df": df})
     output.execute_raw_sql("CREATE TABLE raw_data AS SELECT * FROM df")
     create_passenger_dimension(output, "passenger")
     create_arbitrary_dimension(output, "pclass", "class")
     create_fact(output, ["passenger"])
     df2 = pd.read_csv(PurePath(dirname(__file__)) / "richest.csv")
     _ = df2
+    output.execute_raw_sql("register(:name, :df)", {"name": "df2", "df": df2})
     output.execute_raw_sql("CREATE TABLE rich_info AS SELECT * FROM df2")
     return output
 
@@ -109,10 +110,11 @@ def setup_engine(debug_flag: bool = True) -> Executor:
             else []
         ),
     )
-
+    output.execute_raw_sql("register(:name, :df)", {"name": "df", "df": df})
     output.execute_raw_sql("CREATE TABLE raw_titanic AS SELECT * FROM df")
     df2 = pd.read_csv(PurePath(dirname(__file__)) / "richest.csv")
     _ = df2
+    output.execute_raw_sql("register(:name, :df)", {"name": "df2", "df": df2})
     output.execute_raw_sql("CREATE TABLE rich_info AS SELECT * FROM df2")
     return output
 

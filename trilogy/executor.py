@@ -300,10 +300,16 @@ class Executor(object):
                 self.environment.add_datasource(x.datasource)
             yield x
 
-    def execute_raw_sql(self, command: str) -> CursorResult:
+    def execute_raw_sql(
+        self, command: str, variables: dict | None = None
+    ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine"""
-        return self.connection.execute(text(command))
+        if variables:
+            return self.connection.execute(text(command), variables)
+        return self.connection.execute(
+            text(command),
+        )
 
     def execute_text(self, command: str) -> List[CursorResult]:
         """Run a preql text command"""

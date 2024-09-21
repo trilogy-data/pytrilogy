@@ -40,14 +40,17 @@ def run_query(engine: Executor, idx: int):
 
     with open(working_path / f"zquery{idx:02d}.log", "w") as f:
         f.write(
-            tomli_w.dumps({
+            tomli_w.dumps(
+                {
                     "query_id": idx,
                     "parse_time": parse_time.total_seconds(),
                     "exec_time": exec_time.total_seconds(),
                     "comp_time": comp_time.total_seconds(),
                     "gen_length": len(query),
                     "generated_sql": query,
-                }, multiline_strings=True)
+                },
+                multiline_strings=True,
+            )
         )
     return query
 

@@ -61,10 +61,9 @@ def resolve_concept_map(
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
-            if (
-                isinstance(input, QueryDatasource)
-                and concept.address in [x.address for x in input.hidden_concepts]
-            ):
+            if isinstance(input, QueryDatasource) and concept.address in [
+                x.address for x in input.hidden_concepts
+            ]:
                 continue
             if concept.address in full_addresses:
 
@@ -81,10 +80,9 @@ def resolve_concept_map(
         for concept in input.output_concepts:
             if concept.address not in [t.address for t in inherited_inputs]:
                 continue
-            if (
-                isinstance(input, QueryDatasource)
-                and concept.address in [x.address for x in input.hidden_concepts]
-            ):
+            if isinstance(input, QueryDatasource) and concept.address in [
+                x.address for x in input.hidden_concepts
+            ]:
                 continue
             if len(concept_map.get(concept.address, [])) == 0:
                 concept_map[concept.address].add(input)
@@ -93,7 +91,7 @@ def resolve_concept_map(
         if target.address not in inherited:
             # an empty source means it is defined in this CTE
             concept_map[target.address] = set()
-    
+
     return concept_map
 
 
@@ -227,7 +225,9 @@ class StrategyNode:
         for x in concepts:
             self.hidden_concepts.append(x)
         addresses = [x.address for x in concepts]
-        self.output_concepts = [x for x in self.output_concepts if x.address not in addresses]
+        self.output_concepts = [
+            x for x in self.output_concepts if x.address not in addresses
+        ]
         self.rebuild_cache()
 
     @property

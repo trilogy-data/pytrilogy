@@ -1,44 +1,44 @@
 query_id = 16
-parse_time = 15.287787
-exec_time = 0.376845
-comp_time = 0.015624
-gen_length = 5856
+parse_time = 17.016847
+exec_time = 0.483978
+comp_time = 0.03015
+gen_length = 5736
 generated_sql = """
 
 WITH 
-exuberant as (
+tenuous as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-monitor as (
+crow as (
 SELECT
     catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select exuberant.\"cr_order_number\" from exuberant where exuberant.\"cr_order_number\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select tenuous.\"cr_order_number\" from tenuous where tenuous.\"cr_order_number\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_ORDER_NUMBER\",
-    catalog_sales.\"CS_WAREHOUSE_SK\"),
-loon as (
+    catalog_sales.\"CS_WAREHOUSE_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\"),
+gullible as (
 SELECT
-    count(monitor.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
-    monitor.\"cs_order_number\" as \"cs_order_number\"
+    count(crow.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    crow.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    monitor
+    crow
 GROUP BY 
-    monitor.\"cs_order_number\"),
-thoughtful as (
+    crow.\"cs_order_number\"),
+kestrel as (
 SELECT
-    CASE WHEN loon.\"_agg_count_6430482449237259\" > 1 THEN loon.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN gullible.\"_agg_count_6430482449237259\" > 1 THEN gullible.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    loon),
-wolverine as (
+    gullible),
+macaw as (
 SELECT
     catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
     catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
@@ -47,14 +47,14 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select exuberant.\"cr_order_number\" from exuberant where exuberant.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select thoughtful.\"multi_warehouse_sales\" from thoughtful where thoughtful.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select tenuous.\"cr_order_number\" from tenuous where tenuous.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select kestrel.\"multi_warehouse_sales\" from kestrel where kestrel.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_CALL_CENTER_SK\",
-    catalog_sales.\"CS_SHIP_DATE_SK\",
+    catalog_sales.\"CS_SHIP_ADDR_SK\",
     catalog_sales.\"CS_ORDER_NUMBER\",
-    catalog_sales.\"CS_SHIP_ADDR_SK\"),
-cobra as (
+    catalog_sales.\"CS_CALL_CENTER_SK\",
+    catalog_sales.\"CS_SHIP_DATE_SK\"),
+lark as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
     catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
@@ -68,62 +68,62 @@ FROM
     memory.catalog_sales as catalog_sales
     FULL JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select exuberant.\"cr_order_number\" from exuberant where exuberant.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select thoughtful.\"multi_warehouse_sales\" from thoughtful where thoughtful.\"multi_warehouse_sales\" is not null)
+    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select tenuous.\"cr_order_number\" from tenuous where tenuous.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select kestrel.\"multi_warehouse_sales\" from kestrel where kestrel.\"multi_warehouse_sales\" is not null)
 ),
-quetzal as (
+chicken as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
-    wolverine.\"cs_call_center_id\" as \"cs_call_center_id\",
+    macaw.\"cs_call_center_id\" as \"cs_call_center_id\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
-    wolverine.\"cs_order_number\" as \"cs_order_number\",
-    wolverine.\"cs_ship_date_id\" as \"cs_ship_date_id\"
+    macaw.\"cs_order_number\" as \"cs_order_number\",
+    macaw.\"cs_ship_date_id\" as \"cs_ship_date_id\"
 FROM
     memory.customer_address as customer_address
-    LEFT OUTER JOIN wolverine on customer_address.\"CA_ADDRESS_SK\" = wolverine.\"cs_customer_address_id\"
+    LEFT OUTER JOIN macaw on customer_address.\"CA_ADDRESS_SK\" = macaw.\"cs_customer_address_id\"
 WHERE
-    customer_address.\"CA_STATE\" = 'GA' and wolverine.\"cs_order_number\" not in (select exuberant.\"cr_order_number\" from exuberant where exuberant.\"cr_order_number\" is not null) and wolverine.\"cs_order_number\" in (select thoughtful.\"multi_warehouse_sales\" from thoughtful where thoughtful.\"multi_warehouse_sales\" is not null)
+    customer_address.\"CA_STATE\" = 'GA' and macaw.\"cs_order_number\" not in (select tenuous.\"cr_order_number\" from tenuous where tenuous.\"cr_order_number\" is not null) and macaw.\"cs_order_number\" in (select kestrel.\"multi_warehouse_sales\" from kestrel where kestrel.\"multi_warehouse_sales\" is not null)
 ),
-ocelot as (
+slow as (
 SELECT
-    cobra.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",
-    cobra.\"cs_item_id\" as \"cs_item_id\",
-    cobra.\"cs_order_number\" as \"cs_order_number\",
-    cobra.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"
+    lark.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",
+    lark.\"cs_item_id\" as \"cs_item_id\",
+    lark.\"cs_order_number\" as \"cs_order_number\",
+    lark.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"
 FROM
-    cobra
-    LEFT OUTER JOIN memory.call_center as call_center on cobra.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
-    LEFT OUTER JOIN memory.date_dim as date on cobra.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    lark
+    LEFT OUTER JOIN memory.call_center as call_center on lark.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    LEFT OUTER JOIN memory.date_dim as date on lark.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
 WHERE
-    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and cobra.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and cobra.\"cs_order_number\" not in (select exuberant.\"cr_order_number\" from exuberant where exuberant.\"cr_order_number\" is not null) and cobra.\"cs_order_number\" in (select thoughtful.\"multi_warehouse_sales\" from thoughtful where thoughtful.\"multi_warehouse_sales\" is not null)
+    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and lark.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and lark.\"cs_order_number\" not in (select tenuous.\"cr_order_number\" from tenuous where tenuous.\"cr_order_number\" is not null) and lark.\"cs_order_number\" in (select kestrel.\"multi_warehouse_sales\" from kestrel where kestrel.\"multi_warehouse_sales\" is not null)
 ),
-puffin as (
+sweltering as (
 SELECT
-    quetzal.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
+    chicken.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
 FROM
     memory.call_center as call_center
-    LEFT OUTER JOIN quetzal on call_center.\"CC_CALL_CENTER_SK\" = quetzal.\"cs_call_center_id\"
-    LEFT OUTER JOIN memory.date_dim as date on quetzal.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN chicken on call_center.\"CC_CALL_CENTER_SK\" = chicken.\"cs_call_center_id\"
+    LEFT OUTER JOIN memory.date_dim as date on chicken.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
 WHERE
-    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and quetzal.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and quetzal.\"cs_order_number\" not in (select exuberant.\"cr_order_number\" from exuberant where exuberant.\"cr_order_number\" is not null) and quetzal.\"cs_order_number\" in (select thoughtful.\"multi_warehouse_sales\" from thoughtful where thoughtful.\"multi_warehouse_sales\" is not null)
+    date.\"D_DATE\" >= cast('2002-02-01' as date) and date.\"D_DATE\" <= cast('2002-04-02' as date) and chicken.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and chicken.\"cs_order_number\" not in (select tenuous.\"cr_order_number\" from tenuous where tenuous.\"cr_order_number\" is not null) and chicken.\"cs_order_number\" in (select kestrel.\"multi_warehouse_sales\" from kestrel where kestrel.\"multi_warehouse_sales\" is not null)
 ),
-abundant as (
+pigeon as (
 SELECT
-    sum(ocelot.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
-    sum(ocelot.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
+    sum(slow.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
+    sum(slow.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
 FROM
-    ocelot),
-macaw as (
+    slow),
+fabulous as (
 SELECT
-    count(distinct puffin.\"cs_order_number_filter_929116887065743\") as \"order_count\"
+    count(distinct sweltering.\"cs_order_number_filter_929116887065743\") as \"order_count\"
 FROM
-    puffin)
+    sweltering)
 SELECT
-    macaw.\"order_count\" as \"order_count\",
-    abundant.\"total_shipping_cost\" as \"total_shipping_cost\",
-    abundant.\"total_net_profit\" as \"total_net_profit\"
+    fabulous.\"order_count\" as \"order_count\",
+    pigeon.\"total_shipping_cost\" as \"total_shipping_cost\",
+    pigeon.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    macaw
-    FULL JOIN abundant on 1=1
+    fabulous
+    FULL JOIN pigeon on 1=1
 ORDER BY 
-    macaw.\"order_count\" desc
+    fabulous.\"order_count\" desc
 LIMIT (100)"""

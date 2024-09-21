@@ -5,6 +5,7 @@ import json
 import matplotlib.pyplot as plt
 import tomllib
 
+
 def analyze(show: bool = False):
 
     results = []

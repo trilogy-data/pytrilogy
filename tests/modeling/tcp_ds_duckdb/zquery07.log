@@ -1,12 +1,12 @@
 query_id = 7
-parse_time = 3.496359
-exec_time = 0.90842
-comp_time = 0.200787
-gen_length = 4846
+parse_time = 2.672703
+exec_time = 0.810595
+comp_time = 0.254959
+gen_length = 4849
 generated_sql = """
 
 WITH 
-spiritual as (
+divergent as (
 SELECT
     store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
     store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
@@ -19,15 +19,15 @@ SELECT
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_QUANTITY\",
-    store_sales.\"SS_CDEMO_SK\",
     store_sales.\"SS_SALES_PRICE\",
-    store_sales.\"SS_PROMO_SK\",
-    store_sales.\"SS_LIST_PRICE\",
-    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_COUPON_AMT\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-serval as (
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_ITEM_SK\",
+    store_sales.\"SS_PROMO_SK\",
+    store_sales.\"SS_QUANTITY\",
+    store_sales.\"SS_LIST_PRICE\",
+    store_sales.\"SS_CDEMO_SK\"),
+waggish as (
 SELECT
     customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
     customer_demographics.\"CD_MARITAL_STATUS\" as \"store_sales_customer_demographic_marital_status\",
@@ -36,67 +36,67 @@ SELECT
     promotion.\"P_CHANNEL_EVENT\" as \"store_sales_promotion_channel_event\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     items.\"I_ITEM_ID\" as \"store_sales_item_name\",
-    spiritual.\"store_sales_quantity\" as \"store_sales_quantity\",
-    spiritual.\"store_sales_list_price\" as \"store_sales_list_price\",
-    spiritual.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    spiritual.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    divergent.\"store_sales_quantity\" as \"store_sales_quantity\",
+    divergent.\"store_sales_list_price\" as \"store_sales_list_price\",
+    divergent.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    divergent.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    spiritual
-    LEFT OUTER JOIN memory.customer_demographics as customer_demographics on spiritual.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
-    LEFT OUTER JOIN memory.date_dim as date on spiritual.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    LEFT OUTER JOIN memory.item as items on spiritual.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
-    LEFT OUTER JOIN memory.promotion as promotion on spiritual.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
+    divergent
+    LEFT OUTER JOIN memory.customer_demographics as customer_demographics on divergent.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
+    LEFT OUTER JOIN memory.date_dim as date on divergent.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.item as items on divergent.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    LEFT OUTER JOIN memory.promotion as promotion on divergent.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
 ),
-wooden as (
+fox as (
 SELECT
-    serval.\"store_sales_item_name\" as \"store_sales_item_name\",
-    serval.\"store_sales_quantity\" as \"store_sales_quantity\",
-    serval.\"store_sales_list_price\" as \"store_sales_list_price\",
-    serval.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    serval.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    waggish.\"store_sales_item_name\" as \"store_sales_item_name\",
+    waggish.\"store_sales_quantity\" as \"store_sales_quantity\",
+    waggish.\"store_sales_list_price\" as \"store_sales_list_price\",
+    waggish.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    waggish.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    serval
+    waggish
 WHERE
-    serval.\"store_sales_customer_demographic_gender\" = 'M' and serval.\"store_sales_customer_demographic_marital_status\" = 'S' and serval.\"store_sales_customer_demographic_education_status\" = 'College' and ( serval.\"store_sales_promotion_channel_email\" = 'N' or serval.\"store_sales_promotion_channel_event\" = 'N' ) and serval.\"store_sales_date_year\" = 2000
+    waggish.\"store_sales_customer_demographic_gender\" = 'M' and waggish.\"store_sales_customer_demographic_marital_status\" = 'S' and waggish.\"store_sales_customer_demographic_education_status\" = 'College' and ( waggish.\"store_sales_promotion_channel_email\" = 'N' or waggish.\"store_sales_promotion_channel_event\" = 'N' ) and waggish.\"store_sales_date_year\" = 2000
 
 GROUP BY 
-    serval.\"store_sales_sales_price\",
-    serval.\"store_sales_list_price\",
-    serval.\"store_sales_coupon_amt\",
-    serval.\"store_sales_item_name\",
-    serval.\"store_sales_quantity\"),
-kestrel as (
+    waggish.\"store_sales_list_price\",
+    waggish.\"store_sales_coupon_amt\",
+    waggish.\"store_sales_quantity\",
+    waggish.\"store_sales_item_name\",
+    waggish.\"store_sales_sales_price\"),
+cooperative as (
 SELECT
-    wooden.\"store_sales_item_name\" as \"store_sales_item_name\",
-    wooden.\"store_sales_quantity\" as \"store_sales_quantity\",
-    wooden.\"store_sales_list_price\" as \"store_sales_list_price\",
-    wooden.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    wooden.\"store_sales_sales_price\" as \"store_sales_sales_price\",
-    wooden.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    wooden.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
-    wooden.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
-    wooden.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
-    wooden.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
+    fox.\"store_sales_item_name\" as \"store_sales_item_name\",
+    fox.\"store_sales_quantity\" as \"store_sales_quantity\",
+    fox.\"store_sales_list_price\" as \"store_sales_list_price\",
+    fox.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    fox.\"store_sales_sales_price\" as \"store_sales_sales_price\",
+    fox.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    fox.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
+    fox.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
+    fox.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
+    fox.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
 FROM
-    wooden
+    fox
 GROUP BY 
-    wooden.\"store_sales_coupon_amt\",
-    wooden.\"store_sales_list_price\",
-    wooden.\"store_sales_sales_price\",
-    wooden.\"store_sales_quantity\",
-    wooden.\"store_sales_item_name\")
+    fox.\"store_sales_sales_price\",
+    fox.\"store_sales_list_price\",
+    fox.\"store_sales_quantity\",
+    fox.\"store_sales_coupon_amt\",
+    fox.\"store_sales_item_name\")
 SELECT
-    kestrel.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    avg(kestrel.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
-    avg(kestrel.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
-    avg(kestrel.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
-    avg(kestrel.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
+    cooperative.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    avg(cooperative.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
+    avg(cooperative.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
+    avg(cooperative.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
+    avg(cooperative.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
 FROM
-    kestrel
+    cooperative
 GROUP BY 
-    kestrel.\"filtered_sales_store_sales_item_name\"
+    cooperative.\"filtered_sales_store_sales_item_name\"
 ORDER BY 
-    kestrel.\"filtered_sales_store_sales_item_name\" asc
+    cooperative.\"filtered_sales_store_sales_item_name\" asc
 LIMIT (100)"""
