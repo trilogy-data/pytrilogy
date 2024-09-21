@@ -62,6 +62,8 @@ class Modifier(Enum):
         strval = str(value)
         if strval == "~":
             return Modifier.PARTIAL
+        elif strval == "?":
+            return Modifier.NULLABLE
         return super()._missing_(value=strval.capitalize())
 
 
@@ -273,6 +275,7 @@ class SourceType(Enum):
     CONSTANT = "constant"
     ROWSET = "rowset"
     MERGE = "merge"
+    BASIC = "basic"
 
 
 class ShowCategory(Enum):

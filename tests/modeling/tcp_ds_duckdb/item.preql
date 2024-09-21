@@ -5,10 +5,10 @@ property id.name string;
 property id.brand_id int;
 property id.brand_name string;
 property id.manufacturer_id int;
-property id.category int;
-property id.current_price float;
-property id.class string;
-property id.desc string;
+property id.category int?;
+property id.current_price float?;
+property id.class string?;
+property id.desc string?;
 
 datasource items (
     I_ITEM_SK: id,

@@ -50,7 +50,7 @@ def process_function_args(
             id_hash = string_to_hash(str(arg))
             concept = function_to_concept(
                 arg,
-                name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
+                name=f"{VIRTUAL_CONCEPT_PREFIX}_{arg.operator.value}_{id_hash}",
                 namespace=environment.namespace,
             )
             # to satisfy mypy, concept will always have metadata
@@ -255,20 +255,34 @@ def arbitrary_to_concept(
         | str
     ),
     namespace: str,
-    name: str,
+    name: str | None = None,
     metadata: Metadata | None = None,
     purpose: Purpose | None = None,
 ) -> Concept:
 
     if isinstance(parent, AggregateWrapper):
+        if not name:
+            name = (
+                f"_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+            )
         return agg_wrapper_to_concept(parent, namespace, name, metadata, purpose)
     elif isinstance(parent, WindowItem):
+        if not name:
+            name = f"_window_{parent.type.value}_{string_to_hash(str(parent))}"
         return window_item_to_concept(parent, name, namespace, purpose, metadata)
     elif isinstance(parent, FilterItem):
+        if not name:
+            name = f"_filter_{parent.content.name}_{string_to_hash(str(parent))}"
         return filter_item_to_concept(parent, name, namespace, purpose, metadata)
     elif isinstance(parent, Function):
+        if not name:
+            name = f"_func_{parent.operator.value}_{string_to_hash(str(parent))}"
         return function_to_concept(parent, name, namespace)
     elif isinstance(parent, ListWrapper):
+        if not name:
+            name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
         return constant_to_concept(parent, name, namespace, purpose, metadata)
     else:
+        if not name:
+            name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
         return constant_to_concept(parent, name, namespace, purpose, metadata)

@@ -16,7 +16,6 @@ from trilogy.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
 from trilogy.constants import (
     DEFAULT_NAMESPACE,
     NULL_VALUE,
-    VIRTUAL_CONCEPT_PREFIX,
     MagicConstants,
 )
 from trilogy.core.enums import (
@@ -109,7 +108,6 @@ from trilogy.core.models import (
     HavingClause,
 )
 from trilogy.parsing.exceptions import ParseError
-from trilogy.utility import string_to_hash
 from trilogy.parsing.common import (
     agg_wrapper_to_concept,
     window_item_to_concept,
@@ -739,8 +737,8 @@ class ParseToObjects(Transformer):
                 x = arbitrary_to_concept(
                     x,
                     namespace=namespace,
-                    name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(x))}",
                 )
+                self.environment.add_concept(x)
             return x
 
         return [
@@ -781,6 +779,11 @@ class ParseToObjects(Transformer):
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
         return RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
 
+    def resolve_import_address(self, address) -> str:
+        with open(address, "r", encoding="utf-8") as f:
+            text = f.read()
+        return text
+
     def import_statement(self, args: list[str]) -> ImportStatement:
         alias = args[-1]
         path = args[0].split(".")
@@ -790,8 +793,7 @@ class ParseToObjects(Transformer):
             nparser = self.parsed[target]
         else:
             try:
-                with open(target, "r", encoding="utf-8") as f:
-                    text = f.read()
+                text = self.resolve_import_address(target)
                 nparser = ParseToObjects(
                     visit_tokens=True,
                     text=text,
@@ -1093,7 +1095,6 @@ class ParseToObjects(Transformer):
             left = arbitrary_to_concept(
                 args[0],
                 namespace=self.environment.namespace,
-                name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(args[0]))}",
             )
             self.environment.add_concept(left)
         else:
@@ -1102,7 +1103,6 @@ class ParseToObjects(Transformer):
             right = arbitrary_to_concept(
                 args[2],
                 namespace=self.environment.namespace,
-                name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(args[2]))}",
             )
             self.environment.add_concept(right)
         else:
@@ -1137,7 +1137,6 @@ class ParseToObjects(Transformer):
             right = arbitrary_to_concept(
                 right,
                 namespace=self.environment.namespace,
-                name=f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(right))}",
             )
             self.environment.add_concept(right, meta=meta)
         return SubselectComparison(
@@ -1186,8 +1185,9 @@ class ParseToObjects(Transformer):
     def window_item_order(self, args):
         return WindowItemOrder(contents=args[0])
 
-    def window_item(self, args) -> WindowItem:
-        type = args[0]
+    @v_args(meta=True)
+    def window_item(self, meta, args) -> WindowItem:
+        type: WindowType = args[0]
         order_by = []
         over = []
         index = None
@@ -1203,6 +1203,14 @@ class ParseToObjects(Transformer):
                 concept = self.environment.concepts[item]
             elif isinstance(item, Concept):
                 concept = item
+            elif isinstance(item, WindowType):
+                type = item
+            else:
+                concept = arbitrary_to_concept(
+                    item,
+                    namespace=self.environment.namespace,
+                )
+                self.environment.add_concept(concept, meta=meta)
         assert concept
         return WindowItem(
             type=type, content=concept, over=over, order_by=order_by, index=index

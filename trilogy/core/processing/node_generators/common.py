@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 
 from trilogy.core.enums import PurposeLineage, Purpose
@@ -96,6 +96,7 @@ def gen_property_enrichment_node(
     g,
     depth: int,
     source_concepts,
+    log_lambda: Callable,
     history: History | None = None,
     conditions: WhereClause | None = None,
 ):
@@ -106,8 +107,8 @@ def gen_property_enrichment_node(
         keys = "-".join([y.address for y in x.keys])
         required_keys[keys].add(x.address)
     final_nodes = []
-    node_joins = []
     for _k, vs in required_keys.items():
+        log_lambda(f"Generating enrichment node for {_k} with {vs}")
         ks = _k.split("-")
         enrich_node: StrategyNode = source_concepts(
             mandatory_list=[environment.concepts[k] for k in ks]
@@ -119,17 +120,6 @@ def gen_property_enrichment_node(
             conditions=conditions,
         )
         final_nodes.append(enrich_node)
-        node_joins.append(
-            NodeJoin(
-                left_node=enrich_node,
-                right_node=base_node,
-                concepts=concept_to_relevant_joins(
-                    [environment.concepts[k] for k in ks]
-                ),
-                filter_to_mutual=False,
-                join_type=JoinType.LEFT_OUTER,
-            )
-        )
     return MergeNode(
         input_concepts=unique(
             base_node.output_concepts
@@ -146,9 +136,8 @@ def gen_property_enrichment_node(
         g=g,
         parents=[
             base_node,
-            enrich_node,
-        ],
-        node_joins=node_joins,
+        ]
+        + final_nodes,
     )
 
 
@@ -197,6 +186,7 @@ def gen_enrichment_node(
                 source_concepts,
                 history=history,
                 conditions=conditions,
+                log_lambda=log_lambda,
             )
 
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
@@ -216,14 +206,14 @@ def gen_enrichment_node(
     log_lambda(
         f"{str(type(base_node).__name__)} returning merge node with group node + enrichment node"
     )
-
+    non_hidden = [
+        x
+        for x in base_node.output_concepts
+        if x.address not in [y.address for y in base_node.hidden_concepts]
+    ]
     return MergeNode(
-        input_concepts=unique(
-            join_keys + extra_required + base_node.output_concepts, "address"
-        ),
-        output_concepts=unique(
-            join_keys + extra_required + base_node.output_concepts, "address"
-        ),
+        input_concepts=unique(join_keys + extra_required + non_hidden, "address"),
+        output_concepts=unique(join_keys + extra_required + non_hidden, "address"),
         environment=environment,
         g=g,
         parents=[enrich_node, base_node],
