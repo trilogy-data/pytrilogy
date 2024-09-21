@@ -13,7 +13,7 @@ def analyze(show: bool = False):
         if filename.endswith(".log"):
             with open(root / filename, "r") as f:
                 try:
-                    loaded = tomllib.load(f)
+                    loaded = tomllib.loads(f.read())
                 except json.decoder.JSONDecodeError:
                     print(f"Error loading {filename}")
                     continue

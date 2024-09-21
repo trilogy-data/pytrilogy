@@ -1,11 +1,12 @@
 query_id = 6
-parse_time = 4.906304
-exec_time = 1.260788
-comp_time = 0.654118
+parse_time = 4.270142
+exec_time = 0.612354
+comp_time = 0.125167
+gen_length = 6761
 generated_sql = """
 
 WITH 
-tenuous as (
+darter as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_ITEM_SK\" as \"item_id\",
@@ -13,10 +14,10 @@ SELECT
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_CUSTOMER_SK\",
     store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_CUSTOMER_SK\",
     store_sales.\"SS_ITEM_SK\"),
-young as (
+ceaseless as (
 SELECT
     customers.\"C_CURRENT_ADDR_SK\" as \"store_sales_customer_address_id\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
@@ -24,7 +25,7 @@ SELECT
 FROM
     memory.customer as customers
     LEFT OUTER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"),
-waggish as (
+charming as (
 SELECT
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     items.\"I_ITEM_SK\" as \"item_id\"
@@ -44,104 +45,104 @@ GROUP BY
 quick as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_date_id\",
-    tenuous.\"item_id\" as \"item_id\",
-    tenuous.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    darter.\"item_id\" as \"item_id\",
+    darter.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\"
 FROM
-    tenuous
-    LEFT OUTER JOIN memory.date_dim as date on tenuous.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    darter
+    LEFT OUTER JOIN memory.date_dim as date on darter.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1
 ),
-wolf as (
+marlin as (
 SELECT
     items.\"I_CATEGORY\" as \"item_category\",
-    waggish.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    charming.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     quick.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    young.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    ceaseless.\"store_sales_customer_state\" as \"store_sales_customer_state\",
     quick.\"store_sales_date_year\" as \"store_sales_date_year\",
-    young.\"store_sales_customer_id\" as \"store_sales_customer_id\"
+    ceaseless.\"store_sales_customer_id\" as \"store_sales_customer_id\"
 FROM
-    young
-    LEFT OUTER JOIN quick on young.\"store_sales_customer_id\" = quick.\"store_sales_customer_id\"
+    ceaseless
+    LEFT OUTER JOIN quick on ceaseless.\"store_sales_customer_id\" = quick.\"store_sales_customer_id\"
     LEFT OUTER JOIN memory.item as items on quick.\"item_id\" = items.\"I_ITEM_SK\"
-    LEFT OUTER JOIN waggish on quick.\"item_id\" = waggish.\"item_id\"
+    LEFT OUTER JOIN charming on quick.\"item_id\" = charming.\"item_id\"
 WHERE
     quick.\"store_sales_date_year\" = 2001 and quick.\"store_sales_date_month_of_year\" = 1 and items.\"I_CATEGORY\" is not null
 ),
-cockatiel as (
+protective as (
 SELECT
-    wolf.\"item_category\" as \"item_category\",
-    wolf.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    wolf.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    wolf.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    wolf.\"store_sales_date_year\" as \"store_sales_date_year\",
+    marlin.\"item_category\" as \"item_category\",
+    marlin.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    marlin.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    marlin.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    marlin.\"store_sales_date_year\" as \"store_sales_date_year\",
     tanager.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    wolf
-    LEFT OUTER JOIN tanager on ((wolf.\"item_category\" is null and tanager.\"item_category\" is null) or (wolf.\"item_category\" = tanager.\"item_category\"))
+    marlin
+    LEFT OUTER JOIN tanager on ((marlin.\"item_category\" is null and tanager.\"item_category\" is null) or (marlin.\"item_category\" = tanager.\"item_category\"))
 WHERE
-    wolf.\"store_sales_date_year\" = 2001 and wolf.\"store_sales_date_month_of_year\" = 1 and wolf.\"store_sales_item_current_price\" > 1.2 * tanager.\"_virtual_6264207893106521\" and wolf.\"item_category\" is not null
+    marlin.\"store_sales_date_year\" = 2001 and marlin.\"store_sales_date_month_of_year\" = 1 and marlin.\"store_sales_item_current_price\" > 1.2 * tanager.\"_virtual_6264207893106521\" and marlin.\"item_category\" is not null
 ),
-macaw as (
+eel as (
 SELECT
-    wolf.\"store_sales_customer_id\" as \"store_sales_customer_id_filter_5640408687474034\",
-    wolf.\"store_sales_customer_state\" as \"store_sales_customer_state\"
+    marlin.\"store_sales_customer_id\" as \"store_sales_customer_id_filter_5640408687474034\",
+    marlin.\"store_sales_customer_state\" as \"store_sales_customer_state\"
 FROM
-    wolf
-    LEFT OUTER JOIN tanager on ((wolf.\"item_category\" is null and tanager.\"item_category\" is null) or (wolf.\"item_category\" = tanager.\"item_category\"))
+    marlin
+    LEFT OUTER JOIN tanager on ((marlin.\"item_category\" is null and tanager.\"item_category\" is null) or (marlin.\"item_category\" = tanager.\"item_category\"))
 WHERE
-    wolf.\"store_sales_date_year\" = 2001 and wolf.\"store_sales_date_month_of_year\" = 1 and wolf.\"store_sales_item_current_price\" > 1.2 * tanager.\"_virtual_6264207893106521\" and wolf.\"item_category\" is not null
+    marlin.\"store_sales_date_year\" = 2001 and marlin.\"store_sales_date_month_of_year\" = 1 and marlin.\"store_sales_item_current_price\" > 1.2 * tanager.\"_virtual_6264207893106521\" and marlin.\"item_category\" is not null
 ),
-rhea as (
+busy as (
 SELECT
-    count(macaw.\"store_sales_customer_id_filter_5640408687474034\") as \"customer_count\",
-    macaw.\"store_sales_customer_state\" as \"store_sales_customer_state\"
+    count(eel.\"store_sales_customer_id_filter_5640408687474034\") as \"customer_count\",
+    eel.\"store_sales_customer_state\" as \"store_sales_customer_state\"
 FROM
-    macaw
+    eel
 GROUP BY 
-    macaw.\"store_sales_customer_state\"),
-spiritual as (
+    eel.\"store_sales_customer_state\"),
+boa as (
 SELECT
-    wolf.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    wolf.\"item_category\" as \"item_category\",
-    wolf.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    wolf.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    wolf.\"store_sales_date_year\" as \"store_sales_date_year\",
-    rhea.\"customer_count\" as \"customer_count\"
+    marlin.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    marlin.\"item_category\" as \"item_category\",
+    marlin.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    marlin.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    marlin.\"store_sales_date_year\" as \"store_sales_date_year\",
+    busy.\"customer_count\" as \"customer_count\"
 FROM
-    wolf
-    LEFT OUTER JOIN rhea on ((wolf.\"store_sales_customer_state\" is null and rhea.\"store_sales_customer_state\" is null) or (wolf.\"store_sales_customer_state\" = rhea.\"store_sales_customer_state\"))
+    marlin
+    LEFT OUTER JOIN busy on ((marlin.\"store_sales_customer_state\" is null and busy.\"store_sales_customer_state\" is null) or (marlin.\"store_sales_customer_state\" = busy.\"store_sales_customer_state\"))
 WHERE
-    wolf.\"store_sales_date_year\" = 2001 and wolf.\"store_sales_date_month_of_year\" = 1 and wolf.\"item_category\" is not null
+    marlin.\"store_sales_date_year\" = 2001 and marlin.\"store_sales_date_month_of_year\" = 1 and marlin.\"item_category\" is not null
 ),
-charming as (
+blue as (
 SELECT
-    spiritual.\"store_sales_date_year\" as \"store_sales_date_year\",
-    spiritual.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    spiritual.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    cockatiel.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\",
-    spiritual.\"item_category\" as \"item_category\",
-    spiritual.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    spiritual.\"customer_count\" as \"customer_count\"
+    boa.\"store_sales_date_year\" as \"store_sales_date_year\",
+    boa.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    boa.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    protective.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\",
+    boa.\"item_category\" as \"item_category\",
+    boa.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    boa.\"customer_count\" as \"customer_count\"
 FROM
-    spiritual
-    LEFT OUTER JOIN cockatiel on ((spiritual.\"store_sales_customer_state\" is null and cockatiel.\"store_sales_customer_state\" is null) or (spiritual.\"store_sales_customer_state\" = cockatiel.\"store_sales_customer_state\")) AND ((spiritual.\"item_category\" is null and cockatiel.\"item_category\" is null) or (spiritual.\"item_category\" = cockatiel.\"item_category\")) AND ((spiritual.\"store_sales_item_current_price\" is null and cockatiel.\"store_sales_item_current_price\" is null) or (spiritual.\"store_sales_item_current_price\" = cockatiel.\"store_sales_item_current_price\")) AND spiritual.\"store_sales_date_month_of_year\" = cockatiel.\"store_sales_date_month_of_year\" AND spiritual.\"store_sales_date_year\" = cockatiel.\"store_sales_date_year\"
+    boa
+    LEFT OUTER JOIN protective on ((boa.\"store_sales_customer_state\" is null and protective.\"store_sales_customer_state\" is null) or (boa.\"store_sales_customer_state\" = protective.\"store_sales_customer_state\")) AND ((boa.\"item_category\" is null and protective.\"item_category\" is null) or (boa.\"item_category\" = protective.\"item_category\")) AND ((boa.\"store_sales_item_current_price\" is null and protective.\"store_sales_item_current_price\" is null) or (boa.\"store_sales_item_current_price\" = protective.\"store_sales_item_current_price\")) AND boa.\"store_sales_date_month_of_year\" = protective.\"store_sales_date_month_of_year\" AND boa.\"store_sales_date_year\" = protective.\"store_sales_date_year\"
 WHERE
-    spiritual.\"store_sales_date_year\" = 2001 and spiritual.\"store_sales_date_month_of_year\" = 1 and spiritual.\"store_sales_item_current_price\" > 1.2 * cockatiel.\"_virtual_6264207893106521\" and spiritual.\"item_category\" is not null
+    boa.\"store_sales_date_year\" = 2001 and boa.\"store_sales_date_month_of_year\" = 1 and boa.\"store_sales_item_current_price\" > 1.2 * protective.\"_virtual_6264207893106521\" and boa.\"item_category\" is not null
 )
 SELECT
-    charming.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    charming.\"customer_count\" as \"customer_count\"
+    blue.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    blue.\"customer_count\" as \"customer_count\"
 FROM
-    charming
+    blue
 WHERE
-    charming.\"customer_count\" >= 10 and charming.\"store_sales_date_year\" = 2001 and charming.\"store_sales_date_month_of_year\" = 1 and charming.\"store_sales_item_current_price\" > 1.2 * charming.\"_virtual_6264207893106521\" and charming.\"item_category\" is not null
+    blue.\"customer_count\" >= 10 and blue.\"store_sales_date_year\" = 2001 and blue.\"store_sales_date_month_of_year\" = 1 and blue.\"store_sales_item_current_price\" > 1.2 * blue.\"_virtual_6264207893106521\" and blue.\"item_category\" is not null
 
 GROUP BY 
-    charming.\"store_sales_customer_state\",
-    charming.\"customer_count\"
+    blue.\"store_sales_customer_state\",
+    blue.\"customer_count\"
 ORDER BY 
-    charming.\"customer_count\" asc nulls first,
-    charming.\"store_sales_customer_state\" asc nulls first"""
+    blue.\"customer_count\" asc nulls first,
+    blue.\"store_sales_customer_state\" asc nulls first"""

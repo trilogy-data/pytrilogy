@@ -1,38 +1,39 @@
 query_id = 10
-parse_time = 12.645502
-exec_time = 0.347325
-comp_time = 0.372652
+parse_time = 12.407062
+exec_time = 0.25085
+comp_time = 0.454899
+gen_length = 8637
 generated_sql = """
 
 WITH 
-serval as (
+swift as (
 SELECT
     web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\",
     web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\"
 FROM
     memory.web_sales as web_sales
 GROUP BY 
-    web_sales.\"WS_SOLD_DATE_SK\",
-    web_sales.\"WS_BILL_CUSTOMER_SK\"),
-bear as (
+    web_sales.\"WS_BILL_CUSTOMER_SK\",
+    web_sales.\"WS_SOLD_DATE_SK\"),
+eagle as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_CUSTOMER_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-tearful as (
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_CUSTOMER_SK\"),
+cuckoo as (
 SELECT
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\",
-    catalog_sales.\"CS_SOLD_DATE_SK\"),
-vulture as (
+    catalog_sales.\"CS_SOLD_DATE_SK\",
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\"),
+albatross as (
 SELECT
     customers.\"C_CURRENT_ADDR_SK\" as \"customer_address_id\",
     customer_address.\"CA_COUNTY\" as \"customer_county\",
@@ -43,57 +44,57 @@ FROM
 WHERE
     customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' )
 ),
-gullible as (
+lion as (
 SELECT
     date.\"D_DATE_SK\" as \"web_sales_date_id\",
-    serval.\"customer_id\" as \"customer_id\",
+    swift.\"customer_id\" as \"customer_id\",
     date.\"D_MOY\" as \"web_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"web_sales_date_year\"
 FROM
-    serval
-    LEFT OUTER JOIN memory.date_dim as date on serval.\"web_sales_date_id\" = date.\"D_DATE_SK\"),
-cool as (
+    swift
+    LEFT OUTER JOIN memory.date_dim as date on swift.\"web_sales_date_id\" = date.\"D_DATE_SK\"),
+young as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_date_id\",
-    bear.\"customer_id\" as \"customer_id\",
+    eagle.\"customer_id\" as \"customer_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\"
 FROM
-    bear
-    LEFT OUTER JOIN memory.date_dim as date on bear.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    eagle
+    LEFT OUTER JOIN memory.date_dim as date on eagle.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 )
 ),
-divergent as (
+jackdaw as (
 SELECT
     date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
     date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
-    tearful.\"customer_id\" as \"customer_id\"
+    cuckoo.\"customer_id\" as \"customer_id\"
 FROM
-    tearful
-    LEFT OUTER JOIN memory.date_dim as date on tearful.\"catalog_sales_date_id\" = date.\"D_DATE_SK\"),
-eel as (
+    cuckoo
+    LEFT OUTER JOIN memory.date_dim as date on cuckoo.\"catalog_sales_date_id\" = date.\"D_DATE_SK\"),
+shrike as (
 SELECT
-    vulture.\"customer_id\" as \"relevant_customers\"
+    albatross.\"customer_id\" as \"relevant_customers\"
 FROM
-    vulture
-    LEFT OUTER JOIN divergent on vulture.\"customer_id\" = divergent.\"customer_id\"
-    LEFT OUTER JOIN cool on vulture.\"customer_id\" = cool.\"customer_id\"
-    LEFT OUTER JOIN gullible on vulture.\"customer_id\" = gullible.\"customer_id\"
+    albatross
+    LEFT OUTER JOIN jackdaw on albatross.\"customer_id\" = jackdaw.\"customer_id\"
+    LEFT OUTER JOIN young on albatross.\"customer_id\" = young.\"customer_id\"
+    LEFT OUTER JOIN lion on albatross.\"customer_id\" = lion.\"customer_id\"
 WHERE
-    cool.\"store_sales_date_year\" = 2002 and cool.\"store_sales_date_month_of_year\" in ( 1,2,3,4 ) and ( ( gullible.\"web_sales_date_year\" = 2002 and gullible.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( divergent.\"catalog_sales_date_year\" = 2002 and divergent.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) ) and vulture.\"customer_county\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' )
+    young.\"store_sales_date_year\" = 2002 and young.\"store_sales_date_month_of_year\" in ( 1,2,3,4 ) and ( ( lion.\"web_sales_date_year\" = 2002 and lion.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( jackdaw.\"catalog_sales_date_year\" = 2002 and jackdaw.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) ) and albatross.\"customer_county\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' )
 
 GROUP BY 
-    vulture.\"customer_id\"),
-flamingo as (
+    albatross.\"customer_id\"),
+friendly as (
 SELECT
-    eel.\"relevant_customers\" as \"relevant_customers\"
+    shrike.\"relevant_customers\" as \"relevant_customers\"
 FROM
-    eel
+    shrike
 GROUP BY 
-    eel.\"relevant_customers\"),
-coyote as (
+    shrike.\"relevant_customers\"),
+magpie as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customers.\"C_CURRENT_CDEMO_SK\" as \"customer_demographics_id\",
@@ -109,75 +110,75 @@ FROM
     memory.customer as customers
     LEFT OUTER JOIN memory.customer_demographics as customer_demographics on customers.\"C_CURRENT_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
 WHERE
-    customers.\"C_CUSTOMER_SK\" in (select flamingo.\"relevant_customers\" from flamingo where flamingo.\"relevant_customers\" is not null)
+    customers.\"C_CUSTOMER_SK\" in (select friendly.\"relevant_customers\" from friendly where friendly.\"relevant_customers\" is not null)
 ),
-chick as (
+dapper as (
 SELECT
-    coyote.\"customer_id\" as \"base_customer_id\",
-    coyote.\"customer_demographics_id\" as \"base_customer_demographics_id\",
-    coyote.\"customer_demographics_gender\" as \"base_customer_demographics_gender\",
-    coyote.\"customer_demographics_marital_status\" as \"base_customer_demographics_marital_status\",
-    coyote.\"customer_demographics_education_status\" as \"base_customer_demographics_education_status\",
-    coyote.\"customer_demographics_purchase_estimate\" as \"base_customer_demographics_purchase_estimate\",
-    coyote.\"customer_demographics_credit_rating\" as \"base_customer_demographics_credit_rating\",
-    coyote.\"customer_demographics_dependent_count\" as \"base_customer_demographics_dependent_count\",
-    coyote.\"customer_demographics_employed_dependent_count\" as \"base_customer_demographics_employed_dependent_count\",
-    coyote.\"customer_demographics_college_dependent_count\" as \"base_customer_demographics_college_dependent_count\"
+    magpie.\"customer_id\" as \"base_customer_id\",
+    magpie.\"customer_demographics_id\" as \"base_customer_demographics_id\",
+    magpie.\"customer_demographics_gender\" as \"base_customer_demographics_gender\",
+    magpie.\"customer_demographics_marital_status\" as \"base_customer_demographics_marital_status\",
+    magpie.\"customer_demographics_education_status\" as \"base_customer_demographics_education_status\",
+    magpie.\"customer_demographics_purchase_estimate\" as \"base_customer_demographics_purchase_estimate\",
+    magpie.\"customer_demographics_credit_rating\" as \"base_customer_demographics_credit_rating\",
+    magpie.\"customer_demographics_dependent_count\" as \"base_customer_demographics_dependent_count\",
+    magpie.\"customer_demographics_employed_dependent_count\" as \"base_customer_demographics_employed_dependent_count\",
+    magpie.\"customer_demographics_college_dependent_count\" as \"base_customer_demographics_college_dependent_count\"
 FROM
-    coyote),
-questionable as (
+    magpie),
+coot as (
 SELECT
-    count(chick.\"base_customer_id\") as \"cnt6\",
-    chick.\"base_customer_demographics_college_dependent_count\" as \"base_customer_demographics_college_dependent_count\",
-    chick.\"base_customer_demographics_credit_rating\" as \"base_customer_demographics_credit_rating\",
-    chick.\"base_customer_demographics_dependent_count\" as \"base_customer_demographics_dependent_count\",
-    chick.\"base_customer_demographics_education_status\" as \"base_customer_demographics_education_status\",
-    chick.\"base_customer_demographics_employed_dependent_count\" as \"base_customer_demographics_employed_dependent_count\",
-    chick.\"base_customer_demographics_gender\" as \"base_customer_demographics_gender\",
-    chick.\"base_customer_demographics_marital_status\" as \"base_customer_demographics_marital_status\",
-    chick.\"base_customer_demographics_purchase_estimate\" as \"base_customer_demographics_purchase_estimate\",
-    count(chick.\"base_customer_id\") as \"cnt5\",
-    count(chick.\"base_customer_id\") as \"cnt4\",
-    count(chick.\"base_customer_id\") as \"cnt3\",
-    count(chick.\"base_customer_id\") as \"cnt2\",
-    count(chick.\"base_customer_id\") as \"cnt1\"
+    count(dapper.\"base_customer_id\") as \"cnt6\",
+    dapper.\"base_customer_demographics_college_dependent_count\" as \"base_customer_demographics_college_dependent_count\",
+    dapper.\"base_customer_demographics_credit_rating\" as \"base_customer_demographics_credit_rating\",
+    dapper.\"base_customer_demographics_dependent_count\" as \"base_customer_demographics_dependent_count\",
+    dapper.\"base_customer_demographics_education_status\" as \"base_customer_demographics_education_status\",
+    dapper.\"base_customer_demographics_employed_dependent_count\" as \"base_customer_demographics_employed_dependent_count\",
+    dapper.\"base_customer_demographics_gender\" as \"base_customer_demographics_gender\",
+    dapper.\"base_customer_demographics_marital_status\" as \"base_customer_demographics_marital_status\",
+    dapper.\"base_customer_demographics_purchase_estimate\" as \"base_customer_demographics_purchase_estimate\",
+    count(dapper.\"base_customer_id\") as \"cnt5\",
+    count(dapper.\"base_customer_id\") as \"cnt4\",
+    count(dapper.\"base_customer_id\") as \"cnt3\",
+    count(dapper.\"base_customer_id\") as \"cnt2\",
+    count(dapper.\"base_customer_id\") as \"cnt1\"
 FROM
-    chick
+    dapper
 WHERE
-    chick.\"base_customer_demographics_gender\" is not null
+    dapper.\"base_customer_demographics_gender\" is not null
 
 GROUP BY 
-    chick.\"base_customer_demographics_marital_status\",
-    chick.\"base_customer_demographics_employed_dependent_count\",
-    chick.\"base_customer_demographics_education_status\",
-    chick.\"base_customer_demographics_college_dependent_count\",
-    chick.\"base_customer_demographics_dependent_count\",
-    chick.\"base_customer_demographics_credit_rating\",
-    chick.\"base_customer_demographics_gender\",
-    chick.\"base_customer_demographics_purchase_estimate\")
+    dapper.\"base_customer_demographics_college_dependent_count\",
+    dapper.\"base_customer_demographics_dependent_count\",
+    dapper.\"base_customer_demographics_education_status\",
+    dapper.\"base_customer_demographics_employed_dependent_count\",
+    dapper.\"base_customer_demographics_gender\",
+    dapper.\"base_customer_demographics_marital_status\",
+    dapper.\"base_customer_demographics_credit_rating\",
+    dapper.\"base_customer_demographics_purchase_estimate\")
 SELECT
-    questionable.\"base_customer_demographics_gender\" as \"base_customer_demographics_gender\",
-    questionable.\"base_customer_demographics_marital_status\" as \"base_customer_demographics_marital_status\",
-    questionable.\"base_customer_demographics_education_status\" as \"base_customer_demographics_education_status\",
-    questionable.\"cnt1\" as \"cnt1\",
-    questionable.\"base_customer_demographics_purchase_estimate\" as \"base_customer_demographics_purchase_estimate\",
-    questionable.\"cnt2\" as \"cnt2\",
-    questionable.\"base_customer_demographics_credit_rating\" as \"base_customer_demographics_credit_rating\",
-    questionable.\"cnt3\" as \"cnt3\",
-    questionable.\"base_customer_demographics_dependent_count\" as \"base_customer_demographics_dependent_count\",
-    questionable.\"cnt4\" as \"cnt4\",
-    questionable.\"base_customer_demographics_employed_dependent_count\" as \"base_customer_demographics_employed_dependent_count\",
-    questionable.\"cnt5\" as \"cnt5\",
-    questionable.\"base_customer_demographics_college_dependent_count\" as \"base_customer_demographics_college_dependent_count\",
-    questionable.\"cnt6\" as \"cnt6\"
+    coot.\"base_customer_demographics_gender\" as \"base_customer_demographics_gender\",
+    coot.\"base_customer_demographics_marital_status\" as \"base_customer_demographics_marital_status\",
+    coot.\"base_customer_demographics_education_status\" as \"base_customer_demographics_education_status\",
+    coot.\"cnt1\" as \"cnt1\",
+    coot.\"base_customer_demographics_purchase_estimate\" as \"base_customer_demographics_purchase_estimate\",
+    coot.\"cnt2\" as \"cnt2\",
+    coot.\"base_customer_demographics_credit_rating\" as \"base_customer_demographics_credit_rating\",
+    coot.\"cnt3\" as \"cnt3\",
+    coot.\"base_customer_demographics_dependent_count\" as \"base_customer_demographics_dependent_count\",
+    coot.\"cnt4\" as \"cnt4\",
+    coot.\"base_customer_demographics_employed_dependent_count\" as \"base_customer_demographics_employed_dependent_count\",
+    coot.\"cnt5\" as \"cnt5\",
+    coot.\"base_customer_demographics_college_dependent_count\" as \"base_customer_demographics_college_dependent_count\",
+    coot.\"cnt6\" as \"cnt6\"
 FROM
-    questionable
+    coot
 ORDER BY 
-    questionable.\"base_customer_demographics_gender\" asc,
-    questionable.\"base_customer_demographics_marital_status\" asc,
-    questionable.\"base_customer_demographics_education_status\" asc,
-    questionable.\"base_customer_demographics_purchase_estimate\" asc,
-    questionable.\"base_customer_demographics_credit_rating\" asc,
-    questionable.\"base_customer_demographics_dependent_count\" asc,
-    questionable.\"base_customer_demographics_employed_dependent_count\" asc,
-    questionable.\"base_customer_demographics_college_dependent_count\" asc"""
+    coot.\"base_customer_demographics_gender\" asc,
+    coot.\"base_customer_demographics_marital_status\" asc,
+    coot.\"base_customer_demographics_education_status\" asc,
+    coot.\"base_customer_demographics_purchase_estimate\" asc,
+    coot.\"base_customer_demographics_credit_rating\" asc,
+    coot.\"base_customer_demographics_dependent_count\" asc,
+    coot.\"base_customer_demographics_employed_dependent_count\" asc,
+    coot.\"base_customer_demographics_college_dependent_count\" asc"""

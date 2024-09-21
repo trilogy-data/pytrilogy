@@ -1,11 +1,12 @@
 query_id = 15
-parse_time = 4.094862
-exec_time = 0.340014
-comp_time = 0.247476
+parse_time = 3.315252
+exec_time = 0.283485
+comp_time = 0.235928
+gen_length = 2971
 generated_sql = """
 
 WITH 
-sparrow as (
+martin as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"catalog_sales_bill_customer_address_id\",
     customers.\"C_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -14,7 +15,7 @@ SELECT
 FROM
     memory.customer_address as customer_address
     LEFT OUTER JOIN memory.customer as customers on customer_address.\"CA_ADDRESS_SK\" = customers.\"C_CURRENT_ADDR_SK\"),
-abhorrent as (
+owl as (
 SELECT
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -26,42 +27,42 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
     LEFT OUTER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"),
-sweltering as (
+rambunctious as (
 SELECT
-    abhorrent.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
-    abhorrent.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
-    abhorrent.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
-    sparrow.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
-    sparrow.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    abhorrent.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    abhorrent.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+    owl.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
+    owl.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
+    owl.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    martin.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
+    martin.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    owl.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
+    owl.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
-    sparrow
-    LEFT OUTER JOIN abhorrent on sparrow.\"catalog_sales_bill_customer_id\" = abhorrent.\"catalog_sales_bill_customer_id\"),
-abstracted as (
+    martin
+    LEFT OUTER JOIN owl on martin.\"catalog_sales_bill_customer_id\" = owl.\"catalog_sales_bill_customer_id\"),
+hawk as (
 SELECT
-    CASE WHEN sweltering.\"catalog_sales_date_quarter\" = 2 and sweltering.\"catalog_sales_date_year\" = 2001 and ( sweltering.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or sweltering.\"catalog_sales_sales_price\" > 500 or SUBSTRING(sweltering.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN sweltering.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
-    sweltering.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    sweltering.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    sweltering.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+    CASE WHEN rambunctious.\"catalog_sales_date_quarter\" = 2 and rambunctious.\"catalog_sales_date_year\" = 2001 and ( rambunctious.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or rambunctious.\"catalog_sales_sales_price\" > 500 or SUBSTRING(rambunctious.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN rambunctious.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
+    rambunctious.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    rambunctious.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
+    rambunctious.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
-    sweltering),
-thoughtful as (
+    rambunctious),
+salamander as (
 SELECT
-    sum(abstracted.\"relevant_sales\") as \"sales\",
-    abstracted.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
+    sum(hawk.\"relevant_sales\") as \"sales\",
+    hawk.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
 FROM
-    abstracted
+    hawk
 GROUP BY 
-    abstracted.\"catalog_sales_bill_customer_zip\")
+    hawk.\"catalog_sales_bill_customer_zip\")
 SELECT
-    thoughtful.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    thoughtful.\"sales\" as \"sales\"
+    salamander.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    salamander.\"sales\" as \"sales\"
 FROM
-    thoughtful
+    salamander
 WHERE
-    thoughtful.\"sales\" is not null
+    salamander.\"sales\" is not null
 
 ORDER BY 
-    thoughtful.\"catalog_sales_bill_customer_zip\" asc nulls first
+    salamander.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

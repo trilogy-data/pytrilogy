@@ -48,10 +48,6 @@ def run_query(engine: Executor, idx: int):
                     "gen_length": len(query),
                     "generated_sql": query,
                 }, multiline_strings=True)
-            # json.dumps(
-            #     ,
-            #     indent=4,
-            # )
         )
     return query
 
