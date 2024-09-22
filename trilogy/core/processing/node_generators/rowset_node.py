@@ -113,19 +113,8 @@ def gen_rowset_node(
         g=g,
         depth=depth,
         parents=[
-            # this node gets the window
             node,
-            # this node gets enrichment
             enrich_node,
         ],
-        # node_joins=[
-        #     NodeJoin(
-        #         left_node=enrich_node,
-        #         right_node=node,
-        #         concepts=concept_to_relevant_joins(additional_relevant),
-        #         filter_to_mutual=False,
-        #         join_type=JoinType.LEFT_OUTER,
-        #     )
-        # ],
         partial_concepts=node.partial_concepts,
     )

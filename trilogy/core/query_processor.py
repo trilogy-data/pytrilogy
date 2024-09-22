@@ -192,8 +192,6 @@ def resolve_cte_base_name_and_alias_v2(
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
     joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
-    # INFO     trilogy:query_processor.py:263 Finished building source map for civet with 3 parents, have {'local.relevant_customers': ['fowl', 'fowl'],
-    # 'customer.demographics.gender': ['mandrill'], 'customer.id': ['mandrill'], 'customer.demographics.id': ['mandrill'], 'customer.id_9268029262289908': [], 'customer.demographics.gender_1513806568509111': []}, query_datasource had non-empty keys ['local.relevant_customers', 'customer.demographics.gender', 'customer.id', 'customer.demographics.id'] and existence had non-empty keys []
     if (
         len(source.datasources) == 1
         and isinstance(source.datasources[0], Datasource)

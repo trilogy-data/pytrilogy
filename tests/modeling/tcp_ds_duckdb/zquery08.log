@@ -1,28 +1,28 @@
 query_id = 8
-parse_time = 13.729873
-exec_time = 1.310373
-comp_time = 0.271459
-gen_length = 9718
+parse_time = 12.861963
+exec_time = 2.113563
+comp_time = 0.404895
+gen_length = 9695
 generated_sql = """
 
 WITH 
-slow as (
+marlin as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_STORE_SK\" as \"store_sales_store_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_STORE_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-swallow as (
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_STORE_SK\"),
+cockatoo as (
 SELECT
     CASE WHEN customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virtual_7470647693515630\",
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     memory.customer as customers),
-level as (
+hawk as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\",
@@ -30,11 +30,11 @@ SELECT
 FROM
     memory.customer as customers
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"),
-macho as (
+cougar as (
 SELECT
     unnest(['24128', '76232', '65084', '87816', '83926', '77556', '20548', '26231', '43848', '15126', '91137', '61265', '98294', '25782', '17920', '18426', '98235', '40081', '84093', '28577', '55565', '17183', '54601', '67897', '22752', '86284', '18376', '38607', '45200', '21756', '29741', '96765', '23932', '89360', '29839', '25989', '28898', '91068', '72550', '10390', '18845', '47770', '82636', '41367', '76638', '86198', '81312', '37126', '39192', '88424', '72175', '81426', '53672', '10445', '42666', '66864', '66708', '41248', '48583', '82276', '18842', '78890', '49448', '14089', '38122', '34425', '79077', '19849', '43285', '39861', '66162', '77610', '13695', '99543', '83444', '83041', '12305', '57665', '68341', '25003', '57834', '62878', '49130', '81096', '18840', '27700', '23470', '50412', '21195', '16021', '76107', '71954', '68309', '18119', '98359', '64544', '10336', '86379', '27068', '39736', '98569', '28915', '24206', '56529', '57647', '54917', '42961', '91110', '63981', '14922', '36420', '23006', '67467', '32754', '30903', '20260', '31671', '51798', '72325', '85816', '68621', '13955', '36446', '41766', '68806', '16725', '15146', '22744', '35850', '88086', '51649', '18270', '52867', '39972', '96976', '63792', '11376', '94898', '13595', '10516', '90225', '58943', '39371', '94945', '28587', '96576', '57855', '28488', '26105', '83933', '25858', '34322', '44438', '73171', '30122', '34102', '22685', '71256', '78451', '54364', '13354', '45375', '40558', '56458', '28286', '45266', '47305', '69399', '83921', '26233', '11101', '15371', '69913', '35942', '15882', '25631', '24610', '44165', '99076', '33786', '70738', '26653', '14328', '72305', '62496', '22152', '10144', '64147', '48425', '14663', '21076', '18799', '30450', '63089', '81019', '68893', '24996', '51200', '51211', '45692', '92712', '70466', '79994', '22437', '25280', '38935', '71791', '73134', '56571', '14060', '19505', '72425', '56575', '74351', '68786', '51650', '20004', '18383', '76614', '11634', '18906', '15765', '41368', '73241', '76698', '78567', '97189', '28545', '76231', '75691', '22246', '51061', '90578', '56691', '68014', '51103', '94167', '57047', '14867', '73520', '15734', '63435', '25733', '35474', '24676', '94627', '53535', '17879', '15559', '53268', '59166', '11928', '59402', '33282', '45721', '43933', '68101', '33515', '36634', '71286', '19736', '58058', '55253', '67473', '41918', '19515', '36495', '19430', '22351', '77191', '91393', '49156', '50298', '87501', '18652', '53179', '18767', '63193', '23968', '65164', '68880', '21286', '72823', '58470', '67301', '13394', '31016', '70372', '67030', '40604', '24317', '45748', '39127', '26065', '77721', '31029', '31880', '60576', '24671', '45549', '13376', '50016', '33123', '19769', '22927', '97789', '46081', '72151', '15723', '46136', '51949', '68100', '96888', '64528', '14171', '79777', '28709', '11489', '25103', '32213', '78668', '22245', '15798', '27156', '37930', '62971', '21337', '51622', '67853', '10567', '38415', '15455', '58263', '42029', '60279', '37125', '56240', '88190', '50308', '26859', '64457', '89091', '82136', '62377', '36233', '63837', '58078', '17043', '30010', '60099', '28810', '98025', '29178', '87343', '73273', '30469', '64034', '39516', '86057', '21309', '90257', '67875', '40162', '11356', '73650', '61810', '72013', '30431', '22461', '19512', '13375', '55307', '30625', '83849', '68908', '26689', '96451', '38193', '46820', '88885', '84935', '69035', '83144', '47537', '56616', '94983', '48033', '69952', '25486', '61547', '27385', '61860', '58048', '56910', '16807', '17871', '35258', '31387', '35458', '35576']) as \"zips_pre\"
 ),
-petrel as (
+wakeful as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     date.\"D_QOY\" as \"store_sales_date_quarter\",
@@ -49,123 +49,123 @@ FROM
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 1998
 ),
-questionable as (
+vast as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_date_id\",
     date.\"D_QOY\" as \"store_sales_date_quarter\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
-    slow.\"store_sales_store_id\" as \"store_sales_store_id\"
+    marlin.\"store_sales_store_id\" as \"store_sales_store_id\"
 FROM
-    slow
-    INNER JOIN memory.date_dim as date on slow.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    marlin
+    INNER JOIN memory.date_dim as date on marlin.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 1998
 ),
-cockatiel as (
+ostrich as (
 SELECT
-    swallow.\"_virtual_7470647693515630\" as \"_virtual_7470647693515630\",
-    swallow.\"customer_id\" as \"customer_id\",
-    level.\"customer_zip\" as \"customer_zip\"
+    cockatoo.\"_virtual_7470647693515630\" as \"_virtual_7470647693515630\",
+    cockatoo.\"customer_id\" as \"customer_id\",
+    hawk.\"customer_zip\" as \"customer_zip\"
 FROM
-    level
-    INNER JOIN swallow on level.\"customer_id\" = swallow.\"customer_id\"),
-colossal as (
+    hawk
+    INNER JOIN cockatoo on hawk.\"customer_id\" = cockatoo.\"customer_id\"),
+stork as (
 SELECT
-    count(cockatiel.\"_virtual_7470647693515630\") as \"zip_p_count\",
-    cockatiel.\"customer_zip\" as \"customer_zip\"
+    count(ostrich.\"_virtual_7470647693515630\") as \"zip_p_count\",
+    ostrich.\"customer_zip\" as \"customer_zip\"
 FROM
-    cockatiel
+    ostrich
 GROUP BY 
-    cockatiel.\"customer_zip\"),
-monitor as (
+    ostrich.\"customer_zip\"),
+brave as (
 SELECT
     customer_address.\"CA_ZIP\" as \"customer_zip\",
     customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
-    colossal.\"zip_p_count\" as \"zip_p_count\"
+    stork.\"zip_p_count\" as \"zip_p_count\"
 FROM
     memory.customer_address as customer_address
-    INNER JOIN colossal on customer_address.\"CA_ZIP\" = colossal.\"customer_zip\"),
-lynx as (
+    INNER JOIN stork on customer_address.\"CA_ZIP\" = stork.\"customer_zip\"),
+chicken as (
 SELECT
-    SUBSTRING(CASE WHEN monitor.\"zip_p_count\" > 10 THEN monitor.\"customer_zip\" ELSE NULL END,1,5) as \"_func_substring_1342571877656287\"
+    SUBSTRING(CASE WHEN brave.\"zip_p_count\" > 10 THEN brave.\"customer_zip\" ELSE NULL END,1,5) as \"_func_substring_1342571877656287\"
 FROM
-    monitor),
-darter as (
+    brave),
+colossal as (
 SELECT
-    SUBSTRING(SUBSTRING(cast(macho.\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
+    SUBSTRING(SUBSTRING(cast(cougar.\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
-    macho
+    cougar
 WHERE
-    SUBSTRING(cast(macho.\"zips_pre\" as string),1,5) in (select lynx.\"_func_substring_1342571877656287\" from lynx where lynx.\"_func_substring_1342571877656287\" is not null)
+    SUBSTRING(cast(cougar.\"zips_pre\" as string),1,5) in (select chicken.\"_func_substring_1342571877656287\" from chicken where chicken.\"_func_substring_1342571877656287\" is not null)
 ),
-dynamic as (
+grouse as (
 SELECT
-    darter.\"final_zips\" as \"final_zips\"
+    colossal.\"final_zips\" as \"final_zips\"
 FROM
-    darter
+    colossal
 GROUP BY 
-    darter.\"final_zips\"),
-fowl as (
+    colossal.\"final_zips\"),
+cobra as (
 SELECT
-    petrel.\"store_sales_net_profit\" as \"store_sales_net_profit_filter_6391596688661913\",
-    petrel.\"store_sales_item_id\" as \"store_sales_item_id\",
+    wakeful.\"store_sales_net_profit\" as \"store_sales_net_profit_filter_6391596688661913\",
+    wakeful.\"store_sales_item_id\" as \"store_sales_item_id\",
     store.\"S_STORE_NAME\" as \"store_sales_store_name\",
-    petrel.\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
+    wakeful.\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
-    petrel
-    INNER JOIN memory.store as store on petrel.\"store_sales_store_id\" = store.\"S_STORE_SK\"
+    wakeful
+    INNER JOIN memory.store as store on wakeful.\"store_sales_store_id\" = store.\"S_STORE_SK\"
 WHERE
-    petrel.\"store_sales_date_quarter\" = 2 and petrel.\"store_sales_date_year\" = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select darter.\"final_zips\" from darter where darter.\"final_zips\" is not null)
+    wakeful.\"store_sales_date_quarter\" = 2 and wakeful.\"store_sales_date_year\" = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select colossal.\"final_zips\" from colossal where colossal.\"final_zips\" is not null)
 
 GROUP BY 
-    petrel.\"store_sales_ticket_number\",
-    petrel.\"store_sales_net_profit\",
-    petrel.\"store_sales_item_id\",
-    store.\"S_STORE_NAME\"),
-faithful as (
+    wakeful.\"store_sales_ticket_number\",
+    store.\"S_STORE_NAME\",
+    wakeful.\"store_sales_item_id\",
+    wakeful.\"store_sales_net_profit\"),
+kestrel as (
 SELECT
     store.\"S_STORE_NAME\" as \"store_sales_store_name\",
-    questionable.\"store_sales_date_quarter\" as \"store_sales_date_quarter\",
-    questionable.\"store_sales_date_year\" as \"store_sales_date_year\",
+    vast.\"store_sales_date_quarter\" as \"store_sales_date_quarter\",
+    vast.\"store_sales_date_year\" as \"store_sales_date_year\",
     store.\"S_ZIP\" as \"store_sales_store_zip\"
 FROM
-    questionable
-    INNER JOIN memory.store as store on questionable.\"store_sales_store_id\" = store.\"S_STORE_SK\"
+    vast
+    INNER JOIN memory.store as store on vast.\"store_sales_store_id\" = store.\"S_STORE_SK\"
 WHERE
-    questionable.\"store_sales_date_quarter\" = 2 and questionable.\"store_sales_date_year\" = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select dynamic.\"final_zips\" from dynamic where dynamic.\"final_zips\" is not null)
+    vast.\"store_sales_date_quarter\" = 2 and vast.\"store_sales_date_year\" = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select grouse.\"final_zips\" from grouse where grouse.\"final_zips\" is not null)
 ),
-abstracted as (
+penguin as (
 SELECT
-    sum(fowl.\"store_sales_net_profit_filter_6391596688661913\") as \"store_net_profit\",
-    fowl.\"store_sales_store_name\" as \"store_sales_store_name\"
+    sum(cobra.\"store_sales_net_profit_filter_6391596688661913\") as \"store_net_profit\",
+    cobra.\"store_sales_store_name\" as \"store_sales_store_name\"
 FROM
-    fowl
+    cobra
 GROUP BY 
-    fowl.\"store_sales_store_name\"),
-fossa as (
+    cobra.\"store_sales_store_name\"),
+abhorrent as (
 SELECT
-    faithful.\"store_sales_store_name\" as \"store_sales_store_name\",
-    faithful.\"store_sales_date_quarter\" as \"store_sales_date_quarter\",
-    faithful.\"store_sales_date_year\" as \"store_sales_date_year\",
-    faithful.\"store_sales_store_zip\" as \"store_sales_store_zip\",
-    abstracted.\"store_net_profit\" as \"store_net_profit\"
+    kestrel.\"store_sales_store_name\" as \"store_sales_store_name\",
+    kestrel.\"store_sales_date_quarter\" as \"store_sales_date_quarter\",
+    kestrel.\"store_sales_date_year\" as \"store_sales_date_year\",
+    kestrel.\"store_sales_store_zip\" as \"store_sales_store_zip\",
+    penguin.\"store_net_profit\" as \"store_net_profit\"
 FROM
-    faithful
-    INNER JOIN abstracted on faithful.\"store_sales_store_name\" = abstracted.\"store_sales_store_name\"
+    kestrel
+    INNER JOIN penguin on kestrel.\"store_sales_store_name\" = penguin.\"store_sales_store_name\"
 WHERE
-    faithful.\"store_sales_date_quarter\" = 2 and faithful.\"store_sales_date_year\" = 1998 and SUBSTRING(faithful.\"store_sales_store_zip\",1,2) in (select dynamic.\"final_zips\" from dynamic where dynamic.\"final_zips\" is not null)
+    kestrel.\"store_sales_date_quarter\" = 2 and kestrel.\"store_sales_date_year\" = 1998 and SUBSTRING(kestrel.\"store_sales_store_zip\",1,2) in (select grouse.\"final_zips\" from grouse where grouse.\"final_zips\" is not null)
 )
 SELECT
-    fossa.\"store_sales_store_name\" as \"store_sales_store_name\",
-    fossa.\"store_net_profit\" as \"store_net_profit\"
+    abhorrent.\"store_sales_store_name\" as \"store_sales_store_name\",
+    abhorrent.\"store_net_profit\" as \"store_net_profit\"
 FROM
-    fossa
+    abhorrent
 WHERE
-    fossa.\"store_sales_date_quarter\" = 2 and fossa.\"store_sales_date_year\" = 1998 and SUBSTRING(fossa.\"store_sales_store_zip\",1,2) in (select dynamic.\"final_zips\" from dynamic where dynamic.\"final_zips\" is not null)
+    abhorrent.\"store_sales_date_quarter\" = 2 and abhorrent.\"store_sales_date_year\" = 1998 and SUBSTRING(abhorrent.\"store_sales_store_zip\",1,2) in (select grouse.\"final_zips\" from grouse where grouse.\"final_zips\" is not null)
 
 GROUP BY 
-    fossa.\"store_sales_store_name\",
-    fossa.\"store_net_profit\"
+    abhorrent.\"store_sales_store_name\",
+    abhorrent.\"store_net_profit\"
 ORDER BY 
-    fossa.\"store_sales_store_name\" asc
+    abhorrent.\"store_sales_store_name\" asc
 LIMIT (100)"""

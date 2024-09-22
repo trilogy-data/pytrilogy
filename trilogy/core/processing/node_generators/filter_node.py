@@ -212,16 +212,5 @@ def gen_filter_node(
             # this node fetches only what we need to filter
             filter_node,
             enrich_node,
-        ],
-        # node_joins=[
-        #     NodeJoin(
-        #         left_node=enrich_node,
-        #         right_node=filter_node,
-        #         concepts=concept_to_relevant_joins(
-        #             [immediate_parent] + parent_row_concepts
-        #         ),
-        #         join_type=JoinType.LEFT_OUTER,
-        #         filter_to_mutual=True,
-        #     )
-        # ],
+        ]
     )

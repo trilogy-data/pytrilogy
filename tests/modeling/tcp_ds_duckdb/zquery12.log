@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 26.263953
-exec_time = 1.7134
-comp_time = 0.407699
-gen_length = 6751
+parse_time = 32.989749
+exec_time = 2.245275
+comp_time = 1.008316
+gen_length = 6785
 generated_sql = """
 
 WITH 
-trite as (
+chimpanzee as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -21,7 +21,7 @@ FROM
     memory.web_sales as web_sales
     INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"),
-coyote as (
+spiritual as (
 SELECT
     items.\"I_CLASS\" as \"web_sales_item_class\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
@@ -31,107 +31,107 @@ SELECT
 FROM
     memory.item as items
 GROUP BY 
-    items.\"I_ITEM_DESC\",
+    items.\"I_ITEM_ID\",
+    items.\"I_CLASS\",
     items.\"I_CURRENT_PRICE\",
     items.\"I_CATEGORY\",
-    items.\"I_ITEM_ID\",
-    items.\"I_CLASS\"),
-brave as (
+    items.\"I_ITEM_DESC\"),
+uneven as (
 SELECT
-    CASE WHEN trite.\"web_sales_date_date\" >= cast('1999-02-22' as date) and trite.\"web_sales_date_date\" <= cast('1999-03-24' as date) and trite.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN trite.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
-    trite.\"web_sales_order_number\" as \"web_sales_order_number\",
-    trite.\"web_sales_item_id\" as \"web_sales_item_id\"
+    CASE WHEN chimpanzee.\"web_sales_date_date\" >= cast('1999-02-22' as date) and chimpanzee.\"web_sales_date_date\" <= cast('1999-03-24' as date) and chimpanzee.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN chimpanzee.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
+    chimpanzee.\"web_sales_order_number\" as \"web_sales_order_number\",
+    chimpanzee.\"web_sales_item_id\" as \"web_sales_item_id\"
 FROM
-    trite),
-covey as (
+    chimpanzee),
+quick as (
 SELECT
-    brave.\"relevant_sales\" as \"relevant_sales\",
+    uneven.\"relevant_sales\" as \"relevant_sales\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
     items.\"I_CLASS\" as \"web_sales_item_class\",
     items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
     items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
     items.\"I_ITEM_ID\" as \"web_sales_item_name\",
-    brave.\"web_sales_order_number\" as \"web_sales_order_number\",
-    brave.\"web_sales_item_id\" as \"web_sales_item_id\"
+    uneven.\"web_sales_order_number\" as \"web_sales_order_number\",
+    uneven.\"web_sales_item_id\" as \"web_sales_item_id\"
 FROM
-    brave
-    INNER JOIN memory.item as items on brave.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
-eagle as (
+    uneven
+    INNER JOIN memory.item as items on uneven.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
+monitor as (
 SELECT
-    sum(covey.\"relevant_sales\") as \"itemrevenue\",
-    covey.\"web_sales_item_category\" as \"web_sales_item_category\",
-    covey.\"web_sales_item_class\" as \"web_sales_item_class\",
-    covey.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    covey.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    covey.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(covey.\"relevant_sales\") as \"_virtual_1496978012803723\"
+    sum(quick.\"relevant_sales\") as \"itemrevenue\",
+    quick.\"web_sales_item_category\" as \"web_sales_item_category\",
+    quick.\"web_sales_item_class\" as \"web_sales_item_class\",
+    quick.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    quick.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    quick.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sum(quick.\"relevant_sales\") as \"_virtual_1496978012803723\"
 FROM
-    covey
+    quick
 GROUP BY 
-    covey.\"web_sales_item_class\",
-    covey.\"web_sales_item_name\",
-    covey.\"web_sales_item_desc\",
-    covey.\"web_sales_item_current_price\",
-    covey.\"web_sales_item_category\"),
-quick as (
+    quick.\"web_sales_item_category\",
+    quick.\"web_sales_item_current_price\",
+    quick.\"web_sales_item_class\",
+    quick.\"web_sales_item_desc\",
+    quick.\"web_sales_item_name\"),
+boa as (
 SELECT
-    sum(covey.\"relevant_sales\") as \"_virtual_341251569527357\",
-    covey.\"web_sales_item_class\" as \"web_sales_item_class\"
+    sum(quick.\"relevant_sales\") as \"_virtual_341251569527357\",
+    quick.\"web_sales_item_class\" as \"web_sales_item_class\"
 FROM
-    covey
+    quick
 GROUP BY 
-    covey.\"web_sales_item_class\"),
-rook as (
+    quick.\"web_sales_item_class\"),
+rhea as (
 SELECT
-    coyote.\"web_sales_item_class\" as \"web_sales_item_class\",
-    coyote.\"web_sales_item_category\" as \"web_sales_item_category\",
-    coyote.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    coyote.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    coyote.\"web_sales_item_name\" as \"web_sales_item_name\",
-    quick.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
+    spiritual.\"web_sales_item_class\" as \"web_sales_item_class\",
+    spiritual.\"web_sales_item_category\" as \"web_sales_item_category\",
+    spiritual.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    spiritual.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    spiritual.\"web_sales_item_name\" as \"web_sales_item_name\",
+    boa.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
 FROM
-    coyote
-    INNER JOIN quick on (coyote.\"web_sales_item_class\" = quick.\"web_sales_item_class\" or (coyote.\"web_sales_item_class\" is null and quick.\"web_sales_item_class\" is null))),
-cooperative as (
+    spiritual
+    INNER JOIN boa on (spiritual.\"web_sales_item_class\" = boa.\"web_sales_item_class\" or (spiritual.\"web_sales_item_class\" is null and boa.\"web_sales_item_class\" is null))),
+deeply as (
 SELECT
-    eagle.\"web_sales_item_category\" as \"web_sales_item_category\",
-    eagle.\"web_sales_item_class\" as \"web_sales_item_class\",
-    eagle.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    eagle.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    eagle.\"web_sales_item_name\" as \"web_sales_item_name\",
-    eagle.\"_virtual_1496978012803723\" * 100.0 / rook.\"_virtual_341251569527357\" as \"revenueratio\"
+    monitor.\"web_sales_item_category\" as \"web_sales_item_category\",
+    monitor.\"web_sales_item_class\" as \"web_sales_item_class\",
+    monitor.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    monitor.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    monitor.\"web_sales_item_name\" as \"web_sales_item_name\",
+    monitor.\"_virtual_1496978012803723\" * 100.0 / rhea.\"_virtual_341251569527357\" as \"revenueratio\"
 FROM
-    eagle
-    INNER JOIN rook on (eagle.\"web_sales_item_category\" = rook.\"web_sales_item_category\" or (eagle.\"web_sales_item_category\" is null and rook.\"web_sales_item_category\" is null)) AND (eagle.\"web_sales_item_class\" = rook.\"web_sales_item_class\" or (eagle.\"web_sales_item_class\" is null and rook.\"web_sales_item_class\" is null)) AND (eagle.\"web_sales_item_current_price\" = rook.\"web_sales_item_current_price\" or (eagle.\"web_sales_item_current_price\" is null and rook.\"web_sales_item_current_price\" is null)) AND (eagle.\"web_sales_item_desc\" = rook.\"web_sales_item_desc\" or (eagle.\"web_sales_item_desc\" is null and rook.\"web_sales_item_desc\" is null)) AND eagle.\"web_sales_item_name\" = rook.\"web_sales_item_name\"),
-abhorrent as (
+    monitor
+    INNER JOIN rhea on (monitor.\"web_sales_item_category\" = rhea.\"web_sales_item_category\" or (monitor.\"web_sales_item_category\" is null and rhea.\"web_sales_item_category\" is null)) AND (monitor.\"web_sales_item_class\" = rhea.\"web_sales_item_class\" or (monitor.\"web_sales_item_class\" is null and rhea.\"web_sales_item_class\" is null)) AND (monitor.\"web_sales_item_current_price\" = rhea.\"web_sales_item_current_price\" or (monitor.\"web_sales_item_current_price\" is null and rhea.\"web_sales_item_current_price\" is null)) AND (monitor.\"web_sales_item_desc\" = rhea.\"web_sales_item_desc\" or (monitor.\"web_sales_item_desc\" is null and rhea.\"web_sales_item_desc\" is null)) AND monitor.\"web_sales_item_name\" = rhea.\"web_sales_item_name\"),
+divergent as (
 SELECT
-    cooperative.\"web_sales_item_category\" as \"web_sales_item_category\",
-    cooperative.\"web_sales_item_class\" as \"web_sales_item_class\",
-    cooperative.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    cooperative.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    cooperative.\"web_sales_item_name\" as \"web_sales_item_name\",
-    cooperative.\"revenueratio\" as \"revenueratio\",
-    eagle.\"itemrevenue\" as \"itemrevenue\"
+    deeply.\"web_sales_item_category\" as \"web_sales_item_category\",
+    deeply.\"web_sales_item_class\" as \"web_sales_item_class\",
+    deeply.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    deeply.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    deeply.\"web_sales_item_name\" as \"web_sales_item_name\",
+    deeply.\"revenueratio\" as \"revenueratio\",
+    monitor.\"itemrevenue\" as \"itemrevenue\"
 FROM
-    cooperative
-    INNER JOIN eagle on (cooperative.\"web_sales_item_category\" = eagle.\"web_sales_item_category\" or (cooperative.\"web_sales_item_category\" is null and eagle.\"web_sales_item_category\" is null)) AND (cooperative.\"web_sales_item_class\" = eagle.\"web_sales_item_class\" or (cooperative.\"web_sales_item_class\" is null and eagle.\"web_sales_item_class\" is null)) AND (cooperative.\"web_sales_item_current_price\" = eagle.\"web_sales_item_current_price\" or (cooperative.\"web_sales_item_current_price\" is null and eagle.\"web_sales_item_current_price\" is null)) AND (cooperative.\"web_sales_item_desc\" = eagle.\"web_sales_item_desc\" or (cooperative.\"web_sales_item_desc\" is null and eagle.\"web_sales_item_desc\" is null)) AND cooperative.\"web_sales_item_name\" = eagle.\"web_sales_item_name\")
+    deeply
+    INNER JOIN monitor on (deeply.\"web_sales_item_category\" = monitor.\"web_sales_item_category\" or (deeply.\"web_sales_item_category\" is null and monitor.\"web_sales_item_category\" is null)) AND (deeply.\"web_sales_item_class\" = monitor.\"web_sales_item_class\" or (deeply.\"web_sales_item_class\" is null and monitor.\"web_sales_item_class\" is null)) AND (deeply.\"web_sales_item_current_price\" = monitor.\"web_sales_item_current_price\" or (deeply.\"web_sales_item_current_price\" is null and monitor.\"web_sales_item_current_price\" is null)) AND (deeply.\"web_sales_item_desc\" = monitor.\"web_sales_item_desc\" or (deeply.\"web_sales_item_desc\" is null and monitor.\"web_sales_item_desc\" is null)) AND deeply.\"web_sales_item_name\" = monitor.\"web_sales_item_name\")
 SELECT
-    abhorrent.\"web_sales_item_name\" as \"web_sales_item_name\",
-    abhorrent.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    abhorrent.\"web_sales_item_category\" as \"web_sales_item_category\",
-    abhorrent.\"web_sales_item_class\" as \"web_sales_item_class\",
-    abhorrent.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    abhorrent.\"itemrevenue\" as \"itemrevenue\",
-    abhorrent.\"revenueratio\" as \"revenueratio\"
+    divergent.\"web_sales_item_name\" as \"web_sales_item_name\",
+    divergent.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    divergent.\"web_sales_item_category\" as \"web_sales_item_category\",
+    divergent.\"web_sales_item_class\" as \"web_sales_item_class\",
+    divergent.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    divergent.\"itemrevenue\" as \"itemrevenue\",
+    divergent.\"revenueratio\" as \"revenueratio\"
 FROM
-    abhorrent
+    divergent
 WHERE
-    abhorrent.\"itemrevenue\" is not null
+    divergent.\"itemrevenue\" is not null
 
 ORDER BY 
-    abhorrent.\"web_sales_item_category\" asc,
-    abhorrent.\"web_sales_item_class\" asc,
-    abhorrent.\"web_sales_item_name\" asc,
-    abhorrent.\"web_sales_item_desc\" asc,
-    abhorrent.\"revenueratio\" asc
+    divergent.\"web_sales_item_category\" asc,
+    divergent.\"web_sales_item_class\" asc,
+    divergent.\"web_sales_item_name\" asc,
+    divergent.\"web_sales_item_desc\" asc,
+    divergent.\"revenueratio\" asc
 LIMIT (100)"""

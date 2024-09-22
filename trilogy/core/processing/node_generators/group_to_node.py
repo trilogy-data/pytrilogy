@@ -81,15 +81,6 @@ def gen_group_to_node(
             # this node gets enrichment
             enrich_node,
         ],
-        # node_joins=[
-        #     NodeJoin(
-        #         left_node=group_node,
-        #         right_node=enrich_node,
-        #         concepts=concept_to_relevant_joins(parent_concepts),
-        #         filter_to_mutual=False,
-        #         join_type=JoinType.LEFT_OUTER,
-        #     )
-        # ],
         whole_grain=True,
         depth=depth,
     )

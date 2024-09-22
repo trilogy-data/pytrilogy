@@ -1,12 +1,12 @@
 query_id = 21
-parse_time = 9.978365
-exec_time = 2.752656
-comp_time = 0.070613
-gen_length = 4850
+parse_time = 4.425479
+exec_time = 0.333485
+comp_time = 0.042629
+gen_length = 5002
 generated_sql = """
 
 WITH 
-quail as (
+cooperative as (
 SELECT
     warehouse_inventory.\"inv_item_sk\" as \"inventory_item_id\",
     warehouse_inventory.\"inv_date_sk\" as \"inventory_date_id\",
@@ -16,7 +16,7 @@ SELECT
 FROM
     memory.inventory as warehouse_inventory
     INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"),
-pintail as (
+finch as (
 SELECT
     warehouse_inventory.\"inv_warehouse_sk\" as \"inventory_warehouse_id\",
     warehouse_inventory.\"inv_date_sk\" as \"inventory_date_id\",
@@ -25,93 +25,93 @@ SELECT
 FROM
     memory.inventory as warehouse_inventory
     LEFT OUTER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"),
-busy as (
+magpie as (
 SELECT
     cast(\"D_DATE\" as date) as \"inventory_date_date\",
-    quail.\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\",
+    cooperative.\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\",
     warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
-    quail.\"inventory_item_name\" as \"inventory_item_name\",
+    cooperative.\"inventory_item_name\" as \"inventory_item_name\",
     date.\"D_DATE_SK\" as \"inventory_date_id\",
-    quail.\"inventory_warehouse_id\" as \"inventory_warehouse_id\"
+    cooperative.\"inventory_warehouse_id\" as \"inventory_warehouse_id\"
 FROM
-    quail
-    INNER JOIN memory.date_dim as date on quail.\"inventory_date_id\" = date.\"D_DATE_SK\"
-    LEFT OUTER JOIN memory.warehouse as warehouse on quail.\"inventory_warehouse_id\" = warehouse.\"w_warehouse_sk\"
+    cooperative
+    INNER JOIN memory.date_dim as date on cooperative.\"inventory_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.warehouse as warehouse on cooperative.\"inventory_warehouse_id\" = warehouse.\"w_warehouse_sk\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date)
 ),
-tiger as (
+leopard as (
 SELECT
-    pintail.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    finch.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
     items.\"I_ITEM_ID\" as \"inventory_item_name\",
     items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
     cast(\"D_DATE\" as date) as \"inventory_date_date\"
 FROM
-    pintail
-    INNER JOIN memory.date_dim as date on pintail.\"inventory_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.item as items on pintail.\"inventory_item_id\" = items.\"I_ITEM_SK\"
+    finch
+    INNER JOIN memory.date_dim as date on finch.\"inventory_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on finch.\"inventory_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
 ),
-cool as (
+abundant as (
 SELECT
     sum(CASE
-	WHEN busy.\"inventory_date_date\" < cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
+	WHEN magpie.\"inventory_date_date\" < cast('2000-03-11' as date) THEN magpie.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
-    busy.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    busy.\"inventory_item_name\" as \"inventory_item_name\",
+    magpie.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    magpie.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN busy.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
+	WHEN magpie.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN magpie.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    busy
+    magpie
 GROUP BY 
-    busy.\"inventory_item_name\",
-    busy.\"inventory_warehouse_name\"),
-grouse as (
+    magpie.\"inventory_warehouse_name\",
+    magpie.\"inventory_item_name\"),
+puzzled as (
 SELECT
-    tiger.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    tiger.\"inventory_item_name\" as \"inventory_item_name\",
-    tiger.\"inventory_item_current_price\" as \"inventory_item_current_price\",
-    tiger.\"inventory_date_date\" as \"inventory_date_date\",
-    cool.\"inv_before\" as \"inv_before\",
-    cool.\"inv_after\" as \"inv_after\"
+    leopard.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    leopard.\"inventory_item_name\" as \"inventory_item_name\",
+    leopard.\"inventory_item_current_price\" as \"inventory_item_current_price\",
+    leopard.\"inventory_date_date\" as \"inventory_date_date\",
+    abundant.\"inv_before\" as \"inv_before\",
+    abundant.\"inv_after\" as \"inv_after\"
 FROM
-    tiger
-    LEFT OUTER JOIN cool on (tiger.\"inventory_warehouse_name\" = cool.\"inventory_warehouse_name\" or (tiger.\"inventory_warehouse_name\" is null and cool.\"inventory_warehouse_name\" is null)) AND tiger.\"inventory_item_name\" = cool.\"inventory_item_name\"
+    leopard
+    LEFT OUTER JOIN abundant on (leopard.\"inventory_warehouse_name\" = abundant.\"inventory_warehouse_name\" or (leopard.\"inventory_warehouse_name\" is null and abundant.\"inventory_warehouse_name\" is null)) AND leopard.\"inventory_item_name\" = abundant.\"inventory_item_name\"
 WHERE
     CASE
-	WHEN cool.\"inv_before\" > 0 THEN cool.\"inv_after\" * 1.0 / cool.\"inv_before\"
+	WHEN abundant.\"inv_before\" > 0 THEN abundant.\"inv_after\" * 1.0 / abundant.\"inv_before\"
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
-	WHEN cool.\"inv_before\" > 0 THEN cool.\"inv_after\" * 1.0 / cool.\"inv_before\"
+	WHEN abundant.\"inv_before\" > 0 THEN abundant.\"inv_after\" * 1.0 / abundant.\"inv_before\"
 	ELSE null
-	END <= 3.0 / 2.0 and tiger.\"inventory_date_date\" >= cast('2000-02-10' as date) and tiger.\"inventory_date_date\" <= cast('2000-04-10' as date) and tiger.\"inventory_item_current_price\" >= 0.99 and tiger.\"inventory_item_current_price\" <= 1.49
+	END <= 3.0 / 2.0 and leopard.\"inventory_date_date\" >= cast('2000-02-10' as date) and leopard.\"inventory_date_date\" <= cast('2000-04-10' as date) and leopard.\"inventory_item_current_price\" >= 0.99 and leopard.\"inventory_item_current_price\" <= 1.49
 )
 SELECT
-    grouse.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    grouse.\"inventory_item_name\" as \"inventory_item_name\",
-    grouse.\"inv_before\" as \"inv_before\",
-    grouse.\"inv_after\" as \"inv_after\"
+    puzzled.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    puzzled.\"inventory_item_name\" as \"inventory_item_name\",
+    puzzled.\"inv_before\" as \"inv_before\",
+    puzzled.\"inv_after\" as \"inv_after\"
 FROM
-    grouse
+    puzzled
 WHERE
     CASE
-	WHEN grouse.\"inv_before\" > 0 THEN grouse.\"inv_after\" * 1.0 / grouse.\"inv_before\"
+	WHEN puzzled.\"inv_before\" > 0 THEN puzzled.\"inv_after\" * 1.0 / puzzled.\"inv_before\"
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
-	WHEN grouse.\"inv_before\" > 0 THEN grouse.\"inv_after\" * 1.0 / grouse.\"inv_before\"
+	WHEN puzzled.\"inv_before\" > 0 THEN puzzled.\"inv_after\" * 1.0 / puzzled.\"inv_before\"
 	ELSE null
-	END <= 3.0 / 2.0 and grouse.\"inventory_date_date\" >= cast('2000-02-10' as date) and grouse.\"inventory_date_date\" <= cast('2000-04-10' as date) and grouse.\"inventory_item_current_price\" >= 0.99 and grouse.\"inventory_item_current_price\" <= 1.49
+	END <= 3.0 / 2.0 and puzzled.\"inventory_date_date\" >= cast('2000-02-10' as date) and puzzled.\"inventory_date_date\" <= cast('2000-04-10' as date) and puzzled.\"inventory_item_current_price\" >= 0.99 and puzzled.\"inventory_item_current_price\" <= 1.49
 
 GROUP BY 
-    grouse.\"inventory_item_name\",
-    grouse.\"inventory_warehouse_name\",
-    grouse.\"inv_after\",
-    grouse.\"inv_before\"
+    puzzled.\"inv_before\",
+    puzzled.\"inventory_warehouse_name\",
+    puzzled.\"inventory_item_name\",
+    puzzled.\"inv_after\"
 ORDER BY 
-    grouse.\"inventory_warehouse_name\" asc nulls first,
-    grouse.\"inventory_item_name\" asc nulls first
+    puzzled.\"inventory_warehouse_name\" asc nulls first,
+    puzzled.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

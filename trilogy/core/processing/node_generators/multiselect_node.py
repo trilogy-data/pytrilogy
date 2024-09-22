@@ -176,14 +176,5 @@ def gen_multiselect_node(
             # this node gets enrichment
             enrich_node,
         ],
-        # node_joins=[
-        #     NodeJoin(
-        #         left_node=enrich_node,
-        #         right_node=node,
-        #         concepts=possible_joins,
-        #         filter_to_mutual=False,
-        #         join_type=JoinType.LEFT_OUTER,
-        #     )
-        # ],
         partial_concepts=node.partial_concepts,
     )

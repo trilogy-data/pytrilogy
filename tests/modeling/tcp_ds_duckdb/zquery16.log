@@ -1,44 +1,44 @@
 query_id = 16
-parse_time = 68.250823
-exec_time = 3.597762
-comp_time = 0.100934
-gen_length = 5864
+parse_time = 59.004122
+exec_time = 0.766536
+comp_time = 0.043948
+gen_length = 5678
 generated_sql = """
 
 WITH 
-bewildered as (
+turkey as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-thoughtful as (
+wolverine as (
 SELECT
     catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select turkey.\"cr_order_number\" from turkey where turkey.\"cr_order_number\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_ORDER_NUMBER\",
-    catalog_sales.\"CS_WAREHOUSE_SK\"),
-cockatoo as (
+    catalog_sales.\"CS_WAREHOUSE_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\"),
+cloudy as (
 SELECT
-    count(thoughtful.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
-    thoughtful.\"cs_order_number\" as \"cs_order_number\"
+    count(wolverine.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    wolverine.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    thoughtful
+    wolverine
 GROUP BY 
-    thoughtful.\"cs_order_number\"),
-marlin as (
+    wolverine.\"cs_order_number\"),
+wary as (
 SELECT
-    CASE WHEN cockatoo.\"_agg_count_6430482449237259\" > 1 THEN cockatoo.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN cloudy.\"_agg_count_6430482449237259\" > 1 THEN cloudy.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    cockatoo),
-chick as (
+    cloudy),
+late as (
 SELECT
     catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
     catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
@@ -47,14 +47,14 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select turkey.\"cr_order_number\" from turkey where turkey.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select wary.\"multi_warehouse_sales\" from wary where wary.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_CALL_CENTER_SK\",
     catalog_sales.\"CS_SHIP_ADDR_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\",
-    catalog_sales.\"CS_SHIP_DATE_SK\"),
-chickadee as (
+    catalog_sales.\"CS_CALL_CENTER_SK\",
+    catalog_sales.\"CS_SHIP_DATE_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\"),
+hard as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
     catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
@@ -68,62 +68,62 @@ FROM
     memory.catalog_sales as catalog_sales
     FULL JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select turkey.\"cr_order_number\" from turkey where turkey.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select wary.\"multi_warehouse_sales\" from wary where wary.\"multi_warehouse_sales\" is not null)
 ),
-sordid as (
+shrike as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
-    chick.\"cs_call_center_id\" as \"cs_call_center_id\",
+    late.\"cs_call_center_id\" as \"cs_call_center_id\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
-    chick.\"cs_order_number\" as \"cs_order_number\",
-    chick.\"cs_ship_date_id\" as \"cs_ship_date_id\"
+    late.\"cs_order_number\" as \"cs_order_number\",
+    late.\"cs_ship_date_id\" as \"cs_ship_date_id\"
 FROM
     memory.customer_address as customer_address
-    LEFT OUTER JOIN chick on customer_address.\"CA_ADDRESS_SK\" = chick.\"cs_customer_address_id\"
+    LEFT OUTER JOIN late on customer_address.\"CA_ADDRESS_SK\" = late.\"cs_customer_address_id\"
 WHERE
-    customer_address.\"CA_STATE\" = 'GA' and chick.\"cs_order_number\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and chick.\"cs_order_number\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    customer_address.\"CA_STATE\" = 'GA' and late.\"cs_order_number\" not in (select turkey.\"cr_order_number\" from turkey where turkey.\"cr_order_number\" is not null) and late.\"cs_order_number\" in (select wary.\"multi_warehouse_sales\" from wary where wary.\"multi_warehouse_sales\" is not null)
 ),
-divergent as (
+osprey as (
 SELECT
-    chickadee.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",
-    chickadee.\"cs_item_id\" as \"cs_item_id\",
-    chickadee.\"cs_order_number\" as \"cs_order_number\",
-    chickadee.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"
+    hard.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",
+    hard.\"cs_item_id\" as \"cs_item_id\",
+    hard.\"cs_order_number\" as \"cs_order_number\",
+    hard.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"
 FROM
-    chickadee
-    INNER JOIN memory.call_center as call_center on chickadee.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
-    INNER JOIN memory.date_dim as date on chickadee.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    hard
+    INNER JOIN memory.call_center as call_center on hard.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.date_dim as date on hard.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and chickadee.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and chickadee.\"cs_order_number\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and chickadee.\"cs_order_number\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and hard.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and hard.\"cs_order_number\" not in (select turkey.\"cr_order_number\" from turkey where turkey.\"cr_order_number\" is not null) and hard.\"cs_order_number\" in (select wary.\"multi_warehouse_sales\" from wary where wary.\"multi_warehouse_sales\" is not null)
 ),
-dove as (
+parrot as (
 SELECT
-    sordid.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
+    shrike.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
 FROM
     memory.call_center as call_center
-    INNER JOIN sordid on call_center.\"CC_CALL_CENTER_SK\" = sordid.\"cs_call_center_id\"
-    INNER JOIN memory.date_dim as date on sordid.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN shrike on call_center.\"CC_CALL_CENTER_SK\" = shrike.\"cs_call_center_id\"
+    INNER JOIN memory.date_dim as date on shrike.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and sordid.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and sordid.\"cs_order_number\" not in (select bewildered.\"cr_order_number\" from bewildered where bewildered.\"cr_order_number\" is not null) and sordid.\"cs_order_number\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and shrike.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and shrike.\"cs_order_number\" not in (select turkey.\"cr_order_number\" from turkey where turkey.\"cr_order_number\" is not null) and shrike.\"cs_order_number\" in (select wary.\"multi_warehouse_sales\" from wary where wary.\"multi_warehouse_sales\" is not null)
 ),
-sloppy as (
+faithful as (
 SELECT
-    sum(divergent.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
-    sum(divergent.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
+    sum(osprey.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
+    sum(osprey.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
 FROM
-    divergent),
-cougar as (
+    osprey),
+juicy as (
 SELECT
-    count(distinct dove.\"cs_order_number_filter_929116887065743\") as \"order_count\"
+    count(distinct parrot.\"cs_order_number_filter_929116887065743\") as \"order_count\"
 FROM
-    dove)
+    parrot)
 SELECT
-    cougar.\"order_count\" as \"order_count\",
-    sloppy.\"total_shipping_cost\" as \"total_shipping_cost\",
-    sloppy.\"total_net_profit\" as \"total_net_profit\"
+    juicy.\"order_count\" as \"order_count\",
+    faithful.\"total_shipping_cost\" as \"total_shipping_cost\",
+    faithful.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    cougar
-    FULL JOIN sloppy on 1=1
+    juicy
+    FULL JOIN faithful on 1=1
 ORDER BY 
-    cougar.\"order_count\" desc
+    juicy.\"order_count\" desc
 LIMIT (100)"""

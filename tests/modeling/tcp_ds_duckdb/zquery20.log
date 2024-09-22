@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 48.764779
-exec_time = 4.904819
-comp_time = 0.886484
-gen_length = 11664
+parse_time = 24.391938
+exec_time = 1.827266
+comp_time = 0.396532
+gen_length = 11855
 generated_sql = """
 
 WITH 
-osprey as (
+jay as (
 SELECT
     items.\"I_CATEGORY\" as \"cs_item_category\",
     items.\"I_CLASS\" as \"cs_item_class\",
@@ -19,7 +19,7 @@ FROM
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-chicken as (
+slow as (
 SELECT
     catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"cs_sold_date_id\"
@@ -28,37 +28,37 @@ FROM
 GROUP BY 
     catalog_sales.\"CS_SOLD_DATE_SK\",
     catalog_sales.\"CS_ITEM_SK\"),
-juicy as (
+thoughtful as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price_filter_3197596984767774\",
     catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN osprey on catalog_sales.\"CS_ITEM_SK\" = osprey.\"cs_item_id\"
+    INNER JOIN jay on catalog_sales.\"CS_ITEM_SK\" = jay.\"cs_item_id\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
-    osprey.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
+    jay.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-jackdaw as (
+coyote as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
-    osprey.\"cs_item_category\" as \"cs_item_category\",
+    jay.\"cs_item_category\" as \"cs_item_category\",
     cast(\"D_DATE\" as date) as \"cs_sold_date_date\",
-    osprey.\"cs_item_class\" as \"cs_item_class\",
-    osprey.\"cs_item_current_price\" as \"cs_item_current_price\",
-    osprey.\"cs_item_desc\" as \"cs_item_desc\",
-    osprey.\"cs_item_name\" as \"cs_item_name\",
+    jay.\"cs_item_class\" as \"cs_item_class\",
+    jay.\"cs_item_current_price\" as \"cs_item_current_price\",
+    jay.\"cs_item_desc\" as \"cs_item_desc\",
+    jay.\"cs_item_name\" as \"cs_item_name\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN osprey on catalog_sales.\"CS_ITEM_SK\" = osprey.\"cs_item_id\"
+    INNER JOIN jay on catalog_sales.\"CS_ITEM_SK\" = jay.\"cs_item_id\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
-    osprey.\"cs_item_category\" in ( 'Sports','Books','Home' )
+    jay.\"cs_item_category\" in ( 'Sports','Books','Home' )
 ),
-premium as (
+yellow as (
 SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -66,193 +66,193 @@ SELECT
     items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     items.\"I_ITEM_ID\" as \"cs_item_name\",
-    chicken.\"cs_sold_date_id\" as \"cs_sold_date_id\"
+    slow.\"cs_sold_date_id\" as \"cs_sold_date_id\"
 FROM
-    chicken
-    INNER JOIN memory.item as items on chicken.\"cs_item_id\" = items.\"I_ITEM_SK\"
+    slow
+    INNER JOIN memory.item as items on slow.\"cs_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-ugly as (
+abstracted as (
 SELECT
-    juicy.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
+    thoughtful.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
     items.\"I_CLASS\" as \"cs_item_class\",
     items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     items.\"I_ITEM_ID\" as \"cs_item_name\",
-    juicy.\"cs_order_number\" as \"cs_order_number\",
-    juicy.\"cs_item_id\" as \"cs_item_id\"
+    thoughtful.\"cs_order_number\" as \"cs_order_number\",
+    thoughtful.\"cs_item_id\" as \"cs_item_id\"
 FROM
-    juicy
-    INNER JOIN memory.item as items on juicy.\"cs_item_id\" = items.\"I_ITEM_SK\"
+    thoughtful
+    INNER JOIN memory.item as items on thoughtful.\"cs_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-loon as (
+dingo as (
 SELECT
-    CASE WHEN jackdaw.\"cs_item_category\" in ( 'Sports','Books','Home' ) and jackdaw.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and jackdaw.\"cs_sold_date_date\" <= cast('1999-03-24' as date) THEN jackdaw.\"cs_extra_sales_price\" ELSE NULL END as \"cs_extra_sales_price_filter_3197596984767774\",
-    jackdaw.\"cs_order_number\" as \"cs_order_number\",
-    jackdaw.\"cs_item_id\" as \"cs_item_id\"
+    CASE WHEN coyote.\"cs_item_category\" in ( 'Sports','Books','Home' ) and coyote.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and coyote.\"cs_sold_date_date\" <= cast('1999-03-24' as date) THEN coyote.\"cs_extra_sales_price\" ELSE NULL END as \"cs_extra_sales_price_filter_3197596984767774\",
+    coyote.\"cs_order_number\" as \"cs_order_number\",
+    coyote.\"cs_item_id\" as \"cs_item_id\"
 FROM
-    jackdaw),
-civet as (
+    coyote),
+level as (
 SELECT
-    premium.\"cs_item_category\" as \"cs_item_category\",
-    premium.\"cs_item_class\" as \"cs_item_class\",
-    premium.\"cs_item_current_price\" as \"cs_item_current_price\",
-    premium.\"cs_item_desc\" as \"cs_item_desc\",
-    premium.\"cs_item_name\" as \"cs_item_name\",
+    yellow.\"cs_item_category\" as \"cs_item_category\",
+    yellow.\"cs_item_class\" as \"cs_item_class\",
+    yellow.\"cs_item_current_price\" as \"cs_item_current_price\",
+    yellow.\"cs_item_desc\" as \"cs_item_desc\",
+    yellow.\"cs_item_name\" as \"cs_item_name\",
     cast(\"D_DATE\" as date) as \"cs_sold_date_date\"
 FROM
     memory.date_dim as date
-    INNER JOIN premium on date.\"D_DATE_SK\" = premium.\"cs_sold_date_id\"
+    INNER JOIN yellow on date.\"D_DATE_SK\" = yellow.\"cs_sold_date_id\"
 WHERE
-    premium.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
+    yellow.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-martin as (
+vacuous as (
 SELECT
-    sum(ugly.\"cs_extra_sales_price_filter_3197596984767774\") as \"revenue\",
-    ugly.\"cs_item_category\" as \"cs_item_category\",
-    ugly.\"cs_item_class\" as \"cs_item_class\",
-    ugly.\"cs_item_current_price\" as \"cs_item_current_price\",
-    ugly.\"cs_item_desc\" as \"cs_item_desc\",
-    ugly.\"cs_item_name\" as \"cs_item_name\"
+    sum(abstracted.\"cs_extra_sales_price_filter_3197596984767774\") as \"revenue\",
+    abstracted.\"cs_item_category\" as \"cs_item_category\",
+    abstracted.\"cs_item_class\" as \"cs_item_class\",
+    abstracted.\"cs_item_current_price\" as \"cs_item_current_price\",
+    abstracted.\"cs_item_desc\" as \"cs_item_desc\",
+    abstracted.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    ugly
+    abstracted
 GROUP BY 
-    ugly.\"cs_item_class\",
-    ugly.\"cs_item_category\",
-    ugly.\"cs_item_current_price\",
-    ugly.\"cs_item_name\",
-    ugly.\"cs_item_desc\"),
-tanager as (
+    abstracted.\"cs_item_category\",
+    abstracted.\"cs_item_current_price\",
+    abstracted.\"cs_item_name\",
+    abstracted.\"cs_item_desc\",
+    abstracted.\"cs_item_class\"),
+resonant as (
 SELECT
-    loon.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
+    dingo.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
     items.\"I_CLASS\" as \"cs_item_class\",
     items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     items.\"I_ITEM_ID\" as \"cs_item_name\",
-    loon.\"cs_order_number\" as \"cs_order_number\",
-    loon.\"cs_item_id\" as \"cs_item_id\"
+    dingo.\"cs_order_number\" as \"cs_order_number\",
+    dingo.\"cs_item_id\" as \"cs_item_id\"
 FROM
-    loon
-    INNER JOIN memory.item as items on loon.\"cs_item_id\" = items.\"I_ITEM_SK\"
+    dingo
+    INNER JOIN memory.item as items on dingo.\"cs_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-odd as (
+covey as (
 SELECT
-    sum(tanager.\"cs_extra_sales_price_filter_3197596984767774\") as \"_virtual_364582426434762\",
-    tanager.\"cs_item_category\" as \"cs_item_category\",
-    tanager.\"cs_item_class\" as \"cs_item_class\",
-    tanager.\"cs_item_current_price\" as \"cs_item_current_price\",
-    tanager.\"cs_item_desc\" as \"cs_item_desc\",
-    tanager.\"cs_item_name\" as \"cs_item_name\",
-    sum(tanager.\"cs_extra_sales_price_filter_3197596984767774\") as \"_agg_sum_364582426434762\"
+    sum(resonant.\"cs_extra_sales_price_filter_3197596984767774\") as \"_virtual_364582426434762\",
+    resonant.\"cs_item_category\" as \"cs_item_category\",
+    resonant.\"cs_item_class\" as \"cs_item_class\",
+    resonant.\"cs_item_current_price\" as \"cs_item_current_price\",
+    resonant.\"cs_item_desc\" as \"cs_item_desc\",
+    resonant.\"cs_item_name\" as \"cs_item_name\",
+    sum(resonant.\"cs_extra_sales_price_filter_3197596984767774\") as \"_agg_sum_364582426434762\"
 FROM
-    tanager
+    resonant
 GROUP BY 
-    tanager.\"cs_item_name\",
-    tanager.\"cs_item_class\",
-    tanager.\"cs_item_desc\",
-    tanager.\"cs_item_current_price\",
-    tanager.\"cs_item_category\"),
-wooden as (
+    resonant.\"cs_item_class\",
+    resonant.\"cs_item_name\",
+    resonant.\"cs_item_category\",
+    resonant.\"cs_item_current_price\",
+    resonant.\"cs_item_desc\"),
+dove as (
 SELECT
-    sum(odd.\"_agg_sum_364582426434762\") over (partition by odd.\"cs_item_class\") as \"_virtual_503034876863510\",
-    odd.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
-    odd.\"cs_item_class\" as \"cs_item_class\"
+    sum(covey.\"_agg_sum_364582426434762\") over (partition by covey.\"cs_item_class\") as \"_virtual_503034876863510\",
+    covey.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
+    covey.\"cs_item_class\" as \"cs_item_class\"
 FROM
-    odd),
-cheetah as (
+    covey),
+eminent as (
 SELECT
-    civet.\"cs_item_category\" as \"cs_item_category\",
-    civet.\"cs_item_class\" as \"cs_item_class\",
-    civet.\"cs_item_current_price\" as \"cs_item_current_price\",
-    civet.\"cs_item_desc\" as \"cs_item_desc\",
-    civet.\"cs_item_name\" as \"cs_item_name\",
-    civet.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    odd.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\"
+    level.\"cs_item_category\" as \"cs_item_category\",
+    level.\"cs_item_class\" as \"cs_item_class\",
+    level.\"cs_item_current_price\" as \"cs_item_current_price\",
+    level.\"cs_item_desc\" as \"cs_item_desc\",
+    level.\"cs_item_name\" as \"cs_item_name\",
+    level.\"cs_sold_date_date\" as \"cs_sold_date_date\",
+    covey.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\"
 FROM
-    odd
-    INNER JOIN civet on (odd.\"cs_item_category\" = civet.\"cs_item_category\" or (odd.\"cs_item_category\" is null and civet.\"cs_item_category\" is null)) AND (odd.\"cs_item_class\" = civet.\"cs_item_class\" or (odd.\"cs_item_class\" is null and civet.\"cs_item_class\" is null)) AND (odd.\"cs_item_current_price\" = civet.\"cs_item_current_price\" or (odd.\"cs_item_current_price\" is null and civet.\"cs_item_current_price\" is null)) AND (odd.\"cs_item_desc\" = civet.\"cs_item_desc\" or (odd.\"cs_item_desc\" is null and civet.\"cs_item_desc\" is null)) AND odd.\"cs_item_name\" = civet.\"cs_item_name\"
+    covey
+    INNER JOIN level on (covey.\"cs_item_category\" = level.\"cs_item_category\" or (covey.\"cs_item_category\" is null and level.\"cs_item_category\" is null)) AND (covey.\"cs_item_class\" = level.\"cs_item_class\" or (covey.\"cs_item_class\" is null and level.\"cs_item_class\" is null)) AND (covey.\"cs_item_current_price\" = level.\"cs_item_current_price\" or (covey.\"cs_item_current_price\" is null and level.\"cs_item_current_price\" is null)) AND (covey.\"cs_item_desc\" = level.\"cs_item_desc\" or (covey.\"cs_item_desc\" is null and level.\"cs_item_desc\" is null)) AND covey.\"cs_item_name\" = level.\"cs_item_name\"
 WHERE
-    civet.\"cs_item_category\" in ( 'Sports','Books','Home' ) and civet.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and civet.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+    level.\"cs_item_category\" in ( 'Sports','Books','Home' ) and level.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and level.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 ),
-shark as (
+quetzal as (
 SELECT
-    cheetah.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
-    cheetah.\"cs_item_class\" as \"cs_item_class\",
-    cheetah.\"cs_item_category\" as \"cs_item_category\",
-    cheetah.\"cs_item_current_price\" as \"cs_item_current_price\",
-    cheetah.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    cheetah.\"cs_item_desc\" as \"cs_item_desc\",
-    cheetah.\"cs_item_name\" as \"cs_item_name\",
-    wooden.\"_virtual_503034876863510\" as \"_virtual_503034876863510\"
+    eminent.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
+    eminent.\"cs_item_class\" as \"cs_item_class\",
+    eminent.\"cs_item_category\" as \"cs_item_category\",
+    eminent.\"cs_item_current_price\" as \"cs_item_current_price\",
+    eminent.\"cs_sold_date_date\" as \"cs_sold_date_date\",
+    eminent.\"cs_item_desc\" as \"cs_item_desc\",
+    eminent.\"cs_item_name\" as \"cs_item_name\",
+    dove.\"_virtual_503034876863510\" as \"_virtual_503034876863510\"
 FROM
-    cheetah
-    LEFT OUTER JOIN wooden on (cheetah.\"cs_item_class\" = wooden.\"cs_item_class\" or (cheetah.\"cs_item_class\" is null and wooden.\"cs_item_class\" is null)) AND cheetah.\"_agg_sum_364582426434762\" = wooden.\"_agg_sum_364582426434762\"
+    eminent
+    LEFT OUTER JOIN dove on (eminent.\"cs_item_class\" = dove.\"cs_item_class\" or (eminent.\"cs_item_class\" is null and dove.\"cs_item_class\" is null)) AND eminent.\"_agg_sum_364582426434762\" = dove.\"_agg_sum_364582426434762\"
 WHERE
-    cheetah.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cheetah.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and cheetah.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+    eminent.\"cs_item_category\" in ( 'Sports','Books','Home' ) and eminent.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and eminent.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 ),
-uneven as (
+rambunctious as (
 SELECT
-    shark.\"cs_item_category\" as \"cs_item_category\",
-    shark.\"cs_item_class\" as \"cs_item_class\",
-    shark.\"cs_item_current_price\" as \"cs_item_current_price\",
-    shark.\"cs_item_desc\" as \"cs_item_desc\",
-    shark.\"cs_item_name\" as \"cs_item_name\",
-    shark.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    odd.\"_virtual_364582426434762\" * 100.0 / shark.\"_virtual_503034876863510\" as \"revenue_ratio\"
+    quetzal.\"cs_item_category\" as \"cs_item_category\",
+    quetzal.\"cs_item_class\" as \"cs_item_class\",
+    quetzal.\"cs_item_current_price\" as \"cs_item_current_price\",
+    quetzal.\"cs_item_desc\" as \"cs_item_desc\",
+    quetzal.\"cs_item_name\" as \"cs_item_name\",
+    quetzal.\"cs_sold_date_date\" as \"cs_sold_date_date\",
+    covey.\"_virtual_364582426434762\" * 100.0 / quetzal.\"_virtual_503034876863510\" as \"revenue_ratio\"
 FROM
-    odd
-    INNER JOIN shark on (odd.\"cs_item_category\" = shark.\"cs_item_category\" or (odd.\"cs_item_category\" is null and shark.\"cs_item_category\" is null)) AND (odd.\"cs_item_class\" = shark.\"cs_item_class\" or (odd.\"cs_item_class\" is null and shark.\"cs_item_class\" is null)) AND (odd.\"cs_item_current_price\" = shark.\"cs_item_current_price\" or (odd.\"cs_item_current_price\" is null and shark.\"cs_item_current_price\" is null)) AND (odd.\"cs_item_desc\" = shark.\"cs_item_desc\" or (odd.\"cs_item_desc\" is null and shark.\"cs_item_desc\" is null)) AND odd.\"cs_item_name\" = shark.\"cs_item_name\"
+    covey
+    INNER JOIN quetzal on (covey.\"cs_item_category\" = quetzal.\"cs_item_category\" or (covey.\"cs_item_category\" is null and quetzal.\"cs_item_category\" is null)) AND (covey.\"cs_item_class\" = quetzal.\"cs_item_class\" or (covey.\"cs_item_class\" is null and quetzal.\"cs_item_class\" is null)) AND (covey.\"cs_item_current_price\" = quetzal.\"cs_item_current_price\" or (covey.\"cs_item_current_price\" is null and quetzal.\"cs_item_current_price\" is null)) AND (covey.\"cs_item_desc\" = quetzal.\"cs_item_desc\" or (covey.\"cs_item_desc\" is null and quetzal.\"cs_item_desc\" is null)) AND covey.\"cs_item_name\" = quetzal.\"cs_item_name\"
 WHERE
-    shark.\"cs_item_category\" in ( 'Sports','Books','Home' ) and shark.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and shark.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+    quetzal.\"cs_item_category\" in ( 'Sports','Books','Home' ) and quetzal.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and quetzal.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 ),
-scrawny as (
+owl as (
 SELECT
-    uneven.\"cs_item_category\" as \"cs_item_category\",
-    uneven.\"cs_item_class\" as \"cs_item_class\",
-    uneven.\"cs_item_current_price\" as \"cs_item_current_price\",
-    uneven.\"cs_item_desc\" as \"cs_item_desc\",
-    uneven.\"cs_item_name\" as \"cs_item_name\",
-    uneven.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    uneven.\"revenue_ratio\" as \"revenue_ratio\",
-    martin.\"revenue\" as \"revenue\"
+    rambunctious.\"cs_item_category\" as \"cs_item_category\",
+    rambunctious.\"cs_item_class\" as \"cs_item_class\",
+    rambunctious.\"cs_item_current_price\" as \"cs_item_current_price\",
+    rambunctious.\"cs_item_desc\" as \"cs_item_desc\",
+    rambunctious.\"cs_item_name\" as \"cs_item_name\",
+    rambunctious.\"cs_sold_date_date\" as \"cs_sold_date_date\",
+    rambunctious.\"revenue_ratio\" as \"revenue_ratio\",
+    vacuous.\"revenue\" as \"revenue\"
 FROM
-    martin
-    INNER JOIN uneven on (martin.\"cs_item_category\" = uneven.\"cs_item_category\" or (martin.\"cs_item_category\" is null and uneven.\"cs_item_category\" is null)) AND (martin.\"cs_item_class\" = uneven.\"cs_item_class\" or (martin.\"cs_item_class\" is null and uneven.\"cs_item_class\" is null)) AND (martin.\"cs_item_current_price\" = uneven.\"cs_item_current_price\" or (martin.\"cs_item_current_price\" is null and uneven.\"cs_item_current_price\" is null)) AND (martin.\"cs_item_desc\" = uneven.\"cs_item_desc\" or (martin.\"cs_item_desc\" is null and uneven.\"cs_item_desc\" is null)) AND martin.\"cs_item_name\" = uneven.\"cs_item_name\"
+    vacuous
+    INNER JOIN rambunctious on (vacuous.\"cs_item_category\" = rambunctious.\"cs_item_category\" or (vacuous.\"cs_item_category\" is null and rambunctious.\"cs_item_category\" is null)) AND (vacuous.\"cs_item_class\" = rambunctious.\"cs_item_class\" or (vacuous.\"cs_item_class\" is null and rambunctious.\"cs_item_class\" is null)) AND (vacuous.\"cs_item_current_price\" = rambunctious.\"cs_item_current_price\" or (vacuous.\"cs_item_current_price\" is null and rambunctious.\"cs_item_current_price\" is null)) AND (vacuous.\"cs_item_desc\" = rambunctious.\"cs_item_desc\" or (vacuous.\"cs_item_desc\" is null and rambunctious.\"cs_item_desc\" is null)) AND vacuous.\"cs_item_name\" = rambunctious.\"cs_item_name\"
 WHERE
-    uneven.\"cs_item_category\" in ( 'Sports','Books','Home' ) and uneven.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and uneven.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+    rambunctious.\"cs_item_category\" in ( 'Sports','Books','Home' ) and rambunctious.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and rambunctious.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 )
 SELECT
-    scrawny.\"cs_item_name\" as \"cs_item_name\",
-    scrawny.\"cs_item_desc\" as \"cs_item_desc\",
-    scrawny.\"cs_item_category\" as \"cs_item_category\",
-    scrawny.\"cs_item_class\" as \"cs_item_class\",
-    scrawny.\"cs_item_current_price\" as \"cs_item_current_price\",
-    scrawny.\"revenue\" as \"revenue\",
-    scrawny.\"revenue_ratio\" as \"revenue_ratio\"
+    owl.\"cs_item_name\" as \"cs_item_name\",
+    owl.\"cs_item_desc\" as \"cs_item_desc\",
+    owl.\"cs_item_category\" as \"cs_item_category\",
+    owl.\"cs_item_class\" as \"cs_item_class\",
+    owl.\"cs_item_current_price\" as \"cs_item_current_price\",
+    owl.\"revenue\" as \"revenue\",
+    owl.\"revenue_ratio\" as \"revenue_ratio\"
 FROM
-    scrawny
+    owl
 WHERE
-    scrawny.\"cs_item_category\" in ( 'Sports','Books','Home' ) and scrawny.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and scrawny.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+    owl.\"cs_item_category\" in ( 'Sports','Books','Home' ) and owl.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and owl.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 
 GROUP BY 
-    scrawny.\"cs_item_name\",
-    scrawny.\"cs_item_category\",
-    scrawny.\"revenue\",
-    scrawny.\"revenue_ratio\",
-    scrawny.\"cs_item_desc\",
-    scrawny.\"cs_item_class\",
-    scrawny.\"cs_item_current_price\"
+    owl.\"cs_item_name\",
+    owl.\"cs_item_current_price\",
+    owl.\"cs_item_desc\",
+    owl.\"revenue_ratio\",
+    owl.\"revenue\",
+    owl.\"cs_item_category\",
+    owl.\"cs_item_class\"
 ORDER BY 
-    scrawny.\"cs_item_category\" asc nulls first,
-    scrawny.\"cs_item_class\" asc nulls first,
-    scrawny.\"cs_item_name\" asc nulls first,
-    scrawny.\"cs_item_desc\" asc nulls first,
-    scrawny.\"revenue_ratio\" asc nulls first
+    owl.\"cs_item_category\" asc nulls first,
+    owl.\"cs_item_class\" asc nulls first,
+    owl.\"cs_item_name\" asc nulls first,
+    owl.\"cs_item_desc\" asc nulls first,
+    owl.\"revenue_ratio\" asc nulls first
 LIMIT (100)"""

@@ -216,17 +216,6 @@ def gen_enrichment_node(
         g=g,
         parents=[enrich_node, base_node],
         force_group=False,
-        # node_joins=[
-        #     NodeJoin(
-        #         left_node=enrich_node,
-        #         right_node=base_node,
-        #         concepts=concept_to_relevant_joins(
-        #             [x for x in join_keys if x in enrich_node.output_lcl]
-        #         ),
-        #         filter_to_mutual=False,
-        #         join_type=JoinType.LEFT_OUTER,
-        #     )
-        # ],
     )
 
 
