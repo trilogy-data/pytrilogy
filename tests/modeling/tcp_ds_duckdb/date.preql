@@ -16,7 +16,7 @@ property id.d_week_seq1 int;
 datasource date (
     D_DATE_SK: id,
     D_DATE_ID: date_string,
-    D_DATE: date,
+    raw('''cast("D_DATE" as date)'''): date,
     D_DOW: day_of_week,
     D_WEEK_SEQ: week_seq,
     D_MOY: month_of_year,

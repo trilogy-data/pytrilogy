@@ -3,15 +3,12 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     StrategyNode,
     MergeNode,
-    NodeJoin,
     History,
 )
 from typing import List
-from trilogy.core.enums import JoinType
 
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
 
 LOGGER_PREFIX = "[GEN_GROUP_TO_NODE]"
 
@@ -84,15 +81,15 @@ def gen_group_to_node(
             # this node gets enrichment
             enrich_node,
         ],
-        node_joins=[
-            NodeJoin(
-                left_node=group_node,
-                right_node=enrich_node,
-                concepts=concept_to_relevant_joins(parent_concepts),
-                filter_to_mutual=False,
-                join_type=JoinType.LEFT_OUTER,
-            )
-        ],
+        # node_joins=[
+        #     NodeJoin(
+        #         left_node=group_node,
+        #         right_node=enrich_node,
+        #         concepts=concept_to_relevant_joins(parent_concepts),
+        #         filter_to_mutual=False,
+        #         join_type=JoinType.LEFT_OUTER,
+        #     )
+        # ],
         whole_grain=True,
         depth=depth,
     )

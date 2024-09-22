@@ -135,7 +135,7 @@ class PredicatePushdown(OptimizationRule):
                     f"Skipping {candidate} as not a basic [no aggregate, etc] condition"
                 )
                 continue
-            self.log(
+            self.debug(
                 f"Checking candidate {candidate}, {type(candidate)}, scalar: {is_scalar_condition(candidate)}"
             )
             for parent_cte in cte.parent_ctes:

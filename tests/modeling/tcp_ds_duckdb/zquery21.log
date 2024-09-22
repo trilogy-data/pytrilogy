@@ -1,0 +1,117 @@
+query_id = 21
+parse_time = 7.065645
+exec_time = 1.1388
+comp_time = 0.217127
+gen_length = 4947
+generated_sql = """
+
+WITH 
+avocet as (
+SELECT
+    warehouse_inventory.\"inv_item_sk\" as \"inventory_item_id\",
+    warehouse_inventory.\"inv_date_sk\" as \"inventory_date_id\",
+    items.\"I_ITEM_ID\" as \"inventory_item_name\",
+    warehouse_inventory.\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\",
+    warehouse_inventory.\"inv_warehouse_sk\" as \"inventory_warehouse_id\"
+FROM
+    memory.inventory as warehouse_inventory
+    INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"),
+quetzal as (
+SELECT
+    warehouse_inventory.\"inv_warehouse_sk\" as \"inventory_warehouse_id\",
+    warehouse_inventory.\"inv_date_sk\" as \"inventory_date_id\",
+    warehouse_inventory.\"inv_item_sk\" as \"inventory_item_id\",
+    warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\"
+FROM
+    memory.inventory as warehouse_inventory
+    LEFT OUTER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"),
+fox as (
+SELECT
+    cast(\"D_DATE\" as date) as \"inventory_date_date\",
+    avocet.\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\",
+    warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
+    avocet.\"inventory_item_name\" as \"inventory_item_name\",
+    date.\"D_DATE_SK\" as \"inventory_date_id\",
+    avocet.\"inventory_warehouse_id\" as \"inventory_warehouse_id\"
+FROM
+    avocet
+    INNER JOIN memory.date_dim as date on avocet.\"inventory_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.warehouse as warehouse on avocet.\"inventory_warehouse_id\" = warehouse.\"w_warehouse_sk\"
+WHERE
+    cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date)
+),
+abundant as (
+SELECT
+    quetzal.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    items.\"I_ITEM_ID\" as \"inventory_item_name\",
+    items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
+    cast(\"D_DATE\" as date) as \"inventory_date_date\"
+FROM
+    quetzal
+    INNER JOIN memory.date_dim as date on quetzal.\"inventory_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on quetzal.\"inventory_item_id\" = items.\"I_ITEM_SK\"
+WHERE
+    cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
+),
+leopard as (
+SELECT
+    sum(CASE
+	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	ELSE 0
+	END) as \"inv_before\",
+    fox.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    fox.\"inventory_item_name\" as \"inventory_item_name\",
+    sum(CASE
+	WHEN fox.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	ELSE 0
+	END) as \"inv_after\"
+FROM
+    fox
+GROUP BY 
+    fox.\"inventory_item_name\",
+    fox.\"inventory_warehouse_name\"),
+wakeful as (
+SELECT
+    abundant.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    abundant.\"inventory_item_name\" as \"inventory_item_name\",
+    abundant.\"inventory_item_current_price\" as \"inventory_item_current_price\",
+    abundant.\"inventory_date_date\" as \"inventory_date_date\",
+    leopard.\"inv_before\" as \"inv_before\",
+    leopard.\"inv_after\" as \"inv_after\"
+FROM
+    abundant
+    LEFT OUTER JOIN leopard on (abundant.\"inventory_warehouse_name\" = leopard.\"inventory_warehouse_name\" or (abundant.\"inventory_warehouse_name\" is null and leopard.\"inventory_warehouse_name\" is null)) AND abundant.\"inventory_item_name\" = leopard.\"inventory_item_name\"
+WHERE
+    CASE
+	WHEN leopard.\"inv_before\" > 0 THEN leopard.\"inv_after\" * 1.0 / leopard.\"inv_before\"
+	ELSE null
+	END >= 2.0 / 3.0 and CASE
+	WHEN leopard.\"inv_before\" > 0 THEN leopard.\"inv_after\" * 1.0 / leopard.\"inv_before\"
+	ELSE null
+	END <= 3.0 / 2.0 and abundant.\"inventory_date_date\" >= cast('2000-02-10' as date) and abundant.\"inventory_date_date\" <= cast('2000-04-10' as date) and abundant.\"inventory_item_current_price\" >= 0.99 and abundant.\"inventory_item_current_price\" <= 1.49
+)
+SELECT
+    wakeful.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    wakeful.\"inventory_item_name\" as \"inventory_item_name\",
+    wakeful.\"inv_before\" as \"inv_before\",
+    wakeful.\"inv_after\" as \"inv_after\"
+FROM
+    wakeful
+WHERE
+    CASE
+	WHEN wakeful.\"inv_before\" > 0 THEN wakeful.\"inv_after\" * 1.0 / wakeful.\"inv_before\"
+	ELSE null
+	END >= 2.0 / 3.0 and CASE
+	WHEN wakeful.\"inv_before\" > 0 THEN wakeful.\"inv_after\" * 1.0 / wakeful.\"inv_before\"
+	ELSE null
+	END <= 3.0 / 2.0 and wakeful.\"inventory_date_date\" >= cast('2000-02-10' as date) and wakeful.\"inventory_date_date\" <= cast('2000-04-10' as date) and wakeful.\"inventory_item_current_price\" >= 0.99 and wakeful.\"inventory_item_current_price\" <= 1.49
+
+GROUP BY 
+    wakeful.\"inv_after\",
+    wakeful.\"inv_before\",
+    wakeful.\"inventory_warehouse_name\",
+    wakeful.\"inventory_item_name\"
+ORDER BY 
+    wakeful.\"inventory_warehouse_name\" asc nulls first,
+    wakeful.\"inventory_item_name\" asc nulls first
+LIMIT (100)"""

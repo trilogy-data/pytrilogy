@@ -1,4 +1,10 @@
-from trilogy.core.models import Concept, Environment, LooseConceptList, WhereClause
+from trilogy.core.models import (
+    Concept,
+    Environment,
+    LooseConceptList,
+    WhereClause,
+    Function,
+)
 from trilogy.utility import unique
 from trilogy.core.processing.nodes import GroupNode, StrategyNode, History
 from typing import List
@@ -42,6 +48,17 @@ def gen_group_node(
         )
         parent_concepts += grain_components
         output_concepts += grain_components
+        for possible_agg in local_optional:
+            if possible_agg.grain and possible_agg.grain == concept.grain:
+                if not isinstance(possible_agg.lineage, Function):
+                    continue
+                agg_parents: List[Concept] = resolve_function_parent_concepts(
+                    possible_agg
+                )
+                if set([x.address for x in agg_parents]).issubset(
+                    set([x.address for x in parent_concepts])
+                ):
+                    output_concepts.append(possible_agg)
 
     if parent_concepts:
         logger.info(

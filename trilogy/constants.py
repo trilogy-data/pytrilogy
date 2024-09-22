@@ -30,7 +30,13 @@ class Optimizations:
 
 @dataclass
 class Comments:
-    pass
+    """Control what is placed in CTE comments"""
+
+    show: bool = False
+    basic: bool = True
+    joins: bool = True
+    nullable: bool = False
+    partial: bool = False
 
 
 # TODO: support loading from environments
@@ -39,8 +45,12 @@ class Config:
     strict_mode: bool = True
     human_identifiers: bool = True
     validate_missing: bool = True
-    show_comments: bool = False
+    comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
+
+    @property
+    def show_comments(self) -> bool:
+        return self.comments.show
 
     def set_random_seed(self, seed: int):
         random.seed(seed)

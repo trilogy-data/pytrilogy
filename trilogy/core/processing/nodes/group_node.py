@@ -20,6 +20,7 @@ from trilogy.core.processing.nodes.base_node import (
 )
 from trilogy.utility import unique
 from trilogy.core.processing.utility import is_scalar_condition
+from trilogy.core.processing.utility import find_nullable_concepts
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
@@ -37,6 +38,7 @@ class GroupNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: Optional[List[Concept]] = None,
+        nullable_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         existence_concepts: List[Concept] | None = None,
@@ -50,6 +52,7 @@ class GroupNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            nullable_concepts=nullable_concepts,
             force_group=force_group,
             conditions=conditions,
             existence_concepts=existence_concepts,
@@ -113,27 +116,34 @@ class GroupNode(StrategyNode):
                     f" {parent.grain}"
                 )
             source_type = SourceType.GROUP
-
+        source_map = resolve_concept_map(
+            parent_sources,
+            targets=(
+                unique(
+                    self.output_concepts + self.conditions.concept_arguments,
+                    "address",
+                )
+                if self.conditions
+                else self.output_concepts
+            ),
+            inherited_inputs=self.input_concepts + self.existence_concepts,
+        )
+        nullable_addresses = find_nullable_concepts(
+            source_map=source_map, joins=[], datasources=parent_sources
+        )
+        nullable_concepts = [
+            x for x in self.output_concepts if x.address in nullable_addresses
+        ]
         base = QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=self.output_concepts,
             datasources=parent_sources,
             source_type=source_type,
-            source_map=resolve_concept_map(
-                parent_sources,
-                targets=(
-                    unique(
-                        self.output_concepts + self.conditions.concept_arguments,
-                        "address",
-                    )
-                    if self.conditions
-                    else self.output_concepts
-                ),
-                inherited_inputs=self.input_concepts + self.existence_concepts,
-            ),
+            source_map=source_map,
             joins=[],
             grain=grain,
             partial_concepts=self.partial_concepts,
+            nullable_concepts=nullable_concepts,
             condition=self.conditions,
         )
         # if there is a condition on a group node and it's not scalar
@@ -141,18 +151,20 @@ class GroupNode(StrategyNode):
         if self.conditions and not is_scalar_condition(self.conditions):
             base.condition = None
             base.output_concepts = self.output_concepts + self.conditions.row_arguments
+            source_map = resolve_concept_map(
+                [base],
+                targets=self.output_concepts,
+                inherited_inputs=base.output_concepts,
+            )
             return QueryDatasource(
                 input_concepts=base.output_concepts,
                 output_concepts=self.output_concepts,
                 datasources=[base],
                 source_type=SourceType.SELECT,
-                source_map=resolve_concept_map(
-                    [base],
-                    targets=self.output_concepts,
-                    inherited_inputs=base.output_concepts,
-                ),
+                source_map=source_map,
                 joins=[],
                 grain=grain,
+                nullable_concepts=base.nullable_concepts,
                 partial_concepts=self.partial_concepts,
                 condition=self.conditions,
             )
@@ -168,6 +180,7 @@ class GroupNode(StrategyNode):
             parents=self.parents,
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
+            nullable_concepts=list(self.nullable_concepts),
             force_group=self.force_group,
             conditions=self.conditions,
             existence_concepts=list(self.existence_concepts),

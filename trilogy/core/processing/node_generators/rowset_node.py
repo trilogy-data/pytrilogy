@@ -6,11 +6,11 @@ from trilogy.core.models import (
     RowsetItem,
     MultiSelectStatement,
 )
-from trilogy.core.processing.nodes import MergeNode, NodeJoin, History, StrategyNode
+from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 from typing import List
 
-from trilogy.core.enums import JoinType, PurposeLineage
+from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
@@ -118,14 +118,14 @@ def gen_rowset_node(
             # this node gets enrichment
             enrich_node,
         ],
-        node_joins=[
-            NodeJoin(
-                left_node=enrich_node,
-                right_node=node,
-                concepts=concept_to_relevant_joins(additional_relevant),
-                filter_to_mutual=False,
-                join_type=JoinType.LEFT_OUTER,
-            )
-        ],
+        # node_joins=[
+        #     NodeJoin(
+        #         left_node=enrich_node,
+        #         right_node=node,
+        #         concepts=concept_to_relevant_joins(additional_relevant),
+        #         filter_to_mutual=False,
+        #         join_type=JoinType.LEFT_OUTER,
+        #     )
+        # ],
         partial_concepts=node.partial_concepts,
     )

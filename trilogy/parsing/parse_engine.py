@@ -92,6 +92,7 @@ from trilogy.core.models import (
     WindowItemOver,
     RawColumnExpr,
     arg_to_datatype,
+    merge_datatypes,
     ListWrapper,
     MapWrapper,
     MapType,
@@ -1705,8 +1706,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fadd(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = arg_to_datatype(args[0])
-        # TODO: check for valid transforms?
+        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
         return Function(
             operator=FunctionType.ADD,
             arguments=args,
@@ -1719,7 +1719,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fsub(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = arg_to_datatype(args[0])
+        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
         return Function(
             operator=FunctionType.SUBTRACT,
             arguments=args,
@@ -1732,7 +1732,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fmul(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = arg_to_datatype(args[0])
+        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
         return Function(
             operator=FunctionType.MULTIPLY,
             arguments=args,
@@ -1744,8 +1744,8 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fdiv(self, meta: Meta, args):
-        output_datatype = arg_to_datatype(args[0])
         args = process_function_args(args, meta=meta, environment=self.environment)
+        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
         return Function(
             operator=FunctionType.DIVIDE,
             arguments=args,
@@ -1757,12 +1757,11 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fmod(self, meta: Meta, args):
-        output_datatype = arg_to_datatype(args[0])
         args = process_function_args(args, meta=meta, environment=self.environment)
         return Function(
             operator=FunctionType.MOD,
             arguments=args,
-            output_datatype=output_datatype,
+            output_datatype=DataType.INTEGER,
             output_purpose=function_args_to_output_purpose(args),
             valid_inputs=[
                 {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
@@ -1789,12 +1788,15 @@ class ParseToObjects(Transformer):
 
     def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
         datatypes = set()
+        mapz = dict()
         for arg in args:
             output_datatype = arg_to_datatype(arg.expr)
-            datatypes.add(output_datatype)
+            if output_datatype != DataType.NULL:
+                datatypes.add(output_datatype)
+            mapz[str(arg.expr)] = output_datatype
         if not len(datatypes) == 1:
             raise SyntaxError(
-                f"All case expressions must have the same output datatype, got {datatypes}"
+                f"All case expressions must have the same output datatype, got {datatypes} from {mapz}"
             )
         return Function(
             operator=FunctionType.CASE,

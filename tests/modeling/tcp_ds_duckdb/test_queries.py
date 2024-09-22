@@ -116,6 +116,12 @@ def test_twenty(engine):
     # assert len(query) < 6000, query
 
 
+def test_twenty_one(engine):
+    _ = run_query(engine, 21)
+    # size gating
+    # assert len(query) < 6000, query
+
+
 def run_adhoc(number: int):
     from trilogy import Environment, Dialects
     from trilogy.hooks.query_debugger import DebuggingHook

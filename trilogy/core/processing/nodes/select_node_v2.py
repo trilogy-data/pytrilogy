@@ -43,6 +43,7 @@ class SelectNode(StrategyNode):
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         partial_concepts: List[Concept] | None = None,
+        nullable_concepts: List[Concept] | None = None,
         accept_partial: bool = False,
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
@@ -58,6 +59,7 @@ class SelectNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            nullable_concepts=nullable_concepts,
             force_group=force_group,
             grain=grain,
             conditions=conditions,
@@ -115,6 +117,7 @@ class SelectNode(StrategyNode):
             partial_concepts=[
                 c.concept for c in datasource.columns if not c.is_complete
             ],
+            nullable_concepts=[c.concept for c in datasource.columns if c.is_nullable],
             source_type=SourceType.DIRECT_SELECT,
             condition=self.conditions,
             # select nodes should never group
@@ -183,6 +186,7 @@ class SelectNode(StrategyNode):
             parents=self.parents,
             whole_grain=self.whole_grain,
             partial_concepts=list(self.partial_concepts),
+            nullable_concepts=list(self.nullable_concepts),
             accept_partial=self.accept_partial,
             grain=self.grain,
             force_group=self.force_group,

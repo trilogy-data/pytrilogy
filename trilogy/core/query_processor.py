@@ -297,6 +297,7 @@ def datasource_to_ctes(
         parent_ctes=parents,
         condition=query_datasource.condition,
         partial_concepts=query_datasource.partial_concepts,
+        nullable_concepts=query_datasource.nullable_concepts,
         join_derived_concepts=query_datasource.join_derived_concepts,
         hidden_concepts=query_datasource.hidden_concepts,
         base_name_override=base_name,

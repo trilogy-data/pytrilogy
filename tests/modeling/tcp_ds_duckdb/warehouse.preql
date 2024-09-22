@@ -1,15 +1,15 @@
-import date as inv_date;
-import item as item;
+
+
 key id int;
 property id.string_id string;
 property id.name string;
 property id.square_feet int;
-property <id, inv_date.id>.inventory_on_hand float;
+
 
 datasource warehouse (
     w_warehouse_sk: id,
     w_warehouse_id: string_id,
-    w_warehouse_name:name,
+    w_warehouse_name: name,
     w_warehouse_sq_ft: square_feet,
 
     )
@@ -17,11 +17,3 @@ grain (id)
 address memory.warehouse
 ;
 
-datasource warehouse_inventory (
-    wi_warehouse_sk: ~id,
-    inv_date_sk: inv_date.id,
-    inv_quantity_on_hand: inventory_on_hand,
-    inv_item_sk:item.id,
-    )
-grain (id, inv_date.id)
-address memory.inv_warehouse;

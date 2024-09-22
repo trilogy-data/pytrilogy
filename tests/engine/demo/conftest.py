@@ -249,7 +249,7 @@ def setup_titanic_distributed(env: Environment):
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
-        datatype=DataType.BOOL,
+        datatype=DataType.INTEGER,
         keys=[id],
     )
     fare = Concept(
@@ -414,7 +414,7 @@ def setup_titanic(env: Environment):
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
-        datatype=DataType.BOOL,
+        datatype=DataType.INTEGER,
         keys=[id],
         grain=Grain(components=[id]),
     )

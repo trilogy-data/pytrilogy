@@ -43,7 +43,7 @@
     
     query: "query" MULTILINE_STRING
     
-    concept_assignment: SHORTHAND_MODIFIER? IDENTIFIER 
+    concept_assignment: SHORTHAND_MODIFIER* IDENTIFIER 
     
     //column_assignment
     //figure out if we want static

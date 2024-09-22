@@ -1,0 +1,25 @@
+import warehouse as warehouse;
+
+
+SELECT
+    warehouse.name,
+    warehouse.item.id,          
+    sum(CASE
+        WHEN (warehouse.date.date < CAST ('2000-03-11' AS date)) THEN warehouse.quantity_on_hand
+        ELSE 0
+    END) AS inv_before,
+    sum(CASE
+            WHEN (warehouse.date.date >= CAST ('2000-03-11' AS date)) THEN warehouse.quantity_on_hand
+            ELSE 0
+        END) AS inv_after
+WHERE
+    warehouse.date.date BETWEEN CAST ('2000-02-10' AS date) AND CAST ('2000-04-10' AS date)
+    and warehouse.item.current_price BETWEEN 0.99 AND 1.49
+    and (CASE
+           WHEN inv_before > 0 THEN (inv_after*1.000) / inv_before
+           ELSE NULL
+       END) BETWEEN 2.000/3.000 AND 3.000/2.000
+ORDER BY 
+    warehouse.name ASC NULLS FIRST,
+    warehouse.item.id ASC NULLS FIRST
+LIMIT 100;
