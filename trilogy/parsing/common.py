@@ -125,7 +125,7 @@ def constant_to_concept(
 
 
 def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
-    pkeys = []
+    pkeys:List[Concept] = []
     for x in parent.arguments:
         pkeys += [
             x
@@ -135,7 +135,10 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
     grain = Grain()
     for x in pkeys:
         grain += x.grain
-
+    modifiers = set()
+    for pkey in pkeys:
+        if pkey.modifiers:
+            modifiers.update(pkey.modifiers)
     key_grain = []
     for x in pkeys:
         if x.keys:
@@ -155,6 +158,7 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
         namespace=namespace,
         grain=grain,
         keys=keys,
+        modifiers=modifiers,
     )
 
 

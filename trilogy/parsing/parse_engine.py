@@ -1840,6 +1840,8 @@ def unpack_visit_error(e: VisitError):
         unpack_visit_error(e.orig_exc)
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
         raise e.orig_exc
+    elif isinstance(e.orig_exc, SyntaxError):
+        raise InvalidSyntaxException(str(e.orig_exc) + str(e.rule) + str(e.obj))
     elif isinstance(e.orig_exc, (ValidationError, TypeError)):
         raise InvalidSyntaxException(str(e.orig_exc) + str(e.rule) + str(e.obj))
     raise e

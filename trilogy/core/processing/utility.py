@@ -443,18 +443,23 @@ def decompose_condition(
 
 
 def find_nullable_concepts(
-    source_map: Dict[str, Datasource | QueryDatasource ],
-    datasources: List[Datasource | QueryDatasource| UnnestJoin],
-    joins: List[BaseJoin],
+    source_map: Dict[str, set[Datasource | QueryDatasource | UnnestJoin]],
+    datasources: List[Datasource | QueryDatasource],
+    joins: List[BaseJoin | UnnestJoin],
 ) -> List[str]:
     """give a set of datasources and joins, find the concepts
     that may contain nulls in the output set
     """
     nullable_datasources = set()
-    datasource_map = {x.identifier: x for x in datasources if isinstance(x, (Datasource, QueryDatasource))}
-    local_datasources:list[Datasource | QueryDatasource] = list(datasource_map.keys())
+    datasource_map = {
+        x.identifier: x
+        for x in datasources
+        if isinstance(x, (Datasource, QueryDatasource))
+    }
     for join in joins:
         is_on_nullable_condition = False
+        if not isinstance(join, BaseJoin):
+            continue
         if not join.concept_pairs:
             continue
         for pair in join.concept_pairs:
@@ -480,12 +485,12 @@ def find_nullable_concepts(
 
     for k, v in source_map.items():
         local_nullable = [
-            x for x in local_datasources if k in [v.address for v in x.nullable_concepts]
+            x for x in datasources if k in [v.address for v in x.nullable_concepts]
         ]
         if all(
             [
                 k in [v.address for v in x.nullable_concepts]
-                for x in local_datasources
+                for x in datasources
                 if k in [z.address for z in x.output_concepts]
             ]
         ):

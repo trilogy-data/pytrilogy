@@ -9,8 +9,9 @@ from trilogy.core.models import (
     Function,
     LooseConceptList,
     SelectContext,
+    Environment,
 )
-from trilogy.core.enums import Purpose, FunctionType
+from trilogy.core.enums import Purpose, FunctionType, Modifier
 
 
 def setup_titanic(env: Environment):
@@ -48,7 +49,7 @@ def setup_titanic(env: Environment):
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
-        datatype=DataType.BOOL,
+        datatype=DataType.INTEGER,
         keys=[id],
         grain=Grain(components=[id]),
     )
@@ -315,7 +316,7 @@ limit 5;"""
 
 
 def test_demo_suggested_answer(engine):
-    executor = engine
+    executor:Executor = engine
     env = Environment()
     setup_titanic(env)
     executor.environment = env
@@ -332,6 +333,7 @@ order by passenger.decade desc
 ;"""
     # raw = executor.generate_sql(test)
     results = executor.execute_text(test)[-1].fetchall()
+    assert executor.environment.concepts["passenger.decade"].modifiers == [Modifier.NULLABLE], "decade should be nullable"
 
     assert len(results) == 10
 

@@ -194,7 +194,7 @@ class MergeNode(StrategyNode):
         pregrain: Grain,
         grain: Grain,
         environment: Environment,
-    ) -> List[BaseJoin]:
+    ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
@@ -310,7 +310,7 @@ class MergeNode(StrategyNode):
         )
         join_candidates = [x for x in final_datasets if x not in existence_final]
         if len(join_candidates) > 1:
-            joins = self.generate_joins(
+            joins: List[BaseJoin | UnnestJoin] = self.generate_joins(
                 join_candidates, final_joins, pregrain, grain, self.environment
             )
         else:
@@ -320,7 +320,7 @@ class MergeNode(StrategyNode):
         )
         full_join_concepts = []
         for join in joins:
-            if join.join_type == JoinType.FULL:
+            if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.concepts
         if self.whole_grain:
             force_group = False
@@ -336,7 +336,7 @@ class MergeNode(StrategyNode):
         else:
             force_group = None
 
-        qd_joins: List[BaseJoin] = [*joins]
+        qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
         source_map = resolve_concept_map(
             list(merged.values()),
             targets=self.output_concepts,

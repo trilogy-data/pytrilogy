@@ -13,7 +13,7 @@ from typing import List
 from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
+from trilogy.core.processing.utility import concept_to_relevant_joins
 
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"

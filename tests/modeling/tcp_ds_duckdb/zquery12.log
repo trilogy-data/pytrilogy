@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 5.155272
-exec_time = 0.545391
-comp_time = 0.094094
-gen_length = 6924
+parse_time = 5.307575
+exec_time = 1.133322
+comp_time = 0.165066
+gen_length = 6677
 generated_sql = """
 
 WITH 
-sedate as (
+waggish as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -21,7 +21,7 @@ FROM
     memory.web_sales as web_sales
     INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"),
-pelican as (
+mamba as (
 SELECT
     items.\"I_CLASS\" as \"web_sales_item_class\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
@@ -31,19 +31,19 @@ SELECT
 FROM
     memory.item as items
 GROUP BY 
-    items.\"I_ITEM_DESC\",
     items.\"I_CLASS\",
+    items.\"I_ITEM_DESC\",
     items.\"I_ITEM_ID\",
     items.\"I_CATEGORY\",
     items.\"I_CURRENT_PRICE\"),
 crocodile as (
 SELECT
-    CASE WHEN sedate.\"web_sales_date_date\" >= cast('1999-02-22' as date) and sedate.\"web_sales_date_date\" <= cast('1999-03-24' as date) and sedate.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN sedate.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
-    sedate.\"web_sales_order_number\" as \"web_sales_order_number\",
-    sedate.\"web_sales_item_id\" as \"web_sales_item_id\"
+    CASE WHEN waggish.\"web_sales_date_date\" >= cast('1999-02-22' as date) and waggish.\"web_sales_date_date\" <= cast('1999-03-24' as date) and waggish.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN waggish.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
+    waggish.\"web_sales_order_number\" as \"web_sales_order_number\",
+    waggish.\"web_sales_item_id\" as \"web_sales_item_id\"
 FROM
-    sedate),
-salamander as (
+    waggish),
+hawk as (
 SELECT
     crocodile.\"relevant_sales\" as \"relevant_sales\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
@@ -56,82 +56,82 @@ SELECT
 FROM
     crocodile
     INNER JOIN memory.item as items on crocodile.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
-skylark as (
+slow as (
 SELECT
-    sum(salamander.\"relevant_sales\") as \"itemrevenue\",
-    salamander.\"web_sales_item_category\" as \"web_sales_item_category\",
-    salamander.\"web_sales_item_class\" as \"web_sales_item_class\",
-    salamander.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    salamander.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    salamander.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(salamander.\"relevant_sales\") as \"_virtual_1496978012803723\"
+    sum(hawk.\"relevant_sales\") as \"itemrevenue\",
+    hawk.\"web_sales_item_category\" as \"web_sales_item_category\",
+    hawk.\"web_sales_item_class\" as \"web_sales_item_class\",
+    hawk.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    hawk.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    hawk.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sum(hawk.\"relevant_sales\") as \"_virtual_1496978012803723\"
 FROM
-    salamander
+    hawk
 GROUP BY 
-    salamander.\"web_sales_item_category\",
-    salamander.\"web_sales_item_desc\",
-    salamander.\"web_sales_item_class\",
-    salamander.\"web_sales_item_current_price\",
-    salamander.\"web_sales_item_name\"),
-razorbill as (
+    hawk.\"web_sales_item_current_price\",
+    hawk.\"web_sales_item_name\",
+    hawk.\"web_sales_item_class\",
+    hawk.\"web_sales_item_category\",
+    hawk.\"web_sales_item_desc\"),
+quail as (
 SELECT
-    sum(salamander.\"relevant_sales\") as \"_virtual_341251569527357\",
-    salamander.\"web_sales_item_class\" as \"web_sales_item_class\"
+    sum(hawk.\"relevant_sales\") as \"_virtual_341251569527357\",
+    hawk.\"web_sales_item_class\" as \"web_sales_item_class\"
 FROM
-    salamander
+    hawk
 GROUP BY 
-    salamander.\"web_sales_item_class\"),
-rhea as (
+    hawk.\"web_sales_item_class\"),
+deeply as (
 SELECT
-    pelican.\"web_sales_item_class\" as \"web_sales_item_class\",
-    pelican.\"web_sales_item_category\" as \"web_sales_item_category\",
-    pelican.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    pelican.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    pelican.\"web_sales_item_name\" as \"web_sales_item_name\",
-    razorbill.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
+    mamba.\"web_sales_item_class\" as \"web_sales_item_class\",
+    mamba.\"web_sales_item_category\" as \"web_sales_item_category\",
+    mamba.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    mamba.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    mamba.\"web_sales_item_name\" as \"web_sales_item_name\",
+    quail.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
 FROM
-    pelican
-    INNER JOIN razorbill on (pelican.\"web_sales_item_class\" = razorbill.\"web_sales_item_class\" or (pelican.\"web_sales_item_class\" is null and razorbill.\"web_sales_item_class\" is null))),
-barracuda as (
+    mamba
+    INNER JOIN quail on (mamba.\"web_sales_item_class\" = quail.\"web_sales_item_class\" or (mamba.\"web_sales_item_class\" is null and quail.\"web_sales_item_class\" is null))),
+eminent as (
 SELECT
-    skylark.\"web_sales_item_category\" as \"web_sales_item_category\",
-    skylark.\"web_sales_item_class\" as \"web_sales_item_class\",
-    skylark.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    skylark.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    skylark.\"web_sales_item_name\" as \"web_sales_item_name\",
-    skylark.\"_virtual_1496978012803723\" * 100.0 / rhea.\"_virtual_341251569527357\" as \"revenueratio\"
+    slow.\"web_sales_item_category\" as \"web_sales_item_category\",
+    slow.\"web_sales_item_class\" as \"web_sales_item_class\",
+    slow.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    slow.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    slow.\"web_sales_item_name\" as \"web_sales_item_name\",
+    slow.\"_virtual_1496978012803723\" * 100.0 / deeply.\"_virtual_341251569527357\" as \"revenueratio\"
 FROM
-    skylark
-    INNER JOIN rhea on (skylark.\"web_sales_item_category\" = rhea.\"web_sales_item_category\" or (skylark.\"web_sales_item_category\" is null and rhea.\"web_sales_item_category\" is null)) AND (skylark.\"web_sales_item_class\" = rhea.\"web_sales_item_class\" or (skylark.\"web_sales_item_class\" is null and rhea.\"web_sales_item_class\" is null)) AND (skylark.\"web_sales_item_current_price\" = rhea.\"web_sales_item_current_price\" or (skylark.\"web_sales_item_current_price\" is null and rhea.\"web_sales_item_current_price\" is null)) AND (skylark.\"web_sales_item_desc\" = rhea.\"web_sales_item_desc\" or (skylark.\"web_sales_item_desc\" is null and rhea.\"web_sales_item_desc\" is null)) AND skylark.\"web_sales_item_name\" = rhea.\"web_sales_item_name\"),
-albatross as (
+    slow
+    INNER JOIN deeply on (slow.\"web_sales_item_category\" = deeply.\"web_sales_item_category\" or (slow.\"web_sales_item_category\" is null and deeply.\"web_sales_item_category\" is null)) AND (slow.\"web_sales_item_class\" = deeply.\"web_sales_item_class\" or (slow.\"web_sales_item_class\" is null and deeply.\"web_sales_item_class\" is null)) AND (slow.\"web_sales_item_current_price\" = deeply.\"web_sales_item_current_price\" or (slow.\"web_sales_item_current_price\" is null and deeply.\"web_sales_item_current_price\" is null)) AND (slow.\"web_sales_item_desc\" = deeply.\"web_sales_item_desc\" or (slow.\"web_sales_item_desc\" is null and deeply.\"web_sales_item_desc\" is null)) AND slow.\"web_sales_item_name\" = deeply.\"web_sales_item_name\"),
+cockatoo as (
 SELECT
-    barracuda.\"web_sales_item_category\" as \"web_sales_item_category\",
-    barracuda.\"web_sales_item_class\" as \"web_sales_item_class\",
-    barracuda.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    barracuda.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    barracuda.\"web_sales_item_name\" as \"web_sales_item_name\",
-    barracuda.\"revenueratio\" as \"revenueratio\",
-    skylark.\"itemrevenue\" as \"itemrevenue\"
+    eminent.\"web_sales_item_category\" as \"web_sales_item_category\",
+    eminent.\"web_sales_item_class\" as \"web_sales_item_class\",
+    eminent.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    eminent.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    eminent.\"web_sales_item_name\" as \"web_sales_item_name\",
+    eminent.\"revenueratio\" as \"revenueratio\",
+    slow.\"itemrevenue\" as \"itemrevenue\"
 FROM
-    barracuda
-    INNER JOIN skylark on (barracuda.\"web_sales_item_category\" = skylark.\"web_sales_item_category\" or (barracuda.\"web_sales_item_category\" is null and skylark.\"web_sales_item_category\" is null)) AND (barracuda.\"web_sales_item_class\" = skylark.\"web_sales_item_class\" or (barracuda.\"web_sales_item_class\" is null and skylark.\"web_sales_item_class\" is null)) AND (barracuda.\"web_sales_item_current_price\" = skylark.\"web_sales_item_current_price\" or (barracuda.\"web_sales_item_current_price\" is null and skylark.\"web_sales_item_current_price\" is null)) AND (barracuda.\"web_sales_item_desc\" = skylark.\"web_sales_item_desc\" or (barracuda.\"web_sales_item_desc\" is null and skylark.\"web_sales_item_desc\" is null)) AND barracuda.\"web_sales_item_name\" = skylark.\"web_sales_item_name\")
+    eminent
+    INNER JOIN slow on (eminent.\"web_sales_item_category\" = slow.\"web_sales_item_category\" or (eminent.\"web_sales_item_category\" is null and slow.\"web_sales_item_category\" is null)) AND (eminent.\"web_sales_item_class\" = slow.\"web_sales_item_class\" or (eminent.\"web_sales_item_class\" is null and slow.\"web_sales_item_class\" is null)) AND (eminent.\"web_sales_item_current_price\" = slow.\"web_sales_item_current_price\" or (eminent.\"web_sales_item_current_price\" is null and slow.\"web_sales_item_current_price\" is null)) AND (eminent.\"web_sales_item_desc\" = slow.\"web_sales_item_desc\" or (eminent.\"web_sales_item_desc\" is null and slow.\"web_sales_item_desc\" is null)) AND eminent.\"web_sales_item_name\" = slow.\"web_sales_item_name\")
 SELECT
-    albatross.\"web_sales_item_name\" as \"web_sales_item_name\",
-    albatross.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    albatross.\"web_sales_item_category\" as \"web_sales_item_category\",
-    albatross.\"web_sales_item_class\" as \"web_sales_item_class\",
-    albatross.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    albatross.\"itemrevenue\" as \"itemrevenue\",
-    albatross.\"revenueratio\" as \"revenueratio\"
+    cockatoo.\"web_sales_item_name\" as \"web_sales_item_name\",
+    cockatoo.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    cockatoo.\"web_sales_item_category\" as \"web_sales_item_category\",
+    cockatoo.\"web_sales_item_class\" as \"web_sales_item_class\",
+    cockatoo.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    cockatoo.\"itemrevenue\" as \"itemrevenue\",
+    cockatoo.\"revenueratio\" as \"revenueratio\"
 FROM
-    albatross
+    cockatoo
 WHERE
-    albatross.\"itemrevenue\" is not null
+    cockatoo.\"itemrevenue\" is not null
 
 ORDER BY 
-    albatross.\"web_sales_item_category\" asc,
-    albatross.\"web_sales_item_class\" asc,
-    albatross.\"web_sales_item_name\" asc,
-    albatross.\"web_sales_item_desc\" asc,
-    albatross.\"revenueratio\" asc
+    cockatoo.\"web_sales_item_category\" asc,
+    cockatoo.\"web_sales_item_class\" asc,
+    cockatoo.\"web_sales_item_name\" asc,
+    cockatoo.\"web_sales_item_desc\" asc,
+    cockatoo.\"revenueratio\" asc
 LIMIT (100)"""

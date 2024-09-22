@@ -10,7 +10,7 @@ from typing import List
 from trilogy.core.enums import JoinType
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
+from trilogy.core.processing.utility import concept_to_relevant_joins
 from collections import defaultdict
 from itertools import combinations
 from trilogy.core.enums import Purpose

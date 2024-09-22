@@ -12,8 +12,8 @@ from trilogy.constants import logger
 from trilogy.core.processing.utility import padding, create_log_lambda
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
-    concept_to_relevant_joins,
 )
+from trilogy.core.processing.utility import concept_to_relevant_joins
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 

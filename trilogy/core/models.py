@@ -2091,11 +2091,11 @@ class Datasource(Namespaced, BaseModel):
     @property
     def full_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
-    
+
     @property
     def nullable_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
-    
+
     @property
     def output_concepts(self) -> List[Concept]:
         return self.concepts
@@ -2152,8 +2152,6 @@ class UnnestJoin(BaseModel):
         return (
             self.alias + "".join([str(s.address) for s in self.concepts])
         ).__hash__()
-    
-    
 
 
 class InstantiatedUnnestJoin(BaseModel):
@@ -4487,7 +4485,9 @@ def dict_to_map_wrapper(arg):
     return MapWrapper(arg, key_type=key_types[0], value_type=value_types[0])
 
 
-def merge_datatypes(inputs: list[DataType | ListType | StructType | MapType | NumericType]) -> DataType | ListType | StructType | MapType | NumericType:
+def merge_datatypes(
+    inputs: list[DataType | ListType | StructType | MapType | NumericType],
+) -> DataType | ListType | StructType | MapType | NumericType:
     """This is a temporary hack for doing between
     allowable datatype transformation matrix"""
     if len(inputs) == 1:
@@ -4496,7 +4496,11 @@ def merge_datatypes(inputs: list[DataType | ListType | StructType | MapType | Nu
         return DataType.FLOAT
     if set(inputs) == {DataType.INTEGER, DataType.NUMERIC}:
         return DataType.NUMERIC
-    if any(isinstance(x, NumericType) for x in inputs) and all(isinstance(x, NumericType) or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC) for x in inputs):
+    if any(isinstance(x, NumericType) for x in inputs) and all(
+        isinstance(x, NumericType)
+        or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
+        for x in inputs
+    ):
         candidate = next(x for x in inputs if isinstance(x, NumericType))
         return candidate
     return inputs[0]
