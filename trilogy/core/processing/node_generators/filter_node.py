@@ -212,5 +212,5 @@ def gen_filter_node(
             # this node fetches only what we need to filter
             filter_node,
             enrich_node,
-        ]
+        ],
     )
