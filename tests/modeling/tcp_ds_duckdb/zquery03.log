@@ -1,21 +1,21 @@
 query_id = 3
-parse_time = 2.191912
-exec_time = 0.37097
-comp_time = 0.06368
-gen_length = 4547
+parse_time = 11.116984
+exec_time = 1.97833
+comp_time = 0.209663
+gen_length = 4552
 generated_sql = """
 
 WITH 
-bear as (
+chickadee as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_ITEM_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-heron as (
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_ITEM_SK\"),
+wakeful as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -25,98 +25,98 @@ SELECT
     store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     memory.store_sales as store_sales
-    LEFT OUTER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_MOY\" = 11
 ),
-dapper as (
+tiger as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_date_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
-    bear.\"store_sales_item_id\" as \"store_sales_item_id\"
+    chickadee.\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    bear
-    LEFT OUTER JOIN memory.date_dim as date on bear.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    chickadee
+    INNER JOIN memory.date_dim as date on chickadee.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_MOY\" = 11
 ),
-osprey as (
+busy as (
 SELECT
-    heron.\"store_sales_ext_sales_price\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
-    heron.\"store_sales_item_id\" as \"store_sales_item_id\",
-    heron.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    heron.\"store_sales_date_year\" as \"store_sales_date_year\"
+    wakeful.\"store_sales_ext_sales_price\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
+    wakeful.\"store_sales_item_id\" as \"store_sales_item_id\",
+    wakeful.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    wakeful.\"store_sales_date_year\" as \"store_sales_date_year\"
 FROM
-    heron
-    LEFT OUTER JOIN memory.item as items on heron.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    wakeful
+    INNER JOIN memory.item as items on wakeful.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
 WHERE
-    heron.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
+    wakeful.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
 ),
-monitor as (
+komodo as (
 SELECT
     items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
     items.\"I_BRAND\" as \"store_sales_item_brand_name\",
-    dapper.\"store_sales_date_year\" as \"store_sales_date_year\",
+    tiger.\"store_sales_date_year\" as \"store_sales_date_year\",
     items.\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
-    dapper.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\"
+    tiger.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\"
 FROM
-    dapper
-    LEFT OUTER JOIN memory.item as items on dapper.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    tiger
+    INNER JOIN memory.item as items on tiger.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
 WHERE
-    dapper.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
+    tiger.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
 ),
-kaput as (
-SELECT
-    osprey.\"store_sales_ext_sales_price_filter_1819642393595304\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
-    items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
-    items.\"I_BRAND\" as \"store_sales_item_brand_name\",
-    osprey.\"store_sales_date_year\" as \"store_sales_date_year\",
-    osprey.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    osprey.\"store_sales_item_id\" as \"store_sales_item_id\"
-FROM
-    osprey
-    LEFT OUTER JOIN memory.item as items on osprey.\"store_sales_item_id\" = items.\"I_ITEM_SK\"),
-wary as (
-SELECT
-    sum(kaput.\"store_sales_ext_sales_price_filter_1819642393595304\") as \"sum_agg\",
-    kaput.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    kaput.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    kaput.\"store_sales_date_year\" as \"store_sales_date_year\"
-FROM
-    kaput
-GROUP BY 
-    kaput.\"store_sales_item_brand_id\",
-    kaput.\"store_sales_date_year\",
-    kaput.\"store_sales_item_brand_name\"),
 eagle as (
 SELECT
-    monitor.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    monitor.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    monitor.\"store_sales_date_year\" as \"store_sales_date_year\",
-    monitor.\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
-    monitor.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    wary.\"sum_agg\" as \"sum_agg\"
+    busy.\"store_sales_ext_sales_price_filter_1819642393595304\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
+    items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
+    items.\"I_BRAND\" as \"store_sales_item_brand_name\",
+    busy.\"store_sales_date_year\" as \"store_sales_date_year\",
+    busy.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    busy.\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    monitor
-    LEFT OUTER JOIN wary on monitor.\"store_sales_item_brand_id\" = wary.\"store_sales_item_brand_id\" AND monitor.\"store_sales_item_brand_name\" = wary.\"store_sales_item_brand_name\" AND monitor.\"store_sales_date_year\" = wary.\"store_sales_date_year\"
-WHERE
-    monitor.\"store_sales_date_month_of_year\" = 11 and monitor.\"store_sales_item_manufacturer_id\" = 128
-)
+    busy
+    INNER JOIN memory.item as items on busy.\"store_sales_item_id\" = items.\"I_ITEM_SK\"),
+scrawny as (
 SELECT
-    eagle.\"store_sales_date_year\" as \"store_sales_date_year\",
+    sum(eagle.\"store_sales_ext_sales_price_filter_1819642393595304\") as \"sum_agg\",
     eagle.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
     eagle.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    eagle.\"sum_agg\" as \"sum_agg\"
+    eagle.\"store_sales_date_year\" as \"store_sales_date_year\"
 FROM
     eagle
 GROUP BY 
     eagle.\"store_sales_item_brand_id\",
     eagle.\"store_sales_item_brand_name\",
-    eagle.\"store_sales_date_year\",
-    eagle.\"sum_agg\"
+    eagle.\"store_sales_date_year\"),
+wooden as (
+SELECT
+    komodo.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    komodo.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    komodo.\"store_sales_date_year\" as \"store_sales_date_year\",
+    komodo.\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
+    komodo.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    scrawny.\"sum_agg\" as \"sum_agg\"
+FROM
+    scrawny
+    INNER JOIN komodo on scrawny.\"store_sales_item_brand_id\" = komodo.\"store_sales_item_brand_id\" AND scrawny.\"store_sales_item_brand_name\" = komodo.\"store_sales_item_brand_name\" AND scrawny.\"store_sales_date_year\" = komodo.\"store_sales_date_year\"
+WHERE
+    komodo.\"store_sales_date_month_of_year\" = 11 and komodo.\"store_sales_item_manufacturer_id\" = 128
+)
+SELECT
+    wooden.\"store_sales_date_year\" as \"store_sales_date_year\",
+    wooden.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    wooden.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    wooden.\"sum_agg\" as \"sum_agg\"
+FROM
+    wooden
+GROUP BY 
+    wooden.\"store_sales_item_brand_name\",
+    wooden.\"store_sales_date_year\",
+    wooden.\"sum_agg\",
+    wooden.\"store_sales_item_brand_id\"
 ORDER BY 
-    eagle.\"store_sales_date_year\" asc,
-    eagle.\"sum_agg\" desc,
-    eagle.\"store_sales_item_brand_id\" asc
+    wooden.\"store_sales_date_year\" asc,
+    wooden.\"sum_agg\" desc,
+    wooden.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

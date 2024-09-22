@@ -56,6 +56,8 @@ union all
 select 3, 1
 union all
 select 4, 2
+union all
+select 5, 2
 ''';
 
 datasource stores (
@@ -94,11 +96,13 @@ union all
 select 2, 1, 2
 union all
 select 2, 2, 2
+union all
+select 3, 2, 2
 ''';
 
 datasource join_store_warehouse (
-    store_id:store_id,
-    wh_id:wh_id,
+    store_id:~store_id,
+    wh_id:~wh_id,
 )
 grain (store_id, wh_id)
 query '''

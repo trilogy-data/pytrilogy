@@ -5,7 +5,7 @@ property id.name string;
 property id.brand_id int;
 property id.brand_name string;
 property id.manufacturer_id int;
-property id.category int?;
+property id.category string?;
 property id.current_price float?;
 property id.class string?;
 property id.desc string?;

@@ -10,7 +10,7 @@ from typing import List
 from trilogy.core.enums import JoinType
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
-from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
+from trilogy.core.processing.utility import concept_to_relevant_joins
 from collections import defaultdict
 from itertools import combinations
 from trilogy.core.enums import Purpose
@@ -175,15 +175,6 @@ def gen_multiselect_node(
             node,
             # this node gets enrichment
             enrich_node,
-        ],
-        node_joins=[
-            NodeJoin(
-                left_node=enrich_node,
-                right_node=node,
-                concepts=possible_joins,
-                filter_to_mutual=False,
-                join_type=JoinType.LEFT_OUTER,
-            )
         ],
         partial_concepts=node.partial_concepts,
     )

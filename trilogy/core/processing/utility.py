@@ -18,9 +18,11 @@ from trilogy.core.models import (
     WindowItem,
     AggregateWrapper,
     DataType,
+    ConceptPair,
+    UnnestJoin,
 )
 
-from trilogy.core.enums import Purpose, Granularity, BooleanOperator
+from trilogy.core.enums import Purpose, Granularity, BooleanOperator, Modifier
 from trilogy.core.constants import CONSTANT_DATASET
 from enum import Enum
 from trilogy.utility import unique
@@ -243,8 +245,23 @@ def get_node_joins(
             local_concepts = [
                 c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
-        else:
+        elif any(
+            [
+                c.address in [x.address for x in identifier_map[right].partial_concepts]
+                for c in local_concepts
+            ]
+        ) or any(
+            [
+                c.address in [x.address for x in identifier_map[left].nullable_concepts]
+                for c in local_concepts
+            ]
+        ):
             join_type = JoinType.LEFT_OUTER
+            local_concepts = [
+                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
+            ]
+        else:
+            join_type = JoinType.INNER
             # remove any constants if other join keys exist
             local_concepts = [
                 c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
@@ -287,7 +304,18 @@ def get_node_joins(
                     )
             narg = (left_arg, right_arg)
             if narg not in join_tuples:
-                join_tuples.append((left_arg, right_arg))
+                modifiers = set()
+                if left_arg.address in [
+                    x.address for x in left_datasource.nullable_concepts
+                ] and right_arg.address in [
+                    x.address for x in right_datasource.nullable_concepts
+                ]:
+                    modifiers.add(Modifier.NULLABLE)
+                join_tuples.append(
+                    ConceptPair(
+                        left=left_arg, right=right_arg, modifiers=list(modifiers)
+                    )
+                )
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],
@@ -412,3 +440,63 @@ def decompose_condition(
     else:
         chunks.append(conditional)
     return chunks
+
+
+def find_nullable_concepts(
+    source_map: Dict[str, set[Datasource | QueryDatasource | UnnestJoin]],
+    datasources: List[Datasource | QueryDatasource],
+    joins: List[BaseJoin | UnnestJoin],
+) -> List[str]:
+    """give a set of datasources and joins, find the concepts
+    that may contain nulls in the output set
+    """
+    nullable_datasources = set()
+    datasource_map = {
+        x.identifier: x
+        for x in datasources
+        if isinstance(x, (Datasource, QueryDatasource))
+    }
+    for join in joins:
+        is_on_nullable_condition = False
+        if not isinstance(join, BaseJoin):
+            continue
+        if not join.concept_pairs:
+            continue
+        for pair in join.concept_pairs:
+            if pair.right.address in [
+                y.address
+                for y in datasource_map[
+                    join.right_datasource.identifier
+                ].nullable_concepts
+            ]:
+                is_on_nullable_condition = True
+                break
+            if pair.left.address in [
+                y.address
+                for y in datasource_map[
+                    join.left_datasource.identifier
+                ].nullable_concepts
+            ]:
+                is_on_nullable_condition = True
+                break
+        if is_on_nullable_condition:
+            nullable_datasources.add(datasource_map[join.right_datasource.identifier])
+    final_nullable = set()
+
+    for k, v in source_map.items():
+        local_nullable = [
+            x for x in datasources if k in [v.address for v in x.nullable_concepts]
+        ]
+        if all(
+            [
+                k in [v.address for v in x.nullable_concepts]
+                for x in datasources
+                if k in [z.address for z in x.output_concepts]
+            ]
+        ):
+            final_nullable.add(k)
+        all_ds = set([ds for ds in local_nullable]).union(nullable_datasources)
+        if nullable_datasources:
+            if set(v).issubset(all_ds):
+                final_nullable.add(k)
+    return list(sorted(final_nullable))

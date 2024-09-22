@@ -43,7 +43,7 @@
     
     query: "query" MULTILINE_STRING
     
-    concept_assignment: SHORTHAND_MODIFIER? IDENTIFIER 
+    concept_assignment: SHORTHAND_MODIFIER* IDENTIFIER 
     
     //column_assignment
     //figure out if we want static
@@ -150,7 +150,7 @@
 
     subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | parenthetical )
     
-    expr_tuple: "("  expr ("," expr)+ ","?  ")"
+    expr_tuple: ("("  expr ("," expr)+ ","?  ")") | ("("  expr "," ")")
 
     parenthetical: "(" expr ")"
 

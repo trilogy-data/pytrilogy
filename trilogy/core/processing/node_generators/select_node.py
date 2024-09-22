@@ -32,6 +32,7 @@ class DatasourceMatch:
     datasource: Datasource
     matched: LooseConceptList
     partial: LooseConceptList
+    nullable: LooseConceptList
 
     def __repr__(self):
         return f"DatasourceMatch({self.key}, {self.datasource.identifier}, {str(self.matched)}, {str(self.partial)})"
@@ -76,6 +77,7 @@ def dm_to_strategy_node(
         parents=[],
         depth=depth,
         partial_concepts=dm.partial.concepts,
+        nullable_concepts=dm.nullable.concepts,
         accept_partial=accept_partial,
         datasource=datasource,
         grain=datasource.grain,
@@ -187,6 +189,13 @@ def gen_select_nodes_from_tables_v2(
                     c.concept
                     for c in datasource.columns
                     if not c.is_complete and c.concept.address in all_lcl
+                ]
+            ),
+            nullable=LooseConceptList(
+                concepts=[
+                    c.concept
+                    for c in datasource.columns
+                    if c.is_nullable and c.concept in all_lcl
                 ]
             ),
         )
@@ -318,6 +327,12 @@ def gen_select_node_from_table(
             if not c.is_complete and c.concept in all_lcl
         ]
         partial_lcl = LooseConceptList(concepts=partial_concepts)
+        nullable_concepts = [
+            c.concept
+            for c in datasource.columns
+            if c.is_nullable and c.concept in all_lcl
+        ]
+        nullable_lcl = LooseConceptList(concepts=nullable_concepts)
         if not accept_partial and target_concept in partial_lcl:
             continue
         logger.info(
@@ -359,6 +374,7 @@ def gen_select_node_from_table(
             parents=[],
             depth=depth,
             partial_concepts=[c for c in all_concepts if c in partial_lcl],
+            nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
             accept_partial=accept_partial,
             datasource=datasource,
             grain=Grain(components=all_concepts),
@@ -377,6 +393,7 @@ def gen_select_node_from_table(
                 parents=[bcandidate],
                 depth=depth,
                 partial_concepts=bcandidate.partial_concepts,
+                nullable_concepts=bcandidate.nullable_concepts,
             )
         else:
             candidate = bcandidate
@@ -469,6 +486,14 @@ def gen_select_node(
             )
         ]
 
+        all_nullable = [
+            c
+            for c in all_concepts
+            if any(
+                [c.address in [x.address for x in p.nullable_concepts] for p in parents]
+            )
+        ]
+
         if all_found:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found all optional {[c.address for c in local_optional]} via joins"
@@ -494,6 +519,7 @@ def gen_select_node(
                 parents=parents,
                 depth=depth,
                 partial_concepts=all_partial,
+                nullable_concepts=all_nullable,
                 grain=inferred_grain,
             )
 

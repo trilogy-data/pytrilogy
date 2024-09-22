@@ -13,6 +13,7 @@ from trilogy.core.models import (
     Comparison,
     Parenthetical,
     LooseConceptList,
+    ConceptPair,
 )
 from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
@@ -122,6 +123,26 @@ def get_all_parent_partial(
     )
 
 
+def get_all_parent_nullable(
+    all_concepts: List[Concept], parents: List["StrategyNode"]
+) -> List[Concept]:
+    return unique(
+        [
+            c
+            for c in all_concepts
+            if len(
+                [
+                    p
+                    for p in parents
+                    if c.address in [x.address for x in p.nullable_concepts]
+                ]
+            )
+            >= 1
+        ],
+        "address",
+    )
+
+
 class StrategyNode:
     source_type = SourceType.ABSTRACT
 
@@ -134,6 +155,7 @@ class StrategyNode:
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         partial_concepts: List[Concept] | None = None,
+        nullable_concepts: List[Concept] | None = None,
         depth: int = 0,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         force_group: bool | None = None,
@@ -155,6 +177,9 @@ class StrategyNode:
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
         self.partial_concepts = partial_concepts or get_all_parent_partial(
+            self.output_concepts, self.parents
+        )
+        self.nullable_concepts = nullable_concepts or get_all_parent_nullable(
             self.output_concepts, self.parents
         )
 
@@ -269,6 +294,7 @@ class StrategyNode:
             grain=grain,
             condition=self.conditions,
             partial_concepts=self.partial_concepts,
+            nullable_concepts=self.nullable_concepts,
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
         )
@@ -297,6 +323,7 @@ class StrategyNode:
             whole_grain=self.whole_grain,
             parents=list(self.parents),
             partial_concepts=list(self.partial_concepts),
+            nullable_concepts=list(self.nullable_concepts),
             depth=self.depth,
             conditions=self.conditions,
             force_group=self.force_group,
@@ -314,7 +341,7 @@ class NodeJoin:
     concepts: List[Concept]
     join_type: JoinType
     filter_to_mutual: bool = False
-    concept_pairs: list[tuple[Concept, Concept]] | None = None
+    concept_pairs: list[ConceptPair] | None = None
 
     def __post_init__(self):
         if self.concept_pairs:

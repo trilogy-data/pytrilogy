@@ -1,12 +1,10 @@
 from typing import List
 
 
-from trilogy.core.enums import JoinType
 from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
 from trilogy.core.processing.nodes import (
     FilterNode,
     MergeNode,
-    NodeJoin,
     History,
     StrategyNode,
     SelectNode,
@@ -16,7 +14,6 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding, unique
-from trilogy.core.processing.node_generators.common import concept_to_relevant_joins
 from trilogy.core.processing.utility import is_scalar_condition
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
@@ -215,16 +212,5 @@ def gen_filter_node(
             # this node fetches only what we need to filter
             filter_node,
             enrich_node,
-        ],
-        node_joins=[
-            NodeJoin(
-                left_node=enrich_node,
-                right_node=filter_node,
-                concepts=concept_to_relevant_joins(
-                    [immediate_parent] + parent_row_concepts
-                ),
-                join_type=JoinType.LEFT_OUTER,
-                filter_to_mutual=True,
-            )
-        ],
+        ]
     )

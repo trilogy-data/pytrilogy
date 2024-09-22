@@ -3,9 +3,9 @@ from trilogy.core.enums import UnnestMode, Modifier
 from typing import Optional, Callable
 
 
-def null_wrapper(lval: str, rval: str, concept: Concept) -> str:
-    if concept.modifiers and Modifier.NULLABLE in concept.modifiers:
-        return f"(({lval} is null and {rval} is null) or ({lval} = {rval}))"
+def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
+    if Modifier.NULLABLE in modifiers:
+        return f"({lval} = {rval} or ({lval} is null and {rval} is null))"
     return f"{lval} = {rval}"
 
 
@@ -48,7 +48,7 @@ def render_join(
         null_wrapper(
             f"{left_name}.{quote_character}{join.left_cte.get_alias(key.concept) if isinstance(join.left_cte, Datasource) else key.concept.safe_address}{quote_character}",
             f"{right_name}.{quote_character}{join.right_cte.get_alias(key.concept) if isinstance(join.right_cte, Datasource) else key.concept.safe_address}{quote_character}",
-            key.concept,
+            modifiers=key.concept.modifiers or [],
         )
         for key in join.joinkeys
     ]
@@ -56,11 +56,13 @@ def render_join(
         base_joinkeys.extend(
             [
                 null_wrapper(
-                    f"{left_name}.{quote_character}{join.left_cte.get_alias(left_concept) if isinstance(join.left_cte, Datasource) else left_concept.safe_address}{quote_character}",
-                    f"{right_name}.{quote_character}{join.right_cte.get_alias(right_concept) if isinstance(join.right_cte, Datasource) else right_concept.safe_address}{quote_character}",
-                    left_concept,
+                    f"{left_name}.{quote_character}{join.left_cte.get_alias(pair.left) if isinstance(join.left_cte, Datasource) else pair.left.safe_address}{quote_character}",
+                    f"{right_name}.{quote_character}{join.right_cte.get_alias(pair.right) if isinstance(join.right_cte, Datasource) else pair.right.safe_address}{quote_character}",
+                    modifiers=pair.modifiers
+                    + (pair.left.modifiers or [])
+                    + (pair.right.modifiers or []),
                 )
-                for left_concept, right_concept in join.joinkey_pairs
+                for pair in join.joinkey_pairs
             ]
         )
     if not base_joinkeys:

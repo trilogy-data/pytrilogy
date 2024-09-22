@@ -11,7 +11,7 @@ from trilogy.core.models import (
     Function,
     Metadata,
 )
-from trilogy.core.enums import Purpose, FunctionType
+from trilogy.core.enums import Purpose, FunctionType, Modifier
 from os.path import dirname
 from pathlib import PurePath
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -222,6 +222,7 @@ def setup_titanic_distributed(env: Environment):
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         keys=[id],
+        modifiers=[Modifier.NULLABLE],
     )
 
     name = Concept(
@@ -249,7 +250,7 @@ def setup_titanic_distributed(env: Environment):
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
-        datatype=DataType.BOOL,
+        datatype=DataType.INTEGER,
         keys=[id],
     )
     fare = Concept(
@@ -391,6 +392,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         keys=[id],
         grain=Grain(components=[id]),
+        modifiers=[Modifier.NULLABLE],
     )
 
     name = Concept(
@@ -414,7 +416,7 @@ def setup_titanic(env: Environment):
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
-        datatype=DataType.BOOL,
+        datatype=DataType.INTEGER,
         keys=[id],
         grain=Grain(components=[id]),
     )

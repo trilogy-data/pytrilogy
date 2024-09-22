@@ -15,12 +15,10 @@ from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.merge_node import MergeNode
 from trilogy.core.processing.nodes import History
-from trilogy.core.enums import JoinType
 from trilogy.core.processing.nodes import (
     NodeJoin,
 )
 from collections import defaultdict
-from trilogy.core.processing.utility import concept_to_relevant_joins
 
 
 def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
@@ -218,17 +216,6 @@ def gen_enrichment_node(
         g=g,
         parents=[enrich_node, base_node],
         force_group=False,
-        node_joins=[
-            NodeJoin(
-                left_node=enrich_node,
-                right_node=base_node,
-                concepts=concept_to_relevant_joins(
-                    [x for x in join_keys if x in enrich_node.output_lcl]
-                ),
-                filter_to_mutual=False,
-                join_type=JoinType.LEFT_OUTER,
-            )
-        ],
     )
 
 

@@ -79,6 +79,18 @@ VT = TypeVar("VT")
 LT = TypeVar("LT")
 
 
+def is_compatible_datatype(left, right):
+    if left == right:
+        return True
+    if {left, right} == {DataType.NUMERIC, DataType.FLOAT}:
+        return True
+    if {left, right} == {DataType.NUMERIC, DataType.INTEGER}:
+        return True
+    if {left, right} == {DataType.FLOAT, DataType.INTEGER}:
+        return True
+    return False
+
+
 def get_version():
     from trilogy import __version__
 
@@ -220,6 +232,7 @@ class DataType(Enum):
     ARRAY = "array"
     DATE_PART = "date_part"
     STRUCT = "struct"
+    NULL = "null"
 
     # GRANULAR
     UNIX_SECONDS = "unix_seconds"
@@ -960,6 +973,10 @@ class ColumnAssignment(BaseModel):
     def is_complete(self) -> bool:
         return Modifier.PARTIAL not in self.modifiers
 
+    @property
+    def is_nullable(self) -> bool:
+        return Modifier.NULLABLE in self.modifiers
+
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
         return ColumnAssignment(
             alias=(
@@ -1065,8 +1082,11 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         ]
     ]
 
-    def __str__(self):
+    def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
+
+    def __str__(self):
+        return self.__repr__()
 
     @property
     def datatype(self):
@@ -2073,6 +2093,10 @@ class Datasource(Namespaced, BaseModel):
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
     @property
+    def nullable_concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
+
+    @property
     def output_concepts(self) -> List[Concept]:
         return self.concepts
 
@@ -2135,13 +2159,27 @@ class InstantiatedUnnestJoin(BaseModel):
     alias: str = "unnest"
 
 
+class ConceptPair(BaseModel):
+    left: Concept
+    right: Concept
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    @property
+    def is_partial(self):
+        return Modifier.PARTIAL in self.modifiers
+
+    @property
+    def is_nullable(self):
+        return Modifier.NULLABLE in self.modifiers
+
+
 class BaseJoin(BaseModel):
     left_datasource: Union[Datasource, "QueryDatasource"]
     right_datasource: Union[Datasource, "QueryDatasource"]
     concepts: List[Concept]
     join_type: JoinType
     filter_to_mutual: bool = False
-    concept_pairs: list[tuple[Concept, Concept]] | None = None
+    concept_pairs: list[ConceptPair] | None = None
 
     def __init__(self, **data: Any):
         super().__init__(**data)
@@ -2219,7 +2257,7 @@ class BaseJoin(BaseModel):
             return (
                 f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
                 f" {self.right_datasource.identifier} on"
-                f" {','.join([str(k[0])+'='+str(k[1]) for k in self.concept_pairs])}"
+                f" {','.join([str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
             )
         return (
             f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
@@ -2243,8 +2281,9 @@ class QueryDatasource(BaseModel):
     filter_concepts: List[Concept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
-    join_derived_concepts: List[Concept] = Field(default_factory=list)
     hidden_concepts: List[Concept] = Field(default_factory=list)
+    nullable_concepts: List[Concept] = Field(default_factory=list)
+    join_derived_concepts: List[Concept] = Field(default_factory=list)
     force_group: bool | None = None
     existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(
         default_factory=dict
@@ -2500,6 +2539,7 @@ class CTE(BaseModel):
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
+    nullable_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
     hidden_concepts: List[Concept] = Field(default_factory=list)
     order_by: Optional[OrderBy] = None
@@ -2583,6 +2623,10 @@ class CTE(BaseModel):
         base += f"\n-- Output: {', '.join([str(x) for x in self.output_columns])}."
         if self.hidden_concepts:
             base += f"\n-- Hidden: {', '.join([str(x) for x in self.hidden_concepts])}."
+        if self.nullable_concepts:
+            base += (
+                f"\n-- Nullable: {', '.join([str(x) for x in self.nullable_concepts])}."
+            )
 
         return base
 
@@ -2676,6 +2720,9 @@ class CTE(BaseModel):
         self.source.source_map = {**self.source.source_map, **other.source.source_map}
         self.source.output_concepts = unique(
             self.source.output_concepts + other.source.output_concepts, "address"
+        )
+        self.nullable_concepts = unique(
+            self.nullable_concepts + other.nullable_concepts, "address"
         )
         self.hidden_concepts = mutually_hidden
         self.existence_source_map = {
@@ -2842,7 +2889,7 @@ class Join(BaseModel):
     right_cte: CTE | Datasource
     jointype: JoinType
     joinkeys: List[JoinKey]
-    joinkey_pairs: List[tuple[Concept, Concept]] | None = None
+    joinkey_pairs: List[ConceptPair] | None = None
 
     @property
     def left_name(self) -> str:
@@ -2877,7 +2924,7 @@ class Join(BaseModel):
             return (
                 f"{self.jointype.value} JOIN {self.left_name} and"
                 f" {self.right_name} on"
-                f" {','.join([str(k[0])+'='+str(k[1]) for k in self.joinkey_pairs])}"
+                f" {','.join([str(k.left)+'='+str(k.right)+str(k.modifiers) for k in self.joinkey_pairs])}"
             )
         return (
             f"{self.jointype.value} JOIN {self.left_name} and"
@@ -3450,11 +3497,41 @@ class Comparison(
     ]
     operator: ComparisonOperator
 
-    def __post_init__(self):
-        if arg_to_datatype(self.left) != arg_to_datatype(self.right):
-            raise SyntaxError(
-                f"Cannot compare {self.left} and {self.right} of different types"
-            )
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+            if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
+                self.right
+            ):
+                raise SyntaxError(
+                    f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
+                )
+        elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
+            right = arg_to_datatype(self.right)
+            if not isinstance(self.right, Concept) and not isinstance(right, ListType):
+                raise SyntaxError(
+                    f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}"
+                )
+
+            elif isinstance(right, ListType) and not is_compatible_datatype(
+                arg_to_datatype(self.left), right.value_data_type
+            ):
+                raise SyntaxError(
+                    f"Cannot compare {arg_to_datatype(self.left)} and {right} with operator {self.operator} in {str(self)}"
+                )
+            elif isinstance(self.right, Concept) and not is_compatible_datatype(
+                arg_to_datatype(self.left), arg_to_datatype(self.right)
+            ):
+                raise SyntaxError(
+                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} with operator {self.operator} in {str(self)}"
+                )
+        else:
+            if not is_compatible_datatype(
+                arg_to_datatype(self.left), arg_to_datatype(self.right)
+            ):
+                raise SyntaxError(
+                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} of different types with operator {self.operator} in {str(self)}"
+                )
 
     def __add__(self, other):
         if other is None:
@@ -3654,6 +3731,12 @@ class SubselectComparison(Comparison):
 class CaseWhen(Namespaced, SelectContext, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return f"WHEN {str(self.comparison)} THEN {str(self.expr)}"
 
     @property
     def concept_arguments(self):
@@ -4347,6 +4430,7 @@ class ShowStatement(BaseModel):
 
 Expr = (
     bool
+    | MagicConstants
     | int
     | str
     | float
@@ -4401,9 +4485,34 @@ def dict_to_map_wrapper(arg):
     return MapWrapper(arg, key_type=key_types[0], value_type=value_types[0])
 
 
+def merge_datatypes(
+    inputs: list[DataType | ListType | StructType | MapType | NumericType],
+) -> DataType | ListType | StructType | MapType | NumericType:
+    """This is a temporary hack for doing between
+    allowable datatype transformation matrix"""
+    if len(inputs) == 1:
+        return inputs[0]
+    if set(inputs) == {DataType.INTEGER, DataType.FLOAT}:
+        return DataType.FLOAT
+    if set(inputs) == {DataType.INTEGER, DataType.NUMERIC}:
+        return DataType.NUMERIC
+    if any(isinstance(x, NumericType) for x in inputs) and all(
+        isinstance(x, NumericType)
+        or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
+        for x in inputs
+    ):
+        candidate = next(x for x in inputs if isinstance(x, NumericType))
+        return candidate
+    return inputs[0]
+
+
 def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | NumericType:
     if isinstance(arg, Function):
         return arg.output_datatype
+    elif isinstance(arg, MagicConstants):
+        if arg == MagicConstants.NULL:
+            return DataType.NULL
+        raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
     elif isinstance(arg, Concept):
         return arg.datatype
     elif isinstance(arg, bool):

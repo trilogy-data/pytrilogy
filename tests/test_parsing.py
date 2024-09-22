@@ -34,7 +34,7 @@ def test_in():
     assert rendered.strip() == "( 1,2,3 )".strip()
 
     _, parsed = parse_text(
-        "const order_id <- 3; SELECT order_id  WHERE order_id IN (1);"
+        "const order_id <- 3; SELECT order_id  WHERE order_id IN (1,);"
     )
     query = parsed[-1]
     right = query.where_clause.conditional.right
@@ -42,7 +42,7 @@ def test_in():
         right,
         Parenthetical,
     ), type(right)
-    assert right.content == 1
+    assert right.content[0] == 1
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "( 1 )".strip()
 

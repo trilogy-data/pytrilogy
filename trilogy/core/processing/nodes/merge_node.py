@@ -22,7 +22,7 @@ from trilogy.core.processing.nodes.base_node import (
     resolve_concept_map,
     NodeJoin,
 )
-from trilogy.core.processing.utility import get_node_joins
+from trilogy.core.processing.utility import get_node_joins, find_nullable_concepts
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
@@ -110,6 +110,7 @@ class MergeNode(StrategyNode):
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
         partial_concepts: Optional[List[Concept]] = None,
+        nullable_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
         depth: int = 0,
         grain: Grain | None = None,
@@ -127,6 +128,7 @@ class MergeNode(StrategyNode):
             parents=parents,
             depth=depth,
             partial_concepts=partial_concepts,
+            nullable_concepts=nullable_concepts,
             force_group=force_group,
             grain=grain,
             conditions=conditions,
@@ -192,7 +194,7 @@ class MergeNode(StrategyNode):
         pregrain: Grain,
         grain: Grain,
         environment: Environment,
-    ) -> List[BaseJoin]:
+    ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
@@ -308,7 +310,7 @@ class MergeNode(StrategyNode):
         )
         join_candidates = [x for x in final_datasets if x not in existence_final]
         if len(join_candidates) > 1:
-            joins = self.generate_joins(
+            joins: List[BaseJoin | UnnestJoin] = self.generate_joins(
                 join_candidates, final_joins, pregrain, grain, self.environment
             )
         else:
@@ -318,7 +320,7 @@ class MergeNode(StrategyNode):
         )
         full_join_concepts = []
         for join in joins:
-            if join.join_type == JoinType.FULL:
+            if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.concepts
         if self.whole_grain:
             force_group = False
@@ -341,6 +343,9 @@ class MergeNode(StrategyNode):
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
         )
+        nullable_concepts = find_nullable_concepts(
+            source_map=source_map, joins=joins, datasources=final_datasets
+        )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),
@@ -349,6 +354,9 @@ class MergeNode(StrategyNode):
             source_map=source_map,
             joins=qd_joins,
             grain=grain,
+            nullable_concepts=[
+                x for x in self.output_concepts if x.address in nullable_concepts
+            ],
             partial_concepts=self.partial_concepts,
             force_group=force_group,
             condition=self.conditions,
@@ -369,6 +377,7 @@ class MergeNode(StrategyNode):
             force_group=self.force_group,
             grain=self.grain,
             conditions=self.conditions,
+            nullable_concepts=list(self.nullable_concepts),
             hidden_concepts=list(self.hidden_concepts),
             virtual_output_concepts=list(self.virtual_output_concepts),
             node_joins=list(self.node_joins) if self.node_joins else None,
