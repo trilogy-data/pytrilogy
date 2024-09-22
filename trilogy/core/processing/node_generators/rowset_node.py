@@ -71,15 +71,20 @@ def gen_rowset_node(
         and x.derivation != PurposeLineage.ROWSET
     ]
     node.hide_output_concepts(final_hidden)
-    # assume grain to be output of select
-    # but don't include anything aggregate at this point
-    assert node.resolution_cache
 
+    assert node.resolution_cache
+    # assume grain to be output of select
+    # but don't include anything hidden(the non-rowset concepts)
     node.grain = concept_list_to_grain(
         [
             x
             for x in node.output_concepts
-            if x.address not in [y.address for y in node.hidden_concepts]
+            if x.address
+            not in [
+                y.address
+                for y in node.hidden_concepts
+                if y.derivation != PurposeLineage.ROWSET
+            ]
         ],
         parent_sources=node.resolution_cache.datasources,
     )
