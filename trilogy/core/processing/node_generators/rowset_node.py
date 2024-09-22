@@ -76,7 +76,12 @@ def gen_rowset_node(
     assert node.resolution_cache
 
     node.grain = concept_list_to_grain(
-        node.output_concepts, parent_sources=node.resolution_cache.datasources
+        [
+            x
+            for x in node.output_concepts
+            if x.address not in [y.address for y in node.hidden_concepts]
+        ],
+        parent_sources=node.resolution_cache.datasources,
     )
 
     node.rebuild_cache()
