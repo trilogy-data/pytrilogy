@@ -1,17 +1,12 @@
 query_id = 21
-parse_time = 4.419825
-exec_time = 0.294628
-comp_time = 0.084818
-gen_length = 13344
+parse_time = 9.978365
+exec_time = 2.752656
+comp_time = 0.070613
+gen_length = 4850
 generated_sql = """
 
 WITH 
-questionable as (
--- Target: Grain<inventory.warehouse.id,inventory.date.id,inventory.item.id>. Source: SourceType.MERGE.
--- Joins: inner JOIN warehouse_inventory and items on inventory.item.id<inventory.item.id>=inventory.item.id<inventory.item.id>[].
--- Source Map: {'inventory.item.id': ['warehouse_inventory'], 'inventory.date.id': ['warehouse_inventory'], 'inventory.quantity_on_hand': ['warehouse_inventory'], 'inventory.warehouse.id': ['warehouse_inventory'], 'inventory.item.name': ['items'], 'inventory.item.class': ['items'], 'inventory.item.brand_name': ['items'], 'inventory.item.category': ['items'], 'inventory.item.brand_id': ['items'], 'inventory.item.desc': ['items'], 'inventory.item.current_price': ['items'], 'inventory.item.manufacturer_id': ['items']}.
--- Output: inventory.item.id<inventory.warehouse.id,inventory.date.id,inventory.item.id>, inventory.date.id<inventory.warehouse.id,inventory.date.id,inventory.item.id>, inventory.item.name<inventory.warehouse.id,inventory.date.id,inventory.item.id>, inventory.quantity_on_hand<inventory.warehouse.id,inventory.date.id,inventory.item.id>, inventory.warehouse.id<inventory.warehouse.id,inventory.date.id,inventory.item.id>.
--- Nullable: inventory.warehouse.id<inventory.warehouse.id>.
+quail as (
 SELECT
     warehouse_inventory.\"inv_item_sk\" as \"inventory_item_id\",
     warehouse_inventory.\"inv_date_sk\" as \"inventory_date_id\",
@@ -21,12 +16,7 @@ SELECT
 FROM
     memory.inventory as warehouse_inventory
     INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"),
-sloppy as (
--- Target: Grain<inventory.warehouse.id,inventory.date.id>. Source: SourceType.MERGE.
--- Joins: left outer JOIN warehouse_inventory and warehouse on inventory.warehouse.id<inventory.warehouse.id>=inventory.warehouse.id<inventory.warehouse.id>[].
--- Source Map: {'inventory.warehouse.id': ['warehouse_inventory'], 'inventory.date.id': ['warehouse_inventory'], 'inventory.item.id': ['warehouse_inventory'], 'inventory.warehouse.name': ['warehouse'], 'inventory.quantity_on_hand': ['warehouse_inventory'], 'inventory.warehouse.square_feet': ['warehouse'], 'inventory.warehouse.string_id': ['warehouse']}.
--- Output: inventory.warehouse.id<inventory.warehouse.id,inventory.date.id>, inventory.date.id<inventory.warehouse.id,inventory.date.id>, inventory.item.id<inventory.warehouse.id,inventory.date.id>, inventory.warehouse.name<inventory.warehouse.id,inventory.date.id>.
--- Nullable: inventory.warehouse.id<inventory.warehouse.id>, inventory.warehouse.name<inventory.warehouse.id>.
+pintail as (
 SELECT
     warehouse_inventory.\"inv_warehouse_sk\" as \"inventory_warehouse_id\",
     warehouse_inventory.\"inv_date_sk\" as \"inventory_date_id\",
@@ -35,116 +25,93 @@ SELECT
 FROM
     memory.inventory as warehouse_inventory
     LEFT OUTER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"),
-human as (
--- Target: Grain<inventory.date.id,inventory.warehouse.id,inventory.item.id>. Source: SourceType.MERGE. References: questionable.
--- Joins: inner JOIN questionable and date on inventory.date.id<inventory.date.id>=inventory.date.id<inventory.date.id>[], left outer JOIN questionable and warehouse on inventory.warehouse.id<inventory.warehouse.id>=inventory.warehouse.id<inventory.warehouse.id>[].
--- Source Map: {'inventory.date.date': ['date'], 'inventory.date.id': ['date'], 'inventory.item.id': ['questionable'], 'inventory.item.name': ['questionable'], 'inventory.quantity_on_hand': ['questionable'], 'inventory.warehouse.id': ['questionable'], 'inventory.warehouse.name': ['warehouse'], 'inventory.date.quarter': ['date'], 'inventory.date.d_week_seq1': ['date'], 'inventory.date.date_string': ['date'], 'inventory.date.week_seq': ['date'], 'inventory.date.month_of_year': ['date'], 'inventory.date.year': ['date'], 'inventory.date.day_of_week': ['date'], 'inventory.warehouse.square_feet': ['warehouse'], 'inventory.warehouse.string_id': ['warehouse']}.
--- Output: inventory.date.date<inventory.date.id,inventory.warehouse.id,inventory.item.id>, inventory.quantity_on_hand<inventory.date.id,inventory.warehouse.id,inventory.item.id>, inventory.warehouse.name<inventory.date.id,inventory.warehouse.id,inventory.item.id>, inventory.item.name<inventory.date.id,inventory.warehouse.id,inventory.item.id>, inventory.date.id<inventory.date.id,inventory.warehouse.id,inventory.item.id>, inventory.warehouse.id<inventory.date.id,inventory.warehouse.id,inventory.item.id>.
--- Nullable: inventory.warehouse.name<inventory.warehouse.id>, inventory.warehouse.id<inventory.warehouse.id>.
+busy as (
 SELECT
     cast(\"D_DATE\" as date) as \"inventory_date_date\",
-    questionable.\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\",
+    quail.\"inventory_quantity_on_hand\" as \"inventory_quantity_on_hand\",
     warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
-    questionable.\"inventory_item_name\" as \"inventory_item_name\",
+    quail.\"inventory_item_name\" as \"inventory_item_name\",
     date.\"D_DATE_SK\" as \"inventory_date_id\",
-    questionable.\"inventory_warehouse_id\" as \"inventory_warehouse_id\"
+    quail.\"inventory_warehouse_id\" as \"inventory_warehouse_id\"
 FROM
-    questionable
-    INNER JOIN memory.date_dim as date on questionable.\"inventory_date_id\" = date.\"D_DATE_SK\"
-    LEFT OUTER JOIN memory.warehouse as warehouse on questionable.\"inventory_warehouse_id\" = warehouse.\"w_warehouse_sk\"
+    quail
+    INNER JOIN memory.date_dim as date on quail.\"inventory_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN memory.warehouse as warehouse on quail.\"inventory_warehouse_id\" = warehouse.\"w_warehouse_sk\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date)
 ),
-abhorrent as (
--- Target: Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>. Source: SourceType.MERGE. References: sloppy.
--- Joins: inner JOIN sloppy and date on inventory.date.id<inventory.date.id>=inventory.date.id<inventory.date.id>[], inner JOIN sloppy and items on inventory.item.id<inventory.item.id>=inventory.item.id<inventory.item.id>[].
--- Source Map: {'inventory.date.date': ['date'], 'inventory.date.id': ['date'], 'inventory.item.current_price': ['items'], 'inventory.item.id': ['items'], 'inventory.item.name': ['items'], 'inventory.warehouse.id': ['sloppy'], 'inventory.warehouse.name': ['sloppy'], 'inventory.date.quarter': ['date'], 'inventory.date.d_week_seq1': ['date'], 'inventory.date.date_string': ['date'], 'inventory.date.week_seq': ['date'], 'inventory.date.month_of_year': ['date'], 'inventory.date.year': ['date'], 'inventory.date.day_of_week': ['date'], 'inventory.item.class': ['items'], 'inventory.item.brand_name': ['items'], 'inventory.item.category': ['items'], 'inventory.item.brand_id': ['items'], 'inventory.item.desc': ['items'], 'inventory.item.manufacturer_id': ['items']}.
--- Output: inventory.warehouse.name<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.item.name<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.item.current_price<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.date.date<inventory.date.id,inventory.item.id,inventory.warehouse.id>.
--- Nullable: inventory.warehouse.name<inventory.warehouse.id>.
+tiger as (
 SELECT
-    sloppy.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    pintail.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
     items.\"I_ITEM_ID\" as \"inventory_item_name\",
     items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
     cast(\"D_DATE\" as date) as \"inventory_date_date\"
 FROM
-    sloppy
-    INNER JOIN memory.date_dim as date on sloppy.\"inventory_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.item as items on sloppy.\"inventory_item_id\" = items.\"I_ITEM_SK\"
+    pintail
+    INNER JOIN memory.date_dim as date on pintail.\"inventory_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on pintail.\"inventory_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
 ),
-monitor as (
--- Target: Grain<inventory.warehouse.name,inventory.item.name>. Source: SourceType.GROUP. References: human.
--- Source Map: {'inventory.date.date': ['human'], 'inventory.quantity_on_hand': ['human'], 'inventory.warehouse.name': ['human'], 'inventory.item.name': ['human'], 'inventory.date.id': ['human'], 'inventory.warehouse.id': ['human'], 'local.inv_before': [], 'local.inv_after': []}.
--- Output: local.inv_before<inventory.warehouse.name,inventory.item.name>, inventory.warehouse.name<inventory.warehouse.name,inventory.item.name>, inventory.item.name<inventory.warehouse.name,inventory.item.name>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
--- Nullable: local.inv_before<inventory.warehouse.name,inventory.item.name>, inventory.warehouse.name<inventory.warehouse.id>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
+cool as (
 SELECT
     sum(CASE
-	WHEN human.\"inventory_date_date\" < cast('2000-03-11' as date) THEN human.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" < cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
-    human.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    human.\"inventory_item_name\" as \"inventory_item_name\",
+    busy.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    busy.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN human.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN human.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    human
+    busy
 GROUP BY 
-    human.\"inventory_warehouse_name\",
-    human.\"inventory_item_name\"),
-crow as (
--- Target: Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>. Source: SourceType.MERGE. References: abhorrent, monitor.
--- Joins: left outer JOIN abhorrent and monitor on inventory.warehouse.name<inventory.warehouse.id>=inventory.warehouse.name<inventory.warehouse.id>[<Modifier.NULLABLE: 'Nullable'>],inventory.item.name<inventory.item.id>=inventory.item.name<inventory.item.id>[].
--- Source Map: {'inventory.warehouse.name': ['abhorrent'], 'inventory.item.name': ['abhorrent'], 'inventory.item.current_price': ['abhorrent'], 'inventory.date.date': ['abhorrent'], 'local.inv_before': ['monitor'], 'local.inv_after': ['monitor']}.
--- Output: inventory.warehouse.name<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.item.name<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.item.current_price<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.date.date<inventory.date.id,inventory.item.id,inventory.warehouse.id>, local.inv_before<inventory.warehouse.name,inventory.item.name>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
--- Nullable: inventory.warehouse.name<inventory.warehouse.id>, local.inv_before<inventory.warehouse.name,inventory.item.name>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
+    busy.\"inventory_item_name\",
+    busy.\"inventory_warehouse_name\"),
+grouse as (
 SELECT
-    abhorrent.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    abhorrent.\"inventory_item_name\" as \"inventory_item_name\",
-    abhorrent.\"inventory_item_current_price\" as \"inventory_item_current_price\",
-    abhorrent.\"inventory_date_date\" as \"inventory_date_date\",
-    monitor.\"inv_before\" as \"inv_before\",
-    monitor.\"inv_after\" as \"inv_after\"
+    tiger.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    tiger.\"inventory_item_name\" as \"inventory_item_name\",
+    tiger.\"inventory_item_current_price\" as \"inventory_item_current_price\",
+    tiger.\"inventory_date_date\" as \"inventory_date_date\",
+    cool.\"inv_before\" as \"inv_before\",
+    cool.\"inv_after\" as \"inv_after\"
 FROM
-    abhorrent
-    LEFT OUTER JOIN monitor on (abhorrent.\"inventory_warehouse_name\" = monitor.\"inventory_warehouse_name\" or (abhorrent.\"inventory_warehouse_name\" is null and monitor.\"inventory_warehouse_name\" is null)) AND abhorrent.\"inventory_item_name\" = monitor.\"inventory_item_name\"
+    tiger
+    LEFT OUTER JOIN cool on (tiger.\"inventory_warehouse_name\" = cool.\"inventory_warehouse_name\" or (tiger.\"inventory_warehouse_name\" is null and cool.\"inventory_warehouse_name\" is null)) AND tiger.\"inventory_item_name\" = cool.\"inventory_item_name\"
 WHERE
     CASE
-	WHEN monitor.\"inv_before\" > 0 THEN monitor.\"inv_after\" * 1.0 / monitor.\"inv_before\"
+	WHEN cool.\"inv_before\" > 0 THEN cool.\"inv_after\" * 1.0 / cool.\"inv_before\"
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
-	WHEN monitor.\"inv_before\" > 0 THEN monitor.\"inv_after\" * 1.0 / monitor.\"inv_before\"
+	WHEN cool.\"inv_before\" > 0 THEN cool.\"inv_after\" * 1.0 / cool.\"inv_before\"
 	ELSE null
-	END <= 3.0 / 2.0 and abhorrent.\"inventory_date_date\" >= cast('2000-02-10' as date) and abhorrent.\"inventory_date_date\" <= cast('2000-04-10' as date) and abhorrent.\"inventory_item_current_price\" >= 0.99 and abhorrent.\"inventory_item_current_price\" <= 1.49
+	END <= 3.0 / 2.0 and tiger.\"inventory_date_date\" >= cast('2000-02-10' as date) and tiger.\"inventory_date_date\" <= cast('2000-04-10' as date) and tiger.\"inventory_item_current_price\" >= 0.99 and tiger.\"inventory_item_current_price\" <= 1.49
 )
--- Target: Grain<inventory.warehouse.name,inventory.item.name>. Source: SourceType.GROUP. References: crow.
--- Source Map: {'inventory.warehouse.name': ['crow'], 'inventory.item.name': ['crow'], 'inventory.item.current_price': ['crow'], 'inventory.date.date': ['crow'], 'local.inv_before': ['crow'], 'local.inv_after': ['crow']}.
--- Output: inventory.warehouse.name<inventory.warehouse.name,inventory.item.name>, inventory.item.name<inventory.warehouse.name,inventory.item.name>, local.inv_before<inventory.warehouse.name,inventory.item.name>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
--- Nullable: inventory.warehouse.name<inventory.warehouse.id>, local.inv_before<inventory.warehouse.name,inventory.item.name>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
 SELECT
-    crow.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    crow.\"inventory_item_name\" as \"inventory_item_name\",
-    crow.\"inv_before\" as \"inv_before\",
-    crow.\"inv_after\" as \"inv_after\"
+    grouse.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    grouse.\"inventory_item_name\" as \"inventory_item_name\",
+    grouse.\"inv_before\" as \"inv_before\",
+    grouse.\"inv_after\" as \"inv_after\"
 FROM
-    crow
+    grouse
 WHERE
     CASE
-	WHEN crow.\"inv_before\" > 0 THEN crow.\"inv_after\" * 1.0 / crow.\"inv_before\"
+	WHEN grouse.\"inv_before\" > 0 THEN grouse.\"inv_after\" * 1.0 / grouse.\"inv_before\"
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
-	WHEN crow.\"inv_before\" > 0 THEN crow.\"inv_after\" * 1.0 / crow.\"inv_before\"
+	WHEN grouse.\"inv_before\" > 0 THEN grouse.\"inv_after\" * 1.0 / grouse.\"inv_before\"
 	ELSE null
-	END <= 3.0 / 2.0 and crow.\"inventory_date_date\" >= cast('2000-02-10' as date) and crow.\"inventory_date_date\" <= cast('2000-04-10' as date) and crow.\"inventory_item_current_price\" >= 0.99 and crow.\"inventory_item_current_price\" <= 1.49
+	END <= 3.0 / 2.0 and grouse.\"inventory_date_date\" >= cast('2000-02-10' as date) and grouse.\"inventory_date_date\" <= cast('2000-04-10' as date) and grouse.\"inventory_item_current_price\" >= 0.99 and grouse.\"inventory_item_current_price\" <= 1.49
 
 GROUP BY 
-    crow.\"inventory_item_name\",
-    crow.\"inventory_warehouse_name\",
-    crow.\"inv_after\",
-    crow.\"inv_before\"
+    grouse.\"inventory_item_name\",
+    grouse.\"inventory_warehouse_name\",
+    grouse.\"inv_after\",
+    grouse.\"inv_before\"
 ORDER BY 
-    crow.\"inventory_warehouse_name\" asc nulls first,
-    crow.\"inventory_item_name\" asc nulls first
+    grouse.\"inventory_warehouse_name\" asc nulls first,
+    grouse.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

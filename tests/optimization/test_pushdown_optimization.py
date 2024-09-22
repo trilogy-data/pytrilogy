@@ -56,7 +56,7 @@ def test_child_of():
 
     test = Conditional(
         left=SubselectComparison(
-            left=env.concepts["uuid"], right=2, operator=ComparisonOperator.EQ
+            left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
         ),
         right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
@@ -64,7 +64,7 @@ def test_child_of():
 
     test2 = Conditional(
         left=SubselectComparison(
-            left=env.concepts["uuid"], right=2, operator=ComparisonOperator.EQ
+            left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
         ),
         right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,

@@ -1,16 +1,12 @@
 query_id = 15
-parse_time = 10.775399
-exec_time = 1.348165
-comp_time = 1.284642
-gen_length = 10805
+parse_time = 8.672183
+exec_time = 0.626556
+comp_time = 0.506689
+gen_length = 2893
 generated_sql = """
 
 WITH 
-covey as (
--- Target: Grain<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id>. Source: SourceType.MERGE.
--- Joins: inner JOIN customer_address and customers on catalog_sales.bill_customer.address_id<catalog_sales.bill_customer.address_id>=catalog_sales.bill_customer.address_id<catalog_sales.bill_customer.address_id>[].
--- Source Map: {'catalog_sales.bill_customer.address_id': ['customer_address'], 'catalog_sales.bill_customer.state': ['customer_address'], 'catalog_sales.bill_customer.zip': ['customer_address'], 'catalog_sales.bill_customer.id': ['customers'], 'catalog_sales.bill_customer.county': ['customer_address'], 'catalog_sales.bill_customer.street': ['customer_address'], 'catalog_sales.bill_customer.city': ['customer_address'], 'catalog_sales.bill_customer.first_name': ['customers'], 'catalog_sales.bill_customer.preferred_cust_flag': ['customers'], 'catalog_sales.bill_customer.text_id': ['customers'], 'catalog_sales.bill_customer.last_name': ['customers'], 'catalog_sales.bill_customer.demographics.id': ['customers']}.
--- Output: catalog_sales.bill_customer.address_id<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id>, catalog_sales.bill_customer.id<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id>, catalog_sales.bill_customer.state<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id>, catalog_sales.bill_customer.zip<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id>.
+sweltering as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"catalog_sales_bill_customer_address_id\",
     customers.\"C_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -19,12 +15,7 @@ SELECT
 FROM
     memory.customer_address as customer_address
     INNER JOIN memory.customer as customers on customer_address.\"CA_ADDRESS_SK\" = customers.\"C_CURRENT_ADDR_SK\"),
-rhea as (
--- Target: Grain<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>. Source: SourceType.MERGE.
--- Joins: inner JOIN catalog_sales and date on catalog_sales.date.id<catalog_sales.date.id>=catalog_sales.date.id<catalog_sales.date.id>[].
--- Partials: catalog_sales.bill_customer.id<catalog_sales.bill_customer.id>.
--- Source Map: {'catalog_sales.date.id': ['catalog_sales'], 'catalog_sales.item.id': ['catalog_sales'], 'catalog_sales.order_number': ['catalog_sales'], 'catalog_sales.sales_price': ['catalog_sales'], 'catalog_sales.date.quarter': ['date'], 'catalog_sales.date.year': ['date'], 'catalog_sales.bill_customer.id': ['catalog_sales'], 'catalog_sales.customer.address_id': ['catalog_sales'], 'catalog_sales.sold_date.id': ['catalog_sales'], 'catalog_sales.wholesale_cost': ['catalog_sales'], 'catalog_sales.extra_sales_price': ['catalog_sales'], 'catalog_sales.net_profit': ['catalog_sales'], 'catalog_sales.extra_ship_cost': ['catalog_sales'], 'catalog_sales.extra_wholesale_cost': ['catalog_sales'], 'catalog_sales.call_center.id': ['catalog_sales'], 'catalog_sales.ship_date.id': ['catalog_sales'], 'catalog_sales.warehouse.id': ['catalog_sales'], 'catalog_sales.customer.id': ['catalog_sales'], 'catalog_sales.time.id': ['catalog_sales'], 'catalog_sales.date.week_seq': ['date'], 'catalog_sales.date.month_of_year': ['date'], 'catalog_sales.date.day_of_week': ['date'], 'catalog_sales.date.d_week_seq1': ['date'], 'catalog_sales.date.date_string': ['date'], 'catalog_sales.date.date': ['date']}.
--- Output: catalog_sales.date.id<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.bill_customer.id<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.date.quarter<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.date.year<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.item.id<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.order_number<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.sales_price<catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>.
+raven as (
 SELECT
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -36,56 +27,42 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"),
-thrush as (
--- Target: Grain<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>. Source: SourceType.MERGE. References: covey, rhea.
--- Joins: left outer JOIN covey and rhea on catalog_sales.bill_customer.id<catalog_sales.bill_customer.id>=catalog_sales.bill_customer.id<catalog_sales.bill_customer.id>[].
--- Source Map: {'catalog_sales.bill_customer.address_id': ['covey'], 'catalog_sales.bill_customer.id': ['covey'], 'catalog_sales.bill_customer.state': ['covey'], 'catalog_sales.bill_customer.zip': ['covey'], 'catalog_sales.date.id': ['rhea'], 'catalog_sales.date.quarter': ['rhea'], 'catalog_sales.date.year': ['rhea'], 'catalog_sales.item.id': ['rhea'], 'catalog_sales.order_number': ['rhea'], 'catalog_sales.sales_price': ['rhea']}.
--- Output: catalog_sales.sales_price<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.date.quarter<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.date.year<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.bill_customer.state<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.bill_customer.zip<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.order_number<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>, catalog_sales.item.id<catalog_sales.bill_customer.address_id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.date.id,catalog_sales.order_number>.
+rhea as (
 SELECT
-    rhea.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
-    rhea.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
-    rhea.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
-    covey.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
-    covey.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    raven.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
+    raven.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
+    raven.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    sweltering.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
+    sweltering.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    raven.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
+    raven.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+FROM
+    sweltering
+    LEFT OUTER JOIN raven on sweltering.\"catalog_sales_bill_customer_id\" = raven.\"catalog_sales_bill_customer_id\"),
+resonant as (
+SELECT
+    CASE WHEN rhea.\"catalog_sales_date_quarter\" = 2 and rhea.\"catalog_sales_date_year\" = 2001 and ( rhea.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or rhea.\"catalog_sales_sales_price\" > 500 or SUBSTRING(rhea.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN rhea.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
+    rhea.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
     rhea.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     rhea.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
-    covey
-    LEFT OUTER JOIN rhea on covey.\"catalog_sales_bill_customer_id\" = rhea.\"catalog_sales_bill_customer_id\"),
-quizzical as (
--- Target: Grain<catalog_sales.item.id,catalog_sales.order_number,catalog_sales.date.quarter,catalog_sales.bill_customer.state,catalog_sales.date.year,catalog_sales.bill_customer.zip>. Source: SourceType.FILTER. References: thrush.
--- Source Map: {'catalog_sales.sales_price': ['thrush'], 'catalog_sales.date.quarter': ['thrush'], 'catalog_sales.date.year': ['thrush'], 'catalog_sales.bill_customer.state': ['thrush'], 'catalog_sales.bill_customer.zip': ['thrush'], 'catalog_sales.order_number': ['thrush'], 'catalog_sales.item.id': ['thrush'], 'local.relevant_sales': []}.
--- Output: local.relevant_sales<catalog_sales.item.id,catalog_sales.order_number,catalog_sales.date.quarter,catalog_sales.bill_customer.state,catalog_sales.date.year,catalog_sales.bill_customer.zip>, catalog_sales.bill_customer.zip<catalog_sales.item.id,catalog_sales.order_number,catalog_sales.date.quarter,catalog_sales.bill_customer.state,catalog_sales.date.year,catalog_sales.bill_customer.zip>, catalog_sales.order_number<catalog_sales.item.id,catalog_sales.order_number,catalog_sales.date.quarter,catalog_sales.bill_customer.state,catalog_sales.date.year,catalog_sales.bill_customer.zip>, catalog_sales.item.id<catalog_sales.item.id,catalog_sales.order_number,catalog_sales.date.quarter,catalog_sales.bill_customer.state,catalog_sales.date.year,catalog_sales.bill_customer.zip>.
+    rhea),
+lion as (
 SELECT
-    CASE WHEN thrush.\"catalog_sales_date_quarter\" = 2 and thrush.\"catalog_sales_date_year\" = 2001 and ( thrush.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or thrush.\"catalog_sales_sales_price\" > 500 or SUBSTRING(thrush.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN thrush.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
-    thrush.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    thrush.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    thrush.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+    sum(resonant.\"relevant_sales\") as \"sales\",
+    resonant.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
 FROM
-    thrush),
-blue as (
--- Target: Grain<catalog_sales.bill_customer.zip>. Source: SourceType.GROUP. References: quizzical.
--- Source Map: {'local.relevant_sales': ['quizzical'], 'catalog_sales.bill_customer.zip': ['quizzical'], 'catalog_sales.order_number': ['quizzical'], 'catalog_sales.item.id': ['quizzical'], 'local.sales': []}.
--- Output: local.sales<catalog_sales.bill_customer.zip>, catalog_sales.bill_customer.zip<catalog_sales.bill_customer.zip>.
--- Nullable: local.sales<catalog_sales.bill_customer.zip>.
-SELECT
-    sum(quizzical.\"relevant_sales\") as \"sales\",
-    quizzical.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
-FROM
-    quizzical
+    resonant
 GROUP BY 
-    quizzical.\"catalog_sales_bill_customer_zip\")
--- Target: Grain<local.sales,catalog_sales.bill_customer.zip>. Source: SourceType.SELECT. References: blue.
--- Source Map: {'local.sales': ['blue'], 'catalog_sales.bill_customer.zip': ['blue']}.
--- Output: catalog_sales.bill_customer.zip<local.sales,catalog_sales.bill_customer.zip>, local.sales<catalog_sales.bill_customer.zip>.
+    resonant.\"catalog_sales_bill_customer_zip\")
 SELECT
-    blue.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    blue.\"sales\" as \"sales\"
+    lion.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    lion.\"sales\" as \"sales\"
 FROM
-    blue
+    lion
 WHERE
-    blue.\"sales\" is not null
+    lion.\"sales\" is not null
 
 ORDER BY 
-    blue.\"catalog_sales_bill_customer_zip\" asc nulls first
+    lion.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

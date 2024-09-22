@@ -150,7 +150,7 @@
 
     subselect_comparison: expr array_comparison (literal | _constant_functions | _string_functions | concept_lit | filter_item | window_item | unnest | fgroup |  expr_tuple | parenthetical )
     
-    expr_tuple: "("  expr ("," expr)+ ","?  ")"
+    expr_tuple: ("("  expr ("," expr)+ ","?  ")") | ("("  expr "," ")")
 
     parenthetical: "(" expr ")"
 
