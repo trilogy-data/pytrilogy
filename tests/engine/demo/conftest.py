@@ -222,7 +222,7 @@ def setup_titanic_distributed(env: Environment):
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         keys=[id],
-        modifiers=[Modifier.NULLABLE]
+        modifiers=[Modifier.NULLABLE],
     )
 
     name = Concept(
@@ -392,7 +392,7 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         keys=[id],
         grain=Grain(components=[id]),
-        modifiers = [Modifier.NULLABLE]
+        modifiers=[Modifier.NULLABLE],
     )
 
     name = Concept(

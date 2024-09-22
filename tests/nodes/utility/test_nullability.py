@@ -1,6 +1,7 @@
 from trilogy.core.processing.utility import find_nullable_concepts
 from trilogy.core.models import QueryDatasource, BaseJoin, Grain, JoinType, ConceptPair
 from trilogy import parse
+from trilogy.core.enums import Modifier
 
 
 def test_find_nullable_concepts():
@@ -113,6 +114,17 @@ select 1 as customer_id
     assert nullable == [product_id.address], nullable
 
 
-# def test_nullable_inheritance():
-#     env, _ = parse(
-#         """
+def test_nullable_inheritance():
+    env, _ = parse(
+        """
+key order_id int?;
+
+auto ten_x_order <- order_id *10;
+auto ten_x_order <- order_id *10;
+property order_id.ten_x<- cast(order_id / 10 as int) * 10;
+"""
+    )
+
+    assert env.concepts["order_id"].modifiers == [Modifier.NULLABLE]
+    assert env.concepts["ten_x_order"].modifiers == [Modifier.NULLABLE]
+    assert env.concepts["ten_x"].modifiers == [Modifier.NULLABLE]

@@ -25,6 +25,15 @@ from trilogy.core.enums import PurposeLineage
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
+from trilogy.core.enums import Modifier
+
+
+def get_upstream_modifiers(keys: List[Concept]) -> list[Modifier]:
+    modifiers = set()
+    for pkey in keys:
+        if pkey.modifiers:
+            modifiers.update(pkey.modifiers)
+    return list(modifiers)
 
 
 def process_function_args(
@@ -125,7 +134,7 @@ def constant_to_concept(
 
 
 def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
-    pkeys:List[Concept] = []
+    pkeys: List[Concept] = []
     for x in parent.arguments:
         pkeys += [
             x
@@ -135,10 +144,7 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
     grain = Grain()
     for x in pkeys:
         grain += x.grain
-    modifiers = set()
-    for pkey in pkeys:
-        if pkey.modifiers:
-            modifiers.update(pkey.modifiers)
+    modifiers = get_upstream_modifiers(pkeys)
     key_grain = []
     for x in pkeys:
         if x.keys:
@@ -170,6 +176,7 @@ def filter_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
+    modifiers = get_upstream_modifiers(parent.content.concept_arguments)
     return Concept(
         name=name,
         datatype=parent.content.datatype,
@@ -188,6 +195,7 @@ def filter_item_to_concept(
             if parent.content.purpose == Purpose.PROPERTY
             else Grain()
         ),
+        modifiers=modifiers,
     )
 
 
@@ -206,6 +214,7 @@ def window_item_to_concept(
             grain += [item.expr.output]
     else:
         grain = parent.over + [parent.content.output]
+    modifiers = get_upstream_modifiers(parent.content.concept_arguments)
     return Concept(
         name=name,
         datatype=parent.content.datatype,
@@ -216,6 +225,7 @@ def window_item_to_concept(
         grain=Grain(components=grain),
         namespace=namespace,
         keys=keys,
+        modifiers=modifiers,
     )
 
 
@@ -233,6 +243,7 @@ def agg_wrapper_to_concept(
     # at that grain
     fmetadata = metadata or Metadata()
     aggfunction = parent.function
+    modifiers = get_upstream_modifiers(parent.concept_arguments)
     out = Concept(
         name=name,
         datatype=aggfunction.output_datatype,
@@ -242,6 +253,7 @@ def agg_wrapper_to_concept(
         grain=Grain(components=parent.by) if parent.by else Grain(),
         namespace=namespace,
         keys=tuple(parent.by) if parent.by else keys,
+        modifiers=modifiers,
     )
     return out
 
