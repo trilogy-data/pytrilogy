@@ -1,12 +1,16 @@
 query_id = 12
-parse_time = 5.307575
-exec_time = 1.133322
-comp_time = 0.165066
-gen_length = 6677
+parse_time = 12.836338
+exec_time = 1.135442
+comp_time = 0.326284
+gen_length = 21789
 generated_sql = """
 
 WITH 
-waggish as (
+ceaseless as (
+-- Target: Grain<web_sales.date.id,web_sales.item.id,web_sales.order_number>. Source: SourceType.MERGE.
+-- Joins: inner JOIN web_sales and date on web_sales.date.id<web_sales.date.id>=web_sales.date.id<web_sales.date.id>[], inner JOIN web_sales and items on web_sales.item.id<web_sales.item.id>=web_sales.item.id<web_sales.item.id>[].
+-- Source Map: {'web_sales.date.date': ['date'], 'web_sales.date.id': ['date'], 'web_sales.external_sales_price': ['web_sales'], 'web_sales.item.id': ['web_sales'], 'web_sales.order_number': ['web_sales'], 'web_sales.item.category': ['items'], 'web_sales.item.class': ['items'], 'web_sales.item.current_price': ['items'], 'web_sales.item.desc': ['items'], 'web_sales.item.name': ['items'], 'web_sales.date.year': ['date'], 'web_sales.date.month_of_year': ['date'], 'web_sales.date.date_string': ['date'], 'web_sales.date.week_seq': ['date'], 'web_sales.date.d_week_seq1': ['date'], 'web_sales.date.day_of_week': ['date'], 'web_sales.date.quarter': ['date'], 'web_sales.time.id': ['web_sales'], 'web_sales.customer.id': ['web_sales'], 'web_sales.sales_price': ['web_sales'], 'web_sales.item.brand_id': ['items'], 'web_sales.item.manufacturer_id': ['items'], 'web_sales.item.brand_name': ['items']}.
+-- Output: web_sales.external_sales_price<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.date.date<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.item.category<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.item.class<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.item.current_price<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.item.desc<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.item.name<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.order_number<web_sales.date.id,web_sales.item.id,web_sales.order_number>, web_sales.item.id<web_sales.date.id,web_sales.item.id,web_sales.order_number>.
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -21,7 +25,10 @@ FROM
     memory.web_sales as web_sales
     INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"),
-mamba as (
+pintail as (
+-- Target: Grain<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>. Source: SourceType.GROUP.
+-- Source Map: {'web_sales.item.class': ['items'], 'web_sales.item.category': ['items'], 'web_sales.item.current_price': ['items'], 'web_sales.item.desc': ['items'], 'web_sales.item.name': ['items'], 'web_sales.item.brand_id': ['items'], 'web_sales.item.manufacturer_id': ['items'], 'web_sales.item.brand_name': ['items'], 'web_sales.item.id': ['items']}.
+-- Output: web_sales.item.class<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.category<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.current_price<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.desc<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.name<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>.
 SELECT
     items.\"I_CLASS\" as \"web_sales_item_class\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
@@ -31,107 +38,141 @@ SELECT
 FROM
     memory.item as items
 GROUP BY 
-    items.\"I_CLASS\",
-    items.\"I_ITEM_DESC\",
-    items.\"I_ITEM_ID\",
     items.\"I_CATEGORY\",
-    items.\"I_CURRENT_PRICE\"),
-crocodile as (
+    items.\"I_ITEM_ID\",
+    items.\"I_CLASS\",
+    items.\"I_CURRENT_PRICE\",
+    items.\"I_ITEM_DESC\"),
+ocelot as (
+-- Target: Grain<web_sales.date.date,web_sales.item.id,web_sales.order_number>. Source: SourceType.FILTER. References: ceaseless.
+-- Source Map: {'web_sales.external_sales_price': ['ceaseless'], 'web_sales.date.date': ['ceaseless'], 'web_sales.item.category': ['ceaseless'], 'web_sales.item.class': ['ceaseless'], 'web_sales.item.current_price': ['ceaseless'], 'web_sales.item.desc': ['ceaseless'], 'web_sales.item.name': ['ceaseless'], 'web_sales.order_number': ['ceaseless'], 'web_sales.item.id': ['ceaseless'], 'local.relevant_sales': []}.
+-- Output: local.relevant_sales<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.order_number<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.item.id<web_sales.date.date,web_sales.item.id,web_sales.order_number>.
 SELECT
-    CASE WHEN waggish.\"web_sales_date_date\" >= cast('1999-02-22' as date) and waggish.\"web_sales_date_date\" <= cast('1999-03-24' as date) and waggish.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN waggish.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
-    waggish.\"web_sales_order_number\" as \"web_sales_order_number\",
-    waggish.\"web_sales_item_id\" as \"web_sales_item_id\"
+    CASE WHEN ceaseless.\"web_sales_date_date\" >= cast('1999-02-22' as date) and ceaseless.\"web_sales_date_date\" <= cast('1999-03-24' as date) and ceaseless.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN ceaseless.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
+    ceaseless.\"web_sales_order_number\" as \"web_sales_order_number\",
+    ceaseless.\"web_sales_item_id\" as \"web_sales_item_id\"
 FROM
-    waggish),
-hawk as (
+    ceaseless),
+nondescript as (
+-- Target: Grain<web_sales.date.date,web_sales.item.id,web_sales.order_number>. Source: SourceType.MERGE. References: ocelot.
+-- Joins: inner JOIN ocelot and items on web_sales.item.id<web_sales.item.id>=web_sales.item.id<web_sales.item.id>[].
+-- Source Map: {'local.relevant_sales': ['ocelot'], 'web_sales.order_number': ['ocelot'], 'web_sales.item.id': ['ocelot'], 'web_sales.item.category': ['items'], 'web_sales.item.class': ['items'], 'web_sales.item.current_price': ['items'], 'web_sales.item.desc': ['items'], 'web_sales.item.name': ['items'], 'web_sales.item.brand_id': ['items'], 'web_sales.item.manufacturer_id': ['items'], 'web_sales.item.brand_name': ['items']}.
+-- Output: local.relevant_sales<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.item.category<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.item.class<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.item.current_price<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.item.desc<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.item.name<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.order_number<web_sales.date.date,web_sales.item.id,web_sales.order_number>, web_sales.item.id<web_sales.date.date,web_sales.item.id,web_sales.order_number>.
 SELECT
-    crocodile.\"relevant_sales\" as \"relevant_sales\",
+    ocelot.\"relevant_sales\" as \"relevant_sales\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
     items.\"I_CLASS\" as \"web_sales_item_class\",
     items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
     items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
     items.\"I_ITEM_ID\" as \"web_sales_item_name\",
-    crocodile.\"web_sales_order_number\" as \"web_sales_order_number\",
-    crocodile.\"web_sales_item_id\" as \"web_sales_item_id\"
+    ocelot.\"web_sales_order_number\" as \"web_sales_order_number\",
+    ocelot.\"web_sales_item_id\" as \"web_sales_item_id\"
 FROM
-    crocodile
-    INNER JOIN memory.item as items on crocodile.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
-slow as (
+    ocelot
+    INNER JOIN memory.item as items on ocelot.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
+toucan as (
+-- Target: Grain<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>. Source: SourceType.GROUP. References: nondescript.
+-- Source Map: {'local.relevant_sales': ['nondescript'], 'web_sales.item.category': ['nondescript'], 'web_sales.item.class': ['nondescript'], 'web_sales.item.current_price': ['nondescript'], 'web_sales.item.desc': ['nondescript'], 'web_sales.item.name': ['nondescript'], 'web_sales.order_number': ['nondescript'], 'web_sales.item.id': ['nondescript'], 'local.itemrevenue': [], 'local._virtual_1496978012803723': []}.
+-- Output: local.itemrevenue<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.category<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.class<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.current_price<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.desc<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.name<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local._virtual_1496978012803723<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>.
+-- Nullable: local.itemrevenue<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local._virtual_1496978012803723<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>.
 SELECT
-    sum(hawk.\"relevant_sales\") as \"itemrevenue\",
-    hawk.\"web_sales_item_category\" as \"web_sales_item_category\",
-    hawk.\"web_sales_item_class\" as \"web_sales_item_class\",
-    hawk.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    hawk.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    hawk.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(hawk.\"relevant_sales\") as \"_virtual_1496978012803723\"
+    sum(nondescript.\"relevant_sales\") as \"itemrevenue\",
+    nondescript.\"web_sales_item_category\" as \"web_sales_item_category\",
+    nondescript.\"web_sales_item_class\" as \"web_sales_item_class\",
+    nondescript.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    nondescript.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    nondescript.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sum(nondescript.\"relevant_sales\") as \"_virtual_1496978012803723\"
 FROM
-    hawk
+    nondescript
 GROUP BY 
-    hawk.\"web_sales_item_current_price\",
-    hawk.\"web_sales_item_name\",
-    hawk.\"web_sales_item_class\",
-    hawk.\"web_sales_item_category\",
-    hawk.\"web_sales_item_desc\"),
-quail as (
+    nondescript.\"web_sales_item_category\",
+    nondescript.\"web_sales_item_current_price\",
+    nondescript.\"web_sales_item_desc\",
+    nondescript.\"web_sales_item_class\",
+    nondescript.\"web_sales_item_name\"),
+gullible as (
+-- Target: Grain<web_sales.item.class>. Source: SourceType.GROUP. References: nondescript.
+-- Source Map: {'local.relevant_sales': ['nondescript'], 'web_sales.item.class': ['nondescript'], 'web_sales.order_number': ['nondescript'], 'web_sales.item.id': ['nondescript'], 'local._virtual_341251569527357': []}.
+-- Output: local._virtual_341251569527357<web_sales.item.class>, web_sales.item.class<web_sales.item.class>.
+-- Nullable: local._virtual_341251569527357<web_sales.item.class>.
 SELECT
-    sum(hawk.\"relevant_sales\") as \"_virtual_341251569527357\",
-    hawk.\"web_sales_item_class\" as \"web_sales_item_class\"
+    sum(nondescript.\"relevant_sales\") as \"_virtual_341251569527357\",
+    nondescript.\"web_sales_item_class\" as \"web_sales_item_class\"
 FROM
-    hawk
+    nondescript
 GROUP BY 
-    hawk.\"web_sales_item_class\"),
-deeply as (
+    nondescript.\"web_sales_item_class\"),
+jaguar as (
+-- Target: Grain<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>. Source: SourceType.MERGE. References: pintail, gullible.
+-- Joins: inner JOIN pintail and gullible on web_sales.item.class<web_sales.item.id>=web_sales.item.class<web_sales.item.id>[].
+-- Source Map: {'web_sales.item.class': ['pintail'], 'web_sales.item.category': ['pintail'], 'web_sales.item.current_price': ['pintail'], 'web_sales.item.desc': ['pintail'], 'web_sales.item.name': ['pintail'], 'local._virtual_341251569527357': ['gullible']}.
+-- Output: web_sales.item.class<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.category<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.current_price<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.desc<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.name<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local._virtual_341251569527357<web_sales.item.class>.
+-- Nullable: local._virtual_341251569527357<web_sales.item.class>.
 SELECT
-    mamba.\"web_sales_item_class\" as \"web_sales_item_class\",
-    mamba.\"web_sales_item_category\" as \"web_sales_item_category\",
-    mamba.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    mamba.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    mamba.\"web_sales_item_name\" as \"web_sales_item_name\",
-    quail.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
+    pintail.\"web_sales_item_class\" as \"web_sales_item_class\",
+    pintail.\"web_sales_item_category\" as \"web_sales_item_category\",
+    pintail.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    pintail.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    pintail.\"web_sales_item_name\" as \"web_sales_item_name\",
+    gullible.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
 FROM
-    mamba
-    INNER JOIN quail on (mamba.\"web_sales_item_class\" = quail.\"web_sales_item_class\" or (mamba.\"web_sales_item_class\" is null and quail.\"web_sales_item_class\" is null))),
-eminent as (
+    pintail
+    INNER JOIN gullible on (pintail.\"web_sales_item_class\" = gullible.\"web_sales_item_class\" or (pintail.\"web_sales_item_class\" is null and gullible.\"web_sales_item_class\" is null))),
+uneven as (
+-- Target: Grain<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>. Source: SourceType.BASIC. References: toucan, jaguar.
+-- Joins: inner JOIN toucan and jaguar on web_sales.item.category<web_sales.item.id>=web_sales.item.category<web_sales.item.id>[],web_sales.item.class<web_sales.item.id>=web_sales.item.class<web_sales.item.id>[],web_sales.item.current_price<web_sales.item.id>=web_sales.item.current_price<web_sales.item.id>[],web_sales.item.desc<web_sales.item.id>=web_sales.item.desc<web_sales.item.id>[],web_sales.item.name<web_sales.item.id>=web_sales.item.name<web_sales.item.id>[].
+-- Source Map: {'local._virtual_1496978012803723': ['toucan'], 'web_sales.item.category': ['toucan'], 'web_sales.item.class': ['toucan'], 'web_sales.item.current_price': ['toucan'], 'web_sales.item.desc': ['toucan'], 'web_sales.item.name': ['toucan'], 'local._virtual_341251569527357': ['jaguar'], 'local.revenueratio': []}.
+-- Output: web_sales.item.category<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.class<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.current_price<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.desc<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.name<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local.revenueratio<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>.
+-- Hidden: local._virtual_1496978012803723<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local._virtual_341251569527357<web_sales.item.class>.
+-- Nullable: local.revenueratio<>.
 SELECT
-    slow.\"web_sales_item_category\" as \"web_sales_item_category\",
-    slow.\"web_sales_item_class\" as \"web_sales_item_class\",
-    slow.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    slow.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    slow.\"web_sales_item_name\" as \"web_sales_item_name\",
-    slow.\"_virtual_1496978012803723\" * 100.0 / deeply.\"_virtual_341251569527357\" as \"revenueratio\"
+    toucan.\"web_sales_item_category\" as \"web_sales_item_category\",
+    toucan.\"web_sales_item_class\" as \"web_sales_item_class\",
+    toucan.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    toucan.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    toucan.\"web_sales_item_name\" as \"web_sales_item_name\",
+    toucan.\"_virtual_1496978012803723\" * 100.0 / jaguar.\"_virtual_341251569527357\" as \"revenueratio\"
 FROM
-    slow
-    INNER JOIN deeply on (slow.\"web_sales_item_category\" = deeply.\"web_sales_item_category\" or (slow.\"web_sales_item_category\" is null and deeply.\"web_sales_item_category\" is null)) AND (slow.\"web_sales_item_class\" = deeply.\"web_sales_item_class\" or (slow.\"web_sales_item_class\" is null and deeply.\"web_sales_item_class\" is null)) AND (slow.\"web_sales_item_current_price\" = deeply.\"web_sales_item_current_price\" or (slow.\"web_sales_item_current_price\" is null and deeply.\"web_sales_item_current_price\" is null)) AND (slow.\"web_sales_item_desc\" = deeply.\"web_sales_item_desc\" or (slow.\"web_sales_item_desc\" is null and deeply.\"web_sales_item_desc\" is null)) AND slow.\"web_sales_item_name\" = deeply.\"web_sales_item_name\"),
-cockatoo as (
+    toucan
+    INNER JOIN jaguar on (toucan.\"web_sales_item_category\" = jaguar.\"web_sales_item_category\" or (toucan.\"web_sales_item_category\" is null and jaguar.\"web_sales_item_category\" is null)) AND (toucan.\"web_sales_item_class\" = jaguar.\"web_sales_item_class\" or (toucan.\"web_sales_item_class\" is null and jaguar.\"web_sales_item_class\" is null)) AND (toucan.\"web_sales_item_current_price\" = jaguar.\"web_sales_item_current_price\" or (toucan.\"web_sales_item_current_price\" is null and jaguar.\"web_sales_item_current_price\" is null)) AND (toucan.\"web_sales_item_desc\" = jaguar.\"web_sales_item_desc\" or (toucan.\"web_sales_item_desc\" is null and jaguar.\"web_sales_item_desc\" is null)) AND toucan.\"web_sales_item_name\" = jaguar.\"web_sales_item_name\"),
+cool as (
+-- Target: Grain<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>. Source: SourceType.MERGE. References: uneven, toucan.
+-- Joins: inner JOIN uneven and toucan on web_sales.item.category<web_sales.item.id>=web_sales.item.category<web_sales.item.id>[],web_sales.item.class<web_sales.item.id>=web_sales.item.class<web_sales.item.id>[],web_sales.item.current_price<web_sales.item.id>=web_sales.item.current_price<web_sales.item.id>[],web_sales.item.desc<web_sales.item.id>=web_sales.item.desc<web_sales.item.id>[],web_sales.item.name<web_sales.item.id>=web_sales.item.name<web_sales.item.id>[].
+-- Source Map: {'web_sales.item.category': ['uneven'], 'web_sales.item.class': ['uneven'], 'web_sales.item.current_price': ['uneven'], 'web_sales.item.desc': ['uneven'], 'web_sales.item.name': ['uneven'], 'local.revenueratio': ['uneven'], 'local.itemrevenue': ['toucan']}.
+-- Output: web_sales.item.category<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.class<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.current_price<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.desc<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, web_sales.item.name<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local.revenueratio<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local.itemrevenue<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>.
+-- Nullable: local.revenueratio<>, local.itemrevenue<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>.
 SELECT
-    eminent.\"web_sales_item_category\" as \"web_sales_item_category\",
-    eminent.\"web_sales_item_class\" as \"web_sales_item_class\",
-    eminent.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    eminent.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    eminent.\"web_sales_item_name\" as \"web_sales_item_name\",
-    eminent.\"revenueratio\" as \"revenueratio\",
-    slow.\"itemrevenue\" as \"itemrevenue\"
+    uneven.\"web_sales_item_category\" as \"web_sales_item_category\",
+    uneven.\"web_sales_item_class\" as \"web_sales_item_class\",
+    uneven.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    uneven.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    uneven.\"web_sales_item_name\" as \"web_sales_item_name\",
+    uneven.\"revenueratio\" as \"revenueratio\",
+    toucan.\"itemrevenue\" as \"itemrevenue\"
 FROM
-    eminent
-    INNER JOIN slow on (eminent.\"web_sales_item_category\" = slow.\"web_sales_item_category\" or (eminent.\"web_sales_item_category\" is null and slow.\"web_sales_item_category\" is null)) AND (eminent.\"web_sales_item_class\" = slow.\"web_sales_item_class\" or (eminent.\"web_sales_item_class\" is null and slow.\"web_sales_item_class\" is null)) AND (eminent.\"web_sales_item_current_price\" = slow.\"web_sales_item_current_price\" or (eminent.\"web_sales_item_current_price\" is null and slow.\"web_sales_item_current_price\" is null)) AND (eminent.\"web_sales_item_desc\" = slow.\"web_sales_item_desc\" or (eminent.\"web_sales_item_desc\" is null and slow.\"web_sales_item_desc\" is null)) AND eminent.\"web_sales_item_name\" = slow.\"web_sales_item_name\")
+    uneven
+    INNER JOIN toucan on (uneven.\"web_sales_item_category\" = toucan.\"web_sales_item_category\" or (uneven.\"web_sales_item_category\" is null and toucan.\"web_sales_item_category\" is null)) AND (uneven.\"web_sales_item_class\" = toucan.\"web_sales_item_class\" or (uneven.\"web_sales_item_class\" is null and toucan.\"web_sales_item_class\" is null)) AND (uneven.\"web_sales_item_current_price\" = toucan.\"web_sales_item_current_price\" or (uneven.\"web_sales_item_current_price\" is null and toucan.\"web_sales_item_current_price\" is null)) AND (uneven.\"web_sales_item_desc\" = toucan.\"web_sales_item_desc\" or (uneven.\"web_sales_item_desc\" is null and toucan.\"web_sales_item_desc\" is null)) AND uneven.\"web_sales_item_name\" = toucan.\"web_sales_item_name\")
+-- Target: Grain<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,local.itemrevenue,web_sales.item.name,local.revenueratio>. Source: SourceType.SELECT. References: cool.
+-- Source Map: {'web_sales.item.category': ['cool'], 'web_sales.item.class': ['cool'], 'web_sales.item.current_price': ['cool'], 'web_sales.item.desc': ['cool'], 'web_sales.item.name': ['cool'], 'local.revenueratio': ['cool'], 'local.itemrevenue': ['cool']}.
+-- Output: web_sales.item.name<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,local.itemrevenue,web_sales.item.name,local.revenueratio>, web_sales.item.desc<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,local.itemrevenue,web_sales.item.name,local.revenueratio>, web_sales.item.category<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,local.itemrevenue,web_sales.item.name,local.revenueratio>, web_sales.item.class<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,local.itemrevenue,web_sales.item.name,local.revenueratio>, web_sales.item.current_price<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,local.itemrevenue,web_sales.item.name,local.revenueratio>, local.itemrevenue<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,web_sales.item.name>, local.revenueratio<web_sales.item.category,web_sales.item.class,web_sales.item.current_price,web_sales.item.desc,local.itemrevenue,web_sales.item.name,local.revenueratio>.
 SELECT
-    cockatoo.\"web_sales_item_name\" as \"web_sales_item_name\",
-    cockatoo.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    cockatoo.\"web_sales_item_category\" as \"web_sales_item_category\",
-    cockatoo.\"web_sales_item_class\" as \"web_sales_item_class\",
-    cockatoo.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    cockatoo.\"itemrevenue\" as \"itemrevenue\",
-    cockatoo.\"revenueratio\" as \"revenueratio\"
+    cool.\"web_sales_item_name\" as \"web_sales_item_name\",
+    cool.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    cool.\"web_sales_item_category\" as \"web_sales_item_category\",
+    cool.\"web_sales_item_class\" as \"web_sales_item_class\",
+    cool.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    cool.\"itemrevenue\" as \"itemrevenue\",
+    cool.\"revenueratio\" as \"revenueratio\"
 FROM
-    cockatoo
+    cool
 WHERE
-    cockatoo.\"itemrevenue\" is not null
+    cool.\"itemrevenue\" is not null
 
 ORDER BY 
-    cockatoo.\"web_sales_item_category\" asc,
-    cockatoo.\"web_sales_item_class\" asc,
-    cockatoo.\"web_sales_item_name\" asc,
-    cockatoo.\"web_sales_item_desc\" asc,
-    cockatoo.\"revenueratio\" asc
+    cool.\"web_sales_item_category\" asc,
+    cool.\"web_sales_item_class\" asc,
+    cool.\"web_sales_item_name\" asc,
+    cool.\"web_sales_item_desc\" asc,
+    cool.\"revenueratio\" asc
 LIMIT (100)"""

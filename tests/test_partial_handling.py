@@ -59,7 +59,7 @@ def setup_titanic(env: Environment):
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
-        datatype=DataType.BOOL,
+        datatype=DataType.INTEGER,
         keys=(id,),
     )
     fare = Concept(

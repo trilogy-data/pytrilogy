@@ -3500,7 +3500,7 @@ class Comparison(
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
-            if self.right != MagicConstants.NULL and self.right != arg_to_datatype(
+            if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
                 self.right
             ):
                 raise SyntaxError(

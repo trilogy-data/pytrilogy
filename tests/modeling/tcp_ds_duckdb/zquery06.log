@@ -1,12 +1,16 @@
 query_id = 6
-parse_time = 2.503622
-exec_time = 0.666171
-comp_time = 0.102846
-gen_length = 6948
+parse_time = 13.88921
+exec_time = 0.803342
+comp_time = 0.14593
+gen_length = 18830
 generated_sql = """
 
 WITH 
-vivacious as (
+owl as (
+-- Target: Grain<store_sales.date.id,item.id,store_sales.customer.id>. Source: SourceType.GROUP.
+-- Partials: store_sales.customer.id<store_sales.customer.id>.
+-- Source Map: {'store_sales.date.id': ['store_sales'], 'item.id': ['store_sales'], 'store_sales.customer.id': ['store_sales'], 'store_sales.store.id': ['store_sales'], 'store_sales.quantity': ['store_sales'], 'store_sales.sales_price': ['store_sales'], 'store_sales.coupon_amt': ['store_sales'], 'store_sales.time.id': ['store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales'], 'store_sales.net_profit': ['store_sales'], 'store_sales.ext_list_price': ['store_sales'], 'store_sales.list_price': ['store_sales'], 'store_sales.item.id': ['store_sales'], 'store_sales.promotion.id': ['store_sales'], 'store_sales.ext_sales_price': ['store_sales'], 'store_sales.ext_discount_amount': ['store_sales'], 'store_sales.customer_demographic.id': ['store_sales'], 'store_sales.ticket_number': ['store_sales']}.
+-- Output: store_sales.date.id<store_sales.date.id,item.id,store_sales.customer.id>, item.id<store_sales.date.id,item.id,store_sales.customer.id>, store_sales.customer.id<store_sales.date.id,item.id,store_sales.customer.id>.
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_ITEM_SK\" as \"item_id\",
@@ -17,7 +21,11 @@ GROUP BY
     store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_SOLD_DATE_SK\",
     store_sales.\"SS_CUSTOMER_SK\"),
-cuckoo as (
+ostrich as (
+-- Target: Grain<store_sales.customer.address_id,store_sales.customer.id>. Source: SourceType.MERGE.
+-- Joins: inner JOIN customers and customer_address on store_sales.customer.address_id<store_sales.customer.address_id>=store_sales.customer.address_id<store_sales.customer.address_id>[].
+-- Source Map: {'store_sales.customer.address_id': ['customers'], 'store_sales.customer.id': ['customers'], 'store_sales.customer.state': ['customer_address'], 'store_sales.customer.demographics.id': ['customers'], 'store_sales.customer.text_id': ['customers'], 'store_sales.customer.last_name': ['customers'], 'store_sales.customer.first_name': ['customers'], 'store_sales.customer.preferred_cust_flag': ['customers'], 'store_sales.customer.county': ['customer_address'], 'store_sales.customer.zip': ['customer_address'], 'store_sales.customer.city': ['customer_address'], 'store_sales.customer.street': ['customer_address']}.
+-- Output: store_sales.customer.address_id<store_sales.customer.address_id,store_sales.customer.id>, store_sales.customer.id<store_sales.customer.address_id,store_sales.customer.id>, store_sales.customer.state<store_sales.customer.address_id,store_sales.customer.id>.
 SELECT
     customers.\"C_CURRENT_ADDR_SK\" as \"store_sales_customer_address_id\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
@@ -25,13 +33,20 @@ SELECT
 FROM
     memory.customer as customers
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"),
-round as (
+yummy as (
+-- Target: Grain<item.id>. Source: SourceType.DIRECT_SELECT.
+-- Source Map: {'store_sales.item.name': ['items'], 'store_sales.item.desc': ['items'], 'store_sales.item.brand_name': ['items'], 'store_sales.item.brand_id': ['items'], 'store_sales.item.manufacturer_id': ['items'], 'store_sales.item.category': ['items'], 'store_sales.item.class': ['items'], 'store_sales.item.current_price': ['items'], 'store_sales.item.id': ['items'], 'item.id': ['items']}.
+-- Output: store_sales.item.current_price<item.id>, item.id<item.id>.
 SELECT
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     items.\"I_ITEM_SK\" as \"item_id\"
 FROM
     memory.item as items),
-quizzical as (
+thoughtful as (
+-- Target: Grain<item.category>. Source: SourceType.GROUP.
+-- Source Map: {'item.current_price': ['items'], 'item.category': ['items'], 'item.id': ['items'], 'local._virtual_6264207893106521': [], 'item.name': ['items'], 'item.desc': ['items'], 'item.brand_id': ['items'], 'item.brand_name': ['items'], 'item.manufacturer_id': ['items'], 'item.class': ['items']}.
+-- Output: local._virtual_6264207893106521<item.category>, item.category<item.category>.
+-- Nullable: local._virtual_6264207893106521<item.category>.
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -42,107 +57,144 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-bewildered as (
+puffy as (
+-- Target: Grain<store_sales.date.id>. Source: SourceType.MERGE. References: owl.
+-- Joins: inner JOIN owl and date on store_sales.date.id<store_sales.date.id>=store_sales.date.id<store_sales.date.id>[].
+-- Partials: store_sales.customer.id<store_sales.customer.id>.
+-- Source Map: {'store_sales.date.id': ['date'], 'store_sales.date.month_of_year': ['date'], 'store_sales.date.year': ['date'], 'item.id': ['owl'], 'store_sales.customer.id': ['owl'], 'store_sales.date.date_string': ['date'], 'store_sales.date.date': ['date'], 'store_sales.date.d_week_seq1': ['date'], 'store_sales.date.day_of_week': ['date'], 'store_sales.date.quarter': ['date'], 'store_sales.date.week_seq': ['date']}.
+-- Output: store_sales.date.id<store_sales.date.id>, item.id<store_sales.date.id>, store_sales.customer.id<store_sales.date.id>, store_sales.date.month_of_year<store_sales.date.id>, store_sales.date.year<store_sales.date.id>.
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_date_id\",
-    vivacious.\"item_id\" as \"item_id\",
-    vivacious.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    owl.\"item_id\" as \"item_id\",
+    owl.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\"
 FROM
-    vivacious
-    INNER JOIN memory.date_dim as date on vivacious.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    owl
+    INNER JOIN memory.date_dim as date on owl.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1
 ),
-marlin as (
+skylark as (
+-- Target: Grain<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>. Source: SourceType.MERGE. References: ostrich, puffy, yummy.
+-- Joins: left outer JOIN ostrich and puffy on store_sales.customer.id<store_sales.customer.id>=store_sales.customer.id<store_sales.customer.id>[], inner JOIN puffy and items on item.id<item.id>=item.id<item.id>[], inner JOIN puffy and yummy on item.id<item.id>=item.id<item.id>[].
+-- Source Map: {'item.category': ['items'], 'item.id': ['items'], 'store_sales.customer.address_id': ['ostrich'], 'store_sales.customer.id': ['ostrich'], 'store_sales.customer.state': ['ostrich'], 'store_sales.date.id': ['puffy'], 'store_sales.date.month_of_year': ['puffy'], 'store_sales.date.year': ['puffy'], 'store_sales.item.current_price': ['yummy'], 'item.name': ['items'], 'item.desc': ['items'], 'item.brand_id': ['items'], 'item.brand_name': ['items'], 'item.manufacturer_id': ['items'], 'item.class': ['items'], 'item.current_price': ['items']}.
+-- Output: item.category<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.id<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>.
 SELECT
     items.\"I_CATEGORY\" as \"item_category\",
-    round.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    bewildered.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    cuckoo.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    bewildered.\"store_sales_date_year\" as \"store_sales_date_year\",
-    cuckoo.\"store_sales_customer_id\" as \"store_sales_customer_id\"
+    yummy.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    puffy.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    ostrich.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    puffy.\"store_sales_date_year\" as \"store_sales_date_year\",
+    ostrich.\"store_sales_customer_id\" as \"store_sales_customer_id\"
 FROM
-    cuckoo
-    LEFT OUTER JOIN bewildered on cuckoo.\"store_sales_customer_id\" = bewildered.\"store_sales_customer_id\"
-    INNER JOIN memory.item as items on bewildered.\"item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN round on bewildered.\"item_id\" = round.\"item_id\"
+    ostrich
+    LEFT OUTER JOIN puffy on ostrich.\"store_sales_customer_id\" = puffy.\"store_sales_customer_id\"
+    INNER JOIN memory.item as items on puffy.\"item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN yummy on puffy.\"item_id\" = yummy.\"item_id\"
 WHERE
-    bewildered.\"store_sales_date_year\" = 2001 and bewildered.\"store_sales_date_month_of_year\" = 1 and items.\"I_CATEGORY\" is not null
+    puffy.\"store_sales_date_year\" = 2001 and puffy.\"store_sales_date_month_of_year\" = 1 and items.\"I_CATEGORY\" is not null
 ),
-salamander as (
+magpie as (
+-- Target: Grain<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>. Source: SourceType.MERGE. References: skylark, thoughtful.
+-- Joins: inner JOIN skylark and thoughtful on item.category<item.id>=item.category<item.id>[].
+-- Source Map: {'item.category': ['skylark'], 'store_sales.item.current_price': ['skylark'], 'store_sales.date.month_of_year': ['skylark'], 'store_sales.customer.state': ['skylark'], 'store_sales.date.year': ['skylark'], 'local._virtual_6264207893106521': ['thoughtful']}.
+-- Output: item.category<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, local._virtual_6264207893106521<item.category>.
+-- Nullable: local._virtual_6264207893106521<item.category>.
 SELECT
-    marlin.\"item_category\" as \"item_category\",
-    marlin.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    marlin.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    marlin.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    marlin.\"store_sales_date_year\" as \"store_sales_date_year\",
-    quizzical.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    skylark.\"item_category\" as \"item_category\",
+    skylark.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    skylark.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    skylark.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    skylark.\"store_sales_date_year\" as \"store_sales_date_year\",
+    thoughtful.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    marlin
-    INNER JOIN quizzical on (marlin.\"item_category\" = quizzical.\"item_category\" or (marlin.\"item_category\" is null and quizzical.\"item_category\" is null))
+    skylark
+    INNER JOIN thoughtful on (skylark.\"item_category\" = thoughtful.\"item_category\" or (skylark.\"item_category\" is null and thoughtful.\"item_category\" is null))
 WHERE
-    marlin.\"store_sales_date_year\" = 2001 and marlin.\"store_sales_date_month_of_year\" = 1 and marlin.\"store_sales_item_current_price\" > 1.2 * quizzical.\"_virtual_6264207893106521\" and marlin.\"item_category\" is not null
+    skylark.\"store_sales_date_year\" = 2001 and skylark.\"store_sales_date_month_of_year\" = 1 and skylark.\"store_sales_item_current_price\" > 1.2 * thoughtful.\"_virtual_6264207893106521\" and skylark.\"item_category\" is not null
 ),
-sloppy as (
+protective as (
+-- Target: Grain<store_sales.customer.id,store_sales.customer.state>. Source: SourceType.MERGE. References: skylark, thoughtful.
+-- Joins: inner JOIN skylark and thoughtful on item.category<item.id>=item.category<item.id>[].
+-- Source Map: {'item.category': ['skylark'], 'store_sales.item.current_price': ['skylark'], 'store_sales.customer.id': ['skylark'], 'store_sales.date.month_of_year': ['skylark'], 'store_sales.customer.state': ['skylark'], 'store_sales.date.year': ['skylark'], 'local._virtual_6264207893106521': ['thoughtful'], 'store_sales.customer.id_filter_5640408687474034': []}.
+-- Output: store_sales.customer.id_filter_5640408687474034<store_sales.customer.id,store_sales.customer.state>, store_sales.customer.state<store_sales.customer.id,store_sales.customer.state>.
+-- Nullable: store_sales.customer.id_filter_5640408687474034<store_sales.customer.state>.
 SELECT
-    marlin.\"store_sales_customer_id\" as \"store_sales_customer_id_filter_5640408687474034\",
-    marlin.\"store_sales_customer_state\" as \"store_sales_customer_state\"
+    skylark.\"store_sales_customer_id\" as \"store_sales_customer_id_filter_5640408687474034\",
+    skylark.\"store_sales_customer_state\" as \"store_sales_customer_state\"
 FROM
-    marlin
-    INNER JOIN quizzical on (marlin.\"item_category\" = quizzical.\"item_category\" or (marlin.\"item_category\" is null and quizzical.\"item_category\" is null))
+    skylark
+    INNER JOIN thoughtful on (skylark.\"item_category\" = thoughtful.\"item_category\" or (skylark.\"item_category\" is null and thoughtful.\"item_category\" is null))
 WHERE
-    marlin.\"store_sales_date_year\" = 2001 and marlin.\"store_sales_date_month_of_year\" = 1 and marlin.\"store_sales_item_current_price\" > 1.2 * quizzical.\"_virtual_6264207893106521\" and marlin.\"item_category\" is not null
+    skylark.\"store_sales_date_year\" = 2001 and skylark.\"store_sales_date_month_of_year\" = 1 and skylark.\"store_sales_item_current_price\" > 1.2 * thoughtful.\"_virtual_6264207893106521\" and skylark.\"item_category\" is not null
 ),
-premium as (
+boa as (
+-- Target: Grain<store_sales.customer.state>. Source: SourceType.GROUP. References: protective.
+-- Source Map: {'store_sales.customer.id_filter_5640408687474034': ['protective'], 'store_sales.customer.state': ['protective'], 'local.customer_count': []}.
+-- Output: local.customer_count<store_sales.customer.state>, store_sales.customer.state<store_sales.customer.state>.
+-- Nullable: local.customer_count<store_sales.customer.state>.
 SELECT
-    count(sloppy.\"store_sales_customer_id_filter_5640408687474034\") as \"customer_count\",
-    sloppy.\"store_sales_customer_state\" as \"store_sales_customer_state\"
+    count(protective.\"store_sales_customer_id_filter_5640408687474034\") as \"customer_count\",
+    protective.\"store_sales_customer_state\" as \"store_sales_customer_state\"
 FROM
-    sloppy
+    protective
 GROUP BY 
-    sloppy.\"store_sales_customer_state\"),
-resonant as (
+    protective.\"store_sales_customer_state\"),
+goose as (
+-- Target: Grain<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>. Source: SourceType.MERGE. References: skylark, boa.
+-- Joins: inner JOIN skylark and boa on store_sales.customer.state<store_sales.customer.address_id>=store_sales.customer.state<store_sales.customer.address_id>[].
+-- Source Map: {'store_sales.customer.state': ['skylark'], 'item.category': ['skylark'], 'store_sales.item.current_price': ['skylark'], 'store_sales.date.month_of_year': ['skylark'], 'store_sales.date.year': ['skylark'], 'local.customer_count': ['boa']}.
+-- Output: store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, item.category<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, local.customer_count<store_sales.customer.state>.
+-- Nullable: local.customer_count<store_sales.customer.state>.
 SELECT
-    marlin.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    marlin.\"item_category\" as \"item_category\",
-    marlin.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    marlin.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    marlin.\"store_sales_date_year\" as \"store_sales_date_year\",
-    premium.\"customer_count\" as \"customer_count\"
+    skylark.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    skylark.\"item_category\" as \"item_category\",
+    skylark.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    skylark.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    skylark.\"store_sales_date_year\" as \"store_sales_date_year\",
+    boa.\"customer_count\" as \"customer_count\"
 FROM
-    marlin
-    INNER JOIN premium on (marlin.\"store_sales_customer_state\" = premium.\"store_sales_customer_state\" or (marlin.\"store_sales_customer_state\" is null and premium.\"store_sales_customer_state\" is null))
+    skylark
+    INNER JOIN boa on (skylark.\"store_sales_customer_state\" = boa.\"store_sales_customer_state\" or (skylark.\"store_sales_customer_state\" is null and boa.\"store_sales_customer_state\" is null))
 WHERE
-    marlin.\"store_sales_date_year\" = 2001 and marlin.\"store_sales_date_month_of_year\" = 1 and marlin.\"item_category\" is not null
+    skylark.\"store_sales_date_year\" = 2001 and skylark.\"store_sales_date_month_of_year\" = 1 and skylark.\"item_category\" is not null
 ),
-imported as (
+round as (
+-- Target: Grain<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>. Source: SourceType.MERGE. References: goose, magpie.
+-- Joins: inner JOIN goose and magpie on store_sales.customer.state<store_sales.customer.address_id>=store_sales.customer.state<store_sales.customer.address_id>[],item.category<item.id>=item.category<item.id>[],store_sales.item.current_price<item.id>=store_sales.item.current_price<item.id>[],store_sales.date.month_of_year<store_sales.date.id>=store_sales.date.month_of_year<store_sales.date.id>[],store_sales.date.year<store_sales.date.id>=store_sales.date.year<store_sales.date.id>[].
+-- Source Map: {'store_sales.customer.state': ['goose'], 'item.category': ['goose'], 'store_sales.item.current_price': ['goose'], 'store_sales.date.month_of_year': ['goose'], 'store_sales.date.year': ['goose'], 'local.customer_count': ['goose'], 'local._virtual_6264207893106521': ['magpie']}.
+-- Output: store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, local._virtual_6264207893106521<item.category>, item.category<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.customer.id,store_sales.date.id>, local.customer_count<store_sales.customer.state>.
+-- Nullable: local._virtual_6264207893106521<item.category>, local.customer_count<store_sales.customer.state>.
 SELECT
-    resonant.\"store_sales_date_year\" as \"store_sales_date_year\",
-    resonant.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    resonant.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    salamander.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\",
-    resonant.\"item_category\" as \"item_category\",
-    resonant.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    resonant.\"customer_count\" as \"customer_count\"
+    goose.\"store_sales_date_year\" as \"store_sales_date_year\",
+    goose.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    goose.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    magpie.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\",
+    goose.\"item_category\" as \"item_category\",
+    goose.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    goose.\"customer_count\" as \"customer_count\"
 FROM
-    resonant
-    INNER JOIN salamander on (resonant.\"store_sales_customer_state\" = salamander.\"store_sales_customer_state\" or (resonant.\"store_sales_customer_state\" is null and salamander.\"store_sales_customer_state\" is null)) AND (resonant.\"item_category\" = salamander.\"item_category\" or (resonant.\"item_category\" is null and salamander.\"item_category\" is null)) AND (resonant.\"store_sales_item_current_price\" = salamander.\"store_sales_item_current_price\" or (resonant.\"store_sales_item_current_price\" is null and salamander.\"store_sales_item_current_price\" is null)) AND resonant.\"store_sales_date_month_of_year\" = salamander.\"store_sales_date_month_of_year\" AND resonant.\"store_sales_date_year\" = salamander.\"store_sales_date_year\"
+    goose
+    INNER JOIN magpie on (goose.\"store_sales_customer_state\" = magpie.\"store_sales_customer_state\" or (goose.\"store_sales_customer_state\" is null and magpie.\"store_sales_customer_state\" is null)) AND (goose.\"item_category\" = magpie.\"item_category\" or (goose.\"item_category\" is null and magpie.\"item_category\" is null)) AND (goose.\"store_sales_item_current_price\" = magpie.\"store_sales_item_current_price\" or (goose.\"store_sales_item_current_price\" is null and magpie.\"store_sales_item_current_price\" is null)) AND goose.\"store_sales_date_month_of_year\" = magpie.\"store_sales_date_month_of_year\" AND goose.\"store_sales_date_year\" = magpie.\"store_sales_date_year\"
 WHERE
-    resonant.\"store_sales_date_year\" = 2001 and resonant.\"store_sales_date_month_of_year\" = 1 and resonant.\"store_sales_item_current_price\" > 1.2 * salamander.\"_virtual_6264207893106521\" and resonant.\"item_category\" is not null
+    goose.\"store_sales_date_year\" = 2001 and goose.\"store_sales_date_month_of_year\" = 1 and goose.\"store_sales_item_current_price\" > 1.2 * magpie.\"_virtual_6264207893106521\" and goose.\"item_category\" is not null
 )
+-- Target: Grain<store_sales.customer.state>. Source: SourceType.GROUP. References: round.
+-- Source Map: {'store_sales.date.year': ['round'], 'store_sales.date.month_of_year': ['round'], 'store_sales.item.current_price': ['round'], 'local._virtual_6264207893106521': ['round'], 'item.category': ['round'], 'store_sales.customer.state': ['round'], 'local.customer_count': ['round']}.
+-- Output: store_sales.customer.state<store_sales.customer.state>, local.customer_count<store_sales.customer.state>.
+-- Nullable: local.customer_count<store_sales.customer.state>.
 SELECT
-    imported.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    imported.\"customer_count\" as \"customer_count\"
+    round.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    round.\"customer_count\" as \"customer_count\"
 FROM
-    imported
+    round
 WHERE
-    imported.\"customer_count\" >= 10 and imported.\"store_sales_date_year\" = 2001 and imported.\"store_sales_date_month_of_year\" = 1 and imported.\"store_sales_item_current_price\" > 1.2 * imported.\"_virtual_6264207893106521\" and imported.\"item_category\" is not null
+    round.\"customer_count\" >= 10 and round.\"store_sales_date_year\" = 2001 and round.\"store_sales_date_month_of_year\" = 1 and round.\"store_sales_item_current_price\" > 1.2 * round.\"_virtual_6264207893106521\" and round.\"item_category\" is not null
 
 GROUP BY 
-    imported.\"store_sales_customer_state\",
-    imported.\"customer_count\"
+    round.\"customer_count\",
+    round.\"store_sales_customer_state\"
 ORDER BY 
-    imported.\"customer_count\" asc nulls first,
-    imported.\"store_sales_customer_state\" asc nulls first"""
+    round.\"customer_count\" asc nulls first,
+    round.\"store_sales_customer_state\" asc nulls first"""

@@ -185,7 +185,7 @@ where
 def test_like_filter(test_environment):
     declarations = """
 property special_order <- filter order_id where like(category_name, 'test') = True;
-property special_order_2 <- filter order_id where like(category_name, 'test') = 1;
+property special_order_2 <- filter order_id where like(category_name, 'test') is True;
 
 select
     special_order

@@ -1,12 +1,15 @@
 query_id = 20
-parse_time = 9.505639
-exec_time = 0.719444
-comp_time = 0.259552
-gen_length = 11790
+parse_time = 25.583412
+exec_time = 2.170679
+comp_time = 0.496639
+gen_length = 31494
 generated_sql = """
 
 WITH 
-toucan as (
+mamba as (
+-- Target: Grain<cs.item.id>. Source: SourceType.DIRECT_SELECT.
+-- Source Map: {'cs.item.id': ['items'], 'cs.item.name': ['items'], 'cs.item.desc': ['items'], 'cs.item.brand_name': ['items'], 'cs.item.brand_id': ['items'], 'cs.item.manufacturer_id': ['items'], 'cs.item.category': ['items'], 'cs.item.class': ['items'], 'cs.item.current_price': ['items']}.
+-- Output: cs.item.category<cs.item.id>, cs.item.class<cs.item.id>, cs.item.current_price<cs.item.id>, cs.item.desc<cs.item.id>, cs.item.name<cs.item.id>, cs.item.id<cs.item.id>.
 SELECT
     items.\"I_CATEGORY\" as \"cs_item_category\",
     items.\"I_CLASS\" as \"cs_item_class\",
@@ -19,7 +22,10 @@ FROM
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-ruthless as (
+brave as (
+-- Target: Grain<cs.item.id,cs.sold_date.id>. Source: SourceType.GROUP.
+-- Source Map: {'cs.item.id': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.call_center.id': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.time.id': ['catalog_sales']}.
+-- Output: cs.item.id<cs.item.id,cs.sold_date.id>, cs.sold_date.id<cs.item.id,cs.sold_date.id>.
 SELECT
     catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"cs_sold_date_id\"
@@ -28,37 +34,50 @@ FROM
 GROUP BY 
     catalog_sales.\"CS_SOLD_DATE_SK\",
     catalog_sales.\"CS_ITEM_SK\"),
-razorbill as (
+avocet as (
+-- Target: Grain<cs.item.id,cs.order_number>. Source: SourceType.MERGE. References: mamba.
+-- Joins: inner JOIN catalog_sales and mamba on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[], inner JOIN catalog_sales and date on cs.sold_date.id<cs.sold_date.id>=cs.sold_date.id<cs.sold_date.id>[].
+-- Source Map: {'cs.extra_sales_price': ['catalog_sales'], 'cs.item.id': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.item.category': ['mamba'], 'cs.item.class': ['mamba'], 'cs.item.current_price': ['mamba'], 'cs.item.desc': ['mamba'], 'cs.item.name': ['mamba'], 'cs.sold_date.date': ['date'], 'cs.extra_sales_price_filter_3197596984767774': [], 'cs.call_center.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.sold_date.week_seq': ['date'], 'cs.sold_date.year': ['date'], 'cs.sold_date.month_of_year': ['date'], 'cs.sold_date.day_of_week': ['date'], 'cs.sold_date.d_week_seq1': ['date'], 'cs.sold_date.quarter': ['date'], 'cs.sold_date.date_string': ['date']}.
+-- Output: cs.extra_sales_price_filter_3197596984767774<cs.item.id,cs.order_number>, cs.item.id<cs.item.id,cs.order_number>, cs.order_number<cs.item.id,cs.order_number>.
+-- Nullable: cs.extra_sales_price_filter_3197596984767774<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price_filter_3197596984767774\",
     catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN toucan on catalog_sales.\"CS_ITEM_SK\" = toucan.\"cs_item_id\"
+    INNER JOIN mamba on catalog_sales.\"CS_ITEM_SK\" = mamba.\"cs_item_id\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
-    toucan.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
+    mamba.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-lynx as (
+chimpanzee as (
+-- Target: Grain<cs.item.id,cs.sold_date.id,cs.order_number>. Source: SourceType.MERGE. References: mamba.
+-- Joins: inner JOIN catalog_sales and mamba on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[], inner JOIN catalog_sales and date on cs.sold_date.id<cs.sold_date.id>=cs.sold_date.id<cs.sold_date.id>[].
+-- Source Map: {'cs.extra_sales_price': ['catalog_sales'], 'cs.item.id': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.item.category': ['mamba'], 'cs.item.class': ['mamba'], 'cs.item.current_price': ['mamba'], 'cs.item.desc': ['mamba'], 'cs.item.name': ['mamba'], 'cs.sold_date.date': ['date'], 'cs.call_center.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.sold_date.week_seq': ['date'], 'cs.sold_date.year': ['date'], 'cs.sold_date.month_of_year': ['date'], 'cs.sold_date.day_of_week': ['date'], 'cs.sold_date.d_week_seq1': ['date'], 'cs.sold_date.quarter': ['date'], 'cs.sold_date.date_string': ['date']}.
+-- Output: cs.extra_sales_price<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.category<cs.item.id,cs.sold_date.id,cs.order_number>, cs.sold_date.date<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.class<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.current_price<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.desc<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.name<cs.item.id,cs.sold_date.id,cs.order_number>, cs.order_number<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.id<cs.item.id,cs.sold_date.id,cs.order_number>.
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
-    toucan.\"cs_item_category\" as \"cs_item_category\",
+    mamba.\"cs_item_category\" as \"cs_item_category\",
     cast(\"D_DATE\" as date) as \"cs_sold_date_date\",
-    toucan.\"cs_item_class\" as \"cs_item_class\",
-    toucan.\"cs_item_current_price\" as \"cs_item_current_price\",
-    toucan.\"cs_item_desc\" as \"cs_item_desc\",
-    toucan.\"cs_item_name\" as \"cs_item_name\",
+    mamba.\"cs_item_class\" as \"cs_item_class\",
+    mamba.\"cs_item_current_price\" as \"cs_item_current_price\",
+    mamba.\"cs_item_desc\" as \"cs_item_desc\",
+    mamba.\"cs_item_name\" as \"cs_item_name\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN toucan on catalog_sales.\"CS_ITEM_SK\" = toucan.\"cs_item_id\"
+    INNER JOIN mamba on catalog_sales.\"CS_ITEM_SK\" = mamba.\"cs_item_id\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
-    toucan.\"cs_item_category\" in ( 'Sports','Books','Home' )
+    mamba.\"cs_item_category\" in ( 'Sports','Books','Home' )
 ),
-kestrel as (
+warbler as (
+-- Target: Grain<cs.item.id>. Source: SourceType.MERGE. References: brave.
+-- Joins: inner JOIN brave and items on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[].
+-- Source Map: {'cs.item.id': ['items'], 'cs.item.category': ['items'], 'cs.item.class': ['items'], 'cs.item.current_price': ['items'], 'cs.item.desc': ['items'], 'cs.item.name': ['items'], 'cs.sold_date.id': ['brave'], 'cs.item.brand_name': ['items'], 'cs.item.manufacturer_id': ['items'], 'cs.item.brand_id': ['items']}.
+-- Output: cs.item.id<cs.item.id>, cs.item.category<cs.item.id>, cs.item.class<cs.item.id>, cs.item.current_price<cs.item.id>, cs.item.desc<cs.item.id>, cs.item.name<cs.item.id>, cs.sold_date.id<cs.item.id>.
 SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -66,138 +85,139 @@ SELECT
     items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     items.\"I_ITEM_ID\" as \"cs_item_name\",
-    ruthless.\"cs_sold_date_id\" as \"cs_sold_date_id\"
+    brave.\"cs_sold_date_id\" as \"cs_sold_date_id\"
 FROM
-    ruthless
-    INNER JOIN memory.item as items on ruthless.\"cs_item_id\" = items.\"I_ITEM_SK\"
+    brave
+    INNER JOIN memory.item as items on brave.\"cs_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-python as (
+penguin as (
+-- Target: Grain<cs.item.id,cs.order_number>. Source: SourceType.MERGE. References: avocet.
+-- Joins: inner JOIN avocet and items on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[].
+-- Source Map: {'cs.extra_sales_price_filter_3197596984767774': ['avocet'], 'cs.item.id': ['avocet'], 'cs.order_number': ['avocet'], 'cs.item.category': ['items'], 'cs.item.class': ['items'], 'cs.item.current_price': ['items'], 'cs.item.desc': ['items'], 'cs.item.name': ['items'], 'cs.item.brand_name': ['items'], 'cs.item.manufacturer_id': ['items'], 'cs.item.brand_id': ['items']}.
+-- Output: cs.extra_sales_price_filter_3197596984767774<cs.item.id,cs.order_number>, cs.item.category<cs.item.id,cs.order_number>, cs.item.class<cs.item.id,cs.order_number>, cs.item.current_price<cs.item.id,cs.order_number>, cs.item.desc<cs.item.id,cs.order_number>, cs.item.name<cs.item.id,cs.order_number>, cs.order_number<cs.item.id,cs.order_number>, cs.item.id<cs.item.id,cs.order_number>.
+-- Nullable: cs.extra_sales_price_filter_3197596984767774<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
-    razorbill.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
+    avocet.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
     items.\"I_CLASS\" as \"cs_item_class\",
     items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     items.\"I_ITEM_ID\" as \"cs_item_name\",
-    razorbill.\"cs_order_number\" as \"cs_order_number\",
-    razorbill.\"cs_item_id\" as \"cs_item_id\"
+    avocet.\"cs_order_number\" as \"cs_order_number\",
+    avocet.\"cs_item_id\" as \"cs_item_id\"
 FROM
-    razorbill
-    INNER JOIN memory.item as items on razorbill.\"cs_item_id\" = items.\"I_ITEM_SK\"
+    avocet
+    INNER JOIN memory.item as items on avocet.\"cs_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-cougar as (
+shrike as (
+-- Target: Grain<cs.sold_date.date,cs.item.id,cs.order_number>. Source: SourceType.FILTER. References: chimpanzee.
+-- Source Map: {'cs.extra_sales_price': ['chimpanzee'], 'cs.item.category': ['chimpanzee'], 'cs.sold_date.date': ['chimpanzee'], 'cs.item.class': ['chimpanzee'], 'cs.item.current_price': ['chimpanzee'], 'cs.item.desc': ['chimpanzee'], 'cs.item.name': ['chimpanzee'], 'cs.order_number': ['chimpanzee'], 'cs.item.id': ['chimpanzee'], 'cs.extra_sales_price_filter_3197596984767774': []}.
+-- Output: cs.extra_sales_price_filter_3197596984767774<cs.sold_date.date,cs.item.id,cs.order_number>, cs.order_number<cs.sold_date.date,cs.item.id,cs.order_number>, cs.item.id<cs.sold_date.date,cs.item.id,cs.order_number>.
 SELECT
-    CASE WHEN lynx.\"cs_item_category\" in ( 'Sports','Books','Home' ) and lynx.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and lynx.\"cs_sold_date_date\" <= cast('1999-03-24' as date) THEN lynx.\"cs_extra_sales_price\" ELSE NULL END as \"cs_extra_sales_price_filter_3197596984767774\",
-    lynx.\"cs_order_number\" as \"cs_order_number\",
-    lynx.\"cs_item_id\" as \"cs_item_id\"
+    CASE WHEN chimpanzee.\"cs_item_category\" in ( 'Sports','Books','Home' ) and chimpanzee.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and chimpanzee.\"cs_sold_date_date\" <= cast('1999-03-24' as date) THEN chimpanzee.\"cs_extra_sales_price\" ELSE NULL END as \"cs_extra_sales_price_filter_3197596984767774\",
+    chimpanzee.\"cs_order_number\" as \"cs_order_number\",
+    chimpanzee.\"cs_item_id\" as \"cs_item_id\"
 FROM
-    lynx),
-parrot as (
+    chimpanzee),
+obsolete as (
+-- Target: Grain<cs.sold_date.id,cs.item.id>. Source: SourceType.MERGE. References: warbler.
+-- Joins: inner JOIN date and warbler on cs.sold_date.id<cs.sold_date.id>=cs.sold_date.id<cs.sold_date.id>[].
+-- Source Map: {'cs.sold_date.date': ['date'], 'cs.sold_date.id': ['date'], 'cs.item.id': ['warbler'], 'cs.item.category': ['warbler'], 'cs.item.class': ['warbler'], 'cs.item.current_price': ['warbler'], 'cs.item.desc': ['warbler'], 'cs.item.name': ['warbler'], 'cs.sold_date.week_seq': ['date'], 'cs.sold_date.year': ['date'], 'cs.sold_date.month_of_year': ['date'], 'cs.sold_date.day_of_week': ['date'], 'cs.sold_date.d_week_seq1': ['date'], 'cs.sold_date.quarter': ['date'], 'cs.sold_date.date_string': ['date']}.
+-- Output: cs.item.category<cs.sold_date.id,cs.item.id>, cs.item.class<cs.sold_date.id,cs.item.id>, cs.item.current_price<cs.sold_date.id,cs.item.id>, cs.item.desc<cs.sold_date.id,cs.item.id>, cs.item.name<cs.sold_date.id,cs.item.id>, cs.sold_date.date<cs.sold_date.id,cs.item.id>.
 SELECT
-    kestrel.\"cs_item_category\" as \"cs_item_category\",
-    kestrel.\"cs_item_class\" as \"cs_item_class\",
-    kestrel.\"cs_item_current_price\" as \"cs_item_current_price\",
-    kestrel.\"cs_item_desc\" as \"cs_item_desc\",
-    kestrel.\"cs_item_name\" as \"cs_item_name\",
+    warbler.\"cs_item_category\" as \"cs_item_category\",
+    warbler.\"cs_item_class\" as \"cs_item_class\",
+    warbler.\"cs_item_current_price\" as \"cs_item_current_price\",
+    warbler.\"cs_item_desc\" as \"cs_item_desc\",
+    warbler.\"cs_item_name\" as \"cs_item_name\",
     cast(\"D_DATE\" as date) as \"cs_sold_date_date\"
 FROM
     memory.date_dim as date
-    INNER JOIN kestrel on date.\"D_DATE_SK\" = kestrel.\"cs_sold_date_id\"
+    INNER JOIN warbler on date.\"D_DATE_SK\" = warbler.\"cs_sold_date_id\"
 WHERE
-    kestrel.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
+    warbler.\"cs_item_category\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-flamingo as (
+friendly as (
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Source: SourceType.GROUP. References: penguin.
+-- Source Map: {'cs.extra_sales_price_filter_3197596984767774': ['penguin'], 'cs.item.category': ['penguin'], 'cs.item.class': ['penguin'], 'cs.item.current_price': ['penguin'], 'cs.item.desc': ['penguin'], 'cs.item.name': ['penguin'], 'cs.order_number': ['penguin'], 'cs.item.id': ['penguin'], 'local.revenue': []}.
+-- Output: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+-- Nullable: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
-    sum(python.\"cs_extra_sales_price_filter_3197596984767774\") as \"revenue\",
-    python.\"cs_item_category\" as \"cs_item_category\",
-    python.\"cs_item_class\" as \"cs_item_class\",
-    python.\"cs_item_current_price\" as \"cs_item_current_price\",
-    python.\"cs_item_desc\" as \"cs_item_desc\",
-    python.\"cs_item_name\" as \"cs_item_name\"
+    sum(penguin.\"cs_extra_sales_price_filter_3197596984767774\") as \"revenue\",
+    penguin.\"cs_item_category\" as \"cs_item_category\",
+    penguin.\"cs_item_class\" as \"cs_item_class\",
+    penguin.\"cs_item_current_price\" as \"cs_item_current_price\",
+    penguin.\"cs_item_desc\" as \"cs_item_desc\",
+    penguin.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    python
+    penguin
 GROUP BY 
-    python.\"cs_item_desc\",
-    python.\"cs_item_class\",
-    python.\"cs_item_name\",
-    python.\"cs_item_category\",
-    python.\"cs_item_current_price\"),
-sordid as (
+    penguin.\"cs_item_desc\",
+    penguin.\"cs_item_current_price\",
+    penguin.\"cs_item_class\",
+    penguin.\"cs_item_category\",
+    penguin.\"cs_item_name\"),
+level as (
+-- Target: Grain<cs.sold_date.date,cs.item.id,cs.order_number>. Source: SourceType.MERGE. References: shrike.
+-- Joins: inner JOIN shrike and items on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[].
+-- Source Map: {'cs.extra_sales_price_filter_3197596984767774': ['shrike'], 'cs.order_number': ['shrike'], 'cs.item.id': ['shrike'], 'cs.item.category': ['items'], 'cs.item.class': ['items'], 'cs.item.current_price': ['items'], 'cs.item.desc': ['items'], 'cs.item.name': ['items'], 'cs.item.brand_name': ['items'], 'cs.item.manufacturer_id': ['items'], 'cs.item.brand_id': ['items']}.
+-- Output: cs.extra_sales_price_filter_3197596984767774<cs.sold_date.date,cs.item.id,cs.order_number>, cs.item.category<cs.sold_date.date,cs.item.id,cs.order_number>, cs.item.class<cs.sold_date.date,cs.item.id,cs.order_number>, cs.item.current_price<cs.sold_date.date,cs.item.id,cs.order_number>, cs.item.desc<cs.sold_date.date,cs.item.id,cs.order_number>, cs.item.name<cs.sold_date.date,cs.item.id,cs.order_number>, cs.order_number<cs.sold_date.date,cs.item.id,cs.order_number>, cs.item.id<cs.sold_date.date,cs.item.id,cs.order_number>.
 SELECT
-    cougar.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
+    shrike.\"cs_extra_sales_price_filter_3197596984767774\" as \"cs_extra_sales_price_filter_3197596984767774\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
     items.\"I_CLASS\" as \"cs_item_class\",
     items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     items.\"I_ITEM_ID\" as \"cs_item_name\",
-    cougar.\"cs_order_number\" as \"cs_order_number\",
-    cougar.\"cs_item_id\" as \"cs_item_id\"
+    shrike.\"cs_order_number\" as \"cs_order_number\",
+    shrike.\"cs_item_id\" as \"cs_item_id\"
 FROM
-    cougar
-    INNER JOIN memory.item as items on cougar.\"cs_item_id\" = items.\"I_ITEM_SK\"
+    shrike
+    INNER JOIN memory.item as items on shrike.\"cs_item_id\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-boa as (
+helpless as (
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Source: SourceType.GROUP. References: level.
+-- Source Map: {'cs.extra_sales_price_filter_3197596984767774': ['level'], 'cs.item.category': ['level'], 'cs.item.class': ['level'], 'cs.item.current_price': ['level'], 'cs.item.desc': ['level'], 'cs.item.name': ['level'], 'cs.order_number': ['level'], 'cs.item.id': ['level'], 'local._virtual_364582426434762': [], 'local._agg_sum_364582426434762': []}.
+-- Output: local._virtual_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+-- Nullable: local._virtual_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
-    sum(sordid.\"cs_extra_sales_price_filter_3197596984767774\") as \"_virtual_364582426434762\",
-    sordid.\"cs_item_category\" as \"cs_item_category\",
-    sordid.\"cs_item_class\" as \"cs_item_class\",
-    sordid.\"cs_item_current_price\" as \"cs_item_current_price\",
-    sordid.\"cs_item_desc\" as \"cs_item_desc\",
-    sordid.\"cs_item_name\" as \"cs_item_name\",
-    sum(sordid.\"cs_extra_sales_price_filter_3197596984767774\") as \"_agg_sum_364582426434762\"
+    sum(level.\"cs_extra_sales_price_filter_3197596984767774\") as \"_virtual_364582426434762\",
+    level.\"cs_item_category\" as \"cs_item_category\",
+    level.\"cs_item_class\" as \"cs_item_class\",
+    level.\"cs_item_current_price\" as \"cs_item_current_price\",
+    level.\"cs_item_desc\" as \"cs_item_desc\",
+    level.\"cs_item_name\" as \"cs_item_name\",
+    sum(level.\"cs_extra_sales_price_filter_3197596984767774\") as \"_agg_sum_364582426434762\"
 FROM
-    sordid
+    level
 GROUP BY 
-    sordid.\"cs_item_desc\",
-    sordid.\"cs_item_category\",
-    sordid.\"cs_item_name\",
-    sordid.\"cs_item_class\",
-    sordid.\"cs_item_current_price\"),
-blue as (
+    level.\"cs_item_desc\",
+    level.\"cs_item_current_price\",
+    level.\"cs_item_name\",
+    level.\"cs_item_class\",
+    level.\"cs_item_category\"),
+sparrow as (
+-- Target: Grain<local._agg_sum_364582426434762,cs.item.class>. Source: SourceType.WINDOW. References: helpless.
+-- Source Map: {'local._agg_sum_364582426434762': ['helpless'], 'cs.item.category': ['helpless'], 'cs.item.class': ['helpless'], 'cs.item.current_price': ['helpless'], 'cs.item.desc': ['helpless'], 'cs.item.name': ['helpless'], 'local._virtual_503034876863510': []}.
+-- Output: local._virtual_503034876863510<local._agg_sum_364582426434762,cs.item.class>, local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<local._agg_sum_364582426434762,cs.item.class>.
 SELECT
-    sum(boa.\"_agg_sum_364582426434762\") over (partition by boa.\"cs_item_class\") as \"_virtual_503034876863510\",
-    boa.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
-    boa.\"cs_item_class\" as \"cs_item_class\"
+    sum(helpless.\"_agg_sum_364582426434762\") over (partition by helpless.\"cs_item_class\") as \"_virtual_503034876863510\",
+    helpless.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
+    helpless.\"cs_item_class\" as \"cs_item_class\"
 FROM
-    boa),
-barracuda as (
-SELECT
-    parrot.\"cs_item_category\" as \"cs_item_category\",
-    parrot.\"cs_item_class\" as \"cs_item_class\",
-    parrot.\"cs_item_current_price\" as \"cs_item_current_price\",
-    parrot.\"cs_item_desc\" as \"cs_item_desc\",
-    parrot.\"cs_item_name\" as \"cs_item_name\",
-    parrot.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    boa.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\"
-FROM
-    boa
-    INNER JOIN parrot on (boa.\"cs_item_category\" = parrot.\"cs_item_category\" or (boa.\"cs_item_category\" is null and parrot.\"cs_item_category\" is null)) AND (boa.\"cs_item_class\" = parrot.\"cs_item_class\" or (boa.\"cs_item_class\" is null and parrot.\"cs_item_class\" is null)) AND (boa.\"cs_item_current_price\" = parrot.\"cs_item_current_price\" or (boa.\"cs_item_current_price\" is null and parrot.\"cs_item_current_price\" is null)) AND (boa.\"cs_item_desc\" = parrot.\"cs_item_desc\" or (boa.\"cs_item_desc\" is null and parrot.\"cs_item_desc\" is null)) AND boa.\"cs_item_name\" = parrot.\"cs_item_name\"
-WHERE
-    parrot.\"cs_item_category\" in ( 'Sports','Books','Home' ) and parrot.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and parrot.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
-),
-obsolete as (
-SELECT
-    barracuda.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
-    barracuda.\"cs_item_class\" as \"cs_item_class\",
-    barracuda.\"cs_item_category\" as \"cs_item_category\",
-    barracuda.\"cs_item_current_price\" as \"cs_item_current_price\",
-    barracuda.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    barracuda.\"cs_item_desc\" as \"cs_item_desc\",
-    barracuda.\"cs_item_name\" as \"cs_item_name\",
-    blue.\"_virtual_503034876863510\" as \"_virtual_503034876863510\"
-FROM
-    barracuda
-    LEFT OUTER JOIN blue on (barracuda.\"cs_item_class\" = blue.\"cs_item_class\" or (barracuda.\"cs_item_class\" is null and blue.\"cs_item_class\" is null)) AND barracuda.\"_agg_sum_364582426434762\" = blue.\"_agg_sum_364582426434762\"
-WHERE
-    barracuda.\"cs_item_category\" in ( 'Sports','Books','Home' ) and barracuda.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and barracuda.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
-),
-jackdaw as (
+    helpless),
+tiger as (
+-- Target: Grain<cs.sold_date.id,cs.item.id>. Source: SourceType.MERGE. References: obsolete, helpless.
+-- Joins: inner JOIN helpless and obsolete on cs.item.category<cs.item.id>=cs.item.category<cs.item.id>[],cs.item.class<cs.item.id>=cs.item.class<cs.item.id>[],cs.item.current_price<cs.item.id>=cs.item.current_price<cs.item.id>[],cs.item.desc<cs.item.id>=cs.item.desc<cs.item.id>[],cs.item.name<cs.item.id>=cs.item.name<cs.item.id>[].
+-- Source Map: {'cs.item.category': ['obsolete'], 'cs.item.class': ['obsolete'], 'cs.item.current_price': ['obsolete'], 'cs.item.desc': ['obsolete'], 'cs.item.name': ['obsolete'], 'cs.sold_date.date': ['obsolete'], 'local._agg_sum_364582426434762': ['helpless']}.
+-- Output: cs.item.category<cs.sold_date.id,cs.item.id>, cs.item.class<cs.sold_date.id,cs.item.id>, cs.item.current_price<cs.sold_date.id,cs.item.id>, cs.item.desc<cs.sold_date.id,cs.item.id>, cs.item.name<cs.sold_date.id,cs.item.id>, cs.sold_date.date<cs.sold_date.id,cs.item.id>, local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+-- Nullable: local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
     obsolete.\"cs_item_category\" as \"cs_item_category\",
     obsolete.\"cs_item_class\" as \"cs_item_class\",
@@ -205,54 +225,105 @@ SELECT
     obsolete.\"cs_item_desc\" as \"cs_item_desc\",
     obsolete.\"cs_item_name\" as \"cs_item_name\",
     obsolete.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    boa.\"_virtual_364582426434762\" * 100.0 / obsolete.\"_virtual_503034876863510\" as \"revenue_ratio\"
+    helpless.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\"
 FROM
-    boa
-    INNER JOIN obsolete on (boa.\"cs_item_category\" = obsolete.\"cs_item_category\" or (boa.\"cs_item_category\" is null and obsolete.\"cs_item_category\" is null)) AND (boa.\"cs_item_class\" = obsolete.\"cs_item_class\" or (boa.\"cs_item_class\" is null and obsolete.\"cs_item_class\" is null)) AND (boa.\"cs_item_current_price\" = obsolete.\"cs_item_current_price\" or (boa.\"cs_item_current_price\" is null and obsolete.\"cs_item_current_price\" is null)) AND (boa.\"cs_item_desc\" = obsolete.\"cs_item_desc\" or (boa.\"cs_item_desc\" is null and obsolete.\"cs_item_desc\" is null)) AND boa.\"cs_item_name\" = obsolete.\"cs_item_name\"
+    helpless
+    INNER JOIN obsolete on (helpless.\"cs_item_category\" = obsolete.\"cs_item_category\" or (helpless.\"cs_item_category\" is null and obsolete.\"cs_item_category\" is null)) AND (helpless.\"cs_item_class\" = obsolete.\"cs_item_class\" or (helpless.\"cs_item_class\" is null and obsolete.\"cs_item_class\" is null)) AND (helpless.\"cs_item_current_price\" = obsolete.\"cs_item_current_price\" or (helpless.\"cs_item_current_price\" is null and obsolete.\"cs_item_current_price\" is null)) AND (helpless.\"cs_item_desc\" = obsolete.\"cs_item_desc\" or (helpless.\"cs_item_desc\" is null and obsolete.\"cs_item_desc\" is null)) AND helpless.\"cs_item_name\" = obsolete.\"cs_item_name\"
 WHERE
     obsolete.\"cs_item_category\" in ( 'Sports','Books','Home' ) and obsolete.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and obsolete.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 ),
-macho as (
+leopard as (
+-- Target: Grain<cs.sold_date.id,cs.item.id>. Source: SourceType.MERGE. References: tiger, sparrow.
+-- Joins: left outer JOIN tiger and sparrow on cs.item.class<cs.item.id>=cs.item.class<cs.item.id>[],local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>=local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>[].
+-- Source Map: {'cs.item.category': ['tiger'], 'cs.item.class': ['tiger'], 'cs.item.current_price': ['tiger'], 'cs.item.desc': ['tiger'], 'cs.item.name': ['tiger'], 'cs.sold_date.date': ['tiger'], 'local._agg_sum_364582426434762': ['tiger'], 'local._virtual_503034876863510': ['sparrow']}.
+-- Output: local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.sold_date.id,cs.item.id>, cs.item.category<cs.sold_date.id,cs.item.id>, cs.item.current_price<cs.sold_date.id,cs.item.id>, cs.sold_date.date<cs.sold_date.id,cs.item.id>, cs.item.desc<cs.sold_date.id,cs.item.id>, cs.item.name<cs.sold_date.id,cs.item.id>, local._virtual_503034876863510<cs.sold_date.id,cs.item.id>.
+-- Nullable: local._agg_sum_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local._virtual_503034876863510<>.
 SELECT
-    jackdaw.\"cs_item_category\" as \"cs_item_category\",
-    jackdaw.\"cs_item_class\" as \"cs_item_class\",
-    jackdaw.\"cs_item_current_price\" as \"cs_item_current_price\",
-    jackdaw.\"cs_item_desc\" as \"cs_item_desc\",
-    jackdaw.\"cs_item_name\" as \"cs_item_name\",
-    jackdaw.\"cs_sold_date_date\" as \"cs_sold_date_date\",
-    jackdaw.\"revenue_ratio\" as \"revenue_ratio\",
-    flamingo.\"revenue\" as \"revenue\"
+    tiger.\"_agg_sum_364582426434762\" as \"_agg_sum_364582426434762\",
+    tiger.\"cs_item_class\" as \"cs_item_class\",
+    tiger.\"cs_item_category\" as \"cs_item_category\",
+    tiger.\"cs_item_current_price\" as \"cs_item_current_price\",
+    tiger.\"cs_sold_date_date\" as \"cs_sold_date_date\",
+    tiger.\"cs_item_desc\" as \"cs_item_desc\",
+    tiger.\"cs_item_name\" as \"cs_item_name\",
+    sparrow.\"_virtual_503034876863510\" as \"_virtual_503034876863510\"
 FROM
-    flamingo
-    INNER JOIN jackdaw on (flamingo.\"cs_item_category\" = jackdaw.\"cs_item_category\" or (flamingo.\"cs_item_category\" is null and jackdaw.\"cs_item_category\" is null)) AND (flamingo.\"cs_item_class\" = jackdaw.\"cs_item_class\" or (flamingo.\"cs_item_class\" is null and jackdaw.\"cs_item_class\" is null)) AND (flamingo.\"cs_item_current_price\" = jackdaw.\"cs_item_current_price\" or (flamingo.\"cs_item_current_price\" is null and jackdaw.\"cs_item_current_price\" is null)) AND (flamingo.\"cs_item_desc\" = jackdaw.\"cs_item_desc\" or (flamingo.\"cs_item_desc\" is null and jackdaw.\"cs_item_desc\" is null)) AND flamingo.\"cs_item_name\" = jackdaw.\"cs_item_name\"
+    tiger
+    LEFT OUTER JOIN sparrow on (tiger.\"cs_item_class\" = sparrow.\"cs_item_class\" or (tiger.\"cs_item_class\" is null and sparrow.\"cs_item_class\" is null)) AND tiger.\"_agg_sum_364582426434762\" = sparrow.\"_agg_sum_364582426434762\"
 WHERE
-    jackdaw.\"cs_item_category\" in ( 'Sports','Books','Home' ) and jackdaw.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and jackdaw.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+    tiger.\"cs_item_category\" in ( 'Sports','Books','Home' ) and tiger.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and tiger.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+),
+razorbill as (
+-- Target: Grain<cs.sold_date.id,cs.item.id>. Source: SourceType.BASIC. References: leopard, helpless.
+-- Joins: inner JOIN helpless and leopard on cs.item.category<cs.item.id>=cs.item.category<cs.item.id>[],cs.item.class<cs.item.id>=cs.item.class<cs.item.id>[],cs.item.current_price<cs.item.id>=cs.item.current_price<cs.item.id>[],cs.item.desc<cs.item.id>=cs.item.desc<cs.item.id>[],cs.item.name<cs.item.id>=cs.item.name<cs.item.id>[].
+-- Source Map: {'local._agg_sum_364582426434762': ['leopard'], 'cs.item.class': ['leopard'], 'cs.item.category': ['leopard'], 'cs.item.current_price': ['leopard'], 'cs.sold_date.date': ['leopard'], 'cs.item.desc': ['leopard'], 'cs.item.name': ['leopard'], 'local._virtual_503034876863510': ['leopard'], 'local._virtual_364582426434762': ['helpless'], 'local.revenue_ratio': []}.
+-- Output: cs.item.category<cs.sold_date.id,cs.item.id>, cs.item.class<cs.sold_date.id,cs.item.id>, cs.item.current_price<cs.sold_date.id,cs.item.id>, cs.item.desc<cs.sold_date.id,cs.item.id>, cs.item.name<cs.sold_date.id,cs.item.id>, cs.sold_date.date<cs.sold_date.id,cs.item.id>, local.revenue_ratio<cs.sold_date.id,cs.item.id>.
+-- Hidden: local._virtual_503034876863510<>, local._virtual_364582426434762<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+-- Nullable: local.revenue_ratio<>.
+SELECT
+    leopard.\"cs_item_category\" as \"cs_item_category\",
+    leopard.\"cs_item_class\" as \"cs_item_class\",
+    leopard.\"cs_item_current_price\" as \"cs_item_current_price\",
+    leopard.\"cs_item_desc\" as \"cs_item_desc\",
+    leopard.\"cs_item_name\" as \"cs_item_name\",
+    leopard.\"cs_sold_date_date\" as \"cs_sold_date_date\",
+    helpless.\"_virtual_364582426434762\" * 100.0 / leopard.\"_virtual_503034876863510\" as \"revenue_ratio\"
+FROM
+    helpless
+    INNER JOIN leopard on (helpless.\"cs_item_category\" = leopard.\"cs_item_category\" or (helpless.\"cs_item_category\" is null and leopard.\"cs_item_category\" is null)) AND (helpless.\"cs_item_class\" = leopard.\"cs_item_class\" or (helpless.\"cs_item_class\" is null and leopard.\"cs_item_class\" is null)) AND (helpless.\"cs_item_current_price\" = leopard.\"cs_item_current_price\" or (helpless.\"cs_item_current_price\" is null and leopard.\"cs_item_current_price\" is null)) AND (helpless.\"cs_item_desc\" = leopard.\"cs_item_desc\" or (helpless.\"cs_item_desc\" is null and leopard.\"cs_item_desc\" is null)) AND helpless.\"cs_item_name\" = leopard.\"cs_item_name\"
+WHERE
+    leopard.\"cs_item_category\" in ( 'Sports','Books','Home' ) and leopard.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and leopard.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+),
+osprey as (
+-- Target: Grain<cs.sold_date.id,cs.item.id>. Source: SourceType.MERGE. References: razorbill, friendly.
+-- Joins: inner JOIN friendly and razorbill on cs.item.category<cs.item.id>=cs.item.category<cs.item.id>[],cs.item.class<cs.item.id>=cs.item.class<cs.item.id>[],cs.item.current_price<cs.item.id>=cs.item.current_price<cs.item.id>[],cs.item.desc<cs.item.id>=cs.item.desc<cs.item.id>[],cs.item.name<cs.item.id>=cs.item.name<cs.item.id>[].
+-- Source Map: {'cs.item.category': ['razorbill'], 'cs.item.class': ['razorbill'], 'cs.item.current_price': ['razorbill'], 'cs.item.desc': ['razorbill'], 'cs.item.name': ['razorbill'], 'cs.sold_date.date': ['razorbill'], 'local.revenue_ratio': ['razorbill'], 'local.revenue': ['friendly']}.
+-- Output: cs.item.category<cs.sold_date.id,cs.item.id>, cs.item.class<cs.sold_date.id,cs.item.id>, cs.item.current_price<cs.sold_date.id,cs.item.id>, cs.item.desc<cs.sold_date.id,cs.item.id>, cs.item.name<cs.sold_date.id,cs.item.id>, cs.sold_date.date<cs.sold_date.id,cs.item.id>, local.revenue_ratio<cs.sold_date.id,cs.item.id>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+-- Nullable: local.revenue_ratio<>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+SELECT
+    razorbill.\"cs_item_category\" as \"cs_item_category\",
+    razorbill.\"cs_item_class\" as \"cs_item_class\",
+    razorbill.\"cs_item_current_price\" as \"cs_item_current_price\",
+    razorbill.\"cs_item_desc\" as \"cs_item_desc\",
+    razorbill.\"cs_item_name\" as \"cs_item_name\",
+    razorbill.\"cs_sold_date_date\" as \"cs_sold_date_date\",
+    razorbill.\"revenue_ratio\" as \"revenue_ratio\",
+    friendly.\"revenue\" as \"revenue\"
+FROM
+    friendly
+    INNER JOIN razorbill on (friendly.\"cs_item_category\" = razorbill.\"cs_item_category\" or (friendly.\"cs_item_category\" is null and razorbill.\"cs_item_category\" is null)) AND (friendly.\"cs_item_class\" = razorbill.\"cs_item_class\" or (friendly.\"cs_item_class\" is null and razorbill.\"cs_item_class\" is null)) AND (friendly.\"cs_item_current_price\" = razorbill.\"cs_item_current_price\" or (friendly.\"cs_item_current_price\" is null and razorbill.\"cs_item_current_price\" is null)) AND (friendly.\"cs_item_desc\" = razorbill.\"cs_item_desc\" or (friendly.\"cs_item_desc\" is null and razorbill.\"cs_item_desc\" is null)) AND friendly.\"cs_item_name\" = razorbill.\"cs_item_name\"
+WHERE
+    razorbill.\"cs_item_category\" in ( 'Sports','Books','Home' ) and razorbill.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and razorbill.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 )
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Source: SourceType.GROUP. References: osprey.
+-- Source Map: {'cs.item.category': ['osprey'], 'cs.item.class': ['osprey'], 'cs.item.current_price': ['osprey'], 'cs.item.desc': ['osprey'], 'cs.item.name': ['osprey'], 'cs.sold_date.date': ['osprey'], 'local.revenue_ratio': ['osprey'], 'local.revenue': ['osprey']}.
+-- Output: cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue_ratio<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+-- Nullable: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue_ratio<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
-    macho.\"cs_item_name\" as \"cs_item_name\",
-    macho.\"cs_item_desc\" as \"cs_item_desc\",
-    macho.\"cs_item_category\" as \"cs_item_category\",
-    macho.\"cs_item_class\" as \"cs_item_class\",
-    macho.\"cs_item_current_price\" as \"cs_item_current_price\",
-    macho.\"revenue\" as \"revenue\",
-    macho.\"revenue_ratio\" as \"revenue_ratio\"
+    osprey.\"cs_item_name\" as \"cs_item_name\",
+    osprey.\"cs_item_desc\" as \"cs_item_desc\",
+    osprey.\"cs_item_category\" as \"cs_item_category\",
+    osprey.\"cs_item_class\" as \"cs_item_class\",
+    osprey.\"cs_item_current_price\" as \"cs_item_current_price\",
+    osprey.\"revenue\" as \"revenue\",
+    osprey.\"revenue_ratio\" as \"revenue_ratio\"
 FROM
-    macho
+    osprey
 WHERE
-    macho.\"cs_item_category\" in ( 'Sports','Books','Home' ) and macho.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and macho.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
+    osprey.\"cs_item_category\" in ( 'Sports','Books','Home' ) and osprey.\"cs_sold_date_date\" >= cast('1999-02-22' as date) and osprey.\"cs_sold_date_date\" <= cast('1999-03-24' as date)
 
 GROUP BY 
-    macho.\"cs_item_name\",
-    macho.\"cs_item_current_price\",
-    macho.\"cs_item_class\",
-    macho.\"revenue\",
-    macho.\"cs_item_desc\",
-    macho.\"revenue_ratio\",
-    macho.\"cs_item_category\"
+    osprey.\"cs_item_class\",
+    osprey.\"cs_item_desc\",
+    osprey.\"revenue\",
+    osprey.\"revenue_ratio\",
+    osprey.\"cs_item_name\",
+    osprey.\"cs_item_current_price\",
+    osprey.\"cs_item_category\"
 ORDER BY 
-    macho.\"cs_item_category\" asc nulls first,
-    macho.\"cs_item_class\" asc nulls first,
-    macho.\"cs_item_name\" asc nulls first,
-    macho.\"cs_item_desc\" asc nulls first,
-    macho.\"revenue_ratio\" asc nulls first
+    osprey.\"cs_item_category\" asc nulls first,
+    osprey.\"cs_item_class\" asc nulls first,
+    osprey.\"cs_item_name\" asc nulls first,
+    osprey.\"cs_item_desc\" asc nulls first,
+    osprey.\"revenue_ratio\" asc nulls first
 LIMIT (100)"""

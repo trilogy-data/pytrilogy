@@ -34,3 +34,25 @@ def test_cast_error():
         found = True
     if not found:
         assert False, "Expected InvalidSyntaxException not raised"
+
+
+def test_is_error():
+    found = False
+    try:
+        env, _ = parse_text(
+            """
+    const x <- 1;
+    const y <- 'fun';
+
+    select 
+        x
+    where 
+        x is [1,2];
+
+    """
+        )
+    except InvalidSyntaxException as e:
+        assert "Cannot use is with non-null or boolean value [1, 2]" in str(e)
+        found = True
+    if not found:
+        assert False, "Expected InvalidSyntaxException not raised"
