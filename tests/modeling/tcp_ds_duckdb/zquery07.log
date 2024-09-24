@@ -1,12 +1,12 @@
 query_id = 7
-parse_time = 6.185875
-exec_time = 1.461921
-comp_time = 0.20076
-gen_length = 4821
+parse_time = 6.99961
+exec_time = 1.040201
+comp_time = 0.417208
+gen_length = 4849
 generated_sql = """
 
 WITH 
-finch as (
+wakeful as (
 SELECT
     store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
     store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
@@ -20,14 +20,14 @@ FROM
     memory.store_sales as store_sales
 GROUP BY 
     store_sales.\"SS_PROMO_SK\",
-    store_sales.\"SS_QUANTITY\",
-    store_sales.\"SS_COUPON_AMT\",
-    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_CDEMO_SK\",
-    store_sales.\"SS_LIST_PRICE\",
     store_sales.\"SS_SOLD_DATE_SK\",
-    store_sales.\"SS_SALES_PRICE\"),
-waggish as (
+    store_sales.\"SS_COUPON_AMT\",
+    store_sales.\"SS_LIST_PRICE\",
+    store_sales.\"SS_ITEM_SK\",
+    store_sales.\"SS_SALES_PRICE\",
+    store_sales.\"SS_QUANTITY\"),
+flamingo as (
 SELECT
     customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
     customer_demographics.\"CD_MARITAL_STATUS\" as \"store_sales_customer_demographic_marital_status\",
@@ -36,67 +36,67 @@ SELECT
     promotion.\"P_CHANNEL_EVENT\" as \"store_sales_promotion_channel_event\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     items.\"I_ITEM_ID\" as \"store_sales_item_name\",
-    finch.\"store_sales_quantity\" as \"store_sales_quantity\",
-    finch.\"store_sales_list_price\" as \"store_sales_list_price\",
-    finch.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    finch.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    wakeful.\"store_sales_quantity\" as \"store_sales_quantity\",
+    wakeful.\"store_sales_list_price\" as \"store_sales_list_price\",
+    wakeful.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    wakeful.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    finch
-    INNER JOIN memory.customer_demographics as customer_demographics on finch.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
-    INNER JOIN memory.date_dim as date on finch.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.item as items on finch.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.promotion as promotion on finch.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
+    wakeful
+    INNER JOIN memory.customer_demographics as customer_demographics on wakeful.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
+    INNER JOIN memory.date_dim as date on wakeful.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on wakeful.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.promotion as promotion on wakeful.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
 ),
-tearful as (
+starling as (
 SELECT
-    waggish.\"store_sales_item_name\" as \"store_sales_item_name\",
-    waggish.\"store_sales_quantity\" as \"store_sales_quantity\",
-    waggish.\"store_sales_list_price\" as \"store_sales_list_price\",
-    waggish.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    waggish.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    flamingo.\"store_sales_item_name\" as \"store_sales_item_name\",
+    flamingo.\"store_sales_quantity\" as \"store_sales_quantity\",
+    flamingo.\"store_sales_list_price\" as \"store_sales_list_price\",
+    flamingo.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    flamingo.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    waggish
+    flamingo
 WHERE
-    waggish.\"store_sales_customer_demographic_gender\" = 'M' and waggish.\"store_sales_customer_demographic_marital_status\" = 'S' and waggish.\"store_sales_customer_demographic_education_status\" = 'College' and ( waggish.\"store_sales_promotion_channel_email\" = 'N' or waggish.\"store_sales_promotion_channel_event\" = 'N' ) and waggish.\"store_sales_date_year\" = 2000
+    flamingo.\"store_sales_customer_demographic_gender\" = 'M' and flamingo.\"store_sales_customer_demographic_marital_status\" = 'S' and flamingo.\"store_sales_customer_demographic_education_status\" = 'College' and ( flamingo.\"store_sales_promotion_channel_email\" = 'N' or flamingo.\"store_sales_promotion_channel_event\" = 'N' ) and flamingo.\"store_sales_date_year\" = 2000
 
 GROUP BY 
-    waggish.\"store_sales_coupon_amt\",
-    waggish.\"store_sales_sales_price\",
-    waggish.\"store_sales_item_name\",
-    waggish.\"store_sales_list_price\",
-    waggish.\"store_sales_quantity\"),
-tanager as (
+    flamingo.\"store_sales_sales_price\",
+    flamingo.\"store_sales_quantity\",
+    flamingo.\"store_sales_item_name\",
+    flamingo.\"store_sales_coupon_amt\",
+    flamingo.\"store_sales_list_price\"),
+hard as (
 SELECT
-    tearful.\"store_sales_item_name\" as \"store_sales_item_name\",
-    tearful.\"store_sales_quantity\" as \"store_sales_quantity\",
-    tearful.\"store_sales_list_price\" as \"store_sales_list_price\",
-    tearful.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    tearful.\"store_sales_sales_price\" as \"store_sales_sales_price\",
-    tearful.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    tearful.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
-    tearful.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
-    tearful.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
-    tearful.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
+    starling.\"store_sales_item_name\" as \"store_sales_item_name\",
+    starling.\"store_sales_quantity\" as \"store_sales_quantity\",
+    starling.\"store_sales_list_price\" as \"store_sales_list_price\",
+    starling.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    starling.\"store_sales_sales_price\" as \"store_sales_sales_price\",
+    starling.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    starling.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
+    starling.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
+    starling.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
+    starling.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
 FROM
-    tearful
+    starling
 GROUP BY 
-    tearful.\"store_sales_quantity\",
-    tearful.\"store_sales_item_name\",
-    tearful.\"store_sales_coupon_amt\",
-    tearful.\"store_sales_sales_price\",
-    tearful.\"store_sales_list_price\")
+    starling.\"store_sales_quantity\",
+    starling.\"store_sales_coupon_amt\",
+    starling.\"store_sales_list_price\",
+    starling.\"store_sales_item_name\",
+    starling.\"store_sales_sales_price\")
 SELECT
-    tanager.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    avg(tanager.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
-    avg(tanager.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
-    avg(tanager.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
-    avg(tanager.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
+    hard.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    avg(hard.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
+    avg(hard.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
+    avg(hard.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
+    avg(hard.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
 FROM
-    tanager
+    hard
 GROUP BY 
-    tanager.\"filtered_sales_store_sales_item_name\"
+    hard.\"filtered_sales_store_sales_item_name\"
 ORDER BY 
-    tanager.\"filtered_sales_store_sales_item_name\" asc
+    hard.\"filtered_sales_store_sales_item_name\" asc
 LIMIT (100)"""

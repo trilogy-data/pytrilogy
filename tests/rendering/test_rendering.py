@@ -366,6 +366,28 @@ def test_render_numeric():
     assert test == "Numeric(12,3)"
 
 
+def test_render_index_access():
+    test = Renderer().to_string(
+        Function(
+            arguments=[
+                Concept(
+                    name="user_id",
+                    purpose=Purpose.KEY,
+                    datatype=DataType.INTEGER,
+                    lineage=None,
+                ),
+                1,
+            ],
+            operator=FunctionType.INDEX_ACCESS,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.ARRAY,
+            arg_count=2,
+        )
+    )
+
+    assert test == "user_id[1]"
+
+
 def test_render_datasource():
     user_id = Concept(
         name="user_id",
@@ -396,7 +418,6 @@ def test_render_datasource():
             ),
         )
     )
-    print(test)
     assert (
         test
         == """datasource useful_data (

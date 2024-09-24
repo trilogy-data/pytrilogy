@@ -23,7 +23,7 @@ auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_s
 datasource store_sales (
     SS_SOLD_DATE_SK: date.id,
     SS_SOLD_TIME_SK: time.id,
-    SS_CUSTOMER_SK: ~customer.id,
+    SS_CUSTOMER_SK: customer.id,
     SS_CDEMO_SK: customer_demographic.id,
     SS_TICKET_NUMBER: ticket_number,
     SS_ITEM_SK: item.id,

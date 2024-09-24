@@ -130,6 +130,11 @@ class Executor(object):
         )
 
     @execute_query.register
+    def _(self, query: str) -> CursorResult:
+
+        return self.execute_text(query)[-1]
+
+    @execute_query.register
     def _(self, query: SelectStatement) -> CursorResult:
         sql = self.generator.generate_queries(
             self.environment, [query], hooks=self.hooks

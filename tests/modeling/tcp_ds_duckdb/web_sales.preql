@@ -11,7 +11,7 @@ property <order_number,item.id>.external_sales_price float;
 datasource web_sales (
     WS_SOLD_DATE_SK: date.id,
     WS_SOLD_TIME_SK: time.id,
-    WS_BILL_CUSTOMER_SK: ~customer.id,
+    WS_BILL_CUSTOMER_SK: customer.id,
     WS_ORDER_NUMBER: order_number,
     WS_ITEM_SK:item.id,
     WS_SALES_PRICE: sales_price,

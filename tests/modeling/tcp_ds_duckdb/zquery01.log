@@ -1,12 +1,12 @@
 query_id = 1
-parse_time = 7.023759
-exec_time = 0.663871
-comp_time = 2.423992
-gen_length = 6449
+parse_time = 4.96502
+exec_time = 0.585224
+comp_time = 2.609874
+gen_length = 6509
 generated_sql = """
 
 WITH 
-deeply as (
+ray as (
 SELECT
     store_returns.\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
     store_returns.\"SR_RETURNED_DATE_SK\" as \"returns_return_date_id\",
@@ -14,10 +14,10 @@ SELECT
 FROM
     memory.store_returns as store_returns
 GROUP BY 
-    store_returns.\"SR_STORE_SK\",
     store_returns.\"SR_CUSTOMER_SK\",
+    store_returns.\"SR_STORE_SK\",
     store_returns.\"SR_RETURNED_DATE_SK\"),
-rail as (
+brave as (
 SELECT
     store_returns.\"SR_CUSTOMER_SK\" as \"returns_customer_id\",
     customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -29,143 +29,143 @@ SELECT
 FROM
     memory.store_returns as store_returns
     INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"),
-ray as (
-SELECT
-    deeply.\"returns_customer_id\" as \"returns_customer_id\",
-    customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
-    deeply.\"returns_return_date_id\" as \"returns_return_date_id\",
-    deeply.\"returns_store_id\" as \"returns_store_id\"
-FROM
-    deeply
-    INNER JOIN memory.customer as customers on deeply.\"returns_customer_id\" = customers.\"C_CUSTOMER_SK\"),
 pigeon as (
 SELECT
-    rail.\"returns_return_amount\" as \"returns_return_amount_filter_5387963398074161\",
-    rail.\"returns_store_id\" as \"returns_store_id\",
-    rail.\"returns_item_id\" as \"returns_item_id\",
-    rail.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    rail.\"returns_store_sales_ticket_number\" as \"returns_store_sales_ticket_number\"
+    ray.\"returns_customer_id\" as \"returns_customer_id\",
+    customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
+    ray.\"returns_return_date_id\" as \"returns_return_date_id\",
+    ray.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    rail
-    INNER JOIN memory.date_dim as date on rail.\"returns_return_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.store as store on rail.\"returns_store_id\" = store.\"S_STORE_SK\"
+    ray
+    INNER JOIN memory.customer as customers on ray.\"returns_customer_id\" = customers.\"C_CUSTOMER_SK\"),
+leopard as (
+SELECT
+    brave.\"returns_return_amount\" as \"returns_return_amount_filter_5387963398074161\",
+    brave.\"returns_store_id\" as \"returns_store_id\",
+    brave.\"returns_item_id\" as \"returns_item_id\",
+    brave.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    brave.\"returns_store_sales_ticket_number\" as \"returns_store_sales_ticket_number\"
+FROM
+    brave
+    INNER JOIN memory.date_dim as date on brave.\"returns_return_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.store as store on brave.\"returns_store_id\" = store.\"S_STORE_SK\"
 WHERE
     cast(\"D_YEAR\" as int) = 2000 and store.\"S_STATE\" = 'TN'
 ),
-yellow as (
+razorbill as (
 SELECT
-    ray.\"returns_store_id\" as \"returns_store_id\",
-    ray.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    pigeon.\"returns_store_id\" as \"returns_store_id\",
+    pigeon.\"returns_customer_text_id\" as \"returns_customer_text_id\",
     cast(\"D_YEAR\" as int) as \"returns_return_date_year\"
 FROM
-    ray
-    INNER JOIN memory.date_dim as date on ray.\"returns_return_date_id\" = date.\"D_DATE_SK\"
+    pigeon
+    INNER JOIN memory.date_dim as date on pigeon.\"returns_return_date_id\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_YEAR\" as int) = 2000
 ),
-cuckoo as (
+chicken as (
 SELECT
-    sum(pigeon.\"returns_return_amount_filter_5387963398074161\") as \"total_returns\",
-    pigeon.\"returns_store_id\" as \"returns_store_id\",
-    pigeon.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(leopard.\"returns_return_amount_filter_5387963398074161\") as \"total_returns\",
+    leopard.\"returns_store_id\" as \"returns_store_id\",
+    leopard.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    pigeon
+    leopard
 GROUP BY 
-    pigeon.\"returns_customer_text_id\",
-    pigeon.\"returns_store_id\"),
-flashy as (
+    leopard.\"returns_customer_text_id\",
+    leopard.\"returns_store_id\"),
+avocet as (
 SELECT
-    yellow.\"returns_store_id\" as \"returns_store_id\",
-    yellow.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    yellow.\"returns_return_date_year\" as \"returns_return_date_year\",
-    cuckoo.\"total_returns\" as \"total_returns\"
+    razorbill.\"returns_store_id\" as \"returns_store_id\",
+    razorbill.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    razorbill.\"returns_return_date_year\" as \"returns_return_date_year\",
+    chicken.\"total_returns\" as \"total_returns\"
 FROM
-    yellow
-    INNER JOIN cuckoo on yellow.\"returns_store_id\" = cuckoo.\"returns_store_id\" AND yellow.\"returns_customer_text_id\" = cuckoo.\"returns_customer_text_id\"
+    razorbill
+    INNER JOIN chicken on razorbill.\"returns_store_id\" = chicken.\"returns_store_id\" AND razorbill.\"returns_customer_text_id\" = chicken.\"returns_customer_text_id\"
 WHERE
-    yellow.\"returns_return_date_year\" = 2000
+    razorbill.\"returns_return_date_year\" = 2000
 ),
-wolverine as (
+viper as (
 SELECT
-    flashy.\"returns_return_date_year\" as \"returns_return_date_year\",
+    avocet.\"returns_return_date_year\" as \"returns_return_date_year\",
     store.\"S_STATE\" as \"returns_store_state\",
-    flashy.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    flashy.\"returns_store_id\" as \"returns_store_id\",
-    flashy.\"total_returns\" as \"total_returns\"
+    avocet.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    avocet.\"returns_store_id\" as \"returns_store_id\",
+    avocet.\"total_returns\" as \"total_returns\"
 FROM
-    flashy
-    INNER JOIN memory.store as store on flashy.\"returns_store_id\" = store.\"S_STORE_SK\"
+    avocet
+    INNER JOIN memory.store as store on avocet.\"returns_store_id\" = store.\"S_STORE_SK\"
 WHERE
-    flashy.\"returns_return_date_year\" = 2000 and store.\"S_STATE\" = 'TN'
+    avocet.\"returns_return_date_year\" = 2000 and store.\"S_STATE\" = 'TN'
 ),
-busy as (
+colossal as (
 SELECT
-    wolverine.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    wolverine.\"returns_store_id\" as \"returns_store_id\",
-    wolverine.\"returns_store_state\" as \"returns_store_state\",
-    wolverine.\"total_returns\" as \"total_returns\"
+    viper.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    viper.\"returns_store_id\" as \"returns_store_id\",
+    viper.\"returns_store_state\" as \"returns_store_state\",
+    viper.\"total_returns\" as \"total_returns\"
 FROM
-    wolverine
+    viper
 GROUP BY 
-    wolverine.\"returns_store_state\",
-    wolverine.\"total_returns\",
-    wolverine.\"returns_customer_text_id\",
-    wolverine.\"returns_store_id\"),
-parrot as (
+    viper.\"total_returns\",
+    viper.\"returns_store_state\",
+    viper.\"returns_store_id\",
+    viper.\"returns_customer_text_id\"),
+warbler as (
 SELECT
-    busy.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    busy.\"returns_store_id\" as \"returns_store_id\",
-    busy.\"returns_store_state\" as \"returns_store_state\",
-    busy.\"total_returns\" as \"total_returns\",
-    busy.\"returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
-    busy.\"returns_store_id\" as \"tn_2000_returns_store_id\",
-    busy.\"returns_store_state\" as \"tn_2000_returns_store_state\",
-    busy.\"total_returns\" as \"tn_2000_total_returns\"
+    colossal.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    colossal.\"returns_store_id\" as \"returns_store_id\",
+    colossal.\"returns_store_state\" as \"returns_store_state\",
+    colossal.\"total_returns\" as \"total_returns\",
+    colossal.\"returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
+    colossal.\"returns_store_id\" as \"tn_2000_returns_store_id\",
+    colossal.\"returns_store_state\" as \"tn_2000_returns_store_state\",
+    colossal.\"total_returns\" as \"tn_2000_total_returns\"
 FROM
-    busy
+    colossal
 GROUP BY 
-    busy.\"returns_customer_text_id\",
-    busy.\"total_returns\",
-    busy.\"returns_store_state\",
-    busy.\"returns_store_id\"),
-abhorrent as (
+    colossal.\"returns_store_state\",
+    colossal.\"returns_customer_text_id\",
+    colossal.\"total_returns\",
+    colossal.\"returns_store_id\"),
+yummy as (
 SELECT
-    avg(parrot.\"tn_2000_total_returns\") as \"avg_store_returns\",
-    parrot.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\"
+    avg(warbler.\"tn_2000_total_returns\") as \"avg_store_returns\",
+    warbler.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\"
 FROM
-    parrot
+    warbler
 GROUP BY 
-    parrot.\"tn_2000_returns_store_id\"),
-protective as (
+    warbler.\"tn_2000_returns_store_id\"),
+bewildered as (
 SELECT
-    parrot.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\",
-    parrot.\"tn_2000_total_returns\" as \"tn_2000_total_returns\",
-    abhorrent.\"avg_store_returns\" as \"avg_store_returns\"
+    warbler.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\",
+    warbler.\"tn_2000_total_returns\" as \"tn_2000_total_returns\",
+    yummy.\"avg_store_returns\" as \"avg_store_returns\"
 FROM
-    parrot
-    LEFT OUTER JOIN abhorrent on (parrot.\"tn_2000_returns_store_id\" = abhorrent.\"tn_2000_returns_store_id\" or (parrot.\"tn_2000_returns_store_id\" is null and abhorrent.\"tn_2000_returns_store_id\" is null))
+    warbler
+    LEFT OUTER JOIN yummy on (warbler.\"tn_2000_returns_store_id\" = yummy.\"tn_2000_returns_store_id\" or (warbler.\"tn_2000_returns_store_id\" is null and yummy.\"tn_2000_returns_store_id\" is null))
 WHERE
-    parrot.\"tn_2000_total_returns\" > ( 1.2 * abhorrent.\"avg_store_returns\" )
+    warbler.\"tn_2000_total_returns\" > ( 1.2 * yummy.\"avg_store_returns\" )
 ),
-komodo as (
+vacuous as (
 SELECT
-    parrot.\"tn_2000_total_returns\" as \"tn_2000_total_returns\",
-    protective.\"avg_store_returns\" as \"avg_store_returns\",
-    parrot.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
-    parrot.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\"
+    warbler.\"tn_2000_total_returns\" as \"tn_2000_total_returns\",
+    bewildered.\"avg_store_returns\" as \"avg_store_returns\",
+    warbler.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
+    warbler.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\"
 FROM
-    parrot
-    LEFT OUTER JOIN protective on (parrot.\"tn_2000_returns_store_id\" = protective.\"tn_2000_returns_store_id\" or (parrot.\"tn_2000_returns_store_id\" is null and protective.\"tn_2000_returns_store_id\" is null)) AND (parrot.\"tn_2000_total_returns\" = protective.\"tn_2000_total_returns\" or (parrot.\"tn_2000_total_returns\" is null and protective.\"tn_2000_total_returns\" is null))
+    warbler
+    LEFT OUTER JOIN bewildered on (warbler.\"tn_2000_returns_store_id\" = bewildered.\"tn_2000_returns_store_id\" or (warbler.\"tn_2000_returns_store_id\" is null and bewildered.\"tn_2000_returns_store_id\" is null)) AND (warbler.\"tn_2000_total_returns\" = bewildered.\"tn_2000_total_returns\" or (warbler.\"tn_2000_total_returns\" is null and bewildered.\"tn_2000_total_returns\" is null))
 WHERE
-    parrot.\"tn_2000_total_returns\" > ( 1.2 * protective.\"avg_store_returns\" )
+    warbler.\"tn_2000_total_returns\" > ( 1.2 * bewildered.\"avg_store_returns\" )
 )
 SELECT
-    komodo.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\"
+    vacuous.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\"
 FROM
-    komodo
+    vacuous
 GROUP BY 
-    komodo.\"tn_2000_returns_store_id\",
-    komodo.\"tn_2000_returns_customer_text_id\"
+    vacuous.\"tn_2000_returns_store_id\",
+    vacuous.\"tn_2000_returns_customer_text_id\"
 ORDER BY 
-    komodo.\"tn_2000_returns_customer_text_id\" asc
+    vacuous.\"tn_2000_returns_customer_text_id\" asc
 LIMIT (100)"""

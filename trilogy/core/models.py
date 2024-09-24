@@ -2660,9 +2660,9 @@ class CTE(BaseModel):
             if isinstance(join, InstantiatedUnnestJoin):
                 continue
             if join.left_cte.name == parent.name:
-                join.left_cte = ds_being_inlined
+                join.inline_cte(parent)
             if join.right_cte.name == parent.name:
-                join.right_cte = ds_being_inlined
+                join.inline_cte(parent)
         for k, v in self.source_map.items():
             if isinstance(v, list):
                 self.source_map[k] = [
@@ -2885,34 +2885,38 @@ class JoinKey(BaseModel):
 
 
 class Join(BaseModel):
-    left_cte: CTE | Datasource
-    right_cte: CTE | Datasource
+    left_cte: CTE
+    right_cte: CTE
     jointype: JoinType
     joinkeys: List[JoinKey]
     joinkey_pairs: List[ConceptPair] | None = None
+    inlined_ctes: set[str] = Field(default_factory=set)
+
+    def inline_cte(self, cte: CTE):
+        self.inlined_ctes.add(cte.name)
 
     @property
     def left_name(self) -> str:
-        if isinstance(self.left_cte, Datasource):
-            return self.left_cte.identifier
+        if self.left_cte.name in self.inlined_ctes:
+            return self.left_cte.source.datasources[0].identifier
         return self.left_cte.name
 
     @property
     def right_name(self) -> str:
-        if isinstance(self.right_cte, Datasource):
-            return self.right_cte.identifier
+        if self.right_cte.name in self.inlined_ctes:
+            return self.right_cte.source.datasources[0].identifier
         return self.right_cte.name
 
     @property
     def left_ref(self) -> str:
-        if isinstance(self.left_cte, Datasource):
-            return f"{self.left_cte.safe_location} as {self.left_cte.identifier}"
+        if self.left_cte.name in self.inlined_ctes:
+            return f"{self.left_cte.source.datasources[0].safe_location} as {self.left_cte.source.datasources[0].identifier}"
         return self.left_cte.name
 
     @property
     def right_ref(self) -> str:
-        if isinstance(self.right_cte, Datasource):
-            return f"{self.right_cte.safe_location} as {self.right_cte.identifier}"
+        if self.right_cte.name in self.inlined_ctes:
+            return f"{self.right_cte.source.datasources[0].safe_location} as {self.right_cte.source.datasources[0].identifier}"
         return self.right_cte.name
 
     @property

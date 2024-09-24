@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 10.158902
-exec_time = 1.024987
-comp_time = 0.308216
-gen_length = 6707
+parse_time = 5.270379
+exec_time = 0.554701
+comp_time = 0.116284
+gen_length = 6796
 generated_sql = """
 
 WITH 
-cooperative as (
+rambunctious as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -21,7 +21,7 @@ FROM
     memory.web_sales as web_sales
     INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"),
-vast as (
+late as (
 SELECT
     items.\"I_CLASS\" as \"web_sales_item_class\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
@@ -31,107 +31,107 @@ SELECT
 FROM
     memory.item as items
 GROUP BY 
-    items.\"I_CATEGORY\",
-    items.\"I_ITEM_DESC\",
     items.\"I_CURRENT_PRICE\",
+    items.\"I_ITEM_ID\",
+    items.\"I_CATEGORY\",
     items.\"I_CLASS\",
-    items.\"I_ITEM_ID\"),
-pelican as (
+    items.\"I_ITEM_DESC\"),
+cobra as (
 SELECT
-    CASE WHEN cooperative.\"web_sales_date_date\" >= cast('1999-02-22' as date) and cooperative.\"web_sales_date_date\" <= cast('1999-03-24' as date) and cooperative.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN cooperative.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
-    cooperative.\"web_sales_order_number\" as \"web_sales_order_number\",
-    cooperative.\"web_sales_item_id\" as \"web_sales_item_id\"
+    CASE WHEN rambunctious.\"web_sales_date_date\" >= cast('1999-02-22' as date) and rambunctious.\"web_sales_date_date\" <= cast('1999-03-24' as date) and rambunctious.\"web_sales_item_category\" in ( 'Sports','Books','Home' ) THEN rambunctious.\"web_sales_external_sales_price\" ELSE NULL END as \"relevant_sales\",
+    rambunctious.\"web_sales_order_number\" as \"web_sales_order_number\",
+    rambunctious.\"web_sales_item_id\" as \"web_sales_item_id\"
 FROM
-    cooperative),
-flamingo as (
+    rambunctious),
+kaput as (
 SELECT
-    pelican.\"relevant_sales\" as \"relevant_sales\",
+    cobra.\"relevant_sales\" as \"relevant_sales\",
     items.\"I_CATEGORY\" as \"web_sales_item_category\",
     items.\"I_CLASS\" as \"web_sales_item_class\",
     items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
     items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
     items.\"I_ITEM_ID\" as \"web_sales_item_name\",
-    pelican.\"web_sales_order_number\" as \"web_sales_order_number\",
-    pelican.\"web_sales_item_id\" as \"web_sales_item_id\"
+    cobra.\"web_sales_order_number\" as \"web_sales_order_number\",
+    cobra.\"web_sales_item_id\" as \"web_sales_item_id\"
 FROM
-    pelican
-    INNER JOIN memory.item as items on pelican.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
-late as (
+    cobra
+    INNER JOIN memory.item as items on cobra.\"web_sales_item_id\" = items.\"I_ITEM_SK\"),
+fowl as (
 SELECT
-    sum(flamingo.\"relevant_sales\") as \"itemrevenue\",
-    flamingo.\"web_sales_item_category\" as \"web_sales_item_category\",
-    flamingo.\"web_sales_item_class\" as \"web_sales_item_class\",
-    flamingo.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    flamingo.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    flamingo.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(flamingo.\"relevant_sales\") as \"_virtual_1496978012803723\"
+    sum(kaput.\"relevant_sales\") as \"itemrevenue\",
+    kaput.\"web_sales_item_category\" as \"web_sales_item_category\",
+    kaput.\"web_sales_item_class\" as \"web_sales_item_class\",
+    kaput.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    kaput.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    kaput.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sum(kaput.\"relevant_sales\") as \"_virtual_1496978012803723\"
 FROM
-    flamingo
+    kaput
 GROUP BY 
-    flamingo.\"web_sales_item_class\",
-    flamingo.\"web_sales_item_desc\",
-    flamingo.\"web_sales_item_name\",
-    flamingo.\"web_sales_item_category\",
-    flamingo.\"web_sales_item_current_price\"),
-level as (
+    kaput.\"web_sales_item_current_price\",
+    kaput.\"web_sales_item_category\",
+    kaput.\"web_sales_item_class\",
+    kaput.\"web_sales_item_desc\",
+    kaput.\"web_sales_item_name\"),
+puffy as (
 SELECT
-    sum(flamingo.\"relevant_sales\") as \"_virtual_341251569527357\",
-    flamingo.\"web_sales_item_class\" as \"web_sales_item_class\"
+    sum(kaput.\"relevant_sales\") as \"_virtual_341251569527357\",
+    kaput.\"web_sales_item_class\" as \"web_sales_item_class\"
 FROM
-    flamingo
+    kaput
 GROUP BY 
-    flamingo.\"web_sales_item_class\"),
-starling as (
+    kaput.\"web_sales_item_class\"),
+thrush as (
 SELECT
-    vast.\"web_sales_item_class\" as \"web_sales_item_class\",
-    vast.\"web_sales_item_category\" as \"web_sales_item_category\",
-    vast.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    vast.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    vast.\"web_sales_item_name\" as \"web_sales_item_name\",
-    level.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
-FROM
-    vast
-    INNER JOIN level on (vast.\"web_sales_item_class\" = level.\"web_sales_item_class\" or (vast.\"web_sales_item_class\" is null and level.\"web_sales_item_class\" is null))),
-wooden as (
-SELECT
-    late.\"web_sales_item_category\" as \"web_sales_item_category\",
     late.\"web_sales_item_class\" as \"web_sales_item_class\",
+    late.\"web_sales_item_category\" as \"web_sales_item_category\",
     late.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     late.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     late.\"web_sales_item_name\" as \"web_sales_item_name\",
-    late.\"_virtual_1496978012803723\" * 100.0 / starling.\"_virtual_341251569527357\" as \"revenueratio\"
+    puffy.\"_virtual_341251569527357\" as \"_virtual_341251569527357\"
 FROM
     late
-    INNER JOIN starling on (late.\"web_sales_item_category\" = starling.\"web_sales_item_category\" or (late.\"web_sales_item_category\" is null and starling.\"web_sales_item_category\" is null)) AND (late.\"web_sales_item_class\" = starling.\"web_sales_item_class\" or (late.\"web_sales_item_class\" is null and starling.\"web_sales_item_class\" is null)) AND (late.\"web_sales_item_current_price\" = starling.\"web_sales_item_current_price\" or (late.\"web_sales_item_current_price\" is null and starling.\"web_sales_item_current_price\" is null)) AND (late.\"web_sales_item_desc\" = starling.\"web_sales_item_desc\" or (late.\"web_sales_item_desc\" is null and starling.\"web_sales_item_desc\" is null)) AND late.\"web_sales_item_name\" = starling.\"web_sales_item_name\"),
-lion as (
+    INNER JOIN puffy on (late.\"web_sales_item_class\" = puffy.\"web_sales_item_class\" or (late.\"web_sales_item_class\" is null and puffy.\"web_sales_item_class\" is null))),
+exuberant as (
 SELECT
-    wooden.\"web_sales_item_category\" as \"web_sales_item_category\",
-    wooden.\"web_sales_item_class\" as \"web_sales_item_class\",
-    wooden.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    wooden.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    wooden.\"web_sales_item_name\" as \"web_sales_item_name\",
-    wooden.\"revenueratio\" as \"revenueratio\",
-    late.\"itemrevenue\" as \"itemrevenue\"
+    fowl.\"web_sales_item_category\" as \"web_sales_item_category\",
+    fowl.\"web_sales_item_class\" as \"web_sales_item_class\",
+    fowl.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    fowl.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    fowl.\"web_sales_item_name\" as \"web_sales_item_name\",
+    fowl.\"_virtual_1496978012803723\" * 100.0 / thrush.\"_virtual_341251569527357\" as \"revenueratio\"
 FROM
-    wooden
-    INNER JOIN late on (wooden.\"web_sales_item_category\" = late.\"web_sales_item_category\" or (wooden.\"web_sales_item_category\" is null and late.\"web_sales_item_category\" is null)) AND (wooden.\"web_sales_item_class\" = late.\"web_sales_item_class\" or (wooden.\"web_sales_item_class\" is null and late.\"web_sales_item_class\" is null)) AND (wooden.\"web_sales_item_current_price\" = late.\"web_sales_item_current_price\" or (wooden.\"web_sales_item_current_price\" is null and late.\"web_sales_item_current_price\" is null)) AND (wooden.\"web_sales_item_desc\" = late.\"web_sales_item_desc\" or (wooden.\"web_sales_item_desc\" is null and late.\"web_sales_item_desc\" is null)) AND wooden.\"web_sales_item_name\" = late.\"web_sales_item_name\")
+    fowl
+    INNER JOIN thrush on (fowl.\"web_sales_item_category\" = thrush.\"web_sales_item_category\" or (fowl.\"web_sales_item_category\" is null and thrush.\"web_sales_item_category\" is null)) AND (fowl.\"web_sales_item_class\" = thrush.\"web_sales_item_class\" or (fowl.\"web_sales_item_class\" is null and thrush.\"web_sales_item_class\" is null)) AND (fowl.\"web_sales_item_current_price\" = thrush.\"web_sales_item_current_price\" or (fowl.\"web_sales_item_current_price\" is null and thrush.\"web_sales_item_current_price\" is null)) AND (fowl.\"web_sales_item_desc\" = thrush.\"web_sales_item_desc\" or (fowl.\"web_sales_item_desc\" is null and thrush.\"web_sales_item_desc\" is null)) AND fowl.\"web_sales_item_name\" = thrush.\"web_sales_item_name\"),
+questionable as (
 SELECT
-    lion.\"web_sales_item_name\" as \"web_sales_item_name\",
-    lion.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    lion.\"web_sales_item_category\" as \"web_sales_item_category\",
-    lion.\"web_sales_item_class\" as \"web_sales_item_class\",
-    lion.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    lion.\"itemrevenue\" as \"itemrevenue\",
-    lion.\"revenueratio\" as \"revenueratio\"
+    exuberant.\"web_sales_item_category\" as \"web_sales_item_category\",
+    exuberant.\"web_sales_item_class\" as \"web_sales_item_class\",
+    exuberant.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    exuberant.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    exuberant.\"web_sales_item_name\" as \"web_sales_item_name\",
+    exuberant.\"revenueratio\" as \"revenueratio\",
+    fowl.\"itemrevenue\" as \"itemrevenue\"
 FROM
-    lion
+    exuberant
+    INNER JOIN fowl on (exuberant.\"web_sales_item_category\" = fowl.\"web_sales_item_category\" or (exuberant.\"web_sales_item_category\" is null and fowl.\"web_sales_item_category\" is null)) AND (exuberant.\"web_sales_item_class\" = fowl.\"web_sales_item_class\" or (exuberant.\"web_sales_item_class\" is null and fowl.\"web_sales_item_class\" is null)) AND (exuberant.\"web_sales_item_current_price\" = fowl.\"web_sales_item_current_price\" or (exuberant.\"web_sales_item_current_price\" is null and fowl.\"web_sales_item_current_price\" is null)) AND (exuberant.\"web_sales_item_desc\" = fowl.\"web_sales_item_desc\" or (exuberant.\"web_sales_item_desc\" is null and fowl.\"web_sales_item_desc\" is null)) AND exuberant.\"web_sales_item_name\" = fowl.\"web_sales_item_name\")
+SELECT
+    questionable.\"web_sales_item_name\" as \"web_sales_item_name\",
+    questionable.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    questionable.\"web_sales_item_category\" as \"web_sales_item_category\",
+    questionable.\"web_sales_item_class\" as \"web_sales_item_class\",
+    questionable.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    questionable.\"itemrevenue\" as \"itemrevenue\",
+    questionable.\"revenueratio\" as \"revenueratio\"
+FROM
+    questionable
 WHERE
-    lion.\"itemrevenue\" is not null
+    questionable.\"itemrevenue\" is not null
 
 ORDER BY 
-    lion.\"web_sales_item_category\" asc,
-    lion.\"web_sales_item_class\" asc,
-    lion.\"web_sales_item_name\" asc,
-    lion.\"web_sales_item_desc\" asc,
-    lion.\"revenueratio\" asc
+    questionable.\"web_sales_item_category\" asc,
+    questionable.\"web_sales_item_class\" asc,
+    questionable.\"web_sales_item_name\" asc,
+    questionable.\"web_sales_item_desc\" asc,
+    questionable.\"revenueratio\" asc
 LIMIT (100)"""

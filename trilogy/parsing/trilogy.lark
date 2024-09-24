@@ -47,9 +47,11 @@
     
     //column_assignment
     //figure out if we want static
-    column_assignment: ((IDENTIFIER | _static_functions | raw_column_assignment ) ":" concept_assignment) 
+    column_assignment: (raw_column_assignment | IDENTIFIER |  _static_functions  ) ":" concept_assignment
+    
+    RAW_ENTRY.1: /raw\s*\(/s
 
-    raw_column_assignment: "raw" "(" MULTILINE_STRING ")"
+    raw_column_assignment: RAW_ENTRY  MULTILINE_STRING ")"
     
     column_assignment_list : column_assignment (","  column_assignment)* ","?
     

@@ -328,6 +328,8 @@ class Renderer:
         inputs = ",".join(self.to_string(c) for c in arg.arguments)
         if arg.operator == FunctionType.CONSTANT:
             return f"{inputs}"
+        if arg.operator == FunctionType.INDEX_ACCESS:
+            return f"{self.to_string(arg.arguments[0])}[{self.to_string(arg.arguments[1])}]"
         return f"{arg.operator.value}({inputs})"
 
     @to_string.register
