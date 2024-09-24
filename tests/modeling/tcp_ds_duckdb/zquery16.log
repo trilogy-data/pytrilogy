@@ -1,44 +1,44 @@
 query_id = 16
-parse_time = 31.28503
-exec_time = 1.201963
-comp_time = 0.08485
-gen_length = 5761
+parse_time = 17.540301
+exec_time = 0.579806
+comp_time = 0.034827
+gen_length = 5824
 generated_sql = """
 
 WITH 
-lion as (
+coyote as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-bewildered as (
+macho as (
 SELECT
     catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select lion.\"cr_order_number\" from lion where lion.\"cr_order_number\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select coyote.\"cr_order_number\" from coyote where coyote.\"cr_order_number\" is not null)
 
 GROUP BY 
     catalog_sales.\"CS_WAREHOUSE_SK\",
     catalog_sales.\"CS_ORDER_NUMBER\"),
-osprey as (
+wolverine as (
 SELECT
-    count(bewildered.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
-    bewildered.\"cs_order_number\" as \"cs_order_number\"
+    count(macho.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    macho.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    bewildered
+    macho
 GROUP BY 
-    bewildered.\"cs_order_number\"),
-jaguar as (
+    macho.\"cs_order_number\"),
+quizzical as (
 SELECT
-    CASE WHEN osprey.\"_agg_count_6430482449237259\" > 1 THEN osprey.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN wolverine.\"_agg_count_6430482449237259\" > 1 THEN wolverine.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    osprey),
-shark as (
+    wolverine),
+ray as (
 SELECT
     catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
     catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
@@ -47,14 +47,14 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select lion.\"cr_order_number\" from lion where lion.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select jaguar.\"multi_warehouse_sales\" from jaguar where jaguar.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select coyote.\"cr_order_number\" from coyote where coyote.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select quizzical.\"multi_warehouse_sales\" from quizzical where quizzical.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
     catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\",
     catalog_sales.\"CS_CALL_CENTER_SK\",
-    catalog_sales.\"CS_SHIP_DATE_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\"),
-abstracted as (
+    catalog_sales.\"CS_SHIP_DATE_SK\"),
+protective as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
     catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
@@ -68,62 +68,62 @@ FROM
     memory.catalog_sales as catalog_sales
     FULL JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select lion.\"cr_order_number\" from lion where lion.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select jaguar.\"multi_warehouse_sales\" from jaguar where jaguar.\"multi_warehouse_sales\" is not null)
+    customer_address.\"CA_STATE\" = 'GA' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select coyote.\"cr_order_number\" from coyote where coyote.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select quizzical.\"multi_warehouse_sales\" from quizzical where quizzical.\"multi_warehouse_sales\" is not null)
 ),
-wakeful as (
+flashy as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
-    shark.\"cs_call_center_id\" as \"cs_call_center_id\",
+    ray.\"cs_call_center_id\" as \"cs_call_center_id\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
-    shark.\"cs_order_number\" as \"cs_order_number\",
-    shark.\"cs_ship_date_id\" as \"cs_ship_date_id\"
+    ray.\"cs_order_number\" as \"cs_order_number\",
+    ray.\"cs_ship_date_id\" as \"cs_ship_date_id\"
 FROM
     memory.customer_address as customer_address
-    LEFT OUTER JOIN shark on customer_address.\"CA_ADDRESS_SK\" = shark.\"cs_customer_address_id\"
+    LEFT OUTER JOIN ray on customer_address.\"CA_ADDRESS_SK\" = ray.\"cs_customer_address_id\"
 WHERE
-    customer_address.\"CA_STATE\" = 'GA' and shark.\"cs_order_number\" not in (select lion.\"cr_order_number\" from lion where lion.\"cr_order_number\" is not null) and shark.\"cs_order_number\" in (select jaguar.\"multi_warehouse_sales\" from jaguar where jaguar.\"multi_warehouse_sales\" is not null)
+    customer_address.\"CA_STATE\" = 'GA' and ray.\"cs_order_number\" not in (select coyote.\"cr_order_number\" from coyote where coyote.\"cr_order_number\" is not null) and ray.\"cs_order_number\" in (select quizzical.\"multi_warehouse_sales\" from quizzical where quizzical.\"multi_warehouse_sales\" is not null)
 ),
-tiger as (
+scrawny as (
 SELECT
-    abstracted.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",
-    abstracted.\"cs_item_id\" as \"cs_item_id\",
-    abstracted.\"cs_order_number\" as \"cs_order_number\",
-    abstracted.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"
+    protective.\"cs_extra_ship_cost\" as \"cs_extra_ship_cost_filter_8122702087152882\",
+    protective.\"cs_item_id\" as \"cs_item_id\",
+    protective.\"cs_order_number\" as \"cs_order_number\",
+    protective.\"cs_net_profit\" as \"cs_net_profit_filter_1663947654967995\"
 FROM
-    abstracted
-    INNER JOIN memory.call_center as call_center on abstracted.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
-    INNER JOIN memory.date_dim as date on abstracted.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    protective
+    INNER JOIN memory.call_center as call_center on protective.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.date_dim as date on protective.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and abstracted.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and abstracted.\"cs_order_number\" not in (select lion.\"cr_order_number\" from lion where lion.\"cr_order_number\" is not null) and abstracted.\"cs_order_number\" in (select jaguar.\"multi_warehouse_sales\" from jaguar where jaguar.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and protective.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and protective.\"cs_order_number\" not in (select coyote.\"cr_order_number\" from coyote where coyote.\"cr_order_number\" is not null) and protective.\"cs_order_number\" in (select quizzical.\"multi_warehouse_sales\" from quizzical where quizzical.\"multi_warehouse_sales\" is not null)
 ),
-rail as (
+falcon as (
 SELECT
-    wakeful.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
+    flashy.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
 FROM
     memory.call_center as call_center
-    INNER JOIN wakeful on call_center.\"CC_CALL_CENTER_SK\" = wakeful.\"cs_call_center_id\"
-    INNER JOIN memory.date_dim as date on wakeful.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN flashy on call_center.\"CC_CALL_CENTER_SK\" = flashy.\"cs_call_center_id\"
+    INNER JOIN memory.date_dim as date on flashy.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and wakeful.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and wakeful.\"cs_order_number\" not in (select lion.\"cr_order_number\" from lion where lion.\"cr_order_number\" is not null) and wakeful.\"cs_order_number\" in (select jaguar.\"multi_warehouse_sales\" from jaguar where jaguar.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and flashy.\"cs_customer_state\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and flashy.\"cs_order_number\" not in (select coyote.\"cr_order_number\" from coyote where coyote.\"cr_order_number\" is not null) and flashy.\"cs_order_number\" in (select quizzical.\"multi_warehouse_sales\" from quizzical where quizzical.\"multi_warehouse_sales\" is not null)
 ),
-thoughtful as (
+albatross as (
 SELECT
-    sum(tiger.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
-    sum(tiger.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
+    sum(scrawny.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
+    sum(scrawny.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
 FROM
-    tiger),
-ocelot as (
+    scrawny),
+elegant as (
 SELECT
-    count(distinct rail.\"cs_order_number_filter_929116887065743\") as \"order_count\"
+    count(distinct falcon.\"cs_order_number_filter_929116887065743\") as \"order_count\"
 FROM
-    rail)
+    falcon)
 SELECT
-    ocelot.\"order_count\" as \"order_count\",
-    thoughtful.\"total_shipping_cost\" as \"total_shipping_cost\",
-    thoughtful.\"total_net_profit\" as \"total_net_profit\"
+    elegant.\"order_count\" as \"order_count\",
+    albatross.\"total_shipping_cost\" as \"total_shipping_cost\",
+    albatross.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    ocelot
-    FULL JOIN thoughtful on 1=1
+    elegant
+    FULL JOIN albatross on 1=1
 ORDER BY 
-    ocelot.\"order_count\" desc
+    elegant.\"order_count\" desc
 LIMIT (100)"""

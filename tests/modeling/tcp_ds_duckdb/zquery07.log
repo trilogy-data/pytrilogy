@@ -1,12 +1,12 @@
 query_id = 7
-parse_time = 6.240299
-exec_time = 2.629805
-comp_time = 0.364694
-gen_length = 4836
+parse_time = 4.521126
+exec_time = 0.998372
+comp_time = 0.267915
+gen_length = 4821
 generated_sql = """
 
 WITH 
-goose as (
+chick as (
 SELECT
     store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
     store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
@@ -19,15 +19,15 @@ SELECT
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_LIST_PRICE\",
-    store_sales.\"SS_SOLD_DATE_SK\",
-    store_sales.\"SS_PROMO_SK\",
     store_sales.\"SS_SALES_PRICE\",
+    store_sales.\"SS_SOLD_DATE_SK\",
     store_sales.\"SS_CDEMO_SK\",
-    store_sales.\"SS_COUPON_AMT\",
     store_sales.\"SS_QUANTITY\",
-    store_sales.\"SS_ITEM_SK\"),
-human as (
+    store_sales.\"SS_COUPON_AMT\",
+    store_sales.\"SS_ITEM_SK\",
+    store_sales.\"SS_LIST_PRICE\",
+    store_sales.\"SS_PROMO_SK\"),
+quail as (
 SELECT
     customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
     customer_demographics.\"CD_MARITAL_STATUS\" as \"store_sales_customer_demographic_marital_status\",
@@ -36,67 +36,67 @@ SELECT
     promotion.\"P_CHANNEL_EVENT\" as \"store_sales_promotion_channel_event\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     items.\"I_ITEM_ID\" as \"store_sales_item_name\",
-    goose.\"store_sales_quantity\" as \"store_sales_quantity\",
-    goose.\"store_sales_list_price\" as \"store_sales_list_price\",
-    goose.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    goose.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    chick.\"store_sales_quantity\" as \"store_sales_quantity\",
+    chick.\"store_sales_list_price\" as \"store_sales_list_price\",
+    chick.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    chick.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    goose
-    INNER JOIN memory.customer_demographics as customer_demographics on goose.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
-    INNER JOIN memory.date_dim as date on goose.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.item as items on goose.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.promotion as promotion on goose.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
+    chick
+    INNER JOIN memory.customer_demographics as customer_demographics on chick.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
+    INNER JOIN memory.date_dim as date on chick.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on chick.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.promotion as promotion on chick.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
 ),
-courageous as (
+pintail as (
 SELECT
-    human.\"store_sales_item_name\" as \"store_sales_item_name\",
-    human.\"store_sales_quantity\" as \"store_sales_quantity\",
-    human.\"store_sales_list_price\" as \"store_sales_list_price\",
-    human.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    human.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    quail.\"store_sales_item_name\" as \"store_sales_item_name\",
+    quail.\"store_sales_quantity\" as \"store_sales_quantity\",
+    quail.\"store_sales_list_price\" as \"store_sales_list_price\",
+    quail.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    quail.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    human
+    quail
 WHERE
-    human.\"store_sales_customer_demographic_gender\" = 'M' and human.\"store_sales_customer_demographic_marital_status\" = 'S' and human.\"store_sales_customer_demographic_education_status\" = 'College' and ( human.\"store_sales_promotion_channel_email\" = 'N' or human.\"store_sales_promotion_channel_event\" = 'N' ) and human.\"store_sales_date_year\" = 2000
+    quail.\"store_sales_customer_demographic_gender\" = 'M' and quail.\"store_sales_customer_demographic_marital_status\" = 'S' and quail.\"store_sales_customer_demographic_education_status\" = 'College' and ( quail.\"store_sales_promotion_channel_email\" = 'N' or quail.\"store_sales_promotion_channel_event\" = 'N' ) and quail.\"store_sales_date_year\" = 2000
 
 GROUP BY 
-    human.\"store_sales_item_name\",
-    human.\"store_sales_coupon_amt\",
-    human.\"store_sales_quantity\",
-    human.\"store_sales_sales_price\",
-    human.\"store_sales_list_price\"),
-warbler as (
+    quail.\"store_sales_quantity\",
+    quail.\"store_sales_list_price\",
+    quail.\"store_sales_sales_price\",
+    quail.\"store_sales_coupon_amt\",
+    quail.\"store_sales_item_name\"),
+cooperative as (
 SELECT
-    courageous.\"store_sales_item_name\" as \"store_sales_item_name\",
-    courageous.\"store_sales_quantity\" as \"store_sales_quantity\",
-    courageous.\"store_sales_list_price\" as \"store_sales_list_price\",
-    courageous.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    courageous.\"store_sales_sales_price\" as \"store_sales_sales_price\",
-    courageous.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    courageous.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
-    courageous.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
-    courageous.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
-    courageous.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
+    pintail.\"store_sales_item_name\" as \"store_sales_item_name\",
+    pintail.\"store_sales_quantity\" as \"store_sales_quantity\",
+    pintail.\"store_sales_list_price\" as \"store_sales_list_price\",
+    pintail.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    pintail.\"store_sales_sales_price\" as \"store_sales_sales_price\",
+    pintail.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    pintail.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
+    pintail.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
+    pintail.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
+    pintail.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
 FROM
-    courageous
+    pintail
 GROUP BY 
-    courageous.\"store_sales_list_price\",
-    courageous.\"store_sales_sales_price\",
-    courageous.\"store_sales_item_name\",
-    courageous.\"store_sales_quantity\",
-    courageous.\"store_sales_coupon_amt\")
+    pintail.\"store_sales_coupon_amt\",
+    pintail.\"store_sales_sales_price\",
+    pintail.\"store_sales_item_name\",
+    pintail.\"store_sales_quantity\",
+    pintail.\"store_sales_list_price\")
 SELECT
-    warbler.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    avg(warbler.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
-    avg(warbler.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
-    avg(warbler.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
-    avg(warbler.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
+    cooperative.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    avg(cooperative.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
+    avg(cooperative.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
+    avg(cooperative.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
+    avg(cooperative.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
 FROM
-    warbler
+    cooperative
 GROUP BY 
-    warbler.\"filtered_sales_store_sales_item_name\"
+    cooperative.\"filtered_sales_store_sales_item_name\"
 ORDER BY 
-    warbler.\"filtered_sales_store_sales_item_name\" asc
+    cooperative.\"filtered_sales_store_sales_item_name\" asc
 LIMIT (100)"""

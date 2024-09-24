@@ -1,21 +1,21 @@
 query_id = 3
-parse_time = 4.224917
-exec_time = 0.570175
-comp_time = 0.119882
-gen_length = 4549
+parse_time = 2.679059
+exec_time = 0.366261
+comp_time = 0.067901
+gen_length = 4558
 generated_sql = """
 
 WITH 
-wary as (
+dingo as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_SOLD_DATE_SK\",
-    store_sales.\"SS_ITEM_SK\"),
-juicy as (
+    store_sales.\"SS_ITEM_SK\",
+    store_sales.\"SS_SOLD_DATE_SK\"),
+leopard as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -29,94 +29,94 @@ FROM
 WHERE
     date.\"D_MOY\" = 11
 ),
-flashy as (
+sloppy as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_date_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
-    wary.\"store_sales_item_id\" as \"store_sales_item_id\"
+    dingo.\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    wary
-    INNER JOIN memory.date_dim as date on wary.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    dingo
+    INNER JOIN memory.date_dim as date on dingo.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_MOY\" = 11
 ),
-rhea as (
+canary as (
 SELECT
-    juicy.\"store_sales_ext_sales_price\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
-    juicy.\"store_sales_item_id\" as \"store_sales_item_id\",
-    juicy.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    juicy.\"store_sales_date_year\" as \"store_sales_date_year\"
+    leopard.\"store_sales_ext_sales_price\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
+    leopard.\"store_sales_item_id\" as \"store_sales_item_id\",
+    leopard.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    leopard.\"store_sales_date_year\" as \"store_sales_date_year\"
 FROM
-    juicy
-    INNER JOIN memory.item as items on juicy.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    leopard
+    INNER JOIN memory.item as items on leopard.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
 WHERE
-    juicy.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
+    leopard.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
 ),
-chickadee as (
+osprey as (
 SELECT
     items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
     items.\"I_BRAND\" as \"store_sales_item_brand_name\",
-    flashy.\"store_sales_date_year\" as \"store_sales_date_year\",
+    sloppy.\"store_sales_date_year\" as \"store_sales_date_year\",
     items.\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
-    flashy.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\"
+    sloppy.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\"
 FROM
-    flashy
-    INNER JOIN memory.item as items on flashy.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    sloppy
+    INNER JOIN memory.item as items on sloppy.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
 WHERE
-    flashy.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
+    sloppy.\"store_sales_date_month_of_year\" = 11 and items.\"I_MANUFACT_ID\" = 128
 ),
-loon as (
+dapper as (
 SELECT
-    rhea.\"store_sales_ext_sales_price_filter_1819642393595304\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
+    canary.\"store_sales_ext_sales_price_filter_1819642393595304\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
     items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
     items.\"I_BRAND\" as \"store_sales_item_brand_name\",
-    rhea.\"store_sales_date_year\" as \"store_sales_date_year\",
-    rhea.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    rhea.\"store_sales_item_id\" as \"store_sales_item_id\"
+    canary.\"store_sales_date_year\" as \"store_sales_date_year\",
+    canary.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    canary.\"store_sales_item_id\" as \"store_sales_item_id\"
 FROM
-    rhea
-    INNER JOIN memory.item as items on rhea.\"store_sales_item_id\" = items.\"I_ITEM_SK\"),
-premium as (
+    canary
+    INNER JOIN memory.item as items on canary.\"store_sales_item_id\" = items.\"I_ITEM_SK\"),
+cheerful as (
 SELECT
-    sum(loon.\"store_sales_ext_sales_price_filter_1819642393595304\") as \"sum_agg\",
-    loon.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    loon.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    loon.\"store_sales_date_year\" as \"store_sales_date_year\"
+    sum(dapper.\"store_sales_ext_sales_price_filter_1819642393595304\") as \"sum_agg\",
+    dapper.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    dapper.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    dapper.\"store_sales_date_year\" as \"store_sales_date_year\"
 FROM
-    loon
+    dapper
 GROUP BY 
-    loon.\"store_sales_item_brand_name\",
-    loon.\"store_sales_item_brand_id\",
-    loon.\"store_sales_date_year\"),
-sedate as (
+    dapper.\"store_sales_item_brand_id\",
+    dapper.\"store_sales_item_brand_name\",
+    dapper.\"store_sales_date_year\"),
+shark as (
 SELECT
-    chickadee.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    chickadee.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    chickadee.\"store_sales_date_year\" as \"store_sales_date_year\",
-    chickadee.\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
-    chickadee.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    premium.\"sum_agg\" as \"sum_agg\"
+    osprey.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    osprey.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    osprey.\"store_sales_date_year\" as \"store_sales_date_year\",
+    osprey.\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\",
+    osprey.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    cheerful.\"sum_agg\" as \"sum_agg\"
 FROM
-    premium
-    INNER JOIN chickadee on premium.\"store_sales_item_brand_id\" = chickadee.\"store_sales_item_brand_id\" AND premium.\"store_sales_item_brand_name\" = chickadee.\"store_sales_item_brand_name\" AND premium.\"store_sales_date_year\" = chickadee.\"store_sales_date_year\"
+    cheerful
+    INNER JOIN osprey on cheerful.\"store_sales_item_brand_id\" = osprey.\"store_sales_item_brand_id\" AND cheerful.\"store_sales_item_brand_name\" = osprey.\"store_sales_item_brand_name\" AND cheerful.\"store_sales_date_year\" = osprey.\"store_sales_date_year\"
 WHERE
-    chickadee.\"store_sales_date_month_of_year\" = 11 and chickadee.\"store_sales_item_manufacturer_id\" = 128
+    osprey.\"store_sales_date_month_of_year\" = 11 and osprey.\"store_sales_item_manufacturer_id\" = 128
 )
 SELECT
-    sedate.\"store_sales_date_year\" as \"store_sales_date_year\",
-    sedate.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    sedate.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sedate.\"sum_agg\" as \"sum_agg\"
+    shark.\"store_sales_date_year\" as \"store_sales_date_year\",
+    shark.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    shark.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    shark.\"sum_agg\" as \"sum_agg\"
 FROM
-    sedate
+    shark
 GROUP BY 
-    sedate.\"store_sales_item_brand_name\",
-    sedate.\"sum_agg\",
-    sedate.\"store_sales_item_brand_id\",
-    sedate.\"store_sales_date_year\"
+    shark.\"store_sales_date_year\",
+    shark.\"store_sales_item_brand_id\",
+    shark.\"sum_agg\",
+    shark.\"store_sales_item_brand_name\"
 ORDER BY 
-    sedate.\"store_sales_date_year\" asc,
-    sedate.\"sum_agg\" desc,
-    sedate.\"store_sales_item_brand_id\" asc
+    shark.\"store_sales_date_year\" asc,
+    shark.\"sum_agg\" desc,
+    shark.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""
