@@ -574,3 +574,20 @@ order by
     results = engine.execute_text(query)
 
     assert len(results[0].fetchall()) == 3
+
+
+def test_random_query(base_test_env, engine: Executor):
+    query = """auto survivor <- filter passenger.id 
+where passenger.survived= 1;
+
+property passenger.id.decade<- cast(passenger.age / 10 as int) * 10;
+select 
+    passenger.decade, 
+    count(passenger.id) -> bucket_size,
+    (count(survivor) by passenger.decade)/bucket_size
+    ->survival_rate,
+order by passenger.decade desc;"""
+    engine.environment = base_test_env
+    results = engine.execute_text(query)
+
+    assert len(results[0].fetchall()) == 10

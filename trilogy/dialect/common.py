@@ -1,6 +1,13 @@
-from trilogy.core.models import Join, InstantiatedUnnestJoin, CTE, Concept, Datasource
+from trilogy.core.models import (
+    Join,
+    InstantiatedUnnestJoin,
+    CTE,
+    Concept,
+    Function,
+    RawColumnExpr,
+)
 from trilogy.core.enums import UnnestMode, Modifier
-from typing import Optional, Callable
+from typing import Callable
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -21,19 +28,39 @@ def render_unnest(
     return f"{render_func(concept, cte, False)} as unnest_wrapper ({quote_character}{concept.safe_address}{quote_character})"
 
 
+def render_join_concept(
+    name: str,
+    quote_character: str,
+    cte: CTE,
+    concept: Concept,
+    render_expr,
+    inlined_ctes: set[str],
+):
+    if cte.name in inlined_ctes:
+        ds = cte.source.datasources[0]
+        raw_content = ds.get_alias(concept)
+        if isinstance(raw_content, RawColumnExpr):
+            rval = raw_content.text
+            return rval
+        elif isinstance(raw_content, Function):
+            rval = render_expr(raw_content, cte=cte)
+            return rval
+        return f"{name}.{quote_character}{raw_content}{quote_character}"
+    return f"{name}.{quote_character}{concept.safe_address}{quote_character}"
+
+
 def render_join(
     join: Join | InstantiatedUnnestJoin,
     quote_character: str,
-    render_func: Optional[Callable[[Concept, CTE, bool], str]] = None,
-    cte: Optional[CTE] = None,
+    render_func: Callable[[Concept, CTE, bool], str],
+    render_expr_func: Callable[[Concept, CTE], str],
+    cte: CTE,
     unnest_mode: UnnestMode = UnnestMode.CROSS_APPLY,
 ) -> str | None:
     # {% for key in join.joinkeys %}{{ key.inner }} = {{ key.outer}}{% endfor %}
     if isinstance(join, InstantiatedUnnestJoin):
         if unnest_mode == UnnestMode.DIRECT:
             return None
-        if not render_func:
-            raise ValueError("must provide a render function to build an unnest joins")
         if not cte:
             raise ValueError("must provide a cte to build an unnest joins")
         if unnest_mode == UnnestMode.CROSS_JOIN:
@@ -46,8 +73,22 @@ def render_join(
     right_base = join.right_ref
     base_joinkeys = [
         null_wrapper(
-            f"{left_name}.{quote_character}{join.left_cte.get_alias(key.concept) if isinstance(join.left_cte, Datasource) else key.concept.safe_address}{quote_character}",
-            f"{right_name}.{quote_character}{join.right_cte.get_alias(key.concept) if isinstance(join.right_cte, Datasource) else key.concept.safe_address}{quote_character}",
+            render_join_concept(
+                left_name,
+                quote_character,
+                join.left_cte,
+                key.concept,
+                render_expr_func,
+                join.inlined_ctes,
+            ),
+            render_join_concept(
+                right_name,
+                quote_character,
+                join.right_cte,
+                key.concept,
+                render_expr_func,
+                join.inlined_ctes,
+            ),
             modifiers=key.concept.modifiers or [],
         )
         for key in join.joinkeys
@@ -56,8 +97,22 @@ def render_join(
         base_joinkeys.extend(
             [
                 null_wrapper(
-                    f"{left_name}.{quote_character}{join.left_cte.get_alias(pair.left) if isinstance(join.left_cte, Datasource) else pair.left.safe_address}{quote_character}",
-                    f"{right_name}.{quote_character}{join.right_cte.get_alias(pair.right) if isinstance(join.right_cte, Datasource) else pair.right.safe_address}{quote_character}",
+                    render_join_concept(
+                        left_name,
+                        quote_character,
+                        join.left_cte,
+                        pair.left,
+                        render_expr_func,
+                        join.inlined_ctes,
+                    ),
+                    render_join_concept(
+                        right_name,
+                        quote_character,
+                        join.right_cte,
+                        pair.right,
+                        render_expr_func,
+                        join.inlined_ctes,
+                    ),
                     modifiers=pair.modifiers
                     + (pair.left.modifiers or [])
                     + (pair.right.modifiers or []),

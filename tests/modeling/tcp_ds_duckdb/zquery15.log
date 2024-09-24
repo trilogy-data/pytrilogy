@@ -1,12 +1,12 @@
 query_id = 15
-parse_time = 10.098092
-exec_time = 0.971807
-comp_time = 0.551781
-gen_length = 2923
+parse_time = 7.980075
+exec_time = 0.621503
+comp_time = 0.602991
+gen_length = 2910
 generated_sql = """
 
 WITH 
-razorbill as (
+cobra as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"catalog_sales_bill_customer_address_id\",
     customers.\"C_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -15,7 +15,7 @@ SELECT
 FROM
     memory.customer_address as customer_address
     INNER JOIN memory.customer as customers on customer_address.\"CA_ADDRESS_SK\" = customers.\"C_CURRENT_ADDR_SK\"),
-kestrel as (
+grouse as (
 SELECT
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -27,42 +27,42 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"),
-dapper as (
+puzzled as (
 SELECT
-    kestrel.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
-    kestrel.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
-    kestrel.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
-    razorbill.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
-    razorbill.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    kestrel.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    kestrel.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+    grouse.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
+    grouse.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
+    grouse.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    cobra.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
+    cobra.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    grouse.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
+    grouse.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
-    razorbill
-    LEFT OUTER JOIN kestrel on razorbill.\"catalog_sales_bill_customer_id\" = kestrel.\"catalog_sales_bill_customer_id\"),
-stork as (
+    cobra
+    LEFT OUTER JOIN grouse on cobra.\"catalog_sales_bill_customer_id\" = grouse.\"catalog_sales_bill_customer_id\"),
+tenuous as (
 SELECT
-    CASE WHEN dapper.\"catalog_sales_date_quarter\" = 2 and dapper.\"catalog_sales_date_year\" = 2001 and ( dapper.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or dapper.\"catalog_sales_sales_price\" > 500 or SUBSTRING(dapper.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN dapper.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
-    dapper.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    dapper.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    dapper.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+    CASE WHEN puzzled.\"catalog_sales_date_quarter\" = 2 and puzzled.\"catalog_sales_date_year\" = 2001 and ( puzzled.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or puzzled.\"catalog_sales_sales_price\" > 500 or SUBSTRING(puzzled.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN puzzled.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
+    puzzled.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    puzzled.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
+    puzzled.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
-    dapper),
-badger as (
+    puzzled),
+mamba as (
 SELECT
-    sum(stork.\"relevant_sales\") as \"sales\",
-    stork.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
+    sum(tenuous.\"relevant_sales\") as \"sales\",
+    tenuous.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
 FROM
-    stork
+    tenuous
 GROUP BY 
-    stork.\"catalog_sales_bill_customer_zip\")
+    tenuous.\"catalog_sales_bill_customer_zip\")
 SELECT
-    badger.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    badger.\"sales\" as \"sales\"
+    mamba.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    mamba.\"sales\" as \"sales\"
 FROM
-    badger
+    mamba
 WHERE
-    badger.\"sales\" is not null
+    mamba.\"sales\" is not null
 
 ORDER BY 
-    badger.\"catalog_sales_bill_customer_zip\" asc nulls first
+    mamba.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

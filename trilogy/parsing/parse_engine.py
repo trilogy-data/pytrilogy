@@ -600,7 +600,7 @@ class ParseToObjects(Transformer):
         return args[3:-3]
 
     def raw_column_assignment(self, args):
-        return RawColumnExpr(text=args[0])
+        return RawColumnExpr(text=args[1])
 
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):

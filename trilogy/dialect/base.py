@@ -608,6 +608,7 @@ class BaseDialect:
                             join,
                             self.QUOTE_CHARACTER,
                             self.render_concept_sql,
+                            self.render_expr,
                             cte,
                             self.UNNEST_MODE,
                         )
