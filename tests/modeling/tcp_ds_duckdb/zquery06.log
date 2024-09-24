@@ -1,12 +1,12 @@
 query_id = 6
-parse_time = 2.887737
-exec_time = 1.554946
-comp_time = 0.149885
-gen_length = 6684
+parse_time = 5.268323
+exec_time = 0.933097
+comp_time = 0.140106
+gen_length = 6821
 generated_sql = """
 
 WITH 
-fox as (
+level as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_ITEM_SK\" as \"item_id\",
@@ -14,10 +14,10 @@ SELECT
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_CUSTOMER_SK\"),
-yummy as (
+round as (
 SELECT
     customers.\"C_CURRENT_ADDR_SK\" as \"store_sales_customer_address_id\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
@@ -25,13 +25,13 @@ SELECT
 FROM
     memory.customer as customers
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"),
-vulture as (
+crow as (
 SELECT
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     items.\"I_ITEM_SK\" as \"item_id\"
 FROM
     memory.item as items),
-rhea as (
+divergent as (
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -42,107 +42,107 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-pelican as (
+busy as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_date_id\",
-    fox.\"item_id\" as \"item_id\",
-    fox.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    level.\"item_id\" as \"item_id\",
+    level.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\"
 FROM
-    fox
-    INNER JOIN memory.date_dim as date on fox.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    level
+    INNER JOIN memory.date_dim as date on level.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1
 ),
-premium as (
+obsolete as (
 SELECT
     items.\"I_CATEGORY\" as \"item_category\",
-    vulture.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    pelican.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    yummy.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    pelican.\"store_sales_date_year\" as \"store_sales_date_year\",
-    yummy.\"store_sales_customer_id\" as \"store_sales_customer_id\"
+    crow.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    busy.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    round.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    busy.\"store_sales_date_year\" as \"store_sales_date_year\",
+    round.\"store_sales_customer_id\" as \"store_sales_customer_id\"
 FROM
-    yummy
-    INNER JOIN pelican on yummy.\"store_sales_customer_id\" = pelican.\"store_sales_customer_id\"
-    INNER JOIN memory.item as items on pelican.\"item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN vulture on pelican.\"item_id\" = vulture.\"item_id\"
+    round
+    INNER JOIN busy on round.\"store_sales_customer_id\" = busy.\"store_sales_customer_id\"
+    INNER JOIN memory.item as items on busy.\"item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN crow on busy.\"item_id\" = crow.\"item_id\"
 WHERE
-    pelican.\"store_sales_date_year\" = 2001 and pelican.\"store_sales_date_month_of_year\" = 1 and items.\"I_CATEGORY\" is not null
+    busy.\"store_sales_date_year\" = 2001 and busy.\"store_sales_date_month_of_year\" = 1 and items.\"I_CATEGORY\" is not null
 ),
-ugly as (
+rhea as (
 SELECT
-    premium.\"item_category\" as \"item_category\",
-    premium.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    premium.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    premium.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    premium.\"store_sales_date_year\" as \"store_sales_date_year\",
-    rhea.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    obsolete.\"item_category\" as \"item_category\",
+    obsolete.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    obsolete.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    obsolete.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    obsolete.\"store_sales_date_year\" as \"store_sales_date_year\",
+    divergent.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    premium
-    INNER JOIN rhea on (premium.\"item_category\" = rhea.\"item_category\" or (premium.\"item_category\" is null and rhea.\"item_category\" is null))
+    obsolete
+    INNER JOIN divergent on (obsolete.\"item_category\" = divergent.\"item_category\" or (obsolete.\"item_category\" is null and divergent.\"item_category\" is null))
 WHERE
-    premium.\"store_sales_date_year\" = 2001 and premium.\"store_sales_date_month_of_year\" = 1 and premium.\"store_sales_item_current_price\" > 1.2 * rhea.\"_virtual_6264207893106521\" and premium.\"item_category\" is not null
+    obsolete.\"store_sales_date_year\" = 2001 and obsolete.\"store_sales_date_month_of_year\" = 1 and obsolete.\"store_sales_item_current_price\" > 1.2 * divergent.\"_virtual_6264207893106521\" and obsolete.\"item_category\" is not null
 ),
-macaw as (
+concerned as (
 SELECT
-    premium.\"store_sales_customer_id\" as \"store_sales_customer_id_filter_5640408687474034\",
-    premium.\"store_sales_customer_state\" as \"store_sales_customer_state\"
+    obsolete.\"store_sales_customer_id\" as \"store_sales_customer_id_filter_5640408687474034\",
+    obsolete.\"store_sales_customer_state\" as \"store_sales_customer_state\"
 FROM
-    premium
-    INNER JOIN rhea on (premium.\"item_category\" = rhea.\"item_category\" or (premium.\"item_category\" is null and rhea.\"item_category\" is null))
+    obsolete
+    INNER JOIN divergent on (obsolete.\"item_category\" = divergent.\"item_category\" or (obsolete.\"item_category\" is null and divergent.\"item_category\" is null))
 WHERE
-    premium.\"store_sales_date_year\" = 2001 and premium.\"store_sales_date_month_of_year\" = 1 and premium.\"store_sales_item_current_price\" > 1.2 * rhea.\"_virtual_6264207893106521\" and premium.\"item_category\" is not null
+    obsolete.\"store_sales_date_year\" = 2001 and obsolete.\"store_sales_date_month_of_year\" = 1 and obsolete.\"store_sales_item_current_price\" > 1.2 * divergent.\"_virtual_6264207893106521\" and obsolete.\"item_category\" is not null
 ),
-imported as (
+nondescript as (
 SELECT
-    count(macaw.\"store_sales_customer_id_filter_5640408687474034\") as \"customer_count\",
-    macaw.\"store_sales_customer_state\" as \"store_sales_customer_state\"
+    count(concerned.\"store_sales_customer_id_filter_5640408687474034\") as \"customer_count\",
+    concerned.\"store_sales_customer_state\" as \"store_sales_customer_state\"
 FROM
-    macaw
+    concerned
 GROUP BY 
-    macaw.\"store_sales_customer_state\"),
-quick as (
+    concerned.\"store_sales_customer_state\"),
+puffin as (
 SELECT
-    premium.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    premium.\"item_category\" as \"item_category\",
-    premium.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    premium.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    premium.\"store_sales_date_year\" as \"store_sales_date_year\",
-    imported.\"customer_count\" as \"customer_count\"
+    obsolete.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    obsolete.\"item_category\" as \"item_category\",
+    obsolete.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    obsolete.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    obsolete.\"store_sales_date_year\" as \"store_sales_date_year\",
+    nondescript.\"customer_count\" as \"customer_count\"
 FROM
-    premium
-    INNER JOIN imported on (premium.\"store_sales_customer_state\" = imported.\"store_sales_customer_state\" or (premium.\"store_sales_customer_state\" is null and imported.\"store_sales_customer_state\" is null))
+    obsolete
+    INNER JOIN nondescript on (obsolete.\"store_sales_customer_state\" = nondescript.\"store_sales_customer_state\" or (obsolete.\"store_sales_customer_state\" is null and nondescript.\"store_sales_customer_state\" is null))
 WHERE
-    premium.\"store_sales_date_year\" = 2001 and premium.\"store_sales_date_month_of_year\" = 1 and premium.\"item_category\" is not null
+    obsolete.\"store_sales_date_year\" = 2001 and obsolete.\"store_sales_date_month_of_year\" = 1 and obsolete.\"item_category\" is not null
 ),
-loon as (
+cuckoo as (
 SELECT
-    quick.\"store_sales_date_year\" as \"store_sales_date_year\",
-    quick.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    quick.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    ugly.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\",
-    quick.\"item_category\" as \"item_category\",
-    quick.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    quick.\"customer_count\" as \"customer_count\"
+    puffin.\"store_sales_date_year\" as \"store_sales_date_year\",
+    puffin.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    puffin.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    rhea.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\",
+    puffin.\"item_category\" as \"item_category\",
+    puffin.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    puffin.\"customer_count\" as \"customer_count\"
 FROM
-    quick
-    INNER JOIN ugly on (quick.\"store_sales_customer_state\" = ugly.\"store_sales_customer_state\" or (quick.\"store_sales_customer_state\" is null and ugly.\"store_sales_customer_state\" is null)) AND (quick.\"item_category\" = ugly.\"item_category\" or (quick.\"item_category\" is null and ugly.\"item_category\" is null)) AND (quick.\"store_sales_item_current_price\" = ugly.\"store_sales_item_current_price\" or (quick.\"store_sales_item_current_price\" is null and ugly.\"store_sales_item_current_price\" is null)) AND quick.\"store_sales_date_month_of_year\" = ugly.\"store_sales_date_month_of_year\" AND quick.\"store_sales_date_year\" = ugly.\"store_sales_date_year\"
+    puffin
+    INNER JOIN rhea on (puffin.\"store_sales_customer_state\" = rhea.\"store_sales_customer_state\" or (puffin.\"store_sales_customer_state\" is null and rhea.\"store_sales_customer_state\" is null)) AND (puffin.\"item_category\" = rhea.\"item_category\" or (puffin.\"item_category\" is null and rhea.\"item_category\" is null)) AND (puffin.\"store_sales_item_current_price\" = rhea.\"store_sales_item_current_price\" or (puffin.\"store_sales_item_current_price\" is null and rhea.\"store_sales_item_current_price\" is null)) AND puffin.\"store_sales_date_month_of_year\" = rhea.\"store_sales_date_month_of_year\" AND puffin.\"store_sales_date_year\" = rhea.\"store_sales_date_year\"
 WHERE
-    quick.\"store_sales_date_year\" = 2001 and quick.\"store_sales_date_month_of_year\" = 1 and quick.\"store_sales_item_current_price\" > 1.2 * ugly.\"_virtual_6264207893106521\" and quick.\"item_category\" is not null
+    puffin.\"store_sales_date_year\" = 2001 and puffin.\"store_sales_date_month_of_year\" = 1 and puffin.\"store_sales_item_current_price\" > 1.2 * rhea.\"_virtual_6264207893106521\" and puffin.\"item_category\" is not null
 )
 SELECT
-    loon.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    loon.\"customer_count\" as \"customer_count\"
+    cuckoo.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    cuckoo.\"customer_count\" as \"customer_count\"
 FROM
-    loon
+    cuckoo
 WHERE
-    loon.\"customer_count\" >= 10 and loon.\"store_sales_date_year\" = 2001 and loon.\"store_sales_date_month_of_year\" = 1 and loon.\"store_sales_item_current_price\" > 1.2 * loon.\"_virtual_6264207893106521\" and loon.\"item_category\" is not null
+    cuckoo.\"customer_count\" >= 10 and cuckoo.\"store_sales_date_year\" = 2001 and cuckoo.\"store_sales_date_month_of_year\" = 1 and cuckoo.\"store_sales_item_current_price\" > 1.2 * cuckoo.\"_virtual_6264207893106521\" and cuckoo.\"item_category\" is not null
 
 GROUP BY 
-    loon.\"store_sales_customer_state\",
-    loon.\"customer_count\"
+    cuckoo.\"store_sales_customer_state\",
+    cuckoo.\"customer_count\"
 ORDER BY 
-    loon.\"customer_count\" asc nulls first,
-    loon.\"store_sales_customer_state\" asc nulls first"""
+    cuckoo.\"customer_count\" asc nulls first,
+    cuckoo.\"store_sales_customer_state\" asc nulls first"""

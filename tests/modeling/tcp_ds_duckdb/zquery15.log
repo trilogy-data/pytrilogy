@@ -1,12 +1,12 @@
 query_id = 15
-parse_time = 4.560962
-exec_time = 0.508712
-comp_time = 0.266375
-gen_length = 2914
+parse_time = 4.083697
+exec_time = 0.486484
+comp_time = 0.327985
+gen_length = 2915
 generated_sql = """
 
 WITH 
-lynx as (
+tenuous as (
 SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"catalog_sales_bill_customer_address_id\",
     customers.\"C_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -15,7 +15,7 @@ SELECT
 FROM
     memory.customer_address as customer_address
     INNER JOIN memory.customer as customers on customer_address.\"CA_ADDRESS_SK\" = customers.\"C_CURRENT_ADDR_SK\"),
-kaput as (
+helpless as (
 SELECT
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
@@ -27,42 +27,42 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"),
-divergent as (
+magpie as (
 SELECT
-    kaput.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
-    kaput.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
-    kaput.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
-    lynx.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
-    lynx.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    kaput.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    kaput.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+    helpless.\"catalog_sales_sales_price\" as \"catalog_sales_sales_price\",
+    helpless.\"catalog_sales_date_quarter\" as \"catalog_sales_date_quarter\",
+    helpless.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    tenuous.\"catalog_sales_bill_customer_state\" as \"catalog_sales_bill_customer_state\",
+    tenuous.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    helpless.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
+    helpless.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
-    lynx
-    LEFT OUTER JOIN kaput on lynx.\"catalog_sales_bill_customer_id\" = kaput.\"catalog_sales_bill_customer_id\"),
-cougar as (
+    helpless
+    INNER JOIN tenuous on helpless.\"catalog_sales_bill_customer_id\" = tenuous.\"catalog_sales_bill_customer_id\"),
+python as (
 SELECT
-    CASE WHEN divergent.\"catalog_sales_date_quarter\" = 2 and divergent.\"catalog_sales_date_year\" = 2001 and ( divergent.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or divergent.\"catalog_sales_sales_price\" > 500 or SUBSTRING(divergent.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN divergent.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
-    divergent.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    divergent.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
-    divergent.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
+    CASE WHEN magpie.\"catalog_sales_date_quarter\" = 2 and magpie.\"catalog_sales_date_year\" = 2001 and ( magpie.\"catalog_sales_bill_customer_state\" in ( 'CA','WA','GA' ) or magpie.\"catalog_sales_sales_price\" > 500 or SUBSTRING(magpie.\"catalog_sales_bill_customer_zip\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) ) THEN magpie.\"catalog_sales_sales_price\" ELSE NULL END as \"relevant_sales\",
+    magpie.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    magpie.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
+    magpie.\"catalog_sales_item_id\" as \"catalog_sales_item_id\"
 FROM
-    divergent),
-juicy as (
+    magpie),
+swift as (
 SELECT
-    sum(cougar.\"relevant_sales\") as \"sales\",
-    cougar.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
+    sum(python.\"relevant_sales\") as \"sales\",
+    python.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\"
 FROM
-    cougar
+    python
 GROUP BY 
-    cougar.\"catalog_sales_bill_customer_zip\")
+    python.\"catalog_sales_bill_customer_zip\")
 SELECT
-    juicy.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    juicy.\"sales\" as \"sales\"
+    swift.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    swift.\"sales\" as \"sales\"
 FROM
-    juicy
+    swift
 WHERE
-    juicy.\"sales\" is not null
+    swift.\"sales\" is not null
 
 ORDER BY 
-    juicy.\"catalog_sales_bill_customer_zip\" asc nulls first
+    swift.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""
