@@ -2395,10 +2395,6 @@ class QueryDatasource(BaseModel):
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
             )
-        if not self.source_type == other.source_type:
-            raise SyntaxError(
-                "Can only merge two query datasources with identical source type"
-            )
         if not self.group_required == other.group_required:
             raise SyntaxError(
                 "can only merge two datasources if the group required flag is the same"
