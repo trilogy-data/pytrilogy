@@ -339,6 +339,16 @@ def IsNull(args: list[Concept]) -> Function:
         # output_grain=Grain(components=arguments),
     )
 
+def Bool(args: list[Concept]) -> Function:
+    return Function(
+        operator=FunctionType.BOOL,
+        arguments=args,
+        output_datatype=DataType.BOOL,
+        output_purpose=function_args_to_output_purpose(args),
+        arg_count=1,
+        # output_grain=Grain(components=arguments),
+    )
+
 
 def StrPos(args: list[Concept]) -> Function:
     return Function(

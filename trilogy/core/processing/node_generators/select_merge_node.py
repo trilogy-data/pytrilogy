@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from trilogy.core.models import Concept, Environment, Conditional, WhereClause
+from trilogy.core.models import Concept, Environment, Conditional, WhereClause, Grain, Datasource
 from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
 import networkx as nx
 from trilogy.core.graph_models import concept_to_node
@@ -12,7 +12,7 @@ from networkx.algorithms import approximation as ax
 from trilogy.core.enums import PurposeLineage
 
 
-LOGGER_PREFIX = "[GEN_MERGE_NODE]"
+LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 AMBIGUITY_CHECK_LIMIT = 20
 
 
@@ -237,8 +237,16 @@ def resolve_weak_components(
                 if node in search_graph:
                     search_graph.remove_node(node)
             # TODO: figure out better place for debugging
-            # from trilogy.hooks.graph_hook import GraphHook
-            # GraphHook().query_graph_built(g, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
+            from trilogy.hooks.graph_hook import GraphHook
+
+            GraphHook().query_graph_built(
+                g,
+                highlight_nodes=[
+                    concept_to_node(c.with_default_grain())
+                    for c in all_concepts
+                    if "__preql_internal" not in c.address
+                ],
+            )
             found.append(g)
             reduced_concept_sets.append(new_addresses)
 
@@ -325,12 +333,149 @@ def subgraphs_to_merge_node(
         parents=parents,
         depth=depth,
         conditions=conditions,
-        preexisting_conditions=search_conditions,
         # node_joins=[]
     )
 
 
-def gen_merge_node(
+def create_pruned_concept_graph(
+    g: nx.DiGraph, all_concepts: List[Concept], accept_partial : bool = False
+) -> nx.DiGraph:
+    target_addresses = set([c.address for c in all_concepts])
+    concepts: dict[str, Concept] = nx.get_node_attributes(g, "concept")
+    datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
+    relevant_concepts = [
+        n
+        for n in g.nodes()
+        if (x := concepts.get(n, None)) and x.address in target_addresses
+    ]
+    relevent_datasets = [
+    ]
+    for n in g.nodes():
+        if not n.startswith("ds~"):
+            continue
+        potential_neighbors = [x  for x in relevant_concepts if x in (nx.all_neighbors(g, n))]
+        if not accept_partial:
+            partial = [concept_to_node(c) for c in datasources[n].partial_concepts]
+            actual_neighbors = [x for x in potential_neighbors if x not in partial ]
+        else:
+            actual_neighbors = potential_neighbors
+        if actual_neighbors:
+            relevent_datasets.append(n)
+    for n in g.nodes():
+        if n.startswith("c~") and n not in relevant_concepts:
+            neighbor_count = 0
+            for x in nx.all_neighbors(g, n):
+                if x in relevent_datasets:
+                    neighbor_count += 1
+            if neighbor_count > 1:
+                relevant_concepts.append(concepts.get(n))
+    final = g.copy()
+    final.remove_nodes_from(
+        [
+            n
+            for n in g.nodes()
+            if n not in relevent_datasets and n not in relevant_concepts
+        ]
+    )
+    return final
+
+
+def resolve_subgraphs(g: nx.DiGraph)->dict[str, list[str]]:
+    datasources = [n for n in g.nodes if n.startswith("ds~")]
+    # minimum spanning graph
+    return {ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources}
+
+
+def create_select_node(
+    ds_name:str,
+    subgraph: list[str],
+    accept_partial: bool,
+    g,
+    environment: Environment,
+    depth: int,
+) -> StrategyNode:
+    from trilogy.core.processing.node_generators.select_node import (
+        gen_select_node_from_table, ConstantNode, LooseConceptList, SelectNode,
+        GroupNode
+    )
+    ds_name = ds_name.split('~')[1]
+    all_concepts = [
+        environment.concepts[extract_address(c)] for c in subgraph if c.startswith("c~")
+    ]
+
+    all_lcl = LooseConceptList(concepts=all_concepts)
+    if all([c.derivation == PurposeLineage.CONSTANT for c in all_concepts]):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
+        )
+        return ConstantNode(
+            output_concepts=all_concepts,
+            input_concepts=[],
+            environment=environment,
+            g=g,
+            parents=[],
+            depth=depth,
+            # no partial for constants
+            partial_concepts=[],
+            force_group=False,
+        )
+    candidates: dict[str, StrategyNode] = {}
+    scores: dict[str, int] = {}
+    # otherwise, we need to look for a table
+    nodes_to_find = [concept_to_node(x.with_default_grain()) for x in all_concepts]
+    datasource = environment.datasources[ds_name]
+    target_grain = Grain(components=all_concepts)
+    force_group = False
+    if not datasource.grain.issubset(target_grain):
+        force_group = True
+    partial_concepts = [
+        c.concept
+        for c in datasource.columns
+        if not c.is_complete and c.concept in all_lcl
+    ]
+    partial_lcl = LooseConceptList(concepts=partial_concepts)
+    nullable_concepts = [
+        c.concept
+        for c in datasource.columns
+        if c.is_nullable and c.concept in all_lcl
+    ]
+    nullable_lcl = LooseConceptList(concepts=nullable_concepts)
+
+    bcandidate: StrategyNode = SelectNode(
+        input_concepts=[c.concept for c in datasource.columns],
+        output_concepts=all_concepts,
+        environment=environment,
+        g=g,
+        parents=[],
+        depth=depth,
+        partial_concepts=[c for c in all_concepts if c in partial_lcl],
+        nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
+        accept_partial=accept_partial,
+        datasource=datasource,
+        grain=Grain(components=all_concepts),
+        conditions=datasource.where.conditional if datasource.where else None,
+    )
+
+    # we need to nest the group node one further
+    if force_group is True:
+        candidate: StrategyNode = GroupNode(
+            output_concepts=all_concepts,
+            input_concepts=all_concepts,
+            environment=environment,
+            g=g,
+            parents=[bcandidate],
+            depth=depth,
+            partial_concepts=bcandidate.partial_concepts,
+            nullable_concepts=bcandidate.nullable_concepts,
+        )
+    else:
+        candidate = bcandidate
+    return candidate
+
+
+
+
+def gen_select_merge_node(
     all_concepts: List[Concept],
     g: nx.DiGraph,
     environment: Environment,
@@ -341,47 +486,40 @@ def gen_merge_node(
     conditions: Conditional | None = None,
     search_conditions: WhereClause | None = None,
 ) -> Optional[MergeNode]:
+    for attempt in [False, True]:
+        pruned_concept_graph = create_pruned_concept_graph(g, all_concepts, attempt)
+        subgraphs = list(nx.connected_components(pruned_concept_graph.to_undirected()))
+        if subgraphs and len(subgraphs) ==1:
+            break
+    if len(subgraphs) > 1:
+        # from trilogy.hooks.graph_hook import GraphHook
+        # GraphHook().query_graph_built(pruned_concept_graph, highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
+        # raise SyntaxError(f'Too many subgraphs found for {[c.address for c in all_concepts]}: got {subgraphs}')
+        return None
 
-    for filter_downstream in [True, False]:
-        weak_resolve = resolve_weak_components(
-            all_concepts,
-            environment,
-            g,
-            filter_downstream=filter_downstream,
-            accept_partial=accept_partial,
-        )
-        if weak_resolve:
-            log_graph = [[y.address for y in x] for x in weak_resolve]
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
-            )
-            return subgraphs_to_merge_node(
-                weak_resolve,
-                depth=depth,
-                all_concepts=all_concepts,
-                environment=environment,
+    sub_nodes = resolve_subgraphs(pruned_concept_graph)
+
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
+    parents = [
+            create_select_node(
+                k,
+                subgraph,
                 g=g,
-                source_concepts=source_concepts,
-                history=history,
-                conditions=conditions,
-                search_conditions=search_conditions,
-            )
-    # one concept handling may need to be kicked to alias
-    if len(all_concepts) == 1:
-        concept = all_concepts[0]
-        for k, v in concept.pseudonyms.items():
-            test = subgraphs_to_merge_node(
-                [[concept, v]],
-                g=g,
-                all_concepts=[concept],
+                accept_partial=accept_partial,
                 environment=environment,
                 depth=depth,
-                source_concepts=source_concepts,
-                history=history,
-                conditions=conditions,
-                enable_early_exit=False,
-                search_conditions=search_conditions,
             )
-            if test:
-                return test
-    return None
+            for k, subgraph in sub_nodes.items()
+        ]
+    if not parents:
+        return None
+    elif len(parents) == 1:
+        return parents[0]
+    return MergeNode(
+        output_concepts=all_concepts,
+        input_concepts=[c for c in all_concepts],
+        environment=environment,
+        g=g,
+        depth=depth,
+        parents=parents,
+    )

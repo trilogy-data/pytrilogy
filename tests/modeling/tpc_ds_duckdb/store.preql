@@ -15,6 +15,7 @@ property id.county string;
 property id.state string;
 property id.city string;
 property id.zip string;
+property id.market int;
 
 datasource store (
     S_STORE_SK: id,
@@ -33,6 +34,7 @@ datasource store (
     S_STATE: state,
     S_COUNTY: county,
     S_ZIP: zip,
+    S_MARKET_ID: market,
 )
 grain (id)
 address memory.store;

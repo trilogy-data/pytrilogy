@@ -1,0 +1,106 @@
+query_id = 7
+parse_time = 3.22163
+exec_time = 0.842446
+comp_time = 0.29308
+gen_length = 5352
+generated_sql = """
+
+WITH 
+macho as (
+SELECT
+    store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\",
+    store_sales.\"SS_QUANTITY\" as \"store_sales_quantity\",
+    store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
+    store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
+    store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\",
+    store_sales.\"SS_PROMO_SK\" as \"store_sales_promotion_id\"
+FROM
+    memory.store_sales as store_sales
+GROUP BY 
+    store_sales.\"SS_PROMO_SK\",
+    store_sales.\"SS_CDEMO_SK\",
+    store_sales.\"SS_SALES_PRICE\",
+    store_sales.\"SS_ITEM_SK\",
+    store_sales.\"SS_COUPON_AMT\",
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_QUANTITY\",
+    store_sales.\"SS_LIST_PRICE\"),
+viper as (
+SELECT
+    macho.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
+    customer_demographics.\"CD_MARITAL_STATUS\" as \"store_sales_customer_demographic_marital_status\",
+    customer_demographics.\"CD_EDUCATION_STATUS\" as \"store_sales_customer_demographic_education_status\",
+    promotion.\"P_CHANNEL_EMAIL\" as \"store_sales_promotion_channel_email\",
+    promotion.\"P_CHANNEL_EVENT\" as \"store_sales_promotion_channel_event\",
+    cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
+    customer_demographics.\"CD_DEMO_SK\" as \"store_sales_customer_demographic_id\",
+    date.\"D_DATE_SK\" as \"store_sales_date_id\",
+    items.\"I_ITEM_SK\" as \"store_sales_item_id\",
+    items.\"I_ITEM_ID\" as \"store_sales_item_name\",
+    macho.\"store_sales_list_price\" as \"store_sales_list_price\",
+    promotion.\"P_PROMO_SK\" as \"store_sales_promotion_id\",
+    macho.\"store_sales_quantity\" as \"store_sales_quantity\",
+    macho.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+FROM
+    macho
+    INNER JOIN memory.item as items on macho.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.customer_demographics as customer_demographics on macho.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
+    INNER JOIN memory.date_dim as date on macho.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.promotion as promotion on macho.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
+WHERE
+    customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
+),
+yummy as (
+SELECT
+    viper.\"store_sales_item_name\" as \"store_sales_item_name\",
+    viper.\"store_sales_customer_demographic_gender\" as \"store_sales_customer_demographic_gender\",
+    viper.\"store_sales_customer_demographic_marital_status\" as \"store_sales_customer_demographic_marital_status\",
+    viper.\"store_sales_customer_demographic_education_status\" as \"store_sales_customer_demographic_education_status\",
+    viper.\"store_sales_promotion_channel_email\" as \"store_sales_promotion_channel_email\",
+    viper.\"store_sales_promotion_channel_event\" as \"store_sales_promotion_channel_event\",
+    viper.\"store_sales_date_year\" as \"store_sales_date_year\",
+    viper.\"store_sales_quantity\" as \"store_sales_quantity\",
+    viper.\"store_sales_list_price\" as \"store_sales_list_price\",
+    viper.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    viper.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+FROM
+    viper
+WHERE
+    viper.\"store_sales_customer_demographic_gender\" = 'M' and viper.\"store_sales_customer_demographic_marital_status\" = 'S' and viper.\"store_sales_customer_demographic_education_status\" = 'College' and ( viper.\"store_sales_promotion_channel_email\" = 'N' or viper.\"store_sales_promotion_channel_event\" = 'N' ) and viper.\"store_sales_date_year\" = 2000
+),
+brave as (
+SELECT
+    yummy.\"store_sales_item_name\" as \"store_sales_item_name\",
+    yummy.\"store_sales_quantity\" as \"store_sales_quantity\",
+    yummy.\"store_sales_list_price\" as \"store_sales_list_price\",
+    yummy.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    yummy.\"store_sales_sales_price\" as \"store_sales_sales_price\",
+    yummy.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    yummy.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
+    yummy.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
+    yummy.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
+    yummy.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
+FROM
+    yummy
+GROUP BY 
+    yummy.\"store_sales_item_name\",
+    yummy.\"store_sales_coupon_amt\",
+    yummy.\"store_sales_quantity\",
+    yummy.\"store_sales_sales_price\",
+    yummy.\"store_sales_list_price\")
+SELECT
+    brave.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    avg(brave.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
+    avg(brave.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
+    avg(brave.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
+    avg(brave.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
+FROM
+    brave
+GROUP BY 
+    brave.\"filtered_sales_store_sales_item_name\"
+ORDER BY 
+    brave.\"filtered_sales_store_sales_item_name\" asc
+LIMIT (100)"""

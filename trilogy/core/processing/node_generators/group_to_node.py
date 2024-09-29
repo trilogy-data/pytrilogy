@@ -1,4 +1,4 @@
-from trilogy.core.models import Concept, Environment, Function
+from trilogy.core.models import Concept, Environment, Function, WhereClause
 from trilogy.core.processing.nodes import (
     GroupNode,
     StrategyNode,
@@ -21,6 +21,7 @@ def gen_group_to_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, Function):
@@ -36,6 +37,7 @@ def gen_group_to_node(
             g=g,
             depth=depth + 1,
             history=history,
+            conditions=conditions,
         )
     ]
 

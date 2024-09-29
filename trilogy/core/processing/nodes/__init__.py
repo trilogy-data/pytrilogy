@@ -147,6 +147,7 @@ class History(BaseModel):
             accept_partial_optional=accept_partial_optional,
             source_concepts=source_concepts,
             conditions=conditions,
+            history=self,
         )
         self.select_history[fingerprint] = gen
         return gen

@@ -1,10 +1,13 @@
 import item as item;
 import date as date;
+import date as return_date;
 import time as time;
+import time as return_time;
 import customer as customer;
 import promotion as promotion;
 import customer_demographic as customer_demographic;
 import store as store;
+
 
 
 key ticket_number int;
@@ -17,8 +20,12 @@ property <ticket_number,item.id>.ext_list_price float;
 property <ticket_number,item.id>.ext_discount_amount float;
 property <ticket_number,item.id>.coupon_amt float;
 property <ticket_number,item.id>.net_profit float;
+property <ticket_number,item.id>.is_returned bool;
+property <ticket_number,item.id>.net_paid float;
 
 auto profit <- ext_list_price - ext_wholesale_cost - ext_discount_amount + ext_sales_price;
+
+
 
 datasource store_sales (
     SS_SOLD_DATE_SK: date.id,
@@ -38,7 +45,25 @@ datasource store_sales (
     SS_QUANTITY: quantity,
     SS_COUPON_AMT: coupon_amt,
     SS_STORE_SK: store.id,
+    SS_NET_PAID: net_paid,
 )
 grain (ticket_number, item.id)
 address memory.store_sales
 ;
+
+
+property <ticket_number, item.id>.return_amount float?;
+
+datasource store_returns(
+    SR_RETURNED_DATE_SK: return_date.id,
+    SR_RETURN_TIME_SK: return_time.id,
+    SR_ITEM_SK: ~item.id,
+    SR_CUSTOMER_SK: ~customer.id,
+    SR_RETURN_AMT: return_amount,
+    SR_TICKET_NUMBER: ~ticket_number,
+    SR_STORE_SK: ~store.id,
+    # capture if there's a row in this table
+    bool(return_time.id): is_returned,
+)
+grain (ticket_number, item.id)
+address memory.store_returns;

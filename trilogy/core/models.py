@@ -1555,6 +1555,9 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
             items=[x.with_merge(source, target, modifiers) for x in self.items]
         )
 
+    @property
+    def concept_arguments(self):
+        return [x.expr for x in self.items]
 
 class RawSQLStatement(BaseModel):
     text: str
@@ -2255,13 +2258,11 @@ class BaseJoin(BaseModel):
     def __str__(self):
         if self.concept_pairs:
             return (
-                f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
-                f" {self.right_datasource.identifier} on"
+                f"{self.join_type.value} on"
                 f" {','.join([str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
             )
         return (
-            f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
-            f" {self.right_datasource.identifier} on"
+            f"{self.join_type.value} on"
             f" {','.join([str(k) for k in self.concepts])}"
         )
 
@@ -2395,10 +2396,6 @@ class QueryDatasource(BaseModel):
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
             )
-        if not self.source_type == other.source_type:
-            raise SyntaxError(
-                "Can only merge two query datasources with identical source type"
-            )
         if not self.group_required == other.group_required:
             raise SyntaxError(
                 "can only merge two datasources if the group required flag is the same"
@@ -2438,7 +2435,7 @@ class QueryDatasource(BaseModel):
         self_hidden = self.hidden_concepts or []
         other_hidden = other.hidden_concepts or []
         hidden = [
-            x for x in self_hidden if x.address in [y.address for y in other_hidden]
+            x for x in self_hidden if x.address in other_hidden
         ]
         qds = QueryDatasource(
             input_concepts=unique(
@@ -2609,7 +2606,7 @@ class CTE(BaseModel):
 
     @property
     def comment(self) -> str:
-        base = f"Target: {str(self.grain)}."
+        base = f"Target: {str(self.grain)}. Group: {self.group_to_grain}"
         base += f" Source: {self.source.source_type}."
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
@@ -2697,7 +2694,7 @@ class CTE(BaseModel):
             raise ValueError(error)
         mutually_hidden = []
         for concept in self.hidden_concepts:
-            if concept in other.hidden_concepts:
+            if concept.address in other.hidden_concepts:
                 mutually_hidden.append(concept)
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"

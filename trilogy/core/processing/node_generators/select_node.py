@@ -15,6 +15,7 @@ from trilogy.core.processing.nodes import (
     MergeNode,
     GroupNode,
     ConstantNode,
+    History,
 )
 from trilogy.core.exceptions import NoDatasourceException
 import networkx as nx
@@ -250,7 +251,7 @@ def gen_select_node_from_table(
     environment: Environment,
     depth: int,
     target_grain: Grain,
-    source_concepts,
+    source_concepts = None,
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
 ) -> Optional[StrategyNode]:
@@ -335,7 +336,7 @@ def gen_select_node_from_table(
         nullable_lcl = LooseConceptList(concepts=nullable_concepts)
         if not accept_partial and target_concept in partial_lcl:
             continue
-        logger.info(
+        logger.debug(
             f"{padding(depth)}{LOGGER_PREFIX} target grain is {str(target_grain)}"
         )
         if target_grain and target_grain.issubset(datasource.grain):
@@ -344,7 +345,7 @@ def gen_select_node_from_table(
                 all([x in all_lcl for x in target_grain.components])
                 and target_grain == datasource.grain
             ):
-                logger.info(
+                logger.debug(
                     f"{padding(depth)}{LOGGER_PREFIX} target grain components match all lcl, group to false"
                 )
                 force_group = False
@@ -415,6 +416,7 @@ def gen_select_node(
     g,
     depth: int,
     source_concepts,
+    history: History,
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
     accept_partial_optional: bool = True,
@@ -445,7 +447,20 @@ def gen_select_node(
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")
         return None
+    from trilogy.core.processing.node_generators.select_merge_node import (
+            gen_select_merge_node
+        )
 
+    return gen_select_merge_node(
+        [concept] + local_optional,
+        g=g,
+        environment=environment,
+        depth=depth,
+        source_concepts=source_concepts,
+        accept_partial=accept_partial,
+        history=history,
+        search_conditions=conditions,
+    )
     ds: StrategyNode | None = None
 
     # attempt to select all concepts from table
@@ -544,7 +559,21 @@ def gen_select_node(
         return candidate
 
     if not accept_partial_optional:
-        return None
+        from trilogy.core.processing.node_generators.select_merge_node import (
+            gen_select_merge_node
+        )
+
+        return gen_select_merge_node(
+            [concept] + local_optional,
+            g=g,
+            environment=environment,
+            depth=depth,
+            source_concepts=source_concepts,
+            accept_partial=accept_partial,
+            history=history,
+            search_conditions=conditions,
+        )
+        # return None
     ds = gen_select_node_from_table(
         concept,
         [concept],

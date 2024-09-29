@@ -6,6 +6,7 @@ property id.text_id string;
 property id.last_name string;
 property id.first_name string;
 property id.preferred_cust_flag string;
+property id.birth_country string;
 
 key address_id int;
 property address_id.address_id_string string;
@@ -14,7 +15,7 @@ property address_id.city string;
 property address_id.state string?;
 property address_id.zip string;
 property address_id.county string;
-
+property address_id.country string;
 
 
 datasource customers (
@@ -24,7 +25,8 @@ datasource customers (
     C_FIRST_NAME: first_name,
     C_CURRENT_ADDR_SK: address_id,
     C_CURRENT_CDEMO_SK: demographics.id,
-    C_PREFERRED_CUST_FLAG: preferred_cust_flag
+    C_PREFERRED_CUST_FLAG: preferred_cust_flag,
+    C_BIRTH_COUNTRY: birth_country,
 )
 grain (id)
 address memory.customer;
@@ -37,6 +39,7 @@ datasource customer_address(
     CA_STATE: state,
     CA_ZIP: zip,
     CA_COUNTY: county,
+    CA_COUNTRY:country,
 )
 grain (address_id)
 address memory.customer_address;

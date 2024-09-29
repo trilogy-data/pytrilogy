@@ -3,6 +3,7 @@ from typing import List
 
 from trilogy.core.models import (
     Concept,
+    WhereClause
 )
 from trilogy.core.processing.nodes import StrategyNode, History
 from trilogy.core.processing.node_generators.common import (
@@ -24,6 +25,7 @@ def gen_basic_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None
 ):
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept)
@@ -32,10 +34,6 @@ def gen_basic_node(
         f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}"
     )
 
-    local_optional_redundant = [x for x in local_optional if x in parent_concepts]
-    attempts: List[tuple[list[Concept], list[Concept]]] = [
-        (parent_concepts, [concept] + local_optional_redundant)
-    ]
     equivalent_optional = [
         x
         for x in local_optional
@@ -44,56 +42,34 @@ def gen_basic_node(
     non_equivalent_optional = [
         x for x in local_optional if x not in equivalent_optional
     ]
-
-    if local_optional:
-        for combo in range(1, len(non_equivalent_optional) + 1):
-            combos = combinations(non_equivalent_optional, combo)
-            for optional_set in combos:
-                attempts.append(
-                    (
-                        unique(parent_concepts + list(optional_set), "address"),
-                        list(optional_set) + [concept],
-                    )
-                )
-    # check for the concept by itself
-    for attempt, basic_output in reversed(attempts):
-        partials = []
-        attempt = unique(attempt, "address")
-        parent_node: StrategyNode = source_concepts(
-            mandatory_list=attempt,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            history=history,
-        )
-
-        if not parent_node:
-            continue
-        parent_node.source_type = SourceType.BASIC
-        parents: List[StrategyNode] = [parent_node]
-        for x in basic_output:
-            sources = [p for p in parents if x in p.output_concepts]
-            if not sources:
-                continue
-            if all(x in source.partial_concepts for source in sources):
-                partials.append(x)
-
-        parent_node.add_output_concept(concept)
-        for x in equivalent_optional:
-            parent_node.add_output_concept(x)
-
-        parent_node.remove_output_concepts(
-            [
-                x
-                for x in parent_node.output_concepts
-                if x.address not in [y.address for y in basic_output]
-            ]
-        )
+    parent_node: StrategyNode = source_concepts(
+                mandatory_list=parent_concepts + non_equivalent_optional,
+                environment=environment,
+                g=g,
+                depth=depth + 1,
+                history=history,
+                conditions=conditions
+            )
+    if not parent_node:
         logger.info(
-            f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept} with attempted extra {[x.address for x in attempt]}, output {[x.address for x in parent_node.output_concepts]}"
+            f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
         )
-        return parent_node
-    logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
+        return None
+
+    parent_node.source_type = SourceType.BASIC
+    parent_node.add_output_concept(concept)
+    for x in equivalent_optional:
+        parent_node.add_output_concept(x)
+
+    parent_node.remove_output_concepts(
+        [
+            x
+            for x in parent_node.output_concepts
+            if x.address not in [concept]+local_optional
+        ]
     )
-    return None
+
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
+    )
+    return parent_node

@@ -1,0 +1,90 @@
+query_id = 1
+parse_time = 2.540118
+exec_time = 0.249472
+comp_time = 0.367166
+gen_length = 3345
+generated_sql = """
+
+WITH 
+deeply as (
+SELECT
+    store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount_filter_4615171403231435\",
+    store.\"S_STATE\" as \"returns_store_state\",
+    cast(\"D_YEAR\" as int) as \"returns_return_date_year\",
+    store.\"S_STORE_SK\" as \"returns_store_id\",
+    customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
+    store_returns.\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
+    store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
+FROM
+    memory.store_returns as store_returns
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
+WHERE
+    store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
+),
+obsolete as (
+SELECT
+    deeply.\"returns_return_amount_filter_4615171403231435\" as \"returns_return_amount_filter_4615171403231435\",
+    deeply.\"returns_store_id\" as \"returns_store_id\",
+    deeply.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    deeply.\"returns_store_sales_ticket_number\" as \"returns_store_sales_ticket_number\",
+    deeply.\"returns_item_id\" as \"returns_item_id\",
+    deeply.\"returns_store_state\" as \"returns_store_state\",
+    deeply.\"returns_return_date_year\" as \"returns_return_date_year\"
+FROM
+    deeply),
+wary as (
+SELECT
+    sum(obsolete.\"returns_return_amount_filter_4615171403231435\") as \"total_returns\",
+    obsolete.\"returns_store_id\" as \"returns_store_id\",
+    obsolete.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+FROM
+    obsolete
+GROUP BY 
+    obsolete.\"returns_store_id\",
+    obsolete.\"returns_customer_text_id\"),
+goldfinch as (
+SELECT
+    wary.\"returns_customer_text_id\" as \"returns_customer_text_id\",
+    wary.\"returns_store_id\" as \"returns_store_id\",
+    wary.\"total_returns\" as \"total_returns\",
+    wary.\"returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
+    wary.\"returns_store_id\" as \"tn_2000_returns_store_id\",
+    wary.\"total_returns\" as \"tn_2000_total_returns\"
+FROM
+    wary
+GROUP BY 
+    wary.\"returns_customer_text_id\",
+    wary.\"total_returns\",
+    wary.\"returns_store_id\"),
+cockatiel as (
+SELECT
+    avg(goldfinch.\"tn_2000_total_returns\") as \"avg_store_returns\",
+    goldfinch.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\"
+FROM
+    goldfinch
+GROUP BY 
+    goldfinch.\"tn_2000_returns_store_id\"),
+vulture as (
+SELECT
+    goldfinch.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
+    goldfinch.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\",
+    goldfinch.\"tn_2000_total_returns\" as \"tn_2000_total_returns\",
+    cockatiel.\"avg_store_returns\" as \"avg_store_returns\"
+FROM
+    goldfinch
+    LEFT OUTER JOIN cockatiel on (goldfinch.\"tn_2000_returns_store_id\" = cockatiel.\"tn_2000_returns_store_id\" or (goldfinch.\"tn_2000_returns_store_id\" is null and cockatiel.\"tn_2000_returns_store_id\" is null))
+WHERE
+    goldfinch.\"tn_2000_total_returns\" > ( 1.2 * cockatiel.\"avg_store_returns\" )
+)
+SELECT
+    vulture.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\"
+FROM
+    vulture
+GROUP BY 
+    vulture.\"tn_2000_returns_customer_text_id\",
+    vulture.\"tn_2000_returns_store_id\"
+ORDER BY 
+    vulture.\"tn_2000_returns_customer_text_id\" asc
+LIMIT (100)"""

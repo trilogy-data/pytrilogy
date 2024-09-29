@@ -37,6 +37,7 @@ def gen_filter_node(
     where = concept.lineage.where
 
     optional_included: list[Concept] = []
+  
     for x in local_optional:
         if isinstance(x.lineage, FilterItem):
             if concept.lineage.where == where:
@@ -45,6 +46,9 @@ def gen_filter_node(
                 )
                 parent_row_concepts.append(x.lineage.content)
                 optional_included.append(x)
+                continue
+        if conditions and conditions == where:
+            optional_included.append(x)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
@@ -55,7 +59,7 @@ def gen_filter_node(
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        # conditions=conditions,
     )
 
     flattened_existence = [x for y in parent_existence_concepts for x in y]
@@ -127,13 +131,12 @@ def gen_filter_node(
         expected_output = [concept] + [
             x
             for x in local_optional
-            if x.address in [y.address for y in parent.output_concepts]
-            or x.address in [y.address for y in optional_included]
+            if x.address in [y for y in parent.output_concepts]
+            or x.address in [y for y in optional_included]
         ]
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
-        parent.add_existence_concepts(flattened_existence)
-        parent.set_output_concepts(expected_output)
+        parent.add_existence_concepts(flattened_existence, False).set_output_concepts(expected_output, False)
         parent.grain = Grain(
             components=(
                 list(immediate_parent.keys)
@@ -167,26 +170,26 @@ def gen_filter_node(
             grain=Grain(
                 components=[immediate_parent] + parent_row_concepts,
             ),
+            preexisting_conditions=conditions.conditional if conditions else None,
         )
 
     if not local_optional or all(
         [
-            x.address in [y.address for y in filter_node.output_concepts]
+            x.address in filter_node.output_concepts
             for x in local_optional
         ]
     ):
-        outputs = [
+        optional_outputs = [
             x
             for x in filter_node.output_concepts
-            if x.address in [y.address for y in local_optional]
+            if x.address in local_optional
         ]
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node"
+            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
-        filter_node.output_concepts = [
+        filter_node.set_output_concepts([
             concept,
-        ] + outputs
-        filter_node.rebuild_cache()
+        ] + optional_outputs)
         return filter_node
 
     enrich_node = source_concepts(  # this fetches the parent + join keys

@@ -13,15 +13,15 @@ merge web_sales.customer.id into ~customer.id;
 merge store_sales.customer.id into ~customer.id;
 
 auto relevant_customers <-  customer.id ?
-    store_sales.date.year = 2002 and store_sales.date.month_of_year in (1,2,3,4)
-    and ((web_sales.date.year = 2002 and web_sales.date.month_of_year in (1,2,3,4)) or (catalog_sales.date.year = 2002 and catalog_sales.date.month_of_year in (1,2,3,4)))
-    and customer.county in (
+    store_sales.date.year = 2002 and store_sales.date.month_of_year in (1,2,3,4) and customer.county in (
     'Rush County',
     'Toole County',
     'Jefferson County',
     'Dona Ana County',
     'La Porte County',
-);
+)
+    and ((web_sales.date.year = 2002 and web_sales.date.month_of_year in (1,2,3,4)) or (catalog_sales.date.year = 2002 and catalog_sales.date.month_of_year in (1,2,3,4) ) )
+    ;
 
 with base as select 
     customer.id,
@@ -59,8 +59,6 @@ SELECT
     base.customer.demographics.college_dependent_count,
             count(base.customer.id
      ) as cnt6
-WHERE
-    base.customer.demographics.gender is not null
 ORDER BY
     base.customer.demographics.gender asc,
     base.customer.demographics.marital_status asc,
@@ -70,6 +68,5 @@ ORDER BY
     base.customer.demographics.dependent_count asc,
     base.customer.demographics.employed_dependent_count asc,
     base.customer.demographics.college_dependent_count asc,
-
 ;
     

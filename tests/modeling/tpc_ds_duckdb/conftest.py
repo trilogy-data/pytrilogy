@@ -4,7 +4,7 @@ import pytest
 from trilogy.hooks.query_debugger import DebuggingHook
 from pathlib import Path
 from logging import INFO
-from tests.modeling.tcp_ds_duckdb.analyze_test_results import analyze
+from tests.modeling.tpc_ds_duckdb.analyze_test_results import analyze
 
 working_path = Path(__file__).parent
 

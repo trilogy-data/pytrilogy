@@ -42,7 +42,7 @@ def gen_window_node(
 ) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
     parent_node = source_concepts(
-        mandatory_list=parent_concepts,
+        mandatory_list=parent_concepts+local_optional,
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -69,8 +69,8 @@ def gen_window_node(
         )
         raise SyntaxError
     _window_node = WindowNode(
-        input_concepts=parent_concepts,
-        output_concepts=[concept] + parent_concepts,
+        input_concepts=parent_concepts+local_optional,
+        output_concepts=[concept] + parent_concepts +local_optional,
         environment=environment,
         g=g,
         parents=[
@@ -89,8 +89,10 @@ def gen_window_node(
         grain=_window_node.grain,
         force_group=False,
         depth=depth,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
     window_node.resolve()
+    return window_node
     if not local_optional:
         return window_node
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node requires enrichment")

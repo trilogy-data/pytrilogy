@@ -41,7 +41,9 @@ class GroupNode(StrategyNode):
         nullable_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         existence_concepts: List[Concept] | None = None,
+        hidden_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -56,6 +58,8 @@ class GroupNode(StrategyNode):
             force_group=force_group,
             conditions=conditions,
             existence_concepts=existence_concepts,
+            preexisting_conditions=preexisting_conditions,
+            hidden_concepts=hidden_concepts,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -144,6 +148,7 @@ class GroupNode(StrategyNode):
             grain=grain,
             partial_concepts=self.partial_concepts,
             nullable_concepts=nullable_concepts,
+            hidden_concepts=self.hidden_concepts,
             condition=self.conditions,
         )
         # if there is a condition on a group node and it's not scalar
@@ -167,6 +172,7 @@ class GroupNode(StrategyNode):
                 nullable_concepts=base.nullable_concepts,
                 partial_concepts=self.partial_concepts,
                 condition=self.conditions,
+                            hidden_concepts=self.hidden_concepts,
             )
         return base
 
@@ -184,4 +190,5 @@ class GroupNode(StrategyNode):
             force_group=self.force_group,
             conditions=self.conditions,
             existence_concepts=list(self.existence_concepts),
+            hidden_concepts=list(self.hidden_concepts),
         )

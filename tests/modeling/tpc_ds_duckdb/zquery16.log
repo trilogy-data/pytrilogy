@@ -1,0 +1,102 @@
+query_id = 16
+parse_time = 5.448816
+exec_time = 0.81912
+comp_time = 2.425104
+gen_length = 4396
+generated_sql = """
+
+WITH 
+cooperative as (
+SELECT
+    catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
+FROM
+    memory.catalog_returns as catalog_returns
+GROUP BY 
+    catalog_returns.\"CR_ORDER_NUMBER\"),
+puffy as (
+SELECT
+    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+FROM
+    memory.catalog_sales as catalog_sales
+WHERE
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null)
+
+GROUP BY 
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_WAREHOUSE_SK\"),
+wary as (
+SELECT
+    count(puffy.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    puffy.\"cs_order_number\" as \"cs_order_number\"
+FROM
+    puffy
+GROUP BY 
+    puffy.\"cs_order_number\"),
+falcon as (
+SELECT
+    CASE WHEN wary.\"_agg_count_6430482449237259\" > 1 THEN wary.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+FROM
+    wary),
+serval as (
+SELECT
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
+    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\"
+FROM
+    memory.catalog_sales as catalog_sales
+WHERE
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select falcon.\"multi_warehouse_sales\" from falcon where falcon.\"multi_warehouse_sales\" is not null)
+
+GROUP BY 
+    catalog_sales.\"CS_SHIP_DATE_SK\",
+    catalog_sales.\"CS_CALL_CENTER_SK\",
+    catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\"),
+vast as (
+SELECT
+    catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost_filter_8122702087152882\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
+    catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit_filter_1663947654967995\"
+FROM
+    memory.catalog_sales as catalog_sales
+    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
+WHERE
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select falcon.\"multi_warehouse_sales\" from falcon where falcon.\"multi_warehouse_sales\" is not null)
+),
+deeply as (
+SELECT
+    serval.\"cs_order_number\" as \"cs_order_number_filter_929116887065743\"
+FROM
+    serval
+    INNER JOIN memory.customer_address as customer_address on serval.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.date_dim as date on serval.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as call_center on serval.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+WHERE
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and serval.\"cs_order_number\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and serval.\"cs_order_number\" in (select falcon.\"multi_warehouse_sales\" from falcon where falcon.\"multi_warehouse_sales\" is not null)
+),
+mandrill as (
+SELECT
+    sum(vast.\"cs_extra_ship_cost_filter_8122702087152882\") as \"total_shipping_cost\",
+    sum(vast.\"cs_net_profit_filter_1663947654967995\") as \"total_net_profit\"
+FROM
+    vast),
+cuckoo as (
+SELECT
+    count(distinct deeply.\"cs_order_number_filter_929116887065743\") as \"order_count\"
+FROM
+    deeply)
+SELECT
+    cuckoo.\"order_count\" as \"order_count\",
+    mandrill.\"total_shipping_cost\" as \"total_shipping_cost\",
+    mandrill.\"total_net_profit\" as \"total_net_profit\"
+FROM
+    cuckoo
+    FULL JOIN mandrill on 1=1
+ORDER BY 
+    cuckoo.\"order_count\" desc
+LIMIT (100)"""

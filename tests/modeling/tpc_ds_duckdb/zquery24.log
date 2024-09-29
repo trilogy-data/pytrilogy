@@ -1,0 +1,155 @@
+query_id = 24
+parse_time = 1.856582
+exec_time = 0.522178
+comp_time = 3.27034
+gen_length = 7694
+generated_sql = """
+
+WITH 
+quetzal as (
+SELECT
+    store_sales.\"SS_NET_PAID\" as \"store_sales_net_paid_filter_289564530842435\",
+    store.\"S_MARKET_ID\" as \"store_sales_store_market\",
+    customers.\"C_BIRTH_COUNTRY\" as \"store_sales_customer_birth_country\",
+    customer_address.\"CA_COUNTRY\" as \"store_sales_customer_country\",
+    CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
+    store.\"S_ZIP\" as \"store_sales_store_zip\",
+    customer_address.\"CA_ZIP\" as \"store_sales_customer_zip\",
+    items.\"I_COLOR\" as \"store_sales_item_color\",
+    items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    customers.\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
+    customers.\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
+    items.\"I_MANAGER_ID\" as \"store_sales_item_manager_id\",
+    store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    items.\"I_SIZE\" as \"store_sales_item_size\",
+    customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
+    store.\"S_STATE\" as \"store_sales_store_state\",
+    items.\"I_UNITS\" as \"store_sales_item_units\",
+    store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    items.\"I_ITEM_SK\" as \"store_sales_item_id\"
+FROM
+    memory.store_sales as store_sales
+    LEFT OUTER JOIN memory.store_returns as store_returns on store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\" AND store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\"
+    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
+WHERE
+    store.\"S_MARKET_ID\" = 8 and customers.\"C_BIRTH_COUNTRY\" != UPPER(customer_address.\"CA_COUNTRY\")  and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store.\"S_ZIP\" = customer_address.\"CA_ZIP\"
+),
+bewildered as (
+SELECT
+    sum(quetzal.\"store_sales_net_paid_filter_289564530842435\") as \"net_paid\",
+    quetzal.\"store_sales_item_color\" as \"store_sales_item_color\",
+    quetzal.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    quetzal.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    quetzal.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    quetzal.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
+    quetzal.\"store_sales_store_name\" as \"store_sales_store_name\",
+    quetzal.\"store_sales_item_size\" as \"store_sales_item_size\",
+    quetzal.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    quetzal.\"store_sales_store_state\" as \"store_sales_store_state\",
+    quetzal.\"store_sales_item_units\" as \"store_sales_item_units\"
+FROM
+    quetzal
+GROUP BY 
+    quetzal.\"store_sales_customer_last_name\",
+    quetzal.\"store_sales_item_color\",
+    quetzal.\"store_sales_store_state\",
+    quetzal.\"store_sales_item_manager_id\",
+    quetzal.\"store_sales_store_name\",
+    quetzal.\"store_sales_item_units\",
+    quetzal.\"store_sales_item_size\",
+    quetzal.\"store_sales_customer_state\",
+    quetzal.\"store_sales_item_current_price\",
+    quetzal.\"store_sales_customer_first_name\"),
+vulture as (
+SELECT
+    bewildered.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    bewildered.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    bewildered.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    bewildered.\"store_sales_store_state\" as \"store_sales_store_state\",
+    bewildered.\"store_sales_store_name\" as \"store_sales_store_name\",
+    bewildered.\"store_sales_item_color\" as \"store_sales_item_color\",
+    bewildered.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    bewildered.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
+    bewildered.\"store_sales_item_units\" as \"store_sales_item_units\",
+    bewildered.\"store_sales_item_size\" as \"store_sales_item_size\",
+    bewildered.\"net_paid\" as \"net_paid\",
+    bewildered.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    bewildered.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    bewildered.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
+    bewildered.\"store_sales_store_state\" as \"su_store_sales_store_state\",
+    bewildered.\"store_sales_store_name\" as \"su_store_sales_store_name\",
+    bewildered.\"store_sales_item_color\" as \"su_store_sales_item_color\",
+    bewildered.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
+    bewildered.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
+    bewildered.\"store_sales_item_units\" as \"su_store_sales_item_units\",
+    bewildered.\"store_sales_item_size\" as \"su_store_sales_item_size\",
+    bewildered.\"net_paid\" as \"su_net_paid\"
+FROM
+    bewildered
+GROUP BY 
+    bewildered.\"store_sales_item_manager_id\",
+    bewildered.\"store_sales_store_state\",
+    bewildered.\"store_sales_store_name\",
+    bewildered.\"store_sales_customer_last_name\",
+    bewildered.\"store_sales_item_size\",
+    bewildered.\"store_sales_item_units\",
+    bewildered.\"store_sales_item_color\",
+    bewildered.\"store_sales_customer_state\",
+    bewildered.\"net_paid\",
+    bewildered.\"store_sales_item_current_price\",
+    bewildered.\"store_sales_customer_first_name\"),
+cloudy as (
+SELECT
+    vulture.\"su_net_paid\" as \"su_net_paid\",
+    1 as \"__preql_internal_all_rows\"
+FROM
+    vulture),
+cooperative as (
+SELECT
+    CASE WHEN vulture.\"su_store_sales_item_color\" = 'peach' THEN vulture.\"su_net_paid\" ELSE NULL END as \"_virtual_5818638680298942\",
+    vulture.\"su_net_paid\" as \"su_net_paid\",
+    vulture.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    vulture.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+FROM
+    vulture),
+imported as (
+SELECT
+    avg(cloudy.\"su_net_paid\") as \"avg_store_customer_sales\"
+FROM
+    cloudy),
+wakeful as (
+SELECT
+    cooperative.\"_virtual_5818638680298942\" as \"_virtual_5818638680298942\",
+    vulture.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    vulture.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    vulture.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    vulture.\"su_net_paid\" as \"su_net_paid\"
+FROM
+    vulture
+    LEFT OUTER JOIN cooperative on vulture.\"su_store_sales_customer_last_name\" = cooperative.\"su_store_sales_customer_last_name\" AND vulture.\"su_store_sales_store_name\" = cooperative.\"su_store_sales_store_name\" AND vulture.\"su_net_paid\" = cooperative.\"su_net_paid\"),
+concerned as (
+SELECT
+    sum(wakeful.\"_virtual_5818638680298942\") as \"peach_sales\",
+    wakeful.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    wakeful.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    wakeful.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+FROM
+    wakeful
+GROUP BY 
+    wakeful.\"su_store_sales_store_name\",
+    wakeful.\"su_store_sales_customer_first_name\",
+    wakeful.\"su_store_sales_customer_last_name\")
+SELECT
+    concerned.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    concerned.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    concerned.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    concerned.\"peach_sales\" as \"peach_sales\"
+FROM
+    concerned
+    FULL JOIN imported on 1=1
+WHERE
+    concerned.\"peach_sales\" > 0.05 * imported.\"avg_store_customer_sales\"
+"""

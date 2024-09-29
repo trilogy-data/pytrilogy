@@ -107,9 +107,16 @@ def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
     available_aliases: set[str] = set()
     final_joins_pre = [*joins]
     final_joins = []
+    partial = set()
     while final_joins_pre:
         new_final_joins_pre: List[BaseJoin] = []
         for join in final_joins_pre:
+            if join.join_type != JoinType.INNER:
+                partial.add(join.right_datasource.identifier)
+            # an inner join after a left outer implicitly makes that outer an inner
+            # so fix that
+            if join.left_datasource.identifier in partial and join.join_type == JoinType.INNER:
+                join.join_type = JoinType.LEFT_OUTER
             if not available_aliases:
                 final_joins.append(join)
                 available_aliases.add(join.left_datasource.identifier)
@@ -176,7 +183,9 @@ def get_node_joins(
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
-
+    from trilogy.hooks.graph_hook import GraphHook
+    from trilogy.core.graph_models import concept_to_node
+    # GraphHook().query_graph_built(graph) # highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
     joins: defaultdict[str, set] = defaultdict(set)
     identifier_map: dict[str, Datasource | QueryDatasource] = {
         x.identifier: x for x in datasources
@@ -271,6 +280,7 @@ def get_node_joins(
         left_datasource = identifier_map[left]
         right_datasource = identifier_map[right]
         join_tuples = []
+        partial = set()
         for joinc in relevant:
             left_arg = joinc
             right_arg = joinc
@@ -316,6 +326,17 @@ def get_node_joins(
                         left=left_arg, right=right_arg, modifiers=list(modifiers)
                     )
                 )
+
+        # deduplication
+        all_right = []
+        for tuple in join_tuples:
+            all_right.append(tuple.right.address)
+        right_grain = identifier_map[right].grain
+        # if the join includes all the right grain components
+        # we only need to join on those, not everything
+        if all([x.address in all_right for x in right_grain.components]):
+                join_tuples = [x for x in join_tuples if x.right.address in right_grain.components]
+
         final_joins_pre.append(
             BaseJoin(
                 left_datasource=identifier_map[left],

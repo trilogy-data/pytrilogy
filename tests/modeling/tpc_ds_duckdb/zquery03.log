@@ -1,0 +1,53 @@
+query_id = 3
+parse_time = 1.580683
+exec_time = 0.097235
+comp_time = 0.084798
+gen_length = 2053
+generated_sql = """
+
+WITH 
+jay as (
+SELECT
+    store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
+    date.\"D_MOY\" as \"store_sales_date_month_of_year\",
+    items.\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
+    items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
+    items.\"I_BRAND\" as \"store_sales_item_brand_name\",
+    cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
+    store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    items.\"I_ITEM_SK\" as \"store_sales_item_id\"
+FROM
+    memory.store_sales as store_sales
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+WHERE
+    date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
+),
+canary as (
+SELECT
+    jay.\"store_sales_ext_sales_price_filter_1819642393595304\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
+    jay.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    jay.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    jay.\"store_sales_date_year\" as \"store_sales_date_year\",
+    jay.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
+    jay.\"store_sales_item_id\" as \"store_sales_item_id\",
+    jay.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    jay.\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\"
+FROM
+    jay)
+SELECT
+    canary.\"store_sales_date_year\" as \"store_sales_date_year\",
+    canary.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    canary.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(canary.\"store_sales_ext_sales_price_filter_1819642393595304\") as \"sum_agg\"
+FROM
+    canary
+GROUP BY 
+    canary.\"store_sales_date_year\",
+    canary.\"store_sales_item_brand_name\",
+    canary.\"store_sales_item_brand_id\"
+ORDER BY 
+    canary.\"store_sales_date_year\" asc,
+    sum(canary.\"store_sales_ext_sales_price_filter_1819642393595304\") desc,
+    canary.\"store_sales_item_brand_id\" asc
+LIMIT (100)"""

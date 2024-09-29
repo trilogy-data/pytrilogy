@@ -121,6 +121,7 @@ FUNCTION_MAP = {
     FunctionType.CASE: lambda x: render_case(x),
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
+    FunctionType.BOOL: lambda x: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
     # complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",

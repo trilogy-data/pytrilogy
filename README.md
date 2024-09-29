@@ -13,7 +13,7 @@ Installation: `pip install pytrilogy`
 
 `pytrilogy` can be run locally to parse and execute trilogy model [.preql] files using the `trilogy` CLI tool, or can be run in python by importing the `trilogy` package.
 
-You can read more about the project [here](https://trilogydata.dev/) and try out an interactive demo on the page an interactive demo [here](https://trilogydata.dev/demo). 
+You can read more about the project [here](https://trilogydata.dev/) and try out an interactive demo [here](https://trilogydata.dev/demo/). 
 
 Trilogy:
 ```sql
@@ -116,7 +116,7 @@ Run the following from the directory the file is in.
 trilogy run hello.trilogy duckdb
 ```
 
-![UI Preview](./docs/hello_world.png)
+![UI Preview](./hello_world.png)
 
 ## Backends
 
@@ -185,7 +185,7 @@ for row in results:
 
 ## Basic Example - CLI
 
-Trilogy can be run through a CLI tool, appropriately named 'trilogy'.
+Trilogy can be run through a CLI tool, also named 'trilogy'.
 
 After installing trilogy, you can run the trilogy CLI with two required positional arguments; the first the path to a file or a direct command,
 and second the dialect to run.
@@ -223,7 +223,7 @@ N/A, only supports default auth. In python you can pass in a custom client.
 
 ## More Examples
 
-[Interactive demo](https://trilogydata.dev/demo). 
+[Interactive demo](https://trilogydata.dev/demo/). 
 
 Additional examples can be found in the [public model repository](https://github.com/trilogydata/trilogy-public-models).
 
@@ -238,10 +238,14 @@ Clone repository and install requirements.txt and requirements-test.txt.
 Please open an issue first to discuss what you would like to change, and then create a PR against that issue.
 
 ## Similar in space
+Trilogy combines two aspects; a semantic layer and a query language. We've covered examples of both below:
+
+Python "semantic layers" are tools for defining data access to a warehouse in a more abstract way.
+
+- [metricsflow](https://github.com/dbt-labs/metricflow)
 
 "Better SQL" has been a popular space. We believe Trilogy takes a different approach then the following,
 but all are worth checking out. Please open PRs/comment for anything missed!
-
 
 - [malloy](https://github.com/malloydata/malloy)
 - [preql](https://github.com/erezsh/Preql)
