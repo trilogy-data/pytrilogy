@@ -310,4 +310,3 @@ select avg_greater_ten;
     lineage = env.concepts['avg_greater_ten'].lineage
     assert isinstance(lineage, AggregateWrapper)
     assert isinstance(lineage.function.concept_arguments[0].lineage, RowsetItem)
-    assert isinstance(lineage.function.concept_arguments[0].lineage.content.lineage, FilterItem)

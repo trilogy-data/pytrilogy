@@ -842,6 +842,7 @@ class ParseToObjects(Transformer):
             grain: Grain | None = args[3]
         else:
             grain = None
+
         new_datasource = select.to_datasource(
             namespace=(
                 self.environment.namespace
@@ -941,12 +942,13 @@ class ParseToObjects(Transformer):
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_select_context(
                     output.grain,
-                    conditional=(
-                        output.where_clause.conditional
-                        if output.where_clause
-                        and output.where_clause_category == SelectFiltering.IMPLICIT
-                        else None
-                    ),
+                    conditional = None,
+                    # conditional=(
+                    #     output.where_clause.conditional
+                    #     if output.where_clause
+                    #     and output.where_clause_category == SelectFiltering.IMPLICIT
+                    #     else None
+                    # ),
                     environment=self.environment,
                 )
                 self.environment.add_concept(new_concept, meta=meta)
@@ -955,7 +957,7 @@ class ParseToObjects(Transformer):
                 all_in_output.add(new_concept.address)
             elif isinstance(item.content, Concept):
                 # Sometimes cached values here don't have the latest info
-                # bug we can't just use environment, as it might not have the right grain.
+                # but we can't just use environment, as it might not have the right grain.
                 item.content = self.environment.concepts[
                     item.content.address
                 ].with_grain(item.content.grain)
@@ -966,22 +968,23 @@ class ParseToObjects(Transformer):
                     if orderitem.expr.purpose == Purpose.METRIC:
                         orderitem.expr = orderitem.expr.with_select_context(
                             output.grain,
-                            conditional=(
-                                output.where_clause.conditional
-                                if output.where_clause
-                                and output.where_clause_category
-                                == SelectFiltering.IMPLICIT
-                                else None
-                            ),
+                            conditional = None,
+                            # conditional=(
+                            #     output.where_clause.conditional
+                            #     if output.where_clause
+                            #     and output.where_clause_category
+                            #     == SelectFiltering.IMPLICIT
+                            #     else None
+                            # ),
                             environment=self.environment,
                         )
         if output.where_clause:
             for concept in output.where_clause.concept_arguments:
-                if concept.address in all_in_output:
-                    continue
+
                 if concept.lineage and isinstance(concept.lineage, Function) and concept.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                     if concept.address in locally_derived:
                         raise SyntaxError(f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}")
+                
                 if concept.lineage and isinstance(concept.lineage, AggregateWrapper) and concept.lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                     if concept.address in locally_derived:
                         raise SyntaxError(f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}")
@@ -992,7 +995,7 @@ class ParseToObjects(Transformer):
         if output.order_by:
             for concept in output.order_by.concept_arguments:
                 if concept.address not in all_in_output:
-                    raise SyntaxError(f"Cannot order by a column that is not in the output projection; {meta}")
+                    raise SyntaxError(f"Cannot order by a column that is not in the output projection; {meta.line}")
 
         return output
 

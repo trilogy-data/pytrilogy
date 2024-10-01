@@ -1,20 +1,20 @@
 query_id = 20
-parse_time = 1.254697
-exec_time = 0.278782
-comp_time = 2.492442
-gen_length = 8253
+parse_time = 5.030259
+exec_time = 0.102326
+comp_time = 0.338253
+gen_length = 8001
 generated_sql = """
 
 WITH 
-vivacious as (
--- Target: Grain<cs.item.id,cs.order_number>. Group: False Source: SourceType.MERGE.
--- Joins: inner JOIN catalog_sales and items on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[], inner JOIN catalog_sales and date on cs.sold_date.id<cs.sold_date.id>=cs.sold_date.id<cs.sold_date.id>[].
--- Source Map: {'cs.item.category': ['items'], 'cs.item.desc': ['items'], 'cs.item.name': ['items'], 'cs.item.current_price': ['items'], 'cs.item.id': ['items'], 'cs.item.class': ['items'], 'cs.sold_date.id': ['date'], 'cs.sold_date.date': ['date'], 'cs.order_number': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.extra_sales_price_filter_3197596984767774': [], 'cs.item.manufacturer_id': ['items'], 'cs.item.size': ['items'], 'cs.item.color': ['items'], 'cs.item.units': ['items'], 'cs.item.manager_id': ['items'], 'cs.item.brand_name': ['items'], 'cs.item.brand_id': ['items'], 'cs.sold_date.d_week_seq1': ['date'], 'cs.sold_date.week_seq': ['date'], 'cs.sold_date.month_of_year': ['date'], 'cs.sold_date.year': ['date'], 'cs.sold_date.day_of_week': ['date'], 'cs.sold_date.quarter': ['date'], 'cs.sold_date.date_string': ['date'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.call_center.id': ['catalog_sales']}.
--- Output: cs.extra_sales_price_filter_3197596984767774<cs.item.id,cs.order_number>, cs.item.category<cs.item.id,cs.order_number>, cs.item.class<cs.item.id,cs.order_number>, cs.item.current_price<cs.item.id,cs.order_number>, cs.item.desc<cs.item.id,cs.order_number>, cs.item.name<cs.item.id,cs.order_number>, cs.order_number<cs.item.id,cs.order_number>, cs.item.id<cs.item.id,cs.order_number>.
--- Nullable: cs.extra_sales_price_filter_3197596984767774<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+charming as (
+-- Target: Grain<cs.item.id,cs.sold_date.id,cs.order_number>. Group: False Source: SourceType.MERGE.
+-- Joins: inner JOIN catalog_sales and date on cs.sold_date.id<cs.sold_date.id>=cs.sold_date.id<cs.sold_date.id>[], inner JOIN catalog_sales and items on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[].
+-- Source Map: {'cs.item.id': ['items'], 'cs.item.desc': ['items'], 'cs.item.category': ['items'], 'cs.item.current_price': ['items'], 'cs.item.name': ['items'], 'cs.item.class': ['items'], 'cs.sold_date.id': ['date'], 'cs.sold_date.date': ['date'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.item.brand_id': ['items'], 'cs.item.brand_name': ['items'], 'cs.item.manufacturer_id': ['items'], 'cs.item.size': ['items'], 'cs.item.units': ['items'], 'cs.item.color': ['items'], 'cs.item.manager_id': ['items'], 'cs.sold_date.year': ['date'], 'cs.sold_date.date_string': ['date'], 'cs.sold_date.week_seq': ['date'], 'cs.sold_date.quarter': ['date'], 'cs.sold_date.day_of_week': ['date'], 'cs.sold_date.d_week_seq1': ['date'], 'cs.sold_date.month_of_year': ['date'], 'cs.call_center.id': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales']}.
+-- Output: cs.extra_sales_price<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.category<cs.item.id,cs.sold_date.id,cs.order_number>, cs.sold_date.date<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.class<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.current_price<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.desc<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.name<cs.item.id,cs.sold_date.id,cs.order_number>, cs.order_number<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.id<cs.item.id,cs.sold_date.id,cs.order_number>.
 SELECT
-    catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price_filter_3197596984767774\",
+    catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
+    cast(\"D_DATE\" as date) as \"cs_sold_date_date\",
     items.\"I_CLASS\" as \"cs_item_class\",
     items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     items.\"I_ITEM_DESC\" as \"cs_item_desc\",
@@ -23,63 +23,62 @@ SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-hard as (
--- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: True Source: SourceType.GROUP. References: vivacious.
--- Source Map: {'cs.extra_sales_price_filter_3197596984767774': ['vivacious'], 'cs.item.category': ['vivacious'], 'cs.item.class': ['vivacious'], 'cs.item.current_price': ['vivacious'], 'cs.item.desc': ['vivacious'], 'cs.item.name': ['vivacious'], 'cs.order_number': ['vivacious'], 'cs.item.id': ['vivacious'], 'local.revenue': []}.
+hawk as (
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: True Source: SourceType.GROUP. References: charming.
+-- Source Map: {'cs.extra_sales_price': ['charming'], 'cs.item.category': ['charming'], 'cs.sold_date.date': ['charming'], 'cs.item.class': ['charming'], 'cs.item.current_price': ['charming'], 'cs.item.desc': ['charming'], 'cs.item.name': ['charming'], 'cs.order_number': ['charming'], 'cs.item.id': ['charming'], 'local.revenue': []}.
 -- Output: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 -- Nullable: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
-    sum(vivacious.\"cs_extra_sales_price_filter_3197596984767774\") as \"revenue\",
-    vivacious.\"cs_item_category\" as \"cs_item_category\",
-    vivacious.\"cs_item_class\" as \"cs_item_class\",
-    vivacious.\"cs_item_current_price\" as \"cs_item_current_price\",
-    vivacious.\"cs_item_desc\" as \"cs_item_desc\",
-    vivacious.\"cs_item_name\" as \"cs_item_name\"
+    sum(charming.\"cs_extra_sales_price\") as \"revenue\",
+    charming.\"cs_item_category\" as \"cs_item_category\",
+    charming.\"cs_item_class\" as \"cs_item_class\",
+    charming.\"cs_item_current_price\" as \"cs_item_current_price\",
+    charming.\"cs_item_desc\" as \"cs_item_desc\",
+    charming.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    vivacious
+    charming
 GROUP BY 
-    vivacious.\"cs_item_name\",
-    vivacious.\"cs_item_category\",
-    vivacious.\"cs_item_desc\",
-    vivacious.\"cs_item_current_price\",
-    vivacious.\"cs_item_class\"),
-human as (
--- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue>. Group: False Source: SourceType.WINDOW. References: hard.
--- Source Map: {'local.revenue': ['hard'], 'cs.item.category': ['hard'], 'cs.item.class': ['hard'], 'cs.item.current_price': ['hard'], 'cs.item.desc': ['hard'], 'cs.item.name': ['hard'], 'local._virtual_8479147315262044': []}.
--- Output: local._virtual_8479147315262044<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue>.
+    charming.\"cs_item_desc\",
+    charming.\"cs_item_current_price\",
+    charming.\"cs_item_class\",
+    charming.\"cs_item_name\",
+    charming.\"cs_item_category\"),
+cool as (
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: False Source: SourceType.WINDOW. References: hawk.
+-- Source Map: {'local.revenue': ['hawk'], 'cs.item.category': ['hawk'], 'cs.item.class': ['hawk'], 'cs.item.current_price': ['hawk'], 'cs.item.desc': ['hawk'], 'cs.item.name': ['hawk'], 'local._virtual_8479147315262044': []}.
+-- Output: local._virtual_8479147315262044<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
-    sum(hard.\"revenue\") over (partition by hard.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    hard.\"revenue\" as \"revenue\",
-    hard.\"cs_item_class\" as \"cs_item_class\",
-    hard.\"cs_item_name\" as \"cs_item_name\",
-    hard.\"cs_item_desc\" as \"cs_item_desc\",
-    hard.\"cs_item_category\" as \"cs_item_category\",
-    hard.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(hawk.\"revenue\") over (partition by hawk.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    hawk.\"revenue\" as \"revenue\",
+    hawk.\"cs_item_class\" as \"cs_item_class\",
+    hawk.\"cs_item_name\" as \"cs_item_name\",
+    hawk.\"cs_item_desc\" as \"cs_item_desc\",
+    hawk.\"cs_item_category\" as \"cs_item_category\",
+    hawk.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    hard)
--- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: False Source: SourceType.BASIC. References: human.
--- Source Map: {'local._virtual_8479147315262044': ['human'], 'local.revenue': ['human'], 'cs.item.class': ['human'], 'cs.item.name': ['human'], 'cs.item.desc': ['human'], 'cs.item.category': ['human'], 'cs.item.current_price': ['human'], 'local.revenue_ratio': []}.
+    hawk)
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: False Source: SourceType.BASIC. References: cool.
+-- Source Map: {'local._virtual_8479147315262044': ['cool'], 'local.revenue': ['cool'], 'cs.item.class': ['cool'], 'cs.item.name': ['cool'], 'cs.item.desc': ['cool'], 'cs.item.category': ['cool'], 'cs.item.current_price': ['cool'], 'local.revenue_ratio': []}.
 -- Output: cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue_ratio<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
--- Nullable: local.revenue_ratio<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
-    human.\"cs_item_name\" as \"cs_item_name\",
-    human.\"cs_item_desc\" as \"cs_item_desc\",
-    human.\"cs_item_category\" as \"cs_item_category\",
-    human.\"cs_item_class\" as \"cs_item_class\",
-    human.\"cs_item_current_price\" as \"cs_item_current_price\",
-    human.\"revenue\" as \"revenue\",
-    human.\"revenue\" * 100.0 / human.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    cool.\"cs_item_name\" as \"cs_item_name\",
+    cool.\"cs_item_desc\" as \"cs_item_desc\",
+    cool.\"cs_item_category\" as \"cs_item_category\",
+    cool.\"cs_item_class\" as \"cs_item_class\",
+    cool.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cool.\"revenue\" as \"revenue\",
+    cool.\"revenue\" * 100.0 / cool.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    human
+    cool
 ORDER BY 
-    human.\"cs_item_category\" asc nulls first,
-    human.\"cs_item_class\" asc nulls first,
-    human.\"cs_item_name\" asc nulls first,
-    human.\"cs_item_desc\" asc nulls first,
-    human.\"revenue\" * 100.0 / human.\"_virtual_8479147315262044\" asc nulls first
+    cool.\"cs_item_category\" asc nulls first,
+    cool.\"cs_item_class\" asc nulls first,
+    cool.\"cs_item_name\" asc nulls first,
+    cool.\"cs_item_desc\" asc nulls first,
+    cool.\"revenue\" * 100.0 / cool.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

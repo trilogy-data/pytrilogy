@@ -77,15 +77,14 @@ def test_source_outputs(test_environment: Environment, test_executor: Executor):
         elif col.alias == "product_id":
             assert not col.is_complete
 
-    x = gen_select_node(
+    x = [x for x in gen_select_node(
         test_environment.concepts["store_id"],
         local_optional=[test_environment.concepts["order_id"]],
         environment=test_environment,
         g=generate_graph(test_environment),
         depth=0,
         accept_partial=True,
-        source_concepts=search_concepts,
-    )
+    ).parents][0]
 
     found = False
     for con in x.partial_concepts:

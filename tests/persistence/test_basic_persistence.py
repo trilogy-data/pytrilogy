@@ -74,7 +74,7 @@ def test_derivations():
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept in env.materialized_concepts
-        assert test_concept.derivation == PurposeLineage.BASIC
+        assert test_concept.derivation == PurposeLineage.ROOT
 
         persist: PersistStatement = parsed[-2]
         select: SelectStatement = parsed[-1]
@@ -98,7 +98,6 @@ def test_derivations():
             environment=env,
             g=g,
             depth=0,
-            source_concepts=search_concepts,
         )
         assert static
 

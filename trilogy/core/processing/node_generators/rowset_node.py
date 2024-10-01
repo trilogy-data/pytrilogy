@@ -5,6 +5,7 @@ from trilogy.core.models import (
     RowsetDerivationStatement,
     RowsetItem,
     MultiSelectStatement,
+    WhereClause,
 )
 from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain
@@ -27,6 +28,7 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -95,11 +97,12 @@ def gen_rowset_node(
 
 
     if not local_optional or all(
-        x.address in [y.address for y in node.output_concepts] for x in local_optional
+        x.address in node.output_concepts for x in local_optional
     ):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional found or no optional; exiting early."
         )
+        # node.set_preexisting_conditions(conditions.conditional if conditions else None)
         return node
     
     possible_joins = concept_to_relevant_joins(additional_relevant)
@@ -114,6 +117,7 @@ def gen_rowset_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        conditions=conditions,
     )
     if not enrich_node:
         logger.info(
@@ -131,5 +135,5 @@ def gen_rowset_node(
             enrich_node,
         ],
         partial_concepts=node.partial_concepts,
-        # conditions = 
+        preexisting_conditions=conditions.conditional if conditions else None
     )

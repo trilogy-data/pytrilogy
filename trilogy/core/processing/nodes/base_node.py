@@ -208,13 +208,7 @@ class StrategyNode:
         return self
     
     def set_preexisting_conditions(self, conditions: Conditional | Comparison | Parenthetical):
-        if not self.preexisting_conditions:
-
-            self.preexisting_conditions = conditions
-        else:
-            self.preexisting_conditions = Conditional(
-                left=self.preexisting_conditions, right=conditions, operator=BooleanOperator.AND
-            )
+        self.preexisting_conditions = conditions
         return self
     
     def add_condition(self, condition: Conditional | Comparison | Parenthetical):
@@ -225,6 +219,7 @@ class StrategyNode:
         else:
             self.conditions = condition
         self.set_preexisting_conditions(condition)
+        self.rebuild_cache()
         return self
 
     def validate_parents(self):
@@ -253,7 +248,7 @@ class StrategyNode:
 
     def add_existence_concepts(self, concepts: List[Concept], rebuild:bool = True):
         for concept in concepts:
-            if concept.address not in [x.address for x in self.output_concepts]:
+            if concept.address not in self.output_concepts:
                 self.existence_concepts.append(concept)
         if rebuild:
             self.rebuild_cache()
@@ -317,12 +312,13 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        grain = self.grain if self.grain else Grain(components=self.output_concepts)
+        grain = self.grain if self.grain else concept_list_to_grain(self.output_concepts, [])
         source_map = resolve_concept_map(
             parent_sources,
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
+
 
         return QueryDatasource(
             input_concepts=self.input_concepts,

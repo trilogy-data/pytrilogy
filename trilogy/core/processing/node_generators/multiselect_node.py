@@ -2,6 +2,7 @@ from trilogy.core.models import (
     Concept,
     Environment,
     MultiSelectStatement,
+    WhereClause,
 )
 from trilogy.core.processing.nodes import MergeNode, NodeJoin, History
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
@@ -58,6 +59,7 @@ def gen_multiselect_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> MergeNode | None:
     if not isinstance(concept.lineage, MultiSelectStatement):
         logger.info(
@@ -157,6 +159,7 @@ def gen_multiselect_node(
         g=g,
         depth=depth + 1,
         history=history,
+        conditions=conditions,
     )
     if not enrich_node:
         logger.info(

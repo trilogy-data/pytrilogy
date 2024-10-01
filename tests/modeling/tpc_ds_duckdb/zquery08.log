@@ -1,19 +1,26 @@
 query_id = 8
-parse_time = 2.478596
-exec_time = 0.170207
-comp_time = 0.142309
-gen_length = 7226
+parse_time = 2.613493
+exec_time = 0.145331
+comp_time = 0.090888
+gen_length = 18423
 generated_sql = """
 
 WITH 
-quail as (
+waggish as (
+-- Target: Grain<customer.id>. Group: False Source: SourceType.FILTER.
+-- Source Map: {'customer.preferred_cust_flag': ['customers'], 'customer.id': ['customers'], 'local._virtual_7470647693515630': [], 'customer.birth_country': ['customers'], 'customer.first_name': ['customers'], 'customer.address_id': ['customers'], 'customer.last_name': ['customers'], 'customer.demographics.id': ['customers'], 'customer.text_id': ['customers']}.
+-- Output: local._virtual_7470647693515630<customer.id>, customer.id<customer.id>, customer.preferred_cust_flag<customer.id>.
 SELECT
     CASE WHEN customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virtual_7470647693515630\",
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     memory.customer as customers),
-chick as (
+helpless as (
+-- Target: Grain<customer.address_id,customer.id>. Group: False Source: SourceType.MERGE.
+-- Joins: inner JOIN customers and customer_address on customer.address_id<customer.address_id>=customer.address_id<customer.address_id>[].
+-- Source Map: {'customer.preferred_cust_flag': ['customers'], 'customer.id': ['customers'], 'customer.address_id': ['customers'], 'customer.zip': ['customer_address'], 'customer.birth_country': ['customers'], 'customer.first_name': ['customers'], 'customer.last_name': ['customers'], 'customer.demographics.id': ['customers'], 'customer.text_id': ['customers'], 'customer.county': ['customer_address'], 'customer.country': ['customer_address'], 'customer.state': ['customer_address'], 'customer.city': ['customer_address'], 'customer.street': ['customer_address']}.
+-- Output: customer.id<customer.address_id,customer.id>, customer.preferred_cust_flag<customer.address_id,customer.id>, customer.zip<customer.address_id,customer.id>.
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\",
@@ -21,50 +28,79 @@ SELECT
 FROM
     memory.customer as customers
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"),
-quizzical as (
+starling as (
+-- Target: Grain<local.zips_pre>. Group: False Source: SourceType.UNNEST.
+-- Joins: concept_to_unnest=Concept(name='_virtual_7180871482901048', datatype=ListType(type=<DataType.STRING: 'string'>), purpose=<Purpose.CONSTANT: 'const'>, metadata=Metadata(description=None, line_number=6, concept_source=<ConceptSource.MANUAL: 'manual'>), lineage=constant(['24128', '76232', '65084', '87816', '83926', '77556', '20548', '26231', '43848', '15126', '91137', '61265', '98294', '25782', '17920', '18426', '98235', '40081', '84093', '28577', '55565', '17183', '54601', '67897', '22752', '86284', '18376', '38607', '45200', '21756', '29741', '96765', '23932', '89360', '29839', '25989', '28898', '91068', '72550', '10390', '18845', '47770', '82636', '41367', '76638', '86198', '81312', '37126', '39192', '88424', '72175', '81426', '53672', '10445', '42666', '66864', '66708', '41248', '48583', '82276', '18842', '78890', '49448', '14089', '38122', '34425', '79077', '19849', '43285', '39861', '66162', '77610', '13695', '99543', '83444', '83041', '12305', '57665', '68341', '25003', '57834', '62878', '49130', '81096', '18840', '27700', '23470', '50412', '21195', '16021', '76107', '71954', '68309', '18119', '98359', '64544', '10336', '86379', '27068', '39736', '98569', '28915', '24206', '56529', '57647', '54917', '42961', '91110', '63981', '14922', '36420', '23006', '67467', '32754', '30903', '20260', '31671', '51798', '72325', '85816', '68621', '13955', '36446', '41766', '68806', '16725', '15146', '22744', '35850', '88086', '51649', '18270', '52867', '39972', '96976', '63792', '11376', '94898', '13595', '10516', '90225', '58943', '39371', '94945', '28587', '96576', '57855', '28488', '26105', '83933', '25858', '34322', '44438', '73171', '30122', '34102', '22685', '71256', '78451', '54364', '13354', '45375', '40558', '56458', '28286', '45266', '47305', '69399', '83921', '26233', '11101', '15371', '69913', '35942', '15882', '25631', '24610', '44165', '99076', '33786', '70738', '26653', '14328', '72305', '62496', '22152', '10144', '64147', '48425', '14663', '21076', '18799', '30450', '63089', '81019', '68893', '24996', '51200', '51211', '45692', '92712', '70466', '79994', '22437', '25280', '38935', '71791', '73134', '56571', '14060', '19505', '72425', '56575', '74351', '68786', '51650', '20004', '18383', '76614', '11634', '18906', '15765', '41368', '73241', '76698', '78567', '97189', '28545', '76231', '75691', '22246', '51061', '90578', '56691', '68014', '51103', '94167', '57047', '14867', '73520', '15734', '63435', '25733', '35474', '24676', '94627', '53535', '17879', '15559', '53268', '59166', '11928', '59402', '33282', '45721', '43933', '68101', '33515', '36634', '71286', '19736', '58058', '55253', '67473', '41918', '19515', '36495', '19430', '22351', '77191', '91393', '49156', '50298', '87501', '18652', '53179', '18767', '63193', '23968', '65164', '68880', '21286', '72823', '58470', '67301', '13394', '31016', '70372', '67030', '40604', '24317', '45748', '39127', '26065', '77721', '31029', '31880', '60576', '24671', '45549', '13376', '50016', '33123', '19769', '22927', '97789', '46081', '72151', '15723', '46136', '51949', '68100', '96888', '64528', '14171', '79777', '28709', '11489', '25103', '32213', '78668', '22245', '15798', '27156', '37930', '62971', '21337', '51622', '67853', '10567', '38415', '15455', '58263', '42029', '60279', '37125', '56240', '88190', '50308', '26859', '64457', '89091', '82136', '62377', '36233', '63837', '58078', '17043', '30010', '60099', '28810', '98025', '29178', '87343', '73273', '30469', '64034', '39516', '86057', '21309', '90257', '67875', '40162', '11356', '73650', '61810', '72013', '30431', '22461', '19512', '13375', '55307', '30625', '83849', '68908', '26689', '96451', '38193', '46820', '88885', '84935', '69035', '83144', '47537', '56616', '94983', '48033', '69952', '25486', '61547', '27385', '61860', '58048', '56910', '16807', '17871', '35258', '31387', '35458', '35576']), namespace='local', keys=None, grain=Grain(nested=False, components=[], where_clause=None), modifiers=[], pseudonyms={}) alias='unnest_local_zips_pre'.
+-- Source Map: {'local.zips_pre': []}.
+-- Output: local.zips_pre<local.zips_pre>.
 SELECT
     unnest(['24128', '76232', '65084', '87816', '83926', '77556', '20548', '26231', '43848', '15126', '91137', '61265', '98294', '25782', '17920', '18426', '98235', '40081', '84093', '28577', '55565', '17183', '54601', '67897', '22752', '86284', '18376', '38607', '45200', '21756', '29741', '96765', '23932', '89360', '29839', '25989', '28898', '91068', '72550', '10390', '18845', '47770', '82636', '41367', '76638', '86198', '81312', '37126', '39192', '88424', '72175', '81426', '53672', '10445', '42666', '66864', '66708', '41248', '48583', '82276', '18842', '78890', '49448', '14089', '38122', '34425', '79077', '19849', '43285', '39861', '66162', '77610', '13695', '99543', '83444', '83041', '12305', '57665', '68341', '25003', '57834', '62878', '49130', '81096', '18840', '27700', '23470', '50412', '21195', '16021', '76107', '71954', '68309', '18119', '98359', '64544', '10336', '86379', '27068', '39736', '98569', '28915', '24206', '56529', '57647', '54917', '42961', '91110', '63981', '14922', '36420', '23006', '67467', '32754', '30903', '20260', '31671', '51798', '72325', '85816', '68621', '13955', '36446', '41766', '68806', '16725', '15146', '22744', '35850', '88086', '51649', '18270', '52867', '39972', '96976', '63792', '11376', '94898', '13595', '10516', '90225', '58943', '39371', '94945', '28587', '96576', '57855', '28488', '26105', '83933', '25858', '34322', '44438', '73171', '30122', '34102', '22685', '71256', '78451', '54364', '13354', '45375', '40558', '56458', '28286', '45266', '47305', '69399', '83921', '26233', '11101', '15371', '69913', '35942', '15882', '25631', '24610', '44165', '99076', '33786', '70738', '26653', '14328', '72305', '62496', '22152', '10144', '64147', '48425', '14663', '21076', '18799', '30450', '63089', '81019', '68893', '24996', '51200', '51211', '45692', '92712', '70466', '79994', '22437', '25280', '38935', '71791', '73134', '56571', '14060', '19505', '72425', '56575', '74351', '68786', '51650', '20004', '18383', '76614', '11634', '18906', '15765', '41368', '73241', '76698', '78567', '97189', '28545', '76231', '75691', '22246', '51061', '90578', '56691', '68014', '51103', '94167', '57047', '14867', '73520', '15734', '63435', '25733', '35474', '24676', '94627', '53535', '17879', '15559', '53268', '59166', '11928', '59402', '33282', '45721', '43933', '68101', '33515', '36634', '71286', '19736', '58058', '55253', '67473', '41918', '19515', '36495', '19430', '22351', '77191', '91393', '49156', '50298', '87501', '18652', '53179', '18767', '63193', '23968', '65164', '68880', '21286', '72823', '58470', '67301', '13394', '31016', '70372', '67030', '40604', '24317', '45748', '39127', '26065', '77721', '31029', '31880', '60576', '24671', '45549', '13376', '50016', '33123', '19769', '22927', '97789', '46081', '72151', '15723', '46136', '51949', '68100', '96888', '64528', '14171', '79777', '28709', '11489', '25103', '32213', '78668', '22245', '15798', '27156', '37930', '62971', '21337', '51622', '67853', '10567', '38415', '15455', '58263', '42029', '60279', '37125', '56240', '88190', '50308', '26859', '64457', '89091', '82136', '62377', '36233', '63837', '58078', '17043', '30010', '60099', '28810', '98025', '29178', '87343', '73273', '30469', '64034', '39516', '86057', '21309', '90257', '67875', '40162', '11356', '73650', '61810', '72013', '30431', '22461', '19512', '13375', '55307', '30625', '83849', '68908', '26689', '96451', '38193', '46820', '88885', '84935', '69035', '83144', '47537', '56616', '94983', '48033', '69952', '25486', '61547', '27385', '61860', '58048', '56910', '16807', '17871', '35258', '31387', '35458', '35576']) as \"zips_pre\"
 ),
-magpie as (
+pigeon as (
+-- Target: Grain<customer.address_id,customer.id>. Group: False Source: SourceType.MERGE. References: waggish, helpless.
+-- Joins: inner JOIN helpless and waggish on customer.id<customer.id>=customer.id<customer.id>[].
+-- Source Map: {'local._virtual_7470647693515630': ['waggish'], 'customer.id': ['waggish'], 'customer.preferred_cust_flag': ['waggish'], 'customer.zip': ['helpless']}.
+-- Output: local._virtual_7470647693515630<customer.address_id,customer.id>, customer.zip<customer.address_id,customer.id>, customer.id<customer.address_id,customer.id>.
 SELECT
-    quail.\"_virtual_7470647693515630\" as \"_virtual_7470647693515630\",
-    chick.\"customer_zip\" as \"customer_zip\",
-    quail.\"customer_id\" as \"customer_id\"
+    waggish.\"_virtual_7470647693515630\" as \"_virtual_7470647693515630\",
+    helpless.\"customer_zip\" as \"customer_zip\",
+    waggish.\"customer_id\" as \"customer_id\"
 FROM
-    chick
-    INNER JOIN quail on chick.\"customer_id\" = quail.\"customer_id\"),
-puzzled as (
+    helpless
+    INNER JOIN waggish on helpless.\"customer_id\" = waggish.\"customer_id\"),
+fossa as (
+-- Target: Grain<customer.zip>. Group: True Source: SourceType.GROUP. References: pigeon.
+-- Source Map: {'local._virtual_7470647693515630': ['pigeon'], 'customer.zip': ['pigeon'], 'customer.id': ['pigeon'], 'local.zip_p_count': []}.
+-- Output: local.zip_p_count<customer.zip>, customer.zip<customer.zip>.
+-- Nullable: local.zip_p_count<customer.zip>.
 SELECT
-    count(magpie.\"_virtual_7470647693515630\") as \"zip_p_count\",
-    magpie.\"customer_zip\" as \"customer_zip\"
+    count(pigeon.\"_virtual_7470647693515630\") as \"zip_p_count\",
+    pigeon.\"customer_zip\" as \"customer_zip\"
 FROM
-    magpie
+    pigeon
 GROUP BY 
-    magpie.\"customer_zip\"),
-wolverine as (
+    pigeon.\"customer_zip\"),
+sweltering as (
+-- Target: Grain<customer.address_id>. Group: False Source: SourceType.MERGE. References: fossa.
+-- Joins: inner JOIN customer_address and fossa on customer.zip<customer.address_id>=customer.zip<customer.address_id>[].
+-- Source Map: {'customer.address_id': ['customer_address'], 'customer.zip': ['customer_address'], 'local.zip_p_count': ['fossa'], 'customer.county': ['customer_address'], 'customer.country': ['customer_address'], 'customer.state': ['customer_address'], 'customer.city': ['customer_address'], 'customer.street': ['customer_address']}.
+-- Output: customer.zip<customer.address_id>, customer.address_id<customer.address_id>, local.zip_p_count<customer.zip>.
+-- Nullable: local.zip_p_count<customer.zip>.
 SELECT
     customer_address.\"CA_ZIP\" as \"customer_zip\",
     customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
-    puzzled.\"zip_p_count\" as \"zip_p_count\"
+    fossa.\"zip_p_count\" as \"zip_p_count\"
 FROM
     memory.customer_address as customer_address
-    INNER JOIN puzzled on customer_address.\"CA_ZIP\" = puzzled.\"customer_zip\"),
-chimpanzee as (
+    INNER JOIN fossa on customer_address.\"CA_ZIP\" = fossa.\"customer_zip\"),
+bear as (
+-- Target: Grain<customer.address_id>. Group: False Source: SourceType.BASIC. References: sweltering.
+-- Source Map: {'customer.zip': ['sweltering'], 'customer.address_id': ['sweltering'], 'local.zip_p_count': ['sweltering'], 'local._func_substring_1342571877656287': []}.
+-- Output: local._func_substring_1342571877656287<customer.address_id>.
+-- Hidden: local.p_cust_zip<customer.address_id>.
 SELECT
-    SUBSTRING(CASE WHEN wolverine.\"zip_p_count\" > 10 THEN wolverine.\"customer_zip\" ELSE NULL END,1,5) as \"_func_substring_1342571877656287\"
+    SUBSTRING(CASE WHEN sweltering.\"zip_p_count\" > 10 THEN sweltering.\"customer_zip\" ELSE NULL END,1,5) as \"_func_substring_1342571877656287\"
 FROM
-    wolverine),
+    sweltering),
 blue as (
+-- Target: Grain<local.zips_pre>. Group: False Source: SourceType.BASIC. References: starling, bear.
+-- Source Map: {'local.zips_pre': ['starling'], 'local._func_substring_1342571877656287': ['bear'], 'local.final_zips': []}.
+-- Output: local.final_zips<local.zips_pre>.
+-- Hidden: local._virtual_7889446398418737<>.
 SELECT
-    SUBSTRING(SUBSTRING(cast(quizzical.\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
+    SUBSTRING(SUBSTRING(cast(starling.\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
-    quizzical
+    starling
 WHERE
-    SUBSTRING(cast(quizzical.\"zips_pre\" as string),1,5) in (select chimpanzee.\"_func_substring_1342571877656287\" from chimpanzee where chimpanzee.\"_func_substring_1342571877656287\" is not null)
+    SUBSTRING(cast(starling.\"zips_pre\" as string),1,5) in (select bear.\"_func_substring_1342571877656287\" from bear where bear.\"_func_substring_1342571877656287\" is not null)
 ),
-badger as (
+jackdaw as (
+-- Target: Grain<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>. Group: False Source: SourceType.MERGE. References: blue.
+-- Joins: inner JOIN store_sales and store on store_sales.store.id<store_sales.store.id>=store_sales.store.id<store_sales.store.id>[], inner JOIN store_sales and date on store_sales.date.id<store_sales.date.id>=store_sales.date.id<store_sales.date.id>[].
+-- Source Map: {'store_sales.date.year': ['date'], 'store_sales.date.id': ['date'], 'store_sales.date.quarter': ['date'], 'store_sales.store.zip': ['store'], 'store_sales.store.id': ['store'], 'store_sales.store.name': ['store'], 'store_sales.item.id': ['store_sales'], 'store_sales.net_profit': ['store_sales'], 'store_sales.ticket_number': ['store_sales'], 'local.final_zips': ['blue'], 'store_sales.date.month_of_year': ['date'], 'store_sales.date.week_seq': ['date'], 'store_sales.date.date': ['date'], 'store_sales.date.date_string': ['date'], 'store_sales.date.d_week_seq1': ['date'], 'store_sales.date.day_of_week': ['date'], 'store_sales.store.text_id': ['store'], 'store_sales.store.date.id': ['store'], 'store_sales.store.store_manager': ['store'], 'store_sales.store.market_id': ['store'], 'store_sales.store.market_manager': ['store'], 'store_sales.store.city': ['store'], 'store_sales.store.employees': ['store'], 'store_sales.store.county': ['store'], 'store_sales.store.market': ['store'], 'store_sales.store.hours': ['store'], 'store_sales.store.tax_percentage': ['store'], 'store_sales.store.geography_class': ['store'], 'store_sales.store.floor_space': ['store'], 'store_sales.store.state': ['store'], 'store_sales.time.id': ['store_sales'], 'store_sales.ext_discount_amount': ['store_sales'], 'store_sales.promotion.id': ['store_sales'], 'store_sales.quantity': ['store_sales'], 'store_sales.coupon_amt': ['store_sales'], 'store_sales.customer_demographic.id': ['store_sales'], 'store_sales.net_paid': ['store_sales'], 'store_sales.list_price': ['store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales'], 'store_sales.customer.id': ['store_sales'], 'store_sales.sales_price': ['store_sales'], 'store_sales.ext_list_price': ['store_sales'], 'store_sales.ext_sales_price': ['store_sales']}.
+-- Output: store_sales.net_profit<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>, store_sales.date.quarter<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>, store_sales.date.year<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>, store_sales.store.zip<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>, store_sales.store.name<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>, store_sales.ticket_number<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>, store_sales.item.id<store_sales.date.id,store_sales.store.id,store_sales.item.id,store_sales.ticket_number,local.zips_pre>.
 SELECT
-    store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit_filter_6391596688661913\",
+    store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     date.\"D_QOY\" as \"store_sales_date_quarter\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     store.\"S_ZIP\" as \"store_sales_store_zip\",
@@ -77,25 +113,18 @@ FROM
     INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select blue.\"final_zips\" from blue where blue.\"final_zips\" is not null)
-),
-vacuous as (
+)
+-- Target: Grain<store_sales.store.name>. Group: True Source: SourceType.GROUP. References: jackdaw.
+-- Source Map: {'store_sales.net_profit': ['jackdaw'], 'store_sales.date.quarter': ['jackdaw'], 'store_sales.date.year': ['jackdaw'], 'store_sales.store.zip': ['jackdaw'], 'store_sales.store.name': ['jackdaw'], 'store_sales.ticket_number': ['jackdaw'], 'store_sales.item.id': ['jackdaw'], 'local.store_net_profit': []}.
+-- Output: store_sales.store.name<store_sales.store.name>, local.store_net_profit<store_sales.store.name>.
+-- Nullable: local.store_net_profit<store_sales.store.name>.
 SELECT
-    badger.\"store_sales_net_profit_filter_6391596688661913\" as \"store_sales_net_profit_filter_6391596688661913\",
-    badger.\"store_sales_store_name\" as \"store_sales_store_name\",
-    badger.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    badger.\"store_sales_item_id\" as \"store_sales_item_id\",
-    badger.\"store_sales_date_quarter\" as \"store_sales_date_quarter\",
-    badger.\"store_sales_date_year\" as \"store_sales_date_year\",
-    badger.\"store_sales_store_zip\" as \"store_sales_store_zip\"
+    jackdaw.\"store_sales_store_name\" as \"store_sales_store_name\",
+    sum(jackdaw.\"store_sales_net_profit\") as \"store_net_profit\"
 FROM
-    badger)
-SELECT
-    vacuous.\"store_sales_store_name\" as \"store_sales_store_name\",
-    sum(vacuous.\"store_sales_net_profit_filter_6391596688661913\") as \"store_net_profit\"
-FROM
-    vacuous
+    jackdaw
 GROUP BY 
-    vacuous.\"store_sales_store_name\"
+    jackdaw.\"store_sales_store_name\"
 ORDER BY 
-    vacuous.\"store_sales_store_name\" asc
+    jackdaw.\"store_sales_store_name\" asc
 LIMIT (100)"""

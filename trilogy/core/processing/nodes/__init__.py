@@ -144,10 +144,7 @@ class History(BaseModel):
             depth + 1,
             fail_if_not_found=fail_if_not_found,
             accept_partial=accept_partial,
-            accept_partial_optional=accept_partial_optional,
-            source_concepts=source_concepts,
             conditions=conditions,
-            history=self,
         )
         self.select_history[fingerprint] = gen
         return gen

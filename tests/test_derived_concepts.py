@@ -62,7 +62,7 @@ def test_filtering_having_on_unincluded_value(test_environment):
         )
     except Exception as e:
         exception = True
-        assert str(e).startswith("Cannot reference a column (local.x) that is not in the output projection in the HAVING clause, move to WHERE"), str(e)
+        assert str(e).startswith("Cannot reference a column (local.x) that is not in the select projection in the HAVING clause, move to WHERE"), str(e)
     assert exception, 'should have an exception'
 
 

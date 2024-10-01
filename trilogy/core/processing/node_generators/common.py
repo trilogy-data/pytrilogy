@@ -136,6 +136,7 @@ def gen_property_enrichment_node(
             base_node,
         ]
         + final_nodes,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
 
 

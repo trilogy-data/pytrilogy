@@ -17,11 +17,11 @@ You can read more about the project [here](https://trilogydata.dev/) and try out
 
 Trilogy:
 ```sql
+WHERE 
+    name like '%lvis%'
 SELECT
     name,
     count(name) as name_count
-WHERE 
-    name='Elvis'
 ORDER BY
     name_count desc
 LIMIT 10;

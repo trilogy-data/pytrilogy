@@ -67,6 +67,7 @@ class GroupNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
 
+
         grain = concept_list_to_grain(self.output_concepts, [])
         comp_grain = Grain()
         for source in parent_sources:
@@ -112,12 +113,13 @@ class GroupNode(StrategyNode):
                 " vs"
                 f" target grain {grain}"
             )
-            for parent in parent_sources:
+            for parent in  self.parents:
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Parent node"
                     f" {[c.address for c in parent.output_concepts]}"
                     " grain"
                     f" {parent.grain}"
+                    f" {type(parent)}"
                 )
             source_type = SourceType.GROUP
         source_map = resolve_concept_map(
@@ -189,6 +191,7 @@ class GroupNode(StrategyNode):
             nullable_concepts=list(self.nullable_concepts),
             force_group=self.force_group,
             conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
             existence_concepts=list(self.existence_concepts),
             hidden_concepts=list(self.hidden_concepts),
         )

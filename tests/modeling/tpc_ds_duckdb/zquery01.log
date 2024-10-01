@@ -1,14 +1,18 @@
 query_id = 1
-parse_time = 2.540118
-exec_time = 0.249472
-comp_time = 0.367166
-gen_length = 3345
+parse_time = 3.329058
+exec_time = 0.099379
+comp_time = 1.962812
+gen_length = 6522
 generated_sql = """
 
 WITH 
-deeply as (
+turkey as (
+-- Target: Grain<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>. Group: False Source: SourceType.MERGE.
+-- Joins: inner JOIN store_returns and customers on returns.customer.id<returns.customer.id>=returns.customer.id<returns.customer.id>[], inner JOIN store_returns and date on returns.return_date.id<returns.return_date.id>=returns.return_date.id<returns.return_date.id>[], inner JOIN store_returns and store on returns.store.id<returns.store.id>=returns.store.id<returns.store.id>[].
+-- Source Map: {'returns.store.id': ['store'], 'returns.store.state': ['store'], 'returns.return_date.year': ['date'], 'returns.return_date.id': ['date'], 'returns.customer.text_id': ['customers'], 'returns.customer.id': ['customers'], 'returns.return_amount': ['store_returns'], 'returns.store_sales.ticket_number': ['store_returns'], 'returns.item.id': ['store_returns'], 'returns.store.date.id': ['store'], 'returns.store.market_manager': ['store'], 'returns.store.city': ['store'], 'returns.store.zip': ['store'], 'returns.store.tax_percentage': ['store'], 'returns.store.employees': ['store'], 'returns.store.floor_space': ['store'], 'returns.store.market': ['store'], 'returns.store.market_id': ['store'], 'returns.store.geography_class': ['store'], 'returns.store.hours': ['store'], 'returns.store.store_manager': ['store'], 'returns.store.name': ['store'], 'returns.store.text_id': ['store'], 'returns.store.county': ['store'], 'returns.return_date.week_seq': ['date'], 'returns.return_date.d_week_seq1': ['date'], 'returns.return_date.date': ['date'], 'returns.return_date.day_of_week': ['date'], 'returns.return_date.month_of_year': ['date'], 'returns.return_date.date_string': ['date'], 'returns.return_date.quarter': ['date'], 'returns.customer.address_id': ['customers'], 'returns.customer.first_name': ['customers'], 'returns.customer.preferred_cust_flag': ['customers'], 'returns.customer.last_name': ['customers'], 'returns.customer.demographics.id': ['customers'], 'returns.customer.birth_country': ['customers'], 'returns.time.id': ['store_returns']}.
+-- Output: returns.return_amount<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.store.state<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.return_date.year<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.store.id<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.customer.text_id<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.store_sales.ticket_number<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.item.id<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>.
 SELECT
-    store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount_filter_4615171403231435\",
+    store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
     cast(\"D_YEAR\" as int) as \"returns_return_date_year\",
     store.\"S_STORE_SK\" as \"returns_store_id\",
@@ -17,74 +21,52 @@ SELECT
     store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
     memory.store_returns as store_returns
-    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-obsolete as (
+slow as (
+-- Target: Grain<returns.store.id,returns.customer.text_id>. Group: True Source: SourceType.GROUP. References: turkey.
+-- Source Map: {'returns.return_amount': ['turkey'], 'returns.store.state': ['turkey'], 'returns.return_date.year': ['turkey'], 'returns.store.id': ['turkey'], 'returns.customer.text_id': ['turkey'], 'returns.store_sales.ticket_number': ['turkey'], 'returns.item.id': ['turkey'], 'local.total_returns': []}.
+-- Output: local.total_returns<returns.store.id,returns.customer.text_id>, returns.store.id<returns.store.id,returns.customer.text_id>, returns.customer.text_id<returns.store.id,returns.customer.text_id>.
+-- Nullable: local.total_returns<returns.store.id,returns.customer.text_id>.
 SELECT
-    deeply.\"returns_return_amount_filter_4615171403231435\" as \"returns_return_amount_filter_4615171403231435\",
-    deeply.\"returns_store_id\" as \"returns_store_id\",
-    deeply.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    deeply.\"returns_store_sales_ticket_number\" as \"returns_store_sales_ticket_number\",
-    deeply.\"returns_item_id\" as \"returns_item_id\",
-    deeply.\"returns_store_state\" as \"returns_store_state\",
-    deeply.\"returns_return_date_year\" as \"returns_return_date_year\"
+    sum(turkey.\"returns_return_amount\") as \"total_returns\",
+    turkey.\"returns_store_id\" as \"returns_store_id\",
+    turkey.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    deeply),
-wary as (
-SELECT
-    sum(obsolete.\"returns_return_amount_filter_4615171403231435\") as \"total_returns\",
-    obsolete.\"returns_store_id\" as \"returns_store_id\",
-    obsolete.\"returns_customer_text_id\" as \"returns_customer_text_id\"
-FROM
-    obsolete
+    turkey
 GROUP BY 
-    obsolete.\"returns_store_id\",
-    obsolete.\"returns_customer_text_id\"),
-goldfinch as (
+    turkey.\"returns_customer_text_id\",
+    turkey.\"returns_store_id\"),
+deeply as (
+-- Target: Grain<returns.store.id>. Group: True Source: SourceType.GROUP. References: slow.
+-- Source Map: {'local.total_returns': ['slow'], 'returns.store.id': ['slow'], 'returns.customer.text_id': ['slow'], 'local.avg_store_returns': []}.
+-- Output: local.avg_store_returns<returns.store.id>, returns.store.id<returns.store.id>.
+-- Nullable: local.avg_store_returns<returns.store.id>.
 SELECT
-    wary.\"returns_customer_text_id\" as \"returns_customer_text_id\",
-    wary.\"returns_store_id\" as \"returns_store_id\",
-    wary.\"total_returns\" as \"total_returns\",
-    wary.\"returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
-    wary.\"returns_store_id\" as \"tn_2000_returns_store_id\",
-    wary.\"total_returns\" as \"tn_2000_total_returns\"
+    avg(slow.\"total_returns\") as \"avg_store_returns\",
+    slow.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    wary
+    slow
 GROUP BY 
-    wary.\"returns_customer_text_id\",
-    wary.\"total_returns\",
-    wary.\"returns_store_id\"),
-cockatiel as (
+    slow.\"returns_store_id\")
+-- Target: Grain<returns.store.id,returns.customer.text_id>. Group: False Source: SourceType.MERGE. References: slow, deeply.
+-- Joins: inner JOIN slow and deeply on returns.store.id<returns.store.id>=returns.store.id<returns.store.id>[].
+-- Source Map: {'local.total_returns': ['slow'], 'returns.store.id': ['slow'], 'returns.customer.text_id': ['slow'], 'local.avg_store_returns': ['deeply']}.
+-- Output: returns.customer.text_id<returns.store.id,returns.customer.text_id>.
+-- Hidden: local.total_returns<returns.store.id,returns.customer.text_id>, returns.store.id<returns.store.id>, local.avg_store_returns<returns.store.id>.
+-- Nullable: local.total_returns<returns.store.id,returns.customer.text_id>, local.avg_store_returns<returns.store.id>.
 SELECT
-    avg(goldfinch.\"tn_2000_total_returns\") as \"avg_store_returns\",
-    goldfinch.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\"
+    slow.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    goldfinch
-GROUP BY 
-    goldfinch.\"tn_2000_returns_store_id\"),
-vulture as (
-SELECT
-    goldfinch.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\",
-    goldfinch.\"tn_2000_returns_store_id\" as \"tn_2000_returns_store_id\",
-    goldfinch.\"tn_2000_total_returns\" as \"tn_2000_total_returns\",
-    cockatiel.\"avg_store_returns\" as \"avg_store_returns\"
-FROM
-    goldfinch
-    LEFT OUTER JOIN cockatiel on (goldfinch.\"tn_2000_returns_store_id\" = cockatiel.\"tn_2000_returns_store_id\" or (goldfinch.\"tn_2000_returns_store_id\" is null and cockatiel.\"tn_2000_returns_store_id\" is null))
+    slow
+    INNER JOIN deeply on slow.\"returns_store_id\" = deeply.\"returns_store_id\"
 WHERE
-    goldfinch.\"tn_2000_total_returns\" > ( 1.2 * cockatiel.\"avg_store_returns\" )
-)
-SELECT
-    vulture.\"tn_2000_returns_customer_text_id\" as \"tn_2000_returns_customer_text_id\"
-FROM
-    vulture
-GROUP BY 
-    vulture.\"tn_2000_returns_customer_text_id\",
-    vulture.\"tn_2000_returns_store_id\"
+    slow.\"total_returns\" > ( 1.2 * deeply.\"avg_store_returns\" )
+
 ORDER BY 
-    vulture.\"tn_2000_returns_customer_text_id\" asc
+    slow.\"returns_customer_text_id\" asc
 LIMIT (100)"""

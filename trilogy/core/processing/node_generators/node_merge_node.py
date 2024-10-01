@@ -135,7 +135,7 @@ def determine_induced_minimal_nodes(
     return final
 
 
-def detect_ambiguity_and_raise(all_concepts, reduced_concept_sets) -> None:
+def detect_ambiguity_and_raise(all_concepts:list[Concept], reduced_concept_sets:set[str]) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
     # find all values that show up in every join_additions
@@ -197,6 +197,9 @@ def resolve_weak_components(
         for c in all_concepts
         if "__preql_internal" not in c.address
     ]
+    synonyms = []
+    for x in all_concepts:
+        synonyms +=x.pseudonyms.values()
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:
@@ -225,10 +228,10 @@ def resolve_weak_components(
             new = [
                 x
                 for x in all_graph_concepts
-                if x.address not in [y.address for y in all_concepts]
+                if x.address not in all_concepts
             ]
 
-            new_addresses = set([x.address for x in new])
+            new_addresses = set([x.address for x in new if x.address not in synonyms])
             if not new:
                 break_flag = True
             # remove our new nodes for the next search path
@@ -299,7 +302,7 @@ def subgraphs_to_merge_node(
             g=g,
             depth=depth + 1,
             history=history,
-            conditions=search_conditions,
+            # conditions=search_conditions,
         )
         if not parent:
             logger.info(
@@ -324,8 +327,9 @@ def subgraphs_to_merge_node(
         g=g,
         parents=parents,
         depth=depth,
-        conditions=conditions,
-        preexisting_conditions=search_conditions,
+        # conditions=conditions,
+        # conditions=search_conditions.conditional,
+        # preexisting_conditions=search_conditions.conditional,
         # node_joins=[]
     )
 
@@ -342,6 +346,8 @@ def gen_merge_node(
     search_conditions: WhereClause | None = None,
 ) -> Optional[MergeNode]:
 
+    if search_conditions:
+        all_concepts = unique(all_concepts + search_conditions.row_arguments, "address")
     for filter_downstream in [True, False]:
         weak_resolve = resolve_weak_components(
             all_concepts,

@@ -6,7 +6,7 @@ from trilogy.core.processing.nodes import UnnestNode, History, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.constants import logger
 
-LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
+LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 
 
 def gen_unnest_node(
@@ -54,11 +54,12 @@ def gen_unnest_node(
     # as unnest operations are not valid in all situations
     # TODO: inline this node when we can detect it's safe
     new = StrategyNode(
-        input_concepts=[concept] + local_optional,
-        output_concepts=[concept] + local_optional,
+        input_concepts=base.output_concepts,
+        output_concepts=base.output_concepts,
         environment=environment,
         g=g,
         parents=[base],
+        preexisting_conditions = conditions.conditional if conditions else None,
     )
     qds = new.resolve()
     assert qds.source_map[concept.address] == {base.resolve()}

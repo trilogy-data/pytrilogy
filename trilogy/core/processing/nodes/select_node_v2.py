@@ -48,6 +48,9 @@ class SelectNode(StrategyNode):
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        preexisting_conditions: (
+            List[Conditional | Comparison | Parenthetical] | None
+        ) = None,
         hidden_concepts: List[Concept] | None = None,
     ):
         super().__init__(
@@ -63,6 +66,7 @@ class SelectNode(StrategyNode):
             force_group=force_group,
             grain=grain,
             conditions=conditions,
+            preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
         )
         self.accept_partial = accept_partial
@@ -191,6 +195,7 @@ class SelectNode(StrategyNode):
             grain=self.grain,
             force_group=self.force_group,
             conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
         )
 
@@ -208,5 +213,6 @@ class ConstantNode(SelectNode):
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
             conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
         )

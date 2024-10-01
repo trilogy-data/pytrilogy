@@ -353,27 +353,7 @@ def get_query_node(
         raise ValueError(f"Statement has no output components {statement}")
 
     search_concepts: list[Concept] = statement.output_components
-    nest_where = statement.where_clause_category == SelectFiltering.IMPLICIT
 
-    # if all are aggregates, we've pushed the filtering inside the aggregates anyway
-    all_aggregate = all([x.is_aggregate for x in search_concepts])
-    filter_concepts = []
-    # or if we only have aggregates and the keys they group by
-    if any([x.is_aggregate for x in search_concepts]): 
-        aggregates = [x for x in search_concepts if x.is_aggregate]
-        final:list[Concept] = aggregates
-        for agg in aggregates:
-            final += agg.grain.components_copy
-        final = unique(final, property='address')
-        # don't include all_concepts concept in the calculation
-        final = [x for x in final if x.name != ALL_ROWS_CONCEPT]
-        if set([x.address for x in final]) == set([x.address for x in search_concepts]):
-            all_aggregate = True
-    if nest_where and statement.where_clause and not all_aggregate:
-        filter_concepts = unique(
-            statement.where_clause.row_arguments + search_concepts, "address"
-        )
-        nest_where = True
 
     ods: StrategyNode = source_query_concepts(
         search_concepts,
@@ -386,36 +366,7 @@ def get_query_node(
         raise ValueError(
             f"Could not find source query concepts for {[x.address for x in search_concepts]}"
         )
-    ds: StrategyNode
-    # if nest_where and statement.where_clause:
-    #     if not all_aggregate:
-    #         ods.conditions = statement.where_clause.conditional
-    #     ods.set_output_concepts(statement.output_components)
-    #     append_existence_check(ods, environment, graph, history)
-    #     ds = GroupNode(
-    #         output_concepts=statement.output_components,
-    #         input_concepts=statement.output_components,
-    #         parents=[ods],
-    #         environment=ods.environment,
-    #         g=ods.g,
-    #         partial_concepts=ods.partial_concepts,
-    #     )
-    #     # we can still check existence here.
-
-    # elif statement.where_clause:
-    #     ds = SelectNode(
-    #         output_concepts=statement.output_components,
-    #         input_concepts=ods.input_concepts,
-    #         parents=[ods],
-    #         environment=ods.environment,
-    #         g=ods.g,
-    #         partial_concepts=ods.partial_concepts,
-    #         conditions=statement.where_clause.conditional,
-    #     )
-    #     append_existence_check(ds, environment, graph)
-
-    ds = ods
-        # ds = ods
+    ds: StrategyNode = ods
     if statement.having_clause:
         if ds.conditions:
             final = Conditional(
@@ -427,7 +378,7 @@ def get_query_node(
             final = statement.having_clause.conditional
         ds = SelectNode(
             output_concepts=statement.output_components,
-            input_concepts=ds.input_concepts,
+            input_concepts=ds.output_concepts,
             parents=[ds],
             environment=ds.environment,
             g=ds.g,
@@ -496,6 +447,7 @@ def process_query(
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:
     hooks = hooks or []
+    statement.refresh_bindings(environment)
     graph = generate_graph(environment)
     root_datasource = get_query_datasources(
         environment=environment, graph=graph, statement=statement, hooks=hooks

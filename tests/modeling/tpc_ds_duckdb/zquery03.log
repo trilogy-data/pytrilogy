@@ -1,14 +1,18 @@
 query_id = 3
-parse_time = 1.580683
-exec_time = 0.097235
-comp_time = 0.084798
-gen_length = 2053
+parse_time = 1.613311
+exec_time = 0.22305
+comp_time = 0.116852
+gen_length = 5114
 generated_sql = """
 
 WITH 
-jay as (
+tiger as (
+-- Target: Grain<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>. Group: False Source: SourceType.MERGE.
+-- Joins: inner JOIN store_sales and date on store_sales.date.id<store_sales.date.id>=store_sales.date.id<store_sales.date.id>[], inner JOIN store_sales and items on store_sales.item.id<store_sales.item.id>=store_sales.item.id<store_sales.item.id>[].
+-- Source Map: {'store_sales.item.id': ['items'], 'store_sales.item.manufacturer_id': ['items'], 'store_sales.item.brand_name': ['items'], 'store_sales.item.brand_id': ['items'], 'store_sales.date.year': ['date'], 'store_sales.date.id': ['date'], 'store_sales.date.month_of_year': ['date'], 'store_sales.ticket_number': ['store_sales'], 'store_sales.ext_sales_price': ['store_sales'], 'store_sales.item.category': ['items'], 'store_sales.item.units': ['items'], 'store_sales.item.manager_id': ['items'], 'store_sales.item.current_price': ['items'], 'store_sales.item.size': ['items'], 'store_sales.item.desc': ['items'], 'store_sales.item.color': ['items'], 'store_sales.item.name': ['items'], 'store_sales.item.class': ['items'], 'store_sales.date.week_seq': ['date'], 'store_sales.date.date': ['date'], 'store_sales.date.quarter': ['date'], 'store_sales.date.date_string': ['date'], 'store_sales.date.d_week_seq1': ['date'], 'store_sales.date.day_of_week': ['date'], 'store_sales.time.id': ['store_sales'], 'store_sales.ext_discount_amount': ['store_sales'], 'store_sales.promotion.id': ['store_sales'], 'store_sales.quantity': ['store_sales'], 'store_sales.coupon_amt': ['store_sales'], 'store_sales.customer_demographic.id': ['store_sales'], 'store_sales.store.id': ['store_sales'], 'store_sales.net_paid': ['store_sales'], 'store_sales.list_price': ['store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales'], 'store_sales.customer.id': ['store_sales'], 'store_sales.sales_price': ['store_sales'], 'store_sales.ext_list_price': ['store_sales'], 'store_sales.net_profit': ['store_sales']}.
+-- Output: store_sales.ext_sales_price<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>, store_sales.date.month_of_year<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>, store_sales.item.manufacturer_id<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>, store_sales.item.brand_id<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>, store_sales.item.brand_name<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>, store_sales.date.year<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>, store_sales.ticket_number<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>, store_sales.item.id<store_sales.item.id,store_sales.date.id,store_sales.ticket_number>.
 SELECT
-    store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
+    store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     items.\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
     items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
@@ -18,36 +22,28 @@ SELECT
     items.\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
-),
-canary as (
+)
+-- Target: Grain<store_sales.item.brand_id,store_sales.item.brand_name,store_sales.date.year>. Group: True Source: SourceType.GROUP. References: tiger.
+-- Source Map: {'store_sales.ext_sales_price': ['tiger'], 'store_sales.date.month_of_year': ['tiger'], 'store_sales.item.manufacturer_id': ['tiger'], 'store_sales.item.brand_id': ['tiger'], 'store_sales.item.brand_name': ['tiger'], 'store_sales.date.year': ['tiger'], 'store_sales.ticket_number': ['tiger'], 'store_sales.item.id': ['tiger'], 'local.sum_agg': []}.
+-- Output: store_sales.date.year<store_sales.item.brand_id,store_sales.item.brand_name,store_sales.date.year>, store_sales.item.brand_id<store_sales.item.brand_id,store_sales.item.brand_name,store_sales.date.year>, store_sales.item.brand_name<store_sales.item.brand_id,store_sales.item.brand_name,store_sales.date.year>, local.sum_agg<store_sales.item.brand_id,store_sales.item.brand_name,store_sales.date.year>.
+-- Nullable: local.sum_agg<store_sales.item.brand_id,store_sales.item.brand_name,store_sales.date.year>.
 SELECT
-    jay.\"store_sales_ext_sales_price_filter_1819642393595304\" as \"store_sales_ext_sales_price_filter_1819642393595304\",
-    jay.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    jay.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    jay.\"store_sales_date_year\" as \"store_sales_date_year\",
-    jay.\"store_sales_ticket_number\" as \"store_sales_ticket_number\",
-    jay.\"store_sales_item_id\" as \"store_sales_item_id\",
-    jay.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    jay.\"store_sales_item_manufacturer_id\" as \"store_sales_item_manufacturer_id\"
+    tiger.\"store_sales_date_year\" as \"store_sales_date_year\",
+    tiger.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    tiger.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(tiger.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    jay)
-SELECT
-    canary.\"store_sales_date_year\" as \"store_sales_date_year\",
-    canary.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    canary.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(canary.\"store_sales_ext_sales_price_filter_1819642393595304\") as \"sum_agg\"
-FROM
-    canary
+    tiger
 GROUP BY 
-    canary.\"store_sales_date_year\",
-    canary.\"store_sales_item_brand_name\",
-    canary.\"store_sales_item_brand_id\"
+    tiger.\"store_sales_item_brand_id\",
+    tiger.\"store_sales_item_brand_name\",
+    tiger.\"store_sales_date_year\"
 ORDER BY 
-    canary.\"store_sales_date_year\" asc,
-    sum(canary.\"store_sales_ext_sales_price_filter_1819642393595304\") desc,
-    canary.\"store_sales_item_brand_id\" asc
+    tiger.\"store_sales_date_year\" asc,
+    sum(tiger.\"store_sales_ext_sales_price\") desc,
+    tiger.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

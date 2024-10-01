@@ -32,7 +32,6 @@ select unnest;
         environment=env,
         g=generate_graph(env),
         depth=0,
-        source_concepts=search_concepts,
     )
     assert isinstance(gnode, ConstantNode)
 
@@ -42,7 +41,6 @@ select unnest;
         environment=env,
         g=generate_graph(env),
         depth=0,
-        source_concepts=search_concepts,
     )
 
     assert isinstance(gnode, SelectNode)

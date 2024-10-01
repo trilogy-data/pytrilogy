@@ -1570,6 +1570,11 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
+    def refresh_bindings(self, environment:Environment):
+        for item in self.selection:
+            if isinstance(item.content, Concept):
+                item.content = environment.concepts[item.content.address].with_grain(self.grain)
+
     def __str__(self):
         from trilogy.parsing.render import render_query
 
@@ -1607,6 +1612,14 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             ),
             limit=self.limit,
         )
+    
+    @property
+    def locally_derived(self) -> set(str):
+        locally_derived:set[str] = set()
+        for item in self.selection:
+            if isinstance(item.content, ConceptTransform):
+                locally_derived.add(item.content.output.address)
+        return locally_derived
 
     @property
     def input_components(self) -> List[Concept]:
@@ -1658,11 +1671,18 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
         address: Address,
         grain: Grain | None = None,
     ) -> Datasource:
+        if self.where_clause or self.having_clause:
+            modifiers = [Modifier.PARTIAL]
+        else:
+            modifiers = []
         columns = [
             # TODO: replace hardcoded replacement here
-            ColumnAssignment(alias=c.address.replace(".", "_"), concept=c)
+            # if the concept is a locally derived concept, it cannot ever be partial
+            # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
+            ColumnAssignment(alias=c.address.replace(".", "_"), concept=c, modifiers=modifiers if c.address not in self.locally_derived else [])
             for c in self.output_components
         ]
+
         new_datasource = Datasource(
             identifier=identifier,
             address=address,
@@ -2794,36 +2814,24 @@ class CTE(BaseModel):
 
     @property
     def group_concepts(self) -> List[Concept]:
+        def check_is_not_in_group(c:Concept):
+            if len(self.source_map.get(c.address, [])) > 0:
+                return False
+            if c.purpose == Purpose.CONSTANT:
+                return True
+            if c.purpose == Purpose.METRIC:
+                return True
+            elif c.derivation == PurposeLineage.BASIC:
+                if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
+                    return True
+            return False
+
         return (
             unique(
-                self.grain.components
-                + [
+                [
                     c
                     for c in self.output_columns
-                    if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
-                    and c.address not in [x.address for x in self.grain.components]
-                ]
-                + [
-                    c
-                    for c in self.output_columns
-                    if c.purpose == Purpose.METRIC
-                    and (
-                        any(
-                            [
-                                c.with_grain(cte.grain) in cte.output_columns
-                                for cte in self.parent_ctes
-                            ]
-                        )
-                        # if we have this metric from a source
-                        # it isn't derived here and must be grouped on
-                        or len(self.source_map[c.address]) > 0
-                    )
-                ]
-                + [
-                    c
-                    for c in self.output_columns
-                    if c.purpose == Purpose.CONSTANT
-                    and self.source_map[c.address] != []
+                    if not check_is_not_in_group(c)
                 ],
                 "address",
             )
@@ -3387,6 +3395,18 @@ class Environment(BaseModel):
     ):
 
         self.datasources[datasource.env_label] = datasource
+        for column in datasource.columns:
+            current_concept = column.concept
+            current_derivation = current_concept.derivation
+            if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
+                new_concept = current_concept.model_copy(deep=True)
+                new_concept.name = '_pre_persist_'+ current_concept.name
+                # remove the associated lineage
+                current_concept.lineage = None
+                self.add_concept(new_concept, meta=meta, force=True)
+                self.add_concept(current_concept, meta=meta, force=True)
+                self.merge_concept(new_concept, current_concept,  [])
+
         self.gen_concept_list_caches()
         return datasource
 

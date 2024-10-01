@@ -18,7 +18,6 @@ def run_query(engine: Executor, idx: int):
     query = engine.generate_sql(text)[-1]
     parse_time = datetime.now() - parse_start
     exec_start = datetime.now()
-    # raise SyntaxError(query)
     results = engine.execute_raw_sql(query)
     exec_time = datetime.now() - exec_start
     # assert results == ''

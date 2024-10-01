@@ -1,106 +1,69 @@
 query_id = 7
-parse_time = 3.22163
-exec_time = 0.842446
-comp_time = 0.29308
-gen_length = 5352
+parse_time = 3.305522
+exec_time = 1.953196
+comp_time = 0.198483
+gen_length = 11410
 generated_sql = """
 
 WITH 
-macho as (
+chimpanzee as (
+-- Target: Grain<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>. Group: True Source: SourceType.GROUP.
+-- Source Map: {'store_sales.promotion.id': ['store_sales'], 'store_sales.item.id': ['store_sales'], 'store_sales.date.id': ['store_sales'], 'store_sales.sales_price': ['store_sales'], 'store_sales.customer_demographic.id': ['store_sales'], 'store_sales.coupon_amt': ['store_sales'], 'store_sales.quantity': ['store_sales'], 'store_sales.list_price': ['store_sales'], 'store_sales.time.id': ['store_sales'], 'store_sales.ext_discount_amount': ['store_sales'], 'store_sales.store.id': ['store_sales'], 'store_sales.net_paid': ['store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales'], 'store_sales.customer.id': ['store_sales'], 'store_sales.ticket_number': ['store_sales'], 'store_sales.ext_list_price': ['store_sales'], 'store_sales.net_profit': ['store_sales'], 'store_sales.ext_sales_price': ['store_sales']}.
+-- Output: store_sales.promotion.id<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>, store_sales.item.id<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>, store_sales.date.id<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>, store_sales.sales_price<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>, store_sales.customer_demographic.id<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>, store_sales.coupon_amt<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>, store_sales.quantity<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>, store_sales.list_price<store_sales.promotion.id,store_sales.item.id,store_sales.date.id,store_sales.customer_demographic.id>.
 SELECT
-    store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\",
-    store_sales.\"SS_QUANTITY\" as \"store_sales_quantity\",
+    store_sales.\"SS_PROMO_SK\" as \"store_sales_promotion_id\",
     store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
-    store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\",
-    store_sales.\"SS_PROMO_SK\" as \"store_sales_promotion_id\"
+    store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
+    store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
+    store_sales.\"SS_QUANTITY\" as \"store_sales_quantity\",
+    store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_PROMO_SK\",
     store_sales.\"SS_CDEMO_SK\",
-    store_sales.\"SS_SALES_PRICE\",
-    store_sales.\"SS_ITEM_SK\",
-    store_sales.\"SS_COUPON_AMT\",
     store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_ITEM_SK\",
+    store_sales.\"SS_PROMO_SK\",
     store_sales.\"SS_QUANTITY\",
+    store_sales.\"SS_SALES_PRICE\",
+    store_sales.\"SS_COUPON_AMT\",
     store_sales.\"SS_LIST_PRICE\"),
-viper as (
+kestrel as (
+-- Target: Grain<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>. Group: False Source: SourceType.MERGE. References: chimpanzee.
+-- Joins: inner JOIN chimpanzee and promotion on store_sales.promotion.id<store_sales.promotion.id>=store_sales.promotion.id<store_sales.promotion.id>[], inner JOIN chimpanzee and items on store_sales.item.id<store_sales.item.id>=store_sales.item.id<store_sales.item.id>[], inner JOIN chimpanzee and date on store_sales.date.id<store_sales.date.id>=store_sales.date.id<store_sales.date.id>[], inner JOIN chimpanzee and customer_demographics on store_sales.customer_demographic.id<store_sales.customer_demographic.id>=store_sales.customer_demographic.id<store_sales.customer_demographic.id>[].
+-- Source Map: {'store_sales.item.id': ['items'], 'store_sales.item.name': ['items'], 'store_sales.date.year': ['date'], 'store_sales.date.id': ['date'], 'store_sales.promotion.channel_event': ['promotion'], 'store_sales.promotion.id': ['promotion'], 'store_sales.promotion.channel_email': ['promotion'], 'store_sales.customer_demographic.education_status': ['customer_demographics'], 'store_sales.customer_demographic.id': ['customer_demographics'], 'store_sales.customer_demographic.marital_status': ['customer_demographics'], 'store_sales.customer_demographic.gender': ['customer_demographics'], 'store_sales.sales_price': ['chimpanzee'], 'store_sales.coupon_amt': ['chimpanzee'], 'store_sales.quantity': ['chimpanzee'], 'store_sales.list_price': ['chimpanzee'], 'filtered_sales.store_sales.item.name': [], 'filtered_sales.store_sales.quantity': [], 'filtered_sales.store_sales.list_price': [], 'filtered_sales.store_sales.coupon_amt': [], 'filtered_sales.store_sales.sales_price': [], 'store_sales.item.brand_id': ['items'], 'store_sales.item.category': ['items'], 'store_sales.item.units': ['items'], 'store_sales.item.manager_id': ['items'], 'store_sales.item.current_price': ['items'], 'store_sales.item.size': ['items'], 'store_sales.item.desc': ['items'], 'store_sales.item.brand_name': ['items'], 'store_sales.item.color': ['items'], 'store_sales.item.manufacturer_id': ['items'], 'store_sales.item.class': ['items'], 'store_sales.date.month_of_year': ['date'], 'store_sales.date.week_seq': ['date'], 'store_sales.date.date': ['date'], 'store_sales.date.quarter': ['date'], 'store_sales.date.date_string': ['date'], 'store_sales.date.d_week_seq1': ['date'], 'store_sales.date.day_of_week': ['date'], 'store_sales.promotion.cost': ['promotion'], 'store_sales.promotion.string_id': ['promotion'], 'store_sales.promotion.channel_catalog': ['promotion'], 'store_sales.customer_demographic.employed_dependent_count': ['customer_demographics'], 'store_sales.customer_demographic.dependent_count': ['customer_demographics'], 'store_sales.customer_demographic.purchase_estimate': ['customer_demographics'], 'store_sales.customer_demographic.college_dependent_count': ['customer_demographics'], 'store_sales.customer_demographic.credit_rating': ['customer_demographics']}.
+-- Output: store_sales.item.name<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.customer_demographic.gender<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.customer_demographic.marital_status<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.customer_demographic.education_status<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.promotion.channel_email<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.promotion.channel_event<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.date.year<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.quantity<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.list_price<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.coupon_amt<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, store_sales.sales_price<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, filtered_sales.store_sales.item.name<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, filtered_sales.store_sales.quantity<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, filtered_sales.store_sales.list_price<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, filtered_sales.store_sales.coupon_amt<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>, filtered_sales.store_sales.sales_price<store_sales.item.id,store_sales.date.id,store_sales.promotion.id,store_sales.customer_demographic.id>.
+-- Hidden: store_sales.item.name<store_sales.item.id>, store_sales.customer_demographic.gender<store_sales.customer_demographic.id>, store_sales.customer_demographic.marital_status<store_sales.customer_demographic.id>, store_sales.customer_demographic.education_status<store_sales.customer_demographic.id>, store_sales.promotion.channel_email<store_sales.promotion.id>, store_sales.promotion.channel_event<store_sales.promotion.id>, store_sales.date.year<store_sales.date.id>, store_sales.quantity<store_sales.item.id,store_sales.ticket_number>, store_sales.list_price<store_sales.item.id,store_sales.ticket_number>, store_sales.coupon_amt<store_sales.item.id,store_sales.ticket_number>, store_sales.sales_price<store_sales.item.id,store_sales.ticket_number>.
 SELECT
-    macho.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
-    customer_demographics.\"CD_MARITAL_STATUS\" as \"store_sales_customer_demographic_marital_status\",
-    customer_demographics.\"CD_EDUCATION_STATUS\" as \"store_sales_customer_demographic_education_status\",
-    promotion.\"P_CHANNEL_EMAIL\" as \"store_sales_promotion_channel_email\",
-    promotion.\"P_CHANNEL_EVENT\" as \"store_sales_promotion_channel_event\",
-    cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
-    customer_demographics.\"CD_DEMO_SK\" as \"store_sales_customer_demographic_id\",
-    date.\"D_DATE_SK\" as \"store_sales_date_id\",
-    items.\"I_ITEM_SK\" as \"store_sales_item_id\",
-    items.\"I_ITEM_ID\" as \"store_sales_item_name\",
-    macho.\"store_sales_list_price\" as \"store_sales_list_price\",
-    promotion.\"P_PROMO_SK\" as \"store_sales_promotion_id\",
-    macho.\"store_sales_quantity\" as \"store_sales_quantity\",
-    macho.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    items.\"I_ITEM_ID\" as \"filtered_sales_store_sales_item_name\",
+    chimpanzee.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
+    chimpanzee.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
+    chimpanzee.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
+    chimpanzee.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
 FROM
-    macho
-    INNER JOIN memory.item as items on macho.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.customer_demographics as customer_demographics on macho.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
-    INNER JOIN memory.date_dim as date on macho.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.promotion as promotion on macho.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
+    chimpanzee
+    INNER JOIN memory.promotion as promotion on chimpanzee.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
+    INNER JOIN memory.item as items on chimpanzee.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on chimpanzee.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer_demographics as customer_demographics on chimpanzee.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
-),
-yummy as (
+)
+-- Target: Grain<filtered_sales.store_sales.item.name>. Group: True Source: SourceType.GROUP. References: kestrel.
+-- Source Map: {'filtered_sales.store_sales.item.name': ['kestrel'], 'filtered_sales.store_sales.quantity': ['kestrel'], 'filtered_sales.store_sales.list_price': ['kestrel'], 'filtered_sales.store_sales.coupon_amt': ['kestrel'], 'filtered_sales.store_sales.sales_price': ['kestrel'], 'local.avg_sales_price': [], 'local.avg_coupon_amt': [], 'local.avg_list_price': [], 'local.avg_quantity': []}.
+-- Output: filtered_sales.store_sales.item.name<filtered_sales.store_sales.item.name>, local.avg_quantity<filtered_sales.store_sales.item.name>, local.avg_list_price<filtered_sales.store_sales.item.name>, local.avg_coupon_amt<filtered_sales.store_sales.item.name>, local.avg_sales_price<filtered_sales.store_sales.item.name>.
 SELECT
-    viper.\"store_sales_item_name\" as \"store_sales_item_name\",
-    viper.\"store_sales_customer_demographic_gender\" as \"store_sales_customer_demographic_gender\",
-    viper.\"store_sales_customer_demographic_marital_status\" as \"store_sales_customer_demographic_marital_status\",
-    viper.\"store_sales_customer_demographic_education_status\" as \"store_sales_customer_demographic_education_status\",
-    viper.\"store_sales_promotion_channel_email\" as \"store_sales_promotion_channel_email\",
-    viper.\"store_sales_promotion_channel_event\" as \"store_sales_promotion_channel_event\",
-    viper.\"store_sales_date_year\" as \"store_sales_date_year\",
-    viper.\"store_sales_quantity\" as \"store_sales_quantity\",
-    viper.\"store_sales_list_price\" as \"store_sales_list_price\",
-    viper.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    viper.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    kestrel.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    avg(kestrel.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
+    avg(kestrel.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
+    avg(kestrel.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
+    avg(kestrel.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
 FROM
-    viper
-WHERE
-    viper.\"store_sales_customer_demographic_gender\" = 'M' and viper.\"store_sales_customer_demographic_marital_status\" = 'S' and viper.\"store_sales_customer_demographic_education_status\" = 'College' and ( viper.\"store_sales_promotion_channel_email\" = 'N' or viper.\"store_sales_promotion_channel_event\" = 'N' ) and viper.\"store_sales_date_year\" = 2000
-),
-brave as (
-SELECT
-    yummy.\"store_sales_item_name\" as \"store_sales_item_name\",
-    yummy.\"store_sales_quantity\" as \"store_sales_quantity\",
-    yummy.\"store_sales_list_price\" as \"store_sales_list_price\",
-    yummy.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    yummy.\"store_sales_sales_price\" as \"store_sales_sales_price\",
-    yummy.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    yummy.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
-    yummy.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
-    yummy.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
-    yummy.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
-FROM
-    yummy
+    kestrel
 GROUP BY 
-    yummy.\"store_sales_item_name\",
-    yummy.\"store_sales_coupon_amt\",
-    yummy.\"store_sales_quantity\",
-    yummy.\"store_sales_sales_price\",
-    yummy.\"store_sales_list_price\")
-SELECT
-    brave.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    avg(brave.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
-    avg(brave.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
-    avg(brave.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
-    avg(brave.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
-FROM
-    brave
-GROUP BY 
-    brave.\"filtered_sales_store_sales_item_name\"
+    kestrel.\"filtered_sales_store_sales_item_name\"
 ORDER BY 
-    brave.\"filtered_sales_store_sales_item_name\" asc
+    kestrel.\"filtered_sales_store_sales_item_name\" asc
 LIMIT (100)"""

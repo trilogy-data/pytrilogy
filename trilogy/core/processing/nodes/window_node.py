@@ -30,7 +30,6 @@ class WindowNode(StrategyNode):
 
     def _resolve(self) -> QueryDatasource:
         base = super()._resolve()
-        base.grain = Grain(components=self.input_concepts)
         return base
 
     def copy(self) -> "WindowNode":

@@ -183,9 +183,7 @@ def get_node_joins(
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
-    from trilogy.hooks.graph_hook import GraphHook
-    from trilogy.core.graph_models import concept_to_node
-    # GraphHook().query_graph_built(graph) # highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
+
     joins: defaultdict[str, set] = defaultdict(set)
     identifier_map: dict[str, Datasource | QueryDatasource] = {
         x.identifier: x for x in datasources
@@ -279,8 +277,7 @@ def get_node_joins(
         relevant = concept_to_relevant_joins(local_concepts)
         left_datasource = identifier_map[left]
         right_datasource = identifier_map[right]
-        join_tuples = []
-        partial = set()
+        join_tuples:list[ConceptPair] = []
         for joinc in relevant:
             left_arg = joinc
             right_arg = joinc

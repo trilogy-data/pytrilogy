@@ -583,7 +583,7 @@ class BaseDialect:
         having: Conditional | Parenthetical | Comparison | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
-            if is_scalar_condition(cte.condition, materialized=materialized):
+            if not cte.group_to_grain or is_scalar_condition(cte.condition, materialized=materialized):
                 where = cte.condition
             else:
                 components = decompose_condition(cte.condition)
