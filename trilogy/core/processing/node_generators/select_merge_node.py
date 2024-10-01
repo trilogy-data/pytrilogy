@@ -226,8 +226,10 @@ def gen_select_merge_node(
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
 ) -> Optional[MergeNode]:
+    non_constant = [c for c in all_concepts if c.derivation != PurposeLineage.CONSTANT]
+    constants = [c for c in all_concepts if c.derivation == PurposeLineage.CONSTANT]
     for attempt in [False, True]:
-        pruned_concept_graph = create_pruned_concept_graph(g, all_concepts, attempt)
+        pruned_concept_graph = create_pruned_concept_graph(g, non_constant, attempt)
         subgraphs = list(nx.connected_components(pruned_concept_graph.to_undirected()))
         if subgraphs and len(subgraphs) == 1:
             logger.info(
@@ -239,7 +241,7 @@ def gen_select_merge_node(
         # GraphHook().query_graph_built(pruned_concept_graph.to_undirected(), highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
         # raise SyntaxError(f'Too many subgraphs found for {[c.address for c in all_concepts]}: got {subgraphs}')
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Too many subgraphs found for {[c.address for c in all_concepts]}: got {subgraphs}'"
+            f"{padding(depth)}{LOGGER_PREFIX} Too many subgraphs found for {[c.address for c in non_constant]}: got {subgraphs}'"
         )
         return None
 
@@ -259,11 +261,27 @@ def gen_select_merge_node(
     ]
     if not parents:
         return None
-    elif len(parents) == 1:
+    
+    if constants:
+        parents.append(
+            ConstantNode(
+                output_concepts=constants,
+                input_concepts=[],
+                environment=environment,
+                g=g,
+                parents=[],
+                depth=depth,
+                partial_concepts=[],
+                force_group=False,
+            )
+        )
+
+
+    if len(parents) == 1:
         return parents[0]
     return MergeNode(
         output_concepts=all_concepts,
-        input_concepts=[c for c in all_concepts],
+        input_concepts=non_constant,
         environment=environment,
         g=g,
         depth=depth,

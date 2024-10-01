@@ -1,43 +1,33 @@
 query_id = 6
-parse_time = 3.235443
-exec_time = 0.604917
-comp_time = 0.127055
-gen_length = 10452
+parse_time = 1.188214
+exec_time = 0.632441
+comp_time = 3.315073
+gen_length = 2976
 generated_sql = """
 
 WITH 
-juicy as (
--- Target: Grain<store_sales.date.id,store_sales.customer.id,item.id>. Group: True Source: SourceType.GROUP.
--- Source Map: {'store_sales.date.id': ['store_sales'], 'store_sales.customer.id': ['store_sales'], 'item.id': ['store_sales'], 'store_sales.quantity': ['store_sales'], 'store_sales.customer_demographic.id': ['store_sales'], 'store_sales.list_price': ['store_sales'], 'store_sales.time.id': ['store_sales'], 'store_sales.ext_discount_amount': ['store_sales'], 'store_sales.promotion.id': ['store_sales'], 'store_sales.store.id': ['store_sales'], 'store_sales.sales_price': ['store_sales'], 'store_sales.ext_list_price': ['store_sales'], 'store_sales.ext_sales_price': ['store_sales'], 'store_sales.net_paid': ['store_sales'], 'store_sales.item.id': ['store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales'], 'store_sales.ticket_number': ['store_sales'], 'store_sales.coupon_amt': ['store_sales'], 'store_sales.net_profit': ['store_sales']}.
--- Output: store_sales.date.id<store_sales.date.id,store_sales.customer.id,item.id>, store_sales.customer.id<store_sales.date.id,store_sales.customer.id,item.id>, item.id<store_sales.date.id,store_sales.customer.id,item.id>.
+fowl as (
 SELECT
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
+    store_sales.\"SS_ITEM_SK\" as \"item_id\",
     store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    store_sales.\"SS_ITEM_SK\" as \"item_id\"
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_CUSTOMER_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-wary as (
--- Target: Grain<item.id>. Group: False Source: SourceType.DIRECT_SELECT.
--- Source Map: {'item.id': ['items'], 'item.name': ['items'], 'item.desc': ['items'], 'item.brand_name': ['items'], 'item.brand_id': ['items'], 'item.manufacturer_id': ['items'], 'item.category': ['items'], 'item.class': ['items'], 'item.current_price': ['items'], 'item.color': ['items'], 'item.manager_id': ['items'], 'item.size': ['items'], 'item.units': ['items']}.
--- Output: item.current_price<item.id>, item.category<item.id>, item.id<item.id>.
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_ITEM_SK\"),
+tenuous as (
 SELECT
-    items.\"I_CURRENT_PRICE\" as \"item_current_price\",
     items.\"I_CATEGORY\" as \"item_category\",
-    items.\"I_ITEM_SK\" as \"item_id\"
+    items.\"I_ITEM_SK\" as \"item_id\",
+    items.\"I_CURRENT_PRICE\" as \"item_current_price\"
 FROM
     memory.item as items
 WHERE
     items.\"I_CATEGORY\" is not null
 ),
-mamba as (
--- Target: Grain<item.category>. Group: True Source: SourceType.GROUP.
--- Source Map: {'item.current_price': ['items'], 'item.category': ['items'], 'item.id': ['items'], 'local._virtual_6264207893106521': [], 'item.color': ['items'], 'item.manufacturer_id': ['items'], 'item.class': ['items'], 'item.size': ['items'], 'item.brand_id': ['items'], 'item.desc': ['items'], 'item.units': ['items'], 'item.brand_name': ['items'], 'item.name': ['items'], 'item.manager_id': ['items']}.
--- Output: local._virtual_6264207893106521<item.category>, item.category<item.category>.
--- Nullable: local._virtual_6264207893106521<item.category>.
+young as (
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -48,62 +38,49 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-fabulous as (
--- Target: Grain<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>. Group: False Source: SourceType.MERGE. References: juicy, wary.
--- Joins: inner JOIN juicy and date on store_sales.date.id<store_sales.date.id>=store_sales.date.id<store_sales.date.id>[], inner JOIN juicy and customers on store_sales.customer.id<store_sales.customer.id>=store_sales.customer.id<store_sales.customer.id>[], inner JOIN juicy and items on item.id<item.id>=item.id<item.id>[], inner JOIN juicy and wary on item.id<item.id>=item.id<item.id>[], inner JOIN customers and customer_address on store_sales.customer.address_id<store_sales.customer.address_id>=store_sales.customer.address_id<store_sales.customer.address_id>[].
--- Source Map: {'store_sales.item.current_price': ['items'], 'item.id': ['items'], 'store_sales.date.year': ['date'], 'store_sales.date.id': ['date'], 'store_sales.date.month_of_year': ['date'], 'store_sales.customer.id': ['customers'], 'store_sales.customer.address_id': ['customers'], 'store_sales.customer.state': ['customer_address'], 'item.category': ['wary'], 'store_sales.item.brand_id': ['items'], 'store_sales.item.category': ['items'], 'store_sales.item.units': ['items'], 'store_sales.item.manager_id': ['items'], 'store_sales.item.id': ['items'], 'store_sales.item.size': ['items'], 'store_sales.item.desc': ['items'], 'store_sales.item.brand_name': ['items'], 'store_sales.item.color': ['items'], 'store_sales.item.manufacturer_id': ['items'], 'store_sales.item.name': ['items'], 'store_sales.item.class': ['items'], 'store_sales.date.week_seq': ['date'], 'store_sales.date.date': ['date'], 'store_sales.date.quarter': ['date'], 'store_sales.date.date_string': ['date'], 'store_sales.date.d_week_seq1': ['date'], 'store_sales.date.day_of_week': ['date'], 'store_sales.customer.text_id': ['customers'], 'store_sales.customer.first_name': ['customers'], 'store_sales.customer.preferred_cust_flag': ['customers'], 'store_sales.customer.birth_country': ['customers'], 'store_sales.customer.demographics.id': ['customers'], 'store_sales.customer.last_name': ['customers'], 'store_sales.customer.street': ['customer_address'], 'store_sales.customer.county': ['customer_address'], 'store_sales.customer.city': ['customer_address'], 'store_sales.customer.country': ['customer_address'], 'store_sales.customer.zip': ['customer_address']}.
--- Output: item.category<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.id<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>.
+dove as (
 SELECT
-    wary.\"item_category\" as \"item_category\",
+    tenuous.\"item_category\" as \"item_category\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
-    juicy
-    INNER JOIN memory.date_dim as date on juicy.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.customer as customers on juicy.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
-    INNER JOIN memory.item as items on juicy.\"item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN wary on juicy.\"item_id\" = wary.\"item_id\"
+    fowl
+    INNER JOIN memory.item as items on fowl.\"item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN tenuous on fowl.\"item_id\" = tenuous.\"item_id\"
+    INNER JOIN memory.customer as customers on fowl.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.date_dim as date on fowl.\"store_sales_date_id\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and wary.\"item_category\" is not null
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and tenuous.\"item_category\" is not null
 ),
-concerned as (
--- Target: Grain<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>. Group: False Source: SourceType.MERGE. References: fabulous, mamba.
--- Joins: inner JOIN fabulous and mamba on item.category<item.id>=item.category<item.id>[].
--- Source Map: {'item.category': ['fabulous'], 'store_sales.customer.id': ['fabulous'], 'store_sales.date.year': ['fabulous'], 'store_sales.date.month_of_year': ['fabulous'], 'store_sales.item.current_price': ['fabulous'], 'store_sales.customer.state': ['fabulous'], 'local._virtual_6264207893106521': ['mamba']}.
--- Output: item.category<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.id<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, local._virtual_6264207893106521<item.category>.
--- Nullable: local._virtual_6264207893106521<item.category>.
+dingo as (
 SELECT
-    fabulous.\"item_category\" as \"item_category\",
-    fabulous.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    fabulous.\"store_sales_date_year\" as \"store_sales_date_year\",
-    fabulous.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    fabulous.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    fabulous.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    mamba.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    dove.\"item_category\" as \"item_category\",
+    dove.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    dove.\"store_sales_date_year\" as \"store_sales_date_year\",
+    dove.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    dove.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    dove.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    young.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    fabulous
-    INNER JOIN mamba on (fabulous.\"item_category\" = mamba.\"item_category\" or (fabulous.\"item_category\" is null and mamba.\"item_category\" is null))
+    dove
+    INNER JOIN young on (dove.\"item_category\" = young.\"item_category\" or (dove.\"item_category\" is null and young.\"item_category\" is null))
 WHERE
-    fabulous.\"store_sales_date_year\" = 2001 and fabulous.\"store_sales_date_month_of_year\" = 1 and fabulous.\"store_sales_item_current_price\" > 1.2 * mamba.\"_virtual_6264207893106521\" and fabulous.\"item_category\" is not null
+    dove.\"store_sales_date_year\" = 2001 and dove.\"store_sales_date_month_of_year\" = 1 and dove.\"store_sales_item_current_price\" > 1.2 * young.\"_virtual_6264207893106521\" and dove.\"item_category\" is not null
 )
--- Target: Grain<store_sales.customer.state>. Group: True Source: SourceType.GROUP. References: concerned.
--- Source Map: {'item.category': ['concerned'], 'store_sales.customer.id': ['concerned'], 'store_sales.date.year': ['concerned'], 'store_sales.date.month_of_year': ['concerned'], 'store_sales.item.current_price': ['concerned'], 'store_sales.customer.state': ['concerned'], 'local._virtual_6264207893106521': ['concerned'], 'local.customer_count': []}.
--- Output: store_sales.customer.state<store_sales.customer.state>, local.customer_count<store_sales.customer.state>.
--- Nullable: local.customer_count<store_sales.customer.state>.
 SELECT
-    concerned.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(concerned.\"store_sales_customer_id\") as \"customer_count\"
+    dingo.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(dingo.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    concerned
+    dingo
 GROUP BY 
-    concerned.\"store_sales_customer_state\"
+    dingo.\"store_sales_customer_state\"
 HAVING
-    count(concerned.\"store_sales_customer_id\") >= 10
+    count(dingo.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(concerned.\"store_sales_customer_id\") asc nulls first,
-    concerned.\"store_sales_customer_state\" asc nulls first"""
+    count(dingo.\"store_sales_customer_id\") asc nulls first,
+    dingo.\"store_sales_customer_state\" asc nulls first"""

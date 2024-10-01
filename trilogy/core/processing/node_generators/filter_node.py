@@ -52,7 +52,10 @@ def gen_filter_node(
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
+    # we'll populate this with the row parent
+    # and the existence parent(s)
     core_parents = []
+
     row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,
@@ -105,6 +108,9 @@ def gen_filter_node(
         )
         optimized_pushdown = True
     if optimized_pushdown:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
+        )
         if isinstance(row_parent, SelectNode):
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} nesting select node in strategy node"
@@ -114,16 +120,10 @@ def gen_filter_node(
                 output_concepts=[concept] + row_parent.output_concepts,
                 environment=row_parent.environment,
                 g=row_parent.g,
-                parents=[row_parent] + core_parents,
+                parents=[row_parent],
                 depth=row_parent.depth,
                 partial_concepts=row_parent.partial_concepts,
                 force_group=False,
-                conditions=(
-                    row_parent.conditions + where.conditional
-                    if row_parent.conditions
-                    else where.conditional
-                ),
-                existence_concepts=row_parent.existence_concepts,
             )
         else:
             parent = row_parent
@@ -150,10 +150,6 @@ def gen_filter_node(
             ]
         )
         parent.rebuild_cache()
-
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
-        )
         filter_node = parent
     else:
         core_parents.append(row_parent)
@@ -201,8 +197,6 @@ def gen_filter_node(
         history=history,
         conditions=conditions,
     )
-    if not enrich_node:
-        return filter_node
     return MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,
         output_concepts=[

@@ -136,6 +136,7 @@ def test_environment():
             ],
         ),
         grain=product_id,
+        keys=(product_id,),
     )
     product_revenue_rank_by_category = Concept(
         name="product_revenue_rank_by_category",

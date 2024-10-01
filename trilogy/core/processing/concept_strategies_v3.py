@@ -592,14 +592,18 @@ def append_existence_check(
         for subselect in where.existence_arguments:
             if not subselect:
                 continue
-
-            eds = source_query_concepts(
+            logger.info(
+            f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
+        )   
+            parent = source_query_concepts(
                 [*subselect], environment=environment, g=graph, history=history
             )
-            logger.info(
-                f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
-            )
-            node.add_parents([eds]).add_existence_concepts([*subselect])
+            assert parent, 'Could not resolve existence clause'
+            node.add_parents([parent])
+            logger.info(            f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}")
+            node.add_existence_concepts([*subselect])
+
+        
 
 def search_concepts(
     mandatory_list: List[Concept],
@@ -855,11 +859,11 @@ def source_query_concepts(
             f"Could not resolve conections between {error_strings} from environment graph."
         )
     return root
-    return GroupNode(
-        output_concepts=[x for x in root.output_concepts if x.address not in root.hidden_concepts],
-        input_concepts=[x for x in root.output_concepts if x.address not in root.hidden_concepts],
-        environment=environment,
-        g=g,
-        parents=[root],
-        partial_concepts=root.partial_concepts,
-    )
+    # return GroupNode(
+    #     output_concepts=[x for x in root.output_concepts if x.address not in root.hidden_concepts],
+    #     input_concepts=[x for x in root.output_concepts if x.address not in root.hidden_concepts],
+    #     environment=environment,
+    #     g=g,
+    #     parents=[root],
+    #     partial_concepts=root.partial_concepts,
+    # )

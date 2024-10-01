@@ -1,80 +1,60 @@
 query_id = 16
-parse_time = 10.255612
-exec_time = 0.699121
-comp_time = 0.062237
-gen_length = 13559
+parse_time = 7.488417
+exec_time = 0.478542
+comp_time = 0.065116
+gen_length = 4539
 generated_sql = """
 
 WITH 
-budgie as (
--- Target: Grain<cr.order_number>. Group: True Source: SourceType.GROUP.
--- Source Map: {'cr.order_number': ['catalog_returns'], 'cr.net_loss': ['catalog_returns'], 'cr.date.id': ['catalog_returns'], 'cr.sales.order_number': ['catalog_returns'], 'cr.item.id': ['catalog_returns'], 'cr.time.id': ['catalog_returns']}.
--- Output: cr.order_number<cr.order_number>.
+civet as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-cuckoo as (
--- Target: Grain<cs.warehouse.id,cs.order_number>. Group: True Source: SourceType.GROUP. References: budgie.
--- Source Map: {'cs.order_number': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.call_center.id': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.item.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cr.order_number': ['budgie']}.
--- Output: cs.order_number<cs.warehouse.id,cs.order_number>, cs.warehouse.id<cs.warehouse.id,cs.order_number>.
+martin as (
 SELECT
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select budgie.\"cr_order_number\" from budgie where budgie.\"cr_order_number\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select civet.\"cr_order_number\" from civet where civet.\"cr_order_number\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_WAREHOUSE_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\"),
-snipe as (
--- Target: Grain<cs.order_number>. Group: True Source: SourceType.GROUP. References: cuckoo.
--- Source Map: {'cs.order_number': ['cuckoo'], 'cs.warehouse.id': ['cuckoo'], 'local._agg_count_6430482449237259': [], 'cr.order_number': ['budgie']}.
--- Output: local._agg_count_6430482449237259<cs.order_number>, cs.order_number<cs.order_number>.
--- Nullable: local._agg_count_6430482449237259<cs.order_number>.
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_WAREHOUSE_SK\"),
+friendly as (
 SELECT
-    count(cuckoo.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
-    cuckoo.\"cs_order_number\" as \"cs_order_number\"
+    count(martin.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    martin.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    cuckoo
+    martin
 GROUP BY 
-    cuckoo.\"cs_order_number\"),
-monitor as (
--- Target: Grain<cs.order_number>. Group: False Source: SourceType.FILTER. References: snipe.
--- Source Map: {'local._agg_count_6430482449237259': ['snipe'], 'cs.order_number': ['snipe'], 'local.multi_warehouse_sales': [], 'cr.order_number': ['budgie']}.
--- Output: local.multi_warehouse_sales<cs.order_number>.
+    martin.\"cs_order_number\"),
+tearful as (
 SELECT
-    CASE WHEN snipe.\"_agg_count_6430482449237259\" > 1 THEN snipe.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN friendly.\"_agg_count_6430482449237259\" > 1 THEN friendly.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    snipe),
-wakeful as (
--- Target: Grain<cs.customer.address_id,cs.call_center.id,cs.ship_date.id,cs.order_number>. Group: True Source: SourceType.GROUP. References: budgie, monitor.
--- Source Map: {'cs.call_center.id': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.item.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cr.order_number': ['budgie'], 'local.multi_warehouse_sales': ['monitor']}.
--- Output: cs.call_center.id<cs.customer.address_id,cs.call_center.id,cs.ship_date.id,cs.order_number>, cs.order_number<cs.customer.address_id,cs.call_center.id,cs.ship_date.id,cs.order_number>, cs.customer.address_id<cs.customer.address_id,cs.call_center.id,cs.ship_date.id,cs.order_number>, cs.ship_date.id<cs.customer.address_id,cs.call_center.id,cs.ship_date.id,cs.order_number>.
+    friendly),
+grouse as (
 SELECT
-    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select budgie.\"cr_order_number\" from budgie where budgie.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select monitor.\"multi_warehouse_sales\" from monitor where monitor.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select civet.\"cr_order_number\" from civet where civet.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select tearful.\"multi_warehouse_sales\" from tearful where tearful.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_SHIP_ADDR_SK\",
-    catalog_sales.\"CS_SHIP_DATE_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\",
     catalog_sales.\"CS_CALL_CENTER_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\"),
-busy as (
--- Target: Grain<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>. Group: False Source: SourceType.MERGE. References: budgie, monitor.
--- Joins: inner JOIN catalog_sales and call_center on cs.call_center.id<cs.call_center.id>=cs.call_center.id<cs.call_center.id>[], inner JOIN catalog_sales and customer_address on cs.customer.address_id<cs.customer.address_id>=cs.customer.address_id<cs.customer.address_id>[], inner JOIN catalog_sales and date on cs.ship_date.id<cs.ship_date.id>=cs.ship_date.id<cs.ship_date.id>[].
--- Source Map: {'cs.ship_date.date': ['date'], 'cs.ship_date.id': ['date'], 'cs.customer.state': ['customer_address'], 'cs.customer.address_id': ['customer_address'], 'cs.call_center.id': ['call_center'], 'cs.call_center.county': ['call_center'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.item.id': ['catalog_sales'], 'cr.order_number': ['budgie'], 'local.multi_warehouse_sales': ['monitor'], 'cs.net_profit': ['catalog_sales'], 'cs.ship_date.month_of_year': ['date'], 'cs.ship_date.date_string': ['date'], 'cs.ship_date.day_of_week': ['date'], 'cs.ship_date.year': ['date'], 'cs.ship_date.week_seq': ['date'], 'cs.ship_date.d_week_seq1': ['date'], 'cs.ship_date.quarter': ['date'], 'cs.customer.county': ['customer_address'], 'cs.customer.country': ['customer_address'], 'cs.customer.zip': ['customer_address'], 'cs.customer.city': ['customer_address'], 'cs.customer.street': ['customer_address'], 'cs.time.id': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales']}.
--- Output: cs.extra_ship_cost<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.ship_date.date<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.customer.state<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.call_center.county<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.order_number<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.item.id<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.net_profit<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>.
+    catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_SHIP_DATE_SK\"),
+imported as (
 SELECT
     catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
@@ -85,60 +65,44 @@ SELECT
     catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
-    INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select budgie.\"cr_order_number\" from budgie where budgie.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select monitor.\"multi_warehouse_sales\" from monitor where monitor.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select civet.\"cr_order_number\" from civet where civet.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select tearful.\"multi_warehouse_sales\" from tearful where tearful.\"multi_warehouse_sales\" is not null)
 ),
-magpie as (
--- Target: Grain<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>. Group: False Source: SourceType.MERGE. References: wakeful, budgie, monitor.
--- Joins: inner JOIN wakeful and call_center on cs.call_center.id<cs.call_center.id>=cs.call_center.id<cs.call_center.id>[], inner JOIN wakeful and customer_address on cs.customer.address_id<cs.customer.address_id>=cs.customer.address_id<cs.customer.address_id>[], inner JOIN wakeful and date on cs.ship_date.id<cs.ship_date.id>=cs.ship_date.id<cs.ship_date.id>[].
--- Source Map: {'cs.ship_date.date': ['date'], 'cs.ship_date.id': ['date'], 'cs.customer.state': ['customer_address'], 'cs.customer.address_id': ['customer_address'], 'cs.call_center.id': ['call_center'], 'cs.call_center.county': ['call_center'], 'cs.order_number': ['wakeful'], 'cr.order_number': ['budgie'], 'local.multi_warehouse_sales': ['monitor'], 'cs.ship_date.month_of_year': ['date'], 'cs.ship_date.date_string': ['date'], 'cs.ship_date.day_of_week': ['date'], 'cs.ship_date.year': ['date'], 'cs.ship_date.week_seq': ['date'], 'cs.ship_date.d_week_seq1': ['date'], 'cs.ship_date.quarter': ['date'], 'cs.customer.county': ['customer_address'], 'cs.customer.country': ['customer_address'], 'cs.customer.zip': ['customer_address'], 'cs.customer.city': ['customer_address'], 'cs.customer.street': ['customer_address']}.
--- Output: cs.order_number<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>, cs.ship_date.date<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>, cs.customer.state<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>, cs.call_center.county<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>.
+lynx as (
 SELECT
-    wakeful.\"cs_order_number\" as \"cs_order_number\",
+    grouse.\"cs_order_number\" as \"cs_order_number\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
     call_center.\"CC_COUNTY\" as \"cs_call_center_county\"
 FROM
-    wakeful
-    INNER JOIN memory.call_center as call_center on wakeful.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
-    INNER JOIN memory.customer_address as customer_address on wakeful.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.date_dim as date on wakeful.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    grouse
+    INNER JOIN memory.date_dim as date on grouse.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as call_center on grouse.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.customer_address as customer_address on grouse.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and wakeful.\"cs_order_number\" not in (select budgie.\"cr_order_number\" from budgie where budgie.\"cr_order_number\" is not null) and wakeful.\"cs_order_number\" in (select monitor.\"multi_warehouse_sales\" from monitor where monitor.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and grouse.\"cs_order_number\" not in (select civet.\"cr_order_number\" from civet where civet.\"cr_order_number\" is not null) and grouse.\"cs_order_number\" in (select tearful.\"multi_warehouse_sales\" from tearful where tearful.\"multi_warehouse_sales\" is not null)
 ),
-level as (
--- Target: Grain<Abstract>. Group: True Source: SourceType.GROUP. References: busy.
--- Source Map: {'cs.extra_ship_cost': ['busy'], 'cs.ship_date.date': ['busy'], 'cs.customer.state': ['busy'], 'cs.call_center.county': ['busy'], 'cs.order_number': ['busy'], 'cs.item.id': ['busy'], 'local.total_shipping_cost': [], 'cs.net_profit': ['busy'], 'local.total_net_profit': []}.
--- Output: local.total_shipping_cost<>, local.total_net_profit<>.
+dapper as (
 SELECT
-    sum(busy.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(busy.\"cs_net_profit\") as \"total_net_profit\"
+    sum(imported.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(imported.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    busy),
-abundant as (
--- Target: Grain<Abstract>. Group: True Source: SourceType.GROUP. References: magpie.
--- Source Map: {'cs.order_number': ['magpie'], 'cs.ship_date.date': ['magpie'], 'cs.customer.state': ['magpie'], 'cs.call_center.county': ['magpie'], 'local.order_count': []}.
--- Output: local.order_count<>.
--- Nullable: local.order_count<>.
+    imported),
+skylark as (
 SELECT
-    count(distinct magpie.\"cs_order_number\") as \"order_count\"
+    count(distinct lynx.\"cs_order_number\") as \"order_count\"
 FROM
-    magpie)
--- Target: Grain<Abstract>. Group: False Source: SourceType.MERGE. References: abundant, level.
--- Joins: full JOIN abundant and level on .
--- Source Map: {'local.order_count': ['abundant'], 'local.total_shipping_cost': ['level'], 'local.total_net_profit': ['level']}.
--- Output: local.order_count<>, local.total_shipping_cost<>, local.total_net_profit<>.
--- Nullable: local.order_count<>.
+    lynx)
 SELECT
-    abundant.\"order_count\" as \"order_count\",
-    level.\"total_shipping_cost\" as \"total_shipping_cost\",
-    level.\"total_net_profit\" as \"total_net_profit\"
+    skylark.\"order_count\" as \"order_count\",
+    dapper.\"total_shipping_cost\" as \"total_shipping_cost\",
+    dapper.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    abundant
-    FULL JOIN level on 1=1
+    skylark
+    FULL JOIN dapper on 1=1
 ORDER BY 
-    abundant.\"order_count\" desc
+    skylark.\"order_count\" desc
 LIMIT (100)"""

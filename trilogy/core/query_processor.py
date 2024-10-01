@@ -194,8 +194,7 @@ def resolve_cte_base_name_and_alias_v2(
 ) -> Tuple[str | None, str | None]:
     joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if (
-        len(source.datasources) == 1
-        and isinstance(source.datasources[0], Datasource)
+        isinstance(source.datasources[0], Datasource)
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
