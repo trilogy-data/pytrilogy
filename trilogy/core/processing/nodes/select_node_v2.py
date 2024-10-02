@@ -47,9 +47,7 @@ class SelectNode(StrategyNode):
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
         conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: (
-            List[Conditional | Comparison | Parenthetical] | None
-        ) = None,
+        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
     ):
         super().__init__(
@@ -185,6 +183,8 @@ class SelectNode(StrategyNode):
             for k, v in source_map.items():
                 if v and k not in resolution.source_map:
                     resolution.source_map[k] = v
+        if not resolution:
+            raise ValueError("No select node could be generated")
         return resolution
 
     def copy(self) -> "SelectNode":

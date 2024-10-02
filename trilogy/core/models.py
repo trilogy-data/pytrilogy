@@ -432,6 +432,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     grain: "Grain" = Field(default=None, validate_default=True)
     modifiers: Optional[List[Modifier]] = Field(default_factory=list)
     pseudonyms: Dict[str, Concept] = Field(default_factory=dict)
+    _address_cache: str | None = None
 
     def __hash__(self):
         return hash(str(self))
@@ -558,9 +559,19 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         grain = ",".join([str(c.address) for c in self.grain.components])
         return f"{self.namespace}.{self.name}<{grain}>"
 
-    @cached_property
+    @property
     def address(self) -> str:
-        return f"{self.namespace}.{self.name}"
+        if not self._address_cache:
+            self._address_cache = f"{self.namespace}.{self.name}"
+        return self._address_cache
+
+    @address.setter
+    def address(self, address: str) -> None:
+        self._address_cache = address
+
+    def set_name(self, name: str):
+        self.name = name
+        self.address = f"{self.namespace}.{self.name}"
 
     @property
     def output(self) -> "Concept":
@@ -1617,7 +1628,7 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
         )
 
     @property
-    def locally_derived(self) -> set(str):
+    def locally_derived(self) -> set[str]:
         locally_derived: set[str] = set()
         for item in self.selection:
             if isinstance(item.content, ConceptTransform):
@@ -2829,7 +2840,7 @@ class CTE(BaseModel):
                 return True
             if c.purpose == Purpose.METRIC:
                 return True
-            elif c.derivation == PurposeLineage.BASIC:
+            elif c.derivation == PurposeLineage.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
                     return True
             return False
@@ -3404,7 +3415,7 @@ class Environment(BaseModel):
             current_derivation = current_concept.derivation
             if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
                 new_concept = current_concept.model_copy(deep=True)
-                new_concept.name = "_pre_persist_" + current_concept.name
+                new_concept.set_name("_pre_persist_" + current_concept.name)
                 # remove the associated lineage
                 current_concept.lineage = None
                 self.add_concept(new_concept, meta=meta, force=True)

@@ -12,9 +12,8 @@ from typing import List
 
 from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger
-from trilogy.core.processing.utility import padding
-from trilogy.core.processing.utility import concept_to_relevant_joins
-
+from trilogy.core.processing.utility import padding, concept_to_relevant_joins
+from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
@@ -45,7 +44,6 @@ def gen_rowset_node(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent rowset node for {concept}"
         )
         return None
-
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
     select_hidden = set([x.address for x in select.hidden_components])
@@ -75,23 +73,21 @@ def gen_rowset_node(
     assert node.resolution_cache
     # assume grain to be output of select
     # but don't include anything hidden(the non-rowset concepts)
-    # node.grain = concept_list_to_grain(
-    #     [
-    #         x
-    #         for x in node.output_concepts
-    #         if x.address
-    #         not in [
-    #             y.address
-    #             for y in node.hidden_concepts
-    #             if y.derivation != PurposeLineage.ROWSET
-    #         ]
-    #     ],
-    #     parent_sources=node.resolution_cache.datasources,
-    # )
+    node.grain = concept_list_to_grain(
+        [
+            x
+            for x in node.output_concepts
+            if x.address
+            not in [
+                y.address
+                for y in node.hidden_concepts
+                if y.derivation != PurposeLineage.ROWSET
+            ]
+        ],
+        parent_sources=node.resolution_cache.datasources,
+    )
 
-    # node.rebuild_cache()
-    # if node.resolve().group_required:
-    #     raise SyntaxError
+    node.rebuild_cache()
 
     if not local_optional or all(
         x.address in node.output_concepts for x in local_optional

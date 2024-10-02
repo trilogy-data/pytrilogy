@@ -469,7 +469,7 @@ asc
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (1, None)
     assert results[1] == (2, 2)
-    assert len(results) == 4
+    assert len(results) == 3
 
 
 def test_demo_filter_select():

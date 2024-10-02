@@ -56,11 +56,13 @@ def create_pruned_concept_graph(
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, Concept] = nx.get_node_attributes(g, "concept")
     datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
-    relevant_concepts = [
-        n
+    relevant_concepts_pre = {
+        n: x.address
         for n in g.nodes()
+        # filter out synonyms
         if (x := concepts.get(n, None)) and x.address in target_addresses
-    ]
+    }
+    relevant_concepts = list(relevant_concepts_pre.keys())
     relevent_datasets = []
     if not accept_partial:
         partial = {}
@@ -73,14 +75,14 @@ def create_pruned_concept_graph(
         for edge in g.edges:
             if (
                 edge[0] in datasources
-                and (x := partial.get(edge[0], []))
-                and edge[1] in x
+                and (pnodes := partial.get(edge[0], []))
+                and edge[1] in pnodes
             ):
                 to_remove.append(edge)
             if (
                 edge[1] in datasources
-                and (x := partial.get(edge[1], []))
-                and edge[0] in x
+                and (pnodes := partial.get(edge[1], []))
+                and edge[0] in pnodes
             ):
                 to_remove.append(edge)
         for edge in to_remove:
@@ -225,7 +227,7 @@ def gen_select_merge_node(
     depth: int,
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
-) -> Optional[MergeNode]:
+) -> Optional[StrategyNode]:
     non_constant = [c for c in all_concepts if c.derivation != PurposeLineage.CONSTANT]
     constants = [c for c in all_concepts if c.derivation == PurposeLineage.CONSTANT]
     if not non_constant and constants:
@@ -242,6 +244,7 @@ def gen_select_merge_node(
     for attempt in [False, True]:
         pruned_concept_graph = create_pruned_concept_graph(g, non_constant, attempt)
         subgraphs = list(nx.connected_components(pruned_concept_graph.to_undirected()))
+
         if subgraphs and len(subgraphs) == 1:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"

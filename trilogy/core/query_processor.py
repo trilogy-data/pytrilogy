@@ -342,14 +342,13 @@ def get_query_node(
         )
     ds: StrategyNode = ods
     if statement.having_clause:
+        final = statement.having_clause.conditional
         if ds.conditions:
             final = Conditional(
                 left=ds.conditions,
                 right=statement.having_clause.conditional,
                 operator=BooleanOperator.AND,
             )
-        else:
-            final = statement.having_clause.conditional
         ds = SelectNode(
             output_concepts=statement.output_components,
             input_concepts=ds.output_concepts,

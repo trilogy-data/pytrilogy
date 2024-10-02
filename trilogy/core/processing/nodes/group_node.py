@@ -67,23 +67,18 @@ class GroupNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
 
-        grain = concept_list_to_grain(self.output_concepts, [])
+        grain = self.grain or concept_list_to_grain(self.output_concepts, [])
         comp_grain = Grain()
         for source in parent_sources:
             comp_grain += source.grain
 
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if (
-            comp_grain == grain
-            and self.output_lcl == self.input_lcl
-            and self.force_group is not True
-        ):
+        if comp_grain == grain and self.force_group is not True:
             # if there is no group by, and inputs equal outputs
             # return the parent
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Output of group by node equals input of group by node"
-                f" {self.output_lcl}"
+                f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output"
                 f" grains {comp_grain} and {grain}"
             )
             if (
@@ -92,7 +87,7 @@ class GroupNode(StrategyNode):
                 == self.output_lcl
             ) and isinstance(parent_sources[0], QueryDatasource):
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required, returning parent node"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required as inputs match outputs of parent; returning parent node"
                 )
                 will_return: QueryDatasource = parent_sources[0]
                 if self.conditions:
@@ -103,13 +98,9 @@ class GroupNode(StrategyNode):
         else:
 
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different output than input, forcing group"
-                f" {self.input_lcl}"
-                " vs"
-                f" {self.output_lcl}"
-                " and"
+                f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different grain than parents; forcing group"
                 f" upstream grains {[str(source.grain) for source in parent_sources]}"
-                " vs"
+                f" with final grain {comp_grain} vs"
                 f" target grain {grain}"
             )
             for parent in self.parents:

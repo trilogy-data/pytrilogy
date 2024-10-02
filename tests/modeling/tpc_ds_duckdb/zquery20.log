@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 4.382342
-exec_time = 0.310055
-comp_time = 0.150885
-gen_length = 2543
+parse_time = 9.603491
+exec_time = 0.179244
+comp_time = 0.153504
+gen_length = 2517
 generated_sql = """
 
 WITH 
-elegant as (
+tenuous as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-crocodile as (
+obsolete as (
 SELECT
-    sum(elegant.\"cs_extra_sales_price\") as \"revenue\",
-    elegant.\"cs_item_category\" as \"cs_item_category\",
-    elegant.\"cs_item_class\" as \"cs_item_class\",
-    elegant.\"cs_item_current_price\" as \"cs_item_current_price\",
-    elegant.\"cs_item_desc\" as \"cs_item_desc\",
-    elegant.\"cs_item_name\" as \"cs_item_name\"
+    sum(tenuous.\"cs_extra_sales_price\") as \"revenue\",
+    tenuous.\"cs_item_category\" as \"cs_item_category\",
+    tenuous.\"cs_item_class\" as \"cs_item_class\",
+    tenuous.\"cs_item_current_price\" as \"cs_item_current_price\",
+    tenuous.\"cs_item_desc\" as \"cs_item_desc\",
+    tenuous.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    elegant
+    tenuous
 GROUP BY 
-    elegant.\"cs_item_current_price\",
-    elegant.\"cs_item_desc\",
-    elegant.\"cs_item_name\",
-    elegant.\"cs_item_category\",
-    elegant.\"cs_item_class\"),
-gullible as (
+    tenuous.\"cs_item_desc\",
+    tenuous.\"cs_item_class\",
+    tenuous.\"cs_item_category\",
+    tenuous.\"cs_item_current_price\",
+    tenuous.\"cs_item_name\"),
+scrawny as (
 SELECT
-    sum(crocodile.\"revenue\") over (partition by crocodile.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    crocodile.\"revenue\" as \"revenue\",
-    crocodile.\"cs_item_class\" as \"cs_item_class\",
-    crocodile.\"cs_item_name\" as \"cs_item_name\",
-    crocodile.\"cs_item_desc\" as \"cs_item_desc\",
-    crocodile.\"cs_item_category\" as \"cs_item_category\",
-    crocodile.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(obsolete.\"revenue\") over (partition by obsolete.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    obsolete.\"revenue\" as \"revenue\",
+    obsolete.\"cs_item_class\" as \"cs_item_class\",
+    obsolete.\"cs_item_name\" as \"cs_item_name\",
+    obsolete.\"cs_item_desc\" as \"cs_item_desc\",
+    obsolete.\"cs_item_category\" as \"cs_item_category\",
+    obsolete.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    crocodile)
+    obsolete)
 SELECT
-    gullible.\"cs_item_name\" as \"cs_item_name\",
-    gullible.\"cs_item_desc\" as \"cs_item_desc\",
-    gullible.\"cs_item_category\" as \"cs_item_category\",
-    gullible.\"cs_item_class\" as \"cs_item_class\",
-    gullible.\"cs_item_current_price\" as \"cs_item_current_price\",
-    gullible.\"revenue\" as \"revenue\",
-    gullible.\"revenue\" * 100.0 / gullible.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    scrawny.\"cs_item_name\" as \"cs_item_name\",
+    scrawny.\"cs_item_desc\" as \"cs_item_desc\",
+    scrawny.\"cs_item_category\" as \"cs_item_category\",
+    scrawny.\"cs_item_class\" as \"cs_item_class\",
+    scrawny.\"cs_item_current_price\" as \"cs_item_current_price\",
+    scrawny.\"revenue\" as \"revenue\",
+    scrawny.\"revenue\" * 100.0 / scrawny.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    gullible
+    scrawny
 ORDER BY 
-    gullible.\"cs_item_category\" asc nulls first,
-    gullible.\"cs_item_class\" asc nulls first,
-    gullible.\"cs_item_name\" asc nulls first,
-    gullible.\"cs_item_desc\" asc nulls first,
-    gullible.\"revenue\" * 100.0 / gullible.\"_virtual_8479147315262044\" asc nulls first
+    scrawny.\"cs_item_category\" asc nulls first,
+    scrawny.\"cs_item_class\" asc nulls first,
+    scrawny.\"cs_item_name\" asc nulls first,
+    scrawny.\"cs_item_desc\" asc nulls first,
+    scrawny.\"revenue\" * 100.0 / scrawny.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

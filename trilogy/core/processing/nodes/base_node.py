@@ -195,7 +195,11 @@ class StrategyNode:
         self.preexisting_conditions = preexisting_conditions
         if self.conditions and not self.preexisting_conditions:
             self.preexisting_conditions = self.conditions
-        elif self.conditions and self.conditions != self.preexisting_conditions:
+        elif (
+            self.conditions
+            and self.preexisting_conditions
+            and self.conditions != self.preexisting_conditions
+        ):
             self.preexisting_conditions = Conditional(
                 left=self.conditions,
                 right=self.preexisting_conditions,

@@ -1,12 +1,12 @@
 query_id = 1
-parse_time = 3.011959
-exec_time = 0.100452
-comp_time = 2.129313
-gen_length = 1633
+parse_time = 9.654305
+exec_time = 0.117643
+comp_time = 2.32419
+gen_length = 1631
 generated_sql = """
 
 WITH 
-chickadee as (
+quetzal as (
 SELECT
     store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
@@ -17,38 +17,38 @@ SELECT
     store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
     memory.store_returns as store_returns
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-chick as (
+waggish as (
 SELECT
-    sum(chickadee.\"returns_return_amount\") as \"total_returns\",
-    chickadee.\"returns_store_id\" as \"returns_store_id\",
-    chickadee.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(quetzal.\"returns_return_amount\") as \"total_returns\",
+    quetzal.\"returns_store_id\" as \"returns_store_id\",
+    quetzal.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    chickadee
+    quetzal
 GROUP BY 
-    chickadee.\"returns_store_id\",
-    chickadee.\"returns_customer_text_id\"),
-wooden as (
+    quetzal.\"returns_store_id\",
+    quetzal.\"returns_customer_text_id\"),
+hard as (
 SELECT
-    avg(chick.\"total_returns\") as \"avg_store_returns\",
-    chick.\"returns_store_id\" as \"returns_store_id\"
+    avg(waggish.\"total_returns\") as \"avg_store_returns\",
+    waggish.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    chick
+    waggish
 GROUP BY 
-    chick.\"returns_store_id\")
+    waggish.\"returns_store_id\")
 SELECT
-    chick.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    waggish.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    chick
-    INNER JOIN wooden on chick.\"returns_store_id\" = wooden.\"returns_store_id\"
+    waggish
+    INNER JOIN hard on waggish.\"returns_store_id\" = hard.\"returns_store_id\"
 WHERE
-    chick.\"total_returns\" > ( 1.2 * wooden.\"avg_store_returns\" )
+    waggish.\"total_returns\" > ( 1.2 * hard.\"avg_store_returns\" )
 
 ORDER BY 
-    chick.\"returns_customer_text_id\" asc
+    waggish.\"returns_customer_text_id\" asc
 LIMIT (100)"""

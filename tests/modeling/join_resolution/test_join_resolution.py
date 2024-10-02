@@ -50,7 +50,7 @@ SELECT
 
     results = test_executor.execute_text(test_select)[0].fetchall()
 
-    assert len(results) == 4
+    assert len(results) == 3
 
 
 def test_ambiguous_error_with_forced_join_order(
@@ -84,4 +84,4 @@ SELECT
     results = test_executor.execute_text(test_select)[0].fetchall()
 
     # different when we group via order
-    assert len(results) == 6
+    assert len(results) == 5

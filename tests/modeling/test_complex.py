@@ -138,10 +138,9 @@ def test_window_clone(test_environment: Environment, test_executor: Executor):
     _, statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
-    assert len(results) == 4
+    assert len(results) == 2
     assert results[0] == (1, 1)
-    assert results[1] == (1, 2)
-    assert results[2] == (2, 1)
+    assert results[1] == (None, 1)
 
 
 def test_window_alt(test_environment: Environment, test_executor: Executor):

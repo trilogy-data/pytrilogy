@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, Any
 import networkx as nx
 from trilogy.core.models import (
     Datasource,
@@ -22,6 +22,12 @@ from trilogy.core.models import (
     UnnestJoin,
     CaseWhen,
     CaseElse,
+    MapWrapper,
+    ListWrapper,
+    MapType,
+    DatePart,
+    NumericType,
+    ListType,
 )
 
 from trilogy.core.enums import Purpose, Granularity, BooleanOperator, Modifier
@@ -398,7 +404,7 @@ def is_scalar_condition(
         int
         | str
         | float
-        | list
+        | list[Any]
         | WindowItem
         | FilterItem
         | Concept
@@ -411,6 +417,12 @@ def is_scalar_condition(
         | DataType
         | CaseWhen
         | CaseElse
+        | MapWrapper[Any, Any]
+        | ListType
+        | MapType
+        | NumericType
+        | DatePart
+        | ListWrapper[Any]
     ),
     materialized: set[str] | None = None,
 ) -> bool:

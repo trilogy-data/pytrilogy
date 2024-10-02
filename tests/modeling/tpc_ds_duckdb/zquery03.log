@@ -1,12 +1,12 @@
 query_id = 3
-parse_time = 1.102221
-exec_time = 0.075988
-comp_time = 0.055314
-gen_length = 1323
+parse_time = 6.006984
+exec_time = 0.144051
+comp_time = 0.060419
+gen_length = 1335
 generated_sql = """
 
 WITH 
-lion as (
+heron as (
 SELECT
     store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -18,24 +18,24 @@ SELECT
     items.\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
-    lion.\"store_sales_date_year\" as \"store_sales_date_year\",
-    lion.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    lion.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(lion.\"store_sales_ext_sales_price\") as \"sum_agg\"
+    heron.\"store_sales_date_year\" as \"store_sales_date_year\",
+    heron.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    heron.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(heron.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    lion
+    heron
 GROUP BY 
-    lion.\"store_sales_item_brand_id\",
-    lion.\"store_sales_item_brand_name\",
-    lion.\"store_sales_date_year\"
+    heron.\"store_sales_item_brand_id\",
+    heron.\"store_sales_item_brand_name\",
+    heron.\"store_sales_date_year\"
 ORDER BY 
-    lion.\"store_sales_date_year\" asc,
-    sum(lion.\"store_sales_ext_sales_price\") desc,
-    lion.\"store_sales_item_brand_id\" asc
+    heron.\"store_sales_date_year\" asc,
+    sum(heron.\"store_sales_ext_sales_price\") desc,
+    heron.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

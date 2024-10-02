@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import List, Optional, Callable
+from typing import List, Optional, Protocol, Union
 
 from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage, Granularity, FunctionType
@@ -48,18 +48,17 @@ class ValidationResult(Enum):
 LOGGER_PREFIX = "[CONCEPT DETAIL]"
 
 
-SearchConceptsType = Callable[
-    [
-        List[Concept],  # mandatory_list
-        Environment,  # environment
-        int,  # depth
-        ReferenceGraph,  # g
-        bool,  # accept_partial
-        Optional[History],  # history
-        Optional[WhereClause],  # conditions
-    ],
-    StrategyNode | None,
-]
+class SearchConceptsType(Protocol):
+    def __call__(
+        self,
+        mandatory_list: List[Concept],
+        environment: Environment,
+        depth: int,
+        g: ReferenceGraph,
+        accept_partial: bool = False,
+        history: Optional[History] = None,
+        conditions: Optional[WhereClause] = None,
+    ) -> Union[StrategyNode, None]: ...
 
 
 def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
@@ -469,6 +468,7 @@ def generate_node(
             return None
     else:
         raise ValueError(f"Unknown derivation {concept.derivation}")
+    return None
 
 
 def validate_concept(
@@ -604,12 +604,11 @@ def append_existence_check(
     node: StrategyNode,
     environment: Environment,
     graph: ReferenceGraph,
-    where: WhereClause | None = None,
+    where: WhereClause,
     history: History | None = None,
 ):
     # we if we have a where clause doing an existence check
     # treat that as separate subquery
-    where = where or node.conditions
     if where.existence_arguments:
         for subselect in where.existence_arguments:
             if not subselect:
@@ -688,7 +687,7 @@ def _search_concepts(
 
     all_mandatory = set(c.address for c in mandatory_list)
 
-    must_evaluate_condition_here = False
+    must_evaluate_condition_on_this_level_not_push_down = False
 
     # if we have a filter, we may need to get more values to support that.
     if conditions:
@@ -705,7 +704,7 @@ def _search_concepts(
             ]
         ):
             mandatory_list = completion_mandatory
-            must_evaluate_condition_here = True
+            must_evaluate_condition_on_this_level_not_push_down = True
     else:
         completion_mandatory = mandatory_list
 
@@ -728,7 +727,7 @@ def _search_concepts(
         # always pass the filter up when we aren't looking at all filter inputs
         # or there are any non-filter complex types
         if conditions:
-            should_evaluate_filter_here = all(
+            should_evaluate_filter_on_this_level_not_push_down = all(
                 [x.address in mandatory_list for x in conditions.row_arguments]
             ) and not any(
                 [
@@ -738,14 +737,27 @@ def _search_concepts(
                 ]
             )
         else:
-            should_evaluate_filter_here = True
+            should_evaluate_filter_on_this_level_not_push_down = True
         local_conditions = (
             conditions
             if conditions
-            and not must_evaluate_condition_here
-            and not should_evaluate_filter_here
+            and not must_evaluate_condition_on_this_level_not_push_down
+            and not should_evaluate_filter_on_this_level_not_push_down
             else None
         )
+        # but if it's not basic, and it's not condition;
+        # we do need to push it down (and have another layer of filter evaluation)
+        # to ensure filtering happens before something like a SUM
+        if (
+            conditions
+            and priority_concept.derivation
+            not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT)
+            and priority_concept.address not in conditions.row_arguments
+        ):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Force including conditions to push filtering above complex condition that is not condition member or parent"
+            )
+            local_conditions = conditions
 
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} with conditions {local_conditions}"
@@ -864,7 +876,7 @@ def _search_concepts(
             )
         # ensure we can resolve our final merge
         output.resolve()
-        if condition_required:
+        if condition_required and conditions:
             output.add_condition(conditions.conditional)
             if conditions.existence_arguments:
                 append_existence_check(
@@ -931,8 +943,7 @@ def source_query_concepts(
         raise ValueError(
             f"Could not resolve conections between {error_strings} from environment graph."
         )
-    # return root
-    return GroupNode(
+    candidate = GroupNode(
         output_concepts=[
             x for x in root.output_concepts if x.address not in root.hidden_concepts
         ],
@@ -944,3 +955,6 @@ def source_query_concepts(
         parents=[root],
         partial_concepts=root.partial_concepts,
     )
+    if not candidate.resolve().group_required:
+        return root
+    return candidate

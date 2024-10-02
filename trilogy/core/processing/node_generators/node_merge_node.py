@@ -136,7 +136,7 @@ def determine_induced_minimal_nodes(
 
 
 def detect_ambiguity_and_raise(
-    all_concepts: list[Concept], reduced_concept_sets: set[str]
+    all_concepts: list[Concept], reduced_concept_sets: list[set[str]]
 ) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
@@ -199,7 +199,7 @@ def resolve_weak_components(
         for c in all_concepts
         if "__preql_internal" not in c.address
     ]
-    synonyms = []
+    synonyms: list[Concept] = []
     for x in all_concepts:
         synonyms += x.pseudonyms.values()
     while break_flag is not True:

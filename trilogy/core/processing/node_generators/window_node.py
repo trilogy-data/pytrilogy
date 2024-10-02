@@ -3,8 +3,7 @@ from typing import List
 
 from trilogy.core.models import Concept, WindowItem, Environment, WhereClause
 from trilogy.utility import unique
-from trilogy.core.processing.nodes import WindowNode, StrategyNode
-from trilogy.core.processing.nodes import MergeNode, History
+from trilogy.core.processing.nodes import WindowNode, StrategyNode, History
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 
@@ -32,7 +31,7 @@ def gen_window_node(
     source_concepts,
     history: History | None = None,
     conditions: WhereClause | None = None,
-) -> WindowNode | MergeNode | None:
+) -> StrategyNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
     parent_node = source_concepts(
         mandatory_list=parent_concepts + local_optional,

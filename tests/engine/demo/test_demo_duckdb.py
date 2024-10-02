@@ -222,10 +222,12 @@ def test_demo_filter(engine):
     executor.environment = env
     test = """
     auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
-    select     passenger.last_name,    passenger.id.count,   
-      count(surviving_passenger) -> surviving_size
+    select     
+        passenger.last_name,    
+        passenger.id.count,   
+        count(surviving_passenger) -> surviving_size
     HAVING
-      passenger.id.count=surviving_size
+        passenger.id.count=surviving_size
     order by passenger.id.count desc, passenger.last_name asc
     limit 5;"""
 

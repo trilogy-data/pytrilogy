@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 1.762568
-exec_time = 0.204573
-comp_time = 0.143085
-gen_length = 2737
+parse_time = 4.266871
+exec_time = 0.149074
+comp_time = 0.134203
+gen_length = 2778
 generated_sql = """
 
 WITH 
-lynx as (
+eel as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-martin as (
+round as (
 SELECT
-    sum(lynx.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    lynx.\"web_sales_item_category\" as \"web_sales_item_category\",
-    lynx.\"web_sales_item_class\" as \"web_sales_item_class\",
-    lynx.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    lynx.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    lynx.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(eel.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    eel.\"web_sales_item_category\" as \"web_sales_item_category\",
+    eel.\"web_sales_item_class\" as \"web_sales_item_class\",
+    eel.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    eel.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    eel.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    lynx
+    eel
 GROUP BY 
-    lynx.\"web_sales_item_category\",
-    lynx.\"web_sales_item_name\",
-    lynx.\"web_sales_item_current_price\",
-    lynx.\"web_sales_item_desc\",
-    lynx.\"web_sales_item_class\"),
-magpie as (
+    eel.\"web_sales_item_class\",
+    eel.\"web_sales_item_name\",
+    eel.\"web_sales_item_category\",
+    eel.\"web_sales_item_desc\",
+    eel.\"web_sales_item_current_price\"),
+sweltering as (
 SELECT
-    sum(martin.\"itemrevenue\") over (partition by martin.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    martin.\"itemrevenue\" as \"itemrevenue\",
-    martin.\"web_sales_item_class\" as \"web_sales_item_class\",
-    martin.\"web_sales_item_name\" as \"web_sales_item_name\",
-    martin.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    martin.\"web_sales_item_category\" as \"web_sales_item_category\",
-    martin.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(round.\"itemrevenue\") over (partition by round.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    round.\"itemrevenue\" as \"itemrevenue\",
+    round.\"web_sales_item_class\" as \"web_sales_item_class\",
+    round.\"web_sales_item_name\" as \"web_sales_item_name\",
+    round.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    round.\"web_sales_item_category\" as \"web_sales_item_category\",
+    round.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    martin)
+    round)
 SELECT
-    magpie.\"web_sales_item_name\" as \"web_sales_item_name\",
-    magpie.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    magpie.\"web_sales_item_category\" as \"web_sales_item_category\",
-    magpie.\"web_sales_item_class\" as \"web_sales_item_class\",
-    magpie.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    magpie.\"itemrevenue\" as \"itemrevenue\",
-    magpie.\"itemrevenue\" * 100.0 / magpie.\"_virtual_137720187295635\" as \"revenueratio\"
+    sweltering.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sweltering.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    sweltering.\"web_sales_item_category\" as \"web_sales_item_category\",
+    sweltering.\"web_sales_item_class\" as \"web_sales_item_class\",
+    sweltering.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    sweltering.\"itemrevenue\" as \"itemrevenue\",
+    sweltering.\"itemrevenue\" * 100.0 / sweltering.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    magpie
+    sweltering
 ORDER BY 
-    magpie.\"web_sales_item_category\" asc,
-    magpie.\"web_sales_item_class\" asc,
-    magpie.\"web_sales_item_name\" asc,
-    magpie.\"web_sales_item_desc\" asc,
-    magpie.\"itemrevenue\" * 100.0 / magpie.\"_virtual_137720187295635\" asc
+    sweltering.\"web_sales_item_category\" asc,
+    sweltering.\"web_sales_item_class\" asc,
+    sweltering.\"web_sales_item_name\" asc,
+    sweltering.\"web_sales_item_desc\" asc,
+    sweltering.\"itemrevenue\" * 100.0 / sweltering.\"_virtual_137720187295635\" asc
 LIMIT (100)"""
