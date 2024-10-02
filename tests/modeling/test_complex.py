@@ -133,21 +133,22 @@ def test_window_clone(test_environment: Environment, test_executor: Executor):
         order_id,
     WHERE
         order_id in filtered
-    order by filtered asc
+    order by filtered asc, order_id asc
     ;"""
     _, statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
-    assert len(results) == 2
+    assert len(results) == 4
     assert results[0] == (1, 1)
-    assert results[1] == (None, 1)
+    assert results[1] == (1, 2)
+    assert results[2] == (2, 1)
 
 
 def test_window_alt(test_environment: Environment, test_executor: Executor):
     test_select = """
     auto nums <- unnest([1,2]);
 
-    auto filtered <- rank nums;
+    auto filtered <- row_number nums;
 
     SELECT
         filtered

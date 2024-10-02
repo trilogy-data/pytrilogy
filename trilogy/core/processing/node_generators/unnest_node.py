@@ -59,7 +59,7 @@ def gen_unnest_node(
         environment=environment,
         g=g,
         parents=[base],
-        preexisting_conditions = conditions.conditional if conditions else None,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
     qds = new.resolve()
     assert qds.source_map[concept.address] == {base.resolve()}

@@ -58,6 +58,7 @@ def test_one(engine):
     query = run_query(engine, 1)
     assert len(query) < 9000, query
 
+
 @pytest.mark.skip(reason="Is duckdb correct??")
 def test_two(engine):
     run_query(engine, 2)
@@ -120,12 +121,11 @@ def test_twenty_one(engine):
     # size gating
     # assert len(query) < 6000, query
 
+
 def test_twenty_four(engine):
     _ = run_query(engine, 24)
     # size gating
     # assert len(query) < 6000, query
-
-
 
 
 def run_adhoc(number: int):

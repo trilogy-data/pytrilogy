@@ -30,7 +30,6 @@ from trilogy.core.enums import (
     WindowType,
     DatePart,
     ShowCategory,
-    SelectFiltering,
     FunctionClass,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
@@ -933,8 +932,8 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        locally_derived:set[str] = set()
-        all_in_output:set[str]= set()
+        locally_derived: set[str] = set()
+        all_in_output: set[str] = set()
         for item in select_items:
             # we don't know the grain of an aggregate at assignment time
             # so rebuild at this point in the tree
@@ -942,7 +941,7 @@ class ParseToObjects(Transformer):
             if isinstance(item.content, ConceptTransform):
                 new_concept = item.content.output.with_select_context(
                     output.grain,
-                    conditional = None,
+                    conditional=None,
                     # conditional=(
                     #     output.where_clause.conditional
                     #     if output.where_clause
@@ -968,7 +967,7 @@ class ParseToObjects(Transformer):
                     if orderitem.expr.purpose == Purpose.METRIC:
                         orderitem.expr = orderitem.expr.with_select_context(
                             output.grain,
-                            conditional = None,
+                            conditional=None,
                             # conditional=(
                             #     output.where_clause.conditional
                             #     if output.where_clause
@@ -981,21 +980,39 @@ class ParseToObjects(Transformer):
         if output.where_clause:
             for concept in output.where_clause.concept_arguments:
 
-                if concept.lineage and isinstance(concept.lineage, Function) and concept.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                if (
+                    concept.lineage
+                    and isinstance(concept.lineage, Function)
+                    and concept.lineage.operator
+                    in FunctionClass.AGGREGATE_FUNCTIONS.value
+                ):
                     if concept.address in locally_derived:
-                        raise SyntaxError(f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}")
-                
-                if concept.lineage and isinstance(concept.lineage, AggregateWrapper) and concept.lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                        raise SyntaxError(
+                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}"
+                        )
+
+                if (
+                    concept.lineage
+                    and isinstance(concept.lineage, AggregateWrapper)
+                    and concept.lineage.function.operator
+                    in FunctionClass.AGGREGATE_FUNCTIONS.value
+                ):
                     if concept.address in locally_derived:
-                        raise SyntaxError(f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}")
+                        raise SyntaxError(
+                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}"
+                        )
         if output.having_clause:
             for concept in output.having_clause.concept_arguments:
                 if concept.address not in all_in_output:
-                    raise SyntaxError(f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {meta.line}")
+                    raise SyntaxError(
+                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {meta.line}"
+                    )
         if output.order_by:
             for concept in output.order_by.concept_arguments:
                 if concept.address not in all_in_output:
-                    raise SyntaxError(f"Cannot order by a column that is not in the output projection; {meta.line}")
+                    raise SyntaxError(
+                        f"Cannot order by a column that is not in the output projection; {meta.line}"
+                    )
 
         return output
 
@@ -1837,7 +1854,7 @@ class ParseToObjects(Transformer):
     def fnot(self, meta, args):
         args = process_function_args(args, meta=meta, environment=self.environment)
         return IsNull(args)
-    
+
     @v_args(meta=True)
     def fbool(self, meta, args):
         args = process_function_args(args, meta=meta, environment=self.environment)

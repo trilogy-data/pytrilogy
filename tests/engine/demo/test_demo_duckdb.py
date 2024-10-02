@@ -390,7 +390,7 @@ order by passenger.class desc
 
 
 def test_demo_suggested_answer_failing_intentional(engine):
-    """ this is the wrong answer for demo
+    """this is the wrong answer for demo
     But is a good test case - can we resolve
     arbitrary counts in the same query?"""
     executor = engine

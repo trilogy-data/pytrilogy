@@ -20,6 +20,8 @@ from trilogy.core.models import (
     DataType,
     ConceptPair,
     UnnestJoin,
+    CaseWhen,
+    CaseElse,
 )
 
 from trilogy.core.enums import Purpose, Granularity, BooleanOperator, Modifier
@@ -115,7 +117,10 @@ def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
                 partial.add(join.right_datasource.identifier)
             # an inner join after a left outer implicitly makes that outer an inner
             # so fix that
-            if join.left_datasource.identifier in partial and join.join_type == JoinType.INNER:
+            if (
+                join.left_datasource.identifier in partial
+                and join.join_type == JoinType.INNER
+            ):
                 join.join_type = JoinType.LEFT_OUTER
             if not available_aliases:
                 final_joins.append(join)
@@ -277,7 +282,7 @@ def get_node_joins(
         relevant = concept_to_relevant_joins(local_concepts)
         left_datasource = identifier_map[left]
         right_datasource = identifier_map[right]
-        join_tuples:list[ConceptPair] = []
+        join_tuples: list[ConceptPair] = []
         for joinc in relevant:
             left_arg = joinc
             right_arg = joinc
@@ -332,7 +337,9 @@ def get_node_joins(
         # if the join includes all the right grain components
         # we only need to join on those, not everything
         if all([x.address in all_right for x in right_grain.components]):
-                join_tuples = [x for x in join_tuples if x.right.address in right_grain.components]
+            join_tuples = [
+                x for x in join_tuples if x.right.address in right_grain.components
+            ]
 
         final_joins_pre.append(
             BaseJoin(
@@ -402,6 +409,8 @@ def is_scalar_condition(
         | AggregateWrapper
         | MagicConstants
         | DataType
+        | CaseWhen
+        | CaseElse
     ),
     materialized: set[str] | None = None,
 ) -> bool:
@@ -416,6 +425,7 @@ def is_scalar_condition(
     elif isinstance(element, Function):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
+        return all([is_scalar_condition(x, materialized) for x in element.arguments])
     elif isinstance(element, Concept):
         if materialized and element.address in materialized:
             return True
@@ -428,6 +438,14 @@ def is_scalar_condition(
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
+    elif isinstance(element, CaseWhen):
+        return is_scalar_condition(
+            element.comparison, materialized
+        ) and is_scalar_condition(element.expr, materialized)
+    elif isinstance(element, CaseElse):
+        return is_scalar_condition(element.expr, materialized)
+    elif isinstance(element, MagicConstants):
+        return True
     return True
 
 

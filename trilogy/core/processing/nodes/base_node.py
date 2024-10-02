@@ -197,7 +197,9 @@ class StrategyNode:
             self.preexisting_conditions = self.conditions
         elif self.conditions and self.conditions != self.preexisting_conditions:
             self.preexisting_conditions = Conditional(
-                left=self.conditions, right=self.preexisting_conditions, operator=BooleanOperator.AND
+                left=self.conditions,
+                right=self.preexisting_conditions,
+                operator=BooleanOperator.AND,
             )
         self.validate_parents()
         self.log = True
@@ -206,11 +208,13 @@ class StrategyNode:
         self.parents += parents
         self.validate_parents()
         return self
-    
-    def set_preexisting_conditions(self, conditions: Conditional | Comparison | Parenthetical):
+
+    def set_preexisting_conditions(
+        self, conditions: Conditional | Comparison | Parenthetical
+    ):
         self.preexisting_conditions = conditions
         return self
-    
+
     def add_condition(self, condition: Conditional | Comparison | Parenthetical):
         if self.conditions:
             self.conditions = Conditional(
@@ -237,7 +241,7 @@ class StrategyNode:
 
         self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
 
-    def add_output_concepts(self, concepts: List[Concept], rebuild:bool = True):
+    def add_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for concept in concepts:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
@@ -246,7 +250,7 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def add_existence_concepts(self, concepts: List[Concept], rebuild:bool = True):
+    def add_existence_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for concept in concepts:
             if concept.address not in self.output_concepts:
                 self.existence_concepts.append(concept)
@@ -254,7 +258,7 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def set_output_concepts(self, concepts: List[Concept], rebuild:bool = True):
+    def set_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         # exit if no changes
         if self.output_concepts == concepts:
             return self
@@ -265,17 +269,17 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def add_output_concept(self, concept: Concept, rebuild:bool = True):
+    def add_output_concept(self, concept: Concept, rebuild: bool = True):
         return self.add_output_concepts([concept], rebuild)
 
-    def hide_output_concepts(self, concepts: List[Concept], rebuild:bool = True):
+    def hide_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for x in concepts:
             self.hidden_concepts.append(x)
         if rebuild:
             self.rebuild_cache()
         return self
 
-    def remove_output_concepts(self, concepts: List[Concept], rebuild:bool = True):
+    def remove_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for x in concepts:
             self.hidden_concepts.append(x)
         addresses = [x.address for x in concepts]
@@ -312,13 +316,16 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        grain = self.grain if self.grain else concept_list_to_grain(self.output_concepts, [])
+        grain = (
+            self.grain
+            if self.grain
+            else concept_list_to_grain(self.output_concepts, [])
+        )
         source_map = resolve_concept_map(
             parent_sources,
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
-
 
         return QueryDatasource(
             input_concepts=self.input_concepts,

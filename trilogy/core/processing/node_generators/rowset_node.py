@@ -8,7 +8,6 @@ from trilogy.core.models import (
     WhereClause,
 )
 from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
-from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 from typing import List
 
 from trilogy.core.enums import PurposeLineage
@@ -28,7 +27,7 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -93,8 +92,6 @@ def gen_rowset_node(
     # node.rebuild_cache()
     # if node.resolve().group_required:
     #     raise SyntaxError
-    
-
 
     if not local_optional or all(
         x.address in node.output_concepts for x in local_optional
@@ -104,7 +101,7 @@ def gen_rowset_node(
         )
         # node.set_preexisting_conditions(conditions.conditional if conditions else None)
         return node
-    
+
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not possible_joins:
         logger.info(
@@ -135,5 +132,5 @@ def gen_rowset_node(
             enrich_node,
         ],
         partial_concepts=node.partial_concepts,
-        preexisting_conditions=conditions.conditional if conditions else None
+        preexisting_conditions=conditions.conditional if conditions else None,
     )

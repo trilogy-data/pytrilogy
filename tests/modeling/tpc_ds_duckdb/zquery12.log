@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 1.544059
-exec_time = 0.110957
-comp_time = 0.242864
-gen_length = 2753
+parse_time = 1.762568
+exec_time = 0.204573
+comp_time = 0.143085
+gen_length = 2737
 generated_sql = """
 
 WITH 
-helpless as (
+lynx as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"web_sales_item_id\"
 FROM
     memory.web_sales as web_sales
-    INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-late as (
+martin as (
 SELECT
-    sum(helpless.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    helpless.\"web_sales_item_category\" as \"web_sales_item_category\",
-    helpless.\"web_sales_item_class\" as \"web_sales_item_class\",
-    helpless.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    helpless.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    helpless.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(lynx.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    lynx.\"web_sales_item_category\" as \"web_sales_item_category\",
+    lynx.\"web_sales_item_class\" as \"web_sales_item_class\",
+    lynx.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    lynx.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    lynx.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    helpless
+    lynx
 GROUP BY 
-    helpless.\"web_sales_item_current_price\",
-    helpless.\"web_sales_item_class\",
-    helpless.\"web_sales_item_desc\",
-    helpless.\"web_sales_item_name\",
-    helpless.\"web_sales_item_category\"),
-quick as (
+    lynx.\"web_sales_item_category\",
+    lynx.\"web_sales_item_name\",
+    lynx.\"web_sales_item_current_price\",
+    lynx.\"web_sales_item_desc\",
+    lynx.\"web_sales_item_class\"),
+magpie as (
 SELECT
-    sum(late.\"itemrevenue\") over (partition by late.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    late.\"itemrevenue\" as \"itemrevenue\",
-    late.\"web_sales_item_class\" as \"web_sales_item_class\",
-    late.\"web_sales_item_name\" as \"web_sales_item_name\",
-    late.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    late.\"web_sales_item_category\" as \"web_sales_item_category\",
-    late.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(martin.\"itemrevenue\") over (partition by martin.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    martin.\"itemrevenue\" as \"itemrevenue\",
+    martin.\"web_sales_item_class\" as \"web_sales_item_class\",
+    martin.\"web_sales_item_name\" as \"web_sales_item_name\",
+    martin.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    martin.\"web_sales_item_category\" as \"web_sales_item_category\",
+    martin.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    late)
+    martin)
 SELECT
-    quick.\"web_sales_item_name\" as \"web_sales_item_name\",
-    quick.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    quick.\"web_sales_item_category\" as \"web_sales_item_category\",
-    quick.\"web_sales_item_class\" as \"web_sales_item_class\",
-    quick.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    quick.\"itemrevenue\" as \"itemrevenue\",
-    quick.\"itemrevenue\" * 100.0 / quick.\"_virtual_137720187295635\" as \"revenueratio\"
+    magpie.\"web_sales_item_name\" as \"web_sales_item_name\",
+    magpie.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    magpie.\"web_sales_item_category\" as \"web_sales_item_category\",
+    magpie.\"web_sales_item_class\" as \"web_sales_item_class\",
+    magpie.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    magpie.\"itemrevenue\" as \"itemrevenue\",
+    magpie.\"itemrevenue\" * 100.0 / magpie.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    quick
+    magpie
 ORDER BY 
-    quick.\"web_sales_item_category\" asc,
-    quick.\"web_sales_item_class\" asc,
-    quick.\"web_sales_item_name\" asc,
-    quick.\"web_sales_item_desc\" asc,
-    quick.\"itemrevenue\" * 100.0 / quick.\"_virtual_137720187295635\" asc
+    magpie.\"web_sales_item_category\" asc,
+    magpie.\"web_sales_item_class\" asc,
+    magpie.\"web_sales_item_name\" asc,
+    magpie.\"web_sales_item_desc\" asc,
+    magpie.\"itemrevenue\" * 100.0 / magpie.\"_virtual_137720187295635\" asc
 LIMIT (100)"""

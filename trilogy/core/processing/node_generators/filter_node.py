@@ -37,7 +37,7 @@ def gen_filter_node(
     where = concept.lineage.where
 
     optional_included: list[Concept] = []
-  
+
     for x in local_optional:
         if isinstance(x.lineage, FilterItem):
             if concept.lineage.where == where:
@@ -136,7 +136,9 @@ def gen_filter_node(
         ]
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
-        parent.add_existence_concepts(flattened_existence, False).set_output_concepts(expected_output, False)
+        parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
+            expected_output, False
+        )
         parent.grain = Grain(
             components=(
                 list(immediate_parent.keys)
@@ -170,22 +172,20 @@ def gen_filter_node(
         )
 
     if not local_optional or all(
-        [
-            x.address in filter_node.output_concepts
-            for x in local_optional
-        ]
+        [x.address in filter_node.output_concepts for x in local_optional]
     ):
         optional_outputs = [
-            x
-            for x in filter_node.output_concepts
-            if x.address in local_optional
+            x for x in filter_node.output_concepts if x.address in local_optional
         ]
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
-        filter_node.set_output_concepts([
-            concept,
-        ] + optional_outputs)
+        filter_node.set_output_concepts(
+            [
+                concept,
+            ]
+            + optional_outputs
+        )
         return filter_node
 
     enrich_node = source_concepts(  # this fetches the parent + join keys

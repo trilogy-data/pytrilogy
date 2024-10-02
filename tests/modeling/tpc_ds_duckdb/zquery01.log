@@ -1,12 +1,12 @@
 query_id = 1
-parse_time = 3.66376
-exec_time = 0.153382
-comp_time = 2.219382
-gen_length = 1657
+parse_time = 3.011959
+exec_time = 0.100452
+comp_time = 2.129313
+gen_length = 1633
 generated_sql = """
 
 WITH 
-vacuous as (
+chickadee as (
 SELECT
     store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
@@ -23,32 +23,32 @@ FROM
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-fabulous as (
+chick as (
 SELECT
-    sum(vacuous.\"returns_return_amount\") as \"total_returns\",
-    vacuous.\"returns_store_id\" as \"returns_store_id\",
-    vacuous.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(chickadee.\"returns_return_amount\") as \"total_returns\",
+    chickadee.\"returns_store_id\" as \"returns_store_id\",
+    chickadee.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    vacuous
+    chickadee
 GROUP BY 
-    vacuous.\"returns_customer_text_id\",
-    vacuous.\"returns_store_id\"),
-friendly as (
+    chickadee.\"returns_store_id\",
+    chickadee.\"returns_customer_text_id\"),
+wooden as (
 SELECT
-    avg(fabulous.\"total_returns\") as \"avg_store_returns\",
-    fabulous.\"returns_store_id\" as \"returns_store_id\"
+    avg(chick.\"total_returns\") as \"avg_store_returns\",
+    chick.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    fabulous
+    chick
 GROUP BY 
-    fabulous.\"returns_store_id\")
+    chick.\"returns_store_id\")
 SELECT
-    fabulous.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    chick.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    fabulous
-    INNER JOIN friendly on fabulous.\"returns_store_id\" = friendly.\"returns_store_id\"
+    chick
+    INNER JOIN wooden on chick.\"returns_store_id\" = wooden.\"returns_store_id\"
 WHERE
-    fabulous.\"total_returns\" > ( 1.2 * friendly.\"avg_store_returns\" )
+    chick.\"total_returns\" > ( 1.2 * wooden.\"avg_store_returns\" )
 
 ORDER BY 
-    fabulous.\"returns_customer_text_id\" asc
+    chick.\"returns_customer_text_id\" asc
 LIMIT (100)"""

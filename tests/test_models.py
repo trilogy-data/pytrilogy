@@ -14,7 +14,6 @@ from trilogy.core.models import (
     JoinKey,
     Concept,
     AggregateWrapper,
-    FilterItem,
     RowsetItem,
 )
 from trilogy import parse
@@ -276,16 +275,15 @@ def test_concept_address_in_check():
         grain=Grain(),
         environment={},
     )
-    assert target.address == 'local.test'
-    x =[target]
+    assert target.address == "local.test"
+    x = [target]
 
-    assert 'local.test' in x
+    assert "local.test" in x
 
 
-    
 def test_rowset_with_filter_derivation():
-    env, statements = parse (
-"""
+    env, statements = parse(
+        """
 key x int;
 
 datasource test (
@@ -307,6 +305,6 @@ select avg_greater_ten;
 """
     )
 
-    lineage = env.concepts['avg_greater_ten'].lineage
+    lineage = env.concepts["avg_greater_ten"].lineage
     assert isinstance(lineage, AggregateWrapper)
     assert isinstance(lineage.function.concept_arguments[0].lineage, RowsetItem)

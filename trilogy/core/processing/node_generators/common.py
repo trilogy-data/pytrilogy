@@ -190,7 +190,7 @@ def gen_enrichment_node(
         mandatory_list=join_keys + extra_required,
         environment=environment,
         g=g,
-        depth=depth+1,
+        depth=depth + 1,
         history=history,
         conditions=conditions,
     )

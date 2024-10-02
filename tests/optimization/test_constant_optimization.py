@@ -25,6 +25,7 @@ def test_constant_optimization():
 def test_constant_filter():
     # validate that the constant is inlined into the filter
     from trilogy.hooks.query_debugger import DebuggingHook
+
     test_query = """
     const x <- 1;
 

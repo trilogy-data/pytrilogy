@@ -13,7 +13,6 @@ from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.core.enums import PurposeLineage
 from trilogy.parser import parse
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.processing.node_generators import (
     gen_select_node,

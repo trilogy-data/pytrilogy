@@ -1,7 +1,7 @@
 from typing import List
 
 
-from trilogy.core.models import SourceType, Concept, Grain
+from trilogy.core.models import SourceType, Concept
 from trilogy.core.processing.nodes.base_node import StrategyNode, QueryDatasource
 
 

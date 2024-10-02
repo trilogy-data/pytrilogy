@@ -3,7 +3,6 @@ from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
 from trilogy.hooks.query_debugger import DebuggingHook
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
 
 def test_gen_select_node_parents(test_environment: Environment):
@@ -33,7 +32,7 @@ select unnest;
         g=generate_graph(env),
         depth=0,
     )
-    assert isinstance(gnode, ConstantNode)
+    assert isinstance(gnode, ConstantNode), type(gnode)
 
     gnode = gen_select_node(
         concept=env.concepts["unnest"],

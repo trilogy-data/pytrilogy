@@ -339,6 +339,7 @@ def IsNull(args: list[Concept]) -> Function:
         # output_grain=Grain(components=arguments),
     )
 
+
 def Bool(args: list[Concept]) -> Function:
     return Function(
         operator=FunctionType.BOOL,

@@ -3,19 +3,10 @@ from typing import List
 
 from trilogy.core.models import Concept, WindowItem, Environment, WhereClause
 from trilogy.utility import unique
-from trilogy.core.processing.nodes import (
-    WindowNode,
-
-    StrategyNode
-)
+from trilogy.core.processing.nodes import WindowNode, StrategyNode
 from trilogy.core.processing.nodes import MergeNode, History
-from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, create_log_lambda
-from trilogy.core.processing.node_generators.common import (
-    gen_enrichment_node,
-)
-from trilogy.core.processing.utility import concept_to_relevant_joins
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
@@ -44,7 +35,7 @@ def gen_window_node(
 ) -> WindowNode | MergeNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
     parent_node = source_concepts(
-        mandatory_list=parent_concepts+local_optional,
+        mandatory_list=parent_concepts + local_optional,
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -71,8 +62,8 @@ def gen_window_node(
         )
         raise SyntaxError
     _window_node = WindowNode(
-        input_concepts=parent_concepts+local_optional,
-        output_concepts=[concept] + parent_concepts +local_optional,
+        input_concepts=parent_concepts + local_optional,
+        output_concepts=[concept] + parent_concepts + local_optional,
         environment=environment,
         g=g,
         parents=[
@@ -88,6 +79,6 @@ def gen_window_node(
         environment=environment,
         g=g,
         parents=[_window_node],
-        preexisting_conditions = conditions.conditional if conditions else None,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
     return window_node

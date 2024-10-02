@@ -58,7 +58,6 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
     assert node.conditions == conditional
 
 
-
 def test_gen_filter_node_include_all(test_environment, test_environment_graph):
     conditional = Comparison(
         left=test_environment.concepts["category_name"],
@@ -78,6 +77,6 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        conditions = conditional
+        conditions=conditional,
     )
     assert node.conditions == conditional

@@ -1,4 +1,3 @@
-
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.models import (
     Concept,
@@ -13,9 +12,11 @@ from trilogy.core.exceptions import NoDatasourceException
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.select_merge_node import (
-        gen_select_merge_node
-    )
+    gen_select_merge_node,
+)
+
 LOGGER_PREFIX = "[GEN_SELECT_NODE]"
+
 
 def gen_select_node(
     concept: Concept,
@@ -46,7 +47,6 @@ def gen_select_node(
             raise NoDatasourceException(f"No datasource exists for {concept}")
         return None
 
-
     return gen_select_merge_node(
         [concept] + local_optional,
         g=g,
@@ -55,4 +55,3 @@ def gen_select_node(
         accept_partial=accept_partial,
         conditions=conditions,
     )
-  

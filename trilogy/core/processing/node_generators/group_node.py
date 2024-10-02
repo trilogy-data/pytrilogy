@@ -30,7 +30,7 @@ def gen_group_node(
     source_concepts,
     history: History | None = None,
     conditions: WhereClause | None = None,
-)->StrategyNode | None:
+) -> StrategyNode | None:
     # aggregates MUST always group to the proper grain
     # except when the
     parent_concepts: List[Concept] = unique(
@@ -61,7 +61,6 @@ def gen_group_node(
                 ):
                     output_concepts.append(possible_agg)
 
-    preexisting_conditions = None
     if parent_concepts:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(concepts=parent_concepts)}"
@@ -84,7 +83,6 @@ def gen_group_node(
     else:
         parents = []
 
-
     # the keys we group by
     # are what we can use for enrichment
     group_key_parents = concept.grain.components_copy
@@ -103,13 +101,17 @@ def gen_group_node(
 
     if not local_optional:
         return group_node
-    missing_optional = [x.address for x in local_optional if x.address not in group_node.output_concepts]
+    missing_optional = [
+        x.address for x in local_optional if x.address not in group_node.output_concepts
+    ]
     if not missing_optional:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for group node, has all of {[x.address for x in local_optional]}"
         )
         return group_node
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} group node requires enrichment, missing {missing_optional}")
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} group node requires enrichment, missing {missing_optional}"
+    )
     return gen_enrichment_node(
         group_node,
         join_keys=group_key_parents,

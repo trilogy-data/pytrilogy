@@ -1,18 +1,13 @@
 # directly select out a basic derivation
 from typing import List
 
-from trilogy.core.models import (
-    Concept,
-    WhereClause
-)
+from trilogy.core.models import Concept, WhereClause
 from trilogy.core.processing.nodes import StrategyNode, History
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.utility import unique
 from trilogy.constants import logger
 from trilogy.core.enums import SourceType
-from itertools import combinations
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
@@ -25,7 +20,7 @@ def gen_basic_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None
+    conditions: WhereClause | None = None,
 ):
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept)
@@ -43,13 +38,13 @@ def gen_basic_node(
         x for x in local_optional if x not in equivalent_optional
     ]
     parent_node: StrategyNode = source_concepts(
-                mandatory_list=parent_concepts + non_equivalent_optional,
-                environment=environment,
-                g=g,
-                depth=depth + 1,
-                history=history,
-                conditions=conditions
-            )
+        mandatory_list=parent_concepts + non_equivalent_optional,
+        environment=environment,
+        g=g,
+        depth=depth + 1,
+        history=history,
+        conditions=conditions,
+    )
     if not parent_node:
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
@@ -65,7 +60,7 @@ def gen_basic_node(
         [
             x
             for x in parent_node.output_concepts
-            if x.address not in [concept]+local_optional
+            if x.address not in [concept] + local_optional
         ]
     )
 

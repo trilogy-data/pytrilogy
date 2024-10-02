@@ -1,12 +1,12 @@
 query_id = 6
-parse_time = 1.188214
-exec_time = 0.632441
-comp_time = 3.315073
-gen_length = 2976
+parse_time = 1.652241
+exec_time = 0.488752
+comp_time = 0.12363
+gen_length = 3078
 generated_sql = """
 
 WITH 
-fowl as (
+salamander as (
 SELECT
     store_sales.\"SS_ITEM_SK\" as \"item_id\",
     store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
@@ -14,10 +14,10 @@ SELECT
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_CUSTOMER_SK\",
+    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_SOLD_DATE_SK\",
-    store_sales.\"SS_ITEM_SK\"),
-tenuous as (
+    store_sales.\"SS_CUSTOMER_SK\"),
+quail as (
 SELECT
     items.\"I_CATEGORY\" as \"item_category\",
     items.\"I_ITEM_SK\" as \"item_id\",
@@ -27,7 +27,7 @@ FROM
 WHERE
     items.\"I_CATEGORY\" is not null
 ),
-young as (
+abhorrent as (
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -38,49 +38,49 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-dove as (
+grouse as (
 SELECT
-    tenuous.\"item_category\" as \"item_category\",
+    quail.\"item_category\" as \"item_category\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
-    fowl
-    INNER JOIN memory.item as items on fowl.\"item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN tenuous on fowl.\"item_id\" = tenuous.\"item_id\"
-    INNER JOIN memory.customer as customers on fowl.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
-    INNER JOIN memory.date_dim as date on fowl.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    salamander
+    INNER JOIN memory.item as items on salamander.\"item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN quail on salamander.\"item_id\" = quail.\"item_id\"
+    INNER JOIN memory.customer as customers on salamander.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.date_dim as date on salamander.\"store_sales_date_id\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and tenuous.\"item_category\" is not null
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and quail.\"item_category\" is not null
 ),
-dingo as (
+fabulous as (
 SELECT
-    dove.\"item_category\" as \"item_category\",
-    dove.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    dove.\"store_sales_date_year\" as \"store_sales_date_year\",
-    dove.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    dove.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    dove.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    young.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    grouse.\"item_category\" as \"item_category\",
+    grouse.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    grouse.\"store_sales_date_year\" as \"store_sales_date_year\",
+    grouse.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    grouse.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    grouse.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    abhorrent.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    dove
-    INNER JOIN young on (dove.\"item_category\" = young.\"item_category\" or (dove.\"item_category\" is null and young.\"item_category\" is null))
+    grouse
+    INNER JOIN abhorrent on (grouse.\"item_category\" = abhorrent.\"item_category\" or (grouse.\"item_category\" is null and abhorrent.\"item_category\" is null))
 WHERE
-    dove.\"store_sales_date_year\" = 2001 and dove.\"store_sales_date_month_of_year\" = 1 and dove.\"store_sales_item_current_price\" > 1.2 * young.\"_virtual_6264207893106521\" and dove.\"item_category\" is not null
+    grouse.\"store_sales_date_year\" = 2001 and grouse.\"store_sales_date_month_of_year\" = 1 and grouse.\"store_sales_item_current_price\" > 1.2 * abhorrent.\"_virtual_6264207893106521\" and grouse.\"item_category\" is not null
 )
 SELECT
-    dingo.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(dingo.\"store_sales_customer_id\") as \"customer_count\"
+    fabulous.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(fabulous.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    dingo
+    fabulous
 GROUP BY 
-    dingo.\"store_sales_customer_state\"
+    fabulous.\"store_sales_customer_state\"
 HAVING
-    count(dingo.\"store_sales_customer_id\") >= 10
+    count(fabulous.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(dingo.\"store_sales_customer_id\") asc nulls first,
-    dingo.\"store_sales_customer_state\" asc nulls first"""
+    count(fabulous.\"store_sales_customer_id\") asc nulls first,
+    fabulous.\"store_sales_customer_state\" asc nulls first"""

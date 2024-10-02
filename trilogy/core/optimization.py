@@ -128,12 +128,13 @@ def is_direct_return_eligible(cte: CTE) -> CTE | None:
 
     parent_derived_concepts = [
         c
-        for c in direct_parent.source.output_concepts + direct_parent.source.hidden_concepts
+        for c in direct_parent.source.output_concepts
+        + direct_parent.source.hidden_concepts
         if c not in direct_parent.source.input_concepts
     ]
     condition_arguments = cte.condition.row_arguments if cte.condition else []
     for x in derived_concepts:
-        if x.derivation == PurposeLineage.WINDOW:     
+        if x.derivation == PurposeLineage.WINDOW:
             return None
         if x.derivation == PurposeLineage.UNNEST:
             return None

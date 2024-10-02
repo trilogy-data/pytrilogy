@@ -1559,6 +1559,7 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
     def concept_arguments(self):
         return [x.expr for x in self.items]
 
+
 class RawSQLStatement(BaseModel):
     text: str
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
@@ -1570,10 +1571,12 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
-    def refresh_bindings(self, environment:Environment):
+    def refresh_bindings(self, environment: Environment):
         for item in self.selection:
             if isinstance(item.content, Concept):
-                item.content = environment.concepts[item.content.address].with_grain(self.grain)
+                item.content = environment.concepts[item.content.address].with_grain(
+                    self.grain
+                )
 
     def __str__(self):
         from trilogy.parsing.render import render_query
@@ -1612,10 +1615,10 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             ),
             limit=self.limit,
         )
-    
+
     @property
     def locally_derived(self) -> set(str):
-        locally_derived:set[str] = set()
+        locally_derived: set[str] = set()
         for item in self.selection:
             if isinstance(item.content, ConceptTransform):
                 locally_derived.add(item.content.output.address)
@@ -1679,7 +1682,11 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             # TODO: replace hardcoded replacement here
             # if the concept is a locally derived concept, it cannot ever be partial
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
-            ColumnAssignment(alias=c.address.replace(".", "_"), concept=c, modifiers=modifiers if c.address not in self.locally_derived else [])
+            ColumnAssignment(
+                alias=c.address.replace(".", "_"),
+                concept=c,
+                modifiers=modifiers if c.address not in self.locally_derived else [],
+            )
             for c in self.output_components
         ]
 
@@ -1808,6 +1815,10 @@ class MultiSelectStatement(SelectTypeMixin, Mergeable, Namespaced, BaseModel):
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
+    def refresh_bindings(self, environment: Environment):
+        for select in self.selects:
+            select.refresh_bindings(environment)
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
@@ -2282,8 +2293,7 @@ class BaseJoin(BaseModel):
                 f" {','.join([str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
             )
         return (
-            f"{self.join_type.value} on"
-            f" {','.join([str(k) for k in self.concepts])}"
+            f"{self.join_type.value} on" f" {','.join([str(k) for k in self.concepts])}"
         )
 
 
@@ -2454,9 +2464,7 @@ class QueryDatasource(BaseModel):
             final_source_map[k] = set(merged_datasources[x.full_name] for x in list(v))
         self_hidden = self.hidden_concepts or []
         other_hidden = other.hidden_concepts or []
-        hidden = [
-            x for x in self_hidden if x.address in other_hidden
-        ]
+        hidden = [x for x in self_hidden if x.address in other_hidden]
         qds = QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -2814,7 +2822,7 @@ class CTE(BaseModel):
 
     @property
     def group_concepts(self) -> List[Concept]:
-        def check_is_not_in_group(c:Concept):
+        def check_is_not_in_group(c: Concept):
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.purpose == Purpose.CONSTANT:
@@ -2828,11 +2836,7 @@ class CTE(BaseModel):
 
         return (
             unique(
-                [
-                    c
-                    for c in self.output_columns
-                    if not check_is_not_in_group(c)
-                ],
+                [c for c in self.output_columns if not check_is_not_in_group(c)],
                 "address",
             )
             if self.group_to_grain
@@ -3400,12 +3404,12 @@ class Environment(BaseModel):
             current_derivation = current_concept.derivation
             if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
                 new_concept = current_concept.model_copy(deep=True)
-                new_concept.name = '_pre_persist_'+ current_concept.name
+                new_concept.name = "_pre_persist_" + current_concept.name
                 # remove the associated lineage
                 current_concept.lineage = None
                 self.add_concept(new_concept, meta=meta, force=True)
                 self.add_concept(current_concept, meta=meta, force=True)
-                self.merge_concept(new_concept, current_concept,  [])
+                self.merge_concept(new_concept, current_concept, [])
 
         self.gen_concept_list_caches()
         return datasource

@@ -228,6 +228,17 @@ def gen_select_merge_node(
 ) -> Optional[MergeNode]:
     non_constant = [c for c in all_concepts if c.derivation != PurposeLineage.CONSTANT]
     constants = [c for c in all_concepts if c.derivation == PurposeLineage.CONSTANT]
+    if not non_constant and constants:
+        return ConstantNode(
+            output_concepts=constants,
+            input_concepts=[],
+            environment=environment,
+            g=g,
+            parents=[],
+            depth=depth,
+            partial_concepts=[],
+            force_group=False,
+        )
     for attempt in [False, True]:
         pruned_concept_graph = create_pruned_concept_graph(g, non_constant, attempt)
         subgraphs = list(nx.connected_components(pruned_concept_graph.to_undirected()))
@@ -261,7 +272,7 @@ def gen_select_merge_node(
     ]
     if not parents:
         return None
-    
+
     if constants:
         parents.append(
             ConstantNode(
@@ -275,7 +286,6 @@ def gen_select_merge_node(
                 force_group=False,
             )
         )
-
 
     if len(parents) == 1:
         return parents[0]

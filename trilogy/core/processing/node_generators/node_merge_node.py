@@ -135,7 +135,9 @@ def determine_induced_minimal_nodes(
     return final
 
 
-def detect_ambiguity_and_raise(all_concepts:list[Concept], reduced_concept_sets:set[str]) -> None:
+def detect_ambiguity_and_raise(
+    all_concepts: list[Concept], reduced_concept_sets: set[str]
+) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
     # find all values that show up in every join_additions
@@ -199,7 +201,7 @@ def resolve_weak_components(
     ]
     synonyms = []
     for x in all_concepts:
-        synonyms +=x.pseudonyms.values()
+        synonyms += x.pseudonyms.values()
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:
@@ -225,11 +227,7 @@ def resolve_weak_components(
                 for node in g.nodes
                 if node.startswith("c~")
             ]
-            new = [
-                x
-                for x in all_graph_concepts
-                if x.address not in all_concepts
-            ]
+            new = [x for x in all_graph_concepts if x.address not in all_concepts]
 
             new_addresses = set([x.address for x in new if x.address not in synonyms])
             if not new:

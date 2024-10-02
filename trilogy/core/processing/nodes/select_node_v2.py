@@ -19,7 +19,6 @@ from trilogy.core.models import (
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
-from trilogy.core.exceptions import NoDatasourceException
 
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
@@ -173,21 +172,21 @@ class SelectNode(StrategyNode):
                 return super()._resolve()
             # zip in our parent source map
             parent_sources: List[QueryDatasource | Datasource] = [
-            p.resolve() for p in self.parents
+                p.resolve() for p in self.parents
             ]
 
             resolution.datasources += parent_sources
-            
+
             source_map = resolve_concept_map(
                 parent_sources,
                 targets=self.output_concepts,
                 inherited_inputs=self.input_concepts + self.existence_concepts,
             )
             for k, v in source_map.items():
-                if v and  k not in resolution.source_map:
+                if v and k not in resolution.source_map:
                     resolution.source_map[k] = v
         return resolution
-    
+
     def copy(self) -> "SelectNode":
         return SelectNode(
             input_concepts=list(self.input_concepts),

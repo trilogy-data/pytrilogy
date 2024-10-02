@@ -115,7 +115,7 @@ class MergeNode(StrategyNode):
         depth: int = 0,
         grain: Grain | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,    
+        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
         existence_concepts: List[Concept] | None = None,
@@ -236,9 +236,6 @@ class MergeNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
         merged: dict[str, QueryDatasource | Datasource] = {}
-        for node in parent_sources:
-            logger.info(node.full_name)
-            logger.info([x.address for x in node.output_concepts ])
         final_joins: List[NodeJoin] | None = self.node_joins
         for source in parent_sources:
             if source.full_name in merged:

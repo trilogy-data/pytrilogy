@@ -4,10 +4,9 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
-from trilogy.core.enums import SelectFiltering, BooleanOperator
+from trilogy.core.enums import BooleanOperator
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
-from trilogy.core.processing.nodes import GroupNode, SelectNode, StrategyNode, History
-from trilogy.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
+from trilogy.core.processing.nodes import SelectNode, StrategyNode, History
 from trilogy.core.models import (
     Concept,
     Environment,
@@ -315,29 +314,6 @@ def datasource_to_ctes(
     return output
 
 
-def append_existence_check(
-    node: StrategyNode,
-    environment: Environment,
-    graph: ReferenceGraph,
-    history: History | None = None,
-):
-    # we if we have a where clause doing an existence check
-    # treat that as separate subquery
-    if (where := node.conditions) and where.existence_arguments:
-        for subselect in where.existence_arguments:
-            if not subselect:
-                continue
-
-            eds = source_query_concepts(
-                [*subselect], environment=environment, g=graph, history=history
-            )
-            logger.info(
-                f"{LOGGER_PREFIX} fetching existence clause inputs {[str(c) for c in subselect]}"
-            )
-            node.add_parents([eds])
-            node.add_existence_concepts([*subselect])
-
-
 def get_query_node(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
@@ -352,7 +328,6 @@ def get_query_node(
         raise ValueError(f"Statement has no output components {statement}")
 
     search_concepts: list[Concept] = statement.output_components
-
 
     ods: StrategyNode = source_query_concepts(
         search_concepts,
@@ -382,7 +357,7 @@ def get_query_node(
             environment=ds.environment,
             g=ds.g,
             partial_concepts=ds.partial_concepts,
-            conditions=final
+            conditions=final,
         )
     return ds
 
