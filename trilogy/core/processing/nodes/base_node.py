@@ -79,11 +79,12 @@ def resolve_concept_map(
     # second loop, include partials
     for input in inputs:
         for concept in input.output_concepts:
-            if concept.address not in [t.address for t in inherited_inputs]:
+            if concept.address not in [t for t in inherited_inputs]:
                 continue
-            if isinstance(input, QueryDatasource) and concept.address in [
-                x.address for x in input.hidden_concepts
-            ]:
+            if (
+                isinstance(input, QueryDatasource)
+                and concept.address in input.hidden_concepts
+            ):
                 continue
             if len(concept_map.get(concept.address, [])) == 0:
                 concept_map[concept.address].add(input)

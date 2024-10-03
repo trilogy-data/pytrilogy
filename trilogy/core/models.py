@@ -916,7 +916,13 @@ class Grain(Mergeable, BaseModel):
 
     @cached_property
     def set(self):
-        return set([c.address for c in self.components_copy])
+        base = []
+        for x in self.components_copy:
+            if x.derivation == PurposeLineage.ROWSET:
+                base.append(x.lineage.content.address)
+            else:
+                base.append(x.address)
+        return set(base)
 
     def __eq__(self, other: object):
         if isinstance(other, list):
@@ -2657,6 +2663,8 @@ class CTE(BaseModel):
             )
         base += f"\n-- Source Map: {self.source_map}."
         base += f"\n-- Output: {', '.join([str(x) for x in self.output_columns])}."
+        if self.source.input_concepts:
+            base += f"\n-- Inputs: {', '.join([str(x) for x in self.source.input_concepts])}."
         if self.hidden_concepts:
             base += f"\n-- Hidden: {', '.join([str(x) for x in self.hidden_concepts])}."
         if self.nullable_concepts:
@@ -2836,8 +2844,10 @@ class CTE(BaseModel):
         def check_is_not_in_group(c: Concept):
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
-            if c.purpose == Purpose.CONSTANT:
-                return True
+            if c.derivation == PurposeLineage.ROWSET:
+                return False
+            if c.derivation == PurposeLineage.CONSTANT:
+                return False
             if c.purpose == Purpose.METRIC:
                 return True
             elif c.derivation == PurposeLineage.BASIC and c.lineage:

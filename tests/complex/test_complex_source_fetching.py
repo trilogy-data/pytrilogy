@@ -42,7 +42,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
 
 def test_aggregate_to_grain(stackoverflow_environment: Environment):
     env = stackoverflow_environment
-    avg_post_length = env.concepts["avg_post_length_by_post_id"]
+    avg_post_length = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_post_length, user_id])
 
@@ -54,14 +54,13 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
             rendered = generator.render_concept_sql(avg_post_length, cte)
 
             assert re.search(
-                r'avg\([0-9A-z\_]+\."post_length"\) as "avg_post_length_by_post_id"',
+                r'avg\([0-9A-z\_]+\."post_length"\) as "user_avg_post_length"',
                 rendered,
-            )
+            ), generator.compile_statement(query)
             found = True
         if found:
             break
     assert found
-    generator.compile_statement(query)
 
 
 def test_aggregate_of_aggregate(stackoverflow_environment):

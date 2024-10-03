@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 9.603491
-exec_time = 0.179244
-comp_time = 0.153504
-gen_length = 2517
+parse_time = 10.693197
+exec_time = 0.450172
+comp_time = 0.185372
+gen_length = 2432
 generated_sql = """
 
 WITH 
-tenuous as (
+wolf as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-obsolete as (
+cobra as (
 SELECT
-    sum(tenuous.\"cs_extra_sales_price\") as \"revenue\",
-    tenuous.\"cs_item_category\" as \"cs_item_category\",
-    tenuous.\"cs_item_class\" as \"cs_item_class\",
-    tenuous.\"cs_item_current_price\" as \"cs_item_current_price\",
-    tenuous.\"cs_item_desc\" as \"cs_item_desc\",
-    tenuous.\"cs_item_name\" as \"cs_item_name\"
+    sum(wolf.\"cs_extra_sales_price\") as \"revenue\",
+    wolf.\"cs_item_category\" as \"cs_item_category\",
+    wolf.\"cs_item_class\" as \"cs_item_class\",
+    wolf.\"cs_item_current_price\" as \"cs_item_current_price\",
+    wolf.\"cs_item_desc\" as \"cs_item_desc\",
+    wolf.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    tenuous
+    wolf
 GROUP BY 
-    tenuous.\"cs_item_desc\",
-    tenuous.\"cs_item_class\",
-    tenuous.\"cs_item_category\",
-    tenuous.\"cs_item_current_price\",
-    tenuous.\"cs_item_name\"),
-scrawny as (
+    wolf.\"cs_item_name\",
+    wolf.\"cs_item_class\",
+    wolf.\"cs_item_category\",
+    wolf.\"cs_item_desc\",
+    wolf.\"cs_item_current_price\"),
+cuckoo as (
 SELECT
-    sum(obsolete.\"revenue\") over (partition by obsolete.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    obsolete.\"revenue\" as \"revenue\",
-    obsolete.\"cs_item_class\" as \"cs_item_class\",
-    obsolete.\"cs_item_name\" as \"cs_item_name\",
-    obsolete.\"cs_item_desc\" as \"cs_item_desc\",
-    obsolete.\"cs_item_category\" as \"cs_item_category\",
-    obsolete.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(cobra.\"revenue\") over (partition by cobra.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    cobra.\"revenue\" as \"revenue\",
+    cobra.\"cs_item_class\" as \"cs_item_class\",
+    cobra.\"cs_item_name\" as \"cs_item_name\",
+    cobra.\"cs_item_desc\" as \"cs_item_desc\",
+    cobra.\"cs_item_category\" as \"cs_item_category\",
+    cobra.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    obsolete)
+    cobra)
 SELECT
-    scrawny.\"cs_item_name\" as \"cs_item_name\",
-    scrawny.\"cs_item_desc\" as \"cs_item_desc\",
-    scrawny.\"cs_item_category\" as \"cs_item_category\",
-    scrawny.\"cs_item_class\" as \"cs_item_class\",
-    scrawny.\"cs_item_current_price\" as \"cs_item_current_price\",
-    scrawny.\"revenue\" as \"revenue\",
-    scrawny.\"revenue\" * 100.0 / scrawny.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    cuckoo.\"cs_item_name\" as \"cs_item_name\",
+    cuckoo.\"cs_item_desc\" as \"cs_item_desc\",
+    cuckoo.\"cs_item_category\" as \"cs_item_category\",
+    cuckoo.\"cs_item_class\" as \"cs_item_class\",
+    cuckoo.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cuckoo.\"revenue\" as \"revenue\",
+    cuckoo.\"revenue\" * 100.0 / cuckoo.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    scrawny
+    cuckoo
 ORDER BY 
-    scrawny.\"cs_item_category\" asc nulls first,
-    scrawny.\"cs_item_class\" asc nulls first,
-    scrawny.\"cs_item_name\" asc nulls first,
-    scrawny.\"cs_item_desc\" asc nulls first,
-    scrawny.\"revenue\" * 100.0 / scrawny.\"_virtual_8479147315262044\" asc nulls first
+    cuckoo.\"cs_item_category\" asc nulls first,
+    cuckoo.\"cs_item_class\" asc nulls first,
+    cuckoo.\"cs_item_name\" asc nulls first,
+    cuckoo.\"cs_item_desc\" asc nulls first,
+    cuckoo.\"revenue\" * 100.0 / cuckoo.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

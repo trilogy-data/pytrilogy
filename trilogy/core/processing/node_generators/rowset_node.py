@@ -66,7 +66,7 @@ def gen_rowset_node(
     final_hidden = rowset_hidden + [
         x
         for x in node.output_concepts
-        if x.address not in [y.address for y in local_optional + [concept]]
+        if x.address not in local_optional + [concept]
         and x.derivation != PurposeLineage.ROWSET
     ]
     node.hide_output_concepts(final_hidden)
@@ -79,9 +79,7 @@ def gen_rowset_node(
             for x in node.output_concepts
             if x.address
             not in [
-                y.address
-                for y in node.hidden_concepts
-                if y.derivation != PurposeLineage.ROWSET
+                y for y in node.hidden_concepts if y.derivation != PurposeLineage.ROWSET
             ]
         ],
         parent_sources=node.resolution_cache.datasources,

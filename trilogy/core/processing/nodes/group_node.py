@@ -106,9 +106,10 @@ class GroupNode(StrategyNode):
             for parent in self.parents:
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Parent node"
-                    f" {[c.address for c in parent.output_concepts]}"
+                    f" {[c.address for c in parent.output_concepts[:2]]}... has"
                     " grain"
                     f" {parent.grain}"
+                    f" resolved grain {parent.resolve().grain}"
                     f" {type(parent)}"
                 )
             source_type = SourceType.GROUP

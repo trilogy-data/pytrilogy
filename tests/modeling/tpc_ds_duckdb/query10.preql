@@ -23,50 +23,38 @@ auto relevant_customers <-  customer.id ?
     and ((web_sales.date.year = 2002 and web_sales.date.month_of_year in (1,2,3,4)) or (catalog_sales.date.year = 2002 and catalog_sales.date.month_of_year in (1,2,3,4) ) )
     ;
 
-with base as select 
-    customer.id,
-    customer.demographics.id,
+
+SELECT
     customer.demographics.gender,
     customer.demographics.marital_status,
     customer.demographics.education_status,
+    count(customer.id
+     ) as cnt1,
     customer.demographics.purchase_estimate,
+        count(customer.id
+     ) as cnt2,
     customer.demographics.credit_rating,
+        count(customer.id
+     ) as cnt3,
     customer.demographics.dependent_count,
+            count(customer.id
+     ) as cnt4,
     customer.demographics.employed_dependent_count,
+            count(customer.id
+     ) as cnt5,
     customer.demographics.college_dependent_count,
+            count(customer.id
+     ) as cnt6
 WHERE
     customer.id in relevant_customers
-;
-
-SELECT
-    base.customer.demographics.gender,
-    base.customer.demographics.marital_status,
-    base.customer.demographics.education_status,
-    count(base.customer.id
-     ) as cnt1,
-    base.customer.demographics.purchase_estimate,
-        count(base.customer.id
-     ) as cnt2,
-    base.customer.demographics.credit_rating,
-        count(base.customer.id
-     ) as cnt3,
-    base.customer.demographics.dependent_count,
-            count(base.customer.id
-     ) as cnt4,
-    base.customer.demographics.employed_dependent_count,
-            count(base.customer.id
-     ) as cnt5,
-    base.customer.demographics.college_dependent_count,
-            count(base.customer.id
-     ) as cnt6
 ORDER BY
-    base.customer.demographics.gender asc,
-    base.customer.demographics.marital_status asc,
-    base.customer.demographics.education_status asc,
-    base.customer.demographics.purchase_estimate asc,
-    base.customer.demographics.credit_rating asc,
-    base.customer.demographics.dependent_count asc,
-    base.customer.demographics.employed_dependent_count asc,
-    base.customer.demographics.college_dependent_count asc,
+    customer.demographics.gender asc,
+    customer.demographics.marital_status asc,
+    customer.demographics.education_status asc,
+    customer.demographics.purchase_estimate asc,
+    customer.demographics.credit_rating asc,
+    customer.demographics.dependent_count asc,
+    customer.demographics.employed_dependent_count asc,
+    customer.demographics.college_dependent_count asc,
 ;
     

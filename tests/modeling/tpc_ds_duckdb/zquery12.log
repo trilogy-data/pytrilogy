@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 4.266871
-exec_time = 0.149074
-comp_time = 0.134203
-gen_length = 2778
+parse_time = 5.866631
+exec_time = 0.304173
+comp_time = 0.170027
+gen_length = 2814
 generated_sql = """
 
 WITH 
-eel as (
+cockatiel as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-round as (
+hawk as (
 SELECT
-    sum(eel.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    eel.\"web_sales_item_category\" as \"web_sales_item_category\",
-    eel.\"web_sales_item_class\" as \"web_sales_item_class\",
-    eel.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    eel.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    eel.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(cockatiel.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    cockatiel.\"web_sales_item_category\" as \"web_sales_item_category\",
+    cockatiel.\"web_sales_item_class\" as \"web_sales_item_class\",
+    cockatiel.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    cockatiel.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    cockatiel.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    eel
+    cockatiel
 GROUP BY 
-    eel.\"web_sales_item_class\",
-    eel.\"web_sales_item_name\",
-    eel.\"web_sales_item_category\",
-    eel.\"web_sales_item_desc\",
-    eel.\"web_sales_item_current_price\"),
-sweltering as (
+    cockatiel.\"web_sales_item_category\",
+    cockatiel.\"web_sales_item_name\",
+    cockatiel.\"web_sales_item_desc\",
+    cockatiel.\"web_sales_item_current_price\",
+    cockatiel.\"web_sales_item_class\"),
+ruthless as (
 SELECT
-    sum(round.\"itemrevenue\") over (partition by round.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    round.\"itemrevenue\" as \"itemrevenue\",
-    round.\"web_sales_item_class\" as \"web_sales_item_class\",
-    round.\"web_sales_item_name\" as \"web_sales_item_name\",
-    round.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    round.\"web_sales_item_category\" as \"web_sales_item_category\",
-    round.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(hawk.\"itemrevenue\") over (partition by hawk.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    hawk.\"itemrevenue\" as \"itemrevenue\",
+    hawk.\"web_sales_item_class\" as \"web_sales_item_class\",
+    hawk.\"web_sales_item_name\" as \"web_sales_item_name\",
+    hawk.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    hawk.\"web_sales_item_category\" as \"web_sales_item_category\",
+    hawk.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    round)
+    hawk)
 SELECT
-    sweltering.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sweltering.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    sweltering.\"web_sales_item_category\" as \"web_sales_item_category\",
-    sweltering.\"web_sales_item_class\" as \"web_sales_item_class\",
-    sweltering.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    sweltering.\"itemrevenue\" as \"itemrevenue\",
-    sweltering.\"itemrevenue\" * 100.0 / sweltering.\"_virtual_137720187295635\" as \"revenueratio\"
+    ruthless.\"web_sales_item_name\" as \"web_sales_item_name\",
+    ruthless.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    ruthless.\"web_sales_item_category\" as \"web_sales_item_category\",
+    ruthless.\"web_sales_item_class\" as \"web_sales_item_class\",
+    ruthless.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    ruthless.\"itemrevenue\" as \"itemrevenue\",
+    ruthless.\"itemrevenue\" * 100.0 / ruthless.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    sweltering
+    ruthless
 ORDER BY 
-    sweltering.\"web_sales_item_category\" asc,
-    sweltering.\"web_sales_item_class\" asc,
-    sweltering.\"web_sales_item_name\" asc,
-    sweltering.\"web_sales_item_desc\" asc,
-    sweltering.\"itemrevenue\" * 100.0 / sweltering.\"_virtual_137720187295635\" asc
+    ruthless.\"web_sales_item_category\" asc,
+    ruthless.\"web_sales_item_class\" asc,
+    ruthless.\"web_sales_item_name\" asc,
+    ruthless.\"web_sales_item_desc\" asc,
+    ruthless.\"itemrevenue\" * 100.0 / ruthless.\"_virtual_137720187295635\" asc
 LIMIT (100)"""

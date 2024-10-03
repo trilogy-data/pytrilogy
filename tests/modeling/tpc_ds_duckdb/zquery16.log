@@ -1,64 +1,64 @@
 query_id = 16
-parse_time = 23.47486
-exec_time = 0.356765
-comp_time = 0.032907
-gen_length = 4563
+parse_time = 22.133401
+exec_time = 0.699533
+comp_time = 0.049887
+gen_length = 4506
 generated_sql = """
 
 WITH 
-boa as (
+faithful as (
 SELECT
     catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
-    catalog_sales.\"CS_WAREHOUSE_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\"),
-questionable as (
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_WAREHOUSE_SK\"),
+jackdaw as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-monitor as (
+ocelot as (
 SELECT
-    count(boa.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
-    boa.\"cs_order_number\" as \"cs_order_number\"
+    count(faithful.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    faithful.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    boa
+    faithful
 GROUP BY 
-    boa.\"cs_order_number\"),
-chick as (
+    faithful.\"cs_order_number\"),
+eagle as (
 SELECT
-    CASE WHEN monitor.\"_agg_count_6430482449237259\" > 1 THEN monitor.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN ocelot.\"_agg_count_6430482449237259\" > 1 THEN ocelot.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    monitor),
-martin as (
+    ocelot),
+ray as (
 SELECT
-    chick.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
+    eagle.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
-    chick
+    eagle
 GROUP BY 
-    chick.\"multi_warehouse_sales\"),
-loon as (
+    eagle.\"multi_warehouse_sales\"),
+blue as (
 SELECT
     catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select martin.\"multi_warehouse_sales\" from martin where martin.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select jackdaw.\"cr_order_number\" from jackdaw where jackdaw.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select ray.\"multi_warehouse_sales\" from ray where ray.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_SHIP_ADDR_SK\",
     catalog_sales.\"CS_CALL_CENTER_SK\",
-    catalog_sales.\"CS_SHIP_DATE_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\"),
-canary as (
+    catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_SHIP_DATE_SK\"),
+puffin as (
 SELECT
     catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
@@ -70,43 +70,43 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
     INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
-    INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select martin.\"multi_warehouse_sales\" from martin where martin.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select jackdaw.\"cr_order_number\" from jackdaw where jackdaw.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select ray.\"multi_warehouse_sales\" from ray where ray.\"multi_warehouse_sales\" is not null)
 ),
-yummy as (
+penguin as (
 SELECT
-    loon.\"cs_order_number\" as \"cs_order_number\",
+    blue.\"cs_order_number\" as \"cs_order_number\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
     call_center.\"CC_COUNTY\" as \"cs_call_center_county\"
 FROM
-    loon
-    INNER JOIN memory.customer_address as customer_address on loon.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.call_center as call_center on loon.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
-    INNER JOIN memory.date_dim as date on loon.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    blue
+    INNER JOIN memory.customer_address as customer_address on blue.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.date_dim as date on blue.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as call_center on blue.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and loon.\"cs_order_number\" not in (select questionable.\"cr_order_number\" from questionable where questionable.\"cr_order_number\" is not null) and loon.\"cs_order_number\" in (select martin.\"multi_warehouse_sales\" from martin where martin.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and blue.\"cs_order_number\" not in (select jackdaw.\"cr_order_number\" from jackdaw where jackdaw.\"cr_order_number\" is not null) and blue.\"cs_order_number\" in (select ray.\"multi_warehouse_sales\" from ray where ray.\"multi_warehouse_sales\" is not null)
 ),
-wakeful as (
+grouse as (
 SELECT
-    sum(canary.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(canary.\"cs_net_profit\") as \"total_net_profit\"
+    sum(puffin.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(puffin.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    canary),
-toucan as (
+    puffin),
+badger as (
 SELECT
-    count(distinct yummy.\"cs_order_number\") as \"order_count\"
+    count(distinct penguin.\"cs_order_number\") as \"order_count\"
 FROM
-    yummy)
+    penguin)
 SELECT
-    toucan.\"order_count\" as \"order_count\",
-    wakeful.\"total_shipping_cost\" as \"total_shipping_cost\",
-    wakeful.\"total_net_profit\" as \"total_net_profit\"
+    badger.\"order_count\" as \"order_count\",
+    grouse.\"total_shipping_cost\" as \"total_shipping_cost\",
+    grouse.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    toucan
-    FULL JOIN wakeful on 1=1
+    badger
+    FULL JOIN grouse on 1=1
 ORDER BY 
-    toucan.\"order_count\" desc
+    badger.\"order_count\" desc
 LIMIT (100)"""

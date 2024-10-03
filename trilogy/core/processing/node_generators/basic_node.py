@@ -45,6 +45,7 @@ def gen_basic_node(
         history=history,
         conditions=conditions,
     )
+
     if not parent_node:
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
