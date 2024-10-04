@@ -105,9 +105,9 @@ def create_pruned_concept_graph(
         if n.startswith("c~") and n not in relevant_concepts:
             root = n.split("@")[0]
             neighbors = roots.get(root, set())
-            for x in nx.all_neighbors(orig_g, n):
-                if x in relevent_datasets:
-                    neighbors.add(x)
+            for neighbor in nx.all_neighbors(orig_g, n):
+                if neighbor in relevent_datasets:
+                    neighbors.add(neighbor)
             if len(neighbors) > 1:
                 relevant_concepts.append(n)
             roots[root] = set()
