@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 12.771807
-exec_time = 0.209416
-comp_time = 0.184905
-gen_length = 2453
+parse_time = 13.598738
+exec_time = 0.207679
+comp_time = 0.143978
+gen_length = 2475
 generated_sql = """
 
 WITH 
-swift as (
+premium as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-chickadee as (
+eminent as (
 SELECT
-    sum(swift.\"cs_extra_sales_price\") as \"revenue\",
-    swift.\"cs_item_category\" as \"cs_item_category\",
-    swift.\"cs_item_class\" as \"cs_item_class\",
-    swift.\"cs_item_current_price\" as \"cs_item_current_price\",
-    swift.\"cs_item_desc\" as \"cs_item_desc\",
-    swift.\"cs_item_name\" as \"cs_item_name\"
+    sum(premium.\"cs_extra_sales_price\") as \"revenue\",
+    premium.\"cs_item_category\" as \"cs_item_category\",
+    premium.\"cs_item_class\" as \"cs_item_class\",
+    premium.\"cs_item_current_price\" as \"cs_item_current_price\",
+    premium.\"cs_item_desc\" as \"cs_item_desc\",
+    premium.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    swift
+    premium
 GROUP BY 
-    swift.\"cs_item_desc\",
-    swift.\"cs_item_class\",
-    swift.\"cs_item_category\",
-    swift.\"cs_item_current_price\",
-    swift.\"cs_item_name\"),
-fowl as (
+    premium.\"cs_item_name\",
+    premium.\"cs_item_class\",
+    premium.\"cs_item_desc\",
+    premium.\"cs_item_category\",
+    premium.\"cs_item_current_price\"),
+civet as (
 SELECT
-    sum(chickadee.\"revenue\") over (partition by chickadee.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    chickadee.\"revenue\" as \"revenue\",
-    chickadee.\"cs_item_class\" as \"cs_item_class\",
-    chickadee.\"cs_item_name\" as \"cs_item_name\",
-    chickadee.\"cs_item_desc\" as \"cs_item_desc\",
-    chickadee.\"cs_item_category\" as \"cs_item_category\",
-    chickadee.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(eminent.\"revenue\") over (partition by eminent.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    eminent.\"revenue\" as \"revenue\",
+    eminent.\"cs_item_class\" as \"cs_item_class\",
+    eminent.\"cs_item_name\" as \"cs_item_name\",
+    eminent.\"cs_item_desc\" as \"cs_item_desc\",
+    eminent.\"cs_item_category\" as \"cs_item_category\",
+    eminent.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    chickadee)
+    eminent)
 SELECT
-    fowl.\"cs_item_name\" as \"cs_item_name\",
-    fowl.\"cs_item_desc\" as \"cs_item_desc\",
-    fowl.\"cs_item_category\" as \"cs_item_category\",
-    fowl.\"cs_item_class\" as \"cs_item_class\",
-    fowl.\"cs_item_current_price\" as \"cs_item_current_price\",
-    fowl.\"revenue\" as \"revenue\",
-    fowl.\"revenue\" * 100.0 / fowl.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    civet.\"cs_item_name\" as \"cs_item_name\",
+    civet.\"cs_item_desc\" as \"cs_item_desc\",
+    civet.\"cs_item_category\" as \"cs_item_category\",
+    civet.\"cs_item_class\" as \"cs_item_class\",
+    civet.\"cs_item_current_price\" as \"cs_item_current_price\",
+    civet.\"revenue\" as \"revenue\",
+    civet.\"revenue\" * 100.0 / civet.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    fowl
+    civet
 ORDER BY 
-    fowl.\"cs_item_category\" asc nulls first,
-    fowl.\"cs_item_class\" asc nulls first,
-    fowl.\"cs_item_name\" asc nulls first,
-    fowl.\"cs_item_desc\" asc nulls first,
-    fowl.\"revenue\" * 100.0 / fowl.\"_virtual_8479147315262044\" asc nulls first
+    civet.\"cs_item_category\" asc nulls first,
+    civet.\"cs_item_class\" asc nulls first,
+    civet.\"cs_item_name\" asc nulls first,
+    civet.\"cs_item_desc\" asc nulls first,
+    civet.\"revenue\" * 100.0 / civet.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

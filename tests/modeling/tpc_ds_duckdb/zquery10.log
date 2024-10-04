@@ -1,96 +1,75 @@
 query_id = 10
-parse_time = 14.731913
-exec_time = 0.318803
-comp_time = 0.816857
-gen_length = 6228
+parse_time = 51.974844
+exec_time = 0.470497
+comp_time = 0.434777
+gen_length = 5665
 generated_sql = """
 
 WITH 
-razorbill as (
+uneven as (
 SELECT
-    customers.\"C_CUSTOMER_SK\" as \"customer_id\"
-FROM
-    memory.customer as customers),
-nondescript as (
-SELECT
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
-    store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\"
+    store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\",
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_CUSTOMER_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-heron as (
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_CUSTOMER_SK\"),
+ocelot as (
 SELECT
-    date.\"D_DATE_SK\" as \"web_sales_date_id\",
     cast(\"D_YEAR\" as int) as \"web_sales_date_year\",
-    date.\"D_MOY\" as \"web_sales_date_month_of_year\"
+    date.\"D_MOY\" as \"web_sales_date_month_of_year\",
+    date.\"D_DATE_SK\" as \"web_sales_date_id\"
 FROM
     memory.date_dim as date),
-scrawny as (
-SELECT
-    customers.\"C_CUSTOMER_SK\" as \"customer_id\"
-FROM
-    memory.customer as customers),
-resonant as (
+imported as (
 SELECT
     web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\",
     web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\"
 FROM
     memory.web_sales as web_sales
 GROUP BY 
-    web_sales.\"WS_SOLD_DATE_SK\",
-    web_sales.\"WS_BILL_CUSTOMER_SK\"),
-thrush as (
+    web_sales.\"WS_BILL_CUSTOMER_SK\",
+    web_sales.\"WS_SOLD_DATE_SK\"),
+trite as (
 SELECT
-    date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
+    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
-    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\"
+    date.\"D_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.date_dim as date),
-goldfinch as (
+osprey as (
 SELECT
-    customers.\"C_CURRENT_ADDR_SK\" as \"catalog_sales_customer_address_id\",
-    customers.\"C_CUSTOMER_SK\" as \"customer_id\"
-FROM
-    memory.customer as customers),
-fossa as (
-SELECT
-    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
-    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"catalog_sales_customer_address_id\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\"
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\",
+    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
     catalog_sales.\"CS_SOLD_DATE_SK\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\",
-    catalog_sales.\"CS_SHIP_ADDR_SK\"),
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\"),
 hard as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"relevant_customers\"
 FROM
     memory.customer as customers
+    LEFT OUTER JOIN uneven on customers.\"C_CUSTOMER_SK\" = uneven.\"customer_id\"
+    LEFT OUTER JOIN imported on customers.\"C_CUSTOMER_SK\" = imported.\"customer_id\"
+    LEFT OUTER JOIN osprey on customers.\"C_CUSTOMER_SK\" = osprey.\"customer_id\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
-    LEFT OUTER JOIN fossa on customers.\"C_CUSTOMER_SK\" = fossa.\"customer_id\"
-    LEFT OUTER JOIN nondescript on customers.\"C_CUSTOMER_SK\" = nondescript.\"customer_id\"
-    LEFT OUTER JOIN resonant on customers.\"C_CUSTOMER_SK\" = resonant.\"customer_id\"
-    LEFT OUTER JOIN razorbill on customers.\"C_CUSTOMER_SK\" = razorbill.\"customer_id\"
-    LEFT OUTER JOIN scrawny on customers.\"C_CUSTOMER_SK\" = scrawny.\"customer_id\"
-    LEFT OUTER JOIN goldfinch on customers.\"C_CUSTOMER_SK\" = goldfinch.\"customer_id\"
-    LEFT OUTER JOIN thrush on fossa.\"catalog_sales_date_id\" = thrush.\"catalog_sales_date_id\"
-    LEFT OUTER JOIN memory.date_dim as date on nondescript.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    LEFT OUTER JOIN heron on resonant.\"web_sales_date_id\" = heron.\"web_sales_date_id\"
+    LEFT OUTER JOIN memory.date_dim as date on uneven.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN ocelot on imported.\"web_sales_date_id\" = ocelot.\"web_sales_date_id\"
+    LEFT OUTER JOIN trite on osprey.\"catalog_sales_date_id\" = trite.\"catalog_sales_date_id\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( heron.\"web_sales_date_year\" = 2002 and heron.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( thrush.\"catalog_sales_date_year\" = 2002 and thrush.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
+    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( ocelot.\"web_sales_date_year\" = 2002 and ocelot.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( trite.\"catalog_sales_date_year\" = 2002 and trite.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
 ),
-tiger as (
+highfalutin as (
 SELECT
     hard.\"relevant_customers\" as \"relevant_customers\"
 FROM
     hard
 GROUP BY 
     hard.\"relevant_customers\"),
-fox as (
+sparkling as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_demographics.\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
@@ -105,40 +84,40 @@ FROM
     memory.customer_demographics as customer_demographics
     INNER JOIN memory.customer as customers on customer_demographics.\"CD_DEMO_SK\" = customers.\"C_CURRENT_CDEMO_SK\"
 WHERE
-    customers.\"C_CUSTOMER_SK\" in (select tiger.\"relevant_customers\" from tiger where tiger.\"relevant_customers\" is not null)
+    customers.\"C_CUSTOMER_SK\" in (select highfalutin.\"relevant_customers\" from highfalutin where highfalutin.\"relevant_customers\" is not null)
 )
 SELECT
-    fox.\"customer_demographics_gender\" as \"customer_demographics_gender\",
-    fox.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    fox.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
-    count(fox.\"customer_id\") as \"cnt1\",
-    fox.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
-    count(fox.\"customer_id\") as \"cnt2\",
-    fox.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
-    count(fox.\"customer_id\") as \"cnt3\",
-    fox.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
-    count(fox.\"customer_id\") as \"cnt4\",
-    fox.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
-    count(fox.\"customer_id\") as \"cnt5\",
-    fox.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
-    count(fox.\"customer_id\") as \"cnt6\"
+    sparkling.\"customer_demographics_gender\" as \"customer_demographics_gender\",
+    sparkling.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
+    sparkling.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
+    count(sparkling.\"customer_id\") as \"cnt1\",
+    sparkling.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
+    count(sparkling.\"customer_id\") as \"cnt2\",
+    sparkling.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
+    count(sparkling.\"customer_id\") as \"cnt3\",
+    sparkling.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
+    count(sparkling.\"customer_id\") as \"cnt4\",
+    sparkling.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
+    count(sparkling.\"customer_id\") as \"cnt5\",
+    sparkling.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
+    count(sparkling.\"customer_id\") as \"cnt6\"
 FROM
-    fox
+    sparkling
 GROUP BY 
-    fox.\"customer_demographics_purchase_estimate\",
-    fox.\"customer_demographics_credit_rating\",
-    fox.\"customer_demographics_dependent_count\",
-    fox.\"customer_demographics_college_dependent_count\",
-    fox.\"customer_demographics_employed_dependent_count\",
-    fox.\"customer_demographics_education_status\",
-    fox.\"customer_demographics_marital_status\",
-    fox.\"customer_demographics_gender\"
+    sparkling.\"customer_demographics_credit_rating\",
+    sparkling.\"customer_demographics_dependent_count\",
+    sparkling.\"customer_demographics_college_dependent_count\",
+    sparkling.\"customer_demographics_marital_status\",
+    sparkling.\"customer_demographics_purchase_estimate\",
+    sparkling.\"customer_demographics_gender\",
+    sparkling.\"customer_demographics_employed_dependent_count\",
+    sparkling.\"customer_demographics_education_status\"
 ORDER BY 
-    fox.\"customer_demographics_gender\" asc,
-    fox.\"customer_demographics_marital_status\" asc,
-    fox.\"customer_demographics_education_status\" asc,
-    fox.\"customer_demographics_purchase_estimate\" asc,
-    fox.\"customer_demographics_credit_rating\" asc,
-    fox.\"customer_demographics_dependent_count\" asc,
-    fox.\"customer_demographics_employed_dependent_count\" asc,
-    fox.\"customer_demographics_college_dependent_count\" asc"""
+    sparkling.\"customer_demographics_gender\" asc,
+    sparkling.\"customer_demographics_marital_status\" asc,
+    sparkling.\"customer_demographics_education_status\" asc,
+    sparkling.\"customer_demographics_purchase_estimate\" asc,
+    sparkling.\"customer_demographics_credit_rating\" asc,
+    sparkling.\"customer_demographics_dependent_count\" asc,
+    sparkling.\"customer_demographics_employed_dependent_count\" asc,
+    sparkling.\"customer_demographics_college_dependent_count\" asc"""

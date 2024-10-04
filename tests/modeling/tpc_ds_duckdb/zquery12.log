@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 3.727047
-exec_time = 0.085903
-comp_time = 0.102149
-gen_length = 2714
+parse_time = 3.377959
+exec_time = 0.115484
+comp_time = 0.101483
+gen_length = 2770
 generated_sql = """
 
 WITH 
-fox as (
+quetzal as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"web_sales_item_id\"
 FROM
     memory.web_sales as web_sales
-    INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-fossa as (
+pelican as (
 SELECT
-    sum(fox.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    fox.\"web_sales_item_category\" as \"web_sales_item_category\",
-    fox.\"web_sales_item_class\" as \"web_sales_item_class\",
-    fox.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    fox.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    fox.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(quetzal.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    quetzal.\"web_sales_item_category\" as \"web_sales_item_category\",
+    quetzal.\"web_sales_item_class\" as \"web_sales_item_class\",
+    quetzal.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    quetzal.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    quetzal.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    fox
+    quetzal
 GROUP BY 
-    fox.\"web_sales_item_category\",
-    fox.\"web_sales_item_class\",
-    fox.\"web_sales_item_current_price\",
-    fox.\"web_sales_item_desc\",
-    fox.\"web_sales_item_name\"),
-cougar as (
+    quetzal.\"web_sales_item_current_price\",
+    quetzal.\"web_sales_item_desc\",
+    quetzal.\"web_sales_item_name\",
+    quetzal.\"web_sales_item_category\",
+    quetzal.\"web_sales_item_class\"),
+stork as (
 SELECT
-    sum(fossa.\"itemrevenue\") over (partition by fossa.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    fossa.\"itemrevenue\" as \"itemrevenue\",
-    fossa.\"web_sales_item_class\" as \"web_sales_item_class\",
-    fossa.\"web_sales_item_name\" as \"web_sales_item_name\",
-    fossa.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    fossa.\"web_sales_item_category\" as \"web_sales_item_category\",
-    fossa.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(pelican.\"itemrevenue\") over (partition by pelican.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    pelican.\"itemrevenue\" as \"itemrevenue\",
+    pelican.\"web_sales_item_class\" as \"web_sales_item_class\",
+    pelican.\"web_sales_item_name\" as \"web_sales_item_name\",
+    pelican.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    pelican.\"web_sales_item_category\" as \"web_sales_item_category\",
+    pelican.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    fossa)
+    pelican)
 SELECT
-    cougar.\"web_sales_item_name\" as \"web_sales_item_name\",
-    cougar.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    cougar.\"web_sales_item_category\" as \"web_sales_item_category\",
-    cougar.\"web_sales_item_class\" as \"web_sales_item_class\",
-    cougar.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    cougar.\"itemrevenue\" as \"itemrevenue\",
-    cougar.\"itemrevenue\" * 100.0 / cougar.\"_virtual_137720187295635\" as \"revenueratio\"
+    stork.\"web_sales_item_name\" as \"web_sales_item_name\",
+    stork.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    stork.\"web_sales_item_category\" as \"web_sales_item_category\",
+    stork.\"web_sales_item_class\" as \"web_sales_item_class\",
+    stork.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    stork.\"itemrevenue\" as \"itemrevenue\",
+    stork.\"itemrevenue\" * 100.0 / stork.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    cougar
+    stork
 ORDER BY 
-    cougar.\"web_sales_item_category\" asc,
-    cougar.\"web_sales_item_class\" asc,
-    cougar.\"web_sales_item_name\" asc,
-    cougar.\"web_sales_item_desc\" asc,
-    cougar.\"itemrevenue\" * 100.0 / cougar.\"_virtual_137720187295635\" asc
+    stork.\"web_sales_item_category\" asc,
+    stork.\"web_sales_item_class\" asc,
+    stork.\"web_sales_item_name\" asc,
+    stork.\"web_sales_item_desc\" asc,
+    stork.\"itemrevenue\" * 100.0 / stork.\"_virtual_137720187295635\" asc
 LIMIT (100)"""

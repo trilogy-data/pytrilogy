@@ -1,23 +1,12 @@
 query_id = 6
-parse_time = 8.413043
-exec_time = 0.401878
-comp_time = 0.135577
-gen_length = 3035
+parse_time = 12.099442
+exec_time = 0.088936
+comp_time = 0.123766
+gen_length = 2719
 generated_sql = """
 
 WITH 
-vivacious as (
-SELECT
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
-    store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    store_sales.\"SS_ITEM_SK\" as \"item_id\"
-FROM
-    memory.store_sales as store_sales
-GROUP BY 
-    store_sales.\"SS_SOLD_DATE_SK\",
-    store_sales.\"SS_CUSTOMER_SK\",
-    store_sales.\"SS_ITEM_SK\"),
-busy as (
+vacuous as (
 SELECT
     items.\"I_ITEM_SK\" as \"item_id\",
     items.\"I_CATEGORY\" as \"item_category\",
@@ -27,7 +16,7 @@ FROM
 WHERE
     items.\"I_CATEGORY\" is not null
 ),
-snipe as (
+lynx as (
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -38,49 +27,49 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-jackal as (
+puzzled as (
 SELECT
-    busy.\"item_category\" as \"item_category\",
+    vacuous.\"item_category\" as \"item_category\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
-    vivacious
-    INNER JOIN memory.date_dim as date on vivacious.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.customer as customers on vivacious.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
-    INNER JOIN memory.item as items on vivacious.\"item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN busy on vivacious.\"item_id\" = busy.\"item_id\"
+    memory.store_sales as store_sales
+    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN vacuous on store_sales.\"SS_ITEM_SK\" = vacuous.\"item_id\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and busy.\"item_category\" is not null
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and vacuous.\"item_category\" is not null
 ),
-vacuous as (
+lion as (
 SELECT
-    jackal.\"item_category\" as \"item_category\",
-    jackal.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    jackal.\"store_sales_date_year\" as \"store_sales_date_year\",
-    jackal.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    jackal.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    jackal.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    snipe.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    puzzled.\"item_category\" as \"item_category\",
+    puzzled.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    puzzled.\"store_sales_date_year\" as \"store_sales_date_year\",
+    puzzled.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    puzzled.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    puzzled.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    lynx.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    jackal
-    INNER JOIN snipe on (jackal.\"item_category\" = snipe.\"item_category\" or (jackal.\"item_category\" is null and snipe.\"item_category\" is null))
+    puzzled
+    INNER JOIN lynx on (puzzled.\"item_category\" = lynx.\"item_category\" or (puzzled.\"item_category\" is null and lynx.\"item_category\" is null))
 WHERE
-    jackal.\"store_sales_date_year\" = 2001 and jackal.\"store_sales_date_month_of_year\" = 1 and jackal.\"store_sales_item_current_price\" > 1.2 * snipe.\"_virtual_6264207893106521\" and jackal.\"item_category\" is not null
+    puzzled.\"store_sales_date_year\" = 2001 and puzzled.\"store_sales_date_month_of_year\" = 1 and puzzled.\"store_sales_item_current_price\" > 1.2 * lynx.\"_virtual_6264207893106521\" and puzzled.\"item_category\" is not null
 )
 SELECT
-    vacuous.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(vacuous.\"store_sales_customer_id\") as \"customer_count\"
+    lion.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(lion.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    vacuous
+    lion
 GROUP BY 
-    vacuous.\"store_sales_customer_state\"
+    lion.\"store_sales_customer_state\"
 HAVING
-    count(vacuous.\"store_sales_customer_id\") >= 10
+    count(lion.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(vacuous.\"store_sales_customer_id\") asc nulls first,
-    vacuous.\"store_sales_customer_state\" asc nulls first"""
+    count(lion.\"store_sales_customer_id\") asc nulls first,
+    lion.\"store_sales_customer_state\" asc nulls first"""
