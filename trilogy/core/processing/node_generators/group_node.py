@@ -5,6 +5,7 @@ from trilogy.core.models import (
     WhereClause,
     Function,
     AggregateWrapper,
+    Grain,
 )
 from trilogy.utility import unique
 from trilogy.core.processing.nodes import GroupNode, StrategyNode, History
@@ -50,9 +51,9 @@ def gen_group_node(
         parent_concepts += grain_components
         output_concepts += grain_components
         for possible_agg in local_optional:
+            if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
+                continue
             if possible_agg.grain and possible_agg.grain == concept.grain:
-                if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
-                    continue
                 agg_parents: List[Concept] = resolve_function_parent_concepts(
                     possible_agg
                 )
@@ -60,7 +61,16 @@ def gen_group_node(
                     set([x.address for x in parent_concepts])
                 ):
                     output_concepts.append(possible_agg)
-
+                    logger.info(
+                        f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
+                    )
+                elif Grain(components=agg_parents) == Grain(components=parent_concepts):
+                    extra = [x for x in agg_parents if x.address not in parent_concepts]
+                    parent_concepts += extra
+                    output_concepts.append(possible_agg)
+                    logger.info(
+                        f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
+                    )
     if parent_concepts:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} fetching group node parents {LooseConceptList(concepts=parent_concepts)}"

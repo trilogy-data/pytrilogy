@@ -1,12 +1,12 @@
 query_id = 3
-parse_time = 6.957476
-exec_time = 0.120148
-comp_time = 0.081584
-gen_length = 1347
+parse_time = 5.783266
+exec_time = 0.076963
+comp_time = 0.058021
+gen_length = 1359
 generated_sql = """
 
 WITH 
-jaguar as (
+wakeful as (
 SELECT
     store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -24,18 +24,18 @@ WHERE
     date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
-    jaguar.\"store_sales_date_year\" as \"store_sales_date_year\",
-    jaguar.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    jaguar.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(jaguar.\"store_sales_ext_sales_price\") as \"sum_agg\"
+    wakeful.\"store_sales_date_year\" as \"store_sales_date_year\",
+    wakeful.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    wakeful.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(wakeful.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    jaguar
+    wakeful
 GROUP BY 
-    jaguar.\"store_sales_item_brand_name\",
-    jaguar.\"store_sales_date_year\",
-    jaguar.\"store_sales_item_brand_id\"
+    wakeful.\"store_sales_item_brand_id\",
+    wakeful.\"store_sales_item_brand_name\",
+    wakeful.\"store_sales_date_year\"
 ORDER BY 
-    jaguar.\"store_sales_date_year\" asc,
-    sum(jaguar.\"store_sales_ext_sales_price\") desc,
-    jaguar.\"store_sales_item_brand_id\" asc
+    wakeful.\"store_sales_date_year\" asc,
+    sum(wakeful.\"store_sales_ext_sales_price\") desc,
+    wakeful.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

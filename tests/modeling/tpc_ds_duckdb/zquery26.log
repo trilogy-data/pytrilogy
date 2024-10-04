@@ -1,0 +1,45 @@
+query_id = 26
+parse_time = 31.054831
+exec_time = 0.71278
+comp_time = 0.244566
+gen_length = 1934
+generated_sql = """
+
+WITH 
+bewildered as (
+SELECT
+    catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
+    customer_demographics.\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
+    customer_demographics.\"CD_MARITAL_STATUS\" as \"cs_bill_customer_demographic_marital_status\",
+    customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
+    promotion.\"P_CHANNEL_EMAIL\" as \"cs_promotion_channel_email\",
+    promotion.\"P_CHANNEL_EVENT\" as \"cs_promotion_channel_event\",
+    cast(\"D_YEAR\" as int) as \"cs_date_year\",
+    items.\"I_ITEM_ID\" as \"cs_item_name\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    items.\"I_ITEM_SK\" as \"cs_item_id\",
+    catalog_sales.\"CS_LIST_PRICE\" as \"cs_list_price\",
+    catalog_sales.\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
+    catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\"
+FROM
+    memory.catalog_sales as catalog_sales
+    INNER JOIN memory.promotion as promotion on catalog_sales.\"CS_PROMO_SK\" = promotion.\"P_PROMO_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer_demographics as customer_demographics on catalog_sales.\"CS_BILL_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
+    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
+WHERE
+    customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
+)
+SELECT
+    bewildered.\"cs_item_name\" as \"cs_item_name\",
+    avg(bewildered.\"cs_quantity\") as \"agg1\",
+    avg(bewildered.\"cs_list_price\") as \"agg2\",
+    avg(bewildered.\"cs_coupon_amt\") as \"agg3\",
+    avg(bewildered.\"cs_sales_price\") as \"agg4\"
+FROM
+    bewildered
+GROUP BY 
+    bewildered.\"cs_item_name\"
+ORDER BY 
+    bewildered.\"cs_item_name\" asc
+LIMIT (100)"""

@@ -21,7 +21,6 @@ from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 from trilogy.core.enums import PurposeLineage
 
-
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 
 
@@ -52,18 +51,19 @@ def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
 def create_pruned_concept_graph(
     g: nx.DiGraph, all_concepts: List[Concept], accept_partial: bool = False
 ) -> nx.DiGraph:
+    orig_g = g
     g = g.copy()
     target_addresses = set([c.address for c in all_concepts])
-    concepts: dict[str, Concept] = nx.get_node_attributes(g, "concept")
-    datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
+    concepts: dict[str, Concept] = nx.get_node_attributes(orig_g, "concept")
+    datasources: dict[str, Datasource] = nx.get_node_attributes(orig_g, "datasource")
     relevant_concepts_pre = {
         n: x.address
         for n in g.nodes()
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.address in target_addresses
     }
-    relevant_concepts = list(relevant_concepts_pre.keys())
-    relevent_datasets = []
+    relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
+    relevent_datasets: list[str] = []
     if not accept_partial:
         partial = {}
         for node in g.nodes:
@@ -95,15 +95,22 @@ def create_pruned_concept_graph(
         ]
         if actual_neighbors:
             relevent_datasets.append(n)
-    for n in g.nodes():
-        if n.startswith("c~") and n not in relevant_concepts:
-            neighbor_count = 0
-            for x in nx.all_neighbors(g, n):
-                if x in relevent_datasets:
-                    neighbor_count += 1
-            if neighbor_count > 1:
-                relevant_concepts.append(concepts.get(n))
 
+    # for injecting extra join concepts that are shared between datasets
+    # use the original graph, pre-partial pruning
+    for n in orig_g.nodes:
+        # readd ignoring grain
+        # we want to join inclusive of all concepts
+        roots: dict[str, set[str]] = {}
+        if n.startswith("c~") and n not in relevant_concepts:
+            root = n.split("@")[0]
+            neighbors = roots.get(root, set())
+            for neighbor in nx.all_neighbors(orig_g, n):
+                if neighbor in relevent_datasets:
+                    neighbors.add(neighbor)
+            if len(neighbors) > 1:
+                relevant_concepts.append(n)
+            roots[root] = set()
     g.remove_nodes_from(
         [
             n
@@ -111,6 +118,18 @@ def create_pruned_concept_graph(
             if n not in relevent_datasets and n not in relevant_concepts
         ]
     )
+
+    subgraphs = list(nx.connected_components(g.to_undirected()))
+    if not subgraphs:
+        return None
+    if subgraphs and len(subgraphs) != 1:
+        return None
+    # add back any relevant edges that might have been partially filtered
+    relevant = set(relevant_concepts + relevent_datasets)
+    for edge in orig_g.edges():
+        if edge[0] in relevant and edge[1] in relevant:
+            g.add_edge(edge[0], edge[1])
+
     return g
 
 
@@ -243,19 +262,15 @@ def gen_select_merge_node(
         )
     for attempt in [False, True]:
         pruned_concept_graph = create_pruned_concept_graph(g, non_constant, attempt)
-        subgraphs = list(nx.connected_components(pruned_concept_graph.to_undirected()))
-
-        if subgraphs and len(subgraphs) == 1:
+        if pruned_concept_graph:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"
             )
             break
-    if len(subgraphs) > 1:
-        # from trilogy.hooks.graph_hook import GraphHook
-        # GraphHook().query_graph_built(pruned_concept_graph.to_undirected(), highlight_nodes=[concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address])
-        # raise SyntaxError(f'Too many subgraphs found for {[c.address for c in all_concepts]}: got {subgraphs}')
+
+    if not pruned_concept_graph:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Too many subgraphs found for {[c.address for c in non_constant]}: got {subgraphs}'"
+            f"{padding(depth)}{LOGGER_PREFIX} no covering graph found {attempt}"
         )
         return None
 

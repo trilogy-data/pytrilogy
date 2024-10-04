@@ -148,7 +148,6 @@ def detect_ambiguity_and_raise(
             common = common.intersection(ja)
         if all(set(ja).issubset(y) for y in reduced_concept_sets):
             final_candidates.append(ja)
-
     if not final_candidates:
         filtered_paths = [x.difference(common) for x in reduced_concept_sets]
         raise AmbiguousRelationshipResolutionException(
