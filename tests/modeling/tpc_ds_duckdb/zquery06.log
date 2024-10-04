@@ -1,23 +1,23 @@
 query_id = 6
-parse_time = 10.11851
-exec_time = 0.489739
-comp_time = 0.128431
-gen_length = 3045
+parse_time = 8.413043
+exec_time = 0.401878
+comp_time = 0.135577
+gen_length = 3035
 generated_sql = """
 
 WITH 
-trite as (
+vivacious as (
 SELECT
-    store_sales.\"SS_ITEM_SK\" as \"item_id\",
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+    store_sales.\"SS_ITEM_SK\" as \"item_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
+    store_sales.\"SS_SOLD_DATE_SK\",
     store_sales.\"SS_CUSTOMER_SK\",
-    store_sales.\"SS_ITEM_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-bewildered as (
+    store_sales.\"SS_ITEM_SK\"),
+busy as (
 SELECT
     items.\"I_ITEM_SK\" as \"item_id\",
     items.\"I_CATEGORY\" as \"item_category\",
@@ -27,7 +27,7 @@ FROM
 WHERE
     items.\"I_CATEGORY\" is not null
 ),
-ocelot as (
+snipe as (
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -38,49 +38,49 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-tenuous as (
+jackal as (
 SELECT
-    bewildered.\"item_category\" as \"item_category\",
+    busy.\"item_category\" as \"item_category\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
-    trite
-    INNER JOIN memory.item as items on trite.\"item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN bewildered on trite.\"item_id\" = bewildered.\"item_id\"
-    INNER JOIN memory.customer as customers on trite.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
-    INNER JOIN memory.date_dim as date on trite.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    vivacious
+    INNER JOIN memory.date_dim as date on vivacious.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer as customers on vivacious.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.item as items on vivacious.\"item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN busy on vivacious.\"item_id\" = busy.\"item_id\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and bewildered.\"item_category\" is not null
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and busy.\"item_category\" is not null
 ),
-finch as (
+vacuous as (
 SELECT
-    tenuous.\"item_category\" as \"item_category\",
-    tenuous.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    tenuous.\"store_sales_date_year\" as \"store_sales_date_year\",
-    tenuous.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    tenuous.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    tenuous.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    ocelot.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    jackal.\"item_category\" as \"item_category\",
+    jackal.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    jackal.\"store_sales_date_year\" as \"store_sales_date_year\",
+    jackal.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    jackal.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    jackal.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    snipe.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    tenuous
-    INNER JOIN ocelot on (tenuous.\"item_category\" = ocelot.\"item_category\" or (tenuous.\"item_category\" is null and ocelot.\"item_category\" is null))
+    jackal
+    INNER JOIN snipe on (jackal.\"item_category\" = snipe.\"item_category\" or (jackal.\"item_category\" is null and snipe.\"item_category\" is null))
 WHERE
-    tenuous.\"store_sales_date_year\" = 2001 and tenuous.\"store_sales_date_month_of_year\" = 1 and tenuous.\"store_sales_item_current_price\" > 1.2 * ocelot.\"_virtual_6264207893106521\" and tenuous.\"item_category\" is not null
+    jackal.\"store_sales_date_year\" = 2001 and jackal.\"store_sales_date_month_of_year\" = 1 and jackal.\"store_sales_item_current_price\" > 1.2 * snipe.\"_virtual_6264207893106521\" and jackal.\"item_category\" is not null
 )
 SELECT
-    finch.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(finch.\"store_sales_customer_id\") as \"customer_count\"
+    vacuous.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(vacuous.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    finch
+    vacuous
 GROUP BY 
-    finch.\"store_sales_customer_state\"
+    vacuous.\"store_sales_customer_state\"
 HAVING
-    count(finch.\"store_sales_customer_id\") >= 10
+    count(vacuous.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(finch.\"store_sales_customer_id\") asc nulls first,
-    finch.\"store_sales_customer_state\" asc nulls first"""
+    count(vacuous.\"store_sales_customer_id\") asc nulls first,
+    vacuous.\"store_sales_customer_state\" asc nulls first"""

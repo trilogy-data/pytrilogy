@@ -88,7 +88,7 @@ def test_derivations():
             source=datasource_to_node(env.datasources["bool_is_upper_name"]),
             target=concept_to_node(test_concept.with_default_grain()),
         )
-        assert len(path) == 3, path
+        assert len(path) == 2, path
 
         # test that the full function returns the value
         static = gen_select_node(

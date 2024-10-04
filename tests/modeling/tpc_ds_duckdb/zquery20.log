@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 16.101066
-exec_time = 0.088792
-comp_time = 0.236921
-gen_length = 2458
+parse_time = 12.771807
+exec_time = 0.209416
+comp_time = 0.184905
+gen_length = 2453
 generated_sql = """
 
 WITH 
-dapper as (
+swift as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-raven as (
+chickadee as (
 SELECT
-    sum(dapper.\"cs_extra_sales_price\") as \"revenue\",
-    dapper.\"cs_item_category\" as \"cs_item_category\",
-    dapper.\"cs_item_class\" as \"cs_item_class\",
-    dapper.\"cs_item_current_price\" as \"cs_item_current_price\",
-    dapper.\"cs_item_desc\" as \"cs_item_desc\",
-    dapper.\"cs_item_name\" as \"cs_item_name\"
+    sum(swift.\"cs_extra_sales_price\") as \"revenue\",
+    swift.\"cs_item_category\" as \"cs_item_category\",
+    swift.\"cs_item_class\" as \"cs_item_class\",
+    swift.\"cs_item_current_price\" as \"cs_item_current_price\",
+    swift.\"cs_item_desc\" as \"cs_item_desc\",
+    swift.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    dapper
+    swift
 GROUP BY 
-    dapper.\"cs_item_desc\",
-    dapper.\"cs_item_name\",
-    dapper.\"cs_item_category\",
-    dapper.\"cs_item_class\",
-    dapper.\"cs_item_current_price\"),
-cougar as (
+    swift.\"cs_item_desc\",
+    swift.\"cs_item_class\",
+    swift.\"cs_item_category\",
+    swift.\"cs_item_current_price\",
+    swift.\"cs_item_name\"),
+fowl as (
 SELECT
-    sum(raven.\"revenue\") over (partition by raven.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    raven.\"revenue\" as \"revenue\",
-    raven.\"cs_item_class\" as \"cs_item_class\",
-    raven.\"cs_item_name\" as \"cs_item_name\",
-    raven.\"cs_item_desc\" as \"cs_item_desc\",
-    raven.\"cs_item_category\" as \"cs_item_category\",
-    raven.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(chickadee.\"revenue\") over (partition by chickadee.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    chickadee.\"revenue\" as \"revenue\",
+    chickadee.\"cs_item_class\" as \"cs_item_class\",
+    chickadee.\"cs_item_name\" as \"cs_item_name\",
+    chickadee.\"cs_item_desc\" as \"cs_item_desc\",
+    chickadee.\"cs_item_category\" as \"cs_item_category\",
+    chickadee.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    raven)
+    chickadee)
 SELECT
-    cougar.\"cs_item_name\" as \"cs_item_name\",
-    cougar.\"cs_item_desc\" as \"cs_item_desc\",
-    cougar.\"cs_item_category\" as \"cs_item_category\",
-    cougar.\"cs_item_class\" as \"cs_item_class\",
-    cougar.\"cs_item_current_price\" as \"cs_item_current_price\",
-    cougar.\"revenue\" as \"revenue\",
-    cougar.\"revenue\" * 100.0 / cougar.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    fowl.\"cs_item_name\" as \"cs_item_name\",
+    fowl.\"cs_item_desc\" as \"cs_item_desc\",
+    fowl.\"cs_item_category\" as \"cs_item_category\",
+    fowl.\"cs_item_class\" as \"cs_item_class\",
+    fowl.\"cs_item_current_price\" as \"cs_item_current_price\",
+    fowl.\"revenue\" as \"revenue\",
+    fowl.\"revenue\" * 100.0 / fowl.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    cougar
+    fowl
 ORDER BY 
-    cougar.\"cs_item_category\" asc nulls first,
-    cougar.\"cs_item_class\" asc nulls first,
-    cougar.\"cs_item_name\" asc nulls first,
-    cougar.\"cs_item_desc\" asc nulls first,
-    cougar.\"revenue\" * 100.0 / cougar.\"_virtual_8479147315262044\" asc nulls first
+    fowl.\"cs_item_category\" asc nulls first,
+    fowl.\"cs_item_class\" asc nulls first,
+    fowl.\"cs_item_name\" asc nulls first,
+    fowl.\"cs_item_desc\" asc nulls first,
+    fowl.\"revenue\" * 100.0 / fowl.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

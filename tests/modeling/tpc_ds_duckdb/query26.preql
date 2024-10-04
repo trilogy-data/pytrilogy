@@ -1,0 +1,21 @@
+#Computes the average quantity, list price, discount, sales price for promotional items sold through the catalog
+#channel where the promotion was not offered by mail or in an event for given gender, marital status and
+#educational status.
+
+import catalog_sales as cs;
+
+SELECT cs.item.name,
+       avg(cs.quantity) as agg1,
+       avg(cs.list_price) as agg2,
+       avg(cs.coupon_amt)  as agg3,
+       avg(cs.sales_price) as agg4
+WHERE 
+  cs.bill_customer_demographic.gender = 'M'
+  AND cs.bill_customer_demographic.marital_status = 'S'
+  AND cs.bill_customer_demographic.education_status = 'College'
+  AND (cs.promotion.channel_email = 'N'
+       OR cs.promotion.channel_event = 'N')
+  AND cs.date.year = 2000
+ORDER BY 
+    cs.item.name asc
+LIMIT 100;

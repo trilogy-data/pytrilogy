@@ -1,12 +1,12 @@
 query_id = 1
-parse_time = 12.24595
-exec_time = 0.097428
-comp_time = 2.400564
-gen_length = 1644
+parse_time = 13.735455
+exec_time = 0.108734
+comp_time = 1.38526
+gen_length = 1633
 generated_sql = """
 
 WITH 
-badger as (
+pintail as (
 SELECT
     store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
@@ -23,32 +23,32 @@ FROM
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-quizzical as (
+avocet as (
 SELECT
-    sum(badger.\"returns_return_amount\") as \"total_returns\",
-    badger.\"returns_store_id\" as \"returns_store_id\",
-    badger.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(pintail.\"returns_return_amount\") as \"total_returns\",
+    pintail.\"returns_store_id\" as \"returns_store_id\",
+    pintail.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    badger
+    pintail
 GROUP BY 
-    badger.\"returns_customer_text_id\",
-    badger.\"returns_store_id\"),
-slow as (
+    pintail.\"returns_customer_text_id\",
+    pintail.\"returns_store_id\"),
+leopard as (
 SELECT
-    avg(quizzical.\"total_returns\") as \"avg_store_returns\",
-    quizzical.\"returns_store_id\" as \"returns_store_id\"
+    avg(avocet.\"total_returns\") as \"avg_store_returns\",
+    avocet.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    quizzical
+    avocet
 GROUP BY 
-    quizzical.\"returns_store_id\")
+    avocet.\"returns_store_id\")
 SELECT
-    quizzical.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    avocet.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    quizzical
-    INNER JOIN slow on quizzical.\"returns_store_id\" = slow.\"returns_store_id\"
+    avocet
+    INNER JOIN leopard on avocet.\"returns_store_id\" = leopard.\"returns_store_id\"
 WHERE
-    quizzical.\"total_returns\" > ( 1.2 * slow.\"avg_store_returns\" )
+    avocet.\"total_returns\" > ( 1.2 * leopard.\"avg_store_returns\" )
 
 ORDER BY 
-    quizzical.\"returns_customer_text_id\" asc
+    avocet.\"returns_customer_text_id\" asc
 LIMIT (100)"""

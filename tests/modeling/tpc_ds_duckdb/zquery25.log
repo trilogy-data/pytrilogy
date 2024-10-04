@@ -1,0 +1,154 @@
+query_id = 25
+parse_time = 8.691831
+exec_time = 0.275776
+comp_time = 1.440167
+gen_length = 8407
+generated_sql = """
+
+WITH 
+martin as (
+SELECT
+    cast(\"D_YEAR\" as int) as \"store_sales_return_date_year\",
+    date.\"D_DATE_SK\" as \"store_sales_return_date_id\",
+    date.\"D_MOY\" as \"store_sales_return_date_month_of_year\"
+FROM
+    memory.date_dim as date
+WHERE
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" >= 4 and date.\"D_MOY\" <= 10
+),
+dove as (
+SELECT
+    date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
+    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
+    date.\"D_DATE_SK\" as \"catalog_sales_date_id\"
+FROM
+    memory.date_dim as date
+WHERE
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" >= 4 and date.\"D_MOY\" <= 10
+),
+gullible as (
+SELECT
+    customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\"
+FROM
+    memory.customer as customers),
+macho as (
+SELECT
+    catalog_sales.\"CS_ITEM_SK\" as \"store_sales_item_id\",
+    catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
+FROM
+    memory.catalog_sales as catalog_sales
+GROUP BY 
+    catalog_sales.\"CS_BILL_CUSTOMER_SK\",
+    catalog_sales.\"CS_SOLD_DATE_SK\",
+    catalog_sales.\"CS_ITEM_SK\"),
+kestrel as (
+SELECT
+    catalog_sales.\"CS_NET_PROFIT\" as \"catalog_sales_net_profit\",
+    cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
+    date.\"D_MOY\" as \"store_sales_date_month_of_year\",
+    martin.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
+    martin.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
+    dove.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    dove.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
+    customers.\"C_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
+    store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
+    items.\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    items.\"I_ITEM_ID\" as \"store_sales_item_name\",
+    store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store.\"S_STORE_ID\" as \"store_sales_store_text_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
+    items.\"I_ITEM_SK\" as \"store_sales_item_id\"
+FROM
+    memory.store_sales as store_sales
+    INNER JOIN memory.catalog_sales as catalog_sales on store_sales.\"SS_CUSTOMER_SK\" = catalog_sales.\"CS_BILL_CUSTOMER_SK\" AND store_sales.\"SS_ITEM_SK\" = catalog_sales.\"CS_ITEM_SK\"
+    INNER JOIN gullible on store_sales.\"SS_CUSTOMER_SK\" = gullible.\"store_sales_customer_id\"
+    LEFT OUTER JOIN memory.store_returns as store_returns on store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\"
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN martin on store_returns.\"SR_RETURNED_DATE_SK\" = martin.\"store_sales_return_date_id\"
+    LEFT OUTER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN dove on catalog_sales.\"CS_SOLD_DATE_SK\" = dove.\"catalog_sales_date_id\"
+WHERE
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 4 and martin.\"store_sales_return_date_year\" = 2001 and martin.\"store_sales_return_date_month_of_year\" >= 4 and martin.\"store_sales_return_date_month_of_year\" <= 10 and dove.\"catalog_sales_date_year\" = 2001 and dove.\"catalog_sales_date_month_of_year\" >= 4 and dove.\"catalog_sales_date_month_of_year\" <= 10 and customers.\"C_CUSTOMER_SK\" = store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+),
+lion as (
+SELECT
+    store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
+    cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
+    date.\"D_MOY\" as \"store_sales_date_month_of_year\",
+    martin.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
+    martin.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
+    dove.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    dove.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
+    customers.\"C_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
+    store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
+    items.\"I_ITEM_DESC\" as \"store_sales_item_desc\",
+    items.\"I_ITEM_ID\" as \"store_sales_item_name\",
+    store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store.\"S_STORE_ID\" as \"store_sales_store_text_id\",
+    store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    items.\"I_ITEM_SK\" as \"store_sales_item_id\",
+    store_returns.\"SR_NET_LOSS\" as \"store_sales_return_net_loss\"
+FROM
+    macho
+    INNER JOIN memory.store_sales as store_sales on macho.\"store_sales_item_id\" = store_sales.\"SS_ITEM_SK\" AND macho.\"store_sales_customer_id\" = store_sales.\"SS_CUSTOMER_SK\"
+    LEFT OUTER JOIN memory.store_returns as store_returns on macho.\"store_sales_item_id\" = store_returns.\"SR_ITEM_SK\"
+    INNER JOIN memory.item as items on macho.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN dove on macho.\"catalog_sales_date_id\" = dove.\"catalog_sales_date_id\"
+    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN martin on store_returns.\"SR_RETURNED_DATE_SK\" = martin.\"store_sales_return_date_id\"
+    LEFT OUTER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+WHERE
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 4 and martin.\"store_sales_return_date_year\" = 2001 and martin.\"store_sales_return_date_month_of_year\" >= 4 and martin.\"store_sales_return_date_month_of_year\" <= 10 and dove.\"catalog_sales_date_year\" = 2001 and dove.\"catalog_sales_date_month_of_year\" >= 4 and dove.\"catalog_sales_date_month_of_year\" <= 10 and customers.\"C_CUSTOMER_SK\" = store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+),
+jackdaw as (
+SELECT
+    sum(kestrel.\"catalog_sales_net_profit\") as \"catalog_sales_profit\",
+    kestrel.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    kestrel.\"store_sales_item_name\" as \"store_sales_item_name\",
+    kestrel.\"store_sales_store_name\" as \"store_sales_store_name\",
+    kestrel.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
+FROM
+    kestrel
+GROUP BY 
+    kestrel.\"store_sales_store_name\",
+    kestrel.\"store_sales_item_desc\",
+    kestrel.\"store_sales_store_text_id\",
+    kestrel.\"store_sales_item_name\"),
+viper as (
+SELECT
+    sum(lion.\"store_sales_net_profit\") as \"store_sales_profit\",
+    lion.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    lion.\"store_sales_item_name\" as \"store_sales_item_name\",
+    lion.\"store_sales_store_name\" as \"store_sales_store_name\",
+    lion.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    sum(lion.\"store_sales_return_net_loss\") as \"store_returns_loss\"
+FROM
+    lion
+GROUP BY 
+    lion.\"store_sales_store_name\",
+    lion.\"store_sales_item_desc\",
+    lion.\"store_sales_store_text_id\",
+    lion.\"store_sales_item_name\")
+SELECT
+    jackdaw.\"store_sales_item_name\" as \"store_sales_item_name\",
+    jackdaw.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    jackdaw.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    jackdaw.\"store_sales_store_name\" as \"store_sales_store_name\",
+    viper.\"store_sales_profit\" as \"store_sales_profit\",
+    viper.\"store_returns_loss\" as \"store_returns_loss\",
+    jackdaw.\"catalog_sales_profit\" as \"catalog_sales_profit\"
+FROM
+    jackdaw
+    INNER JOIN viper on (jackdaw.\"store_sales_item_desc\" = viper.\"store_sales_item_desc\" or (jackdaw.\"store_sales_item_desc\" is null and viper.\"store_sales_item_desc\" is null)) AND jackdaw.\"store_sales_item_name\" = viper.\"store_sales_item_name\" AND jackdaw.\"store_sales_store_name\" = viper.\"store_sales_store_name\" AND jackdaw.\"store_sales_store_text_id\" = viper.\"store_sales_store_text_id\"
+ORDER BY 
+    jackdaw.\"store_sales_item_name\" asc,
+    jackdaw.\"store_sales_item_desc\" asc,
+    jackdaw.\"store_sales_store_text_id\" asc,
+    jackdaw.\"store_sales_store_name\" asc
+LIMIT (100)"""

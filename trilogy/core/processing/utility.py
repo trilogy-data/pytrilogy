@@ -199,7 +199,6 @@ def get_node_joins(
     identifier_map: dict[str, Datasource | QueryDatasource] = {
         x.identifier: x for x in datasources
     }
-
     grain_pseudonyms: set[str] = set()
     for g in grain:
         env_lookup = environment.concepts[g.address]
