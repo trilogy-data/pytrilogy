@@ -1,12 +1,17 @@
 query_id = 15
-parse_time = 7.445225
-exec_time = 0.058487
-comp_time = 0.303731
-gen_length = 1407
+parse_time = 29.079919
+exec_time = 0.094726
+comp_time = 3.824474
+gen_length = 6777
 generated_sql = """
 
 WITH 
-ray as (
+young as (
+-- Target: Grain<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>. Group: False Source: SourceType.MERGE.
+-- Joins: inner JOIN catalog_sales and customers on catalog_sales.bill_customer.id<catalog_sales.bill_customer.id>=catalog_sales.bill_customer.id<catalog_sales.bill_customer.id>[], inner JOIN catalog_sales and date on catalog_sales.date.id<catalog_sales.date.id>=catalog_sales.date.id<catalog_sales.date.id>[], inner JOIN customers and customer_address on catalog_sales.bill_customer.address_id<catalog_sales.bill_customer.address_id>=catalog_sales.bill_customer.address_id<catalog_sales.bill_customer.address_id>[].
+-- Source Map: {'catalog_sales.date.id': ['date'], 'catalog_sales.date.year': ['date'], 'catalog_sales.date.quarter': ['date'], 'catalog_sales.bill_customer.id': ['customers'], 'catalog_sales.bill_customer.address_id': ['customers'], 'catalog_sales.bill_customer.state': ['customer_address'], 'catalog_sales.bill_customer.zip': ['customer_address'], 'catalog_sales.item.id': ['catalog_sales'], 'catalog_sales.sales_price': ['catalog_sales'], 'catalog_sales.order_number': ['catalog_sales'], 'catalog_sales.date.day_of_week': ['date'], 'catalog_sales.date.date': ['date'], 'catalog_sales.date.d_week_seq1': ['date'], 'catalog_sales.date.date_string': ['date'], 'catalog_sales.date.week_seq': ['date'], 'catalog_sales.date.month_of_year': ['date'], 'catalog_sales.bill_customer.preferred_cust_flag': ['customers'], 'catalog_sales.bill_customer.birth_country': ['customers'], 'catalog_sales.bill_customer.demographics.id': ['customers'], 'catalog_sales.bill_customer.last_name': ['customers'], 'catalog_sales.bill_customer.text_id': ['customers'], 'catalog_sales.bill_customer.first_name': ['customers'], 'catalog_sales.bill_customer.county': ['customer_address'], 'catalog_sales.bill_customer.city': ['customer_address'], 'catalog_sales.bill_customer.street': ['customer_address'], 'catalog_sales.bill_customer.country': ['customer_address'], 'catalog_sales.net_profit': ['catalog_sales'], 'catalog_sales.ship_date.id': ['catalog_sales'], 'catalog_sales.sold_date.id': ['catalog_sales'], 'catalog_sales.customer.address_id': ['catalog_sales'], 'catalog_sales.customer.id': ['catalog_sales'], 'catalog_sales.wholesale_cost': ['catalog_sales'], 'catalog_sales.extra_sales_price': ['catalog_sales'], 'catalog_sales.warehouse.id': ['catalog_sales'], 'catalog_sales.extra_ship_cost': ['catalog_sales'], 'catalog_sales.call_center.id': ['catalog_sales'], 'catalog_sales.extra_wholesale_cost': ['catalog_sales'], 'catalog_sales.time.id': ['catalog_sales']}.
+-- Output: catalog_sales.sales_price<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>, catalog_sales.date.quarter<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>, catalog_sales.date.year<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>, catalog_sales.bill_customer.state<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>, catalog_sales.bill_customer.zip<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>, catalog_sales.order_number<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>, catalog_sales.item.id<catalog_sales.bill_customer.address_id,catalog_sales.date.id,catalog_sales.bill_customer.id,catalog_sales.item.id,catalog_sales.order_number>.
+-- Inputs: catalog_sales.bill_customer.address_id<catalog_sales.bill_customer.address_id>, catalog_sales.bill_customer.id<catalog_sales.bill_customer.id>, catalog_sales.bill_customer.state<catalog_sales.bill_customer.address_id>, catalog_sales.bill_customer.zip<catalog_sales.bill_customer.address_id>, catalog_sales.date.id<catalog_sales.date.id>, catalog_sales.date.quarter<catalog_sales.date.id>, catalog_sales.date.year<catalog_sales.date.id>, catalog_sales.item.id<catalog_sales.item.id>, catalog_sales.order_number<catalog_sales.order_number>, catalog_sales.sales_price<catalog_sales.item.id,catalog_sales.order_number>.
 SELECT
     catalog_sales.\"CS_SALES_PRICE\" as \"catalog_sales_sales_price\",
     date.\"D_QOY\" as \"catalog_sales_date_quarter\",
@@ -17,19 +22,24 @@ SELECT
     catalog_sales.\"CS_ITEM_SK\" as \"catalog_sales_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer as customers on catalog_sales.\"CS_BILL_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 2001 and ( customer_address.\"CA_STATE\" in ( 'CA','WA','GA' ) or catalog_sales.\"CS_SALES_PRICE\" > 500 or SUBSTRING(customer_address.\"CA_ZIP\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) )
 )
+-- Target: Grain<catalog_sales.bill_customer.zip>. Group: True Source: SourceType.GROUP. References: young.
+-- Source Map: {'catalog_sales.sales_price': ['young'], 'catalog_sales.date.quarter': ['young'], 'catalog_sales.date.year': ['young'], 'catalog_sales.bill_customer.state': ['young'], 'catalog_sales.bill_customer.zip': ['young'], 'catalog_sales.order_number': ['young'], 'catalog_sales.item.id': ['young'], 'local.sales': []}.
+-- Output: catalog_sales.bill_customer.zip<catalog_sales.bill_customer.zip>, local.sales<catalog_sales.bill_customer.zip>.
+-- Inputs: catalog_sales.sales_price<catalog_sales.bill_customer.zip>, catalog_sales.bill_customer.zip<catalog_sales.bill_customer.address_id>, catalog_sales.order_number<catalog_sales.order_number>, catalog_sales.item.id<catalog_sales.item.id>.
+-- Nullable: local.sales<catalog_sales.bill_customer.zip>.
 SELECT
-    ray.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    sum(ray.\"catalog_sales_sales_price\") as \"sales\"
+    young.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    sum(young.\"catalog_sales_sales_price\") as \"sales\"
 FROM
-    ray
+    young
 GROUP BY 
-    ray.\"catalog_sales_bill_customer_zip\"
+    young.\"catalog_sales_bill_customer_zip\"
 ORDER BY 
-    ray.\"catalog_sales_bill_customer_zip\" asc nulls first
+    young.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

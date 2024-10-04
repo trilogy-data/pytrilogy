@@ -1,12 +1,18 @@
 query_id = 21
-parse_time = 3.525088
-exec_time = 0.090148
-comp_time = 0.040683
-gen_length = 2569
+parse_time = 11.094948
+exec_time = 0.122674
+comp_time = 0.079099
+gen_length = 6411
 generated_sql = """
 
 WITH 
-swallow as (
+busy as (
+-- Target: Grain<inventory.warehouse.id,inventory.item.id,inventory.date.id>. Group: False Source: SourceType.MERGE.
+-- Joins: inner JOIN warehouse_inventory and items on inventory.item.id<inventory.item.id>=inventory.item.id<inventory.item.id>[], left outer JOIN warehouse_inventory and warehouse on inventory.warehouse.id<inventory.warehouse.id>=inventory.warehouse.id<inventory.warehouse.id>[], inner JOIN warehouse_inventory and date on inventory.date.id<inventory.date.id>=inventory.date.id<inventory.date.id>[].
+-- Source Map: {'inventory.warehouse.id': ['warehouse'], 'inventory.warehouse.name': ['warehouse'], 'inventory.item.id': ['items'], 'inventory.item.name': ['items'], 'inventory.item.current_price': ['items'], 'inventory.date.id': ['date'], 'inventory.date.date': ['date'], 'inventory.quantity_on_hand': ['warehouse_inventory'], 'inventory.warehouse.square_feet': ['warehouse'], 'inventory.warehouse.string_id': ['warehouse'], 'inventory.item.desc': ['items'], 'inventory.item.class': ['items'], 'inventory.item.category': ['items'], 'inventory.item.color': ['items'], 'inventory.item.brand_id': ['items'], 'inventory.item.manufacturer_id': ['items'], 'inventory.item.brand_name': ['items'], 'inventory.item.units': ['items'], 'inventory.item.manager_id': ['items'], 'inventory.item.size': ['items'], 'inventory.date.date_string': ['date'], 'inventory.date.day_of_week': ['date'], 'inventory.date.d_week_seq1': ['date'], 'inventory.date.month_of_year': ['date'], 'inventory.date.quarter': ['date'], 'inventory.date.year': ['date'], 'inventory.date.week_seq': ['date']}.
+-- Output: inventory.date.date<inventory.warehouse.id,inventory.item.id,inventory.date.id>, inventory.item.current_price<inventory.warehouse.id,inventory.item.id,inventory.date.id>, inventory.quantity_on_hand<inventory.warehouse.id,inventory.item.id,inventory.date.id>, inventory.warehouse.name<inventory.warehouse.id,inventory.item.id,inventory.date.id>, inventory.item.name<inventory.warehouse.id,inventory.item.id,inventory.date.id>, inventory.date.id<inventory.warehouse.id,inventory.item.id,inventory.date.id>, inventory.warehouse.id<inventory.warehouse.id,inventory.item.id,inventory.date.id>.
+-- Inputs: inventory.date.date<inventory.date.id>, inventory.date.id<inventory.date.id>, inventory.item.current_price<inventory.item.id>, inventory.item.id<inventory.item.id>, inventory.item.name<inventory.item.id>, inventory.quantity_on_hand<inventory.warehouse.id,inventory.date.id>, inventory.warehouse.id<inventory.warehouse.id>, inventory.warehouse.name<inventory.warehouse.id>.
+-- Nullable: inventory.warehouse.name<inventory.warehouse.id>, inventory.warehouse.id<inventory.warehouse.id>.
 SELECT
     cast(\"D_DATE\" as date) as \"inventory_date_date\",
     items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
@@ -17,56 +23,61 @@ SELECT
     warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
 FROM
     memory.inventory as warehouse_inventory
+    INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"
     LEFT OUTER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"
     INNER JOIN memory.date_dim as date on warehouse_inventory.\"inv_date_sk\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
 )
+-- Target: Grain<inventory.warehouse.name,inventory.item.name>. Group: True Source: SourceType.GROUP. References: busy.
+-- Source Map: {'inventory.date.date': ['busy'], 'inventory.item.current_price': ['busy'], 'inventory.quantity_on_hand': ['busy'], 'inventory.warehouse.name': ['busy'], 'inventory.item.name': ['busy'], 'inventory.date.id': ['busy'], 'inventory.warehouse.id': ['busy'], 'local.inv_before': [], 'local.inv_after': []}.
+-- Output: inventory.warehouse.name<inventory.warehouse.name,inventory.item.name>, inventory.item.name<inventory.warehouse.name,inventory.item.name>, local.inv_before<inventory.warehouse.name,inventory.item.name>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
+-- Inputs: inventory.date.date<inventory.warehouse.name,inventory.item.name>, inventory.quantity_on_hand<inventory.warehouse.name,inventory.item.name>, inventory.warehouse.name<inventory.warehouse.id>, inventory.item.name<inventory.item.id>, inventory.date.id<inventory.date.id>, inventory.warehouse.id<inventory.warehouse.id>.
+-- Nullable: local.inv_before<inventory.warehouse.name,inventory.item.name>, inventory.warehouse.name<inventory.warehouse.id>, local.inv_after<inventory.warehouse.name,inventory.item.name>.
 SELECT
-    swallow.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    swallow.\"inventory_item_name\" as \"inventory_item_name\",
+    busy.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    busy.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN swallow.\"inventory_date_date\" < cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" < cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN swallow.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    swallow
+    busy
 GROUP BY 
-    swallow.\"inventory_warehouse_name\",
-    swallow.\"inventory_item_name\"
+    busy.\"inventory_item_name\",
+    busy.\"inventory_warehouse_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN swallow.\"inventory_date_date\" < cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" < cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN swallow.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN swallow.\"inventory_date_date\" < cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" < cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN swallow.\"inventory_date_date\" < cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" < cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN swallow.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN swallow.\"inventory_date_date\" < cast('2000-03-11' as date) THEN swallow.\"inventory_quantity_on_hand\"
+	WHEN busy.\"inventory_date_date\" < cast('2000-03-11' as date) THEN busy.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    swallow.\"inventory_warehouse_name\" asc nulls first,
-    swallow.\"inventory_item_name\" asc nulls first
+    busy.\"inventory_warehouse_name\" asc nulls first,
+    busy.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""
