@@ -1,33 +1,46 @@
 query_id = 6
-parse_time = 14.871591
-exec_time = 0.754269
-comp_time = 0.167153
-gen_length = 3097
+parse_time = 12.154843
+exec_time = 0.5015
+comp_time = 0.128067
+gen_length = 11802
 generated_sql = """
 
 WITH 
-stork as (
+eagle as (
+-- Target: Grain<store_sales.customer.id,item.id,store_sales.date.id>. Group: True Source: SourceType.GROUP.
+-- Source Map: {'store_sales.customer.id': ['store_sales'], 'item.id': ['store_sales'], 'store_sales.date.id': ['store_sales'], 'store_sales.time.id': ['store_sales'], 'store_sales.ticket_number': ['store_sales'], 'store_sales.quantity': ['store_sales'], 'store_sales.item.id': ['store_sales'], 'store_sales.ext_sales_price': ['store_sales'], 'store_sales.sales_price': ['store_sales'], 'store_sales.ext_list_price': ['store_sales'], 'store_sales.store.id': ['store_sales'], 'store_sales.ext_discount_amount': ['store_sales'], 'store_sales.customer_demographic.id': ['store_sales'], 'store_sales.promotion.id': ['store_sales'], 'store_sales.list_price': ['store_sales'], 'store_sales.net_profit': ['store_sales'], 'store_sales.coupon_amt': ['store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales'], 'store_sales.net_paid': ['store_sales']}.
+-- Output: store_sales.customer.id<store_sales.customer.id,item.id,store_sales.date.id>, item.id<store_sales.customer.id,item.id,store_sales.date.id>, store_sales.date.id<store_sales.customer.id,item.id,store_sales.date.id>.
+-- Inputs: store_sales.customer.id<store_sales.customer.id>, item.id<item.id>, store_sales.date.id<store_sales.date.id>.
 SELECT
     store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
-    store_sales.\"SS_ITEM_SK\" as \"item_id\"
+    store_sales.\"SS_ITEM_SK\" as \"item_id\",
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_SOLD_DATE_SK\",
     store_sales.\"SS_ITEM_SK\",
+    store_sales.\"SS_SOLD_DATE_SK\",
     store_sales.\"SS_CUSTOMER_SK\"),
-resonant as (
+pigeon as (
+-- Target: Grain<item.id>. Group: False Source: SourceType.DIRECT_SELECT.
+-- Source Map: {'item.id': ['items'], 'item.name': ['items'], 'item.desc': ['items'], 'item.brand_name': ['items'], 'item.brand_id': ['items'], 'item.manufacturer_id': ['items'], 'item.category': ['items'], 'item.class': ['items'], 'item.current_price': ['items'], 'item.color': ['items'], 'item.manager_id': ['items'], 'item.size': ['items'], 'item.units': ['items']}.
+-- Output: item.category<item.id>, item.id<item.id>, item.current_price<item.id>.
+-- Inputs: item.id<item.id>, item.name<item.id>, item.desc<item.id>, item.brand_name<item.id>, item.brand_id<item.id>, item.manufacturer_id<item.id>, item.category<item.id>, item.class<item.id>, item.current_price<item.id>, item.color<item.id>, item.manager_id<item.id>, item.size<item.id>, item.units<item.id>.
 SELECT
-    items.\"I_CURRENT_PRICE\" as \"item_current_price\",
     items.\"I_CATEGORY\" as \"item_category\",
-    items.\"I_ITEM_SK\" as \"item_id\"
+    items.\"I_ITEM_SK\" as \"item_id\",
+    items.\"I_CURRENT_PRICE\" as \"item_current_price\"
 FROM
     memory.item as items
 WHERE
     items.\"I_CATEGORY\" is not null
 ),
-warbler as (
+turkey as (
+-- Target: Grain<item.category>. Group: True Source: SourceType.GROUP.
+-- Source Map: {'item.category': ['items'], 'item.id': ['items'], 'item.current_price': ['items'], 'local._virtual_6264207893106521': [], 'item.name': ['items'], 'item.brand_id': ['items'], 'item.desc': ['items'], 'item.class': ['items'], 'item.brand_name': ['items'], 'item.color': ['items'], 'item.manufacturer_id': ['items'], 'item.size': ['items'], 'item.manager_id': ['items'], 'item.units': ['items']}.
+-- Output: local._virtual_6264207893106521<item.category>, item.category<item.category>.
+-- Inputs: item.current_price<item.id>, item.category<item.id>, item.id<item.id>.
+-- Nullable: local._virtual_6264207893106521<item.category>.
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -38,49 +51,65 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-nondescript as (
+darter as (
+-- Target: Grain<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>. Group: False Source: SourceType.MERGE. References: eagle, pigeon.
+-- Joins: inner JOIN eagle and customers on store_sales.customer.id<store_sales.customer.id>=store_sales.customer.id<store_sales.customer.id>[], inner JOIN eagle and items on item.id<item.id>=item.id<item.id>[], inner JOIN eagle and pigeon on item.id<item.id>=item.id<item.id>[], inner JOIN eagle and date on store_sales.date.id<store_sales.date.id>=store_sales.date.id<store_sales.date.id>[], inner JOIN customers and customer_address on store_sales.customer.address_id<store_sales.customer.address_id>=store_sales.customer.address_id<store_sales.customer.address_id>[].
+-- Source Map: {'store_sales.item.current_price': ['items'], 'item.id': ['items'], 'store_sales.date.month_of_year': ['date'], 'store_sales.date.id': ['date'], 'store_sales.date.year': ['date'], 'store_sales.customer.id': ['customers'], 'store_sales.customer.address_id': ['customers'], 'store_sales.customer.state': ['customer_address'], 'item.category': ['pigeon'], 'store_sales.item.category': ['items'], 'store_sales.item.name': ['items'], 'store_sales.item.brand_name': ['items'], 'store_sales.item.manager_id': ['items'], 'store_sales.item.desc': ['items'], 'store_sales.item.id': ['items'], 'store_sales.item.color': ['items'], 'store_sales.item.size': ['items'], 'store_sales.item.class': ['items'], 'store_sales.item.brand_id': ['items'], 'store_sales.item.units': ['items'], 'store_sales.item.manufacturer_id': ['items'], 'store_sales.date.d_week_seq1': ['date'], 'store_sales.date.day_of_week': ['date'], 'store_sales.date.quarter': ['date'], 'store_sales.date.date': ['date'], 'store_sales.date.week_seq': ['date'], 'store_sales.date.date_string': ['date'], 'store_sales.customer.text_id': ['customers'], 'store_sales.customer.preferred_cust_flag': ['customers'], 'store_sales.customer.first_name': ['customers'], 'store_sales.customer.birth_country': ['customers'], 'store_sales.customer.last_name': ['customers'], 'store_sales.customer.demographics.id': ['customers'], 'store_sales.customer.country': ['customer_address'], 'store_sales.customer.city': ['customer_address'], 'store_sales.customer.county': ['customer_address'], 'store_sales.customer.zip': ['customer_address'], 'store_sales.customer.street': ['customer_address']}.
+-- Output: item.category<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.id<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>.
+-- Inputs: item.category<item.id>, item.id<item.id>, store_sales.customer.address_id<store_sales.customer.address_id>, store_sales.customer.id<store_sales.customer.id>, store_sales.customer.state<store_sales.customer.address_id>, store_sales.date.id<store_sales.date.id>, store_sales.date.month_of_year<store_sales.date.id>, store_sales.date.year<store_sales.date.id>, store_sales.item.current_price<item.id>.
 SELECT
-    resonant.\"item_category\" as \"item_category\",
+    pigeon.\"item_category\" as \"item_category\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
-    stork
-    INNER JOIN memory.customer as customers on stork.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
-    INNER JOIN memory.date_dim as date on stork.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.item as items on stork.\"item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN resonant on stork.\"item_id\" = resonant.\"item_id\"
+    eagle
+    INNER JOIN memory.customer as customers on eagle.\"store_sales_customer_id\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.item as items on eagle.\"item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN pigeon on eagle.\"item_id\" = pigeon.\"item_id\"
+    INNER JOIN memory.date_dim as date on eagle.\"store_sales_date_id\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and resonant.\"item_category\" is not null
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and pigeon.\"item_category\" is not null
 ),
-yummy as (
+starling as (
+-- Target: Grain<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>. Group: False Source: SourceType.MERGE. References: darter, turkey.
+-- Joins: inner JOIN darter and turkey on item.category<item.id>=item.category<item.id>[].
+-- Source Map: {'item.category': ['darter'], 'store_sales.customer.id': ['darter'], 'store_sales.date.year': ['darter'], 'store_sales.date.month_of_year': ['darter'], 'store_sales.item.current_price': ['darter'], 'store_sales.customer.state': ['darter'], 'local._virtual_6264207893106521': ['turkey']}.
+-- Output: item.category<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.id<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.date.month_of_year<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.item.current_price<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, store_sales.customer.state<store_sales.customer.address_id,item.id,store_sales.date.id,store_sales.customer.id>, local._virtual_6264207893106521<item.category>.
+-- Inputs: item.category<item.id>, store_sales.customer.id<store_sales.customer.state>, store_sales.date.year<store_sales.date.id>, store_sales.date.month_of_year<store_sales.date.id>, store_sales.item.current_price<item.id>, store_sales.customer.state<store_sales.customer.address_id>, local._virtual_6264207893106521<item.category>.
+-- Nullable: local._virtual_6264207893106521<item.category>.
 SELECT
-    nondescript.\"item_category\" as \"item_category\",
-    nondescript.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    nondescript.\"store_sales_date_year\" as \"store_sales_date_year\",
-    nondescript.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    nondescript.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    nondescript.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    warbler.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    darter.\"item_category\" as \"item_category\",
+    darter.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    darter.\"store_sales_date_year\" as \"store_sales_date_year\",
+    darter.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    darter.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    darter.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    turkey.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    nondescript
-    INNER JOIN warbler on (nondescript.\"item_category\" = warbler.\"item_category\" or (nondescript.\"item_category\" is null and warbler.\"item_category\" is null))
+    darter
+    INNER JOIN turkey on (darter.\"item_category\" = turkey.\"item_category\" or (darter.\"item_category\" is null and turkey.\"item_category\" is null))
 WHERE
-    nondescript.\"store_sales_date_year\" = 2001 and nondescript.\"store_sales_date_month_of_year\" = 1 and nondescript.\"store_sales_item_current_price\" > 1.2 * warbler.\"_virtual_6264207893106521\" and nondescript.\"item_category\" is not null
+    darter.\"store_sales_date_year\" = 2001 and darter.\"store_sales_date_month_of_year\" = 1 and darter.\"store_sales_item_current_price\" > 1.2 * turkey.\"_virtual_6264207893106521\" and darter.\"item_category\" is not null
 )
+-- Target: Grain<store_sales.customer.state>. Group: True Source: SourceType.GROUP. References: starling.
+-- Source Map: {'item.category': ['starling'], 'store_sales.customer.id': ['starling'], 'store_sales.date.year': ['starling'], 'store_sales.date.month_of_year': ['starling'], 'store_sales.item.current_price': ['starling'], 'store_sales.customer.state': ['starling'], 'local._virtual_6264207893106521': ['starling'], 'local.customer_count': []}.
+-- Output: store_sales.customer.state<store_sales.customer.state>, local.customer_count<store_sales.customer.state>.
+-- Inputs: store_sales.customer.id<store_sales.customer.state>, store_sales.customer.state<store_sales.customer.address_id>.
+-- Nullable: local.customer_count<store_sales.customer.state>.
 SELECT
-    yummy.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(yummy.\"store_sales_customer_id\") as \"customer_count\"
+    starling.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(starling.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    yummy
+    starling
 GROUP BY 
-    yummy.\"store_sales_customer_state\"
+    starling.\"store_sales_customer_state\"
 HAVING
-    count(yummy.\"store_sales_customer_id\") >= 10
+    count(starling.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(yummy.\"store_sales_customer_id\") asc nulls first,
-    yummy.\"store_sales_customer_state\" asc nulls first"""
+    count(starling.\"store_sales_customer_id\") asc nulls first,
+    starling.\"store_sales_customer_state\" asc nulls first"""

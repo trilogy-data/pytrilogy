@@ -1,12 +1,12 @@
 query_id = 24
-parse_time = 3.233085
-exec_time = 0.697026
-comp_time = 0.87979
-gen_length = 5715
+parse_time = 13.194806
+exec_time = 0.488354
+comp_time = 0.399276
+gen_length = 5667
 generated_sql = """
 
 WITH 
-yummy as (
+scrawny as (
 SELECT
     store_sales.\"SS_NET_PAID\" as \"store_sales_net_paid\",
     store.\"S_MARKET_ID\" as \"store_sales_store_market\",
@@ -30,94 +30,94 @@ SELECT
 FROM
     memory.store_sales as store_sales
     LEFT OUTER JOIN memory.store_returns as store_returns on store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\" AND store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\"
-    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
     LEFT OUTER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
     store.\"S_MARKET_ID\" = 8 and customers.\"C_BIRTH_COUNTRY\" != UPPER(customer_address.\"CA_COUNTRY\")  and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store.\"S_ZIP\" = customer_address.\"CA_ZIP\"
 ),
-gullible as (
+sloppy as (
 SELECT
-    sum(yummy.\"store_sales_net_paid\") as \"net_paid\",
-    yummy.\"store_sales_item_color\" as \"store_sales_item_color\",
-    yummy.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    yummy.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    yummy.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    yummy.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
-    yummy.\"store_sales_store_name\" as \"store_sales_store_name\",
-    yummy.\"store_sales_item_size\" as \"store_sales_item_size\",
-    yummy.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    yummy.\"store_sales_store_state\" as \"store_sales_store_state\",
-    yummy.\"store_sales_item_units\" as \"store_sales_item_units\"
+    sum(scrawny.\"store_sales_net_paid\") as \"net_paid\",
+    scrawny.\"store_sales_item_color\" as \"store_sales_item_color\",
+    scrawny.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    scrawny.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    scrawny.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    scrawny.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
+    scrawny.\"store_sales_store_name\" as \"store_sales_store_name\",
+    scrawny.\"store_sales_item_size\" as \"store_sales_item_size\",
+    scrawny.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    scrawny.\"store_sales_store_state\" as \"store_sales_store_state\",
+    scrawny.\"store_sales_item_units\" as \"store_sales_item_units\"
 FROM
-    yummy
+    scrawny
 GROUP BY 
-    yummy.\"store_sales_item_current_price\",
-    yummy.\"store_sales_customer_state\",
-    yummy.\"store_sales_item_color\",
-    yummy.\"store_sales_store_name\",
-    yummy.\"store_sales_customer_first_name\",
-    yummy.\"store_sales_item_units\",
-    yummy.\"store_sales_item_size\",
-    yummy.\"store_sales_customer_last_name\",
-    yummy.\"store_sales_store_state\",
-    yummy.\"store_sales_item_manager_id\"),
-cloudy as (
+    scrawny.\"store_sales_item_current_price\",
+    scrawny.\"store_sales_item_size\",
+    scrawny.\"store_sales_store_state\",
+    scrawny.\"store_sales_item_manager_id\",
+    scrawny.\"store_sales_item_units\",
+    scrawny.\"store_sales_item_color\",
+    scrawny.\"store_sales_customer_first_name\",
+    scrawny.\"store_sales_customer_state\",
+    scrawny.\"store_sales_store_name\",
+    scrawny.\"store_sales_customer_last_name\"),
+serval as (
 SELECT
-    gullible.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    gullible.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    gullible.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
-    gullible.\"store_sales_store_state\" as \"su_store_sales_store_state\",
-    gullible.\"store_sales_store_name\" as \"su_store_sales_store_name\",
-    gullible.\"store_sales_item_color\" as \"su_store_sales_item_color\",
-    gullible.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
-    gullible.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
-    gullible.\"store_sales_item_units\" as \"su_store_sales_item_units\",
-    gullible.\"store_sales_item_size\" as \"su_store_sales_item_size\",
-    gullible.\"net_paid\" as \"su_net_paid\"
+    sloppy.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    sloppy.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    sloppy.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
+    sloppy.\"store_sales_store_state\" as \"su_store_sales_store_state\",
+    sloppy.\"store_sales_store_name\" as \"su_store_sales_store_name\",
+    sloppy.\"store_sales_item_color\" as \"su_store_sales_item_color\",
+    sloppy.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
+    sloppy.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
+    sloppy.\"store_sales_item_units\" as \"su_store_sales_item_units\",
+    sloppy.\"store_sales_item_size\" as \"su_store_sales_item_size\",
+    sloppy.\"net_paid\" as \"su_net_paid\"
 FROM
-    gullible),
-quizzical as (
+    sloppy),
+swift as (
 SELECT
-    CASE WHEN cloudy.\"su_store_sales_item_color\" = 'peach' THEN cloudy.\"su_net_paid\" ELSE NULL END as \"_virtual_5818638680298942\",
-    cloudy.\"su_net_paid\" as \"su_net_paid\",
-    cloudy.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    cloudy.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    cloudy.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+    CASE WHEN serval.\"su_store_sales_item_color\" = 'peach' THEN serval.\"su_net_paid\" ELSE NULL END as \"_virtual_5818638680298942\",
+    serval.\"su_net_paid\" as \"su_net_paid\",
+    serval.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    serval.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    serval.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
-    cloudy),
-ocelot as (
+    serval),
+ugly as (
 SELECT
-    cloudy.\"su_net_paid\" as \"su_net_paid\",
+    serval.\"su_net_paid\" as \"su_net_paid\",
     1 as \"__preql_internal_all_rows\"
 FROM
-    cloudy),
-courageous as (
+    serval),
+dingo as (
 SELECT
-    sum(quizzical.\"_virtual_5818638680298942\") as \"peach_sales\",
-    quizzical.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    quizzical.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    quizzical.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+    sum(swift.\"_virtual_5818638680298942\") as \"peach_sales\",
+    swift.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    swift.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    swift.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
-    quizzical
+    swift
 GROUP BY 
-    quizzical.\"su_store_sales_customer_last_name\",
-    quizzical.\"su_store_sales_customer_first_name\",
-    quizzical.\"su_store_sales_store_name\"),
-jay as (
+    swift.\"su_store_sales_customer_first_name\",
+    swift.\"su_store_sales_customer_last_name\",
+    swift.\"su_store_sales_store_name\"),
+marlin as (
 SELECT
-    avg(ocelot.\"su_net_paid\") as \"avg_store_customer_sales\"
+    avg(ugly.\"su_net_paid\") as \"avg_store_customer_sales\"
 FROM
-    ocelot)
+    ugly)
 SELECT
-    courageous.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    courageous.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    courageous.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    courageous.\"peach_sales\" as \"peach_sales\"
+    dingo.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    dingo.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    dingo.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    dingo.\"peach_sales\" as \"peach_sales\"
 FROM
-    courageous
-    FULL JOIN jay on 1=1
+    dingo
+    FULL JOIN marlin on 1=1
 WHERE
-    courageous.\"peach_sales\" > 0.05 * jay.\"avg_store_customer_sales\"
+    dingo.\"peach_sales\" > 0.05 * marlin.\"avg_store_customer_sales\"
 """

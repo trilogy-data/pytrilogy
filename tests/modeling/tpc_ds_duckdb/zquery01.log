@@ -1,12 +1,17 @@
 query_id = 1
-parse_time = 9.654305
-exec_time = 0.117643
-comp_time = 2.32419
-gen_length = 1631
+parse_time = 27.646826
+exec_time = 0.215449
+comp_time = 3.804199
+gen_length = 7645
 generated_sql = """
 
 WITH 
-quetzal as (
+macaw as (
+-- Target: Grain<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>. Group: False Source: SourceType.MERGE.
+-- Joins: inner JOIN store_returns and store on returns.store.id<returns.store.id>=returns.store.id<returns.store.id>[], inner JOIN store_returns and date on returns.return_date.id<returns.return_date.id>=returns.return_date.id<returns.return_date.id>[], inner JOIN store_returns and customers on returns.customer.id<returns.customer.id>=returns.customer.id<returns.customer.id>[].
+-- Source Map: {'returns.store.state': ['store'], 'returns.store.id': ['store'], 'returns.return_date.year': ['date'], 'returns.return_date.id': ['date'], 'returns.customer.id': ['customers'], 'returns.customer.text_id': ['customers'], 'returns.return_amount': ['store_returns'], 'returns.item.id': ['store_returns'], 'returns.store_sales.ticket_number': ['store_returns'], 'returns.store.tax_percentage': ['store'], 'returns.store.store_manager': ['store'], 'returns.store.floor_space': ['store'], 'returns.store.market_manager': ['store'], 'returns.store.name': ['store'], 'returns.store.hours': ['store'], 'returns.store.city': ['store'], 'returns.store.market_id': ['store'], 'returns.store.zip': ['store'], 'returns.store.county': ['store'], 'returns.store.market': ['store'], 'returns.store.text_id': ['store'], 'returns.store.employees': ['store'], 'returns.store.geography_class': ['store'], 'returns.store.date.id': ['store'], 'returns.return_date.month_of_year': ['date'], 'returns.return_date.date': ['date'], 'returns.return_date.quarter': ['date'], 'returns.return_date.date_string': ['date'], 'returns.return_date.day_of_week': ['date'], 'returns.return_date.d_week_seq1': ['date'], 'returns.return_date.week_seq': ['date'], 'returns.customer.preferred_cust_flag': ['customers'], 'returns.customer.address_id': ['customers'], 'returns.customer.first_name': ['customers'], 'returns.customer.demographics.id': ['customers'], 'returns.customer.birth_country': ['customers'], 'returns.customer.last_name': ['customers'], 'returns.time.id': ['store_returns']}.
+-- Output: returns.return_amount<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.store.state<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.return_date.year<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.store.id<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.customer.text_id<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.store_sales.ticket_number<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>, returns.item.id<returns.store.id,returns.return_date.id,returns.customer.id,returns.item.id,returns.store_sales.ticket_number>.
+-- Inputs: returns.customer.id<returns.customer.id>, returns.customer.text_id<returns.customer.id>, returns.item.id<returns.item.id>, returns.return_amount<returns.item.id,returns.store_sales.ticket_number>, returns.return_date.id<returns.return_date.id>, returns.return_date.year<returns.return_date.id>, returns.store.id<returns.store.id>, returns.store.state<returns.store.id>, returns.store_sales.ticket_number<returns.store_sales.ticket_number>.
 SELECT
     store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
@@ -18,37 +23,54 @@ SELECT
 FROM
     memory.store_returns as store_returns
     INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
-    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-waggish as (
+monitor as (
+-- Target: Grain<returns.store.id,returns.customer.text_id>. Group: True Source: SourceType.GROUP. References: macaw.
+-- Source Map: {'returns.return_amount': ['macaw'], 'returns.store.state': ['macaw'], 'returns.return_date.year': ['macaw'], 'returns.store.id': ['macaw'], 'returns.customer.text_id': ['macaw'], 'returns.store_sales.ticket_number': ['macaw'], 'returns.item.id': ['macaw'], 'local.total_returns': []}.
+-- Output: local.total_returns<returns.store.id,returns.customer.text_id>, returns.store.id<returns.store.id,returns.customer.text_id>, returns.customer.text_id<returns.store.id,returns.customer.text_id>.
+-- Inputs: returns.return_amount<returns.store.id,returns.customer.text_id>, returns.store.id<returns.store.id>, returns.customer.text_id<returns.customer.id>, returns.store_sales.ticket_number<returns.store_sales.ticket_number>, returns.item.id<returns.item.id>.
+-- Nullable: local.total_returns<returns.store.id,returns.customer.text_id>.
 SELECT
-    sum(quetzal.\"returns_return_amount\") as \"total_returns\",
-    quetzal.\"returns_store_id\" as \"returns_store_id\",
-    quetzal.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(macaw.\"returns_return_amount\") as \"total_returns\",
+    macaw.\"returns_store_id\" as \"returns_store_id\",
+    macaw.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    quetzal
+    macaw
 GROUP BY 
-    quetzal.\"returns_store_id\",
-    quetzal.\"returns_customer_text_id\"),
-hard as (
+    macaw.\"returns_customer_text_id\",
+    macaw.\"returns_store_id\"),
+premium as (
+-- Target: Grain<returns.store.id>. Group: True Source: SourceType.GROUP. References: monitor.
+-- Source Map: {'local.total_returns': ['monitor'], 'returns.store.id': ['monitor'], 'returns.customer.text_id': ['monitor'], 'local.avg_store_returns': []}.
+-- Output: local.avg_store_returns<returns.store.id>, returns.store.id<returns.store.id>.
+-- Inputs: local.total_returns<returns.store.id,returns.customer.text_id>, returns.store.id<returns.store.id>.
+-- Nullable: local.avg_store_returns<returns.store.id>.
 SELECT
-    avg(waggish.\"total_returns\") as \"avg_store_returns\",
-    waggish.\"returns_store_id\" as \"returns_store_id\"
+    avg(monitor.\"total_returns\") as \"avg_store_returns\",
+    monitor.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    waggish
+    monitor
 GROUP BY 
-    waggish.\"returns_store_id\")
+    monitor.\"returns_store_id\")
+-- Target: Grain<returns.store.id,returns.customer.text_id>. Group: False Source: SourceType.MERGE. References: monitor, premium.
+-- Joins: inner JOIN monitor and premium on returns.store.id<returns.store.id>=returns.store.id<returns.store.id>[].
+-- Source Map: {'local.total_returns': ['monitor'], 'returns.store.id': ['monitor'], 'returns.customer.text_id': ['monitor'], 'local.avg_store_returns': ['premium']}.
+-- Output: returns.customer.text_id<returns.store.id,returns.customer.text_id>.
+-- Inputs: returns.store.id<returns.store.id>, returns.customer.text_id<returns.store.id,returns.customer.text_id>, local.total_returns<returns.store.id,returns.customer.text_id>, local.avg_store_returns<returns.store.id>.
+-- Hidden: local.total_returns<returns.store.id,returns.customer.text_id>, returns.store.id<returns.store.id,returns.customer.text_id>, local.avg_store_returns<returns.store.id>.
+-- Nullable: local.total_returns<returns.store.id,returns.customer.text_id>, local.avg_store_returns<returns.store.id>.
 SELECT
-    waggish.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    monitor.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    waggish
-    INNER JOIN hard on waggish.\"returns_store_id\" = hard.\"returns_store_id\"
+    monitor
+    INNER JOIN premium on monitor.\"returns_store_id\" = premium.\"returns_store_id\"
 WHERE
-    waggish.\"total_returns\" > ( 1.2 * hard.\"avg_store_returns\" )
+    monitor.\"total_returns\" > ( 1.2 * premium.\"avg_store_returns\" )
 
 ORDER BY 
-    waggish.\"returns_customer_text_id\" asc
+    monitor.\"returns_customer_text_id\" asc
 LIMIT (100)"""

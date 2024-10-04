@@ -2,6 +2,9 @@ from trilogy import Dialects
 
 
 def test_safe_cases():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     raw = """
 key upper_word string;
 key lower_word string;

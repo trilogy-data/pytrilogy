@@ -29,9 +29,9 @@ def extract_address(node: str):
     return node.split("~")[1].split("@")[0]
 
 
-def get_graph_partial_nodes(g):
+def get_graph_partial_nodes(g: nx.DiGraph) -> dict[str, list[str]]:
     datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
-    partial = {}
+    partial: dict[str, list[str]] = {}
     for node in g.nodes:
         if node in datasources:
             partial[node] = [
@@ -40,9 +40,9 @@ def get_graph_partial_nodes(g):
     return partial
 
 
-def get_graph_grain_length(g):
+def get_graph_grain_length(g) -> dict[str, int]:
     datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
-    partial = {}
+    partial: dict[str, int] = {}
     for node in g.nodes:
         if node in datasources:
             partial[node] = len(datasources[node].grain.components)

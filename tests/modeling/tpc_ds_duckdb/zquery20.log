@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 10.693197
-exec_time = 0.450172
-comp_time = 0.185372
-gen_length = 2432
+parse_time = 10.918285
+exec_time = 0.059481
+comp_time = 0.218596
+gen_length = 2442
 generated_sql = """
 
 WITH 
-wolf as (
+late as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-cobra as (
+thrush as (
 SELECT
-    sum(wolf.\"cs_extra_sales_price\") as \"revenue\",
-    wolf.\"cs_item_category\" as \"cs_item_category\",
-    wolf.\"cs_item_class\" as \"cs_item_class\",
-    wolf.\"cs_item_current_price\" as \"cs_item_current_price\",
-    wolf.\"cs_item_desc\" as \"cs_item_desc\",
-    wolf.\"cs_item_name\" as \"cs_item_name\"
+    sum(late.\"cs_extra_sales_price\") as \"revenue\",
+    late.\"cs_item_category\" as \"cs_item_category\",
+    late.\"cs_item_class\" as \"cs_item_class\",
+    late.\"cs_item_current_price\" as \"cs_item_current_price\",
+    late.\"cs_item_desc\" as \"cs_item_desc\",
+    late.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    wolf
+    late
 GROUP BY 
-    wolf.\"cs_item_name\",
-    wolf.\"cs_item_class\",
-    wolf.\"cs_item_category\",
-    wolf.\"cs_item_desc\",
-    wolf.\"cs_item_current_price\"),
-cuckoo as (
+    late.\"cs_item_current_price\",
+    late.\"cs_item_category\",
+    late.\"cs_item_name\",
+    late.\"cs_item_class\",
+    late.\"cs_item_desc\"),
+osprey as (
 SELECT
-    sum(cobra.\"revenue\") over (partition by cobra.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    cobra.\"revenue\" as \"revenue\",
-    cobra.\"cs_item_class\" as \"cs_item_class\",
-    cobra.\"cs_item_name\" as \"cs_item_name\",
-    cobra.\"cs_item_desc\" as \"cs_item_desc\",
-    cobra.\"cs_item_category\" as \"cs_item_category\",
-    cobra.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(thrush.\"revenue\") over (partition by thrush.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    thrush.\"revenue\" as \"revenue\",
+    thrush.\"cs_item_class\" as \"cs_item_class\",
+    thrush.\"cs_item_name\" as \"cs_item_name\",
+    thrush.\"cs_item_desc\" as \"cs_item_desc\",
+    thrush.\"cs_item_category\" as \"cs_item_category\",
+    thrush.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    cobra)
+    thrush)
 SELECT
-    cuckoo.\"cs_item_name\" as \"cs_item_name\",
-    cuckoo.\"cs_item_desc\" as \"cs_item_desc\",
-    cuckoo.\"cs_item_category\" as \"cs_item_category\",
-    cuckoo.\"cs_item_class\" as \"cs_item_class\",
-    cuckoo.\"cs_item_current_price\" as \"cs_item_current_price\",
-    cuckoo.\"revenue\" as \"revenue\",
-    cuckoo.\"revenue\" * 100.0 / cuckoo.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    osprey.\"cs_item_name\" as \"cs_item_name\",
+    osprey.\"cs_item_desc\" as \"cs_item_desc\",
+    osprey.\"cs_item_category\" as \"cs_item_category\",
+    osprey.\"cs_item_class\" as \"cs_item_class\",
+    osprey.\"cs_item_current_price\" as \"cs_item_current_price\",
+    osprey.\"revenue\" as \"revenue\",
+    osprey.\"revenue\" * 100.0 / osprey.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    cuckoo
+    osprey
 ORDER BY 
-    cuckoo.\"cs_item_category\" asc nulls first,
-    cuckoo.\"cs_item_class\" asc nulls first,
-    cuckoo.\"cs_item_name\" asc nulls first,
-    cuckoo.\"cs_item_desc\" asc nulls first,
-    cuckoo.\"revenue\" * 100.0 / cuckoo.\"_virtual_8479147315262044\" asc nulls first
+    osprey.\"cs_item_category\" asc nulls first,
+    osprey.\"cs_item_class\" asc nulls first,
+    osprey.\"cs_item_name\" asc nulls first,
+    osprey.\"cs_item_desc\" asc nulls first,
+    osprey.\"revenue\" * 100.0 / osprey.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

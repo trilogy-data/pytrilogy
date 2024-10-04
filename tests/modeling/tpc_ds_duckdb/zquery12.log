@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 5.866631
-exec_time = 0.304173
-comp_time = 0.170027
-gen_length = 2814
+parse_time = 3.550259
+exec_time = 0.192127
+comp_time = 0.139944
+gen_length = 2806
 generated_sql = """
 
 WITH 
-cockatiel as (
+spiritual as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-hawk as (
+faithful as (
 SELECT
-    sum(cockatiel.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    cockatiel.\"web_sales_item_category\" as \"web_sales_item_category\",
-    cockatiel.\"web_sales_item_class\" as \"web_sales_item_class\",
-    cockatiel.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    cockatiel.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    cockatiel.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(spiritual.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    spiritual.\"web_sales_item_category\" as \"web_sales_item_category\",
+    spiritual.\"web_sales_item_class\" as \"web_sales_item_class\",
+    spiritual.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    spiritual.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    spiritual.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    cockatiel
+    spiritual
 GROUP BY 
-    cockatiel.\"web_sales_item_category\",
-    cockatiel.\"web_sales_item_name\",
-    cockatiel.\"web_sales_item_desc\",
-    cockatiel.\"web_sales_item_current_price\",
-    cockatiel.\"web_sales_item_class\"),
-ruthless as (
+    spiritual.\"web_sales_item_category\",
+    spiritual.\"web_sales_item_desc\",
+    spiritual.\"web_sales_item_current_price\",
+    spiritual.\"web_sales_item_name\",
+    spiritual.\"web_sales_item_class\"),
+civet as (
 SELECT
-    sum(hawk.\"itemrevenue\") over (partition by hawk.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    hawk.\"itemrevenue\" as \"itemrevenue\",
-    hawk.\"web_sales_item_class\" as \"web_sales_item_class\",
-    hawk.\"web_sales_item_name\" as \"web_sales_item_name\",
-    hawk.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    hawk.\"web_sales_item_category\" as \"web_sales_item_category\",
-    hawk.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(faithful.\"itemrevenue\") over (partition by faithful.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    faithful.\"itemrevenue\" as \"itemrevenue\",
+    faithful.\"web_sales_item_class\" as \"web_sales_item_class\",
+    faithful.\"web_sales_item_name\" as \"web_sales_item_name\",
+    faithful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    faithful.\"web_sales_item_category\" as \"web_sales_item_category\",
+    faithful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    hawk)
+    faithful)
 SELECT
-    ruthless.\"web_sales_item_name\" as \"web_sales_item_name\",
-    ruthless.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    ruthless.\"web_sales_item_category\" as \"web_sales_item_category\",
-    ruthless.\"web_sales_item_class\" as \"web_sales_item_class\",
-    ruthless.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    ruthless.\"itemrevenue\" as \"itemrevenue\",
-    ruthless.\"itemrevenue\" * 100.0 / ruthless.\"_virtual_137720187295635\" as \"revenueratio\"
+    civet.\"web_sales_item_name\" as \"web_sales_item_name\",
+    civet.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    civet.\"web_sales_item_category\" as \"web_sales_item_category\",
+    civet.\"web_sales_item_class\" as \"web_sales_item_class\",
+    civet.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    civet.\"itemrevenue\" as \"itemrevenue\",
+    civet.\"itemrevenue\" * 100.0 / civet.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    ruthless
+    civet
 ORDER BY 
-    ruthless.\"web_sales_item_category\" asc,
-    ruthless.\"web_sales_item_class\" asc,
-    ruthless.\"web_sales_item_name\" asc,
-    ruthless.\"web_sales_item_desc\" asc,
-    ruthless.\"itemrevenue\" * 100.0 / ruthless.\"_virtual_137720187295635\" asc
+    civet.\"web_sales_item_category\" asc,
+    civet.\"web_sales_item_class\" asc,
+    civet.\"web_sales_item_name\" asc,
+    civet.\"web_sales_item_desc\" asc,
+    civet.\"itemrevenue\" * 100.0 / civet.\"_virtual_137720187295635\" asc
 LIMIT (100)"""

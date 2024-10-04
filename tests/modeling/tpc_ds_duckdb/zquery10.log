@@ -1,75 +1,75 @@
 query_id = 10
-parse_time = 15.413232
-exec_time = 0.359159
-comp_time = 2.604867
-gen_length = 5690
+parse_time = 23.263116
+exec_time = 0.410803
+comp_time = 0.65612
+gen_length = 5643
 generated_sql = """
 
 WITH 
-hawk as (
+blue as (
 SELECT
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
-    store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\"
+    store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\",
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_CUSTOMER_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-pigeon as (
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_CUSTOMER_SK\"),
+divergent as (
 SELECT
     date.\"D_DATE_SK\" as \"web_sales_date_id\",
     date.\"D_MOY\" as \"web_sales_date_month_of_year\",
     cast(\"D_YEAR\" as int) as \"web_sales_date_year\"
 FROM
     memory.date_dim as date),
-mandrill as (
+elegant as (
 SELECT
-    web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\",
-    web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\"
+    web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\",
+    web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\"
 FROM
     memory.web_sales as web_sales
 GROUP BY 
     web_sales.\"WS_SOLD_DATE_SK\",
     web_sales.\"WS_BILL_CUSTOMER_SK\"),
-magpie as (
+mandrill as (
 SELECT
-    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
+    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     date.\"D_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.date_dim as date),
-vacuous as (
+kestrel as (
 SELECT
-    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\"
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\",
+    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
-    catalog_sales.\"CS_SOLD_DATE_SK\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\"),
-colossal as (
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\",
+    catalog_sales.\"CS_SOLD_DATE_SK\"),
+uneven as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"relevant_customers\"
 FROM
     memory.customer as customers
+    LEFT OUTER JOIN blue on customers.\"C_CUSTOMER_SK\" = blue.\"customer_id\"
+    LEFT OUTER JOIN elegant on customers.\"C_CUSTOMER_SK\" = elegant.\"customer_id\"
+    LEFT OUTER JOIN kestrel on customers.\"C_CUSTOMER_SK\" = kestrel.\"customer_id\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
-    LEFT OUTER JOIN hawk on customers.\"C_CUSTOMER_SK\" = hawk.\"customer_id\"
-    LEFT OUTER JOIN mandrill on customers.\"C_CUSTOMER_SK\" = mandrill.\"customer_id\"
-    LEFT OUTER JOIN vacuous on customers.\"C_CUSTOMER_SK\" = vacuous.\"customer_id\"
-    LEFT OUTER JOIN memory.date_dim as date on hawk.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    LEFT OUTER JOIN pigeon on mandrill.\"web_sales_date_id\" = pigeon.\"web_sales_date_id\"
-    LEFT OUTER JOIN magpie on vacuous.\"catalog_sales_date_id\" = magpie.\"catalog_sales_date_id\"
+    LEFT OUTER JOIN memory.date_dim as date on blue.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN divergent on elegant.\"web_sales_date_id\" = divergent.\"web_sales_date_id\"
+    LEFT OUTER JOIN mandrill on kestrel.\"catalog_sales_date_id\" = mandrill.\"catalog_sales_date_id\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( pigeon.\"web_sales_date_year\" = 2002 and pigeon.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( magpie.\"catalog_sales_date_year\" = 2002 and magpie.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
+    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( divergent.\"web_sales_date_year\" = 2002 and divergent.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( mandrill.\"catalog_sales_date_year\" = 2002 and mandrill.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
 ),
-tiger as (
+elated as (
 SELECT
-    colossal.\"relevant_customers\" as \"relevant_customers\"
+    uneven.\"relevant_customers\" as \"relevant_customers\"
 FROM
-    colossal
+    uneven
 GROUP BY 
-    colossal.\"relevant_customers\"),
-sweltering as (
+    uneven.\"relevant_customers\"),
+starling as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_demographics.\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
@@ -84,40 +84,40 @@ FROM
     memory.customer_demographics as customer_demographics
     INNER JOIN memory.customer as customers on customer_demographics.\"CD_DEMO_SK\" = customers.\"C_CURRENT_CDEMO_SK\"
 WHERE
-    customers.\"C_CUSTOMER_SK\" in (select tiger.\"relevant_customers\" from tiger where tiger.\"relevant_customers\" is not null)
+    customers.\"C_CUSTOMER_SK\" in (select elated.\"relevant_customers\" from elated where elated.\"relevant_customers\" is not null)
 )
 SELECT
-    sweltering.\"customer_demographics_gender\" as \"customer_demographics_gender\",
-    sweltering.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    sweltering.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
-    count(sweltering.\"customer_id\") as \"cnt1\",
-    sweltering.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
-    count(sweltering.\"customer_id\") as \"cnt2\",
-    sweltering.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
-    count(sweltering.\"customer_id\") as \"cnt3\",
-    sweltering.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
-    count(sweltering.\"customer_id\") as \"cnt4\",
-    sweltering.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
-    count(sweltering.\"customer_id\") as \"cnt5\",
-    sweltering.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
-    count(sweltering.\"customer_id\") as \"cnt6\"
+    starling.\"customer_demographics_gender\" as \"customer_demographics_gender\",
+    starling.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
+    starling.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
+    count(starling.\"customer_id\") as \"cnt1\",
+    starling.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
+    count(starling.\"customer_id\") as \"cnt2\",
+    starling.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
+    count(starling.\"customer_id\") as \"cnt3\",
+    starling.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
+    count(starling.\"customer_id\") as \"cnt4\",
+    starling.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
+    count(starling.\"customer_id\") as \"cnt5\",
+    starling.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
+    count(starling.\"customer_id\") as \"cnt6\"
 FROM
-    sweltering
+    starling
 GROUP BY 
-    sweltering.\"customer_demographics_gender\",
-    sweltering.\"customer_demographics_purchase_estimate\",
-    sweltering.\"customer_demographics_dependent_count\",
-    sweltering.\"customer_demographics_marital_status\",
-    sweltering.\"customer_demographics_credit_rating\",
-    sweltering.\"customer_demographics_employed_dependent_count\",
-    sweltering.\"customer_demographics_education_status\",
-    sweltering.\"customer_demographics_college_dependent_count\"
+    starling.\"customer_demographics_purchase_estimate\",
+    starling.\"customer_demographics_college_dependent_count\",
+    starling.\"customer_demographics_education_status\",
+    starling.\"customer_demographics_employed_dependent_count\",
+    starling.\"customer_demographics_gender\",
+    starling.\"customer_demographics_credit_rating\",
+    starling.\"customer_demographics_dependent_count\",
+    starling.\"customer_demographics_marital_status\"
 ORDER BY 
-    sweltering.\"customer_demographics_gender\" asc,
-    sweltering.\"customer_demographics_marital_status\" asc,
-    sweltering.\"customer_demographics_education_status\" asc,
-    sweltering.\"customer_demographics_purchase_estimate\" asc,
-    sweltering.\"customer_demographics_credit_rating\" asc,
-    sweltering.\"customer_demographics_dependent_count\" asc,
-    sweltering.\"customer_demographics_employed_dependent_count\" asc,
-    sweltering.\"customer_demographics_college_dependent_count\" asc"""
+    starling.\"customer_demographics_gender\" asc,
+    starling.\"customer_demographics_marital_status\" asc,
+    starling.\"customer_demographics_education_status\" asc,
+    starling.\"customer_demographics_purchase_estimate\" asc,
+    starling.\"customer_demographics_credit_rating\" asc,
+    starling.\"customer_demographics_dependent_count\" asc,
+    starling.\"customer_demographics_employed_dependent_count\" asc,
+    starling.\"customer_demographics_college_dependent_count\" asc"""
