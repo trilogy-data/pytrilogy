@@ -1,17 +1,12 @@
 query_id = 20
-parse_time = 62.472926
-exec_time = 1.99753
-comp_time = 1.389282
-gen_length = 10106
+parse_time = 16.101066
+exec_time = 0.088792
+comp_time = 0.236921
+gen_length = 2458
 generated_sql = """
 
 WITH 
-ruthless as (
--- Target: Grain<cs.item.id,cs.sold_date.id,cs.order_number>. Group: False Source: SourceType.MERGE.
--- Joins: inner JOIN catalog_sales and items on cs.item.id<cs.item.id>=cs.item.id<cs.item.id>[], inner JOIN catalog_sales and date on cs.sold_date.id<cs.sold_date.id>=cs.sold_date.id<cs.sold_date.id>[].
--- Source Map: {'cs.item.id': ['items'], 'cs.item.name': ['items'], 'cs.item.current_price': ['items'], 'cs.item.class': ['items'], 'cs.item.desc': ['items'], 'cs.item.category': ['items'], 'cs.sold_date.id': ['date'], 'cs.sold_date.date': ['date'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.item.brand_name': ['items'], 'cs.item.units': ['items'], 'cs.item.size': ['items'], 'cs.item.manager_id': ['items'], 'cs.item.color': ['items'], 'cs.item.manufacturer_id': ['items'], 'cs.item.brand_id': ['items'], 'cs.sold_date.quarter': ['date'], 'cs.sold_date.month_of_year': ['date'], 'cs.sold_date.week_seq': ['date'], 'cs.sold_date.day_of_week': ['date'], 'cs.sold_date.d_week_seq1': ['date'], 'cs.sold_date.date_string': ['date'], 'cs.sold_date.year': ['date'], 'cs.time.id': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.call_center.id': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales']}.
--- Output: cs.extra_sales_price<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.category<cs.item.id,cs.sold_date.id,cs.order_number>, cs.sold_date.date<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.class<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.current_price<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.desc<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.name<cs.item.id,cs.sold_date.id,cs.order_number>, cs.order_number<cs.item.id,cs.sold_date.id,cs.order_number>, cs.item.id<cs.item.id,cs.sold_date.id,cs.order_number>.
--- Inputs: cs.extra_sales_price<cs.item.id,cs.order_number>, cs.item.category<cs.item.id>, cs.item.class<cs.item.id>, cs.item.current_price<cs.item.id>, cs.item.desc<cs.item.id>, cs.item.id<cs.item.id>, cs.item.name<cs.item.id>, cs.order_number<cs.order_number>, cs.sold_date.date<cs.sold_date.id>, cs.sold_date.id<cs.sold_date.id>.
+dapper as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -24,65 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-colossal as (
--- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: True Source: SourceType.GROUP. References: ruthless.
--- Source Map: {'cs.extra_sales_price': ['ruthless'], 'cs.item.category': ['ruthless'], 'cs.sold_date.date': ['ruthless'], 'cs.item.class': ['ruthless'], 'cs.item.current_price': ['ruthless'], 'cs.item.desc': ['ruthless'], 'cs.item.name': ['ruthless'], 'cs.order_number': ['ruthless'], 'cs.item.id': ['ruthless'], 'local.revenue': []}.
--- Output: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
--- Inputs: cs.extra_sales_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.id>, cs.item.class<cs.item.id>, cs.item.current_price<cs.item.id>, cs.item.desc<cs.item.id>, cs.item.name<cs.item.id>, cs.order_number<cs.order_number>, cs.item.id<cs.item.id>.
--- Nullable: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+raven as (
 SELECT
-    sum(ruthless.\"cs_extra_sales_price\") as \"revenue\",
-    ruthless.\"cs_item_category\" as \"cs_item_category\",
-    ruthless.\"cs_item_class\" as \"cs_item_class\",
-    ruthless.\"cs_item_current_price\" as \"cs_item_current_price\",
-    ruthless.\"cs_item_desc\" as \"cs_item_desc\",
-    ruthless.\"cs_item_name\" as \"cs_item_name\"
+    sum(dapper.\"cs_extra_sales_price\") as \"revenue\",
+    dapper.\"cs_item_category\" as \"cs_item_category\",
+    dapper.\"cs_item_class\" as \"cs_item_class\",
+    dapper.\"cs_item_current_price\" as \"cs_item_current_price\",
+    dapper.\"cs_item_desc\" as \"cs_item_desc\",
+    dapper.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    ruthless
+    dapper
 GROUP BY 
-    ruthless.\"cs_item_current_price\",
-    ruthless.\"cs_item_name\",
-    ruthless.\"cs_item_class\",
-    ruthless.\"cs_item_desc\",
-    ruthless.\"cs_item_category\"),
-fabulous as (
--- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: False Source: SourceType.WINDOW. References: colossal.
--- Source Map: {'local.revenue': ['colossal'], 'cs.item.category': ['colossal'], 'cs.item.class': ['colossal'], 'cs.item.current_price': ['colossal'], 'cs.item.desc': ['colossal'], 'cs.item.name': ['colossal'], 'local._virtual_8479147315262044': []}.
--- Output: local._virtual_8479147315262044<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
--- Inputs: local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+    dapper.\"cs_item_desc\",
+    dapper.\"cs_item_name\",
+    dapper.\"cs_item_category\",
+    dapper.\"cs_item_class\",
+    dapper.\"cs_item_current_price\"),
+cougar as (
 SELECT
-    sum(colossal.\"revenue\") over (partition by colossal.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    colossal.\"revenue\" as \"revenue\",
-    colossal.\"cs_item_class\" as \"cs_item_class\",
-    colossal.\"cs_item_name\" as \"cs_item_name\",
-    colossal.\"cs_item_desc\" as \"cs_item_desc\",
-    colossal.\"cs_item_category\" as \"cs_item_category\",
-    colossal.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(raven.\"revenue\") over (partition by raven.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    raven.\"revenue\" as \"revenue\",
+    raven.\"cs_item_class\" as \"cs_item_class\",
+    raven.\"cs_item_name\" as \"cs_item_name\",
+    raven.\"cs_item_desc\" as \"cs_item_desc\",
+    raven.\"cs_item_category\" as \"cs_item_category\",
+    raven.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    colossal)
--- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: False Source: SourceType.BASIC. References: fabulous.
--- Source Map: {'local._virtual_8479147315262044': ['fabulous'], 'local.revenue': ['fabulous'], 'cs.item.class': ['fabulous'], 'cs.item.name': ['fabulous'], 'cs.item.desc': ['fabulous'], 'cs.item.category': ['fabulous'], 'cs.item.current_price': ['fabulous'], 'local.revenue_ratio': []}.
--- Output: cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue_ratio<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
--- Inputs: local._virtual_8479147315262044<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+    raven)
 SELECT
-    fabulous.\"cs_item_name\" as \"cs_item_name\",
-    fabulous.\"cs_item_desc\" as \"cs_item_desc\",
-    fabulous.\"cs_item_category\" as \"cs_item_category\",
-    fabulous.\"cs_item_class\" as \"cs_item_class\",
-    fabulous.\"cs_item_current_price\" as \"cs_item_current_price\",
-    fabulous.\"revenue\" as \"revenue\",
-    fabulous.\"revenue\" * 100.0 / fabulous.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    cougar.\"cs_item_name\" as \"cs_item_name\",
+    cougar.\"cs_item_desc\" as \"cs_item_desc\",
+    cougar.\"cs_item_category\" as \"cs_item_category\",
+    cougar.\"cs_item_class\" as \"cs_item_class\",
+    cougar.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cougar.\"revenue\" as \"revenue\",
+    cougar.\"revenue\" * 100.0 / cougar.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    fabulous
+    cougar
 ORDER BY 
-    fabulous.\"cs_item_category\" asc nulls first,
-    fabulous.\"cs_item_class\" asc nulls first,
-    fabulous.\"cs_item_name\" asc nulls first,
-    fabulous.\"cs_item_desc\" asc nulls first,
-    fabulous.\"revenue\" * 100.0 / fabulous.\"_virtual_8479147315262044\" asc nulls first
+    cougar.\"cs_item_category\" asc nulls first,
+    cougar.\"cs_item_class\" asc nulls first,
+    cougar.\"cs_item_name\" asc nulls first,
+    cougar.\"cs_item_desc\" asc nulls first,
+    cougar.\"revenue\" * 100.0 / cougar.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

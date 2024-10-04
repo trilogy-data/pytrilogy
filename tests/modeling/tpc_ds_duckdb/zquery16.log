@@ -1,94 +1,64 @@
 query_id = 16
-parse_time = 127.490097
-exec_time = 7.82096
-comp_time = 0.136273
-gen_length = 15061
+parse_time = 34.229842
+exec_time = 0.556609
+comp_time = 0.050385
+gen_length = 4529
 generated_sql = """
 
 WITH 
-vivacious as (
--- Target: Grain<cs.warehouse.id,cs.order_number>. Group: True Source: SourceType.GROUP.
--- Source Map: {'cs.order_number': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.call_center.id': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.ship_date.id': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.item.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales']}.
--- Output: cs.order_number<cs.warehouse.id,cs.order_number>, cs.warehouse.id<cs.warehouse.id,cs.order_number>.
--- Inputs: cs.order_number<cs.order_number>, cs.warehouse.id<cs.warehouse.id>.
+macaw as (
 SELECT
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
+    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
     catalog_sales.\"CS_ORDER_NUMBER\",
     catalog_sales.\"CS_WAREHOUSE_SK\"),
-kaput as (
--- Target: Grain<cr.order_number>. Group: True Source: SourceType.GROUP.
--- Source Map: {'cr.order_number': ['catalog_returns'], 'cr.sales.order_number': ['catalog_returns'], 'cr.date.id': ['catalog_returns'], 'cr.net_loss': ['catalog_returns'], 'cr.item.id': ['catalog_returns'], 'cr.time.id': ['catalog_returns']}.
--- Output: cr.order_number<cr.order_number>.
--- Inputs: cr.order_number<cr.order_number>.
+thrush as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-falcon as (
--- Target: Grain<cs.order_number>. Group: True Source: SourceType.GROUP. References: vivacious.
--- Source Map: {'cs.order_number': ['vivacious'], 'cs.warehouse.id': ['vivacious'], 'local._agg_count_6430482449237259': []}.
--- Output: local._agg_count_6430482449237259<cs.order_number>, cs.order_number<cs.order_number>.
--- Inputs: cs.warehouse.id<cs.warehouse.id>, cs.order_number<cs.order_number>.
--- Nullable: local._agg_count_6430482449237259<cs.order_number>.
+eel as (
 SELECT
-    count(vivacious.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
-    vivacious.\"cs_order_number\" as \"cs_order_number\"
+    count(macaw.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    macaw.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    vivacious
+    macaw
 GROUP BY 
-    vivacious.\"cs_order_number\"),
-rail as (
--- Target: Grain<cs.order_number>. Group: False Source: SourceType.FILTER. References: falcon.
--- Source Map: {'local._agg_count_6430482449237259': ['falcon'], 'cs.order_number': ['falcon'], 'local.multi_warehouse_sales': []}.
--- Output: local.multi_warehouse_sales<cs.order_number>.
--- Inputs: cs.order_number<cs.order_number>, local._agg_count_6430482449237259<cs.order_number>.
+    macaw.\"cs_order_number\"),
+imported as (
 SELECT
-    CASE WHEN falcon.\"_agg_count_6430482449237259\" > 1 THEN falcon.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN eel.\"_agg_count_6430482449237259\" > 1 THEN eel.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    falcon),
-wooden as (
--- Target: Grain<local.multi_warehouse_sales>. Group: True Source: SourceType.GROUP. References: rail.
--- Source Map: {'local.multi_warehouse_sales': ['rail']}.
--- Output: local.multi_warehouse_sales<local.multi_warehouse_sales>.
--- Inputs: local.multi_warehouse_sales<>.
+    eel),
+charming as (
 SELECT
-    rail.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
+    imported.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
-    rail
+    imported
 GROUP BY 
-    rail.\"multi_warehouse_sales\"),
-ray as (
--- Target: Grain<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number>. Group: True Source: SourceType.GROUP. References: kaput, wooden.
--- Source Map: {'cs.ship_date.id': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.call_center.id': ['catalog_sales'], 'cs.customer.address_id': ['catalog_sales'], 'cs.time.id': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.net_profit': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.item.id': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales'], 'cr.order_number': ['kaput'], 'local.multi_warehouse_sales': ['wooden']}.
--- Output: cs.ship_date.id<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number>, cs.order_number<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number>, cs.call_center.id<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number>, cs.customer.address_id<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number>.
--- Inputs: cs.ship_date.id<cs.ship_date.id>, cs.order_number<cs.order_number>, cs.call_center.id<cs.call_center.id>, cs.customer.address_id<cs.customer.address_id>.
+    imported.\"multi_warehouse_sales\"),
+brave as (
 SELECT
+    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
     catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
-    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\"
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select kaput.\"cr_order_number\" from kaput where kaput.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select wooden.\"multi_warehouse_sales\" from wooden where wooden.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select thrush.\"cr_order_number\" from thrush where thrush.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select charming.\"multi_warehouse_sales\" from charming where charming.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_SHIP_DATE_SK\",
-    catalog_sales.\"CS_CALL_CENTER_SK\",
     catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_CALL_CENTER_SK\",
+    catalog_sales.\"CS_SHIP_DATE_SK\",
     catalog_sales.\"CS_ORDER_NUMBER\"),
-macho as (
--- Target: Grain<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>. Group: False Source: SourceType.MERGE. References: kaput, wooden.
--- Joins: inner JOIN catalog_sales and date on cs.ship_date.id<cs.ship_date.id>=cs.ship_date.id<cs.ship_date.id>[], inner JOIN catalog_sales and call_center on cs.call_center.id<cs.call_center.id>=cs.call_center.id<cs.call_center.id>[], inner JOIN catalog_sales and customer_address on cs.customer.address_id<cs.customer.address_id>=cs.customer.address_id<cs.customer.address_id>[].
--- Source Map: {'cs.ship_date.date': ['date'], 'cs.ship_date.id': ['date'], 'cs.customer.state': ['customer_address'], 'cs.customer.address_id': ['customer_address'], 'cs.call_center.county': ['call_center'], 'cs.call_center.id': ['call_center'], 'cs.item.id': ['catalog_sales'], 'cs.order_number': ['catalog_sales'], 'cs.extra_ship_cost': ['catalog_sales'], 'cr.order_number': ['kaput'], 'local.multi_warehouse_sales': ['wooden'], 'cs.net_profit': ['catalog_sales'], 'cs.ship_date.week_seq': ['date'], 'cs.ship_date.day_of_week': ['date'], 'cs.ship_date.d_week_seq1': ['date'], 'cs.ship_date.date_string': ['date'], 'cs.ship_date.year': ['date'], 'cs.ship_date.month_of_year': ['date'], 'cs.ship_date.quarter': ['date'], 'cs.customer.country': ['customer_address'], 'cs.customer.county': ['customer_address'], 'cs.customer.city': ['customer_address'], 'cs.customer.street': ['customer_address'], 'cs.customer.zip': ['customer_address'], 'cs.time.id': ['catalog_sales'], 'cs.sold_date.id': ['catalog_sales'], 'cs.warehouse.id': ['catalog_sales'], 'cs.sales_price': ['catalog_sales'], 'cs.extra_sales_price': ['catalog_sales'], 'cs.customer.id': ['catalog_sales'], 'cs.bill_customer.id': ['catalog_sales'], 'cs.wholesale_cost': ['catalog_sales'], 'cs.date.id': ['catalog_sales'], 'cs.extra_wholesale_cost': ['catalog_sales']}.
--- Output: cs.extra_ship_cost<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.ship_date.date<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.customer.state<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.call_center.county<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.order_number<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.item.id<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>, cs.net_profit<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.item.id,cs.order_number,cr.order_number>.
--- Inputs: cs.call_center.county<cs.call_center.id>, cs.call_center.id<cs.call_center.id>, cs.customer.address_id<cs.customer.address_id>, cs.customer.state<cs.customer.address_id>, cs.extra_ship_cost<cs.item.id,cs.order_number>, cs.item.id<cs.item.id>, cs.order_number<cs.order_number>, cs.ship_date.date<cs.ship_date.id>, cs.ship_date.id<cs.ship_date.id>, cs.net_profit<cs.item.id,cs.order_number>.
+tanager as (
 SELECT
     catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
@@ -99,64 +69,44 @@ SELECT
     catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select kaput.\"cr_order_number\" from kaput where kaput.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select wooden.\"multi_warehouse_sales\" from wooden where wooden.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select thrush.\"cr_order_number\" from thrush where thrush.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select charming.\"multi_warehouse_sales\" from charming where charming.\"multi_warehouse_sales\" is not null)
 ),
-lynx as (
--- Target: Grain<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>. Group: False Source: SourceType.MERGE. References: ray, kaput, wooden.
--- Joins: inner JOIN ray and date on cs.ship_date.id<cs.ship_date.id>=cs.ship_date.id<cs.ship_date.id>[], inner JOIN ray and call_center on cs.call_center.id<cs.call_center.id>=cs.call_center.id<cs.call_center.id>[], inner JOIN ray and customer_address on cs.customer.address_id<cs.customer.address_id>=cs.customer.address_id<cs.customer.address_id>[].
--- Source Map: {'cs.ship_date.date': ['date'], 'cs.ship_date.id': ['date'], 'cs.customer.state': ['customer_address'], 'cs.customer.address_id': ['customer_address'], 'cs.call_center.county': ['call_center'], 'cs.call_center.id': ['call_center'], 'cs.order_number': ['ray'], 'cr.order_number': ['kaput'], 'local.multi_warehouse_sales': ['wooden'], 'cs.ship_date.week_seq': ['date'], 'cs.ship_date.day_of_week': ['date'], 'cs.ship_date.d_week_seq1': ['date'], 'cs.ship_date.date_string': ['date'], 'cs.ship_date.year': ['date'], 'cs.ship_date.month_of_year': ['date'], 'cs.ship_date.quarter': ['date'], 'cs.customer.country': ['customer_address'], 'cs.customer.county': ['customer_address'], 'cs.customer.city': ['customer_address'], 'cs.customer.street': ['customer_address'], 'cs.customer.zip': ['customer_address']}.
--- Output: cs.order_number<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>, cs.ship_date.date<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>, cs.customer.state<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>, cs.call_center.county<cs.customer.address_id,cs.ship_date.id,cs.call_center.id,cs.order_number,cr.order_number>.
--- Inputs: cs.call_center.county<cs.call_center.id>, cs.call_center.id<cs.call_center.id>, cs.customer.address_id<cs.customer.address_id>, cs.customer.state<cs.customer.address_id>, cs.order_number<cs.order_number>, cs.ship_date.date<cs.ship_date.id>, cs.ship_date.id<cs.ship_date.id>.
+viper as (
 SELECT
-    ray.\"cs_order_number\" as \"cs_order_number\",
+    brave.\"cs_order_number\" as \"cs_order_number\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
     call_center.\"CC_COUNTY\" as \"cs_call_center_county\"
 FROM
-    ray
-    INNER JOIN memory.date_dim as date on ray.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.call_center as call_center on ray.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
-    INNER JOIN memory.customer_address as customer_address on ray.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
+    brave
+    INNER JOIN memory.customer_address as customer_address on brave.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.date_dim as date on brave.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as call_center on brave.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and ray.\"cs_order_number\" not in (select kaput.\"cr_order_number\" from kaput where kaput.\"cr_order_number\" is not null) and ray.\"cs_order_number\" in (select wooden.\"multi_warehouse_sales\" from wooden where wooden.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and brave.\"cs_order_number\" not in (select thrush.\"cr_order_number\" from thrush where thrush.\"cr_order_number\" is not null) and brave.\"cs_order_number\" in (select charming.\"multi_warehouse_sales\" from charming where charming.\"multi_warehouse_sales\" is not null)
 ),
-thoughtful as (
--- Target: Grain<Abstract>. Group: True Source: SourceType.GROUP. References: macho.
--- Source Map: {'cs.extra_ship_cost': ['macho'], 'cs.ship_date.date': ['macho'], 'cs.customer.state': ['macho'], 'cs.call_center.county': ['macho'], 'cs.order_number': ['macho'], 'cs.item.id': ['macho'], 'local.total_shipping_cost': [], 'cs.net_profit': ['macho'], 'local.total_net_profit': []}.
--- Output: local.total_shipping_cost<>, local.total_net_profit<>.
--- Inputs: cs.extra_ship_cost<>, cs.order_number<cs.order_number>, cs.item.id<cs.item.id>, cs.net_profit<>.
+shrike as (
 SELECT
-    sum(macho.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(macho.\"cs_net_profit\") as \"total_net_profit\"
+    sum(tanager.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(tanager.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    macho),
-komodo as (
--- Target: Grain<Abstract>. Group: True Source: SourceType.GROUP. References: lynx.
--- Source Map: {'cs.order_number': ['lynx'], 'cs.ship_date.date': ['lynx'], 'cs.customer.state': ['lynx'], 'cs.call_center.county': ['lynx'], 'local.order_count': []}.
--- Output: local.order_count<>.
--- Inputs: cs.order_number<>.
--- Nullable: local.order_count<>.
+    tanager),
+rail as (
 SELECT
-    count(distinct lynx.\"cs_order_number\") as \"order_count\"
+    count(distinct viper.\"cs_order_number\") as \"order_count\"
 FROM
-    lynx)
--- Target: Grain<Abstract>. Group: False Source: SourceType.MERGE. References: komodo, thoughtful.
--- Joins: full JOIN komodo and thoughtful on .
--- Source Map: {'local.order_count': ['komodo'], 'local.total_shipping_cost': ['thoughtful'], 'local.total_net_profit': ['thoughtful']}.
--- Output: local.order_count<>, local.total_shipping_cost<>, local.total_net_profit<>.
--- Inputs: local.order_count<>, local.total_shipping_cost<>, local.total_net_profit<>.
--- Nullable: local.order_count<>.
+    viper)
 SELECT
-    komodo.\"order_count\" as \"order_count\",
-    thoughtful.\"total_shipping_cost\" as \"total_shipping_cost\",
-    thoughtful.\"total_net_profit\" as \"total_net_profit\"
+    rail.\"order_count\" as \"order_count\",
+    shrike.\"total_shipping_cost\" as \"total_shipping_cost\",
+    shrike.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    komodo
-    FULL JOIN thoughtful on 1=1
+    rail
+    FULL JOIN shrike on 1=1
 ORDER BY 
-    komodo.\"order_count\" desc
+    rail.\"order_count\" desc
 LIMIT (100)"""

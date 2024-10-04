@@ -1,114 +1,75 @@
 query_id = 10
-parse_time = 80.585977
-exec_time = 1.011259
-comp_time = 1.343131
-gen_length = 24816
+parse_time = 32.890269
+exec_time = 0.441026
+comp_time = 0.746143
+gen_length = 5675
 generated_sql = """
 
 WITH 
-highfalutin as (
--- Target: Grain<store_sales.date.id,customer.id>. Group: True Source: SourceType.GROUP.
--- Partials: customer.id<customer.id>.
--- Source Map: {'store_sales.date.id': ['store_sales'], 'customer.id': ['store_sales'], 'store_sales.time.id': ['store_sales'], 'store_sales.ticket_number': ['store_sales'], 'store_sales.quantity': ['store_sales'], 'store_sales.item.id': ['store_sales'], 'store_sales.ext_sales_price': ['store_sales'], 'store_sales.sales_price': ['store_sales'], 'store_sales.ext_list_price': ['store_sales'], 'store_sales.store.id': ['store_sales'], 'store_sales.ext_discount_amount': ['store_sales'], 'store_sales.customer_demographic.id': ['store_sales'], 'store_sales.promotion.id': ['store_sales'], 'store_sales.list_price': ['store_sales'], 'store_sales.net_profit': ['store_sales'], 'store_sales.customer.id': ['store_sales'], 'store_sales.coupon_amt': ['store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales'], 'store_sales.net_paid': ['store_sales']}.
--- Output: store_sales.date.id<store_sales.date.id,customer.id>, customer.id<store_sales.date.id,customer.id>.
--- Inputs: store_sales.date.id<store_sales.date.id>, customer.id<customer.id>.
+fabulous as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_SOLD_DATE_SK\",
-    store_sales.\"SS_CUSTOMER_SK\"),
-tiger as (
--- Target: Grain<web_sales.date.id>. Group: False Source: SourceType.DIRECT_SELECT.
--- Source Map: {'web_sales.date.id': ['date'], 'web_sales.date.date_string': ['date'], 'web_sales.date.date': ['date'], 'web_sales.date.day_of_week': ['date'], 'web_sales.date.week_seq': ['date'], 'web_sales.date.month_of_year': ['date'], 'web_sales.date.quarter': ['date'], 'web_sales.date.d_week_seq1': ['date'], 'web_sales.date.year': ['date']}.
--- Output: web_sales.date.year<web_sales.date.id>, web_sales.date.month_of_year<web_sales.date.id>, web_sales.date.id<web_sales.date.id>.
--- Inputs: web_sales.date.id<web_sales.date.id>, web_sales.date.date_string<web_sales.date.id>, web_sales.date.date<web_sales.date.id>, web_sales.date.day_of_week<web_sales.date.id>, web_sales.date.week_seq<web_sales.date.id>, web_sales.date.month_of_year<web_sales.date.id>, web_sales.date.quarter<web_sales.date.id>, web_sales.date.d_week_seq1<web_sales.date.id>, web_sales.date.year<web_sales.date.id>.
+    store_sales.\"SS_CUSTOMER_SK\",
+    store_sales.\"SS_SOLD_DATE_SK\"),
+ugly as (
 SELECT
     cast(\"D_YEAR\" as int) as \"web_sales_date_year\",
     date.\"D_MOY\" as \"web_sales_date_month_of_year\",
     date.\"D_DATE_SK\" as \"web_sales_date_id\"
 FROM
     memory.date_dim as date),
-dingo as (
--- Target: Grain<web_sales.date.id,customer.id>. Group: True Source: SourceType.GROUP.
--- Partials: customer.id<customer.id>.
--- Source Map: {'web_sales.date.id': ['web_sales'], 'customer.id': ['web_sales'], 'web_sales.order_number': ['web_sales'], 'web_sales.time.id': ['web_sales'], 'web_sales.external_sales_price': ['web_sales'], 'web_sales.item.id': ['web_sales'], 'web_sales.customer.id': ['web_sales'], 'web_sales.sales_price': ['web_sales']}.
--- Output: web_sales.date.id<web_sales.date.id,customer.id>, customer.id<web_sales.date.id,customer.id>.
--- Inputs: web_sales.date.id<web_sales.date.id>, customer.id<customer.id>.
+chickadee as (
 SELECT
-    web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\",
-    web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\"
+    web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\",
+    web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\"
 FROM
     memory.web_sales as web_sales
 GROUP BY 
-    web_sales.\"WS_SOLD_DATE_SK\",
-    web_sales.\"WS_BILL_CUSTOMER_SK\"),
-friendly as (
--- Target: Grain<catalog_sales.date.id>. Group: False Source: SourceType.DIRECT_SELECT.
--- Source Map: {'catalog_sales.date.id': ['date'], 'catalog_sales.date.date_string': ['date'], 'catalog_sales.date.date': ['date'], 'catalog_sales.date.day_of_week': ['date'], 'catalog_sales.date.week_seq': ['date'], 'catalog_sales.date.month_of_year': ['date'], 'catalog_sales.date.quarter': ['date'], 'catalog_sales.date.d_week_seq1': ['date'], 'catalog_sales.date.year': ['date']}.
--- Output: catalog_sales.date.month_of_year<catalog_sales.date.id>, catalog_sales.date.id<catalog_sales.date.id>, catalog_sales.date.year<catalog_sales.date.id>.
--- Inputs: catalog_sales.date.id<catalog_sales.date.id>, catalog_sales.date.date_string<catalog_sales.date.id>, catalog_sales.date.date<catalog_sales.date.id>, catalog_sales.date.day_of_week<catalog_sales.date.id>, catalog_sales.date.week_seq<catalog_sales.date.id>, catalog_sales.date.month_of_year<catalog_sales.date.id>, catalog_sales.date.quarter<catalog_sales.date.id>, catalog_sales.date.d_week_seq1<catalog_sales.date.id>, catalog_sales.date.year<catalog_sales.date.id>.
+    web_sales.\"WS_BILL_CUSTOMER_SK\",
+    web_sales.\"WS_SOLD_DATE_SK\"),
+sparkling as (
 SELECT
     date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
-    date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
-    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\"
+    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
+    date.\"D_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.date_dim as date),
-pintail as (
--- Target: Grain<catalog_sales.date.id,customer.id>. Group: True Source: SourceType.GROUP.
--- Partials: customer.id<customer.id>.
--- Source Map: {'catalog_sales.date.id': ['catalog_sales'], 'customer.id': ['catalog_sales'], 'catalog_sales.net_profit': ['catalog_sales'], 'catalog_sales.customer.address_id': ['catalog_sales'], 'catalog_sales.sold_date.id': ['catalog_sales'], 'catalog_sales.ship_date.id': ['catalog_sales'], 'catalog_sales.wholesale_cost': ['catalog_sales'], 'catalog_sales.customer.id': ['catalog_sales'], 'catalog_sales.extra_sales_price': ['catalog_sales'], 'catalog_sales.item.id': ['catalog_sales'], 'catalog_sales.warehouse.id': ['catalog_sales'], 'catalog_sales.extra_ship_cost': ['catalog_sales'], 'catalog_sales.call_center.id': ['catalog_sales'], 'catalog_sales.sales_price': ['catalog_sales'], 'catalog_sales.extra_wholesale_cost': ['catalog_sales'], 'catalog_sales.bill_customer.id': ['catalog_sales'], 'catalog_sales.time.id': ['catalog_sales'], 'catalog_sales.order_number': ['catalog_sales']}.
--- Output: catalog_sales.date.id<catalog_sales.date.id,customer.id>, customer.id<catalog_sales.date.id,customer.id>.
--- Inputs: catalog_sales.date.id<catalog_sales.date.id>, customer.id<customer.id>.
+quail as (
 SELECT
-    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\"
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\",
+    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
     catalog_sales.\"CS_SOLD_DATE_SK\",
     catalog_sales.\"CS_SHIP_CUSTOMER_SK\"),
-toucan as (
--- Target: Grain<customer.id>. Group: False Source: SourceType.MERGE. References: highfalutin, tiger, dingo, friendly, pintail.
--- Joins: inner JOIN customers and customer_address on customer.address_id<customer.address_id>=customer.address_id<customer.address_id>[], left outer JOIN customers and highfalutin on customer.id<customer.id>=customer.id<customer.id>[], left outer JOIN customers and dingo on customer.id<customer.id>=customer.id<customer.id>[], left outer JOIN customers and pintail on customer.id<customer.id>=customer.id<customer.id>[], left outer JOIN highfalutin and date on store_sales.date.id<store_sales.date.id>=store_sales.date.id<store_sales.date.id>[], left outer JOIN dingo and tiger on web_sales.date.id<web_sales.date.id>=web_sales.date.id<web_sales.date.id>[], left outer JOIN pintail and friendly on catalog_sales.date.id<catalog_sales.date.id>=catalog_sales.date.id<catalog_sales.date.id>[].
--- Source Map: {'customer.address_id': ['customers'], 'customer.id': ['customers'], 'customer.county': ['customer_address'], 'store_sales.date.month_of_year': ['date'], 'store_sales.date.id': ['date'], 'store_sales.date.year': ['date'], 'web_sales.date.year': ['tiger'], 'web_sales.date.month_of_year': ['tiger'], 'web_sales.date.id': ['tiger'], 'catalog_sales.date.month_of_year': ['friendly'], 'catalog_sales.date.id': ['friendly'], 'catalog_sales.date.year': ['friendly'], 'local.relevant_customers': [], 'customer.birth_country': ['customers'], 'customer.first_name': ['customers'], 'customer.last_name': ['customers'], 'customer.text_id': ['customers'], 'customer.demographics.id': ['customers'], 'customer.preferred_cust_flag': ['customers'], 'customer.city': ['customer_address'], 'customer.street': ['customer_address'], 'customer.zip': ['customer_address'], 'customer.state': ['customer_address'], 'customer.country': ['customer_address'], 'store_sales.date.d_week_seq1': ['date'], 'store_sales.date.day_of_week': ['date'], 'store_sales.date.quarter': ['date'], 'store_sales.date.date': ['date'], 'store_sales.date.week_seq': ['date'], 'store_sales.date.date_string': ['date']}.
--- Output: local.relevant_customers<customer.id>.
--- Inputs: catalog_sales.date.id<catalog_sales.date.id>, catalog_sales.date.month_of_year<catalog_sales.date.id>, catalog_sales.date.year<catalog_sales.date.id>, customer.address_id<customer.address_id>, customer.county<customer.address_id>, customer.id<customer.id>, store_sales.date.id<store_sales.date.id>, store_sales.date.month_of_year<store_sales.date.id>, store_sales.date.year<store_sales.date.id>, web_sales.date.id<web_sales.date.id>, web_sales.date.month_of_year<web_sales.date.id>, web_sales.date.year<web_sales.date.id>.
--- Nullable: local.relevant_customers<>.
+swift as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"relevant_customers\"
 FROM
     memory.customer as customers
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
-    LEFT OUTER JOIN highfalutin on customers.\"C_CUSTOMER_SK\" = highfalutin.\"customer_id\"
-    LEFT OUTER JOIN dingo on customers.\"C_CUSTOMER_SK\" = dingo.\"customer_id\"
-    LEFT OUTER JOIN pintail on customers.\"C_CUSTOMER_SK\" = pintail.\"customer_id\"
-    LEFT OUTER JOIN memory.date_dim as date on highfalutin.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    LEFT OUTER JOIN tiger on dingo.\"web_sales_date_id\" = tiger.\"web_sales_date_id\"
-    LEFT OUTER JOIN friendly on pintail.\"catalog_sales_date_id\" = friendly.\"catalog_sales_date_id\"
+    LEFT OUTER JOIN fabulous on customers.\"C_CUSTOMER_SK\" = fabulous.\"customer_id\"
+    LEFT OUTER JOIN chickadee on customers.\"C_CUSTOMER_SK\" = chickadee.\"customer_id\"
+    LEFT OUTER JOIN quail on customers.\"C_CUSTOMER_SK\" = quail.\"customer_id\"
+    LEFT OUTER JOIN memory.date_dim as date on fabulous.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN ugly on chickadee.\"web_sales_date_id\" = ugly.\"web_sales_date_id\"
+    LEFT OUTER JOIN sparkling on quail.\"catalog_sales_date_id\" = sparkling.\"catalog_sales_date_id\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( tiger.\"web_sales_date_year\" = 2002 and tiger.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( friendly.\"catalog_sales_date_year\" = 2002 and friendly.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
+    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( ugly.\"web_sales_date_year\" = 2002 and ugly.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( sparkling.\"catalog_sales_date_year\" = 2002 and sparkling.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
 ),
-bewildered as (
--- Target: Grain<local.relevant_customers>. Group: True Source: SourceType.GROUP. References: toucan.
--- Source Map: {'local.relevant_customers': ['toucan']}.
--- Output: local.relevant_customers<local.relevant_customers>.
--- Inputs: local.relevant_customers<>.
--- Nullable: local.relevant_customers<>.
+ruthless as (
 SELECT
-    toucan.\"relevant_customers\" as \"relevant_customers\"
+    swift.\"relevant_customers\" as \"relevant_customers\"
 FROM
-    toucan
+    swift
 GROUP BY 
-    toucan.\"relevant_customers\"),
-juicy as (
--- Target: Grain<customer.demographics.id,customer.id>. Group: False Source: SourceType.MERGE. References: bewildered.
--- Joins: inner JOIN customer_demographics and customers on customer.demographics.id<customer.demographics.id>=customer.demographics.id<customer.demographics.id>[].
--- Source Map: {'customer.demographics.marital_status': ['customer_demographics'], 'customer.demographics.gender': ['customer_demographics'], 'customer.demographics.college_dependent_count': ['customer_demographics'], 'customer.demographics.id': ['customer_demographics'], 'customer.demographics.dependent_count': ['customer_demographics'], 'customer.demographics.credit_rating': ['customer_demographics'], 'customer.demographics.employed_dependent_count': ['customer_demographics'], 'customer.demographics.purchase_estimate': ['customer_demographics'], 'customer.demographics.education_status': ['customer_demographics'], 'customer.id': ['customers'], 'local.relevant_customers': ['bewildered'], 'customer.birth_country': ['customers'], 'customer.first_name': ['customers'], 'customer.last_name': ['customers'], 'customer.text_id': ['customers'], 'customer.preferred_cust_flag': ['customers'], 'customer.address_id': ['customers']}.
--- Output: customer.id<customer.demographics.id,customer.id>, customer.demographics.college_dependent_count<customer.demographics.id,customer.id>, customer.demographics.credit_rating<customer.demographics.id,customer.id>, customer.demographics.dependent_count<customer.demographics.id,customer.id>, customer.demographics.education_status<customer.demographics.id,customer.id>, customer.demographics.employed_dependent_count<customer.demographics.id,customer.id>, customer.demographics.gender<customer.demographics.id,customer.id>, customer.demographics.marital_status<customer.demographics.id,customer.id>, customer.demographics.purchase_estimate<customer.demographics.id,customer.id>.
--- Inputs: customer.demographics.college_dependent_count<customer.demographics.id>, customer.demographics.credit_rating<customer.demographics.id>, customer.demographics.dependent_count<customer.demographics.id>, customer.demographics.education_status<customer.demographics.id>, customer.demographics.employed_dependent_count<customer.demographics.id>, customer.demographics.gender<customer.demographics.id>, customer.demographics.id<customer.demographics.id>, customer.demographics.marital_status<customer.demographics.id>, customer.demographics.purchase_estimate<customer.demographics.id>, customer.id<customer.id>.
+    swift.\"relevant_customers\"),
+ceaseless as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_demographics.\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
@@ -123,45 +84,40 @@ FROM
     memory.customer_demographics as customer_demographics
     INNER JOIN memory.customer as customers on customer_demographics.\"CD_DEMO_SK\" = customers.\"C_CURRENT_CDEMO_SK\"
 WHERE
-    customers.\"C_CUSTOMER_SK\" in (select bewildered.\"relevant_customers\" from bewildered where bewildered.\"relevant_customers\" is not null)
+    customers.\"C_CUSTOMER_SK\" in (select ruthless.\"relevant_customers\" from ruthless where ruthless.\"relevant_customers\" is not null)
 )
--- Target: Grain<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>. Group: True Source: SourceType.GROUP. References: juicy.
--- Source Map: {'customer.id': ['juicy'], 'customer.demographics.college_dependent_count': ['juicy'], 'customer.demographics.credit_rating': ['juicy'], 'customer.demographics.dependent_count': ['juicy'], 'customer.demographics.education_status': ['juicy'], 'customer.demographics.employed_dependent_count': ['juicy'], 'customer.demographics.gender': ['juicy'], 'customer.demographics.marital_status': ['juicy'], 'customer.demographics.purchase_estimate': ['juicy'], 'local.cnt1': [], 'local.cnt2': [], 'local.cnt3': [], 'local.cnt4': [], 'local.cnt5': [], 'local.cnt6': []}.
--- Output: customer.demographics.gender<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.marital_status<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.education_status<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt1<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.purchase_estimate<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt2<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.credit_rating<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt3<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.dependent_count<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt4<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.employed_dependent_count<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt5<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.college_dependent_count<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt6<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>.
--- Inputs: customer.id<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, customer.demographics.college_dependent_count<customer.demographics.id>, customer.demographics.credit_rating<customer.demographics.id>, customer.demographics.dependent_count<customer.demographics.id>, customer.demographics.education_status<customer.demographics.id>, customer.demographics.employed_dependent_count<customer.demographics.id>, customer.demographics.gender<customer.demographics.id>, customer.demographics.marital_status<customer.demographics.id>, customer.demographics.purchase_estimate<customer.demographics.id>.
--- Nullable: local.cnt1<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt2<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt3<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt4<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt5<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>, local.cnt6<customer.demographics.college_dependent_count,customer.demographics.credit_rating,customer.demographics.dependent_count,customer.demographics.education_status,customer.demographics.employed_dependent_count,customer.demographics.gender,customer.demographics.marital_status,customer.demographics.purchase_estimate>.
 SELECT
-    juicy.\"customer_demographics_gender\" as \"customer_demographics_gender\",
-    juicy.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    juicy.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
-    count(juicy.\"customer_id\") as \"cnt1\",
-    juicy.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
-    count(juicy.\"customer_id\") as \"cnt2\",
-    juicy.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
-    count(juicy.\"customer_id\") as \"cnt3\",
-    juicy.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
-    count(juicy.\"customer_id\") as \"cnt4\",
-    juicy.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
-    count(juicy.\"customer_id\") as \"cnt5\",
-    juicy.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
-    count(juicy.\"customer_id\") as \"cnt6\"
+    ceaseless.\"customer_demographics_gender\" as \"customer_demographics_gender\",
+    ceaseless.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
+    ceaseless.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
+    count(ceaseless.\"customer_id\") as \"cnt1\",
+    ceaseless.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
+    count(ceaseless.\"customer_id\") as \"cnt2\",
+    ceaseless.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
+    count(ceaseless.\"customer_id\") as \"cnt3\",
+    ceaseless.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
+    count(ceaseless.\"customer_id\") as \"cnt4\",
+    ceaseless.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
+    count(ceaseless.\"customer_id\") as \"cnt5\",
+    ceaseless.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
+    count(ceaseless.\"customer_id\") as \"cnt6\"
 FROM
-    juicy
+    ceaseless
 GROUP BY 
-    juicy.\"customer_demographics_marital_status\",
-    juicy.\"customer_demographics_purchase_estimate\",
-    juicy.\"customer_demographics_college_dependent_count\",
-    juicy.\"customer_demographics_credit_rating\",
-    juicy.\"customer_demographics_gender\",
-    juicy.\"customer_demographics_education_status\",
-    juicy.\"customer_demographics_employed_dependent_count\",
-    juicy.\"customer_demographics_dependent_count\"
+    ceaseless.\"customer_demographics_marital_status\",
+    ceaseless.\"customer_demographics_gender\",
+    ceaseless.\"customer_demographics_college_dependent_count\",
+    ceaseless.\"customer_demographics_employed_dependent_count\",
+    ceaseless.\"customer_demographics_purchase_estimate\",
+    ceaseless.\"customer_demographics_education_status\",
+    ceaseless.\"customer_demographics_dependent_count\",
+    ceaseless.\"customer_demographics_credit_rating\"
 ORDER BY 
-    juicy.\"customer_demographics_gender\" asc,
-    juicy.\"customer_demographics_marital_status\" asc,
-    juicy.\"customer_demographics_education_status\" asc,
-    juicy.\"customer_demographics_purchase_estimate\" asc,
-    juicy.\"customer_demographics_credit_rating\" asc,
-    juicy.\"customer_demographics_dependent_count\" asc,
-    juicy.\"customer_demographics_employed_dependent_count\" asc,
-    juicy.\"customer_demographics_college_dependent_count\" asc"""
+    ceaseless.\"customer_demographics_gender\" asc,
+    ceaseless.\"customer_demographics_marital_status\" asc,
+    ceaseless.\"customer_demographics_education_status\" asc,
+    ceaseless.\"customer_demographics_purchase_estimate\" asc,
+    ceaseless.\"customer_demographics_credit_rating\" asc,
+    ceaseless.\"customer_demographics_dependent_count\" asc,
+    ceaseless.\"customer_demographics_employed_dependent_count\" asc,
+    ceaseless.\"customer_demographics_college_dependent_count\" asc"""
