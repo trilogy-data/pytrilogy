@@ -13,7 +13,10 @@ from trilogy.core.models import (
     Join,
     JoinKey,
     Concept,
+    AggregateWrapper,
+    RowsetItem,
 )
+from trilogy import parse
 
 
 def test_cte_merge(test_environment, test_environment_graph):
@@ -262,3 +265,46 @@ def test_join(test_environment: Environment):
         str(test)
         == "right outer JOIN test and testb on local.product_id<local.product_id>,local.category_id<local.category_id>"
     ), str(test)
+
+
+def test_concept_address_in_check():
+    target = Concept(
+        name="test",
+        datatype="int",
+        purpose=Purpose.CONSTANT,
+        grain=Grain(),
+        environment={},
+    )
+    assert target.address == "local.test"
+    x = [target]
+
+    assert "local.test" in x
+
+
+def test_rowset_with_filter_derivation():
+    env, statements = parse(
+        """
+key x int;
+
+datasource test (
+x:x
+)
+grain (x)
+address test
+;
+
+with greater_than_ten as
+select x
+where 
+x >10;
+
+auto avg_greater_ten <- avg(greater_than_ten.x) by *;
+
+select avg_greater_ten;
+
+"""
+    )
+
+    lineage = env.concepts["avg_greater_ten"].lineage
+    assert isinstance(lineage, AggregateWrapper)
+    assert isinstance(lineage.function.concept_arguments[0].lineage, RowsetItem)

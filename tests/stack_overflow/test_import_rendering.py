@@ -35,7 +35,7 @@ select
     core.badge_id,
     sum(user_badge_count)-> total_badge_user_award_count
 order by
-    user_badge_count desc
+    total_badge_user_award_count desc
  limit 10;"""
 
 CIRC_QUERY = """import so_concepts.circular as c1;

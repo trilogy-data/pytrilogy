@@ -1,0 +1,54 @@
+query_id = 1
+parse_time = 12.24595
+exec_time = 0.097428
+comp_time = 2.400564
+gen_length = 1644
+generated_sql = """
+
+WITH 
+badger as (
+SELECT
+    store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
+    store.\"S_STATE\" as \"returns_store_state\",
+    cast(\"D_YEAR\" as int) as \"returns_return_date_year\",
+    store.\"S_STORE_SK\" as \"returns_store_id\",
+    customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
+    store_returns.\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
+    store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
+FROM
+    memory.store_returns as store_returns
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+WHERE
+    store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
+),
+quizzical as (
+SELECT
+    sum(badger.\"returns_return_amount\") as \"total_returns\",
+    badger.\"returns_store_id\" as \"returns_store_id\",
+    badger.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+FROM
+    badger
+GROUP BY 
+    badger.\"returns_customer_text_id\",
+    badger.\"returns_store_id\"),
+slow as (
+SELECT
+    avg(quizzical.\"total_returns\") as \"avg_store_returns\",
+    quizzical.\"returns_store_id\" as \"returns_store_id\"
+FROM
+    quizzical
+GROUP BY 
+    quizzical.\"returns_store_id\")
+SELECT
+    quizzical.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+FROM
+    quizzical
+    INNER JOIN slow on quizzical.\"returns_store_id\" = slow.\"returns_store_id\"
+WHERE
+    quizzical.\"total_returns\" > ( 1.2 * slow.\"avg_store_returns\" )
+
+ORDER BY 
+    quizzical.\"returns_customer_text_id\" asc
+LIMIT (100)"""

@@ -24,7 +24,7 @@ class Optimizations:
     predicate_pushdown: bool = True
     datasource_inlining: bool = True
     constant_inlining: bool = True
-    constant_inline_cutoff: int = 3
+    constant_inline_cutoff: int = 10
     direct_return: bool = True
 
 

@@ -1,0 +1,20 @@
+import customer as customer;
+import store as store;
+import store_returns as returns;
+
+
+where
+    returns.store.state = 'TN' and
+    returns.return_date.year = 2000
+select
+    returns.customer.text_id,
+    --sum(returns.return_amount)-> total_returns,
+    --returns.store.id,
+    --avg(total_returns) by returns.store.id -> avg_store_returns
+having
+   total_returns > (1.2*avg_store_returns)
+order by 
+    returns.customer.text_id asc
+limit 100;
+
+

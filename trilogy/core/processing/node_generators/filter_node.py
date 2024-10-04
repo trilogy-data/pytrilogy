@@ -37,6 +37,7 @@ def gen_filter_node(
     where = concept.lineage.where
 
     optional_included: list[Concept] = []
+
     for x in local_optional:
         if isinstance(x.lineage, FilterItem):
             if concept.lineage.where == where:
@@ -45,17 +46,23 @@ def gen_filter_node(
                 )
                 parent_row_concepts.append(x.lineage.content)
                 optional_included.append(x)
+                continue
+        if conditions and conditions == where:
+            optional_included.append(x)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
+    # we'll populate this with the row parent
+    # and the existence parent(s)
     core_parents = []
+
     row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,
         g=g,
         depth=depth + 1,
         history=history,
-        conditions=conditions,
+        # conditions=conditions,
     )
 
     flattened_existence = [x for y in parent_existence_concepts for x in y]
@@ -101,6 +108,9 @@ def gen_filter_node(
         )
         optimized_pushdown = True
     if optimized_pushdown:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
+        )
         if isinstance(row_parent, SelectNode):
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} nesting select node in strategy node"
@@ -110,16 +120,10 @@ def gen_filter_node(
                 output_concepts=[concept] + row_parent.output_concepts,
                 environment=row_parent.environment,
                 g=row_parent.g,
-                parents=[row_parent] + core_parents,
+                parents=[row_parent],
                 depth=row_parent.depth,
                 partial_concepts=row_parent.partial_concepts,
                 force_group=False,
-                conditions=(
-                    row_parent.conditions + where.conditional
-                    if row_parent.conditions
-                    else where.conditional
-                ),
-                existence_concepts=row_parent.existence_concepts,
             )
         else:
             parent = row_parent
@@ -127,13 +131,14 @@ def gen_filter_node(
         expected_output = [concept] + [
             x
             for x in local_optional
-            if x.address in [y.address for y in parent.output_concepts]
-            or x.address in [y.address for y in optional_included]
+            if x.address in [y for y in parent.output_concepts]
+            or x.address in [y for y in optional_included]
         ]
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
-        parent.add_existence_concepts(flattened_existence)
-        parent.set_output_concepts(expected_output)
+        parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
+            expected_output, False
+        )
         parent.grain = Grain(
             components=(
                 list(immediate_parent.keys)
@@ -147,10 +152,6 @@ def gen_filter_node(
             ]
         )
         parent.rebuild_cache()
-
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
-        )
         filter_node = parent
     else:
         core_parents.append(row_parent)
@@ -167,26 +168,24 @@ def gen_filter_node(
             grain=Grain(
                 components=[immediate_parent] + parent_row_concepts,
             ),
+            preexisting_conditions=conditions.conditional if conditions else None,
         )
 
     if not local_optional or all(
-        [
-            x.address in [y.address for y in filter_node.output_concepts]
-            for x in local_optional
-        ]
+        [x.address in filter_node.output_concepts for x in local_optional]
     ):
-        outputs = [
-            x
-            for x in filter_node.output_concepts
-            if x.address in [y.address for y in local_optional]
+        optional_outputs = [
+            x for x in filter_node.output_concepts if x.address in local_optional
         ]
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node"
+            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
         )
-        filter_node.output_concepts = [
-            concept,
-        ] + outputs
-        filter_node.rebuild_cache()
+        filter_node.set_output_concepts(
+            [
+                concept,
+            ]
+            + optional_outputs
+        )
         return filter_node
 
     enrich_node = source_concepts(  # this fetches the parent + join keys
@@ -198,8 +197,6 @@ def gen_filter_node(
         history=history,
         conditions=conditions,
     )
-    if not enrich_node:
-        return filter_node
     return MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,
         output_concepts=[

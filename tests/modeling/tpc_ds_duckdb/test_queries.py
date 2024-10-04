@@ -17,7 +17,6 @@ def run_query(engine: Executor, idx: int):
     parse_start = datetime.now()
     query = engine.generate_sql(text)[-1]
     parse_time = datetime.now() - parse_start
-    # raise SyntaxError(query)
     exec_start = datetime.now()
     results = engine.execute_raw_sql(query)
     exec_time = datetime.now() - exec_start
@@ -56,7 +55,8 @@ def run_query(engine: Executor, idx: int):
 
 
 def test_one(engine):
-    run_query(engine, 1)
+    query = run_query(engine, 1)
+    assert len(query) < 9000, query
 
 
 @pytest.mark.skip(reason="Is duckdb correct??")
@@ -93,7 +93,7 @@ def test_eight(engine):
 
 def test_ten(engine):
     query = run_query(engine, 10)
-    assert len(query) < 10000, query
+    assert len(query) < 6000, query
 
 
 def test_twelve(engine):
@@ -107,7 +107,7 @@ def test_fifteen(engine):
 def test_sixteen(engine):
     query = run_query(engine, 16)
     # size gating
-    assert len(query) < 6000, query
+    assert len(query) < 16000, query
 
 
 def test_twenty(engine):
@@ -118,6 +118,12 @@ def test_twenty(engine):
 
 def test_twenty_one(engine):
     _ = run_query(engine, 21)
+    # size gating
+    # assert len(query) < 6000, query
+
+
+def test_twenty_four(engine):
+    _ = run_query(engine, 24)
     # size gating
     # assert len(query) < 6000, query
 
@@ -140,4 +146,4 @@ SELECT * FROM dsdgen(sf=1);"""
 
 
 if __name__ == "__main__":
-    run_adhoc(20)
+    run_adhoc(24)

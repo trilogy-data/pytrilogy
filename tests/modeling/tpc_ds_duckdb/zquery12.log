@@ -1,0 +1,70 @@
+query_id = 12
+parse_time = 5.43601
+exec_time = 0.219011
+comp_time = 0.25417
+gen_length = 2724
+generated_sql = """
+
+WITH 
+fossa as (
+SELECT
+    web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
+    cast(\"D_DATE\" as date) as \"web_sales_date_date\",
+    items.\"I_CATEGORY\" as \"web_sales_item_category\",
+    items.\"I_CLASS\" as \"web_sales_item_class\",
+    items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
+    items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
+    items.\"I_ITEM_ID\" as \"web_sales_item_name\",
+    web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
+    items.\"I_ITEM_SK\" as \"web_sales_item_id\"
+FROM
+    memory.web_sales as web_sales
+    INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+WHERE
+    cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
+),
+chick as (
+SELECT
+    sum(fossa.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    fossa.\"web_sales_item_category\" as \"web_sales_item_category\",
+    fossa.\"web_sales_item_class\" as \"web_sales_item_class\",
+    fossa.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    fossa.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    fossa.\"web_sales_item_name\" as \"web_sales_item_name\"
+FROM
+    fossa
+GROUP BY 
+    fossa.\"web_sales_item_class\",
+    fossa.\"web_sales_item_name\",
+    fossa.\"web_sales_item_current_price\",
+    fossa.\"web_sales_item_category\",
+    fossa.\"web_sales_item_desc\"),
+civet as (
+SELECT
+    sum(chick.\"itemrevenue\") over (partition by chick.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    chick.\"itemrevenue\" as \"itemrevenue\",
+    chick.\"web_sales_item_class\" as \"web_sales_item_class\",
+    chick.\"web_sales_item_name\" as \"web_sales_item_name\",
+    chick.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    chick.\"web_sales_item_category\" as \"web_sales_item_category\",
+    chick.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+FROM
+    chick)
+SELECT
+    civet.\"web_sales_item_name\" as \"web_sales_item_name\",
+    civet.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    civet.\"web_sales_item_category\" as \"web_sales_item_category\",
+    civet.\"web_sales_item_class\" as \"web_sales_item_class\",
+    civet.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    civet.\"itemrevenue\" as \"itemrevenue\",
+    civet.\"itemrevenue\" * 100.0 / civet.\"_virtual_137720187295635\" as \"revenueratio\"
+FROM
+    civet
+ORDER BY 
+    civet.\"web_sales_item_category\" asc,
+    civet.\"web_sales_item_class\" asc,
+    civet.\"web_sales_item_name\" asc,
+    civet.\"web_sales_item_desc\" asc,
+    civet.\"itemrevenue\" * 100.0 / civet.\"_virtual_137720187295635\" asc
+LIMIT (100)"""

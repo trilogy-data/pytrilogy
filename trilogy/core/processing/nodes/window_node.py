@@ -1,7 +1,7 @@
 from typing import List
 
 
-from trilogy.core.models import SourceType, Concept, Grain
+from trilogy.core.models import SourceType, Concept
 from trilogy.core.processing.nodes.base_node import StrategyNode, QueryDatasource
 
 
@@ -30,7 +30,6 @@ class WindowNode(StrategyNode):
 
     def _resolve(self) -> QueryDatasource:
         base = super()._resolve()
-        base.grain = Grain(components=self.input_concepts)
         return base
 
     def copy(self) -> "WindowNode":

@@ -1,0 +1,60 @@
+import customer as customer;
+import store_sales as store_sales;
+import web_sales as web_sales;
+import catalog_sales as catalog_sales;
+
+#Count the customers with the same gender, marital status, education status, purchase estimate, credit rating,
+#dependent count, employed dependent count and college dependent count who live in certain counties and who
+# have purchased from both stores and another sales channel during a three month time period of a given year.
+
+
+merge catalog_sales.customer.id into ~customer.id;
+merge web_sales.customer.id into ~customer.id;
+merge store_sales.customer.id into ~customer.id;
+
+auto relevant_customers <-  customer.id ?
+    store_sales.date.year = 2002 and store_sales.date.month_of_year in (1,2,3,4) and customer.county in (
+    'Rush County',
+    'Toole County',
+    'Jefferson County',
+    'Dona Ana County',
+    'La Porte County',
+)
+    and ((web_sales.date.year = 2002 and web_sales.date.month_of_year in (1,2,3,4)) or (catalog_sales.date.year = 2002 and catalog_sales.date.month_of_year in (1,2,3,4) ) )
+    ;
+
+
+SELECT
+    customer.demographics.gender,
+    customer.demographics.marital_status,
+    customer.demographics.education_status,
+    count(customer.id
+     ) as cnt1,
+    customer.demographics.purchase_estimate,
+        count(customer.id
+     ) as cnt2,
+    customer.demographics.credit_rating,
+        count(customer.id
+     ) as cnt3,
+    customer.demographics.dependent_count,
+            count(customer.id
+     ) as cnt4,
+    customer.demographics.employed_dependent_count,
+            count(customer.id
+     ) as cnt5,
+    customer.demographics.college_dependent_count,
+            count(customer.id
+     ) as cnt6
+WHERE
+    customer.id in relevant_customers
+ORDER BY
+    customer.demographics.gender asc,
+    customer.demographics.marital_status asc,
+    customer.demographics.education_status asc,
+    customer.demographics.purchase_estimate asc,
+    customer.demographics.credit_rating asc,
+    customer.demographics.dependent_count asc,
+    customer.demographics.employed_dependent_count asc,
+    customer.demographics.college_dependent_count asc,
+;
+    

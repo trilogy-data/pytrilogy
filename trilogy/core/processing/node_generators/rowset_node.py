@@ -5,16 +5,15 @@ from trilogy.core.models import (
     RowsetDerivationStatement,
     RowsetItem,
     MultiSelectStatement,
+    WhereClause,
 )
 from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
-from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 from typing import List
 
 from trilogy.core.enums import PurposeLineage
 from trilogy.constants import logger
-from trilogy.core.processing.utility import padding
-from trilogy.core.processing.utility import concept_to_relevant_joins
-
+from trilogy.core.processing.utility import padding, concept_to_relevant_joins
+from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
@@ -27,6 +26,7 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
     history: History | None = None,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
@@ -44,7 +44,6 @@ def gen_rowset_node(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent rowset node for {concept}"
         )
         return None
-
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
     select_hidden = set([x.address for x in select.hidden_components])
@@ -67,11 +66,10 @@ def gen_rowset_node(
     final_hidden = rowset_hidden + [
         x
         for x in node.output_concepts
-        if x.address not in [y.address for y in local_optional + [concept]]
+        if x.address not in local_optional + [concept]
         and x.derivation != PurposeLineage.ROWSET
     ]
     node.hide_output_concepts(final_hidden)
-
     assert node.resolution_cache
     # assume grain to be output of select
     # but don't include anything hidden(the non-rowset concepts)
@@ -81,9 +79,7 @@ def gen_rowset_node(
             for x in node.output_concepts
             if x.address
             not in [
-                y.address
-                for y in node.hidden_concepts
-                if y.derivation != PurposeLineage.ROWSET
+                y for y in node.hidden_concepts if y.derivation != PurposeLineage.ROWSET
             ]
         ],
         parent_sources=node.resolution_cache.datasources,
@@ -91,14 +87,16 @@ def gen_rowset_node(
 
     node.rebuild_cache()
 
-    possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional or all(
-        x.address in [y.address for y in node.output_concepts] for x in local_optional
+        x.address in node.output_concepts for x in local_optional
     ):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional found or no optional; exiting early."
         )
+        # node.set_preexisting_conditions(conditions.conditional if conditions else None)
         return node
+
+    possible_joins = concept_to_relevant_joins(additional_relevant)
     if not possible_joins:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
@@ -110,6 +108,7 @@ def gen_rowset_node(
         environment=environment,
         g=g,
         depth=depth + 1,
+        conditions=conditions,
     )
     if not enrich_node:
         logger.info(
@@ -127,4 +126,5 @@ def gen_rowset_node(
             enrich_node,
         ],
         partial_concepts=node.partial_concepts,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )

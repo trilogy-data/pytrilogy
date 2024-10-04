@@ -125,23 +125,29 @@ def is_direct_return_eligible(cte: CTE) -> CTE | None:
         for c in cte.source.output_concepts + cte.source.hidden_concepts
         if c not in cte.source.input_concepts
     ]
-    conditions = (
-        set(x.address for x in direct_parent.condition.concept_arguments)
-        if direct_parent.condition
-        else set()
-    )
+
+    parent_derived_concepts = [
+        c
+        for c in direct_parent.source.output_concepts
+        + direct_parent.source.hidden_concepts
+        if c not in direct_parent.source.input_concepts
+    ]
+    condition_arguments = cte.condition.row_arguments if cte.condition else []
     for x in derived_concepts:
         if x.derivation == PurposeLineage.WINDOW:
             return None
         if x.derivation == PurposeLineage.UNNEST:
             return None
         if x.derivation == PurposeLineage.AGGREGATE:
-            if x.address in conditions:
-                return None
-    # handling top level nodes that require unpacking
-    for x in cte.output_columns:
+            return None
+    for x in parent_derived_concepts:
+        if x.address not in condition_arguments:
+            continue
         if x.derivation == PurposeLineage.UNNEST:
             return None
+        if x.derivation == PurposeLineage.WINDOW:
+            return None
+
     logger.info(
         f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}"
     )

@@ -115,6 +115,7 @@ class MergeNode(StrategyNode):
         depth: int = 0,
         grain: Grain | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
         existence_concepts: List[Concept] | None = None,
@@ -132,6 +133,7 @@ class MergeNode(StrategyNode):
             force_group=force_group,
             grain=grain,
             conditions=conditions,
+            preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
             virtual_output_concepts=virtual_output_concepts,
             existence_concepts=existence_concepts,
@@ -203,14 +205,6 @@ class MergeNode(StrategyNode):
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} Merge node has {len(dataset_list)} parents, starting merge"
         )
-        for item in dataset_list:
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} for {item.full_name} partial concepts {[x.address for x in item.partial_concepts]}"
-            )
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} potential merge keys {[x.address+str(x.purpose) for x in item.output_concepts]} partial {[x.address for x in item.partial_concepts]}"
-            )
-
         if final_joins is None:
             if not pregrain.components:
                 logger.info(
@@ -246,7 +240,7 @@ class MergeNode(StrategyNode):
         for source in parent_sources:
             if source.full_name in merged:
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} parent node with {source.full_name} into existing"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} merging parent node with {source.full_name} into existing"
                 )
                 merged[source.full_name] = merged[source.full_name] + source
             else:
@@ -304,7 +298,6 @@ class MergeNode(StrategyNode):
             pregrain += source.grain
 
         grain = self.grain if self.grain else pregrain
-
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {pregrain} and final merge node grain {grain}"
         )
@@ -377,6 +370,7 @@ class MergeNode(StrategyNode):
             force_group=self.force_group,
             grain=self.grain,
             conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
             nullable_concepts=list(self.nullable_concepts),
             hidden_concepts=list(self.hidden_concepts),
             virtual_output_concepts=list(self.virtual_output_concepts),

@@ -43,6 +43,9 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
     # from trilogy.core.models import AggregateWrapper
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]
     immediate_aggregate_input = test_environment.concepts[

@@ -31,6 +31,9 @@ def print_recursive_resolved(
             extra.append("filter")
     if input.group_required:
         extra.append("group")
+    output = [c.address for c in input.output_concepts[:3]]
+    if len(input.output_concepts) > 3:
+        output.append("...")
     display = [
         (
             "  " * depth,
@@ -40,7 +43,7 @@ def print_recursive_resolved(
             ">",
             # [c.address for c in input.input_concepts],
             "->",
-            [c.address for c in input.output_concepts],
+            output,
         )
     ]
     if isinstance(input, QueryDatasource):
@@ -86,7 +89,6 @@ def print_recursive_ctes(input: CTE, depth: int = 0, max_depth: int | None = Non
     sql = renderer.render_cte(input).statement
     for line in sql.split("\n"):
         logger.debug("  " * (depth) + line)
-    print("-----")
     if isinstance(input, CTE):
         for child in input.parent_ctes:
             print_recursive_ctes(child, depth + 1)
@@ -130,5 +132,5 @@ class DebuggingHook(BaseHook):
         if self.process_nodes != PrintMode.OFF:
             printed = print_recursive_nodes(node, mode=self.process_nodes)
             for row in printed:
-                logger.info("".join([str(v) for v in row]))
+                # logger.info("".join([str(v) for v in row]))
                 print("".join([str(v) for v in row]))

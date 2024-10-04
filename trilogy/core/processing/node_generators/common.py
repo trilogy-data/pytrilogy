@@ -136,6 +136,7 @@ def gen_property_enrichment_node(
             base_node,
         ]
         + final_nodes,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
 
 
@@ -154,11 +155,6 @@ def gen_enrichment_node(
 
     local_opts = LooseConceptList(concepts=local_optional)
 
-    if local_opts.issubset(base_node.output_lcl):
-        log_lambda(
-            f"{str(type(base_node).__name__)} has all optional { base_node.output_lcl}, skipping enrichmennt"
-        )
-        return base_node
     extra_required = [
         x
         for x in local_opts
@@ -186,13 +182,15 @@ def gen_enrichment_node(
                 conditions=conditions,
                 log_lambda=log_lambda,
             )
-
+    log_lambda(
+        f"{str(type(base_node).__name__)} searching for join keys {LooseConceptList(concepts=join_keys)} and extra required {local_opts}"
+    )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=join_keys + extra_required,
         environment=environment,
         g=g,
-        depth=depth,
+        depth=depth + 1,
         history=history,
         conditions=conditions,
     )
@@ -216,6 +214,7 @@ def gen_enrichment_node(
         g=g,
         parents=[enrich_node, base_node],
         force_group=False,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
 
 

@@ -7,7 +7,7 @@ SELECT
     cs.item.class,
     cs.item.current_price,
     sum(cs.extra_sales_price) as revenue,
-    sum(cs.extra_sales_price)*100.0000/(sum sum(cs.extra_sales_price)  over cs.item.class) as revenue_ratio
+    revenue*100.0000/(sum revenue  over cs.item.class) as revenue_ratio
 WHERE
     cs.item.category in ('Sports', 'Books', 'Home')
     and cs.sold_date.date BETWEEN cast('1999-02-22' as date) AND cast('1999-03-24' AS date)

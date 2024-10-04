@@ -36,9 +36,12 @@ FUNCTION_MAP = {
 # we may return a static value
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT: lambda args: f"{args[0]}",
+    FunctionType.COUNT_DISTINCT: lambda args: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.COUNT: lambda args: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
+    FunctionType.MAX: lambda args: f"{args[0]}",
+    FunctionType.MIN: lambda args: f"{args[0]}",
 }
 
 DUCKDB_TEMPLATE = Template(

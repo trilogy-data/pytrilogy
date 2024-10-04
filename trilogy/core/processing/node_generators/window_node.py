@@ -3,17 +3,9 @@ from typing import List
 
 from trilogy.core.models import Concept, WindowItem, Environment, WhereClause
 from trilogy.utility import unique
-from trilogy.core.processing.nodes import (
-    WindowNode,
-)
-from trilogy.core.processing.nodes import MergeNode, History
-
+from trilogy.core.processing.nodes import WindowNode, StrategyNode, History
 from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, create_log_lambda
-from trilogy.core.processing.node_generators.common import (
-    gen_enrichment_node,
-)
-from trilogy.core.processing.utility import concept_to_relevant_joins
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
@@ -39,10 +31,10 @@ def gen_window_node(
     source_concepts,
     history: History | None = None,
     conditions: WhereClause | None = None,
-) -> WindowNode | MergeNode | None:
+) -> StrategyNode | None:
     parent_concepts = resolve_window_parent_concepts(concept)
     parent_node = source_concepts(
-        mandatory_list=parent_concepts,
+        mandatory_list=parent_concepts + local_optional,
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -69,8 +61,8 @@ def gen_window_node(
         )
         raise SyntaxError
     _window_node = WindowNode(
-        input_concepts=parent_concepts,
-        output_concepts=[concept] + parent_concepts,
+        input_concepts=parent_concepts + local_optional,
+        output_concepts=[concept] + parent_concepts + local_optional,
         environment=environment,
         g=g,
         parents=[
@@ -80,29 +72,12 @@ def gen_window_node(
     )
     _window_node.rebuild_cache()
     _window_node.resolve()
-    window_node = MergeNode(
+    window_node = StrategyNode(
+        input_concepts=[concept] + local_optional,
+        output_concepts=[concept] + local_optional,
+        environment=environment,
+        g=g,
         parents=[_window_node],
-        environment=environment,
-        g=g,
-        input_concepts=[concept] + _window_node.input_concepts,
-        output_concepts=_window_node.output_concepts,
-        grain=_window_node.grain,
-        force_group=False,
-        depth=depth,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )
-    window_node.resolve()
-    if not local_optional:
-        return window_node
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node requires enrichment")
-    return gen_enrichment_node(
-        window_node,
-        join_keys=concept_to_relevant_joins(parent_concepts),
-        local_optional=local_optional,
-        environment=environment,
-        g=g,
-        depth=depth,
-        source_concepts=source_concepts,
-        log_lambda=create_log_lambda(LOGGER_PREFIX, depth, logger),
-        history=history,
-        conditions=conditions,
-    )
+    return window_node

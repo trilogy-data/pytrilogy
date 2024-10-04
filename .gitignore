@@ -31,5 +31,6 @@ AdventureWorksDW2019.bak
 memory.db
 
 tests/modeling/tcp_ds_duckdb/memory/
-
+tests/modeling/tpc_ds_duckdb/memory/
 duckdb_temp_storage-*.tmp
+*.parquet

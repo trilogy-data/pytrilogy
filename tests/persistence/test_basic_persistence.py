@@ -13,7 +13,6 @@ from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.core.enums import PurposeLineage
 from trilogy.parser import parse
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.processing.node_generators import (
     gen_select_node,
@@ -74,7 +73,7 @@ def test_derivations():
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept in env.materialized_concepts
-        assert test_concept.derivation == PurposeLineage.BASIC
+        assert test_concept.derivation == PurposeLineage.ROOT
 
         persist: PersistStatement = parsed[-2]
         select: SelectStatement = parsed[-1]
@@ -98,7 +97,6 @@ def test_derivations():
             environment=env,
             g=g,
             depth=0,
-            source_concepts=search_concepts,
         )
         assert static
 

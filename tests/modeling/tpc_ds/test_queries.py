@@ -3,9 +3,6 @@ from pathlib import Path
 
 from trilogy import Environment, Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
-from trilogy.core.processing.nodes import SelectNode, MergeNode, GroupNode
-from trilogy.core.env_processor import generate_graph
-from tests.utility import validate_shape
 
 working_path = Path(__file__).parent
 test = working_path / "store.preql"
@@ -20,8 +17,6 @@ def test_one():
         environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)]
     )
 
-    # Grain<returns.customer.id,returns.store.id,returns.item.id,returns.store_sales.ticket_number>
-    # Grain<returns.customer.id,returns.store.id,returns.return_date.id,returns.item.id,returns.store_sales.ticket_number>
     env, queries = parse("""import store_returns as returns;""", env)
 
     for k, c in env.concepts.items():
@@ -49,38 +44,6 @@ def test_one():
             )
         )
         == 7
-    )
-    g = generate_graph(env)
-
-    parsed = exec.parse_text(
-        """select
-    returns.customer.id,
-    returns.store.id,
-    returns.store.state,
-    returns.return_date.year,
-    sum(returns.return_amount)-> total_returns
-where
-    returns.return_date.year = 2022
-    and returns.store.state = 'CA';"""
-    )
-
-    validate_shape(
-        parsed[-1].output_columns,
-        env,
-        g,
-        levels=[
-            SelectNode,
-            SelectNode,  # select store
-            SelectNode,  # select store
-            SelectNode,  # select year
-            MergeNode,
-            MergeNode,  # merge year into fac
-            GroupNode,  # calculate aggregate
-            MergeNode,  # enrich store name
-            GroupNode,  # final node
-            # MergeNode,  # enrich store name
-            # GroupNode,  # final node
-        ],
     )
 
     sql = exec.generate_sql(

@@ -121,6 +121,7 @@ FUNCTION_MAP = {
     FunctionType.CASE: lambda x: render_case(x),
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
+    FunctionType.BOOL: lambda x: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
     # complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
@@ -176,8 +177,8 @@ FUNCTION_MAP = {
 
 FUNCTION_GRAIN_MATCH_MAP = {
     **FUNCTION_MAP,
-    FunctionType.COUNT_DISTINCT: lambda args: f"{args[0]}",
-    FunctionType.COUNT: lambda args: f"{args[0]}",
+    FunctionType.COUNT_DISTINCT: lambda args: f"CASE WHEN{args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.COUNT: lambda args: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.SUM: lambda args: f"{args[0]}",
     FunctionType.AVG: lambda args: f"{args[0]}",
     FunctionType.MAX: lambda args: f"{args[0]}",
@@ -582,8 +583,11 @@ class BaseDialect:
         having: Conditional | Parenthetical | Comparison | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
-            if is_scalar_condition(cte.condition, materialized=materialized):
+            if not cte.group_to_grain or is_scalar_condition(
+                cte.condition, materialized=materialized
+            ):
                 where = cte.condition
+
             else:
                 components = decompose_condition(cte.condition)
                 for x in components:

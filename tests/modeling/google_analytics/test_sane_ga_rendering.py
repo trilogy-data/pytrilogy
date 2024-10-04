@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Concept,
     DataType,
     Function,
+    SelectItem,
 )
 from trilogy.core.enums import Purpose, Granularity
 from trilogy.core.functions import CurrentDatetime
@@ -43,7 +44,7 @@ def test_sane_rendering():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(local_static)
+    statements[-1].select.selection.append(SelectItem(content=local_static))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     # this should be a
@@ -101,7 +102,7 @@ def test_daily_job():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(local_static)
+    statements[-1].select.selection.append(SelectItem(content=local_static))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     _ = engine.generator.compile_statement(select)
@@ -164,7 +165,7 @@ def test_counts():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(local_static)
+    statements[-1].select.selection.append(SelectItem(content=local_static))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     comp = engine.generator.compile_statement(select)

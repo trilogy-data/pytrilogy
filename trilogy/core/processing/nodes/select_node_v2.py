@@ -18,8 +18,7 @@ from trilogy.core.models import (
     Parenthetical,
 )
 from trilogy.utility import unique
-from trilogy.core.processing.nodes.base_node import StrategyNode
-from trilogy.core.exceptions import NoDatasourceException
+from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
 
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
@@ -48,6 +47,7 @@ class SelectNode(StrategyNode):
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
     ):
         super().__init__(
@@ -63,6 +63,7 @@ class SelectNode(StrategyNode):
             force_group=force_group,
             grain=grain,
             conditions=conditions,
+            preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
         )
         self.accept_partial = accept_partial
@@ -144,9 +145,7 @@ class SelectNode(StrategyNode):
 
     def _resolve(self) -> QueryDatasource:
         # if we have parent nodes, we do not need to go to a datasource
-        if self.parents:
-            return super()._resolve()
-        resolution: QueryDatasource | None
+        resolution: QueryDatasource | None = None
         if all(
             [
                 (
@@ -163,17 +162,30 @@ class SelectNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"
             )
             resolution = self.resolve_from_constant_datasources()
-            if resolution:
-                return resolution
-        if self.datasource:
+        if self.datasource and not resolution:
             resolution = self.resolve_from_provided_datasource()
-            if resolution:
-                return resolution
 
-        required = [c.address for c in self.all_concepts]
-        raise NoDatasourceException(
-            f"Could not find any way to resolve datasources for required concepts {required} with derivation {[x.derivation for x in self.all_concepts]}"
-        )
+        if self.parents:
+            if not resolution:
+                return super()._resolve()
+            # zip in our parent source map
+            parent_sources: List[QueryDatasource | Datasource] = [
+                p.resolve() for p in self.parents
+            ]
+
+            resolution.datasources += parent_sources
+
+            source_map = resolve_concept_map(
+                parent_sources,
+                targets=self.output_concepts,
+                inherited_inputs=self.input_concepts + self.existence_concepts,
+            )
+            for k, v in source_map.items():
+                if v and k not in resolution.source_map:
+                    resolution.source_map[k] = v
+        if not resolution:
+            raise ValueError("No select node could be generated")
+        return resolution
 
     def copy(self) -> "SelectNode":
         return SelectNode(
@@ -191,6 +203,7 @@ class SelectNode(StrategyNode):
             grain=self.grain,
             force_group=self.force_group,
             conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
         )
 
@@ -208,5 +221,6 @@ class ConstantNode(SelectNode):
             depth=self.depth,
             partial_concepts=list(self.partial_concepts),
             conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
         )

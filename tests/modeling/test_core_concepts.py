@@ -3,7 +3,6 @@ from trilogy.core.enums import Purpose
 from trilogy import parse, Executor
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
 import pytest
 
 
@@ -77,15 +76,17 @@ def test_source_outputs(test_environment: Environment, test_executor: Executor):
         elif col.alias == "product_id":
             assert not col.is_complete
 
-    x = gen_select_node(
-        test_environment.concepts["store_id"],
-        local_optional=[test_environment.concepts["order_id"]],
-        environment=test_environment,
-        g=generate_graph(test_environment),
-        depth=0,
-        accept_partial=True,
-        source_concepts=search_concepts,
-    )
+    x = [
+        x
+        for x in gen_select_node(
+            test_environment.concepts["store_id"],
+            local_optional=[test_environment.concepts["order_id"]],
+            environment=test_environment,
+            g=generate_graph(test_environment),
+            depth=0,
+            accept_partial=True,
+        ).parents
+    ][0]
 
     found = False
     for con in x.partial_concepts:

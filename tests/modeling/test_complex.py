@@ -133,7 +133,7 @@ def test_window_clone(test_environment: Environment, test_executor: Executor):
         order_id,
     WHERE
         order_id in filtered
-    order by filtered asc
+    order by filtered asc, order_id asc
     ;"""
     _, statements = parse(test_select, test_environment)
 
@@ -147,7 +147,7 @@ def test_window_alt(test_environment: Environment, test_executor: Executor):
     test_select = """
     auto nums <- unnest([1,2]);
 
-    auto filtered <- rank nums;
+    auto filtered <- row_number nums;
 
     SELECT
         filtered

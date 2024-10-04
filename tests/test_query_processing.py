@@ -26,22 +26,19 @@ def test_get_datasource_from_window_function(
     product_rank = test_environment.concepts["product_revenue_rank"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     # assert product_rank.grain.components[0] == test_environment.concepts['name']
-    datasource = search_concepts(
+    node = search_concepts(
         [product_rank] + product_rank.grain.components_copy,
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
-    ).resolve()
+    )
+
+    # raise SyntaxError(product_rank.grain)
+    datasource = node.resolve()
     assert product_rank in datasource.output_concepts
     # assert datasource.grain == product_rank.grain
     assert isinstance(datasource, QueryDatasource)
-    assert (
-        datasource.grain.set
-        == Grain(
-            components=[test_environment.concepts["total_revenue"]]
-            + product_rank.grain.components_copy
-        ).set
-    )
+    assert datasource.grain.set == product_rank.grain.set
 
     product_rank_by_category = test_environment.concepts[
         "product_revenue_rank_by_category"
@@ -82,6 +79,9 @@ def test_get_datasource_for_filter(
 
 
 def test_select_output(test_environment, test_environment_graph):
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 

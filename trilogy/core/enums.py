@@ -119,6 +119,7 @@ class FunctionType(Enum):
     CONSTANT = "constant"
     COALESCE = "coalesce"
     IS_NULL = "isnull"
+    BOOL = "bool"
 
     # COMPLEX
     INDEX_ACCESS = "index_access"

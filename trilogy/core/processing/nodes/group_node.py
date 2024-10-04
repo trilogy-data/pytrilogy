@@ -41,7 +41,9 @@ class GroupNode(StrategyNode):
         nullable_concepts: Optional[List[Concept]] = None,
         force_group: bool | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
+        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         existence_concepts: List[Concept] | None = None,
+        hidden_concepts: List[Concept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -56,6 +58,8 @@ class GroupNode(StrategyNode):
             force_group=force_group,
             conditions=conditions,
             existence_concepts=existence_concepts,
+            preexisting_conditions=preexisting_conditions,
+            hidden_concepts=hidden_concepts,
         )
 
     def _resolve(self) -> QueryDatasource:
@@ -63,23 +67,18 @@ class GroupNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
 
-        grain = concept_list_to_grain(self.output_concepts, [])
+        grain = self.grain or concept_list_to_grain(self.output_concepts, [])
         comp_grain = Grain()
         for source in parent_sources:
             comp_grain += source.grain
 
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if (
-            comp_grain == grain
-            and self.output_lcl == self.input_lcl
-            and self.force_group is not True
-        ):
+        if comp_grain == grain and self.force_group is not True:
             # if there is no group by, and inputs equal outputs
             # return the parent
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Output of group by node equals input of group by node"
-                f" {self.output_lcl}"
+                f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output"
                 f" grains {comp_grain} and {grain}"
             )
             if (
@@ -88,7 +87,7 @@ class GroupNode(StrategyNode):
                 == self.output_lcl
             ) and isinstance(parent_sources[0], QueryDatasource):
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required, returning parent node"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required as inputs match outputs of parent; returning parent node"
                 )
                 will_return: QueryDatasource = parent_sources[0]
                 if self.conditions:
@@ -99,21 +98,19 @@ class GroupNode(StrategyNode):
         else:
 
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different output than input, forcing group"
-                f" {self.input_lcl}"
-                " vs"
-                f" {self.output_lcl}"
-                " and"
+                f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different grain than parents; forcing group"
                 f" upstream grains {[str(source.grain) for source in parent_sources]}"
-                " vs"
+                f" with final grain {comp_grain} vs"
                 f" target grain {grain}"
             )
-            for parent in parent_sources:
+            for parent in self.parents:
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Parent node"
-                    f" {[c.address for c in parent.output_concepts]}"
+                    f" {[c.address for c in parent.output_concepts[:2]]}... has"
                     " grain"
                     f" {parent.grain}"
+                    f" resolved grain {parent.resolve().grain}"
+                    f" {type(parent)}"
                 )
             source_type = SourceType.GROUP
         source_map = resolve_concept_map(
@@ -144,6 +141,7 @@ class GroupNode(StrategyNode):
             grain=grain,
             partial_concepts=self.partial_concepts,
             nullable_concepts=nullable_concepts,
+            hidden_concepts=self.hidden_concepts,
             condition=self.conditions,
         )
         # if there is a condition on a group node and it's not scalar
@@ -167,6 +165,7 @@ class GroupNode(StrategyNode):
                 nullable_concepts=base.nullable_concepts,
                 partial_concepts=self.partial_concepts,
                 condition=self.conditions,
+                hidden_concepts=self.hidden_concepts,
             )
         return base
 
@@ -183,5 +182,7 @@ class GroupNode(StrategyNode):
             nullable_concepts=list(self.nullable_concepts),
             force_group=self.force_group,
             conditions=self.conditions,
+            preexisting_conditions=self.preexisting_conditions,
             existence_concepts=list(self.existence_concepts),
+            hidden_concepts=list(self.hidden_concepts),
         )

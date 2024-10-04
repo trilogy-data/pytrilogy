@@ -432,6 +432,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     grain: "Grain" = Field(default=None, validate_default=True)
     modifiers: Optional[List[Modifier]] = Field(default_factory=list)
     pseudonyms: Dict[str, Concept] = Field(default_factory=dict)
+    _address_cache: str | None = None
 
     def __hash__(self):
         return hash(str(self))
@@ -558,9 +559,19 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         grain = ",".join([str(c.address) for c in self.grain.components])
         return f"{self.namespace}.{self.name}<{grain}>"
 
-    @cached_property
+    @property
     def address(self) -> str:
-        return f"{self.namespace}.{self.name}"
+        if not self._address_cache:
+            self._address_cache = f"{self.namespace}.{self.name}"
+        return self._address_cache
+
+    @address.setter
+    def address(self, address: str) -> None:
+        self._address_cache = address
+
+    def set_name(self, name: str):
+        self.name = name
+        self.address = f"{self.namespace}.{self.name}"
 
     @property
     def output(self) -> "Concept":
@@ -905,7 +916,13 @@ class Grain(Mergeable, BaseModel):
 
     @cached_property
     def set(self):
-        return set([c.address for c in self.components_copy])
+        base = []
+        for x in self.components_copy:
+            if x.derivation == PurposeLineage.ROWSET:
+                base.append(x.lineage.content.address)
+            else:
+                base.append(x.address)
+        return set(base)
 
     def __eq__(self, other: object):
         if isinstance(other, list):
@@ -1555,6 +1572,10 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
             items=[x.with_merge(source, target, modifiers) for x in self.items]
         )
 
+    @property
+    def concept_arguments(self):
+        return [x.expr for x in self.items]
+
 
 class RawSQLStatement(BaseModel):
     text: str
@@ -1566,6 +1587,13 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
+    def refresh_bindings(self, environment: Environment):
+        for item in self.selection:
+            if isinstance(item.content, Concept):
+                item.content = environment.concepts[item.content.address].with_grain(
+                    self.grain
+                )
 
     def __str__(self):
         from trilogy.parsing.render import render_query
@@ -1604,6 +1632,14 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             ),
             limit=self.limit,
         )
+
+    @property
+    def locally_derived(self) -> set[str]:
+        locally_derived: set[str] = set()
+        for item in self.selection:
+            if isinstance(item.content, ConceptTransform):
+                locally_derived.add(item.content.output.address)
+        return locally_derived
 
     @property
     def input_components(self) -> List[Concept]:
@@ -1655,11 +1691,22 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
         address: Address,
         grain: Grain | None = None,
     ) -> Datasource:
+        if self.where_clause or self.having_clause:
+            modifiers = [Modifier.PARTIAL]
+        else:
+            modifiers = []
         columns = [
             # TODO: replace hardcoded replacement here
-            ColumnAssignment(alias=c.address.replace(".", "_"), concept=c)
+            # if the concept is a locally derived concept, it cannot ever be partial
+            # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
+            ColumnAssignment(
+                alias=c.address.replace(".", "_"),
+                concept=c,
+                modifiers=modifiers if c.address not in self.locally_derived else [],
+            )
             for c in self.output_components
         ]
+
         new_datasource = Datasource(
             identifier=identifier,
             address=address,
@@ -1785,6 +1832,10 @@ class MultiSelectStatement(SelectTypeMixin, Mergeable, Namespaced, BaseModel):
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
+    def refresh_bindings(self, environment: Environment):
+        for select in self.selects:
+            select.refresh_bindings(environment)
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
@@ -2255,14 +2306,11 @@ class BaseJoin(BaseModel):
     def __str__(self):
         if self.concept_pairs:
             return (
-                f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
-                f" {self.right_datasource.identifier} on"
+                f"{self.join_type.value} on"
                 f" {','.join([str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
             )
         return (
-            f"{self.join_type.value} JOIN {self.left_datasource.identifier} and"
-            f" {self.right_datasource.identifier} on"
-            f" {','.join([str(k) for k in self.concepts])}"
+            f"{self.join_type.value} on" f" {','.join([str(k) for k in self.concepts])}"
         )
 
 
@@ -2395,10 +2443,6 @@ class QueryDatasource(BaseModel):
             raise SyntaxError(
                 "Can only merge two query datasources with identical grain"
             )
-        if not self.source_type == other.source_type:
-            raise SyntaxError(
-                "Can only merge two query datasources with identical source type"
-            )
         if not self.group_required == other.group_required:
             raise SyntaxError(
                 "can only merge two datasources if the group required flag is the same"
@@ -2437,9 +2481,7 @@ class QueryDatasource(BaseModel):
             final_source_map[k] = set(merged_datasources[x.full_name] for x in list(v))
         self_hidden = self.hidden_concepts or []
         other_hidden = other.hidden_concepts or []
-        hidden = [
-            x for x in self_hidden if x.address in [y.address for y in other_hidden]
-        ]
+        hidden = [x for x in self_hidden if x.address in other_hidden]
         qds = QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -2609,7 +2651,7 @@ class CTE(BaseModel):
 
     @property
     def comment(self) -> str:
-        base = f"Target: {str(self.grain)}."
+        base = f"Target: {str(self.grain)}. Group: {self.group_to_grain}"
         base += f" Source: {self.source.source_type}."
         if self.parent_ctes:
             base += f" References: {', '.join([x.name for x in self.parent_ctes])}."
@@ -2621,6 +2663,8 @@ class CTE(BaseModel):
             )
         base += f"\n-- Source Map: {self.source_map}."
         base += f"\n-- Output: {', '.join([str(x) for x in self.output_columns])}."
+        if self.source.input_concepts:
+            base += f"\n-- Inputs: {', '.join([str(x) for x in self.source.input_concepts])}."
         if self.hidden_concepts:
             base += f"\n-- Hidden: {', '.join([str(x) for x in self.hidden_concepts])}."
         if self.nullable_concepts:
@@ -2697,7 +2741,7 @@ class CTE(BaseModel):
             raise ValueError(error)
         mutually_hidden = []
         for concept in self.hidden_concepts:
-            if concept in other.hidden_concepts:
+            if concept.address in other.hidden_concepts:
                 mutually_hidden.append(concept)
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
@@ -2797,37 +2841,23 @@ class CTE(BaseModel):
 
     @property
     def group_concepts(self) -> List[Concept]:
+        def check_is_not_in_group(c: Concept):
+            if len(self.source_map.get(c.address, [])) > 0:
+                return False
+            if c.derivation == PurposeLineage.ROWSET:
+                return False
+            if c.derivation == PurposeLineage.CONSTANT:
+                return False
+            if c.purpose == Purpose.METRIC:
+                return True
+            elif c.derivation == PurposeLineage.BASIC and c.lineage:
+                if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
+                    return True
+            return False
+
         return (
             unique(
-                self.grain.components
-                + [
-                    c
-                    for c in self.output_columns
-                    if c.purpose in (Purpose.PROPERTY, Purpose.KEY)
-                    and c.address not in [x.address for x in self.grain.components]
-                ]
-                + [
-                    c
-                    for c in self.output_columns
-                    if c.purpose == Purpose.METRIC
-                    and (
-                        any(
-                            [
-                                c.with_grain(cte.grain) in cte.output_columns
-                                for cte in self.parent_ctes
-                            ]
-                        )
-                        # if we have this metric from a source
-                        # it isn't derived here and must be grouped on
-                        or len(self.source_map[c.address]) > 0
-                    )
-                ]
-                + [
-                    c
-                    for c in self.output_columns
-                    if c.purpose == Purpose.CONSTANT
-                    and self.source_map[c.address] != []
-                ],
+                [c for c in self.output_columns if not check_is_not_in_group(c)],
                 "address",
             )
             if self.group_to_grain
@@ -3390,6 +3420,18 @@ class Environment(BaseModel):
     ):
 
         self.datasources[datasource.env_label] = datasource
+        for column in datasource.columns:
+            current_concept = column.concept
+            current_derivation = current_concept.derivation
+            if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
+                new_concept = current_concept.model_copy(deep=True)
+                new_concept.set_name("_pre_persist_" + current_concept.name)
+                # remove the associated lineage
+                current_concept.lineage = None
+                self.add_concept(new_concept, meta=meta, force=True)
+                self.add_concept(current_concept, meta=meta, force=True)
+                self.merge_concept(new_concept, current_concept, [])
+
         self.gen_concept_list_caches()
         return datasource
 

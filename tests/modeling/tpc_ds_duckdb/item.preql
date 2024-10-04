@@ -9,6 +9,10 @@ property id.category string?;
 property id.current_price float?;
 property id.class string?;
 property id.desc string?;
+property id.color string;
+property id.manager_id int?;
+property id.size string;
+property id.units string?;
 
 datasource items (
     I_ITEM_SK: id,
@@ -20,6 +24,10 @@ datasource items (
     I_CATEGORY: category,
     I_CLASS: class,
     I_CURRENT_PRICE: current_price,
+    I_COLOR: color,
+    I_MANAGER_ID: manager_id,
+    I_SIZE: size,
+    I_UNITS: units,
 )
 grain (id)
 address memory.item;
