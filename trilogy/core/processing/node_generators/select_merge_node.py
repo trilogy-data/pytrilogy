@@ -40,7 +40,7 @@ def get_graph_partial_nodes(g: nx.DiGraph) -> dict[str, list[str]]:
     return partial
 
 
-def get_graph_grain_length(g) -> dict[str, int]:
+def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
     datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
     partial: dict[str, int] = {}
     for node in g.nodes:
