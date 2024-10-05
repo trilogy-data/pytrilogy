@@ -814,14 +814,19 @@ class ParseToObjects(Transformer):
                 raise ImportError(f"Unable to import file {target}, parsing error: {e}")
 
         for _, concept in nparser.environment.concepts.items():
-            self.environment.add_concept(concept.with_namespace(alias))
+            self.environment.add_concept(
+                concept.with_namespace(alias), _ignore_cache=True
+            )
 
         for _, datasource in nparser.environment.datasources.items():
-            self.environment.add_datasource(datasource.with_namespace(alias))
+            self.environment.add_datasource(
+                datasource.with_namespace(alias), _ignore_cache=True
+            )
         imps = ImportStatement(
             alias=alias, path=Path(args[0]), environment=nparser.environment
         )
         self.environment.imports[alias] = imps
+        self.environment.gen_concept_list_caches()
         return imps
 
     @v_args(meta=True)

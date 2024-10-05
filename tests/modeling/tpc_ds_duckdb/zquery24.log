@@ -1,12 +1,12 @@
 query_id = 24
-parse_time = 15.48403
-exec_time = 0.431638
-comp_time = 0.361111
-gen_length = 5663
+parse_time = 4.16905
+exec_time = 1.201754
+comp_time = 1.147809
+gen_length = 5680
 generated_sql = """
 
 WITH 
-finch as (
+parakeet as (
 SELECT
     store_sales.\"SS_NET_PAID\" as \"store_sales_net_paid\",
     store.\"S_MARKET_ID\" as \"store_sales_store_market\",
@@ -29,95 +29,95 @@ SELECT
     items.\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     LEFT OUTER JOIN memory.store_returns as store_returns on store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\"
     INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
     store.\"S_MARKET_ID\" = 8 and customers.\"C_BIRTH_COUNTRY\" != UPPER(customer_address.\"CA_COUNTRY\")  and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store.\"S_ZIP\" = customer_address.\"CA_ZIP\"
 ),
-sordid as (
+fossa as (
 SELECT
-    sum(finch.\"store_sales_net_paid\") as \"net_paid\",
-    finch.\"store_sales_item_color\" as \"store_sales_item_color\",
-    finch.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    finch.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    finch.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    finch.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
-    finch.\"store_sales_store_name\" as \"store_sales_store_name\",
-    finch.\"store_sales_item_size\" as \"store_sales_item_size\",
-    finch.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    finch.\"store_sales_store_state\" as \"store_sales_store_state\",
-    finch.\"store_sales_item_units\" as \"store_sales_item_units\"
+    sum(parakeet.\"store_sales_net_paid\") as \"net_paid\",
+    parakeet.\"store_sales_item_color\" as \"store_sales_item_color\",
+    parakeet.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    parakeet.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
+    parakeet.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
+    parakeet.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
+    parakeet.\"store_sales_store_name\" as \"store_sales_store_name\",
+    parakeet.\"store_sales_item_size\" as \"store_sales_item_size\",
+    parakeet.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    parakeet.\"store_sales_store_state\" as \"store_sales_store_state\",
+    parakeet.\"store_sales_item_units\" as \"store_sales_item_units\"
 FROM
-    finch
+    parakeet
 GROUP BY 
-    finch.\"store_sales_item_color\",
-    finch.\"store_sales_item_current_price\",
-    finch.\"store_sales_customer_last_name\",
-    finch.\"store_sales_customer_first_name\",
-    finch.\"store_sales_item_size\",
-    finch.\"store_sales_customer_state\",
-    finch.\"store_sales_store_name\",
-    finch.\"store_sales_item_units\",
-    finch.\"store_sales_item_manager_id\",
-    finch.\"store_sales_store_state\"),
-fabulous as (
+    parakeet.\"store_sales_store_name\",
+    parakeet.\"store_sales_customer_state\",
+    parakeet.\"store_sales_customer_last_name\",
+    parakeet.\"store_sales_customer_first_name\",
+    parakeet.\"store_sales_store_state\",
+    parakeet.\"store_sales_item_current_price\",
+    parakeet.\"store_sales_item_size\",
+    parakeet.\"store_sales_item_manager_id\",
+    parakeet.\"store_sales_item_color\",
+    parakeet.\"store_sales_item_units\"),
+rook as (
 SELECT
-    sordid.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    sordid.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    sordid.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
-    sordid.\"store_sales_store_state\" as \"su_store_sales_store_state\",
-    sordid.\"store_sales_store_name\" as \"su_store_sales_store_name\",
-    sordid.\"store_sales_item_color\" as \"su_store_sales_item_color\",
-    sordid.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
-    sordid.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
-    sordid.\"store_sales_item_units\" as \"su_store_sales_item_units\",
-    sordid.\"store_sales_item_size\" as \"su_store_sales_item_size\",
-    sordid.\"net_paid\" as \"su_net_paid\"
+    fossa.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    fossa.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    fossa.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
+    fossa.\"store_sales_store_state\" as \"su_store_sales_store_state\",
+    fossa.\"store_sales_store_name\" as \"su_store_sales_store_name\",
+    fossa.\"store_sales_item_color\" as \"su_store_sales_item_color\",
+    fossa.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
+    fossa.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
+    fossa.\"store_sales_item_units\" as \"su_store_sales_item_units\",
+    fossa.\"store_sales_item_size\" as \"su_store_sales_item_size\",
+    fossa.\"net_paid\" as \"su_net_paid\"
 FROM
-    sordid),
-budgie as (
+    fossa),
+waggish as (
 SELECT
-    CASE WHEN fabulous.\"su_store_sales_item_color\" = 'peach' THEN fabulous.\"su_net_paid\" ELSE NULL END as \"_virtual_5818638680298942\",
-    fabulous.\"su_net_paid\" as \"su_net_paid\",
-    fabulous.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    fabulous.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    fabulous.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+    CASE WHEN rook.\"su_store_sales_item_color\" = 'peach' THEN rook.\"su_net_paid\" ELSE NULL END as \"_virtual_5818638680298942\",
+    rook.\"su_net_paid\" as \"su_net_paid\",
+    rook.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    rook.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    rook.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
-    fabulous),
-elegant as (
+    rook),
+cheetah as (
 SELECT
-    fabulous.\"su_net_paid\" as \"su_net_paid\",
+    rook.\"su_net_paid\" as \"su_net_paid\",
     1 as \"__preql_internal_all_rows\"
 FROM
-    fabulous),
-quail as (
+    rook),
+cuckoo as (
 SELECT
-    sum(budgie.\"_virtual_5818638680298942\") as \"peach_sales\",
-    budgie.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    budgie.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    budgie.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+    sum(waggish.\"_virtual_5818638680298942\") as \"peach_sales\",
+    waggish.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    waggish.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    waggish.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
-    budgie
+    waggish
 GROUP BY 
-    budgie.\"su_store_sales_customer_first_name\",
-    budgie.\"su_store_sales_customer_last_name\",
-    budgie.\"su_store_sales_store_name\"),
-chickadee as (
+    waggish.\"su_store_sales_customer_last_name\",
+    waggish.\"su_store_sales_customer_first_name\",
+    waggish.\"su_store_sales_store_name\"),
+loon as (
 SELECT
-    avg(elegant.\"su_net_paid\") as \"avg_store_customer_sales\"
+    avg(cheetah.\"su_net_paid\") as \"avg_store_customer_sales\"
 FROM
-    elegant)
+    cheetah)
 SELECT
-    quail.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    quail.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    quail.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    quail.\"peach_sales\" as \"peach_sales\"
+    cuckoo.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    cuckoo.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    cuckoo.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    cuckoo.\"peach_sales\" as \"peach_sales\"
 FROM
-    quail
-    FULL JOIN chickadee on 1=1
+    cuckoo
+    FULL JOIN loon on 1=1
 WHERE
-    quail.\"peach_sales\" > 0.05 * chickadee.\"avg_store_customer_sales\"
+    cuckoo.\"peach_sales\" > 0.05 * loon.\"avg_store_customer_sales\"
 """
