@@ -559,19 +559,16 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         grain = ",".join([str(c.address) for c in self.grain.components])
         return f"{self.namespace}.{self.name}<{grain}>"
 
-    @property
+    @cached_property
     def address(self) -> str:
-        if not self._address_cache:
-            self._address_cache = f"{self.namespace}.{self.name}"
-        return self._address_cache
-
-    @address.setter
-    def address(self, address: str) -> None:
-        self._address_cache = address
+        return f"{self.namespace}.{self.name}"
 
     def set_name(self, name: str):
         self.name = name
-        self.address = f"{self.namespace}.{self.name}"
+        try:
+            del self.address
+        except AttributeError:
+            pass
 
     @property
     def output(self) -> "Concept":
@@ -3260,23 +3257,13 @@ class Environment(BaseModel):
         for datasource in self.datasources.values():
             for concept in datasource.output_concepts:
                 concrete_addresses.add(concept.address)
-        current_mat = [x.address for x in self.materialized_concepts]
         self.materialized_concepts = [
             c for c in self.concepts.values() if c.address in concrete_addresses
-        ]
-        # include aliased concepts
-        self.materialized_concepts += [
+        ] + [
             c
             for c in self.alias_origin_lookup.values()
             if c.address in concrete_addresses
         ]
-        new = [
-            x.address
-            for x in self.materialized_concepts
-            if x.address not in current_mat
-        ]
-        if new:
-            logger.debug(f"Environment added new materialized concepts {new}")
 
     def validate_concept(self, lookup: str, meta: Meta | None = None):
         existing: Concept = self.concepts.get(lookup)  # type: ignore
@@ -3400,6 +3387,7 @@ class Environment(BaseModel):
         meta: Meta | None = None,
         force: bool = False,
         add_derived: bool = True,
+        _ignore_cache: bool = False,
     ):
         if not force:
             self.validate_concept(concept.address, meta=meta)
@@ -3410,13 +3398,15 @@ class Environment(BaseModel):
         from trilogy.core.environment_helpers import generate_related_concepts
 
         generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
-        self.gen_concept_list_caches()
+        if not _ignore_cache:
+            self.gen_concept_list_caches()
         return concept
 
     def add_datasource(
         self,
         datasource: Datasource,
         meta: Meta | None = None,
+        _ignore_cache: bool = False,
     ):
 
         self.datasources[datasource.env_label] = datasource
@@ -3428,11 +3418,13 @@ class Environment(BaseModel):
                 new_concept.set_name("_pre_persist_" + current_concept.name)
                 # remove the associated lineage
                 current_concept.lineage = None
-                self.add_concept(new_concept, meta=meta, force=True)
-                self.add_concept(current_concept, meta=meta, force=True)
+                self.add_concept(new_concept, meta=meta, force=True, _ignore_cache=True)
+                self.add_concept(
+                    current_concept, meta=meta, force=True, _ignore_cache=True
+                )
                 self.merge_concept(new_concept, current_concept, [])
-
-        self.gen_concept_list_caches()
+        if not _ignore_cache:
+            self.gen_concept_list_caches()
         return datasource
 
     def delete_datasource(

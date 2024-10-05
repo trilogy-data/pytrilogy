@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 13.598738
-exec_time = 0.207679
-comp_time = 0.143978
-gen_length = 2475
+parse_time = 1.960155
+exec_time = 0.132721
+comp_time = 0.268201
+gen_length = 2524
 generated_sql = """
 
 WITH 
-premium as (
+flamingo as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-eminent as (
+quizzical as (
 SELECT
-    sum(premium.\"cs_extra_sales_price\") as \"revenue\",
-    premium.\"cs_item_category\" as \"cs_item_category\",
-    premium.\"cs_item_class\" as \"cs_item_class\",
-    premium.\"cs_item_current_price\" as \"cs_item_current_price\",
-    premium.\"cs_item_desc\" as \"cs_item_desc\",
-    premium.\"cs_item_name\" as \"cs_item_name\"
+    sum(flamingo.\"cs_extra_sales_price\") as \"revenue\",
+    flamingo.\"cs_item_category\" as \"cs_item_category\",
+    flamingo.\"cs_item_class\" as \"cs_item_class\",
+    flamingo.\"cs_item_current_price\" as \"cs_item_current_price\",
+    flamingo.\"cs_item_desc\" as \"cs_item_desc\",
+    flamingo.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    premium
+    flamingo
 GROUP BY 
-    premium.\"cs_item_name\",
-    premium.\"cs_item_class\",
-    premium.\"cs_item_desc\",
-    premium.\"cs_item_category\",
-    premium.\"cs_item_current_price\"),
-civet as (
+    flamingo.\"cs_item_category\",
+    flamingo.\"cs_item_name\",
+    flamingo.\"cs_item_desc\",
+    flamingo.\"cs_item_current_price\",
+    flamingo.\"cs_item_class\"),
+martin as (
 SELECT
-    sum(eminent.\"revenue\") over (partition by eminent.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    eminent.\"revenue\" as \"revenue\",
-    eminent.\"cs_item_class\" as \"cs_item_class\",
-    eminent.\"cs_item_name\" as \"cs_item_name\",
-    eminent.\"cs_item_desc\" as \"cs_item_desc\",
-    eminent.\"cs_item_category\" as \"cs_item_category\",
-    eminent.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(quizzical.\"revenue\") over (partition by quizzical.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    quizzical.\"revenue\" as \"revenue\",
+    quizzical.\"cs_item_class\" as \"cs_item_class\",
+    quizzical.\"cs_item_name\" as \"cs_item_name\",
+    quizzical.\"cs_item_desc\" as \"cs_item_desc\",
+    quizzical.\"cs_item_category\" as \"cs_item_category\",
+    quizzical.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    eminent)
+    quizzical)
 SELECT
-    civet.\"cs_item_name\" as \"cs_item_name\",
-    civet.\"cs_item_desc\" as \"cs_item_desc\",
-    civet.\"cs_item_category\" as \"cs_item_category\",
-    civet.\"cs_item_class\" as \"cs_item_class\",
-    civet.\"cs_item_current_price\" as \"cs_item_current_price\",
-    civet.\"revenue\" as \"revenue\",
-    civet.\"revenue\" * 100.0 / civet.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    martin.\"cs_item_name\" as \"cs_item_name\",
+    martin.\"cs_item_desc\" as \"cs_item_desc\",
+    martin.\"cs_item_category\" as \"cs_item_category\",
+    martin.\"cs_item_class\" as \"cs_item_class\",
+    martin.\"cs_item_current_price\" as \"cs_item_current_price\",
+    martin.\"revenue\" as \"revenue\",
+    martin.\"revenue\" * 100.0 / martin.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    civet
+    martin
 ORDER BY 
-    civet.\"cs_item_category\" asc nulls first,
-    civet.\"cs_item_class\" asc nulls first,
-    civet.\"cs_item_name\" asc nulls first,
-    civet.\"cs_item_desc\" asc nulls first,
-    civet.\"revenue\" * 100.0 / civet.\"_virtual_8479147315262044\" asc nulls first
+    martin.\"cs_item_category\" asc nulls first,
+    martin.\"cs_item_class\" asc nulls first,
+    martin.\"cs_item_name\" asc nulls first,
+    martin.\"cs_item_desc\" asc nulls first,
+    martin.\"revenue\" * 100.0 / martin.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""
