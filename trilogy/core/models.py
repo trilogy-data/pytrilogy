@@ -3272,16 +3272,26 @@ class Environment(BaseModel):
             if c.address in concrete_addresses
         ]
 
-    def validate_concept(self, lookup: str, meta: Meta | None = None):
+    def validate_concept(self, new_concept:Concept, meta: Meta | None = None):
+        lookup = new_concept.address
         existing: Concept = self.concepts.get(lookup)  # type: ignore
         if not existing:
             return
-        elif existing and self.environment_config.allow_duplicate_declaration:
+        # if exist
+
+        if existing and self.environment_config.allow_duplicate_declaration:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                logger.info(f"Persisted output {existing.address}")
+                
+                alt_source = self.concepts.get(f'{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{new_concept.name}')
+        
+                if str(alt_source.lineage) == str(new_concept.lineage):
+                    raise SyntaxError
+                    logger.info(f"Persisted output {existing.address} found matching input")
+                    return existing
                 # TODO: validate the alternative source matches the new one
                 # if there's a new value that is different, remove/clean up the persisted
-                return existing
+                logger.info(f"Persisted output {existing.address} found, but does not match redeclaration - overwriting.")
+                return None
             return
         elif existing.metadata:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
@@ -3404,9 +3414,8 @@ class Environment(BaseModel):
         add_derived: bool = True,
         _ignore_cache: bool = False,
     ):
-        print(f"Adding concept {concept.address}")
         if not force:
-            existing = self.validate_concept(concept.address, meta=meta)
+            existing = self.validate_concept(concept, meta=meta)
             if existing:
                 concept = existing
         if concept.namespace == DEFAULT_NAMESPACE:
