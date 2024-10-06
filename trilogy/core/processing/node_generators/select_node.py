@@ -39,9 +39,10 @@ def gen_select_node(
         ]
     )
     if materialized_lcl != all_lcl:
+        missing = all_lcl.difference(materialized_lcl)
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address}"
-            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}) "
+            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing}) "
         )
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")

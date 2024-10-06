@@ -44,6 +44,7 @@ from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
     INTERNAL_NAMESPACE,
     CONSTANT_DATASET,
+    PERSISTED_CONCEPT_PREFIX,
 )
 from trilogy.core.enums import (
     InfiniteFunctionArgs,
@@ -3131,6 +3132,12 @@ class EnvironmentConceptDict(dict):
     def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
 
+    def get(self, key: str, default: Concept | None = None) -> Concept | None:
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
+
     def __getitem__(
         self, key, line_no: int | None = None
     ) -> Concept | UndefinedConcept:
@@ -3270,11 +3277,19 @@ class Environment(BaseModel):
         if not existing:
             return
         elif existing and self.environment_config.allow_duplicate_declaration:
+            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
+                logger.info(f"Persisted output {existing.address}")
+                # TODO: validate the alternative source matches the new one
+                # if there's a new value that is different, remove/clean up the persisted
+                return existing
             return
         elif existing.metadata:
+            if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
+                logger.info(f"Persisted output {existing.address}")
+                return existing
             # if the existing concept is auto derived, we can overwrite it
             if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
-                return
+                return None
         elif meta and existing.metadata:
             raise ValueError(
                 f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
@@ -3389,8 +3404,11 @@ class Environment(BaseModel):
         add_derived: bool = True,
         _ignore_cache: bool = False,
     ):
+        print(f"Adding concept {concept.address}")
         if not force:
-            self.validate_concept(concept.address, meta=meta)
+            existing = self.validate_concept(concept.address, meta=meta)
+            if existing:
+                concept = existing
         if concept.namespace == DEFAULT_NAMESPACE:
             self.concepts[concept.name] = concept
         else:
@@ -3408,14 +3426,18 @@ class Environment(BaseModel):
         meta: Meta | None = None,
         _ignore_cache: bool = False,
     ):
-
         self.datasources[datasource.env_label] = datasource
-        for column in datasource.columns:
-            current_concept = column.concept
+        for current_concept in datasource.output_concepts:
             current_derivation = current_concept.derivation
             if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
                 new_concept = current_concept.model_copy(deep=True)
-                new_concept.set_name("_pre_persist_" + current_concept.name)
+                new_concept.set_name(
+                    f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
+                )
+                # override the current concept source to reflect that it's now coming from a datasource
+                current_concept.metadata.concept_source = (
+                    ConceptSource.PERSIST_STATEMENT
+                )
                 # remove the associated lineage
                 current_concept.lineage = None
                 self.add_concept(new_concept, meta=meta, force=True, _ignore_cache=True)

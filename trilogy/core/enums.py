@@ -12,6 +12,7 @@ class UnnestMode(Enum):
 
 class ConceptSource(Enum):
     MANUAL = "manual"
+    PERSIST_STATEMENT = "persist_statement"
     AUTO_DERIVED = "auto_derived"
 
 
