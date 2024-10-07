@@ -11,6 +11,7 @@ from trilogy.core.models import (
     Concept,
     Environment,
     PersistStatement,
+    ConceptDeclarationStatement,
     SelectStatement,
     MultiSelectStatement,
     CTE,
@@ -393,6 +394,8 @@ def process_auto(
         return process_persist(environment, statement, hooks)
     elif isinstance(statement, SelectStatement):
         return process_query(environment, statement, hooks)
+    elif isinstance(statement, ConceptDeclarationStatement):
+        return None
     raise ValueError(f"Do not know how to process {type(statement)}")
 
 

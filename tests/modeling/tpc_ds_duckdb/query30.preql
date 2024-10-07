@@ -1,0 +1,18 @@
+import web_returns as web_returns;
+
+SELECT 
+    web_returns.customer.text_id,
+    web_returns.customer.salutation,
+    web_returns.customer.first_name,
+    web_returns.customer.last_name,
+    web_returns.customer.preferred_cust_flag,
+    web_returns.customer.birth_day,
+    web_returns.customer.birth_month,
+    web_returns.customer.birth_year,
+    web_returns.customer.birth_country,
+    web_returns.customer.login,
+    web_returns.customer.email_address,
+    web_returns.customer.last_review_date_sk,
+    sum(web_returns.total_returns) by web_returns.customer.text_id -> ctr_total_return
+where
+    web_returns.customer.address.state = 'GA'

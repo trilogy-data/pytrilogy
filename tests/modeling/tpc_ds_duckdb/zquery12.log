@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 0.484297
-exec_time = 0.13084
-comp_time = 0.136884
-gen_length = 2783
+parse_time = 0.889767
+exec_time = 0.129042
+comp_time = 0.249569
+gen_length = 2863
 generated_sql = """
 
 WITH 
-sedate as (
+protective as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"web_sales_item_id\"
 FROM
     memory.web_sales as web_sales
-    INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-gullible as (
+sedate as (
 SELECT
-    sum(sedate.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    sedate.\"web_sales_item_category\" as \"web_sales_item_category\",
-    sedate.\"web_sales_item_class\" as \"web_sales_item_class\",
-    sedate.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    sedate.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    sedate.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(protective.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    protective.\"web_sales_item_category\" as \"web_sales_item_category\",
+    protective.\"web_sales_item_class\" as \"web_sales_item_class\",
+    protective.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    protective.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    protective.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    sedate
+    protective
 GROUP BY 
-    sedate.\"web_sales_item_category\",
-    sedate.\"web_sales_item_current_price\",
-    sedate.\"web_sales_item_class\",
-    sedate.\"web_sales_item_desc\",
-    sedate.\"web_sales_item_name\"),
-ocelot as (
+    protective.\"web_sales_item_current_price\",
+    protective.\"web_sales_item_name\",
+    protective.\"web_sales_item_class\",
+    protective.\"web_sales_item_category\",
+    protective.\"web_sales_item_desc\"),
+chickadee as (
 SELECT
-    sum(gullible.\"itemrevenue\") over (partition by gullible.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    gullible.\"itemrevenue\" as \"itemrevenue\",
-    gullible.\"web_sales_item_class\" as \"web_sales_item_class\",
-    gullible.\"web_sales_item_name\" as \"web_sales_item_name\",
-    gullible.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    gullible.\"web_sales_item_category\" as \"web_sales_item_category\",
-    gullible.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(sedate.\"itemrevenue\") over (partition by sedate.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    sedate.\"itemrevenue\" as \"itemrevenue\",
+    sedate.\"web_sales_item_class\" as \"web_sales_item_class\",
+    sedate.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sedate.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    sedate.\"web_sales_item_category\" as \"web_sales_item_category\",
+    sedate.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    gullible)
+    sedate)
 SELECT
-    ocelot.\"web_sales_item_name\" as \"web_sales_item_name\",
-    ocelot.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    ocelot.\"web_sales_item_category\" as \"web_sales_item_category\",
-    ocelot.\"web_sales_item_class\" as \"web_sales_item_class\",
-    ocelot.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    ocelot.\"itemrevenue\" as \"itemrevenue\",
-    ocelot.\"itemrevenue\" * 100.0 / ocelot.\"_virtual_137720187295635\" as \"revenueratio\"
+    chickadee.\"web_sales_item_name\" as \"web_sales_item_name\",
+    chickadee.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    chickadee.\"web_sales_item_category\" as \"web_sales_item_category\",
+    chickadee.\"web_sales_item_class\" as \"web_sales_item_class\",
+    chickadee.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    chickadee.\"itemrevenue\" as \"itemrevenue\",
+    chickadee.\"itemrevenue\" * 100.0 / chickadee.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    ocelot
+    chickadee
 ORDER BY 
-    ocelot.\"web_sales_item_category\" asc,
-    ocelot.\"web_sales_item_class\" asc,
-    ocelot.\"web_sales_item_name\" asc,
-    ocelot.\"web_sales_item_desc\" asc,
-    ocelot.\"itemrevenue\" * 100.0 / ocelot.\"_virtual_137720187295635\" asc
+    chickadee.\"web_sales_item_category\" asc,
+    chickadee.\"web_sales_item_class\" asc,
+    chickadee.\"web_sales_item_name\" asc,
+    chickadee.\"web_sales_item_desc\" asc,
+    chickadee.\"itemrevenue\" * 100.0 / chickadee.\"_virtual_137720187295635\" asc
 LIMIT (100)"""
