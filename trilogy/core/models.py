@@ -913,7 +913,7 @@ class Grain(Mergeable, BaseModel):
         )
 
     @cached_property
-    def set(self):
+    def set(self) -> set[str]:
         base = []
         for x in self.components_copy:
             if x.derivation == PurposeLineage.ROWSET:
@@ -3264,13 +3264,15 @@ class Environment(BaseModel):
         for datasource in self.datasources.values():
             for concept in datasource.output_concepts:
                 concrete_addresses.add(concept.address)
-        self.materialized_concepts = [
-            c for c in self.concepts.values() if c.address in concrete_addresses
-        ] + [
-            c
-            for c in self.alias_origin_lookup.values()
-            if c.address in concrete_addresses
-        ]
+        self.materialized_concepts = unique(
+            [c for c in self.concepts.values() if c.address in concrete_addresses]
+            + [
+                c
+                for c in self.alias_origin_lookup.values()
+                if c.address in concrete_addresses
+            ],
+            "address",
+        )
 
     def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
         lookup = new_concept.address
@@ -3454,7 +3456,6 @@ class Environment(BaseModel):
     ):
         self.datasources[datasource.env_label] = datasource
         for current_concept in datasource.output_concepts:
-            self.add_concept(current_concept, meta=meta, force=True, _ignore_cache=True)
             current_derivation = current_concept.derivation
             # TODO: refine this section;
             # too hacky for maintainability
@@ -3477,7 +3478,9 @@ class Environment(BaseModel):
                     # to make this a root for discovery purposes
                     # as it now "exists" in a table
                     current_concept.lineage = None
-
+                    self.add_concept(
+                        current_concept, meta=meta, force=True, _ignore_cache=True
+                    )
                     self.merge_concept(new_concept, current_concept, [])
         if not _ignore_cache:
             self.gen_concept_list_caches()

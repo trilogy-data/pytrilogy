@@ -1,12 +1,12 @@
 query_id = 21
-parse_time = 4.792843
-exec_time = 0.124076
-comp_time = 0.041551
-gen_length = 2569
+parse_time = 10.178083
+exec_time = 0.205391
+comp_time = 0.111051
+gen_length = 2521
 generated_sql = """
 
 WITH 
-scrawny as (
+covey as (
 SELECT
     cast(\"D_DATE\" as date) as \"inventory_date_date\",
     items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
@@ -17,56 +17,56 @@ SELECT
     warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
 FROM
     memory.inventory as warehouse_inventory
-    LEFT OUTER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"
-    INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on warehouse_inventory.\"inv_date_sk\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"
+    LEFT OUTER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
 )
 SELECT
-    scrawny.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    scrawny.\"inventory_item_name\" as \"inventory_item_name\",
+    covey.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    covey.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" < cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN scrawny.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    scrawny
+    covey
 GROUP BY 
-    scrawny.\"inventory_item_name\",
-    scrawny.\"inventory_warehouse_name\"
+    covey.\"inventory_item_name\",
+    covey.\"inventory_warehouse_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" < cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN scrawny.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" < cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" < cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN scrawny.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
+	WHEN covey.\"inventory_date_date\" < cast('2000-03-11' as date) THEN covey.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    scrawny.\"inventory_warehouse_name\" asc nulls first,
-    scrawny.\"inventory_item_name\" asc nulls first
+    covey.\"inventory_warehouse_name\" asc nulls first,
+    covey.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

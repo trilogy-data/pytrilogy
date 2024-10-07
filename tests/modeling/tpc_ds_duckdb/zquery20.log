@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 1.571372
-exec_time = 0.318764
-comp_time = 0.191073
-gen_length = 2479
+parse_time = 1.927958
+exec_time = 0.413261
+comp_time = 0.241145
+gen_length = 2530
 generated_sql = """
 
 WITH 
-swallow as (
+canary as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-razorbill as (
+albatross as (
 SELECT
-    sum(swallow.\"cs_extra_sales_price\") as \"revenue\",
-    swallow.\"cs_item_category\" as \"cs_item_category\",
-    swallow.\"cs_item_class\" as \"cs_item_class\",
-    swallow.\"cs_item_current_price\" as \"cs_item_current_price\",
-    swallow.\"cs_item_desc\" as \"cs_item_desc\",
-    swallow.\"cs_item_name\" as \"cs_item_name\"
+    sum(canary.\"cs_extra_sales_price\") as \"revenue\",
+    canary.\"cs_item_category\" as \"cs_item_category\",
+    canary.\"cs_item_class\" as \"cs_item_class\",
+    canary.\"cs_item_current_price\" as \"cs_item_current_price\",
+    canary.\"cs_item_desc\" as \"cs_item_desc\",
+    canary.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    swallow
+    canary
 GROUP BY 
-    swallow.\"cs_item_current_price\",
-    swallow.\"cs_item_name\",
-    swallow.\"cs_item_desc\",
-    swallow.\"cs_item_category\",
-    swallow.\"cs_item_class\"),
-bear as (
+    canary.\"cs_item_class\",
+    canary.\"cs_item_current_price\",
+    canary.\"cs_item_category\",
+    canary.\"cs_item_desc\",
+    canary.\"cs_item_name\"),
+colossal as (
 SELECT
-    sum(razorbill.\"revenue\") over (partition by razorbill.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    razorbill.\"revenue\" as \"revenue\",
-    razorbill.\"cs_item_class\" as \"cs_item_class\",
-    razorbill.\"cs_item_name\" as \"cs_item_name\",
-    razorbill.\"cs_item_desc\" as \"cs_item_desc\",
-    razorbill.\"cs_item_category\" as \"cs_item_category\",
-    razorbill.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(albatross.\"revenue\") over (partition by albatross.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    albatross.\"revenue\" as \"revenue\",
+    albatross.\"cs_item_class\" as \"cs_item_class\",
+    albatross.\"cs_item_name\" as \"cs_item_name\",
+    albatross.\"cs_item_desc\" as \"cs_item_desc\",
+    albatross.\"cs_item_category\" as \"cs_item_category\",
+    albatross.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    razorbill)
+    albatross)
 SELECT
-    bear.\"cs_item_name\" as \"cs_item_name\",
-    bear.\"cs_item_desc\" as \"cs_item_desc\",
-    bear.\"cs_item_category\" as \"cs_item_category\",
-    bear.\"cs_item_class\" as \"cs_item_class\",
-    bear.\"cs_item_current_price\" as \"cs_item_current_price\",
-    bear.\"revenue\" as \"revenue\",
-    bear.\"revenue\" * 100.0 / bear.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    colossal.\"cs_item_name\" as \"cs_item_name\",
+    colossal.\"cs_item_desc\" as \"cs_item_desc\",
+    colossal.\"cs_item_category\" as \"cs_item_category\",
+    colossal.\"cs_item_class\" as \"cs_item_class\",
+    colossal.\"cs_item_current_price\" as \"cs_item_current_price\",
+    colossal.\"revenue\" as \"revenue\",
+    colossal.\"revenue\" * 100.0 / colossal.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    bear
+    colossal
 ORDER BY 
-    bear.\"cs_item_category\" asc nulls first,
-    bear.\"cs_item_class\" asc nulls first,
-    bear.\"cs_item_name\" asc nulls first,
-    bear.\"cs_item_desc\" asc nulls first,
-    bear.\"revenue\" * 100.0 / bear.\"_virtual_8479147315262044\" asc nulls first
+    colossal.\"cs_item_category\" asc nulls first,
+    colossal.\"cs_item_class\" asc nulls first,
+    colossal.\"cs_item_name\" asc nulls first,
+    colossal.\"cs_item_desc\" asc nulls first,
+    colossal.\"revenue\" * 100.0 / colossal.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

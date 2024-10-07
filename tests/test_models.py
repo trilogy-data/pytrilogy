@@ -100,12 +100,16 @@ def test_conditional(test_environment, test_environment_graph):
     merged = condition_a + condition_b
     assert merged == condition_a
 
-    test_concept_two = list(test_environment.concepts.values())[-2]
+    test_concept_two = [
+        x
+        for x in test_environment.concepts.values()
+        if x.address != test_concept.address
+    ].pop()
     condition_c = Conditional(
         left=test_concept, right=test_concept_two, operator=BooleanOperator.AND
     )
     merged_two = condition_a + condition_c
-    assert merged_two.left == condition_a
+    assert merged_two.left == condition_a, f"{str(merged_two.left), str(condition_a)}"
     assert merged_two.right == condition_c
     assert merged_two.operator == BooleanOperator.AND
 

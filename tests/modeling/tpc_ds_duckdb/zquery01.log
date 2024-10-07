@@ -1,12 +1,12 @@
 query_id = 1
-parse_time = 3.55245
-exec_time = 0.213207
-comp_time = 2.450639
-gen_length = 1639
+parse_time = 5.277456
+exec_time = 0.168095
+comp_time = 2.108021
+gen_length = 1632
 generated_sql = """
 
 WITH 
-cockatiel as (
+parakeet as (
 SELECT
     store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
@@ -17,38 +17,38 @@ SELECT
     store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
     memory.store_returns as store_returns
-    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-duck as (
+lion as (
 SELECT
-    sum(cockatiel.\"returns_return_amount\") as \"total_returns\",
-    cockatiel.\"returns_store_id\" as \"returns_store_id\",
-    cockatiel.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(parakeet.\"returns_return_amount\") as \"total_returns\",
+    parakeet.\"returns_store_id\" as \"returns_store_id\",
+    parakeet.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    cockatiel
+    parakeet
 GROUP BY 
-    cockatiel.\"returns_store_id\",
-    cockatiel.\"returns_customer_text_id\"),
-chimpanzee as (
+    parakeet.\"returns_customer_text_id\",
+    parakeet.\"returns_store_id\"),
+thoughtful as (
 SELECT
-    avg(duck.\"total_returns\") as \"avg_store_returns\",
-    duck.\"returns_store_id\" as \"returns_store_id\"
+    avg(lion.\"total_returns\") as \"avg_store_returns\",
+    lion.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    duck
+    lion
 GROUP BY 
-    duck.\"returns_store_id\")
+    lion.\"returns_store_id\")
 SELECT
-    duck.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    lion.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    duck
-    INNER JOIN chimpanzee on duck.\"returns_store_id\" = chimpanzee.\"returns_store_id\"
+    lion
+    INNER JOIN thoughtful on lion.\"returns_store_id\" = thoughtful.\"returns_store_id\"
 WHERE
-    duck.\"total_returns\" > ( 1.2 * chimpanzee.\"avg_store_returns\" )
+    lion.\"total_returns\" > ( 1.2 * thoughtful.\"avg_store_returns\" )
 
 ORDER BY 
-    duck.\"returns_customer_text_id\" asc
+    lion.\"returns_customer_text_id\" asc
 LIMIT (100)"""
