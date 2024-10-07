@@ -1,12 +1,12 @@
 query_id = 21
-parse_time = 0.529132
-exec_time = 0.062951
-comp_time = 0.068462
-gen_length = 2617
+parse_time = 4.792843
+exec_time = 0.124076
+comp_time = 0.041551
+gen_length = 2569
 generated_sql = """
 
 WITH 
-goldfinch as (
+scrawny as (
 SELECT
     cast(\"D_DATE\" as date) as \"inventory_date_date\",
     items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
@@ -24,49 +24,49 @@ WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
 )
 SELECT
-    goldfinch.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    goldfinch.\"inventory_item_name\" as \"inventory_item_name\",
+    scrawny.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    scrawny.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" < cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    goldfinch
+    scrawny
 GROUP BY 
-    goldfinch.\"inventory_item_name\",
-    goldfinch.\"inventory_warehouse_name\"
+    scrawny.\"inventory_item_name\",
+    scrawny.\"inventory_warehouse_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" < cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" < cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" < cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN goldfinch.\"inventory_date_date\" < cast('2000-03-11' as date) THEN goldfinch.\"inventory_quantity_on_hand\"
+	WHEN scrawny.\"inventory_date_date\" < cast('2000-03-11' as date) THEN scrawny.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    goldfinch.\"inventory_warehouse_name\" asc nulls first,
-    goldfinch.\"inventory_item_name\" asc nulls first
+    scrawny.\"inventory_warehouse_name\" asc nulls first,
+    scrawny.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

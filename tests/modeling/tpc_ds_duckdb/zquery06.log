@@ -1,22 +1,22 @@
 query_id = 6
-parse_time = 1.841916
-exec_time = 0.050286
-comp_time = 0.084813
-gen_length = 2745
+parse_time = 4.683413
+exec_time = 0.174561
+comp_time = 0.157207
+gen_length = 2707
 generated_sql = """
 
 WITH 
-highfalutin as (
+human as (
 SELECT
+    items.\"I_ITEM_SK\" as \"item_id\",
     items.\"I_CURRENT_PRICE\" as \"item_current_price\",
-    items.\"I_CATEGORY\" as \"item_category\",
-    items.\"I_ITEM_SK\" as \"item_id\"
+    items.\"I_CATEGORY\" as \"item_category\"
 FROM
     memory.item as items
 WHERE
     items.\"I_CATEGORY\" is not null
 ),
-slow as (
+tanager as (
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -27,9 +27,9 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-resonant as (
+finch as (
 SELECT
-    highfalutin.\"item_category\" as \"item_category\",
+    human.\"item_category\" as \"item_category\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -37,39 +37,39 @@ SELECT
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
-    INNER JOIN highfalutin on store_sales.\"SS_ITEM_SK\" = highfalutin.\"item_id\"
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN human on store_sales.\"SS_ITEM_SK\" = human.\"item_id\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and highfalutin.\"item_category\" is not null
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and human.\"item_category\" is not null
 ),
-fox as (
+tiger as (
 SELECT
-    resonant.\"item_category\" as \"item_category\",
-    resonant.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    resonant.\"store_sales_date_year\" as \"store_sales_date_year\",
-    resonant.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    resonant.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    resonant.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    slow.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    finch.\"item_category\" as \"item_category\",
+    finch.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    finch.\"store_sales_date_year\" as \"store_sales_date_year\",
+    finch.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    finch.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    finch.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    tanager.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    resonant
-    INNER JOIN slow on (resonant.\"item_category\" = slow.\"item_category\" or (resonant.\"item_category\" is null and slow.\"item_category\" is null))
+    finch
+    INNER JOIN tanager on (finch.\"item_category\" = tanager.\"item_category\" or (finch.\"item_category\" is null and tanager.\"item_category\" is null))
 WHERE
-    resonant.\"store_sales_date_year\" = 2001 and resonant.\"store_sales_date_month_of_year\" = 1 and resonant.\"store_sales_item_current_price\" > 1.2 * slow.\"_virtual_6264207893106521\" and resonant.\"item_category\" is not null
+    finch.\"store_sales_date_year\" = 2001 and finch.\"store_sales_date_month_of_year\" = 1 and finch.\"store_sales_item_current_price\" > 1.2 * tanager.\"_virtual_6264207893106521\" and finch.\"item_category\" is not null
 )
 SELECT
-    fox.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(fox.\"store_sales_customer_id\") as \"customer_count\"
+    tiger.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(tiger.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    fox
+    tiger
 GROUP BY 
-    fox.\"store_sales_customer_state\"
+    tiger.\"store_sales_customer_state\"
 HAVING
-    count(fox.\"store_sales_customer_id\") >= 10
+    count(tiger.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(fox.\"store_sales_customer_id\") asc nulls first,
-    fox.\"store_sales_customer_state\" asc nulls first"""
+    count(tiger.\"store_sales_customer_id\") asc nulls first,
+    tiger.\"store_sales_customer_state\" asc nulls first"""

@@ -11,6 +11,7 @@ from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.sql_server import SqlServerDialect
+from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.core.enums import PurposeLineage, ConceptSource
 from trilogy.parser import parse
 from trilogy.core.processing.nodes.select_node_v2 import SelectNode
@@ -31,6 +32,7 @@ TEST_DIALECTS: list[BaseDialect] = [
     BigqueryDialect(),
     DuckDBDialect(),
     SqlServerDialect(),
+    SnowflakeDialect(),
 ]
 
 
@@ -54,6 +56,15 @@ def test_derivations():
     
     select 
     test_upper_case_2;
+
+    persist bool_is_upper_name into upper_name from
+    select
+        test_upper_case_2
+    ;
+
+    select 
+    test_upper_case_2;
+
     """
     env, parsed = parse(declarations)
     for dialect in TEST_DIALECTS:
@@ -162,7 +173,13 @@ def test_derivations_reparse():
                 # force add since we didn't run it
                 if isinstance(processed, ProcessedQueryPersist):
                     env.add_datasource(processed.datasource)
+        env, _ = parse(
+            """    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
 
+    select 
+    test_upper_case_2;""",
+            environment=env,
+        )
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.PERSIST_STATEMENT
@@ -171,8 +188,6 @@ def test_derivations_reparse():
 
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]
-
-
 
 
 def test_derivations_reparse_new():
@@ -196,10 +211,7 @@ def test_derivations_reparse_new():
     select 
     test_upper_case_2;
 
-    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then False else True END;
 
-    select 
-    test_upper_case_2;
 
     """
     env, parsed = parse(declarations)
@@ -217,12 +229,20 @@ def test_derivations_reparse_new():
                 # force add since we didn't run it
                 if isinstance(processed, ProcessedQueryPersist):
                     env.add_datasource(processed.datasource)
+        env, parsed2 = parse(
+            """    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then False else True END;
+    select 
+    test_upper_case_2;""",
+            environment=env,
+        )
 
-        test_concept = env.concepts["test_upper_case_2"]
+        compiled.append(dialect.compile_statement(process_auto(env, parsed[-1])))
+
+        test_concept = env.concepts["local.test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.MANUAL
-        assert test_concept in env.materialized_concepts
-        assert test_concept.derivation == PurposeLineage.ROOT
+        assert test_concept not in env.materialized_concepts
+        assert test_concept.derivation == PurposeLineage.BASIC
 
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" in compiled[-1]

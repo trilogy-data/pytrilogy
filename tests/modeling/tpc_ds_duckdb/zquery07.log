@@ -1,33 +1,33 @@
 query_id = 7
-parse_time = 1.094998
-exec_time = 0.872262
-comp_time = 0.218601
-gen_length = 3916
+parse_time = 3.454519
+exec_time = 0.982342
+comp_time = 0.286115
+gen_length = 3861
 generated_sql = """
 
 WITH 
-vacuous as (
+canary as (
 SELECT
-    store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
-    store_sales.\"SS_PROMO_SK\" as \"store_sales_promotion_id\",
-    store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
-    store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\",
-    store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
     store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\",
+    store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_QUANTITY\" as \"store_sales_quantity\",
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+    store_sales.\"SS_PROMO_SK\" as \"store_sales_promotion_id\",
+    store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\",
+    store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
     store_sales.\"SS_CDEMO_SK\",
-    store_sales.\"SS_SALES_PRICE\",
-    store_sales.\"SS_LIST_PRICE\",
-    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_QUANTITY\",
-    store_sales.\"SS_COUPON_AMT\",
+    store_sales.\"SS_LIST_PRICE\",
+    store_sales.\"SS_SALES_PRICE\",
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_ITEM_SK\",
     store_sales.\"SS_PROMO_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
-charming as (
+    store_sales.\"SS_COUPON_AMT\"),
+lark as (
 SELECT
     items.\"I_ITEM_ID\" as \"store_sales_item_name\",
     customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
@@ -36,50 +36,50 @@ SELECT
     promotion.\"P_CHANNEL_EMAIL\" as \"store_sales_promotion_channel_email\",
     promotion.\"P_CHANNEL_EVENT\" as \"store_sales_promotion_channel_event\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
-    vacuous.\"store_sales_quantity\" as \"store_sales_quantity\",
-    vacuous.\"store_sales_list_price\" as \"store_sales_list_price\",
-    vacuous.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
-    vacuous.\"store_sales_sales_price\" as \"store_sales_sales_price\"
+    canary.\"store_sales_quantity\" as \"store_sales_quantity\",
+    canary.\"store_sales_list_price\" as \"store_sales_list_price\",
+    canary.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
+    canary.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    vacuous
-    INNER JOIN memory.item as items on vacuous.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.promotion as promotion on vacuous.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
-    INNER JOIN memory.customer_demographics as customer_demographics on vacuous.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
-    INNER JOIN memory.date_dim as date on vacuous.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    canary
+    INNER JOIN memory.item as items on canary.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on canary.\"store_sales_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.promotion as promotion on canary.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
+    INNER JOIN memory.customer_demographics as customer_demographics on canary.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
 ),
-komodo as (
+quizzical as (
 SELECT
-    charming.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    charming.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
-    charming.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
-    charming.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
-    charming.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
+    lark.\"store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    lark.\"store_sales_quantity\" as \"filtered_sales_store_sales_quantity\",
+    lark.\"store_sales_list_price\" as \"filtered_sales_store_sales_list_price\",
+    lark.\"store_sales_coupon_amt\" as \"filtered_sales_store_sales_coupon_amt\",
+    lark.\"store_sales_sales_price\" as \"filtered_sales_store_sales_sales_price\"
 FROM
-    charming
+    lark
 GROUP BY 
-    charming.\"store_sales_date_year\",
-    charming.\"store_sales_customer_demographic_gender\",
-    charming.\"store_sales_promotion_channel_event\",
-    charming.\"store_sales_customer_demographic_education_status\",
-    charming.\"store_sales_promotion_channel_email\",
-    charming.\"store_sales_list_price\",
-    charming.\"store_sales_sales_price\",
-    charming.\"store_sales_customer_demographic_marital_status\",
-    charming.\"store_sales_item_name\",
-    charming.\"store_sales_quantity\",
-    charming.\"store_sales_coupon_amt\")
+    lark.\"store_sales_promotion_channel_event\",
+    lark.\"store_sales_customer_demographic_education_status\",
+    lark.\"store_sales_promotion_channel_email\",
+    lark.\"store_sales_coupon_amt\",
+    lark.\"store_sales_sales_price\",
+    lark.\"store_sales_customer_demographic_gender\",
+    lark.\"store_sales_date_year\",
+    lark.\"store_sales_item_name\",
+    lark.\"store_sales_quantity\",
+    lark.\"store_sales_customer_demographic_marital_status\",
+    lark.\"store_sales_list_price\")
 SELECT
-    komodo.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
-    avg(komodo.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
-    avg(komodo.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
-    avg(komodo.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
-    avg(komodo.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
+    quizzical.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
+    avg(quizzical.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",
+    avg(quizzical.\"filtered_sales_store_sales_list_price\") as \"avg_list_price\",
+    avg(quizzical.\"filtered_sales_store_sales_coupon_amt\") as \"avg_coupon_amt\",
+    avg(quizzical.\"filtered_sales_store_sales_sales_price\") as \"avg_sales_price\"
 FROM
-    komodo
+    quizzical
 GROUP BY 
-    komodo.\"filtered_sales_store_sales_item_name\"
+    quizzical.\"filtered_sales_store_sales_item_name\"
 ORDER BY 
-    komodo.\"filtered_sales_store_sales_item_name\" asc
+    quizzical.\"filtered_sales_store_sales_item_name\" asc
 LIMIT (100)"""

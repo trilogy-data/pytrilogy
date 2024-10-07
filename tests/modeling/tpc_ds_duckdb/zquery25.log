@@ -1,12 +1,12 @@
 query_id = 25
-parse_time = 18.570471
-exec_time = 0.460763
-comp_time = 0.106078
-gen_length = 8478
+parse_time = 21.37909
+exec_time = 0.462655
+comp_time = 0.126902
+gen_length = 8649
 generated_sql = """
 
 WITH 
-kestrel as (
+cheetah as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_return_date_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_return_date_year\",
@@ -16,22 +16,22 @@ FROM
 WHERE
     cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" >= 4 and date.\"D_MOY\" <= 10
 ),
-pelican as (
+bewildered as (
 SELECT
-    date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
+    customers.\"C_CUSTOMER_SK\" as \"store_sales_return_customer_id\"
+FROM
+    memory.customer as customers),
+questionable as (
+SELECT
     cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
+    date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
     date.\"D_MOY\" as \"catalog_sales_date_month_of_year\"
 FROM
     memory.date_dim as date
 WHERE
     cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" >= 4 and date.\"D_MOY\" <= 10
 ),
-owl as (
-SELECT
-    customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\"
-FROM
-    memory.customer as customers),
-eminent as (
+round as (
 SELECT
     catalog_sales.\"CS_ITEM_SK\" as \"store_sales_item_id\",
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
@@ -39,20 +39,20 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
+    catalog_sales.\"CS_BILL_CUSTOMER_SK\",
     catalog_sales.\"CS_SOLD_DATE_SK\",
-    catalog_sales.\"CS_ITEM_SK\",
-    catalog_sales.\"CS_BILL_CUSTOMER_SK\"),
-cheerful as (
+    catalog_sales.\"CS_ITEM_SK\"),
+sedate as (
 SELECT
     catalog_sales.\"CS_NET_PROFIT\" as \"catalog_sales_net_profit\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
-    kestrel.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
-    kestrel.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
-    pelican.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
-    pelican.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
-    customers.\"C_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
-    store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    cheetah.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
+    cheetah.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
+    questionable.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    questionable.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
+    bewildered.\"store_sales_return_customer_id\" as \"store_sales_return_customer_id\",
+    customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
     items.\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     items.\"I_ITEM_ID\" as \"store_sales_item_name\",
@@ -62,27 +62,27 @@ SELECT
     items.\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
+    INNER JOIN memory.catalog_sales as catalog_sales on store_sales.\"SS_CUSTOMER_SK\" = catalog_sales.\"CS_BILL_CUSTOMER_SK\" AND store_sales.\"SS_ITEM_SK\" = catalog_sales.\"CS_ITEM_SK\"
+    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     LEFT OUTER JOIN memory.store_returns as store_returns on store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\"
-    INNER JOIN memory.catalog_sales as catalog_sales on store_sales.\"SS_ITEM_SK\" = catalog_sales.\"CS_ITEM_SK\" AND store_sales.\"SS_CUSTOMER_SK\" = catalog_sales.\"CS_BILL_CUSTOMER_SK\"
     INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
-    INNER JOIN owl on store_sales.\"SS_CUSTOMER_SK\" = owl.\"store_sales_customer_id\"
-    LEFT OUTER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
-    LEFT OUTER JOIN kestrel on store_returns.\"SR_RETURNED_DATE_SK\" = kestrel.\"store_sales_return_date_id\"
-    LEFT OUTER JOIN pelican on catalog_sales.\"CS_SOLD_DATE_SK\" = pelican.\"catalog_sales_date_id\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN cheetah on store_returns.\"SR_RETURNED_DATE_SK\" = cheetah.\"store_sales_return_date_id\"
+    LEFT OUTER JOIN bewildered on store_returns.\"SR_CUSTOMER_SK\" = bewildered.\"store_sales_return_customer_id\"
+    LEFT OUTER JOIN questionable on catalog_sales.\"CS_SOLD_DATE_SK\" = questionable.\"catalog_sales_date_id\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 4 and kestrel.\"store_sales_return_date_year\" = 2001 and kestrel.\"store_sales_return_date_month_of_year\" >= 4 and kestrel.\"store_sales_return_date_month_of_year\" <= 10 and pelican.\"catalog_sales_date_year\" = 2001 and pelican.\"catalog_sales_date_month_of_year\" >= 4 and pelican.\"catalog_sales_date_month_of_year\" <= 10 and customers.\"C_CUSTOMER_SK\" = store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 4 and cheetah.\"store_sales_return_date_year\" = 2001 and cheetah.\"store_sales_return_date_month_of_year\" >= 4 and cheetah.\"store_sales_return_date_month_of_year\" <= 10 and questionable.\"catalog_sales_date_year\" = 2001 and questionable.\"catalog_sales_date_month_of_year\" >= 4 and questionable.\"catalog_sales_date_month_of_year\" <= 10 and bewildered.\"store_sales_return_customer_id\" = customers.\"C_CUSTOMER_SK\" and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
-sloppy as (
+cockatoo as (
 SELECT
     store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
-    kestrel.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
-    kestrel.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
-    pelican.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
-    pelican.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
+    cheetah.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
+    cheetah.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
+    questionable.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    questionable.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
     store_sales.\"SS_CUSTOMER_SK\" as \"store_sales_customer_id\",
     CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
@@ -94,61 +94,61 @@ SELECT
     items.\"I_ITEM_SK\" as \"store_sales_item_id\",
     store_returns.\"SR_NET_LOSS\" as \"store_sales_return_net_loss\"
 FROM
-    eminent
-    INNER JOIN memory.store_sales as store_sales on eminent.\"store_sales_item_id\" = store_sales.\"SS_ITEM_SK\" AND eminent.\"store_sales_customer_id\" = store_sales.\"SS_CUSTOMER_SK\"
-    LEFT OUTER JOIN memory.store_returns as store_returns on eminent.\"store_sales_item_id\" = store_returns.\"SR_ITEM_SK\"
-    INNER JOIN memory.item as items on eminent.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
-    INNER JOIN pelican on eminent.\"catalog_sales_date_id\" = pelican.\"catalog_sales_date_id\"
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    round
+    INNER JOIN memory.store_sales as store_sales on round.\"store_sales_item_id\" = store_sales.\"SS_ITEM_SK\" AND round.\"store_sales_customer_id\" = store_sales.\"SS_CUSTOMER_SK\"
+    LEFT OUTER JOIN memory.store_returns as store_returns on round.\"store_sales_item_id\" = store_returns.\"SR_ITEM_SK\"
+    INNER JOIN memory.item as items on round.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN questionable on round.\"catalog_sales_date_id\" = questionable.\"catalog_sales_date_id\"
     INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    LEFT OUTER JOIN cheetah on store_returns.\"SR_RETURNED_DATE_SK\" = cheetah.\"store_sales_return_date_id\"
     LEFT OUTER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
-    LEFT OUTER JOIN kestrel on store_returns.\"SR_RETURNED_DATE_SK\" = kestrel.\"store_sales_return_date_id\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 4 and kestrel.\"store_sales_return_date_year\" = 2001 and kestrel.\"store_sales_return_date_month_of_year\" >= 4 and kestrel.\"store_sales_return_date_month_of_year\" <= 10 and pelican.\"catalog_sales_date_year\" = 2001 and pelican.\"catalog_sales_date_month_of_year\" >= 4 and pelican.\"catalog_sales_date_month_of_year\" <= 10 and customers.\"C_CUSTOMER_SK\" = store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 4 and cheetah.\"store_sales_return_date_year\" = 2001 and cheetah.\"store_sales_return_date_month_of_year\" >= 4 and cheetah.\"store_sales_return_date_month_of_year\" <= 10 and questionable.\"catalog_sales_date_year\" = 2001 and questionable.\"catalog_sales_date_month_of_year\" >= 4 and questionable.\"catalog_sales_date_month_of_year\" <= 10 and customers.\"C_CUSTOMER_SK\" = store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
 ),
-kaput as (
+jackal as (
 SELECT
-    sum(cheerful.\"catalog_sales_net_profit\") as \"catalog_sales_profit\",
-    cheerful.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    cheerful.\"store_sales_item_name\" as \"store_sales_item_name\",
-    cheerful.\"store_sales_store_name\" as \"store_sales_store_name\",
-    cheerful.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
+    sum(sedate.\"catalog_sales_net_profit\") as \"catalog_sales_profit\",
+    sedate.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    sedate.\"store_sales_item_name\" as \"store_sales_item_name\",
+    sedate.\"store_sales_store_name\" as \"store_sales_store_name\",
+    sedate.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
 FROM
-    cheerful
+    sedate
 GROUP BY 
-    cheerful.\"store_sales_item_desc\",
-    cheerful.\"store_sales_store_name\",
-    cheerful.\"store_sales_store_text_id\",
-    cheerful.\"store_sales_item_name\"),
-badger as (
+    sedate.\"store_sales_store_name\",
+    sedate.\"store_sales_item_desc\",
+    sedate.\"store_sales_item_name\",
+    sedate.\"store_sales_store_text_id\"),
+ceaseless as (
 SELECT
-    sum(sloppy.\"store_sales_net_profit\") as \"store_sales_profit\",
-    sloppy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    sloppy.\"store_sales_item_name\" as \"store_sales_item_name\",
-    sloppy.\"store_sales_store_name\" as \"store_sales_store_name\",
-    sloppy.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    sum(sloppy.\"store_sales_return_net_loss\") as \"store_returns_loss\"
+    sum(cockatoo.\"store_sales_net_profit\") as \"store_sales_profit\",
+    cockatoo.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    cockatoo.\"store_sales_item_name\" as \"store_sales_item_name\",
+    cockatoo.\"store_sales_store_name\" as \"store_sales_store_name\",
+    cockatoo.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    sum(cockatoo.\"store_sales_return_net_loss\") as \"store_returns_loss\"
 FROM
-    sloppy
+    cockatoo
 GROUP BY 
-    sloppy.\"store_sales_store_text_id\",
-    sloppy.\"store_sales_item_desc\",
-    sloppy.\"store_sales_item_name\",
-    sloppy.\"store_sales_store_name\")
+    cockatoo.\"store_sales_store_text_id\",
+    cockatoo.\"store_sales_store_name\",
+    cockatoo.\"store_sales_item_desc\",
+    cockatoo.\"store_sales_item_name\")
 SELECT
-    kaput.\"store_sales_item_name\" as \"store_sales_item_name\",
-    kaput.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    kaput.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    kaput.\"store_sales_store_name\" as \"store_sales_store_name\",
-    badger.\"store_sales_profit\" as \"store_sales_profit\",
-    badger.\"store_returns_loss\" as \"store_returns_loss\",
-    kaput.\"catalog_sales_profit\" as \"catalog_sales_profit\"
+    jackal.\"store_sales_item_name\" as \"store_sales_item_name\",
+    jackal.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    jackal.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
+    jackal.\"store_sales_store_name\" as \"store_sales_store_name\",
+    ceaseless.\"store_sales_profit\" as \"store_sales_profit\",
+    ceaseless.\"store_returns_loss\" as \"store_returns_loss\",
+    jackal.\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
-    kaput
-    INNER JOIN badger on (kaput.\"store_sales_item_desc\" = badger.\"store_sales_item_desc\" or (kaput.\"store_sales_item_desc\" is null and badger.\"store_sales_item_desc\" is null)) AND kaput.\"store_sales_item_name\" = badger.\"store_sales_item_name\" AND kaput.\"store_sales_store_name\" = badger.\"store_sales_store_name\" AND kaput.\"store_sales_store_text_id\" = badger.\"store_sales_store_text_id\"
+    jackal
+    INNER JOIN ceaseless on (jackal.\"store_sales_item_desc\" = ceaseless.\"store_sales_item_desc\" or (jackal.\"store_sales_item_desc\" is null and ceaseless.\"store_sales_item_desc\" is null)) AND jackal.\"store_sales_item_name\" = ceaseless.\"store_sales_item_name\" AND jackal.\"store_sales_store_name\" = ceaseless.\"store_sales_store_name\" AND jackal.\"store_sales_store_text_id\" = ceaseless.\"store_sales_store_text_id\"
 ORDER BY 
-    kaput.\"store_sales_item_name\" asc,
-    kaput.\"store_sales_item_desc\" asc,
-    kaput.\"store_sales_store_text_id\" asc,
-    kaput.\"store_sales_store_name\" asc
+    jackal.\"store_sales_item_name\" asc,
+    jackal.\"store_sales_item_desc\" asc,
+    jackal.\"store_sales_store_text_id\" asc,
+    jackal.\"store_sales_store_name\" asc
 LIMIT (100)"""

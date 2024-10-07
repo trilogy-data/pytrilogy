@@ -1,12 +1,12 @@
 query_id = 3
-parse_time = 0.980387
-exec_time = 0.069883
-comp_time = 0.093679
-gen_length = 1347
+parse_time = 27.902962
+exec_time = 0.11212
+comp_time = 0.129462
+gen_length = 1383
 generated_sql = """
 
 WITH 
-parrot as (
+exuberant as (
 SELECT
     store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -24,18 +24,18 @@ WHERE
     date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
-    parrot.\"store_sales_date_year\" as \"store_sales_date_year\",
-    parrot.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    parrot.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(parrot.\"store_sales_ext_sales_price\") as \"sum_agg\"
+    exuberant.\"store_sales_date_year\" as \"store_sales_date_year\",
+    exuberant.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    exuberant.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(exuberant.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    parrot
+    exuberant
 GROUP BY 
-    parrot.\"store_sales_item_brand_id\",
-    parrot.\"store_sales_date_year\",
-    parrot.\"store_sales_item_brand_name\"
+    exuberant.\"store_sales_item_brand_name\",
+    exuberant.\"store_sales_item_brand_id\",
+    exuberant.\"store_sales_date_year\"
 ORDER BY 
-    parrot.\"store_sales_date_year\" asc,
-    sum(parrot.\"store_sales_ext_sales_price\") desc,
-    parrot.\"store_sales_item_brand_id\" asc
+    exuberant.\"store_sales_date_year\" asc,
+    sum(exuberant.\"store_sales_ext_sales_price\") desc,
+    exuberant.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

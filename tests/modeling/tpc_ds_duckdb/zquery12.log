@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 0.484297
-exec_time = 0.13084
-comp_time = 0.136884
-gen_length = 2783
+parse_time = 1.379129
+exec_time = 0.330343
+comp_time = 0.206404
+gen_length = 2792
 generated_sql = """
 
 WITH 
-sedate as (
+chickadee as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-gullible as (
+mamba as (
 SELECT
-    sum(sedate.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    sedate.\"web_sales_item_category\" as \"web_sales_item_category\",
-    sedate.\"web_sales_item_class\" as \"web_sales_item_class\",
-    sedate.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    sedate.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    sedate.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(chickadee.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    chickadee.\"web_sales_item_category\" as \"web_sales_item_category\",
+    chickadee.\"web_sales_item_class\" as \"web_sales_item_class\",
+    chickadee.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    chickadee.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    chickadee.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    sedate
+    chickadee
 GROUP BY 
-    sedate.\"web_sales_item_category\",
-    sedate.\"web_sales_item_current_price\",
-    sedate.\"web_sales_item_class\",
-    sedate.\"web_sales_item_desc\",
-    sedate.\"web_sales_item_name\"),
-ocelot as (
+    chickadee.\"web_sales_item_class\",
+    chickadee.\"web_sales_item_category\",
+    chickadee.\"web_sales_item_current_price\",
+    chickadee.\"web_sales_item_desc\",
+    chickadee.\"web_sales_item_name\"),
+budgie as (
 SELECT
-    sum(gullible.\"itemrevenue\") over (partition by gullible.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    gullible.\"itemrevenue\" as \"itemrevenue\",
-    gullible.\"web_sales_item_class\" as \"web_sales_item_class\",
-    gullible.\"web_sales_item_name\" as \"web_sales_item_name\",
-    gullible.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    gullible.\"web_sales_item_category\" as \"web_sales_item_category\",
-    gullible.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(mamba.\"itemrevenue\") over (partition by mamba.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    mamba.\"itemrevenue\" as \"itemrevenue\",
+    mamba.\"web_sales_item_class\" as \"web_sales_item_class\",
+    mamba.\"web_sales_item_name\" as \"web_sales_item_name\",
+    mamba.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    mamba.\"web_sales_item_category\" as \"web_sales_item_category\",
+    mamba.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    gullible)
+    mamba)
 SELECT
-    ocelot.\"web_sales_item_name\" as \"web_sales_item_name\",
-    ocelot.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    ocelot.\"web_sales_item_category\" as \"web_sales_item_category\",
-    ocelot.\"web_sales_item_class\" as \"web_sales_item_class\",
-    ocelot.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    ocelot.\"itemrevenue\" as \"itemrevenue\",
-    ocelot.\"itemrevenue\" * 100.0 / ocelot.\"_virtual_137720187295635\" as \"revenueratio\"
+    budgie.\"web_sales_item_name\" as \"web_sales_item_name\",
+    budgie.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    budgie.\"web_sales_item_category\" as \"web_sales_item_category\",
+    budgie.\"web_sales_item_class\" as \"web_sales_item_class\",
+    budgie.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    budgie.\"itemrevenue\" as \"itemrevenue\",
+    budgie.\"itemrevenue\" * 100.0 / budgie.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    ocelot
+    budgie
 ORDER BY 
-    ocelot.\"web_sales_item_category\" asc,
-    ocelot.\"web_sales_item_class\" asc,
-    ocelot.\"web_sales_item_name\" asc,
-    ocelot.\"web_sales_item_desc\" asc,
-    ocelot.\"itemrevenue\" * 100.0 / ocelot.\"_virtual_137720187295635\" asc
+    budgie.\"web_sales_item_category\" asc,
+    budgie.\"web_sales_item_class\" asc,
+    budgie.\"web_sales_item_name\" asc,
+    budgie.\"web_sales_item_desc\" asc,
+    budgie.\"itemrevenue\" * 100.0 / budgie.\"_virtual_137720187295635\" asc
 LIMIT (100)"""

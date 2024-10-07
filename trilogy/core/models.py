@@ -3132,10 +3132,10 @@ class EnvironmentConceptDict(dict):
     def values(self) -> ValuesView[Concept]:  # type: ignore
         return super().values()
 
-    def get(self, key: str, default: Concept | None = None) -> Concept | None:
+    def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore
         try:
             return self.__getitem__(key)
-        except KeyError:
+        except UndefinedConceptException:
             return default
 
     def __getitem__(
@@ -3272,31 +3272,49 @@ class Environment(BaseModel):
             if c.address in concrete_addresses
         ]
 
-    def validate_concept(self, new_concept:Concept, meta: Meta | None = None):
+    def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
         lookup = new_concept.address
         existing: Concept = self.concepts.get(lookup)  # type: ignore
         if not existing:
             return
-        # if exist
+
+        def handle_persist():
+            deriv_lookup = (
+                f"{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{existing.name}"
+            )
+
+            alt_source = self.alias_origin_lookup.get(deriv_lookup)
+            if not alt_source:
+                return None
+            # if the new concept binding has no lineage
+            # nothing to cause us to think a persist binding
+            # needs to be invalidated
+            if not new_concept.lineage:
+                return existing
+            if str(alt_source.lineage) == str(new_concept.lineage):
+                logger.info(
+                    f"Persisted concept {existing.address} matched redeclaration, keeping current persistence binding."
+                )
+                return existing
+            logger.warning(
+                f"Persisted concept {existing.address} lineage {str(alt_source.lineage)} did not match redeclaration {str(new_concept.lineage)}, overwriting and invalidating persist binding."
+            )
+            for k, datasource in self.datasources.items():
+                if existing.address in datasource.output_concepts:
+                    datasource.columns = [
+                        x
+                        for x in datasource.columns
+                        if x.concept.address != existing.address
+                    ]
+            return None
 
         if existing and self.environment_config.allow_duplicate_declaration:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                
-                alt_source = self.concepts.get(f'{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{new_concept.name}')
-        
-                if str(alt_source.lineage) == str(new_concept.lineage):
-                    raise SyntaxError
-                    logger.info(f"Persisted output {existing.address} found matching input")
-                    return existing
-                # TODO: validate the alternative source matches the new one
-                # if there's a new value that is different, remove/clean up the persisted
-                logger.info(f"Persisted output {existing.address} found, but does not match redeclaration - overwriting.")
-                return None
+                return handle_persist()
             return
         elif existing.metadata:
             if existing.metadata.concept_source == ConceptSource.PERSIST_STATEMENT:
-                logger.info(f"Persisted output {existing.address}")
-                return existing
+                return handle_persist()
             # if the existing concept is auto derived, we can overwrite it
             if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
                 return None
@@ -3420,8 +3438,7 @@ class Environment(BaseModel):
                 concept = existing
         if concept.namespace == DEFAULT_NAMESPACE:
             self.concepts[concept.name] = concept
-        else:
-            self.concepts[concept.address] = concept
+        self.concepts[concept.address] = concept
         from trilogy.core.environment_helpers import generate_related_concepts
 
         generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
@@ -3437,23 +3454,31 @@ class Environment(BaseModel):
     ):
         self.datasources[datasource.env_label] = datasource
         for current_concept in datasource.output_concepts:
+            self.add_concept(current_concept, meta=meta, force=True, _ignore_cache=True)
             current_derivation = current_concept.derivation
+            # TODO: refine this section;
+            # too hacky for maintainability
             if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
-                new_concept = current_concept.model_copy(deep=True)
-                new_concept.set_name(
-                    f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
-                )
+                persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource
-                current_concept.metadata.concept_source = (
-                    ConceptSource.PERSIST_STATEMENT
-                )
-                # remove the associated lineage
-                current_concept.lineage = None
-                self.add_concept(new_concept, meta=meta, force=True, _ignore_cache=True)
-                self.add_concept(
-                    current_concept, meta=meta, force=True, _ignore_cache=True
-                )
-                self.merge_concept(new_concept, current_concept, [])
+                if (
+                    current_concept.metadata.concept_source
+                    != ConceptSource.PERSIST_STATEMENT
+                ):
+                    new_concept = current_concept.model_copy(deep=True)
+                    new_concept.set_name(persisted)
+                    self.add_concept(
+                        new_concept, meta=meta, force=True, _ignore_cache=True
+                    )
+                    current_concept.metadata.concept_source = (
+                        ConceptSource.PERSIST_STATEMENT
+                    )
+                    # remove the associated lineage
+                    # to make this a root for discovery purposes
+                    # as it now "exists" in a table
+                    current_concept.lineage = None
+
+                    self.merge_concept(new_concept, current_concept, [])
         if not _ignore_cache:
             self.gen_concept_list_caches()
         return datasource
