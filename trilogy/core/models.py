@@ -916,7 +916,7 @@ class Grain(Mergeable, BaseModel):
     def set(self) -> set[str]:
         base = []
         for x in self.components_copy:
-            if x.derivation == PurposeLineage.ROWSET:
+            if isinstance(x.lineage, RowsetItem):
                 base.append(x.lineage.content.address)
             else:
                 base.append(x.address)
