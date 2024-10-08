@@ -206,6 +206,10 @@ class FunctionClass(Enum):
         FunctionType.CURRENT_DATETIME,
     ]
 
+    ONE_TO_MANY = [
+        FunctionType.UNNEST
+    ]
+
 
 class Boolean(Enum):
     TRUE = "true"

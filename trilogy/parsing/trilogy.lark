@@ -205,7 +205,7 @@
     alt_like: expr "like"i expr
     upper: "upper"i "(" expr ")"
     lower: "lower"i "(" expr ")"    
-    fsplit: "split"i "(" expr "," _string_lit ")"
+    fsplit: "split(" expr "," _string_lit ")"
     fstrpos: "strpos"i "(" expr "," expr ")"
     _SUBSTRING.1: "substring("i
     fsubstring: _SUBSTRING expr "," expr "," expr ")"

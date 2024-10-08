@@ -144,6 +144,9 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
     grain = Grain()
     for x in pkeys:
         grain += x.grain
+    if parent.operator in FunctionClass.ONE_TO_MANY.value:
+        # if the function will create more rows, we don't know what grain this is at
+        grain = None
     modifiers = get_upstream_modifiers(pkeys)
     key_grain = []
     for x in pkeys:

@@ -1,0 +1,15 @@
+
+import all_sites as all_sites;
+
+
+persist page_events_last_30_days into page_events_last_30_days FROM
+SELECT
+    all_sites.page_title,
+    all_sites.clean_url,
+    sum(count_distinct (all_sites.user_pseudo_id) by all_sites.event_date, all_sites.page_title, all_sites.clean_url)  -> last_30_user_count,
+    avg(count_distinct (all_sites.user_pseudo_id) by all_sites.event_date, all_sites.page_title, all_sites.clean_url) -> avg_daily_last_30_user_count
+where 
+    all_sites.event_date >= date_add(current_date() , day, -30)
+;
+
+

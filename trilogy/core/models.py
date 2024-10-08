@@ -4289,6 +4289,9 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
     def __repr__(self):
         return f"RowsetDerivation<{str(self.select)}>"
 
+    def __str__(self):
+        return self.__repr__()
+    
     @property
     def derived_concepts(self) -> List[Concept]:
         output: list[Concept] = []
@@ -4307,7 +4310,8 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
                     content=orig_concept, where=self.select.where_clause, rowset=self
                 ),
                 grain=orig_concept.grain,
-                metadata=orig_concept.metadata,
+                # TODO: add proper metadata
+                # metadata=orig_concept.metadata,
                 namespace=(
                     f"{self.name}.{orig_concept.namespace}"
                     if orig_concept.namespace != self.namespace
@@ -4358,7 +4362,9 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
         return (
             f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
         )
-
+    def __str__(self):
+        return self.__repr__()
+    
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return RowsetItem(
             content=self.content.with_merge(source, target, modifiers),
