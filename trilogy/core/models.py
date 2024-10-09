@@ -4291,7 +4291,7 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
 
     def __str__(self):
         return self.__repr__()
-    
+
     @property
     def derived_concepts(self) -> List[Concept]:
         output: list[Concept] = []
@@ -4362,9 +4362,10 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
         return (
             f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
         )
+
     def __str__(self):
         return self.__repr__()
-    
+
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return RowsetItem(
             content=self.content.with_merge(source, target, modifiers),

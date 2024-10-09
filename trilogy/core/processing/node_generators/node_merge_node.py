@@ -87,14 +87,13 @@ def determine_induced_minimal_nodes(
     for node in G.nodes:
         if concepts.get(node):
             lookup: Concept = concepts[node]
-            if lookup.derivation not in (PurposeLineage.BASIC, PurposeLineage.ROOT):
-                nodes_to_remove.append(node)
-            elif lookup.derivation == PurposeLineage.BASIC and G.out_degree(node) == 0:
+            # if lookup.derivation not in (PurposeLineage.BASIC, PurposeLineage.ROOT):
+            #     nodes_to_remove.append(node)
+            if G.out_degree(node) == 0:
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
-            elif filter_downstream and lookup.derivation == PurposeLineage.BASIC:
+            elif filter_downstream and lookup.derivation not in (PurposeLineage.ROOT,):
                 nodes_to_remove.append(node)
-
     H.remove_nodes_from(nodes_to_remove)
 
     H.remove_nodes_from(list(nx.isolates(H)))
