@@ -3482,6 +3482,15 @@ class Environment(BaseModel):
                         current_concept, meta=meta, force=True, _ignore_cache=True
                     )
                     self.merge_concept(new_concept, current_concept, [])
+                else:
+                    self.add_concept(
+                        current_concept, meta=meta, force=True, _ignore_cache=True
+                    )
+
+            else:
+                self.add_concept(
+                    current_concept, meta=meta, force=True, _ignore_cache=True
+                )
         if not _ignore_cache:
             self.gen_concept_list_caches()
         return datasource

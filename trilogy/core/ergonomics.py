@@ -105,8 +105,6 @@ mandrill
 marlin
 monitor
 ocelot
-osprey
-owl
 petrel
 python
 ray
@@ -134,7 +132,6 @@ cuckoo
 darter
 dove
 duck
-eagle
 falcon
 finch
 flamingo
@@ -185,6 +182,7 @@ vulture
 warbler""".split(
     "\n"
 )
+
 
 if CONFIG.randomize_cte_names:
     CTE_NAMES = list(set(CTE_NAMES))
