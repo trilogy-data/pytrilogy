@@ -129,9 +129,9 @@ The current Trilogy implementation supports these backends:
 
 ## Basic Example - Python
 
-Trilogy can be run directly in python.
+Trilogy can be run directly in python through the core SDK. Trilogy code can be defined and parsed inline or parsed out of files.
 
-A bigquery example, similar to bigquery [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console)
+A bigquery example, similar to bigquery [the quickstart](https://cloud.google.com/bigquery/docs/quickstarts/query-public-dataset-console).
 
 ```python
 
@@ -195,7 +195,7 @@ and second the dialect to run.
 To pass arguments to a backend, append additional --<option> flags after specifying the dialect.
 
 Example:
-`trilogy run key in int; datasource test_source ( i:in) grain(in) address test; select in;" duckdb --path <path/to/duckdb>`
+`trilogy run "key x int; datasource test_source ( i:x) grain(in) address test; select x;" duckdb --path <path/to/database>`
 
 ### Bigquery Args
 N/A, only supports default auth. In python you can pass in a custom client.
@@ -238,7 +238,7 @@ Clone repository and install requirements.txt and requirements-test.txt.
 Please open an issue first to discuss what you would like to change, and then create a PR against that issue.
 
 ## Similar in space
-Trilogy combines two aspects; a semantic layer and a query language. We've covered examples of both below:
+Trilogy combines two aspects; a semantic layer and a query language. Examples of both are linked below:
 
 Python "semantic layers" are tools for defining data access to a warehouse in a more abstract way.
 
