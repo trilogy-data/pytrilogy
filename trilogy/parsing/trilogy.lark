@@ -202,22 +202,29 @@
     //string
     _LIKE.1: "like("i
     like:  _LIKE expr "," _string_lit ")"
-    ilike: "ilike("i expr "," _string_lit ")"
+    _ILIKE.1: "ilike("i
+    ilike:   _ILIKE expr "," _string_lit ")"
     alt_like: expr  "like"i expr
-    upper: "upper("i expr ")"
-    lower: "lower("i expr ")"    
-    fsplit: "split("i expr "," _string_lit ")"
-    fstrpos: "strpos("i  expr "," expr ")"
+    _UPPER.1: "upper("i
+    upper: _UPPER expr ")"
+   _LOWER.1: "lower("i
+    lower: _LOWER expr ")"  
+    _SPLIT.1: "split("i  
+    fsplit: _SPLIT expr "," _string_lit ")"
+   _STRPOS.1: "strpos("i
+    fstrpos: _STRPOS expr "," expr ")"
     _SUBSTRING.1: "substring("i
     fsubstring: _SUBSTRING expr "," expr "," expr ")"
     
     _string_functions: like | ilike | upper | lower | fsplit | fstrpos | fsubstring 
     
     // special aggregate
-    fgroup: "group("i expr ")" aggregate_over?
+    _GROUP.1: "group("i
+    fgroup: _GROUP expr ")" aggregate_over?
     //aggregates
     _COUNT.1: "count("i
     count:   _COUNT  expr ")"
+    
     count_distinct: "count_distinct"i "(" expr ")"
     
     // avoid conflicts with the window
@@ -261,10 +268,14 @@
     fyear: _YEAR expr ")"
     
     DATE_PART: "DAY"i | "WEEK"i | "MONTH"i | "QUARTER"i | "YEAR"i | "MINUTE"i | "HOUR"i | "SECOND"i
-    fdate_trunc: "date_trunc("i expr "," DATE_PART ")"
-    fdate_part: "date_part("i expr "," DATE_PART ")"
-    fdate_add: "date_add("i expr "," DATE_PART "," int_lit ")"
-    fdate_diff: "date_diff("i expr "," expr "," DATE_PART ")"
+    _DATE_TRUNC.1: "date_trunc("i
+    fdate_trunc: _DATE_TRUNC expr "," DATE_PART ")"
+    _DATE_PART.1: "date_part("i
+    fdate_part: _DATE_PART expr "," DATE_PART ")"
+    _DATE_ADD.1: "date_add("i
+    fdate_add: _DATE_ADD expr "," DATE_PART "," int_lit ")"
+   _DATE_DIFF.1: "date_diff("i
+    fdate_diff: _DATE_DIFF expr "," expr "," DATE_PART ")"
     
     _date_functions: fdate | fdate_add | fdate_diff | fdatetime | ftimestamp | fsecond | fminute | fhour | fday | fday_of_week | fweek | fmonth | fquarter | fyear | fdate_part | fdate_trunc
     
@@ -294,8 +305,8 @@
 
     map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
 
-   
-    struct_lit: "struct("i (IDENTIFIER "=" literal ",")* IDENTIFIER "=" literal ","? ")"
+    _STRUCT.1: "struct("i
+    struct_lit: _STRUCT (IDENTIFIER "=" literal ",")* IDENTIFIER "=" literal ","? ")"
     
     !bool_lit: "True"i | "False"i
 

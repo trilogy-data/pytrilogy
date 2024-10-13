@@ -1,64 +1,64 @@
 query_id = 16
-parse_time = 85.395019
-exec_time = 0.701387
-comp_time = 0.062878
-gen_length = 4605
+parse_time = 30.355498
+exec_time = 0.201904
+comp_time = 0.015626
+gen_length = 4588
 generated_sql = """
 
 WITH 
-komodo as (
+ocelot as (
 SELECT
-    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
     catalog_sales.\"CS_WAREHOUSE_SK\",
     catalog_sales.\"CS_ORDER_NUMBER\"),
-crocodile as (
+puzzled as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-lark as (
+flashy as (
 SELECT
-    count(komodo.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
-    komodo.\"cs_order_number\" as \"cs_order_number\"
+    count(ocelot.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    ocelot.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    komodo
+    ocelot
 GROUP BY 
-    komodo.\"cs_order_number\"),
-wolverine as (
+    ocelot.\"cs_order_number\"),
+sweltering as (
 SELECT
-    CASE WHEN lark.\"_agg_count_6430482449237259\" > 1 THEN lark.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN flashy.\"_agg_count_6430482449237259\" > 1 THEN flashy.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    lark),
-marlin as (
+    flashy),
+darter as (
 SELECT
-    wolverine.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
+    sweltering.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
-    wolverine
+    sweltering
 GROUP BY 
-    wolverine.\"multi_warehouse_sales\"),
-badger as (
+    sweltering.\"multi_warehouse_sales\"),
+concerned as (
 SELECT
-    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\"
+    catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select crocodile.\"cr_order_number\" from crocodile where crocodile.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select puzzled.\"cr_order_number\" from puzzled where puzzled.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select darter.\"multi_warehouse_sales\" from darter where darter.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
+    catalog_sales.\"CS_CALL_CENTER_SK\",
     catalog_sales.\"CS_SHIP_DATE_SK\",
     catalog_sales.\"CS_ORDER_NUMBER\",
-    catalog_sales.\"CS_SHIP_ADDR_SK\",
-    catalog_sales.\"CS_CALL_CENTER_SK\"),
-bewildered as (
+    catalog_sales.\"CS_SHIP_ADDR_SK\"),
+monitor as (
 SELECT
     catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
@@ -69,44 +69,44 @@ SELECT
     catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
     INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select crocodile.\"cr_order_number\" from crocodile where crocodile.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select puzzled.\"cr_order_number\" from puzzled where puzzled.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select darter.\"multi_warehouse_sales\" from darter where darter.\"multi_warehouse_sales\" is not null)
 ),
-hawk as (
+chickadee as (
 SELECT
-    badger.\"cs_order_number\" as \"cs_order_number\",
+    concerned.\"cs_order_number\" as \"cs_order_number\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
     call_center.\"CC_COUNTY\" as \"cs_call_center_county\"
 FROM
-    badger
-    INNER JOIN memory.date_dim as date on badger.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.customer_address as customer_address on badger.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.call_center as call_center on badger.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    concerned
+    INNER JOIN memory.date_dim as date on concerned.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as call_center on concerned.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.customer_address as customer_address on concerned.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and badger.\"cs_order_number\" not in (select crocodile.\"cr_order_number\" from crocodile where crocodile.\"cr_order_number\" is not null) and badger.\"cs_order_number\" in (select marlin.\"multi_warehouse_sales\" from marlin where marlin.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and concerned.\"cs_order_number\" not in (select puzzled.\"cr_order_number\" from puzzled where puzzled.\"cr_order_number\" is not null) and concerned.\"cs_order_number\" in (select darter.\"multi_warehouse_sales\" from darter where darter.\"multi_warehouse_sales\" is not null)
 ),
-imported as (
+trite as (
 SELECT
-    sum(bewildered.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(bewildered.\"cs_net_profit\") as \"total_net_profit\"
+    sum(monitor.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(monitor.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    bewildered),
-cooperative as (
+    monitor),
+raven as (
 SELECT
-    count(distinct hawk.\"cs_order_number\") as \"order_count\"
+    count(distinct chickadee.\"cs_order_number\") as \"order_count\"
 FROM
-    hawk)
+    chickadee)
 SELECT
-    cooperative.\"order_count\" as \"order_count\",
-    imported.\"total_shipping_cost\" as \"total_shipping_cost\",
-    imported.\"total_net_profit\" as \"total_net_profit\"
+    raven.\"order_count\" as \"order_count\",
+    trite.\"total_shipping_cost\" as \"total_shipping_cost\",
+    trite.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    cooperative
-    FULL JOIN imported on 1=1
+    raven
+    FULL JOIN trite on 1=1
 ORDER BY 
-    cooperative.\"order_count\" desc
+    raven.\"order_count\" desc
 LIMIT (100)"""

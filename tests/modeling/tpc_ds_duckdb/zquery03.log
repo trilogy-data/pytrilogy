@@ -1,12 +1,12 @@
 query_id = 3
-parse_time = 26.862049
-exec_time = 0.210804
-comp_time = 0.128394
-gen_length = 1323
+parse_time = 9.199226
+exec_time = 0.049806
+comp_time = 0.032397
+gen_length = 1347
 generated_sql = """
 
 WITH 
-duck as (
+thrush as (
 SELECT
     store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -18,24 +18,24 @@ SELECT
     items.\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
-    duck.\"store_sales_date_year\" as \"store_sales_date_year\",
-    duck.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    duck.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(duck.\"store_sales_ext_sales_price\") as \"sum_agg\"
+    thrush.\"store_sales_date_year\" as \"store_sales_date_year\",
+    thrush.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    thrush.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(thrush.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    duck
+    thrush
 GROUP BY 
-    duck.\"store_sales_item_brand_name\",
-    duck.\"store_sales_date_year\",
-    duck.\"store_sales_item_brand_id\"
+    thrush.\"store_sales_date_year\",
+    thrush.\"store_sales_item_brand_name\",
+    thrush.\"store_sales_item_brand_id\"
 ORDER BY 
-    duck.\"store_sales_date_year\" asc,
-    sum(duck.\"store_sales_ext_sales_price\") desc,
-    duck.\"store_sales_item_brand_id\" asc
+    thrush.\"store_sales_date_year\" asc,
+    sum(thrush.\"store_sales_ext_sales_price\") desc,
+    thrush.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

@@ -141,7 +141,7 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
             for x in parent.concept_arguments
             if not x.derivation == PurposeLineage.CONSTANT
         ]
-    grain = Grain()
+    grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
     if parent.operator in FunctionClass.ONE_TO_MANY.value:

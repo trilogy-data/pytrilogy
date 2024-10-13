@@ -10,9 +10,11 @@ def add_concept(concept: Concept, g: ReferenceGraph):
     g.add_node(concept)
     # if we have sources, recursively add them
     node_name = concept_to_node(concept)
-    if concept.sources:
-        for source in concept.sources:
+    if concept.concept_arguments:
+        for source in concept.concept_arguments:
             generic = source.with_default_grain()
+            add_concept(generic, g)
+
             g.add_edge(generic, node_name)
     for _, pseudonym in concept.pseudonyms.items():
         pseudonym = pseudonym.with_default_grain()
