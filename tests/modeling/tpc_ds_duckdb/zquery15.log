@@ -1,12 +1,12 @@
 query_id = 15
-parse_time = 0.592039
-exec_time = 0.040092
-comp_time = 0.22765
-gen_length = 1431
+parse_time = 7.558862
+exec_time = 0.200406
+comp_time = 2.16996
+gen_length = 1443
 generated_sql = """
 
 WITH 
-ostrich as (
+vivacious as (
 SELECT
     catalog_sales.\"CS_SALES_PRICE\" as \"catalog_sales_sales_price\",
     date.\"D_QOY\" as \"catalog_sales_date_quarter\",
@@ -24,12 +24,12 @@ WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 2001 and ( customer_address.\"CA_STATE\" in ( 'CA','WA','GA' ) or catalog_sales.\"CS_SALES_PRICE\" > 500 or SUBSTRING(customer_address.\"CA_ZIP\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) )
 )
 SELECT
-    ostrich.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    sum(ostrich.\"catalog_sales_sales_price\") as \"sales\"
+    vivacious.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    sum(vivacious.\"catalog_sales_sales_price\") as \"sales\"
 FROM
-    ostrich
+    vivacious
 GROUP BY 
-    ostrich.\"catalog_sales_bill_customer_zip\"
+    vivacious.\"catalog_sales_bill_customer_zip\"
 ORDER BY 
-    ostrich.\"catalog_sales_bill_customer_zip\" asc nulls first
+    vivacious.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

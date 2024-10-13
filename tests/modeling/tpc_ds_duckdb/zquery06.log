@@ -1,22 +1,22 @@
 query_id = 6
-parse_time = 1.331697
-exec_time = 0.033301
-comp_time = 0.071998
-gen_length = 2823
+parse_time = 12.422883
+exec_time = 0.296406
+comp_time = 0.494164
+gen_length = 2726
 generated_sql = """
 
 WITH 
-chick as (
+late as (
 SELECT
-    items.\"I_ITEM_SK\" as \"item_id\",
+    items.\"I_CATEGORY\" as \"item_category\",
     items.\"I_CURRENT_PRICE\" as \"item_current_price\",
-    items.\"I_CATEGORY\" as \"item_category\"
+    items.\"I_ITEM_SK\" as \"item_id\"
 FROM
     memory.item as items
 WHERE
     items.\"I_CATEGORY\" is not null
 ),
-pigeon as (
+scrawny as (
 SELECT
     avg(items.\"I_CURRENT_PRICE\") as \"_virtual_6264207893106521\",
     items.\"I_CATEGORY\" as \"item_category\"
@@ -27,9 +27,9 @@ WHERE
 
 GROUP BY 
     items.\"I_CATEGORY\"),
-questionable as (
+macho as (
 SELECT
-    chick.\"item_category\" as \"item_category\",
+    late.\"item_category\" as \"item_category\",
     customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -37,39 +37,39 @@ SELECT
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
-    INNER JOIN chick on store_sales.\"SS_ITEM_SK\" = chick.\"item_id\"
-    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN late on store_sales.\"SS_ITEM_SK\" = late.\"item_id\"
+    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and chick.\"item_category\" is not null
+    cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 1 and late.\"item_category\" is not null
 ),
-imported as (
+friendly as (
 SELECT
-    questionable.\"item_category\" as \"item_category\",
-    questionable.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    questionable.\"store_sales_date_year\" as \"store_sales_date_year\",
-    questionable.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    questionable.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    questionable.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    pigeon.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
+    macho.\"item_category\" as \"item_category\",
+    macho.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    macho.\"store_sales_date_year\" as \"store_sales_date_year\",
+    macho.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    macho.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    macho.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    scrawny.\"_virtual_6264207893106521\" as \"_virtual_6264207893106521\"
 FROM
-    questionable
-    INNER JOIN pigeon on (questionable.\"item_category\" = pigeon.\"item_category\" or (questionable.\"item_category\" is null and pigeon.\"item_category\" is null))
+    macho
+    INNER JOIN scrawny on (macho.\"item_category\" = scrawny.\"item_category\" or (macho.\"item_category\" is null and scrawny.\"item_category\" is null))
 WHERE
-    questionable.\"store_sales_date_year\" = 2001 and questionable.\"store_sales_date_month_of_year\" = 1 and questionable.\"store_sales_item_current_price\" > 1.2 * pigeon.\"_virtual_6264207893106521\" and questionable.\"item_category\" is not null
+    macho.\"store_sales_date_year\" = 2001 and macho.\"store_sales_date_month_of_year\" = 1 and macho.\"store_sales_item_current_price\" > 1.2 * scrawny.\"_virtual_6264207893106521\" and macho.\"item_category\" is not null
 )
 SELECT
-    imported.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    count(imported.\"store_sales_customer_id\") as \"customer_count\"
+    friendly.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    count(friendly.\"store_sales_customer_id\") as \"customer_count\"
 FROM
-    imported
+    friendly
 GROUP BY 
-    imported.\"store_sales_customer_state\"
+    friendly.\"store_sales_customer_state\"
 HAVING
-    count(imported.\"store_sales_customer_id\") >= 10
+    count(friendly.\"store_sales_customer_id\") >= 10
 
 ORDER BY 
-    count(imported.\"store_sales_customer_id\") asc nulls first,
-    imported.\"store_sales_customer_state\" asc nulls first"""
+    count(friendly.\"store_sales_customer_id\") asc nulls first,
+    friendly.\"store_sales_customer_state\" asc nulls first"""

@@ -3483,14 +3483,12 @@ class Environment(BaseModel):
                     )
                     self.merge_concept(new_concept, current_concept, [])
                 else:
-                    self.add_concept(
-                        current_concept, meta=meta, force=True, _ignore_cache=True
-                    )
+                    self.add_concept(current_concept, meta=meta, _ignore_cache=True)
 
-            else:
-                self.add_concept(
-                    current_concept, meta=meta, force=True, _ignore_cache=True
-                )
+            # else:
+            #     self.add_concept(
+            #         current_concept, meta=meta, _ignore_cache=True
+            #     )
         if not _ignore_cache:
             self.gen_concept_list_caches()
         return datasource
@@ -4320,7 +4318,7 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
                 ),
                 grain=orig_concept.grain,
                 # TODO: add proper metadata
-                # metadata=orig_concept.metadata,
+                metadata=Metadata(concept_source=ConceptSource.CTE),
                 namespace=(
                     f"{self.name}.{orig_concept.namespace}"
                     if orig_concept.namespace != self.namespace
@@ -4347,6 +4345,7 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
                     components=[orig[c.address] for c in x.grain.components_copy]
                 )
             else:
+
                 x.grain = default_grain
         return output
 
