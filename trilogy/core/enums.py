@@ -12,6 +12,7 @@ class UnnestMode(Enum):
 
 class ConceptSource(Enum):
     MANUAL = "manual"
+    CTE = "cte"
     PERSIST_STATEMENT = "persist_statement"
     AUTO_DERIVED = "auto_derived"
 
@@ -205,6 +206,8 @@ class FunctionClass(Enum):
         FunctionType.CURRENT_DATE,
         FunctionType.CURRENT_DATETIME,
     ]
+
+    ONE_TO_MANY = [FunctionType.UNNEST]
 
 
 class Boolean(Enum):

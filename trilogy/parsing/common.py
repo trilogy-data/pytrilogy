@@ -141,9 +141,12 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
             for x in parent.concept_arguments
             if not x.derivation == PurposeLineage.CONSTANT
         ]
-    grain = Grain()
+    grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
+    if parent.operator in FunctionClass.ONE_TO_MANY.value:
+        # if the function will create more rows, we don't know what grain this is at
+        grain = None
     modifiers = get_upstream_modifiers(pkeys)
     key_grain = []
     for x in pkeys:
@@ -156,13 +159,24 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
         purpose = Purpose.CONSTANT
     else:
         purpose = parent.output_purpose
+    if grain is not None:
+        return Concept(
+            name=name,
+            datatype=parent.output_datatype,
+            purpose=purpose,
+            lineage=parent,
+            namespace=namespace,
+            keys=keys,
+            modifiers=modifiers,
+            grain=grain,
+        )
+
     return Concept(
         name=name,
         datatype=parent.output_datatype,
         purpose=purpose,
         lineage=parent,
         namespace=namespace,
-        grain=grain,
         keys=keys,
         modifiers=modifiers,
     )

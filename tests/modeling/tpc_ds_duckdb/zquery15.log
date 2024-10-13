@@ -1,12 +1,12 @@
 query_id = 15
-parse_time = 2.202398
-exec_time = 0.063933
-comp_time = 0.711242
-gen_length = 1419
+parse_time = 7.558862
+exec_time = 0.200406
+comp_time = 2.16996
+gen_length = 1443
 generated_sql = """
 
 WITH 
-puffy as (
+vivacious as (
 SELECT
     catalog_sales.\"CS_SALES_PRICE\" as \"catalog_sales_sales_price\",
     date.\"D_QOY\" as \"catalog_sales_date_quarter\",
@@ -17,19 +17,19 @@ SELECT
     catalog_sales.\"CS_ITEM_SK\" as \"catalog_sales_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.customer as customers on catalog_sales.\"CS_BILL_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer as customers on catalog_sales.\"CS_BILL_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 2001 and ( customer_address.\"CA_STATE\" in ( 'CA','WA','GA' ) or catalog_sales.\"CS_SALES_PRICE\" > 500 or SUBSTRING(customer_address.\"CA_ZIP\",1,5) in ( '85669','86197','88274','83405','86475','85392','85460','80348','81792' ) )
 )
 SELECT
-    puffy.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
-    sum(puffy.\"catalog_sales_sales_price\") as \"sales\"
+    vivacious.\"catalog_sales_bill_customer_zip\" as \"catalog_sales_bill_customer_zip\",
+    sum(vivacious.\"catalog_sales_sales_price\") as \"sales\"
 FROM
-    puffy
+    vivacious
 GROUP BY 
-    puffy.\"catalog_sales_bill_customer_zip\"
+    vivacious.\"catalog_sales_bill_customer_zip\"
 ORDER BY 
-    puffy.\"catalog_sales_bill_customer_zip\" asc nulls first
+    vivacious.\"catalog_sales_bill_customer_zip\" asc nulls first
 LIMIT (100)"""

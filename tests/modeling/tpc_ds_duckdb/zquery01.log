@@ -1,12 +1,12 @@
 query_id = 1
-parse_time = 5.277456
-exec_time = 0.168095
-comp_time = 2.108021
-gen_length = 1632
+parse_time = 4.781618
+exec_time = 0.3131
+comp_time = 5.321583
+gen_length = 1696
 generated_sql = """
 
 WITH 
-parakeet as (
+cheerful as (
 SELECT
     store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
@@ -17,38 +17,38 @@ SELECT
     store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
     memory.store_returns as store_returns
-    INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-lion as (
-SELECT
-    sum(parakeet.\"returns_return_amount\") as \"total_returns\",
-    parakeet.\"returns_store_id\" as \"returns_store_id\",
-    parakeet.\"returns_customer_text_id\" as \"returns_customer_text_id\"
-FROM
-    parakeet
-GROUP BY 
-    parakeet.\"returns_customer_text_id\",
-    parakeet.\"returns_store_id\"),
 thoughtful as (
 SELECT
-    avg(lion.\"total_returns\") as \"avg_store_returns\",
-    lion.\"returns_store_id\" as \"returns_store_id\"
+    sum(cheerful.\"returns_return_amount\") as \"total_returns\",
+    cheerful.\"returns_store_id\" as \"returns_store_id\",
+    cheerful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    lion
+    cheerful
 GROUP BY 
-    lion.\"returns_store_id\")
+    cheerful.\"returns_customer_text_id\",
+    cheerful.\"returns_store_id\"),
+cooperative as (
 SELECT
-    lion.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    avg(thoughtful.\"total_returns\") as \"avg_store_returns\",
+    thoughtful.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    lion
-    INNER JOIN thoughtful on lion.\"returns_store_id\" = thoughtful.\"returns_store_id\"
+    thoughtful
+GROUP BY 
+    thoughtful.\"returns_store_id\")
+SELECT
+    thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+FROM
+    thoughtful
+    INNER JOIN cooperative on thoughtful.\"returns_store_id\" = cooperative.\"returns_store_id\"
 WHERE
-    lion.\"total_returns\" > ( 1.2 * thoughtful.\"avg_store_returns\" )
+    thoughtful.\"total_returns\" > ( 1.2 * cooperative.\"avg_store_returns\" )
 
 ORDER BY 
-    lion.\"returns_customer_text_id\" asc
+    thoughtful.\"returns_customer_text_id\" asc
 LIMIT (100)"""

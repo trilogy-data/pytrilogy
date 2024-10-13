@@ -87,12 +87,10 @@ def determine_induced_minimal_nodes(
     for node in G.nodes:
         if concepts.get(node):
             lookup: Concept = concepts[node]
-            if lookup.derivation not in (PurposeLineage.BASIC, PurposeLineage.ROOT):
-                nodes_to_remove.append(node)
-            elif lookup.derivation == PurposeLineage.BASIC and G.out_degree(node) == 0:
+            if lookup.derivation in (PurposeLineage.CONSTANT,):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
-            elif filter_downstream and lookup.derivation == PurposeLineage.BASIC:
+            if filter_downstream and lookup.derivation not in (PurposeLineage.ROOT,):
                 nodes_to_remove.append(node)
 
     H.remove_nodes_from(nodes_to_remove)
@@ -105,11 +103,12 @@ def determine_induced_minimal_nodes(
         zero_out = list(
             x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist
         )
+
     try:
         paths = nx.multi_source_dijkstra_path(H, nodelist)
     except nx.exception.NodeNotFound:
+        logger.debug(f"Unable to find paths for {nodelist}")
         return None
-
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()
     final: nx.DiGraph = nx.subgraph(G, sG.nodes).copy()
@@ -126,12 +125,24 @@ def determine_induced_minimal_nodes(
     # all concept nodes must have a parent
 
     if not all(
-        [final.in_degree(node) > 0 for node in final.nodes if node.startswith("c~")]
+        [
+            final.in_degree(node) > 0
+            for node in final.nodes
+            if node.startswith("c~") and node in nodelist
+        ]
     ):
+        missing = [
+            node
+            for node in final.nodes
+            if node.startswith("c~") and final.in_degree(node) == 0
+        ]
+        logger.debug(f"Skipping graph for {nodelist} as no in_degree {missing}")
         return None
 
     if not all([node in final.nodes for node in nodelist]):
+        logger.debug(f"Skipping graph for {nodelist} as missing nodes")
         return None
+    logger.debug(f"Found final graph {final.nodes}")
     return final
 
 
@@ -256,7 +267,9 @@ def resolve_weak_components(
 
     subgraphs: list[list[Concept]] = []
     # components = nx.strongly_connected_components(g)
+    node_list = [x for x in g.nodes if x.startswith("c~")]
     components = extract_ds_components(g, node_list)
+    logger.debug(f"Extracted components {components} from {node_list}")
     for component in components:
         # we need to take unique again as different addresses may map to the same concept
         sub_component = unique(

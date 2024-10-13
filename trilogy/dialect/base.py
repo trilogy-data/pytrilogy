@@ -48,6 +48,7 @@ from trilogy.core.models import (
     MapType,
     StructType,
     MergeStatementV2,
+    Datasource,
 )
 from trilogy.core.query_processor import process_query, process_persist
 from trilogy.dialect.common import render_join, render_unnest
@@ -724,6 +725,7 @@ class BaseDialect:
                     MergeStatementV2,
                     ImportStatement,
                     RowsetDerivationStatement,
+                    Datasource,
                 ),
             ):
                 continue

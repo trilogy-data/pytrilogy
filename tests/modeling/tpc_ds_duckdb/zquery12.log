@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 0.889767
-exec_time = 0.129042
-comp_time = 0.249569
-gen_length = 2863
+parse_time = 2.193286
+exec_time = 0.315571
+comp_time = 0.641373
+gen_length = 2835
 generated_sql = """
 
 WITH 
-protective as (
+abstracted as (
 SELECT
     web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
 ),
-sedate as (
+colossal as (
 SELECT
-    sum(protective.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    protective.\"web_sales_item_category\" as \"web_sales_item_category\",
-    protective.\"web_sales_item_class\" as \"web_sales_item_class\",
-    protective.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    protective.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    protective.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(abstracted.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    abstracted.\"web_sales_item_category\" as \"web_sales_item_category\",
+    abstracted.\"web_sales_item_class\" as \"web_sales_item_class\",
+    abstracted.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    abstracted.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    abstracted.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    protective
+    abstracted
 GROUP BY 
-    protective.\"web_sales_item_current_price\",
-    protective.\"web_sales_item_name\",
-    protective.\"web_sales_item_class\",
-    protective.\"web_sales_item_category\",
-    protective.\"web_sales_item_desc\"),
-chickadee as (
+    abstracted.\"web_sales_item_category\",
+    abstracted.\"web_sales_item_desc\",
+    abstracted.\"web_sales_item_class\",
+    abstracted.\"web_sales_item_current_price\",
+    abstracted.\"web_sales_item_name\"),
+sloppy as (
 SELECT
-    sum(sedate.\"itemrevenue\") over (partition by sedate.\"web_sales_item_class\") as \"_virtual_137720187295635\",
-    sedate.\"itemrevenue\" as \"itemrevenue\",
-    sedate.\"web_sales_item_class\" as \"web_sales_item_class\",
-    sedate.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sedate.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    sedate.\"web_sales_item_category\" as \"web_sales_item_category\",
-    sedate.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    sum(colossal.\"itemrevenue\") over (partition by colossal.\"web_sales_item_class\") as \"_virtual_137720187295635\",
+    colossal.\"itemrevenue\" as \"itemrevenue\",
+    colossal.\"web_sales_item_class\" as \"web_sales_item_class\",
+    colossal.\"web_sales_item_name\" as \"web_sales_item_name\",
+    colossal.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    colossal.\"web_sales_item_category\" as \"web_sales_item_category\",
+    colossal.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
 FROM
-    sedate)
+    colossal)
 SELECT
-    chickadee.\"web_sales_item_name\" as \"web_sales_item_name\",
-    chickadee.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    chickadee.\"web_sales_item_category\" as \"web_sales_item_category\",
-    chickadee.\"web_sales_item_class\" as \"web_sales_item_class\",
-    chickadee.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    chickadee.\"itemrevenue\" as \"itemrevenue\",
-    chickadee.\"itemrevenue\" * 100.0 / chickadee.\"_virtual_137720187295635\" as \"revenueratio\"
+    sloppy.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sloppy.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    sloppy.\"web_sales_item_category\" as \"web_sales_item_category\",
+    sloppy.\"web_sales_item_class\" as \"web_sales_item_class\",
+    sloppy.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    sloppy.\"itemrevenue\" as \"itemrevenue\",
+    sloppy.\"itemrevenue\" * 100.0 / sloppy.\"_virtual_137720187295635\" as \"revenueratio\"
 FROM
-    chickadee
+    sloppy
 ORDER BY 
-    chickadee.\"web_sales_item_category\" asc,
-    chickadee.\"web_sales_item_class\" asc,
-    chickadee.\"web_sales_item_name\" asc,
-    chickadee.\"web_sales_item_desc\" asc,
-    chickadee.\"itemrevenue\" * 100.0 / chickadee.\"_virtual_137720187295635\" asc
+    sloppy.\"web_sales_item_category\" asc,
+    sloppy.\"web_sales_item_class\" asc,
+    sloppy.\"web_sales_item_name\" asc,
+    sloppy.\"web_sales_item_desc\" asc,
+    sloppy.\"itemrevenue\" * 100.0 / sloppy.\"_virtual_137720187295635\" asc
 LIMIT (100)"""

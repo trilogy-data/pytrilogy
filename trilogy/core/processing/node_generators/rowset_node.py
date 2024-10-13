@@ -96,7 +96,7 @@ def gen_rowset_node(
         # node.set_preexisting_conditions(conditions.conditional if conditions else None)
         return node
 
-    possible_joins = concept_to_relevant_joins(additional_relevant)
+    possible_joins = concept_to_relevant_joins(node.output_concepts)
     if not possible_joins:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
@@ -104,7 +104,7 @@ def gen_rowset_node(
         return node
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        mandatory_list=additional_relevant + local_optional,
+        mandatory_list=possible_joins + local_optional,
         environment=environment,
         g=g,
         depth=depth + 1,

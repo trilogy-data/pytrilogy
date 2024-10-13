@@ -427,3 +427,36 @@ grain (user_id)
 address customers.dim_customers
 (user_id = 123 or user_id = 456);"""
     )
+
+    test = Renderer().to_string(
+        Datasource(
+            identifier="useful_data",
+            columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+            address=Address(is_query=True, location="SELECT * FROM test"),
+            grain=Grain(components=[user_id]),
+            where=WhereClause(
+                conditional=Conditional(
+                    left=Comparison(
+                        left=user_id,
+                        right=123,
+                        operator=ComparisonOperator.EQ,
+                    ),
+                    right=Comparison(
+                        left=user_id,
+                        right=456,
+                        operator=ComparisonOperator.EQ,
+                    ),
+                    operator=BooleanOperator.OR,
+                ),
+            ),
+        )
+    )
+    assert (
+        test
+        == """datasource useful_data (
+    user_id: user_id
+    ) 
+grain (user_id) 
+query '''SELECT * FROM test'''
+(user_id = 123 or user_id = 456);"""
+    )

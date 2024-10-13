@@ -1,3 +1,5 @@
+from trilogy.constants import CONFIG
+
 # source: https://github.com/aaronbassett/Pass-phrase
 CTE_NAMES = """quizzical
 highfalutin
@@ -103,8 +105,6 @@ mandrill
 marlin
 monitor
 ocelot
-osprey
-owl
 petrel
 python
 ray
@@ -132,7 +132,6 @@ cuckoo
 darter
 dove
 duck
-eagle
 falcon
 finch
 flamingo
@@ -184,4 +183,12 @@ warbler""".split(
     "\n"
 )
 
-CTE_NAMES = list(set(CTE_NAMES))
+
+def generate_cte_names():
+    if CONFIG.randomize_cte_names:
+        from random import shuffle
+
+        new = [*CTE_NAMES]
+        shuffle(new)
+        return new
+    return CTE_NAMES

@@ -461,40 +461,7 @@ class ParseToObjects(Transformer):
         while isinstance(source_value, Parenthetical):
             source_value = source_value.content
 
-        if (
-            isinstance(source_value, Function)
-            and source_value.operator == FunctionType.STRUCT
-        ):
-            concept = arbitrary_to_concept(
-                source_value,
-                name=name,
-                namespace=namespace,
-                purpose=purpose,
-                metadata=metadata,
-            )
-
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
-        elif (
-            isinstance(source_value, Function)
-            and source_value.operator == FunctionType.ALIAS
-        ):
-            concept = arbitrary_to_concept(
-                source_value,
-                name=name,
-                namespace=namespace,
-                purpose=purpose,
-                metadata=metadata,
-            )
-
-            if concept.metadata:
-                concept.metadata.line_number = meta.line
-            self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
-
-        elif isinstance(
+        if isinstance(
             source_value, (FilterItem, WindowItem, AggregateWrapper, Function)
         ):
             concept = arbitrary_to_concept(

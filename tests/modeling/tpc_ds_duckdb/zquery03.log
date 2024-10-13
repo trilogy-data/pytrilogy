@@ -1,12 +1,12 @@
 query_id = 3
-parse_time = 26.862049
-exec_time = 0.210804
-comp_time = 0.128394
-gen_length = 1323
+parse_time = 44.199641
+exec_time = 0.669271
+comp_time = 0.961518
+gen_length = 1359
 generated_sql = """
 
 WITH 
-duck as (
+vacuous as (
 SELECT
     store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
     date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -24,18 +24,18 @@ WHERE
     date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
-    duck.\"store_sales_date_year\" as \"store_sales_date_year\",
-    duck.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    duck.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(duck.\"store_sales_ext_sales_price\") as \"sum_agg\"
+    vacuous.\"store_sales_date_year\" as \"store_sales_date_year\",
+    vacuous.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    vacuous.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(vacuous.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    duck
+    vacuous
 GROUP BY 
-    duck.\"store_sales_item_brand_name\",
-    duck.\"store_sales_date_year\",
-    duck.\"store_sales_item_brand_id\"
+    vacuous.\"store_sales_date_year\",
+    vacuous.\"store_sales_item_brand_name\",
+    vacuous.\"store_sales_item_brand_id\"
 ORDER BY 
-    duck.\"store_sales_date_year\" asc,
-    sum(duck.\"store_sales_ext_sales_price\") desc,
-    duck.\"store_sales_item_brand_id\" asc
+    vacuous.\"store_sales_date_year\" asc,
+    sum(vacuous.\"store_sales_ext_sales_price\") desc,
+    vacuous.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

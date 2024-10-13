@@ -1,12 +1,12 @@
 query_id = 10
-parse_time = 55.069411
-exec_time = 0.931077
-comp_time = 1.217212
-gen_length = 5487
+parse_time = 107.803453
+exec_time = 1.557006
+comp_time = 1.735277
+gen_length = 5631
 generated_sql = """
 
 WITH 
-wakeful as (
+tearful as (
 SELECT
     store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
     store_sales.\"SS_CUSTOMER_SK\" as \"customer_id\"
@@ -15,14 +15,14 @@ FROM
 GROUP BY 
     store_sales.\"SS_CUSTOMER_SK\",
     store_sales.\"SS_SOLD_DATE_SK\"),
-jackdaw as (
+cloudy as (
 SELECT
-    date.\"D_DATE_SK\" as \"web_sales_date_id\",
     date.\"D_MOY\" as \"web_sales_date_month_of_year\",
+    date.\"D_DATE_SK\" as \"web_sales_date_id\",
     cast(\"D_YEAR\" as int) as \"web_sales_date_year\"
 FROM
     memory.date_dim as date),
-tearful as (
+flashy as (
 SELECT
     web_sales.\"WS_SOLD_DATE_SK\" as \"web_sales_date_id\",
     web_sales.\"WS_BILL_CUSTOMER_SK\" as \"customer_id\"
@@ -31,45 +31,45 @@ FROM
 GROUP BY 
     web_sales.\"WS_SOLD_DATE_SK\",
     web_sales.\"WS_BILL_CUSTOMER_SK\"),
-rambunctious as (
+trite as (
 SELECT
     date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
-    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
-    date.\"D_DATE_SK\" as \"catalog_sales_date_id\"
+    date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
+    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\"
 FROM
     memory.date_dim as date),
-goldfinch as (
+nondescript as (
 SELECT
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
-    catalog_sales.\"CS_SOLD_DATE_SK\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\"),
-cheetah as (
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\",
+    catalog_sales.\"CS_SOLD_DATE_SK\"),
+round as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"relevant_customers\"
 FROM
     memory.date_dim as date
-    INNER JOIN wakeful on date.\"D_DATE_SK\" = wakeful.\"store_sales_date_id\"
-    FULL JOIN tearful on wakeful.\"customer_id\" = tearful.\"customer_id\"
-    FULL JOIN goldfinch on wakeful.\"customer_id\" = goldfinch.\"customer_id\"
-    FULL JOIN memory.customer as customers on wakeful.\"customer_id\" = customers.\"C_CUSTOMER_SK\"
-    LEFT OUTER JOIN jackdaw on tearful.\"web_sales_date_id\" = jackdaw.\"web_sales_date_id\"
-    LEFT OUTER JOIN rambunctious on goldfinch.\"catalog_sales_date_id\" = rambunctious.\"catalog_sales_date_id\"
+    INNER JOIN tearful on date.\"D_DATE_SK\" = tearful.\"store_sales_date_id\"
+    FULL JOIN flashy on tearful.\"customer_id\" = flashy.\"customer_id\"
+    FULL JOIN nondescript on tearful.\"customer_id\" = nondescript.\"customer_id\"
+    FULL JOIN memory.customer as customers on tearful.\"customer_id\" = customers.\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN cloudy on flashy.\"web_sales_date_id\" = cloudy.\"web_sales_date_id\"
+    LEFT OUTER JOIN trite on nondescript.\"catalog_sales_date_id\" = trite.\"catalog_sales_date_id\"
     LEFT OUTER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( jackdaw.\"web_sales_date_year\" = 2002 and jackdaw.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( rambunctious.\"catalog_sales_date_year\" = 2002 and rambunctious.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
+    cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in ( 1,2,3,4 ) and customer_address.\"CA_COUNTY\" in ( 'Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County' ) and ( ( cloudy.\"web_sales_date_year\" = 2002 and cloudy.\"web_sales_date_month_of_year\" in ( 1,2,3,4 ) ) or ( trite.\"catalog_sales_date_year\" = 2002 and trite.\"catalog_sales_date_month_of_year\" in ( 1,2,3,4 ) ) )
 ),
-stork as (
+slow as (
 SELECT
-    cheetah.\"relevant_customers\" as \"relevant_customers\"
+    round.\"relevant_customers\" as \"relevant_customers\"
 FROM
-    cheetah
+    round
 GROUP BY 
-    cheetah.\"relevant_customers\"),
-ray as (
+    round.\"relevant_customers\"),
+spiritual as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_demographics.\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
@@ -84,40 +84,40 @@ FROM
     memory.customer_demographics as customer_demographics
     INNER JOIN memory.customer as customers on customer_demographics.\"CD_DEMO_SK\" = customers.\"C_CURRENT_CDEMO_SK\"
 WHERE
-    customers.\"C_CUSTOMER_SK\" in (select stork.\"relevant_customers\" from stork where stork.\"relevant_customers\" is not null)
+    customers.\"C_CUSTOMER_SK\" in (select slow.\"relevant_customers\" from slow where slow.\"relevant_customers\" is not null)
 )
 SELECT
-    ray.\"customer_demographics_gender\" as \"customer_demographics_gender\",
-    ray.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
-    ray.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
-    count(ray.\"customer_id\") as \"cnt1\",
-    ray.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
-    count(ray.\"customer_id\") as \"cnt2\",
-    ray.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
-    count(ray.\"customer_id\") as \"cnt3\",
-    ray.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
-    count(ray.\"customer_id\") as \"cnt4\",
-    ray.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
-    count(ray.\"customer_id\") as \"cnt5\",
-    ray.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
-    count(ray.\"customer_id\") as \"cnt6\"
+    spiritual.\"customer_demographics_gender\" as \"customer_demographics_gender\",
+    spiritual.\"customer_demographics_marital_status\" as \"customer_demographics_marital_status\",
+    spiritual.\"customer_demographics_education_status\" as \"customer_demographics_education_status\",
+    count(spiritual.\"customer_id\") as \"cnt1\",
+    spiritual.\"customer_demographics_purchase_estimate\" as \"customer_demographics_purchase_estimate\",
+    count(spiritual.\"customer_id\") as \"cnt2\",
+    spiritual.\"customer_demographics_credit_rating\" as \"customer_demographics_credit_rating\",
+    count(spiritual.\"customer_id\") as \"cnt3\",
+    spiritual.\"customer_demographics_dependent_count\" as \"customer_demographics_dependent_count\",
+    count(spiritual.\"customer_id\") as \"cnt4\",
+    spiritual.\"customer_demographics_employed_dependent_count\" as \"customer_demographics_employed_dependent_count\",
+    count(spiritual.\"customer_id\") as \"cnt5\",
+    spiritual.\"customer_demographics_college_dependent_count\" as \"customer_demographics_college_dependent_count\",
+    count(spiritual.\"customer_id\") as \"cnt6\"
 FROM
-    ray
+    spiritual
 GROUP BY 
-    ray.\"customer_demographics_dependent_count\",
-    ray.\"customer_demographics_education_status\",
-    ray.\"customer_demographics_credit_rating\",
-    ray.\"customer_demographics_college_dependent_count\",
-    ray.\"customer_demographics_employed_dependent_count\",
-    ray.\"customer_demographics_gender\",
-    ray.\"customer_demographics_marital_status\",
-    ray.\"customer_demographics_purchase_estimate\"
+    spiritual.\"customer_demographics_employed_dependent_count\",
+    spiritual.\"customer_demographics_credit_rating\",
+    spiritual.\"customer_demographics_purchase_estimate\",
+    spiritual.\"customer_demographics_education_status\",
+    spiritual.\"customer_demographics_gender\",
+    spiritual.\"customer_demographics_marital_status\",
+    spiritual.\"customer_demographics_college_dependent_count\",
+    spiritual.\"customer_demographics_dependent_count\"
 ORDER BY 
-    ray.\"customer_demographics_gender\" asc,
-    ray.\"customer_demographics_marital_status\" asc,
-    ray.\"customer_demographics_education_status\" asc,
-    ray.\"customer_demographics_purchase_estimate\" asc,
-    ray.\"customer_demographics_credit_rating\" asc,
-    ray.\"customer_demographics_dependent_count\" asc,
-    ray.\"customer_demographics_employed_dependent_count\" asc,
-    ray.\"customer_demographics_college_dependent_count\" asc"""
+    spiritual.\"customer_demographics_gender\" asc,
+    spiritual.\"customer_demographics_marital_status\" asc,
+    spiritual.\"customer_demographics_education_status\" asc,
+    spiritual.\"customer_demographics_purchase_estimate\" asc,
+    spiritual.\"customer_demographics_credit_rating\" asc,
+    spiritual.\"customer_demographics_dependent_count\" asc,
+    spiritual.\"customer_demographics_employed_dependent_count\" asc,
+    spiritual.\"customer_demographics_college_dependent_count\" asc"""

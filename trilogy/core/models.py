@@ -3478,10 +3478,18 @@ class Environment(BaseModel):
                     # to make this a root for discovery purposes
                     # as it now "exists" in a table
                     current_concept.lineage = None
+                    current_concept = current_concept.with_default_grain()
                     self.add_concept(
                         current_concept, meta=meta, force=True, _ignore_cache=True
                     )
                     self.merge_concept(new_concept, current_concept, [])
+                else:
+                    self.add_concept(current_concept, meta=meta, _ignore_cache=True)
+
+            # else:
+            #     self.add_concept(
+            #         current_concept, meta=meta, _ignore_cache=True
+            #     )
         if not _ignore_cache:
             self.gen_concept_list_caches()
         return datasource
@@ -4289,6 +4297,9 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
     def __repr__(self):
         return f"RowsetDerivation<{str(self.select)}>"
 
+    def __str__(self):
+        return self.__repr__()
+
     @property
     def derived_concepts(self) -> List[Concept]:
         output: list[Concept] = []
@@ -4307,7 +4318,8 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
                     content=orig_concept, where=self.select.where_clause, rowset=self
                 ),
                 grain=orig_concept.grain,
-                metadata=orig_concept.metadata,
+                # TODO: add proper metadata
+                metadata=Metadata(concept_source=ConceptSource.CTE),
                 namespace=(
                     f"{self.name}.{orig_concept.namespace}"
                     if orig_concept.namespace != self.namespace
@@ -4334,6 +4346,7 @@ class RowsetDerivationStatement(Namespaced, BaseModel):
                     components=[orig[c.address] for c in x.grain.components_copy]
                 )
             else:
+
                 x.grain = default_grain
         return output
 
@@ -4358,6 +4371,9 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
         return (
             f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
         )
+
+    def __str__(self):
+        return self.__repr__()
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return RowsetItem(

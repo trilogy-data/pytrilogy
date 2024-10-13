@@ -8,9 +8,9 @@ SELECT
     all_sites.page_title,
     all_sites.clean_url,
     count(all_sites.user_pseudo_id)->user_count,
-WHERE 
+where 
     all_sites.event_date >= date_add(current_date() , day, -30)
-ORDER BY
+order by 
     all_sites.event_date asc;
 
 

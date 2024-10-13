@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 1.927958
-exec_time = 0.413261
-comp_time = 0.241145
-gen_length = 2530
+parse_time = 2.21751
+exec_time = 0.143911
+comp_time = 0.347779
+gen_length = 2516
 generated_sql = """
 
 WITH 
-canary as (
+cougar as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     items.\"I_CATEGORY\" in ( 'Sports','Books','Home' ) and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-albatross as (
+coyote as (
 SELECT
-    sum(canary.\"cs_extra_sales_price\") as \"revenue\",
-    canary.\"cs_item_category\" as \"cs_item_category\",
-    canary.\"cs_item_class\" as \"cs_item_class\",
-    canary.\"cs_item_current_price\" as \"cs_item_current_price\",
-    canary.\"cs_item_desc\" as \"cs_item_desc\",
-    canary.\"cs_item_name\" as \"cs_item_name\"
+    sum(cougar.\"cs_extra_sales_price\") as \"revenue\",
+    cougar.\"cs_item_category\" as \"cs_item_category\",
+    cougar.\"cs_item_class\" as \"cs_item_class\",
+    cougar.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cougar.\"cs_item_desc\" as \"cs_item_desc\",
+    cougar.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    canary
+    cougar
 GROUP BY 
-    canary.\"cs_item_class\",
-    canary.\"cs_item_current_price\",
-    canary.\"cs_item_category\",
-    canary.\"cs_item_desc\",
-    canary.\"cs_item_name\"),
-colossal as (
+    cougar.\"cs_item_current_price\",
+    cougar.\"cs_item_desc\",
+    cougar.\"cs_item_name\",
+    cougar.\"cs_item_class\",
+    cougar.\"cs_item_category\"),
+crocodile as (
 SELECT
-    sum(albatross.\"revenue\") over (partition by albatross.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    albatross.\"revenue\" as \"revenue\",
-    albatross.\"cs_item_class\" as \"cs_item_class\",
-    albatross.\"cs_item_name\" as \"cs_item_name\",
-    albatross.\"cs_item_desc\" as \"cs_item_desc\",
-    albatross.\"cs_item_category\" as \"cs_item_category\",
-    albatross.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(coyote.\"revenue\") over (partition by coyote.\"cs_item_class\") as \"_virtual_8479147315262044\",
+    coyote.\"revenue\" as \"revenue\",
+    coyote.\"cs_item_class\" as \"cs_item_class\",
+    coyote.\"cs_item_name\" as \"cs_item_name\",
+    coyote.\"cs_item_desc\" as \"cs_item_desc\",
+    coyote.\"cs_item_category\" as \"cs_item_category\",
+    coyote.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    albatross)
+    coyote)
 SELECT
-    colossal.\"cs_item_name\" as \"cs_item_name\",
-    colossal.\"cs_item_desc\" as \"cs_item_desc\",
-    colossal.\"cs_item_category\" as \"cs_item_category\",
-    colossal.\"cs_item_class\" as \"cs_item_class\",
-    colossal.\"cs_item_current_price\" as \"cs_item_current_price\",
-    colossal.\"revenue\" as \"revenue\",
-    colossal.\"revenue\" * 100.0 / colossal.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    crocodile.\"cs_item_name\" as \"cs_item_name\",
+    crocodile.\"cs_item_desc\" as \"cs_item_desc\",
+    crocodile.\"cs_item_category\" as \"cs_item_category\",
+    crocodile.\"cs_item_class\" as \"cs_item_class\",
+    crocodile.\"cs_item_current_price\" as \"cs_item_current_price\",
+    crocodile.\"revenue\" as \"revenue\",
+    crocodile.\"revenue\" * 100.0 / crocodile.\"_virtual_8479147315262044\" as \"revenue_ratio\"
 FROM
-    colossal
+    crocodile
 ORDER BY 
-    colossal.\"cs_item_category\" asc nulls first,
-    colossal.\"cs_item_class\" asc nulls first,
-    colossal.\"cs_item_name\" asc nulls first,
-    colossal.\"cs_item_desc\" asc nulls first,
-    colossal.\"revenue\" * 100.0 / colossal.\"_virtual_8479147315262044\" asc nulls first
+    crocodile.\"cs_item_category\" asc nulls first,
+    crocodile.\"cs_item_class\" asc nulls first,
+    crocodile.\"cs_item_name\" asc nulls first,
+    crocodile.\"cs_item_desc\" asc nulls first,
+    crocodile.\"revenue\" * 100.0 / crocodile.\"_virtual_8479147315262044\" asc nulls first
 LIMIT (100)"""

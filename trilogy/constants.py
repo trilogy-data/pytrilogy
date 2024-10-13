@@ -44,6 +44,7 @@ class Comments:
 class Config:
     strict_mode: bool = True
     human_identifiers: bool = True
+    randomize_cte_names: bool = False
     validate_missing: bool = True
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)

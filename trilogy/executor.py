@@ -23,7 +23,7 @@ from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
 from trilogy.parser import parse_text
 from trilogy.hooks.base_hook import BaseHook
-
+from pathlib import Path
 from dataclasses import dataclass
 
 
@@ -151,6 +151,13 @@ class Executor(object):
     @execute_query.register
     def _(self, query: RawSQLStatement) -> CursorResult:
         return self.execute_raw_sql(query.text)
+
+    @execute_query.register
+    def _(self, query: ShowStatement) -> CursorResult:
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
+        return self.execute_query(sql[0])
 
     @execute_query.register
     def _(self, query: ProcessedShowStatement) -> CursorResult:
@@ -341,3 +348,9 @@ class Executor(object):
             if isinstance(statement, ProcessedQueryPersist):
                 self.environment.add_datasource(statement.datasource)
         return output
+
+    def execute_file(self, file: str | Path) -> List[CursorResult]:
+        file = Path(file)
+        with open(file, "r") as f:
+            command = f.read()
+        return self.execute_text(command)

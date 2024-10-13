@@ -186,6 +186,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "Address"):
+        if arg.is_query:
+            return f"query '''{arg.location}'''"
         return f"address {arg.location}"
 
     @to_string.register
