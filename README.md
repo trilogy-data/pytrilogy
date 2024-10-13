@@ -255,20 +255,26 @@ but all are worth checking out. Please open PRs/comment for anything missed!
 
 #### IMPORT
 
-`import <path> as <alias>;`
+`import [path] as [alias];`
 
 #### CONCEPT
 
-Types: `string | int | float | bool | date | datetime | time | numeric(scale, precision) | timestamp | interval`;
+Types: `string | int | float | bool | date | datetime | time | numeric(scale, precision) | timestamp | interval | list<[type]> | map<[type], [type]> | struct<name:[type], name:[type]>`;
 
 Key:
-`key <name> <type>;`
+`key [name] [type];`
 
 Property:
-`property <key>.<name> <type>;`
+`property [key>].[name] [type];`
+`property x.y int;`
+or 
+`property <[key](,[key])?>.<name> [type];`
+`property <x,y>.z int;`
+
 
 Transformation:
-`auto <name> <- <expression>;`
+`auto [name] <- [expression];`
+`auto x <- y + 1;`
 
 #### DATASOURCE
 ```sql
