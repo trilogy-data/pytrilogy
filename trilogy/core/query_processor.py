@@ -32,7 +32,7 @@ from trilogy.utility import unique
 
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.constants import logger
-from trilogy.core.ergonomics import CTE_NAMES
+from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.optimization import optimize_ctes
 from math import ceil
 from collections import defaultdict
@@ -169,15 +169,16 @@ def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
 
 
 def generate_cte_name(full_name: str, name_map: dict[str, str]) -> str:
+    cte_names = generate_cte_names()
     if CONFIG.human_identifiers:
         if full_name in name_map:
             return name_map[full_name]
         suffix = ""
         idx = len(name_map)
-        if idx >= len(CTE_NAMES):
-            int = ceil(idx / len(CTE_NAMES))
+        if idx >= len(cte_names):
+            int = ceil(idx / len(cte_names))
             suffix = f"_{int}"
-        valid = [x for x in CTE_NAMES if x + suffix not in name_map.values()]
+        valid = [x for x in cte_names if x + suffix not in name_map.values()]
         lookup = valid[0]
         new_name = f"{lookup}{suffix}"
         name_map[full_name] = new_name

@@ -184,7 +184,11 @@ warbler""".split(
 )
 
 
-if CONFIG.randomize_cte_names:
-    CTE_NAMES = list(set(CTE_NAMES))
-else:
-    CTE_NAMES = list(CTE_NAMES)
+def generate_cte_names():
+    if CONFIG.randomize_cte_names:
+        from random import shuffle
+
+        new = [*CTE_NAMES]
+        shuffle(new)
+        return new
+    return CTE_NAMES
