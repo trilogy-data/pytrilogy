@@ -1,3 +1,5 @@
+from trilogy.constants import CONFIG
+
 # source: https://github.com/aaronbassett/Pass-phrase
 CTE_NAMES = """quizzical
 highfalutin
@@ -184,4 +186,7 @@ warbler""".split(
     "\n"
 )
 
-CTE_NAMES = list(set(CTE_NAMES))
+if CONFIG.randomize_cte_names:
+    CTE_NAMES = list(set(CTE_NAMES))
+else:
+    CTE_NAMES = list(CTE_NAMES)

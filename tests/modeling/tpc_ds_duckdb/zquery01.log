@@ -1,12 +1,12 @@
 query_id = 1
-parse_time = 1.110863
-exec_time = 0.048983
-comp_time = 1.067345
-gen_length = 1629
+parse_time = 1.135999
+exec_time = 0.030446
+comp_time = 0.200409
+gen_length = 1696
 generated_sql = """
 
 WITH 
-cockatiel as (
+cheerful as (
 SELECT
     store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     store.\"S_STATE\" as \"returns_store_state\",
@@ -17,38 +17,38 @@ SELECT
     store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
     memory.store_returns as store_returns
-    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
-puffy as (
+thoughtful as (
 SELECT
-    sum(cockatiel.\"returns_return_amount\") as \"total_returns\",
-    cockatiel.\"returns_store_id\" as \"returns_store_id\",
-    cockatiel.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(cheerful.\"returns_return_amount\") as \"total_returns\",
+    cheerful.\"returns_store_id\" as \"returns_store_id\",
+    cheerful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    cockatiel
+    cheerful
 GROUP BY 
-    cockatiel.\"returns_store_id\",
-    cockatiel.\"returns_customer_text_id\"),
-brave as (
+    cheerful.\"returns_store_id\",
+    cheerful.\"returns_customer_text_id\"),
+cooperative as (
 SELECT
-    avg(puffy.\"total_returns\") as \"avg_store_returns\",
-    puffy.\"returns_store_id\" as \"returns_store_id\"
+    avg(thoughtful.\"total_returns\") as \"avg_store_returns\",
+    thoughtful.\"returns_store_id\" as \"returns_store_id\"
 FROM
-    puffy
+    thoughtful
 GROUP BY 
-    puffy.\"returns_store_id\")
+    thoughtful.\"returns_store_id\")
 SELECT
-    puffy.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM
-    puffy
-    INNER JOIN brave on puffy.\"returns_store_id\" = brave.\"returns_store_id\"
+    thoughtful
+    INNER JOIN cooperative on thoughtful.\"returns_store_id\" = cooperative.\"returns_store_id\"
 WHERE
-    puffy.\"total_returns\" > ( 1.2 * brave.\"avg_store_returns\" )
+    thoughtful.\"total_returns\" > ( 1.2 * cooperative.\"avg_store_returns\" )
 
 ORDER BY 
-    puffy.\"returns_customer_text_id\" asc
+    thoughtful.\"returns_customer_text_id\" asc
 LIMIT (100)"""
