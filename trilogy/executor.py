@@ -23,7 +23,7 @@ from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
 from trilogy.parser import parse_text
 from trilogy.hooks.base_hook import BaseHook
-
+from pathlib import Path
 from dataclasses import dataclass
 
 
@@ -318,6 +318,35 @@ class Executor(object):
 
     def execute_text(self, command: str) -> List[CursorResult]:
         """Run a preql text command"""
+        output = []
+        # connection = self.engine.connect()
+        for statement in self.parse_text_generator(command):
+            if isinstance(statement, ProcessedShowStatement):
+                output.append(
+                    generate_result_set(
+                        statement.output_columns,
+                        [
+                            self.generator.compile_statement(x)
+                            for x in statement.output_values
+                            if isinstance(x, ProcessedQuery)
+                        ],
+                    )
+                )
+                continue
+            compiled_sql = self.generator.compile_statement(statement)
+            logger.debug(compiled_sql)
+
+            output.append(self.connection.execute(text(compiled_sql)))
+            # generalize post-run success hooks
+            if isinstance(statement, ProcessedQueryPersist):
+                self.environment.add_datasource(statement.datasource)
+        return output
+
+    def execute_file(self, file: str | Path) -> List[CursorResult]:
+        """Run a preql text command"""
+        file = Path(file)
+        with open(file, "r") as f:
+            command = f.read()
         output = []
         # connection = self.engine.connect()
         for statement in self.parse_text_generator(command):
