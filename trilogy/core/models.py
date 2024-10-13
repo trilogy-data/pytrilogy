@@ -3478,7 +3478,7 @@ class Environment(BaseModel):
                     # to make this a root for discovery purposes
                     # as it now "exists" in a table
                     current_concept.lineage = None
-                    current_concept.grain = Grain()
+                    current_concept = current_concept.with_default_grain()
                     self.add_concept(
                         current_concept, meta=meta, force=True, _ignore_cache=True
                     )

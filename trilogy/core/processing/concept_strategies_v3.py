@@ -432,7 +432,6 @@ def generate_node(
             conditions=conditions,
         )
         if not check:
-
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for expanded concepts"
             )
