@@ -116,7 +116,7 @@ Run the following from the directory the file is in.
 trilogy run hello.trilogy duckdb
 ```
 
-![UI Preview](./hello_world.png)
+![UI Preview](hello_world.png)
 
 ## Backends
 
