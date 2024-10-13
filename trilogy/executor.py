@@ -153,6 +153,13 @@ class Executor(object):
         return self.execute_raw_sql(query.text)
 
     @execute_query.register
+    def _(self, query: ShowStatement) -> CursorResult:
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
+        return self.execute_query(sql[0])
+
+    @execute_query.register
     def _(self, query: ProcessedShowStatement) -> CursorResult:
         return generate_result_set(
             query.output_columns,
@@ -343,30 +350,7 @@ class Executor(object):
         return output
 
     def execute_file(self, file: str | Path) -> List[CursorResult]:
-        """Run a preql text command"""
         file = Path(file)
         with open(file, "r") as f:
             command = f.read()
-        output = []
-        # connection = self.engine.connect()
-        for statement in self.parse_text_generator(command):
-            if isinstance(statement, ProcessedShowStatement):
-                output.append(
-                    generate_result_set(
-                        statement.output_columns,
-                        [
-                            self.generator.compile_statement(x)
-                            for x in statement.output_values
-                            if isinstance(x, ProcessedQuery)
-                        ],
-                    )
-                )
-                continue
-            compiled_sql = self.generator.compile_statement(statement)
-            logger.debug(compiled_sql)
-
-            output.append(self.connection.execute(text(compiled_sql)))
-            # generalize post-run success hooks
-            if isinstance(statement, ProcessedQueryPersist):
-                self.environment.add_datasource(statement.datasource)
-        return output
+        return self.execute_text(command)
