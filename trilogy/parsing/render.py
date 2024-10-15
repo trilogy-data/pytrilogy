@@ -32,6 +32,7 @@ from trilogy.core.models import (
     AggregateWrapper,
     PersistStatement,
     ListWrapper,
+    TupleWrapper,
     RowsetDerivationStatement,
     MultiSelectStatement,
     OrderBy,
@@ -180,6 +181,10 @@ class Renderer:
     def _(self, arg: ListWrapper):
         return "[" + ", ".join([self.to_string(x) for x in arg]) + "]"
 
+    @to_string.register
+    def _(self, arg: TupleWrapper):
+        return "(" + ", ".join([self.to_string(x) for x in arg]) + ")"
+    
     @to_string.register
     def _(self, arg: DatePart):
         return arg.value

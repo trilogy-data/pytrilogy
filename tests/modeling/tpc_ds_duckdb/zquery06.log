@@ -1,16 +1,16 @@
 query_id = 6
-parse_time = 12.422883
-exec_time = 0.296406
-comp_time = 0.494164
+parse_time = 3.544906
+exec_time = 0.115385
+comp_time = 0.164328
 gen_length = 2726
 generated_sql = """
 
 WITH 
 late as (
 SELECT
-    items.\"I_CATEGORY\" as \"item_category\",
     items.\"I_CURRENT_PRICE\" as \"item_current_price\",
-    items.\"I_ITEM_SK\" as \"item_id\"
+    items.\"I_ITEM_SK\" as \"item_id\",
+    items.\"I_CATEGORY\" as \"item_category\"
 FROM
     memory.item as items
 WHERE

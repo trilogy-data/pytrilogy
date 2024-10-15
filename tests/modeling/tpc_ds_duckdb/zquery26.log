@@ -1,7 +1,7 @@
 query_id = 26
-parse_time = 2.385424
-exec_time = 0.247597
-comp_time = 0.266143
+parse_time = 5.936448
+exec_time = 3.940754
+comp_time = 0.367685
 gen_length = 1898
 generated_sql = """
 
@@ -23,10 +23,10 @@ SELECT
     catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.customer_demographics as customer_demographics on catalog_sales.\"CS_BILL_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.promotion as promotion on catalog_sales.\"CS_PROMO_SK\" = promotion.\"P_PROMO_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer_demographics as customer_demographics on catalog_sales.\"CS_BILL_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
+    INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
 )

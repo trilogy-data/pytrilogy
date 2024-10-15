@@ -28,6 +28,8 @@ from trilogy.core.models import (
     Datasource,
     ColumnAssignment,
     Grain,
+    ListWrapper,
+    TupleWrapper
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -460,3 +462,24 @@ grain (user_id)
 query '''SELECT * FROM test'''
 (user_id = 123 or user_id = 456);"""
     )
+
+
+def test_circular_rendering():
+    basic = Environment()
+
+    _, commands = basic.parse(
+        """
+key id int;
+
+persist test into test from
+select id
+where id in (1,2,3);
+""",
+    )
+    assert isinstance(commands[-1].select.where_clause.conditional.right, TupleWrapper), type(commands[-1].select.where_clause.conditional.right)
+    rendered = Renderer().to_string(commands[-1])
+
+    assert rendered == '''PERSIST test INTO test FROM SELECT
+    id,
+WHERE
+    id in (1, 2, 3);''', rendered

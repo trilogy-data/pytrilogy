@@ -57,7 +57,7 @@
     
     column_list : (IDENTIFIER "," )* IDENTIFIER ","?
     
-    import_statement: "import" (IDENTIFIER ".") * IDENTIFIER "as" IDENTIFIER
+    import_statement: "import" IDENTIFIER ("."  IDENTIFIER)* ("as" IDENTIFIER)?
 
     // persist_statement
     persist_statement: "persist"i IDENTIFIER "into"i IDENTIFIER "from"i select_statement grain_clause?
@@ -303,6 +303,8 @@
 
     array_lit: "[" (literal ",")* literal ","? "]"()
 
+    tuple_lit: "(" (literal ",")* literal ","? ")"
+
     map_lit: "{" (literal ":" literal ",")* literal ":" literal ","? "}"
 
     _STRUCT.1: "struct("i
@@ -312,7 +314,7 @@
 
     !null_lit.1: "null"i
     
-    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit | struct_lit
+    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit | struct_lit | tuple_lit
 
     MODIFIER: "Optional"i | "Partial"i | "Nullable"i
 

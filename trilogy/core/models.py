@@ -72,6 +72,7 @@ from collections import UserList, UserDict
 from functools import cached_property
 from abc import ABC
 from collections import defaultdict
+from collections.abc import Sequence
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -3599,6 +3600,7 @@ class Comparison(
         MagicConstants,
         WindowItem,
         AggregateWrapper,
+        TupleWrapper,
     ]
     operator: ComparisonOperator
 
@@ -4522,6 +4524,30 @@ class Parenthetical(
             base += x.input
         return base
 
+class TupleWrapper(Generic[VT], tuple):
+    """Used to distinguish parsed tuple objects from other tuples"""
+    def __init__(self, val, type: DataType, **kwargs):
+        super().__init__()
+        self.type = type
+
+    def __new__(cls, val, type: DataType, **kwargs):
+        return super().__new__(cls, tuple(val))
+        # self.type = type
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    ) -> core_schema.CoreSchema:
+        args = get_args(source_type)
+        if args:
+            schema = handler(Tuple[args])  # type: ignore
+        else:
+            schema = handler(Tuple)
+        return core_schema.no_info_after_validator_function(cls.validate, schema)
+
+    @classmethod
+    def validate(cls, v):
+        return cls(v, type=arg_to_datatype(v[0]))
 
 class PersistStatement(BaseModel):
     datasource: Datasource
@@ -4588,6 +4614,10 @@ def list_to_wrapper(args):
     assert len(set(types)) == 1
     return ListWrapper(args, type=types[0])
 
+def tuple_to_wrapper(args):
+    types = [arg_to_datatype(arg) for arg in args]
+    assert len(set(types)) == 1
+    return TupleWrapper(args, type=types[0])
 
 def dict_to_map_wrapper(arg):
     key_types = [arg_to_datatype(arg) for arg in arg.keys()]
@@ -4644,6 +4674,8 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | Numeric
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):
         return arg_to_datatype(arg.content)
+    elif isinstance(arg, TupleWrapper):
+        return ListType(type=arg.type)
     elif isinstance(arg, WindowItem):
         if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
             return DataType.INTEGER

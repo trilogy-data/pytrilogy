@@ -105,9 +105,11 @@ from trilogy.core.models import (
     ConceptDerivation,
     RowsetDerivationStatement,
     list_to_wrapper,
+    tuple_to_wrapper,
     dict_to_map_wrapper,
     NumericType,
     HavingClause,
+    TupleWrapper,
 )
 from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.common import (
@@ -754,7 +756,10 @@ class ParseToObjects(Transformer):
         return text
 
     def import_statement(self, args: list[str]) -> ImportStatement:
-        alias = args[-1]
+        if len(args) == 2:
+            alias = args[-1]
+        else:
+            alias = self.environment.namespace
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
@@ -1063,7 +1068,10 @@ class ParseToObjects(Transformer):
 
     def array_lit(self, args):
         return list_to_wrapper(args)
-
+    
+    def tuple_lit(self, args):
+        return tuple_to_wrapper(args)
+    
     def struct_lit(self, args):
 
         zipped = dict(zip(args[::2], args[1::2]))
@@ -1124,11 +1132,11 @@ class ParseToObjects(Transformer):
 
         while isinstance(right, Parenthetical) and isinstance(
             right.content,
-            (Concept, Function, FilterItem, WindowItem, AggregateWrapper, ListWrapper),
+            (Concept, Function, FilterItem, WindowItem, AggregateWrapper, ListWrapper, TupleWrapper),
         ):
             right = right.content
         if isinstance(
-            right, (Function, FilterItem, WindowItem, AggregateWrapper, ListWrapper)
+            right, (Function, FilterItem, WindowItem, AggregateWrapper)
         ):
             right = arbitrary_to_concept(
                 right,
@@ -1142,7 +1150,7 @@ class ParseToObjects(Transformer):
         )
 
     def expr_tuple(self, args):
-        return Parenthetical(content=args)
+        return TupleWrapper(content = tuple(args))
 
     def parenthetical(self, args):
         return Parenthetical(content=args[0])

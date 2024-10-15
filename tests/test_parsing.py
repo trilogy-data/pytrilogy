@@ -7,6 +7,7 @@ from trilogy.core.models import (
     SelectStatement,
     Environment,
     Comparison,
+    TupleWrapper,
 )
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.parsing.parse_engine import (
@@ -18,7 +19,6 @@ from trilogy.dialect.base import BaseDialect
 from trilogy.core.enums import BooleanOperator
 from trilogy import Dialects
 
-
 def test_in():
     _, parsed = parse_text(
         "const order_id <- 3; SELECT order_id  WHERE order_id IN (1,2,3);"
@@ -27,11 +27,11 @@ def test_in():
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
-        Parenthetical,
+        TupleWrapper,
     ), type(right)
-    assert right.content[0] == 1
+    assert right[0] == 1
     rendered = BaseDialect().render_expr(right)
-    assert rendered.strip() == "( 1,2,3 )".strip()
+    assert rendered.strip() == "(1,2,3)".strip()
 
     _, parsed = parse_text(
         "const order_id <- 3; SELECT order_id  WHERE order_id IN (1,);"
@@ -40,11 +40,11 @@ def test_in():
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
-        Parenthetical,
+        TupleWrapper,
     ), type(right)
-    assert right.content[0] == 1
+    assert right[0] == 1
     rendered = BaseDialect().render_expr(right)
-    assert rendered.strip() == "( 1 )".strip()
+    assert rendered.strip() == "(1)".strip()
 
 
 def test_not_in():
