@@ -1068,10 +1068,10 @@ class ParseToObjects(Transformer):
 
     def array_lit(self, args):
         return list_to_wrapper(args)
-    
+
     def tuple_lit(self, args):
         return tuple_to_wrapper(args)
-    
+
     def struct_lit(self, args):
 
         zipped = dict(zip(args[::2], args[1::2]))
@@ -1132,12 +1132,18 @@ class ParseToObjects(Transformer):
 
         while isinstance(right, Parenthetical) and isinstance(
             right.content,
-            (Concept, Function, FilterItem, WindowItem, AggregateWrapper, ListWrapper, TupleWrapper),
+            (
+                Concept,
+                Function,
+                FilterItem,
+                WindowItem,
+                AggregateWrapper,
+                ListWrapper,
+                TupleWrapper,
+            ),
         ):
             right = right.content
-        if isinstance(
-            right, (Function, FilterItem, WindowItem, AggregateWrapper)
-        ):
+        if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
             right = arbitrary_to_concept(
                 right,
                 namespace=self.environment.namespace,
@@ -1150,7 +1156,7 @@ class ParseToObjects(Transformer):
         )
 
     def expr_tuple(self, args):
-        return TupleWrapper(content = tuple(args))
+        return TupleWrapper(content=tuple(args))
 
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
@@ -1849,9 +1855,13 @@ def unpack_visit_error(e: VisitError):
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
         raise e.orig_exc
     elif isinstance(e.orig_exc, SyntaxError):
-        raise InvalidSyntaxException(str(e.orig_exc) + str(e.rule) + str(e.obj))
+        raise InvalidSyntaxException(
+            str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
+        )
     elif isinstance(e.orig_exc, (ValidationError, TypeError)):
-        raise InvalidSyntaxException(str(e.orig_exc) + str(e.rule) + str(e.obj))
+        raise InvalidSyntaxException(
+            str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
+        )
     raise e
 
 

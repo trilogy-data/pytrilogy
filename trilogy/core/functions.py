@@ -104,6 +104,8 @@ def Unnest(args: list[Concept]) -> Function:
     output = arg_to_datatype(args[0])
     if isinstance(output, (ListType)):
         output = output.value_data_type
+    else:
+        output = DataType.STRING
     return Function(
         operator=FunctionType.UNNEST,
         arguments=args,

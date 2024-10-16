@@ -40,5 +40,3 @@ key id2 int;
     assert basic.concepts["id"].name == "id"
     assert basic.concepts["id2"].name == "id2"
     assert basic.concepts["id"].namespace == basic.concepts["id2"].namespace
-
-

@@ -33,8 +33,8 @@ def test_complex():
         order by generic.split asc, generic.scalar asc;"""
     )[-1]
     # assert sql == "abc", sql
-    r1f = r1.fetchall() 
+    r1f = r1.fetchall()
     r2f = r2.fetchall()
-    assert len(r1f) == len(r2f) 
+    assert len(r1f) == len(r2f)
     for i in range(len(r1f)):
         assert r1f[i] == r2f[i]

@@ -4524,11 +4524,17 @@ class Parenthetical(
             base += x.input
         return base
 
+
 class TupleWrapper(Generic[VT], tuple):
     """Used to distinguish parsed tuple objects from other tuples"""
+
     def __init__(self, val, type: DataType, **kwargs):
         super().__init__()
         self.type = type
+        self.val = val
+
+    def __getnewargs__(self):
+        return (self.val, self.type)
 
     def __new__(cls, val, type: DataType, **kwargs):
         return super().__new__(cls, tuple(val))
@@ -4548,6 +4554,7 @@ class TupleWrapper(Generic[VT], tuple):
     @classmethod
     def validate(cls, v):
         return cls(v, type=arg_to_datatype(v[0]))
+
 
 class PersistStatement(BaseModel):
     datasource: Datasource
@@ -4614,10 +4621,12 @@ def list_to_wrapper(args):
     assert len(set(types)) == 1
     return ListWrapper(args, type=types[0])
 
+
 def tuple_to_wrapper(args):
     types = [arg_to_datatype(arg) for arg in args]
     assert len(set(types)) == 1
     return TupleWrapper(args, type=types[0])
+
 
 def dict_to_map_wrapper(arg):
     key_types = [arg_to_datatype(arg) for arg in arg.keys()]

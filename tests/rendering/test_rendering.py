@@ -29,7 +29,8 @@ from trilogy.core.models import (
     ColumnAssignment,
     Grain,
     ListWrapper,
-    TupleWrapper
+    ListType,
+    TupleWrapper,
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -207,7 +208,14 @@ def test_render_concept_declaration(test_environment: Environment):
         ConceptDeclarationStatement(concept=test_environment.concepts["order_id"])
     )
 
-    assert test == "key local.order_id int;"
+    assert test == "key order_id int;"
+    env_two = Environment(namespace="test")
+    env_two.parse("""key order_id int;""")
+    test = Renderer().to_string(
+        ConceptDeclarationStatement(concept=env_two.concepts["test.order_id"])
+    )
+
+    assert test == "key test.order_id int;"
 
 
 def test_render_list_wrapper(test_environment: Environment):
@@ -476,10 +484,30 @@ select id
 where id in (1,2,3);
 """,
     )
-    assert isinstance(commands[-1].select.where_clause.conditional.right, TupleWrapper), type(commands[-1].select.where_clause.conditional.right)
+    assert isinstance(
+        commands[-1].select.where_clause.conditional.right, TupleWrapper
+    ), type(commands[-1].select.where_clause.conditional.right)
     rendered = Renderer().to_string(commands[-1])
 
-    assert rendered == '''PERSIST test INTO test FROM SELECT
+    assert (
+        rendered
+        == """PERSIST test INTO test FROM SELECT
     id,
 WHERE
-    id in (1, 2, 3);''', rendered
+    id in (1, 2, 3);"""
+    ), rendered
+
+
+def test_render_list_type():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+key id list<int>;
+""",
+    )
+    rendered = Renderer().to_string(commands[0])
+
+    assert env.concepts["id"].datatype == ListType(type=DataType.INTEGER)
+    assert isinstance(commands[0], ConceptDeclarationStatement)
+    assert rendered == """key id list<int>;""", rendered
