@@ -8,7 +8,7 @@
     | persist_statement
     | rowset_derivation_statement
     | import_statement
-
+    | copy_statement
     | merge_statement_v2
     | rawsql_statement
     
@@ -77,6 +77,12 @@
 
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
+
+    // copy statement
+
+    COPY_TYPE: "csv"i
+
+    copy_statement: "copy"i "into"i COPY_TYPE _string_lit "from"i select_statement
 
     // FUNCTION blocks
     function: raw_function

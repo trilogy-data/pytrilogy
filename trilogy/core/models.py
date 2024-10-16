@@ -65,6 +65,7 @@ from trilogy.core.enums import (
     ShowCategory,
     Granularity,
     SelectFiltering,
+    IOType
 )
 from trilogy.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from trilogy.utility import unique
@@ -72,7 +73,6 @@ from collections import UserList, UserDict
 from functools import cached_property
 from abc import ABC
 from collections import defaultdict
-from collections.abc import Sequence
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -82,6 +82,9 @@ LT = TypeVar("LT")
 
 
 def is_compatible_datatype(left, right):
+    # for unknown types, we can't make any assumptions
+    if right == DataType.UNKNOWN or left == DataType.UNKNOWN:
+        return True
     if left == right:
         return True
     if {left, right} == {DataType.NUMERIC, DataType.FLOAT}:
@@ -1579,6 +1582,13 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
 class RawSQLStatement(BaseModel):
     text: str
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
+class CopyStatement(BaseModel):
+    target:str
+    target_type: IOType
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    select: SelectStatement
+
 
 
 class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
@@ -4260,14 +4270,23 @@ class ProcessedQuery(BaseModel):
     order_by: Optional[OrderBy] = None
 
 
-class ProcessedQueryMixin(BaseModel):
+class PersistQueryMixin(BaseModel):
     output_to: MaterializedDataset
     datasource: Datasource
     # base:Dataset
 
 
-class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
+class ProcessedQueryPersist(ProcessedQuery, PersistQueryMixin):
     pass
+
+class CopyQueryMixin(BaseModel):
+    target:str
+    target_type: IOType
+    # base:Dataset
+
+class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
+    pass
+
 
 
 class ProcessedShowStatement(BaseModel):

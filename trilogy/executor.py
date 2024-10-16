@@ -10,6 +10,7 @@ from trilogy.core.models import (
     ProcessedShowStatement,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
+    ProcessedCopyStatement,
     RawSQLStatement,
     MultiSelectStatement,
     SelectStatement,
@@ -18,9 +19,11 @@ from trilogy.core.models import (
     Concept,
     ConceptDeclarationStatement,
     Datasource,
+    CopyStatement
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
+from trilogy.core.enums import IOType
 from trilogy.parser import parse_text
 from trilogy.hooks.base_hook import BaseHook
 from pathlib import Path
@@ -94,7 +97,7 @@ class Executor(object):
         self.connection = self.engine.connect()
 
     def execute_statement(self, statement) -> Optional[CursorResult]:
-        if not isinstance(statement, (ProcessedQuery, ProcessedQueryPersist)):
+        if not isinstance(statement, (ProcessedQuery, ProcessedShowStatement, ProcessedQueryPersist, ProcessedCopyStatement)):
             return None
         return self.execute_query(statement)
 
@@ -183,11 +186,34 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ProcessedQueryPersist) -> CursorResult:
+
         sql = self.generator.compile_statement(query)
-        # connection = self.engine.connect()
+
         output = self.connection.execute(text(sql))
         self.environment.add_datasource(query.datasource)
         return output
+
+    
+    @execute_query.register
+    def _(self, query: ProcessedCopyStatement) -> CursorResult:
+        sql = self.generator.compile_statement(query)
+        output:CursorResult = self.connection.execute(text(sql))
+        if query.target_type == IOType.CSV:
+            import csv
+            with open(query.target, 'w', newline='', encoding='utf-8') as f:
+                outcsv = csv.writer(f)
+                outcsv.writerow(output.keys())
+                outcsv.writerows(output)
+        else:
+            raise NotImplementedError(f"Unsupported IOType {query.target_type}")
+        # now return the query we ran through IO
+        # TODO: instead return how many rows were written?
+        return generate_result_set(
+            query.output_columns,
+            [
+                self.generator.compile_statement(query)          
+            ],
+        )
 
     @singledispatchmethod
     def generate_sql(self, command) -> list[str]:
@@ -251,39 +277,17 @@ class Executor(object):
         | ProcessedQueryPersist
         | ProcessedShowStatement
         | ProcessedRawSQLStatement
+        | ProcessedCopyStatement
     ]:
-        """Process a preql text command"""
-        _, parsed = parse_text(command, self.environment)
-        generatable = [
-            x
-            for x in parsed
-            if isinstance(
-                x,
-                (
-                    SelectStatement,
-                    PersistStatement,
-                    MultiSelectStatement,
-                    ShowStatement,
-                    RawSQLStatement,
-                ),
-            )
-        ]
-        sql = []
-        while generatable:
-            t = generatable.pop(0)
-            x = self.generator.generate_queries(
-                self.environment, [t], hooks=self.hooks
-            )[0]
-            if persist and isinstance(x, ProcessedQueryPersist):
-                self.environment.add_datasource(x.datasource)
-            sql.append(x)
-        return sql
+        
+        return list(self.parse_text_generator(command, persist=persist))
 
     def parse_text_generator(self, command: str, persist: bool = False) -> Generator[
         ProcessedQuery
         | ProcessedQueryPersist
         | ProcessedShowStatement
-        | ProcessedRawSQLStatement,
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement,
         None,
         None,
     ]:
@@ -300,6 +304,7 @@ class Executor(object):
                     MultiSelectStatement,
                     ShowStatement,
                     RawSQLStatement,
+                    CopyStatement,
                 ),
             )
         ]

@@ -26,6 +26,8 @@ from trilogy.core.models import (
     BaseJoin,
     InstantiatedUnnestJoin,
     Conditional,
+    ProcessedCopyStatement,
+    CopyStatement,
 )
 
 from trilogy.utility import unique
@@ -415,6 +417,23 @@ def process_persist(
         **arg_dict,
         output_to=MaterializedDataset(address=statement.address),
         datasource=statement.datasource,
+    )
+
+def process_copy(
+    environment: Environment,
+    statement: CopyStatement,
+    hooks: List[BaseHook] | None = None,
+) -> ProcessedCopyStatement:
+    select = process_query(
+        environment=environment, statement=statement.select, hooks=hooks
+    )
+
+    # build our object to return
+    arg_dict = {k: v for k, v in select.__dict__.items()}
+    return ProcessedCopyStatement(
+        **arg_dict,
+        target=statement.target,
+        target_type = statement.target_type,
     )
 
 

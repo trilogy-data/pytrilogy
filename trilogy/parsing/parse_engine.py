@@ -31,6 +31,7 @@ from trilogy.core.enums import (
     DatePart,
     ShowCategory,
     FunctionClass,
+    IOType
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -84,6 +85,7 @@ from trilogy.core.models import (
     PersistStatement,
     Query,
     RawSQLStatement,
+    CopyStatement,
     SelectStatement,
     SelectItem,
     WhereClause,
@@ -750,6 +752,17 @@ class ParseToObjects(Transformer):
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
         return RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
 
+    def COPY_TYPE(self, args) -> IOType:
+        return IOType(args.value)
+
+    @v_args(meta=True)
+    def copy_statement(self, meta: Meta, args) -> CopyStatement:
+
+        return CopyStatement(
+            target = args[1],
+            target_type = args[0],
+            meta=Metadata(line_number=meta.line), select = args[-1])
+    
     def resolve_import_address(self, address) -> str:
         with open(address, "r", encoding="utf-8") as f:
             text = f.read()

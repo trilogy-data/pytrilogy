@@ -50,8 +50,10 @@ from trilogy.core.models import (
     StructType,
     MergeStatementV2,
     Datasource,
+    CopyStatement,
+    ProcessedCopyStatement,
 )
-from trilogy.core.query_processor import process_query, process_persist
+from trilogy.core.query_processor import process_query, process_persist, process_copy
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.core.enums import UnnestMode
@@ -666,6 +668,7 @@ class BaseDialect:
             | ImportStatement
             | RawSQLStatement
             | MergeStatementV2
+            | CopyStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[
@@ -679,6 +682,7 @@ class BaseDialect:
             | ProcessedQueryPersist
             | ProcessedShowStatement
             | ProcessedRawSQLStatement
+            | ProcessedCopyStatement
         ] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
@@ -687,6 +691,12 @@ class BaseDialect:
                         hook.process_persist_info(statement)
                 persist = process_persist(environment, statement, hooks=hooks)
                 output.append(persist)
+            elif isinstance(statement, CopyStatement):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_select_info(statement)
+                copy= process_copy(environment, statement, hooks=hooks)
+                output.append(copy)
             elif isinstance(statement, SelectStatement):
                 if hooks:
                     for hook in hooks:
