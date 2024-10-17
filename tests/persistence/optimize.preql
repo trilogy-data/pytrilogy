@@ -3,5 +3,4 @@ import generic as generic;
 PERSIST int_array_0109adcce7396490d31a8342c13b1d4f6ad2bffb2d41da7501dc1d37ca2b9366 INTO int_array_0109adcce7396490d31a8342c13b1d4f6ad2bffb2d41da7501dc1d37ca2b9366 FROM SELECT
     generic.int_array,;
 PERSIST split_04d2c2b1c72fd3be7d8ba5dea1534aae9959d5c5a80b05b06d26b5fd9d8b82f4 INTO split_04d2c2b1c72fd3be7d8ba5dea1534aae9959d5c5a80b05b06d26b5fd9d8b82f4 FROM SELECT
-    generic.scalar,
     generic.split,;

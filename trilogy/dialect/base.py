@@ -35,6 +35,7 @@ from trilogy.core.models import (
     Environment,
     RawColumnExpr,
     ListWrapper,
+    TupleWrapper,
     MapWrapper,
     ShowStatement,
     RowsetItem,
@@ -49,8 +50,10 @@ from trilogy.core.models import (
     StructType,
     MergeStatementV2,
     Datasource,
+    CopyStatement,
+    ProcessedCopyStatement,
 )
-from trilogy.core.query_processor import process_query, process_persist
+from trilogy.core.query_processor import process_query, process_persist, process_copy
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.core.enums import UnnestMode
@@ -391,6 +394,7 @@ class BaseDialect:
             StructType,
             ListType,
             ListWrapper[Any],
+            TupleWrapper[Any],
             DatePart,
             CaseWhen,
             CaseElse,
@@ -430,7 +434,7 @@ class BaseDialect:
                         f"Missing source CTE for {e.right.address}"
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-            elif isinstance(e.right, (ListWrapper, Parenthetical, list)):
+            elif isinstance(e.right, (ListWrapper, TupleWrapper, Parenthetical, list)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
             elif isinstance(
@@ -511,6 +515,8 @@ class BaseDialect:
             return str(e)
         elif isinstance(e, ListWrapper):
             return f"[{','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])}]"
+        elif isinstance(e, TupleWrapper):
+            return f"({','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])})"
         elif isinstance(e, MapWrapper):
             return f"MAP {{{','.join([f'{self.render_expr(k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}:{self.render_expr(v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}' for k, v in e.items()])}}}"
         elif isinstance(e, list):
@@ -662,6 +668,7 @@ class BaseDialect:
             | ImportStatement
             | RawSQLStatement
             | MergeStatementV2
+            | CopyStatement
         ],
         hooks: Optional[List[BaseHook]] = None,
     ) -> List[
@@ -675,6 +682,7 @@ class BaseDialect:
             | ProcessedQueryPersist
             | ProcessedShowStatement
             | ProcessedRawSQLStatement
+            | ProcessedCopyStatement
         ] = []
         for statement in statements:
             if isinstance(statement, PersistStatement):
@@ -683,6 +691,12 @@ class BaseDialect:
                         hook.process_persist_info(statement)
                 persist = process_persist(environment, statement, hooks=hooks)
                 output.append(persist)
+            elif isinstance(statement, CopyStatement):
+                if hooks:
+                    for hook in hooks:
+                        hook.process_select_info(statement.select)
+                copy = process_copy(environment, statement, hooks=hooks)
+                output.append(copy)
             elif isinstance(statement, SelectStatement):
                 if hooks:
                     for hook in hooks:

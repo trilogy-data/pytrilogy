@@ -1,4 +1,7 @@
 from trilogy.parser import parse
+from trilogy import Dialects
+from trilogy.core.models import ProcessedCopyStatement
+from pathlib import Path
 
 # from trilogy.compiler import compile
 
@@ -41,6 +44,24 @@ datasource posts (
 ;
 """
     parse(text)
+
+
+def test_io_statement():
+    target = Path(__file__).parent / "test_io_statement.csv"
+    if target.exists():
+        target.unlink()
+    text = f"""const array <- [1,2,3,4];
+
+auto x <- unnest(array);
+
+copy into csv '{target}' from select x -> test;
+"""
+    exec = Dialects.DUCK_DB.default_executor()
+    results = exec.parse_text(text)
+    assert isinstance(results[-1], ProcessedCopyStatement)
+    for z in results:
+        exec.execute_query(z)
+    assert target.exists(), "csv file was not created"
 
 
 def test_datasource_where():

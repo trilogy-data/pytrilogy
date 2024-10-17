@@ -1,5 +1,4 @@
 from trilogy.core.models import ShowStatement
-from trilogy.core.query_processor import process_query
 from trilogy import Dialects
 from trilogy.parser import parse
 

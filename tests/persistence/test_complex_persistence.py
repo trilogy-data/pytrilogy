@@ -12,7 +12,8 @@ def test_complex():
     r1 = engine.execute_text(
         """select 
         generic.split, 
-        generic.scalar;"""
+        generic.scalar
+        order by generic.split asc, generic.scalar asc;"""
     )[-1]
 
     env = Environment(working_path=Path(__file__).parent)
@@ -21,14 +22,19 @@ def test_complex():
     r2 = engine.execute_text(
         """select 
         generic.split, 
-        generic.scalar;"""
+        generic.scalar
+        order by generic.split asc, generic.scalar asc;"""
     )[-1]
 
     _ = engine.generate_sql(
         """select 
         generic.split, 
-        generic.scalar;"""
+        generic.scalar
+        order by generic.split asc, generic.scalar asc;"""
     )[-1]
     # assert sql == "abc", sql
-
-    assert r1.fetchall() == r2.fetchall()
+    r1f = r1.fetchall()
+    r2f = r2.fetchall()
+    assert len(r1f) == len(r2f)
+    for i in range(len(r1f)):
+        assert r1f[i] == r2f[i]

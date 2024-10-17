@@ -1,8 +1,8 @@
 query_id = 12
-parse_time = 2.193286
-exec_time = 0.315571
-comp_time = 0.641373
-gen_length = 2835
+parse_time = 0.787012
+exec_time = 0.126402
+comp_time = 0.217464
+gen_length = 2833
 generated_sql = """
 
 WITH 
@@ -22,7 +22,7 @@ FROM
     INNER JOIN memory.date_dim as date on web_sales.\"WS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on web_sales.\"WS_ITEM_SK\" = items.\"I_ITEM_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ( 'Sports','Books','Home' )
+    cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date) and items.\"I_CATEGORY\" in ('Sports','Books','Home')
 ),
 colossal as (
 SELECT
@@ -35,11 +35,11 @@ SELECT
 FROM
     abstracted
 GROUP BY 
-    abstracted.\"web_sales_item_category\",
-    abstracted.\"web_sales_item_desc\",
+    abstracted.\"web_sales_item_name\",
     abstracted.\"web_sales_item_class\",
+    abstracted.\"web_sales_item_desc\",
     abstracted.\"web_sales_item_current_price\",
-    abstracted.\"web_sales_item_name\"),
+    abstracted.\"web_sales_item_category\"),
 sloppy as (
 SELECT
     sum(colossal.\"itemrevenue\") over (partition by colossal.\"web_sales_item_class\") as \"_virtual_137720187295635\",

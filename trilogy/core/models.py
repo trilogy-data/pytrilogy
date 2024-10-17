@@ -65,6 +65,7 @@ from trilogy.core.enums import (
     ShowCategory,
     Granularity,
     SelectFiltering,
+    IOType,
 )
 from trilogy.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from trilogy.utility import unique
@@ -81,6 +82,9 @@ LT = TypeVar("LT")
 
 
 def is_compatible_datatype(left, right):
+    # for unknown types, we can't make any assumptions
+    if right == DataType.UNKNOWN or left == DataType.UNKNOWN:
+        return True
     if left == right:
         return True
     if {left, right} == {DataType.NUMERIC, DataType.FLOAT}:
@@ -1578,6 +1582,13 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
 class RawSQLStatement(BaseModel):
     text: str
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+
+
+class CopyStatement(BaseModel):
+    target: str
+    target_type: IOType
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    select: SelectStatement
 
 
 class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
@@ -3599,6 +3610,7 @@ class Comparison(
         MagicConstants,
         WindowItem,
         AggregateWrapper,
+        TupleWrapper,
     ]
     operator: ComparisonOperator
 
@@ -4258,13 +4270,23 @@ class ProcessedQuery(BaseModel):
     order_by: Optional[OrderBy] = None
 
 
-class ProcessedQueryMixin(BaseModel):
+class PersistQueryMixin(BaseModel):
     output_to: MaterializedDataset
     datasource: Datasource
     # base:Dataset
 
 
-class ProcessedQueryPersist(ProcessedQuery, ProcessedQueryMixin):
+class ProcessedQueryPersist(ProcessedQuery, PersistQueryMixin):
+    pass
+
+
+class CopyQueryMixin(BaseModel):
+    target: str
+    target_type: IOType
+    # base:Dataset
+
+
+class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
     pass
 
 
@@ -4523,6 +4545,37 @@ class Parenthetical(
         return base
 
 
+class TupleWrapper(Generic[VT], tuple):
+    """Used to distinguish parsed tuple objects from other tuples"""
+
+    def __init__(self, val, type: DataType, **kwargs):
+        super().__init__()
+        self.type = type
+        self.val = val
+
+    def __getnewargs__(self):
+        return (self.val, self.type)
+
+    def __new__(cls, val, type: DataType, **kwargs):
+        return super().__new__(cls, tuple(val))
+        # self.type = type
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    ) -> core_schema.CoreSchema:
+        args = get_args(source_type)
+        if args:
+            schema = handler(Tuple[args])  # type: ignore
+        else:
+            schema = handler(Tuple)
+        return core_schema.no_info_after_validator_function(cls.validate, schema)
+
+    @classmethod
+    def validate(cls, v):
+        return cls(v, type=arg_to_datatype(v[0]))
+
+
 class PersistStatement(BaseModel):
     datasource: Datasource
     select: SelectStatement
@@ -4589,6 +4642,12 @@ def list_to_wrapper(args):
     return ListWrapper(args, type=types[0])
 
 
+def tuple_to_wrapper(args):
+    types = [arg_to_datatype(arg) for arg in args]
+    assert len(set(types)) == 1
+    return TupleWrapper(args, type=types[0])
+
+
 def dict_to_map_wrapper(arg):
     key_types = [arg_to_datatype(arg) for arg in arg.keys()]
 
@@ -4644,6 +4703,8 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | Numeric
         return arg.function.output_datatype
     elif isinstance(arg, Parenthetical):
         return arg_to_datatype(arg.content)
+    elif isinstance(arg, TupleWrapper):
+        return ListType(type=arg.type)
     elif isinstance(arg, WindowItem):
         if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
             return DataType.INTEGER

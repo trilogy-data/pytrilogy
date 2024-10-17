@@ -32,6 +32,8 @@ from trilogy.core.models import (
     AggregateWrapper,
     PersistStatement,
     ListWrapper,
+    ListType,
+    TupleWrapper,
     RowsetDerivationStatement,
     MultiSelectStatement,
     OrderBy,
@@ -40,6 +42,7 @@ from trilogy.core.models import (
     RawSQLStatement,
     NumericType,
     MergeStatementV2,
+    CopyStatement,
 )
 from trilogy.core.enums import Modifier
 
@@ -181,6 +184,10 @@ class Renderer:
         return "[" + ", ".join([self.to_string(x) for x in arg]) + "]"
 
     @to_string.register
+    def _(self, arg: TupleWrapper):
+        return "(" + ", ".join([self.to_string(x) for x in arg]) + ")"
+
+    @to_string.register
     def _(self, arg: DatePart):
         return arg.value
 
@@ -211,20 +218,29 @@ class Renderer:
             base_description = concept.metadata.description
         else:
             base_description = None
-        if concept.namespace:
+        if concept.namespace and concept.namespace != DEFAULT_NAMESPACE:
             namespace = f"{concept.namespace}."
         else:
             namespace = ""
         if not concept.lineage:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
-                output = f"{concept.purpose.value} {namespace}{concept.keys[0].name}.{concept.name} {concept.datatype.value};"
+                keys = ",".join([self.to_string(key) for key in concept.keys])
+                output = f"{concept.purpose.value} <{keys}>.{namespace}{concept.name} {self.to_string(concept.datatype)};"
             else:
-                output = f"{concept.purpose.value} {namespace}{concept.name} {concept.datatype.value};"
+                output = f"{concept.purpose.value} {namespace}{concept.name} {self.to_string(concept.datatype)};"
         else:
             output = f"{concept.purpose.value} {namespace}{concept.name} <- {self.to_string(concept.lineage)};"
         if base_description:
             output += f" # {base_description}"
         return output
+
+    @to_string.register
+    def _(self, arg: ListType):
+        return f"list<{self.to_string(arg.value_data_type)}>"
+
+    @to_string.register
+    def _(self, arg: DataType):
+        return arg.value
 
     @to_string.register
     def _(self, arg: ConceptDerivation):
@@ -270,6 +286,10 @@ class Renderer:
             base += f"\nLIMIT {arg.limit}"
         base += "\n;"
         return base
+
+    @to_string.register
+    def _(self, arg: CopyStatement):
+        return f"COPY INTO {arg.target_type.value.upper()} '{arg.target}' FROM {self.to_string(arg.select)}"
 
     @to_string.register
     def _(self, arg: AlignClause):

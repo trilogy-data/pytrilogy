@@ -1,7 +1,7 @@
 from os.path import dirname, join
 from typing import List, Optional, Tuple, Union
 from re import IGNORECASE
-from lark import Lark, Transformer, v_args
+from lark import Lark, Transformer, v_args, Tree
 from lark.exceptions import (
     UnexpectedCharacters,
     UnexpectedEOF,
@@ -31,6 +31,7 @@ from trilogy.core.enums import (
     DatePart,
     ShowCategory,
     FunctionClass,
+    IOType,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -84,6 +85,7 @@ from trilogy.core.models import (
     PersistStatement,
     Query,
     RawSQLStatement,
+    CopyStatement,
     SelectStatement,
     SelectItem,
     WhereClause,
@@ -105,9 +107,11 @@ from trilogy.core.models import (
     ConceptDerivation,
     RowsetDerivationStatement,
     list_to_wrapper,
+    tuple_to_wrapper,
     dict_to_map_wrapper,
     NumericType,
     HavingClause,
+    TupleWrapper,
 )
 from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.common import (
@@ -748,13 +752,29 @@ class ParseToObjects(Transformer):
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
         return RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
 
+    def COPY_TYPE(self, args) -> IOType:
+        return IOType(args.value)
+
+    @v_args(meta=True)
+    def copy_statement(self, meta: Meta, args) -> CopyStatement:
+
+        return CopyStatement(
+            target=args[1],
+            target_type=args[0],
+            meta=Metadata(line_number=meta.line),
+            select=args[-1],
+        )
+
     def resolve_import_address(self, address) -> str:
         with open(address, "r", encoding="utf-8") as f:
             text = f.read()
         return text
 
     def import_statement(self, args: list[str]) -> ImportStatement:
-        alias = args[-1]
+        if len(args) == 2:
+            alias = args[-1]
+        else:
+            alias = self.environment.namespace
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
@@ -1064,6 +1084,9 @@ class ParseToObjects(Transformer):
     def array_lit(self, args):
         return list_to_wrapper(args)
 
+    def tuple_lit(self, args):
+        return tuple_to_wrapper(args)
+
     def struct_lit(self, args):
 
         zipped = dict(zip(args[::2], args[1::2]))
@@ -1124,12 +1147,18 @@ class ParseToObjects(Transformer):
 
         while isinstance(right, Parenthetical) and isinstance(
             right.content,
-            (Concept, Function, FilterItem, WindowItem, AggregateWrapper, ListWrapper),
+            (
+                Concept,
+                Function,
+                FilterItem,
+                WindowItem,
+                AggregateWrapper,
+                ListWrapper,
+                TupleWrapper,
+            ),
         ):
             right = right.content
-        if isinstance(
-            right, (Function, FilterItem, WindowItem, AggregateWrapper, ListWrapper)
-        ):
+        if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
             right = arbitrary_to_concept(
                 right,
                 namespace=self.environment.namespace,
@@ -1142,7 +1171,7 @@ class ParseToObjects(Transformer):
         )
 
     def expr_tuple(self, args):
-        return Parenthetical(content=args)
+        return TupleWrapper(content=tuple(args))
 
     def parenthetical(self, args):
         return Parenthetical(content=args[0])
@@ -1840,10 +1869,12 @@ def unpack_visit_error(e: VisitError):
         unpack_visit_error(e.orig_exc)
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
         raise e.orig_exc
-    elif isinstance(e.orig_exc, SyntaxError):
-        raise InvalidSyntaxException(str(e.orig_exc) + str(e.rule) + str(e.obj))
-    elif isinstance(e.orig_exc, (ValidationError, TypeError)):
-        raise InvalidSyntaxException(str(e.orig_exc) + str(e.rule) + str(e.obj))
+    elif isinstance(e.orig_exc, (SyntaxError, TypeError)):
+        if isinstance(e.obj, Tree):
+            raise InvalidSyntaxException(
+                str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
+            )
+        raise InvalidSyntaxException(str(e.orig_exc))
     raise e
 
 

@@ -292,3 +292,13 @@ class SelectFiltering(Enum):
     NONE = "none"
     EXPLICIT = "explicit"  # the filtering contains only selected values
     IMPLICIT = "implicit"  # the filtering contains unselected values
+
+
+class IOType(Enum):
+    CSV = "csv"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.lower() != value:
+            return IOType(value.lower())
+        return super()._missing_(value)

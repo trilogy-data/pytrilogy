@@ -11,7 +11,6 @@ from trilogy.core.models import (
     Address,
     SelectItem,
     ConceptDeclarationStatement,
-    ListWrapper,
     Function,
     Purpose,
     DataType,
@@ -28,6 +27,10 @@ from trilogy.core.models import (
     Datasource,
     ColumnAssignment,
     Grain,
+    ListWrapper,
+    ListType,
+    TupleWrapper,
+    CopyStatement,
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -35,6 +38,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     Modifier,
     FunctionType,
+    IOType,
 )
 from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
 
@@ -205,7 +209,14 @@ def test_render_concept_declaration(test_environment: Environment):
         ConceptDeclarationStatement(concept=test_environment.concepts["order_id"])
     )
 
-    assert test == "key local.order_id int;"
+    assert test == "key order_id int;"
+    env_two = Environment(namespace="test")
+    env_two.parse("""key order_id int;""")
+    test = Renderer().to_string(
+        ConceptDeclarationStatement(concept=env_two.concepts["test.order_id"])
+    )
+
+    assert test == "key test.order_id int;"
 
 
 def test_render_list_wrapper(test_environment: Environment):
@@ -460,3 +471,69 @@ grain (user_id)
 query '''SELECT * FROM test'''
 (user_id = 123 or user_id = 456);"""
     )
+
+
+def test_circular_rendering():
+    basic = Environment()
+
+    _, commands = basic.parse(
+        """
+key id int;
+
+persist test into test from
+select id
+where id in (1,2,3);
+""",
+    )
+    assert isinstance(
+        commands[-1].select.where_clause.conditional.right, TupleWrapper
+    ), type(commands[-1].select.where_clause.conditional.right)
+    rendered = Renderer().to_string(commands[-1])
+
+    assert (
+        rendered
+        == """PERSIST test INTO test FROM SELECT
+    id,
+WHERE
+    id in (1, 2, 3);"""
+    ), rendered
+
+
+def test_render_list_type():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+key id list<int>;
+""",
+    )
+    rendered = Renderer().to_string(commands[0])
+
+    assert env.concepts["id"].datatype == ListType(type=DataType.INTEGER)
+    assert isinstance(commands[0], ConceptDeclarationStatement)
+    assert rendered == """key id list<int>;""", rendered
+
+
+def test_render_copy_statement(test_environment):
+    select = SelectStatement(
+        selection=[test_environment.concepts["order_id"]],
+        where_clause=None,
+        order_by=OrderBy(
+            items=[
+                OrderItem(
+                    expr=test_environment.concepts["order_id"],
+                    order=Ordering.ASCENDING,
+                )
+            ]
+        ),
+    )
+    query = CopyStatement(select=select, target_type=IOType.CSV, target="test.csv")
+    string_query = render_query(query)
+    assert (
+        string_query
+        == """COPY INTO CSV 'test.csv' FROM SELECT
+    order_id,
+ORDER BY
+    order_id asc
+;"""
+    ), string_query

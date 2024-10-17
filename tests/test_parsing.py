@@ -1,12 +1,12 @@
 from trilogy.core.enums import Purpose, ComparisonOperator
 from trilogy.core.models import (
     DataType,
-    Parenthetical,
     ProcessedQuery,
     ShowStatement,
     SelectStatement,
     Environment,
     Comparison,
+    TupleWrapper,
 )
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.parsing.parse_engine import (
@@ -27,11 +27,11 @@ def test_in():
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
-        Parenthetical,
+        TupleWrapper,
     ), type(right)
-    assert right.content[0] == 1
+    assert right[0] == 1
     rendered = BaseDialect().render_expr(right)
-    assert rendered.strip() == "( 1,2,3 )".strip()
+    assert rendered.strip() == "(1,2,3)".strip()
 
     _, parsed = parse_text(
         "const order_id <- 3; SELECT order_id  WHERE order_id IN (1,);"
@@ -40,11 +40,11 @@ def test_in():
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
-        Parenthetical,
+        TupleWrapper,
     ), type(right)
-    assert right.content[0] == 1
+    assert right[0] == 1
     rendered = BaseDialect().render_expr(right)
-    assert rendered.strip() == "( 1 )".strip()
+    assert rendered.strip() == "(1)".strip()
 
 
 def test_not_in():
@@ -53,13 +53,10 @@ def test_not_in():
     )
     query: ProcessedQuery = parsed[-1]
     right = query.where_clause.conditional.right
-    assert isinstance(
-        right,
-        Parenthetical,
-    ), type(right)
-    assert right.content[0] == 1
+    assert isinstance(right, TupleWrapper), type(right)
+    assert right[0] == 1
     rendered = BaseDialect().render_expr(right)
-    assert rendered.strip() == "( 1,2,3 )".strip()
+    assert rendered.strip() == "(1,2,3)".strip()
 
 
 def test_is_not_null():
@@ -516,3 +513,24 @@ select filtered_test;
     results = Dialects.DUCK_DB.default_executor().generate_sql(text)[0]
 
     assert "filtered_test" in results, results
+
+
+def test_unnest_parsing():
+    x = """
+key scalar int;    
+property scalar.int_array list<int>;
+
+key split <- unnest(int_array);
+
+datasource avalues (
+    int_array: int_array,
+	scalar: scalar
+    ) 
+grain (scalar) 
+query '''(
+select [1,2,3,4] as int_array, 2 as scalar
+)''';
+"""
+
+    env, parsed = parse_text(x)
+    assert env.concepts["split"].datatype == DataType.INTEGER

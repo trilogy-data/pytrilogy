@@ -15,8 +15,11 @@ from trilogy.core.models import (
     Concept,
     AggregateWrapper,
     RowsetItem,
+    TupleWrapper,
+    DataType,
 )
 from trilogy import parse
+from copy import deepcopy
 
 
 def test_cte_merge(test_environment, test_environment_graph):
@@ -312,3 +315,9 @@ select avg_greater_ten;
     lineage = env.concepts["avg_greater_ten"].lineage
     assert isinstance(lineage, AggregateWrapper)
     assert isinstance(lineage.function.concept_arguments[0].lineage, RowsetItem)
+
+
+def test_tuple_clone():
+    x = TupleWrapper([1, 2, 3], type=DataType.INTEGER)
+    y = deepcopy(x)
+    assert y == x

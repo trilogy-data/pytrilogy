@@ -28,6 +28,7 @@ from trilogy.core.models import (
     DatePart,
     NumericType,
     ListType,
+    TupleWrapper,
 )
 
 from trilogy.core.enums import Purpose, Granularity, BooleanOperator, Modifier
@@ -422,6 +423,7 @@ def is_scalar_condition(
         | NumericType
         | DatePart
         | ListWrapper[Any]
+        | TupleWrapper[Any]
     ),
     materialized: set[str] | None = None,
 ) -> bool:
