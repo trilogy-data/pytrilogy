@@ -1,7 +1,6 @@
 from trilogy.core.enums import Purpose, ComparisonOperator
 from trilogy.core.models import (
     DataType,
-    Parenthetical,
     ProcessedQuery,
     ShowStatement,
     SelectStatement,

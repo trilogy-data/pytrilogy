@@ -42,6 +42,7 @@ from trilogy.core.models import (
     RawSQLStatement,
     NumericType,
     MergeStatementV2,
+    CopyStatement,
 )
 from trilogy.core.enums import Modifier
 
@@ -285,6 +286,10 @@ class Renderer:
             base += f"\nLIMIT {arg.limit}"
         base += "\n;"
         return base
+
+    @to_string.register
+    def _(self, arg: CopyStatement):
+        return f"COPY INTO {arg.target_type.value.upper()} '{arg.target}' FROM {self.to_string(arg.select)}"
 
     @to_string.register
     def _(self, arg: AlignClause):

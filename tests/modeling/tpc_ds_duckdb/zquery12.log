@@ -1,7 +1,7 @@
 query_id = 12
-parse_time = 4.194361
-exec_time = 0.338209
-comp_time = 1.358281
+parse_time = 0.787012
+exec_time = 0.126402
+comp_time = 0.217464
 gen_length = 2833
 generated_sql = """
 
@@ -36,10 +36,10 @@ FROM
     abstracted
 GROUP BY 
     abstracted.\"web_sales_item_name\",
-    abstracted.\"web_sales_item_category\",
-    abstracted.\"web_sales_item_current_price\",
+    abstracted.\"web_sales_item_class\",
     abstracted.\"web_sales_item_desc\",
-    abstracted.\"web_sales_item_class\"),
+    abstracted.\"web_sales_item_current_price\",
+    abstracted.\"web_sales_item_category\"),
 sloppy as (
 SELECT
     sum(colossal.\"itemrevenue\") over (partition by colossal.\"web_sales_item_class\") as \"_virtual_137720187295635\",

@@ -419,6 +419,7 @@ def process_persist(
         datasource=statement.datasource,
     )
 
+
 def process_copy(
     environment: Environment,
     statement: CopyStatement,
@@ -433,7 +434,7 @@ def process_copy(
     return ProcessedCopyStatement(
         **arg_dict,
         target=statement.target,
-        target_type = statement.target_type,
+        target_type=statement.target_type,
     )
 
 

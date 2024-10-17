@@ -65,7 +65,7 @@ from trilogy.core.enums import (
     ShowCategory,
     Granularity,
     SelectFiltering,
-    IOType
+    IOType,
 )
 from trilogy.core.exceptions import UndefinedConceptException, InvalidSyntaxException
 from trilogy.utility import unique
@@ -1583,12 +1583,12 @@ class RawSQLStatement(BaseModel):
     text: str
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
+
 class CopyStatement(BaseModel):
-    target:str
+    target: str
     target_type: IOType
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
     select: SelectStatement
-
 
 
 class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
@@ -4279,14 +4279,15 @@ class PersistQueryMixin(BaseModel):
 class ProcessedQueryPersist(ProcessedQuery, PersistQueryMixin):
     pass
 
+
 class CopyQueryMixin(BaseModel):
-    target:str
+    target: str
     target_type: IOType
     # base:Dataset
 
+
 class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
     pass
-
 
 
 class ProcessedShowStatement(BaseModel):

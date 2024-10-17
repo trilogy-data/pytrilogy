@@ -31,7 +31,7 @@ from trilogy.core.enums import (
     DatePart,
     ShowCategory,
     FunctionClass,
-    IOType
+    IOType,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -759,10 +759,12 @@ class ParseToObjects(Transformer):
     def copy_statement(self, meta: Meta, args) -> CopyStatement:
 
         return CopyStatement(
-            target = args[1],
-            target_type = args[0],
-            meta=Metadata(line_number=meta.line), select = args[-1])
-    
+            target=args[1],
+            target_type=args[0],
+            meta=Metadata(line_number=meta.line),
+            select=args[-1],
+        )
+
     def resolve_import_address(self, address) -> str:
         with open(address, "r", encoding="utf-8") as f:
             text = f.read()

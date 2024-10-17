@@ -1,7 +1,7 @@
 query_id = 10
-parse_time = 120.442179
-exec_time = 4.12154
-comp_time = 4.289872
+parse_time = 43.811684
+exec_time = 0.804379
+comp_time = 0.886145
 gen_length = 5623
 generated_sql = """
 
@@ -17,9 +17,9 @@ GROUP BY
     store_sales.\"SS_SOLD_DATE_SK\"),
 cloudy as (
 SELECT
+    date.\"D_DATE_SK\" as \"web_sales_date_id\",
     cast(\"D_YEAR\" as int) as \"web_sales_date_year\",
-    date.\"D_MOY\" as \"web_sales_date_month_of_year\",
-    date.\"D_DATE_SK\" as \"web_sales_date_id\"
+    date.\"D_MOY\" as \"web_sales_date_month_of_year\"
 FROM
     memory.date_dim as date),
 flashy as (
@@ -40,8 +40,8 @@ FROM
     memory.date_dim as date),
 nondescript as (
 SELECT
-    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\"
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\",
+    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
@@ -104,13 +104,13 @@ SELECT
 FROM
     spiritual
 GROUP BY 
-    spiritual.\"customer_demographics_gender\",
-    spiritual.\"customer_demographics_employed_dependent_count\",
-    spiritual.\"customer_demographics_education_status\",
     spiritual.\"customer_demographics_purchase_estimate\",
-    spiritual.\"customer_demographics_credit_rating\",
-    spiritual.\"customer_demographics_dependent_count\",
+    spiritual.\"customer_demographics_gender\",
     spiritual.\"customer_demographics_college_dependent_count\",
+    spiritual.\"customer_demographics_credit_rating\",
+    spiritual.\"customer_demographics_education_status\",
+    spiritual.\"customer_demographics_employed_dependent_count\",
+    spiritual.\"customer_demographics_dependent_count\",
     spiritual.\"customer_demographics_marital_status\"
 ORDER BY 
     spiritual.\"customer_demographics_gender\" asc,

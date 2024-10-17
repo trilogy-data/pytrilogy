@@ -19,7 +19,7 @@ from trilogy.core.models import (
     Concept,
     ConceptDeclarationStatement,
     Datasource,
-    CopyStatement
+    CopyStatement,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -97,7 +97,15 @@ class Executor(object):
         self.connection = self.engine.connect()
 
     def execute_statement(self, statement) -> Optional[CursorResult]:
-        if not isinstance(statement, (ProcessedQuery, ProcessedShowStatement, ProcessedQueryPersist, ProcessedCopyStatement)):
+        if not isinstance(
+            statement,
+            (
+                ProcessedQuery,
+                ProcessedShowStatement,
+                ProcessedQueryPersist,
+                ProcessedCopyStatement,
+            ),
+        ):
             return None
         return self.execute_query(statement)
 
@@ -193,14 +201,14 @@ class Executor(object):
         self.environment.add_datasource(query.datasource)
         return output
 
-    
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> CursorResult:
         sql = self.generator.compile_statement(query)
-        output:CursorResult = self.connection.execute(text(sql))
+        output: CursorResult = self.connection.execute(text(sql))
         if query.target_type == IOType.CSV:
             import csv
-            with open(query.target, 'w', newline='', encoding='utf-8') as f:
+
+            with open(query.target, "w", newline="", encoding="utf-8") as f:
                 outcsv = csv.writer(f)
                 outcsv.writerow(output.keys())
                 outcsv.writerows(output)
@@ -210,9 +218,7 @@ class Executor(object):
         # TODO: instead return how many rows were written?
         return generate_result_set(
             query.output_columns,
-            [
-                self.generator.compile_statement(query)          
-            ],
+            [self.generator.compile_statement(query)],
         )
 
     @singledispatchmethod
@@ -279,7 +285,7 @@ class Executor(object):
         | ProcessedRawSQLStatement
         | ProcessedCopyStatement
     ]:
-        
+
         return list(self.parse_text_generator(command, persist=persist))
 
     def parse_text_generator(self, command: str, persist: bool = False) -> Generator[
@@ -345,13 +351,7 @@ class Executor(object):
                     )
                 )
                 continue
-            compiled_sql = self.generator.compile_statement(statement)
-            logger.debug(compiled_sql)
-
-            output.append(self.connection.execute(text(compiled_sql)))
-            # generalize post-run success hooks
-            if isinstance(statement, ProcessedQueryPersist):
-                self.environment.add_datasource(statement.datasource)
+            output.append(self.execute_query(statement))
         return output
 
     def execute_file(self, file: str | Path) -> List[CursorResult]:

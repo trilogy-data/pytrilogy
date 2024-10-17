@@ -11,7 +11,6 @@ from trilogy.core.models import (
     Address,
     SelectItem,
     ConceptDeclarationStatement,
-    ListWrapper,
     Function,
     Purpose,
     DataType,
@@ -31,6 +30,7 @@ from trilogy.core.models import (
     ListWrapper,
     ListType,
     TupleWrapper,
+    CopyStatement,
 )
 from trilogy import Environment
 from trilogy.core.enums import (
@@ -38,6 +38,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     Modifier,
     FunctionType,
+    IOType,
 )
 from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
 
@@ -511,3 +512,28 @@ key id list<int>;
     assert env.concepts["id"].datatype == ListType(type=DataType.INTEGER)
     assert isinstance(commands[0], ConceptDeclarationStatement)
     assert rendered == """key id list<int>;""", rendered
+
+
+def test_render_copy_statement(test_environment):
+    select = SelectStatement(
+        selection=[test_environment.concepts["order_id"]],
+        where_clause=None,
+        order_by=OrderBy(
+            items=[
+                OrderItem(
+                    expr=test_environment.concepts["order_id"],
+                    order=Ordering.ASCENDING,
+                )
+            ]
+        ),
+    )
+    query = CopyStatement(select=select, target_type=IOType.CSV, target="test.csv")
+    string_query = render_query(query)
+    assert (
+        string_query
+        == """COPY INTO CSV 'test.csv' FROM SELECT
+    order_id,
+ORDER BY
+    order_id asc
+;"""
+    ), string_query

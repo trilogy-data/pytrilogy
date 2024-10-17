@@ -1,7 +1,7 @@
 query_id = 1
-parse_time = 3.574941
-exec_time = 0.125488
-comp_time = 2.033924
+parse_time = 1.770668
+exec_time = 0.096179
+comp_time = 2.174041
 gen_length = 1696
 generated_sql = """
 
@@ -17,9 +17,9 @@ SELECT
     store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
     memory.store_returns as store_returns
-    INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),
@@ -31,8 +31,8 @@ SELECT
 FROM
     cheerful
 GROUP BY 
-    cheerful.\"returns_customer_text_id\",
-    cheerful.\"returns_store_id\"),
+    cheerful.\"returns_store_id\",
+    cheerful.\"returns_customer_text_id\"),
 cooperative as (
 SELECT
     avg(thoughtful.\"total_returns\") as \"avg_store_returns\",

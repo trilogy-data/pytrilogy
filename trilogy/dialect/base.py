@@ -695,7 +695,7 @@ class BaseDialect:
                 if hooks:
                     for hook in hooks:
                         hook.process_select_info(statement)
-                copy= process_copy(environment, statement, hooks=hooks)
+                copy = process_copy(environment, statement, hooks=hooks)
                 output.append(copy)
             elif isinstance(statement, SelectStatement):
                 if hooks:

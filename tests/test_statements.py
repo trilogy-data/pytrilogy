@@ -61,9 +61,7 @@ copy into csv '{target}' from select x -> test;
     assert isinstance(results[-1], ProcessedCopyStatement)
     for z in results:
         exec.execute_query(z)
-    assert target.exists(), 'csv file was not created'
-
-
+    assert target.exists(), "csv file was not created"
 
 
 def test_datasource_where():
