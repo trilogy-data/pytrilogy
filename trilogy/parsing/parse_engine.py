@@ -1,7 +1,7 @@
 from os.path import dirname, join
 from typing import List, Optional, Tuple, Union
 from re import IGNORECASE
-from lark import Lark, Transformer, v_args
+from lark import Lark, Transformer, v_args, Tree
 from lark.exceptions import (
     UnexpectedCharacters,
     UnexpectedEOF,
@@ -1869,14 +1869,12 @@ def unpack_visit_error(e: VisitError):
         unpack_visit_error(e.orig_exc)
     elif isinstance(e.orig_exc, (UndefinedConceptException, ImportError)):
         raise e.orig_exc
-    elif isinstance(e.orig_exc, SyntaxError):
-        raise InvalidSyntaxException(
-            str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
-        )
-    elif isinstance(e.orig_exc, (ValidationError, TypeError)):
-        raise InvalidSyntaxException(
-            str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
-        )
+    elif isinstance(e.orig_exc, (SyntaxError, TypeError)):
+        if isinstance(e.obj, Tree):
+            raise InvalidSyntaxException(
+                str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
+            )
+        raise InvalidSyntaxException(str(e.orig_exc))
     raise e
 
 
