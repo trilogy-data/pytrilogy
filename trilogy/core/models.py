@@ -920,15 +920,7 @@ class Grain(Mergeable, BaseModel):
             [c.name == ALL_ROWS_CONCEPT for c in self.components]
         )
 
-    @cached_property
-    def set(self) -> set[str]:
-        base = []
-        for x in self.components_copy:
-            if isinstance(x.lineage, RowsetItem):
-                base.append(x.lineage.content.address)
-            else:
-                base.append(x.address)
-        return set(base)
+
 
     @property
     def synonym_set(self) -> set[str]:
@@ -943,7 +935,17 @@ class Grain(Mergeable, BaseModel):
                 for c in x.pseudonyms:
                     base.append(c)
         return set(base)
-
+    
+    @cached_property
+    def set(self) -> set[str]:
+        base = []
+        for x in self.components_copy:
+            if isinstance(x.lineage, RowsetItem):
+                base.append(x.lineage.content.address)
+            else:
+                base.append(x.address)
+        return set(base)
+    
     def __eq__(self, other: object):
         if isinstance(other, list):
             return self.set == set([c.address for c in other])
@@ -2866,9 +2868,9 @@ class CTE(BaseModel):
                 return match
 
         for array in [self.source.input_concepts, self.source.output_concepts]:
-            match = [x for x in array if x.address == address]
-            if match:
-                return match.pop()
+            match_list = [x for x in array if x.address == address]
+            if match_list:
+                return match_list.pop()
         return None
 
     def get_alias(self, concept: Concept, source: str | None = None) -> str:
