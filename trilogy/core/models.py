@@ -920,8 +920,6 @@ class Grain(Mergeable, BaseModel):
             [c.name == ALL_ROWS_CONCEPT for c in self.components]
         )
 
-
-
     @property
     def synonym_set(self) -> set[str]:
         base = []
@@ -935,7 +933,7 @@ class Grain(Mergeable, BaseModel):
                 for c in x.pseudonyms:
                     base.append(c)
         return set(base)
-    
+
     @cached_property
     def set(self) -> set[str]:
         base = []
@@ -945,7 +943,7 @@ class Grain(Mergeable, BaseModel):
             else:
                 base.append(x.address)
         return set(base)
-    
+
     def __eq__(self, other: object):
         if isinstance(other, list):
             return self.set == set([c.address for c in other])
