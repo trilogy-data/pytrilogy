@@ -38,7 +38,8 @@ SELECT
         "unnest_array.b" in executor.environment.concepts["b"].pseudonyms
     ), b_side.pseudonyms
     assert (
-        "unnest_array.b" in executor.environment.concepts["local.b"].pseudonyms
+        "unnest_array.b"
+        in executor.environment.concepts["local.b"].pseudonyms
         is not None
     ), b_side.pseudonyms
     for x in results[-1].output_columns:
@@ -70,7 +71,7 @@ order by
 ;
                           """
     )
-    assert results[-1].fetchall()[0].b == 3
+    assert results[-1].fetchall()[0].b == 2
 
 
 #     results = executor.execute_text("""

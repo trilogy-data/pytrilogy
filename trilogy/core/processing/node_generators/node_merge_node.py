@@ -209,9 +209,9 @@ def resolve_weak_components(
         for c in all_concepts
         if "__preql_internal" not in c.address
     ]
-    synonyms: set[str]= set()
+    synonyms: set[str] = set()
     for x in all_concepts:
-        synonyms =synonyms.union(x.pseudonyms)
+        synonyms = synonyms.union(x.pseudonyms)
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:
@@ -387,7 +387,7 @@ def gen_merge_node(
         concept = all_concepts[0]
         for v in concept.pseudonyms:
             test = subgraphs_to_merge_node(
-                [[concept, environment.concepts[v]]],
+                [[concept, environment.alias_origin_lookup[v]]],
                 g=g,
                 all_concepts=[concept],
                 environment=environment,

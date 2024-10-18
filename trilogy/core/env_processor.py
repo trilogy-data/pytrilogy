@@ -6,7 +6,9 @@ from trilogy.core.graph_models import (
 from trilogy.core.models import Environment, Concept, Datasource
 
 
-def add_concept(concept: Concept, g: ReferenceGraph, concept_mapping: dict[str, Concept]):
+def add_concept(
+    concept: Concept, g: ReferenceGraph, concept_mapping: dict[str, Concept]
+):
     g.add_node(concept)
     # if we have sources, recursively add them
     node_name = concept_to_node(concept)
@@ -38,7 +40,7 @@ def generate_adhoc_graph(
     restrict_to_listed: bool = False,
 ) -> ReferenceGraph:
     g = ReferenceGraph()
-    concept_mapping = {x.address:x for x in concepts}
+    concept_mapping = {x.address: x for x in concepts}
 
     # add all parsed concepts
     for concept in concepts:
@@ -68,5 +70,7 @@ def generate_graph(
 ) -> ReferenceGraph:
 
     return generate_adhoc_graph(
-        list(environment.concepts.values())+ list(environment.alias_origin_lookup.values()), list(environment.datasources.values())
+        list(environment.concepts.values())
+        + list(environment.alias_origin_lookup.values()),
+        list(environment.datasources.values()),
     )

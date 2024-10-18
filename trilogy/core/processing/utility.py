@@ -162,7 +162,7 @@ def add_node_join_concept(
     concept: Concept,
     datasource: Datasource | QueryDatasource,
     concepts: List[Concept],
-    environment:Environment,
+    environment: Environment,
 ):
 
     concepts.append(concept)
@@ -170,7 +170,7 @@ def add_node_join_concept(
     graph.add_node(concept.address, type=NodeType.CONCEPT)
     graph.add_edge(datasource.identifier, concept.address)
     for v_address in concept.pseudonyms:
-        v = environment.concepts[v_address]
+        v = environment.alias_origin_lookup[v_address]
         if v in concepts:
             continue
         if v != concept.address:
@@ -197,7 +197,6 @@ def get_node_joins(
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
-
     joins: defaultdict[str, set] = defaultdict(set)
     identifier_map: dict[str, Datasource | QueryDatasource] = {
         x.identifier: x for x in datasources

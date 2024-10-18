@@ -101,10 +101,12 @@ def get_version():
 
     return __version__
 
+
 def address_with_namespace(address: str, namespace: str) -> str:
-    if address.split('.',1)[0] == DEFAULT_NAMESPACE:
+    if address.split(".", 1)[0] == DEFAULT_NAMESPACE:
         return f"{namespace}.{address.split('.',1)[1]}"
     return f"{namespace}.{address}"
+
 
 def get_concept_arguments(expr) -> List["Concept"]:
     output = []
@@ -440,7 +442,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
     modifiers: Optional[List[Modifier]] = Field(default_factory=list)
-    pseudonyms: set[str] = Field(default_factory = set)
+    pseudonyms: set[str] = Field(default_factory=set)
     _address_cache: str | None = None
 
     def __hash__(self):
@@ -620,9 +622,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 else None
             ),
             modifiers=self.modifiers,
-            pseudonyms={
-                address_with_namespace(v, namespace) for v in self.pseudonyms
-            },
+            pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
 
     def with_select_context(
@@ -866,13 +866,11 @@ class Grain(Mergeable, BaseModel):
             )
         else:
             v2 = unique(v, "address")
-        final:List[Concept] = []
+        final: List[Concept] = []
         for sub in v2:
             if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
                 if all([c in v2 for c in sub.keys]):
                     continue
-            if any(sub.address in x.pseudonyms for x in v2):
-                continue
             final.append(sub)
         v2 = sorted(final, key=lambda x: x.name)
         return v2
@@ -932,12 +930,30 @@ class Grain(Mergeable, BaseModel):
                 base.append(x.address)
         return set(base)
 
+    @property
+    def synonym_set(self) -> set[str]:
+        base = []
+        for x in self.components_copy:
+            if isinstance(x.lineage, RowsetItem):
+                base.append(x.lineage.content.address)
+                for c in x.lineage.content.pseudonyms:
+                    base.append(c)
+            else:
+                base.append(x.address)
+                for c in x.pseudonyms:
+                    base.append(c)
+        return set(base)
+
     def __eq__(self, other: object):
         if isinstance(other, list):
             return self.set == set([c.address for c in other])
         if not isinstance(other, Grain):
             return False
-        return self.set == other.set
+        if self.set == other.set:
+            return True
+        elif self.synonym_set == other.synonym_set:
+            return True
+        return False
 
     def issubset(self, other: "Grain"):
         return self.set.issubset(other.set)
@@ -1588,7 +1604,6 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
 class RawSQLStatement(BaseModel):
     text: str
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-
 
 
 class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
@@ -2843,8 +2858,8 @@ class CTE(BaseModel):
         elif self.parent_ctes:
             return self.parent_ctes[0].name
         return self.name
-    
-    def get_concept(self, address:str) -> Concept | None:
+
+    def get_concept(self, address: str) -> Concept | None:
         for cte in self.parent_ctes:
             if address in cte.output_columns:
                 match = [x for x in cte.output_columns if x.address == address].pop()
@@ -2856,7 +2871,6 @@ class CTE(BaseModel):
                 return match.pop()
         return None
 
-        
     def get_alias(self, concept: Concept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
             if concept.address in cte.output_columns:
