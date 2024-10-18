@@ -1,7 +1,7 @@
 query_id = 6
-parse_time = 2.014761
-exec_time = 0.103034
-comp_time = 0.140488
+parse_time = 2.193095
+exec_time = 0.07407
+comp_time = 0.077487
 gen_length = 2726
 generated_sql = """
 
@@ -37,9 +37,9 @@ SELECT
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
     INNER JOIN late on store_sales.\"SS_ITEM_SK\" = late.\"item_id\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
 WHERE

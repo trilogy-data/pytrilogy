@@ -162,17 +162,19 @@ def add_node_join_concept(
     concept: Concept,
     datasource: Datasource | QueryDatasource,
     concepts: List[Concept],
+    environment:Environment,
 ):
 
     concepts.append(concept)
 
     graph.add_node(concept.address, type=NodeType.CONCEPT)
     graph.add_edge(datasource.identifier, concept.address)
-    for v in concept.pseudonyms:
+    for v_address in concept.pseudonyms:
+        v = environment.concepts[v_address]
         if v in concepts:
             continue
         if v != concept.address:
-            add_node_join_concept(graph, v, datasource, concepts)
+            add_node_join_concept(graph, v, datasource, concepts, environment)
 
 
 def get_node_joins(
@@ -186,7 +188,7 @@ def get_node_joins(
     for datasource in datasources:
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
-            add_node_join_concept(graph, concept, datasource, concepts)
+            add_node_join_concept(graph, concept, datasource, concepts, environment)
 
     # add edges for every constant to every datasource
     for datasource in datasources:

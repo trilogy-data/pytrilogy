@@ -209,9 +209,9 @@ def resolve_weak_components(
         for c in all_concepts
         if "__preql_internal" not in c.address
     ]
-    synonyms: set(str) = set()
+    synonyms: set[str]= set()
     for x in all_concepts:
-        synonyms += x.pseudonyms
+        synonyms =synonyms.union(x.pseudonyms)
     while break_flag is not True:
         count += 1
         if count > AMBIGUITY_CHECK_LIMIT:

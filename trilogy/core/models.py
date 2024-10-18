@@ -866,11 +866,13 @@ class Grain(Mergeable, BaseModel):
             )
         else:
             v2 = unique(v, "address")
-        final = []
+        final:List[Concept] = []
         for sub in v2:
             if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
                 if all([c in v2 for c in sub.keys]):
                     continue
+            if any(sub.address in x.pseudonyms for x in v2):
+                continue
             final.append(sub)
         v2 = sorted(final, key=lambda x: x.name)
         return v2
@@ -1588,12 +1590,6 @@ class RawSQLStatement(BaseModel):
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
 
-class CopyStatement(BaseModel):
-    target: str
-    target_type: IOType
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-    select: SelectStatement
-
 
 class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
@@ -1791,6 +1787,16 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
             limit=self.limit,
         )
+
+
+class CopyStatement(BaseModel):
+    target: str
+    target_type: IOType
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    select: SelectStatement
+
+    def refresh_bindings(self, environment: Environment):
+        self.select.refresh_bindings(environment)
 
 
 class AlignItem(Namespaced, BaseModel):
@@ -2837,10 +2843,23 @@ class CTE(BaseModel):
         elif self.parent_ctes:
             return self.parent_ctes[0].name
         return self.name
+    
+    def get_concept(self, address:str) -> Concept | None:
+        for cte in self.parent_ctes:
+            if address in cte.output_columns:
+                match = [x for x in cte.output_columns if x.address == address].pop()
+                return match
 
+        for array in [self.source.input_concepts, self.source.output_concepts]:
+            match = [x for x in array if x.address == address]
+            if match:
+                return match.pop()
+        return None
+
+        
     def get_alias(self, concept: Concept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
-            if concept.address in [x.address for x in cte.output_columns]:
+            if concept.address in cte.output_columns:
                 if source and source != cte.name:
                     continue
                 return concept.safe_address
@@ -3524,6 +3543,7 @@ class Environment(BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         replacements = {}
+
         # exit early if we've run this
         if source.address in self.alias_origin_lookup:
             if self.concepts[source.address] == target:
