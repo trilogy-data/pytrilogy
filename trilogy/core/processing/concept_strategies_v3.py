@@ -500,10 +500,10 @@ def validate_concept(
         if accept_partial:
             found_addresses.add(concept.address)
             found_map[str(node)].add(concept)
-    for _, v in concept.pseudonyms.items():
-        if v.address == concept.address:
+    for v in concept.pseudonyms:
+        if v == concept.address:
             return
-        if v.address in seen:
+        if v in seen:
             return
         validate_concept(
             v,

@@ -168,10 +168,10 @@ def add_node_join_concept(
 
     graph.add_node(concept.address, type=NodeType.CONCEPT)
     graph.add_edge(datasource.identifier, concept.address)
-    for _, v in concept.pseudonyms.items():
+    for v in concept.pseudonyms:
         if v in concepts:
             continue
-        if v.address != concept.address:
+        if v != concept.address:
             add_node_join_concept(graph, v, datasource, concepts)
 
 
@@ -206,7 +206,7 @@ def get_node_joins(
         # if we're looking up a pseudonym, we would have gotten the remapped value
         # so double check we got what we were looking for
         if env_lookup.address == g.address:
-            grain_pseudonyms.update(env_lookup.pseudonyms.keys())
+            grain_pseudonyms.update(env_lookup.pseudonyms)
 
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],

@@ -191,4 +191,3 @@ def generate_related_concepts(
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):
                 environment.merge_concept(auto, value, modifiers=[])
-                assert value.pseudonyms is not None

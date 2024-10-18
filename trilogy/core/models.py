@@ -101,6 +101,10 @@ def get_version():
 
     return __version__
 
+def address_with_namespace(address: str, namespace: str) -> str:
+    if address.split('.',1)[0] == DEFAULT_NAMESPACE:
+        return f"{namespace}.{address.split('.',1)[1]}"
+    return f"{namespace}.{address}"
 
 def get_concept_arguments(expr) -> List["Concept"]:
     output = []
@@ -436,7 +440,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)
     modifiers: Optional[List[Modifier]] = Field(default_factory=list)
-    pseudonyms: Dict[str, Concept] = Field(default_factory=dict)
+    pseudonyms: set[str] = Field(default_factory = set)
     _address_cache: str | None = None
 
     def __hash__(self):
@@ -462,7 +466,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         if self.address == source.address:
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
-            new.pseudonyms[self.address] = self
+            new.pseudonyms.add(self.address)
             return new
         return self.__class__(
             name=self.name,
@@ -617,7 +621,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             ),
             modifiers=self.modifiers,
             pseudonyms={
-                k: v.with_namespace(namespace) for k, v in self.pseudonyms.items()
+                address_with_namespace(v, namespace) for v in self.pseudonyms
             },
         )
 
@@ -2259,7 +2263,7 @@ class BaseJoin(BaseModel):
             for ds in [self.left_datasource, self.right_datasource]:
                 synonyms = []
                 for c in ds.output_concepts:
-                    synonyms += list(c.pseudonyms.keys())
+                    synonyms += list(c.pseudonyms)
                 if (
                     concept.address not in [c.address for c in ds.output_concepts]
                     and concept.address not in synonyms
@@ -2988,7 +2992,7 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
     ) -> "UndefinedConcept" | Concept:
         if self.address == source.address:
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
-            new.pseudonyms[self.address] = self
+            new.pseudonyms.add(self.address)
             return new
         return self.__class__(
             name=self.name,
@@ -3528,11 +3532,11 @@ class Environment(BaseModel):
         for k, v in self.concepts.items():
 
             if v.address == target.address:
-                v.pseudonyms[source.address] = source
+                v.pseudonyms.add(source.address)
             if v.address == source.address:
                 replacements[k] = target
                 self.canonical_map[k] = target.address
-                v.pseudonyms[target.address] = target
+                v.pseudonyms.add(target.address)
             # we need to update keys and grains of all concepts
             else:
                 replacements[k] = v.with_merge(source, target, modifiers)
