@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 0.876554
-exec_time = 0.083111
-comp_time = 0.20484
-gen_length = 2514
+parse_time = 0.687221
+exec_time = 0.146997
+comp_time = 1.480465
+gen_length = 2563
 generated_sql = """
 
 WITH 
-cougar as (
+wakeful as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -19,52 +19,52 @@ SELECT
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-coyote as (
+cheerful as (
 SELECT
-    sum(cougar.\"cs_extra_sales_price\") as \"revenue\",
-    cougar.\"cs_item_category\" as \"cs_item_category\",
-    cougar.\"cs_item_class\" as \"cs_item_class\",
-    cougar.\"cs_item_current_price\" as \"cs_item_current_price\",
-    cougar.\"cs_item_desc\" as \"cs_item_desc\",
-    cougar.\"cs_item_name\" as \"cs_item_name\"
+    sum(wakeful.\"cs_extra_sales_price\") as \"revenue\",
+    wakeful.\"cs_item_category\" as \"cs_item_category\",
+    wakeful.\"cs_item_class\" as \"cs_item_class\",
+    wakeful.\"cs_item_current_price\" as \"cs_item_current_price\",
+    wakeful.\"cs_item_desc\" as \"cs_item_desc\",
+    wakeful.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    cougar
+    wakeful
 GROUP BY 
-    cougar.\"cs_item_desc\",
-    cougar.\"cs_item_class\",
-    cougar.\"cs_item_current_price\",
-    cougar.\"cs_item_name\",
-    cougar.\"cs_item_category\"),
-crocodile as (
+    wakeful.\"cs_item_category\",
+    wakeful.\"cs_item_name\",
+    wakeful.\"cs_item_class\",
+    wakeful.\"cs_item_desc\",
+    wakeful.\"cs_item_current_price\"),
+thoughtful as (
 SELECT
-    sum(coyote.\"revenue\") over (partition by coyote.\"cs_item_class\") as \"_virtual_8479147315262044\",
-    coyote.\"revenue\" as \"revenue\",
-    coyote.\"cs_item_class\" as \"cs_item_class\",
-    coyote.\"cs_item_name\" as \"cs_item_name\",
-    coyote.\"cs_item_desc\" as \"cs_item_desc\",
-    coyote.\"cs_item_category\" as \"cs_item_category\",
-    coyote.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virtual_6483977992947176\",
+    cheerful.\"revenue\" as \"revenue\",
+    cheerful.\"cs_item_class\" as \"cs_item_class\",
+    cheerful.\"cs_item_name\" as \"cs_item_name\",
+    cheerful.\"cs_item_desc\" as \"cs_item_desc\",
+    cheerful.\"cs_item_category\" as \"cs_item_category\",
+    cheerful.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    coyote)
+    cheerful)
 SELECT
-    crocodile.\"cs_item_name\" as \"cs_item_name\",
-    crocodile.\"cs_item_desc\" as \"cs_item_desc\",
-    crocodile.\"cs_item_category\" as \"cs_item_category\",
-    crocodile.\"cs_item_class\" as \"cs_item_class\",
-    crocodile.\"cs_item_current_price\" as \"cs_item_current_price\",
-    crocodile.\"revenue\" as \"revenue\",
-    crocodile.\"revenue\" * 100.0 / crocodile.\"_virtual_8479147315262044\" as \"revenue_ratio\"
+    thoughtful.\"cs_item_name\" as \"cs_item_name\",
+    thoughtful.\"cs_item_desc\" as \"cs_item_desc\",
+    thoughtful.\"cs_item_category\" as \"cs_item_category\",
+    thoughtful.\"cs_item_class\" as \"cs_item_class\",
+    thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
+    thoughtful.\"revenue\" as \"revenue\",
+    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virtual_6483977992947176\" as \"revenue_ratio\"
 FROM
-    crocodile
+    thoughtful
 ORDER BY 
-    crocodile.\"cs_item_category\" asc nulls first,
-    crocodile.\"cs_item_class\" asc nulls first,
-    crocodile.\"cs_item_name\" asc nulls first,
-    crocodile.\"cs_item_desc\" asc nulls first,
-    crocodile.\"revenue\" * 100.0 / crocodile.\"_virtual_8479147315262044\" asc nulls first
+    thoughtful.\"cs_item_category\" asc nulls first,
+    thoughtful.\"cs_item_class\" asc nulls first,
+    thoughtful.\"cs_item_name\" asc nulls first,
+    thoughtful.\"cs_item_desc\" asc nulls first,
+    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virtual_6483977992947176\" asc nulls first
 LIMIT (100)"""

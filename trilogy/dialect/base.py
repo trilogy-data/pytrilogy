@@ -263,7 +263,11 @@ class BaseDialect:
     ) -> str:
         result = None
         if c.pseudonyms:
-            for candidate in [c] + list(c.pseudonyms.values()):
+            candidates = [y for y in [cte.get_concept(x) for x in c.pseudonyms] if y]
+            logger.debug(
+                f"{LOGGER_PREFIX} [{c.address}] pseudonym candidates are {[x.address for x in candidates]}"
+            )
+            for candidate in [c] + candidates:
                 try:
                     logger.debug(
                         f"{LOGGER_PREFIX} [{c.address}] Attempting rendering w/ candidate {candidate.address}"

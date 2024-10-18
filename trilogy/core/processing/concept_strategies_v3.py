@@ -455,7 +455,20 @@ def generate_node(
                         if x.address not in [y.address for y in root_targets]
                         and x not in ex_resolve.grain.components
                     ]
-                    expanded.set_output_concepts(root_targets)
+
+                    pseudonyms = [
+                        x
+                        for x in extra
+                        if any(x.address in y.pseudonyms for y in root_targets)
+                    ]
+                    # if we're only connected by a pseudonym, keep those in output
+                    expanded.set_output_concepts(root_targets + pseudonyms)
+                    # but hide them
+                    if pseudonyms:
+                        logger.info(
+                            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Hiding pseudonyms{[c.address for c in pseudonyms]}"
+                        )
+                        expanded.hide_output_concepts(pseudonyms)
 
                     logger.info(
                         f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Found connections for {[c.address for c in root_targets]} via concept addition; removing extra {[c.address for c in extra]}"
@@ -480,6 +493,7 @@ def validate_concept(
     found_map: dict[str, set[Concept]],
     accept_partial: bool,
     seen: set[str],
+    environment: Environment,
 ):
 
     found_map[str(node)].add(concept)
@@ -500,10 +514,11 @@ def validate_concept(
         if accept_partial:
             found_addresses.add(concept.address)
             found_map[str(node)].add(concept)
-    for _, v in concept.pseudonyms.items():
-        if v.address == concept.address:
+    for v_address in concept.pseudonyms:
+        v = environment.concepts[v_address]
+        if v == concept.address:
             return
-        if v.address in seen:
+        if v in seen:
             return
         validate_concept(
             v,
@@ -515,10 +530,12 @@ def validate_concept(
             found_map,
             accept_partial,
             seen=seen,
+            environment=environment,
         )
 
 
 def validate_stack(
+    environment: Environment,
     stack: List[StrategyNode],
     concepts: List[Concept],
     mandatory_with_filter: List[Concept],
@@ -546,6 +563,7 @@ def validate_stack(
                 found_map,
                 accept_partial,
                 seen,
+                environment,
             )
         for concept in node.virtual_output_concepts:
             if concept.address in non_partial_addresses:
@@ -807,6 +825,7 @@ def _search_concepts(
                 break
         attempted.add(priority_concept.address)
         complete, found, missing, partial, virtual = validate_stack(
+            environment,
             stack,
             mandatory_list,
             completion_mandatory,

@@ -1,6 +1,6 @@
-Report sales, profit, return amount, and net loss in the store, catalog, and web channels for a 14-day window.
-Rollup results by sales channel and channel specific sales method (store for store sales, catalog page for catalog
-sales and web site for web sales
+#Report sales, profit, return amount, and net loss in the store, catalog, and web channels for a 14-day window.
+# Rollup results by sales channel and channel specific sales method (store for store sales, catalog page for catalog
+#sales and web site for web sales
 
 import store;
 import store_sales;
