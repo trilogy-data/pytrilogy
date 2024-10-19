@@ -170,7 +170,9 @@ def add_node_join_concept(
     graph.add_node(concept.address, type=NodeType.CONCEPT)
     graph.add_edge(datasource.identifier, concept.address)
     for v_address in concept.pseudonyms:
-        v = environment.alias_origin_lookup[v_address]
+        v = environment.alias_origin_lookup.get(
+            v_address, environment.concepts[v_address]
+        )
         if v in concepts:
             continue
         if v != concept.address:
