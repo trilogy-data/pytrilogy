@@ -35,15 +35,15 @@ SELECT
     )
     b_side = executor.environment.concepts["b"]
     assert (
-        executor.environment.concepts["b"].pseudonyms.get("unnest_array.b", None)
-        is not None
-    ), b_side.pseudonyms.keys()
+        "unnest_array.b" in executor.environment.concepts["b"].pseudonyms
+    ), b_side.pseudonyms
     assert (
-        executor.environment.concepts["local.b"].pseudonyms.get("unnest_array.b", None)
+        "unnest_array.b"
+        in executor.environment.concepts["local.b"].pseudonyms
         is not None
-    ), b_side.pseudonyms.keys()
+    ), b_side.pseudonyms
     for x in results[-1].output_columns:
-        assert len(list(x.pseudonyms.keys())) == 1, x.pseudonyms
+        assert len(list(x.pseudonyms)) == 1, x.pseudonyms
     results = executor.execute_text(
         """
 

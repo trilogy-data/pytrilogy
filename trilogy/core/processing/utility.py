@@ -162,17 +162,21 @@ def add_node_join_concept(
     concept: Concept,
     datasource: Datasource | QueryDatasource,
     concepts: List[Concept],
+    environment: Environment,
 ):
 
     concepts.append(concept)
 
     graph.add_node(concept.address, type=NodeType.CONCEPT)
     graph.add_edge(datasource.identifier, concept.address)
-    for _, v in concept.pseudonyms.items():
+    for v_address in concept.pseudonyms:
+        v = environment.alias_origin_lookup.get(
+            v_address, environment.concepts[v_address]
+        )
         if v in concepts:
             continue
-        if v.address != concept.address:
-            add_node_join_concept(graph, v, datasource, concepts)
+        if v != concept.address:
+            add_node_join_concept(graph, v, datasource, concepts, environment)
 
 
 def get_node_joins(
@@ -186,7 +190,7 @@ def get_node_joins(
     for datasource in datasources:
         graph.add_node(datasource.identifier, type=NodeType.NODE)
         for concept in datasource.output_concepts:
-            add_node_join_concept(graph, concept, datasource, concepts)
+            add_node_join_concept(graph, concept, datasource, concepts, environment)
 
     # add edges for every constant to every datasource
     for datasource in datasources:
@@ -195,7 +199,6 @@ def get_node_joins(
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
-
     joins: defaultdict[str, set] = defaultdict(set)
     identifier_map: dict[str, Datasource | QueryDatasource] = {
         x.identifier: x for x in datasources
@@ -206,7 +209,7 @@ def get_node_joins(
         # if we're looking up a pseudonym, we would have gotten the remapped value
         # so double check we got what we were looking for
         if env_lookup.address == g.address:
-            grain_pseudonyms.update(env_lookup.pseudonyms.keys())
+            grain_pseudonyms.update(env_lookup.pseudonyms)
 
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
