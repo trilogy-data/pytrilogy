@@ -58,7 +58,8 @@ QUERY_TEMPLATE = Template(
     {{ select }},{% endfor %}{% if having %}
 HAVING
     {{ having }}
-{% endif %}{%- if order_by %}ORDER BY{% for order in order_by %}
+{% endif %}{%- if order_by %}
+ORDER BY{% for order in order_by %}
     {{ order }}{% if not loop.last %},{% endif %}{% endfor %}
 {% endif %}{%- if limit is not none %}
 LIMIT {{ limit }}{% endif %};"""
@@ -220,7 +221,7 @@ class Renderer:
     @to_string.register
     def _(self, arg: "RawColumnExpr"):
         return f"raw('''{arg.text}''')"
-    
+
     @to_string.register
     def _(self, arg: "ConceptDeclarationStatement"):
         concept = arg.concept
@@ -317,23 +318,21 @@ class Renderer:
     @to_string.register
     def _(self, arg: "WhereClause"):
         base = f"{self.to_string(arg.conditional)}"
-        if base[0] == '(' and base[-1] ==')':
+        if base[0] == "(" and base[-1] == ")":
             return base[1:-1]
         return base
 
     @to_string.register
     def _(self, arg: "Conditional"):
         return f"({self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)})"
-    
+
     @to_string.register
     def _(self, arg: "SubselectComparison"):
         return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
-    
 
     @to_string.register
     def _(self, arg: "Comparison"):
         return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
-    
 
     @to_string.register
     def _(self, arg: "WindowItem"):
@@ -385,7 +384,7 @@ class Renderer:
     @to_string.register
     def _(self, arg: AggregateWrapper):
         if arg.by:
-            by = ', '.join([self.to_string(x) for x in arg.by])
+            by = ", ".join([self.to_string(x) for x in arg.by])
             return f"{self.to_string(arg.function)} by {by}"
         return f"{self.to_string(arg.function)}"
 

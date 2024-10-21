@@ -292,9 +292,7 @@ def arbitrary_to_concept(
 
     if isinstance(parent, AggregateWrapper):
         if not name:
-            name = (
-                f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
-            )
+            name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
         return agg_wrapper_to_concept(parent, namespace, name, metadata, purpose)
     elif isinstance(parent, WindowItem):
         if not name:

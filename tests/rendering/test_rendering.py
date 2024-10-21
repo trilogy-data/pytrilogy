@@ -68,7 +68,6 @@ ORDER BY
     )
 
 
-
 def test_window_over(test_environment):
     env = Environment()
     _, parsed = env.parse(
@@ -83,12 +82,13 @@ address memory.orders;
 
 select max(order_id) by order_id -> test;
 
-""")
+"""
+    )
     string_query = Renderer().to_string(parsed[-1])
     assert (
         string_query
         == """SELECT
-    max(order_id) by order_id->test,;"""
+    max(order_id) by order_id -> test,;"""
     )
 
 
@@ -169,10 +169,10 @@ def test_full_query(test_environment):
     string_query = render_query(query)
     assert (
         string_query
-        == """SELECT
+        == """WHERE
+    order_id = 123 or order_id = 456
+SELECT
     order_id,
-WHERE
-    (order_id = 123 or order_id = 456)
 ORDER BY
     order_id asc
 ;"""
@@ -460,7 +460,7 @@ def test_render_datasource():
     )
 grain (user_id)
 address customers.dim_customers
-where (user_id = 123 or user_id = 456);"""
+where user_id = 123 or user_id = 456;"""
     )
 
     test = Renderer().to_string(
@@ -493,12 +493,12 @@ where (user_id = 123 or user_id = 456);"""
     )
 grain (user_id)
 query '''SELECT * FROM test'''
-where (user_id = 123 or user_id = 456);"""
+where user_id = 123 or user_id = 456;"""
     )
 
-
     basic = Environment()
-    basic.parse("""key id int;
+    basic.parse(
+        """key id int;
 property id.date_string string;
 property id.date date;
 property id.year int;
@@ -520,10 +520,13 @@ datasource date (
     raw('''cast("D_YEAR" as int)'''): year
 )
 grain (id)
-address memory.date_dim;""")
-    
+address memory.date_dim;"""
+    )
+
     test = Renderer().to_string(basic.datasources["date"])
-    assert test == """datasource date (
+    assert (
+        test
+        == """datasource date (
     D_DATE_SK: id,
     D_DATE_ID: date_string,
     D_DATE: date,
@@ -535,7 +538,8 @@ address memory.date_dim;""")
     raw('''cast("D_YEAR" as int)'''): year
     )
 grain (id)
-address memory.date_dim;""", test
+address memory.date_dim;"""
+    ), test
 
 
 def test_circular_rendering():
@@ -604,8 +608,6 @@ ORDER BY
     ), string_query
 
 
-
-
 def test_render_substring_filter():
     basic = Environment()
 
@@ -625,8 +627,13 @@ final_zips;
 """,
     )
 
-    final_zips:ConceptDeclarationStatement = commands[-2]
-    assert isinstance(final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
+    final_zips: ConceptDeclarationStatement = commands[-2]
+    assert isinstance(
+        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept
+    ), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
     rendered = Renderer().to_string(final_zips)
 
-    assert rendered == 'property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);'
+    assert (
+        rendered
+        == "property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
+    )

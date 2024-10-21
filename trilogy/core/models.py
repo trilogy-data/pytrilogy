@@ -190,11 +190,13 @@ class ConstantInlineable(ABC):
     def inline_concept(self, concept: Concept):
         raise NotImplementedError
 
+
 class HasUUID(ABC):
 
     @property
-    def uuid(self)->str:
+    def uuid(self) -> str:
         return hashlib.md5(str(self).encode()).hexdigest()
+
 
 class SelectTypeMixin(BaseModel):
     where_clause: Union["WhereClause", None] = Field(default=None)
@@ -1612,7 +1614,7 @@ class RawSQLStatement(BaseModel):
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
 
-class SelectStatement(HasUUID,Mergeable, Namespaced, SelectTypeMixin, BaseModel):
+class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -1625,7 +1627,6 @@ class SelectStatement(HasUUID,Mergeable, Namespaced, SelectTypeMixin, BaseModel)
                     self.grain
                 )
 
-    
     def __str__(self):
         from trilogy.parsing.render import render_query
 
@@ -1731,7 +1732,11 @@ class SelectStatement(HasUUID,Mergeable, Namespaced, SelectTypeMixin, BaseModel)
             # if the concept is a locally derived concept, it cannot ever be partial
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
-                alias=c.name.replace(".", "_") if c.namespace == DEFAULT_NAMESPACE else c.address.replace(".", "_"),
+                alias=(
+                    c.name.replace(".", "_")
+                    if c.namespace == DEFAULT_NAMESPACE
+                    else c.address.replace(".", "_")
+                ),
                 concept=c,
                 modifiers=modifiers if c.address not in self.locally_derived else [],
             )
