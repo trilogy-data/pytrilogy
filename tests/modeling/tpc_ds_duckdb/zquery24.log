@@ -1,8 +1,8 @@
 query_id = 24
-parse_time = 3.089476
-exec_time = 0.506974
-comp_time = 0.413444
-gen_length = 5648
+parse_time = 3.276222
+exec_time = 0.604476
+comp_time = 0.436233
+gen_length = 5642
 generated_sql = """
 
 WITH 
@@ -53,16 +53,16 @@ SELECT
 FROM
     leopard
 GROUP BY 
-    leopard.\"store_sales_item_units\",
-    leopard.\"store_sales_customer_state\",
-    leopard.\"store_sales_item_color\",
-    leopard.\"store_sales_item_current_price\",
-    leopard.\"store_sales_item_manager_id\",
-    leopard.\"store_sales_store_name\",
     leopard.\"store_sales_item_size\",
-    leopard.\"store_sales_customer_first_name\",
     leopard.\"store_sales_store_state\",
-    leopard.\"store_sales_customer_last_name\"),
+    leopard.\"store_sales_customer_state\",
+    leopard.\"store_sales_customer_last_name\",
+    leopard.\"store_sales_item_units\",
+    leopard.\"store_sales_item_current_price\",
+    leopard.\"store_sales_item_color\",
+    leopard.\"store_sales_customer_first_name\",
+    leopard.\"store_sales_item_manager_id\",
+    leopard.\"store_sales_store_name\"),
 lynx as (
 SELECT
     lion.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
@@ -80,7 +80,7 @@ FROM
     lion),
 marlin as (
 SELECT
-    CASE WHEN lynx.\"su_store_sales_item_color\" = 'peach' THEN lynx.\"su_net_paid\" ELSE NULL END as \"_virtual_5818638680298942\",
+    CASE WHEN lynx.\"su_store_sales_item_color\" = 'peach' THEN lynx.\"su_net_paid\" ELSE NULL END as \"_virt_5818638680298942\",
     lynx.\"su_net_paid\" as \"su_net_paid\",
     lynx.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     lynx.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
@@ -95,7 +95,7 @@ FROM
     lynx),
 monitor as (
 SELECT
-    sum(marlin.\"_virtual_5818638680298942\") as \"peach_sales\",
+    sum(marlin.\"_virt_5818638680298942\") as \"peach_sales\",
     marlin.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     marlin.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     marlin.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"

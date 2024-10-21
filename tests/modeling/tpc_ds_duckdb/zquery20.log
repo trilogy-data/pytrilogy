@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 0.687221
-exec_time = 0.146997
-comp_time = 1.480465
-gen_length = 2563
+parse_time = 2.956795
+exec_time = 0.289607
+comp_time = 0.308115
+gen_length = 2505
 generated_sql = """
 
 WITH 
-wakeful as (
+cougar as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-cheerful as (
+coyote as (
 SELECT
-    sum(wakeful.\"cs_extra_sales_price\") as \"revenue\",
-    wakeful.\"cs_item_category\" as \"cs_item_category\",
-    wakeful.\"cs_item_class\" as \"cs_item_class\",
-    wakeful.\"cs_item_current_price\" as \"cs_item_current_price\",
-    wakeful.\"cs_item_desc\" as \"cs_item_desc\",
-    wakeful.\"cs_item_name\" as \"cs_item_name\"
+    sum(cougar.\"cs_extra_sales_price\") as \"revenue\",
+    cougar.\"cs_item_category\" as \"cs_item_category\",
+    cougar.\"cs_item_class\" as \"cs_item_class\",
+    cougar.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cougar.\"cs_item_desc\" as \"cs_item_desc\",
+    cougar.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    wakeful
+    cougar
 GROUP BY 
-    wakeful.\"cs_item_category\",
-    wakeful.\"cs_item_name\",
-    wakeful.\"cs_item_class\",
-    wakeful.\"cs_item_desc\",
-    wakeful.\"cs_item_current_price\"),
-thoughtful as (
+    cougar.\"cs_item_class\",
+    cougar.\"cs_item_current_price\",
+    cougar.\"cs_item_category\",
+    cougar.\"cs_item_name\",
+    cougar.\"cs_item_desc\"),
+crocodile as (
 SELECT
-    sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virtual_6483977992947176\",
-    cheerful.\"revenue\" as \"revenue\",
-    cheerful.\"cs_item_class\" as \"cs_item_class\",
-    cheerful.\"cs_item_name\" as \"cs_item_name\",
-    cheerful.\"cs_item_desc\" as \"cs_item_desc\",
-    cheerful.\"cs_item_category\" as \"cs_item_category\",
-    cheerful.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(coyote.\"revenue\") over (partition by coyote.\"cs_item_class\") as \"_virt_6483977992947176\",
+    coyote.\"revenue\" as \"revenue\",
+    coyote.\"cs_item_class\" as \"cs_item_class\",
+    coyote.\"cs_item_name\" as \"cs_item_name\",
+    coyote.\"cs_item_desc\" as \"cs_item_desc\",
+    coyote.\"cs_item_category\" as \"cs_item_category\",
+    coyote.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    cheerful)
+    coyote)
 SELECT
-    thoughtful.\"cs_item_name\" as \"cs_item_name\",
-    thoughtful.\"cs_item_desc\" as \"cs_item_desc\",
-    thoughtful.\"cs_item_category\" as \"cs_item_category\",
-    thoughtful.\"cs_item_class\" as \"cs_item_class\",
-    thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
-    thoughtful.\"revenue\" as \"revenue\",
-    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virtual_6483977992947176\" as \"revenue_ratio\"
+    crocodile.\"cs_item_name\" as \"cs_item_name\",
+    crocodile.\"cs_item_desc\" as \"cs_item_desc\",
+    crocodile.\"cs_item_category\" as \"cs_item_category\",
+    crocodile.\"cs_item_class\" as \"cs_item_class\",
+    crocodile.\"cs_item_current_price\" as \"cs_item_current_price\",
+    crocodile.\"revenue\" as \"revenue\",
+    crocodile.\"revenue\" * 100.0 / crocodile.\"_virt_6483977992947176\" as \"revenue_ratio\"
 FROM
-    thoughtful
+    crocodile
 ORDER BY 
-    thoughtful.\"cs_item_category\" asc nulls first,
-    thoughtful.\"cs_item_class\" asc nulls first,
-    thoughtful.\"cs_item_name\" asc nulls first,
-    thoughtful.\"cs_item_desc\" asc nulls first,
-    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virtual_6483977992947176\" asc nulls first
+    crocodile.\"cs_item_category\" asc nulls first,
+    crocodile.\"cs_item_class\" asc nulls first,
+    crocodile.\"cs_item_name\" asc nulls first,
+    crocodile.\"cs_item_desc\" asc nulls first,
+    crocodile.\"revenue\" * 100.0 / crocodile.\"_virt_6483977992947176\" asc nulls first
 LIMIT (100)"""

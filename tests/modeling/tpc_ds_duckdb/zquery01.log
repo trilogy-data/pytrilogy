@@ -1,7 +1,7 @@
 query_id = 1
-parse_time = 1.550935
-exec_time = 0.077002
-comp_time = 1.34126
+parse_time = 3.146461
+exec_time = 0.11656
+comp_time = 2.116676
 gen_length = 1696
 generated_sql = """
 
@@ -17,8 +17,8 @@ SELECT
     store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
     memory.store_returns as store_returns
-    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.customer as customers on store_returns.\"SR_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000

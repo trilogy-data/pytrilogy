@@ -293,20 +293,20 @@ def arbitrary_to_concept(
     if isinstance(parent, AggregateWrapper):
         if not name:
             name = (
-                f"_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
+                f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
             )
         return agg_wrapper_to_concept(parent, namespace, name, metadata, purpose)
     elif isinstance(parent, WindowItem):
         if not name:
-            name = f"_window_{parent.type.value}_{string_to_hash(str(parent))}"
+            name = f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
         return window_item_to_concept(parent, name, namespace, purpose, metadata)
     elif isinstance(parent, FilterItem):
         if not name:
-            name = f"_filter_{parent.content.name}_{string_to_hash(str(parent))}"
+            name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
         return filter_item_to_concept(parent, name, namespace, purpose, metadata)
     elif isinstance(parent, Function):
         if not name:
-            name = f"_func_{parent.operator.value}_{string_to_hash(str(parent))}"
+            name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
         return function_to_concept(parent, name, namespace)
     elif isinstance(parent, ListWrapper):
         if not name:

@@ -1,14 +1,14 @@
 query_id = 8
-parse_time = 3.277879
-exec_time = 0.085507
-comp_time = 0.077523
-gen_length = 6725
+parse_time = 3.229522
+exec_time = 0.089375
+comp_time = 0.07969
+gen_length = 6728
 generated_sql = """
 
 WITH 
 resonant as (
 SELECT
-    CASE WHEN customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virtual_7470647693515630\",
+    CASE WHEN customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_7470647693515630\",
     customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
@@ -27,7 +27,7 @@ SELECT
 ),
 courageous as (
 SELECT
-    resonant.\"_virtual_7470647693515630\" as \"_virtual_7470647693515630\",
+    resonant.\"_virt_7470647693515630\" as \"_virt_7470647693515630\",
     dapper.\"customer_zip\" as \"customer_zip\",
     resonant.\"customer_id\" as \"customer_id\"
 FROM
@@ -35,7 +35,7 @@ FROM
     INNER JOIN resonant on dapper.\"customer_id\" = resonant.\"customer_id\"),
 vast as (
 SELECT
-    count(courageous.\"_virtual_7470647693515630\") as \"zip_p_count\",
+    count(courageous.\"_virt_7470647693515630\") as \"zip_p_count\",
     courageous.\"customer_zip\" as \"customer_zip\"
 FROM
     courageous
@@ -51,7 +51,7 @@ FROM
     INNER JOIN vast on customer_address.\"CA_ZIP\" = vast.\"customer_zip\"),
 elated as (
 SELECT
-    SUBSTRING(CASE WHEN cool.\"zip_p_count\" > 10 THEN cool.\"customer_zip\" ELSE NULL END,1,5) as \"_func_substring_1342571877656287\"
+    SUBSTRING(CASE WHEN cool.\"zip_p_count\" > 10 THEN cool.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_1342571877656287\"
 FROM
     cool),
 wary as (
@@ -60,7 +60,7 @@ SELECT
 FROM
     hard
 WHERE
-    SUBSTRING(cast(hard.\"zips_pre\" as string),1,5) in (select elated.\"_func_substring_1342571877656287\" from elated where elated.\"_func_substring_1342571877656287\" is not null)
+    SUBSTRING(cast(hard.\"zips_pre\" as string),1,5) in (select elated.\"_virt_func_substring_1342571877656287\" from elated where elated.\"_virt_func_substring_1342571877656287\" is not null)
 ),
 bewildered as (
 SELECT
@@ -80,8 +80,8 @@ SELECT
     store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.store_sales as store_sales
-    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select bewildered.\"final_zips\" from bewildered where bewildered.\"final_zips\" is not null)
 )

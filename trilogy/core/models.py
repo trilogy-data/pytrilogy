@@ -73,6 +73,7 @@ from collections import UserList, UserDict
 from functools import cached_property
 from abc import ABC
 from collections import defaultdict
+import hashlib
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -189,6 +190,11 @@ class ConstantInlineable(ABC):
     def inline_concept(self, concept: Concept):
         raise NotImplementedError
 
+class HasUUID(ABC):
+
+    @property
+    def uuid(self)->str:
+        return hashlib.md5(str(self).encode()).hexdigest()
 
 class SelectTypeMixin(BaseModel):
     where_clause: Union["WhereClause", None] = Field(default=None)
@@ -1606,7 +1612,7 @@ class RawSQLStatement(BaseModel):
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
 
 
-class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
+class SelectStatement(HasUUID,Mergeable, Namespaced, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -1619,6 +1625,7 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
                     self.grain
                 )
 
+    
     def __str__(self):
         from trilogy.parsing.render import render_query
 
@@ -1724,7 +1731,7 @@ class SelectStatement(Mergeable, Namespaced, SelectTypeMixin, BaseModel):
             # if the concept is a locally derived concept, it cannot ever be partial
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
-                alias=c.address.replace(".", "_"),
+                alias=c.name.replace(".", "_") if c.namespace == DEFAULT_NAMESPACE else c.address.replace(".", "_"),
                 concept=c,
                 modifiers=modifiers if c.address not in self.locally_derived else [],
             )
@@ -1859,7 +1866,7 @@ class AlignClause(Namespaced, BaseModel):
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class MultiSelectStatement(SelectTypeMixin, Mergeable, Namespaced, BaseModel):
+class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, BaseModel):
     selects: List[SelectStatement]
     align: AlignClause
     namespace: str
@@ -2021,7 +2028,7 @@ class DatasourceMetadata(BaseModel):
     line_no: int | None = None
 
 
-class MergeStatementV2(Namespaced, BaseModel):
+class MergeStatementV2(HasUUID, Namespaced, BaseModel):
     source: Concept
     target: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
@@ -2035,7 +2042,7 @@ class MergeStatementV2(Namespaced, BaseModel):
         return new
 
 
-class Datasource(Namespaced, BaseModel):
+class Datasource(HasUUID, Namespaced, BaseModel):
     identifier: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
@@ -3227,7 +3234,7 @@ class EnvironmentConceptDict(dict):
         return super().items()
 
 
-class ImportStatement(BaseModel):
+class ImportStatement(HasUUID, BaseModel):
     alias: str
     path: Path
     environment: Union["Environment", None] = None
@@ -4341,7 +4348,7 @@ class Limit(BaseModel):
     count: int
 
 
-class ConceptDeclarationStatement(BaseModel):
+class ConceptDeclarationStatement(HasUUID, BaseModel):
     concept: Concept
 
 
@@ -4349,7 +4356,7 @@ class ConceptDerivation(BaseModel):
     concept: Concept
 
 
-class RowsetDerivationStatement(Namespaced, BaseModel):
+class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
     name: str
     select: SelectStatement | MultiSelectStatement
     namespace: str
@@ -4614,7 +4621,7 @@ class TupleWrapper(Generic[VT], tuple):
         return cls(v, type=arg_to_datatype(v[0]))
 
 
-class PersistStatement(BaseModel):
+class PersistStatement(HasUUID, BaseModel):
     datasource: Datasource
     select: SelectStatement
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())

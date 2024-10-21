@@ -1,20 +1,20 @@
 query_id = 16
-parse_time = 38.231839
-exec_time = 0.339955
-comp_time = 0.035793
-gen_length = 4504
+parse_time = 48.457107
+exec_time = 0.534184
+comp_time = 0.031643
+gen_length = 4514
 generated_sql = """
 
 WITH 
 ruthless as (
 SELECT
-    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
-    catalog_sales.\"CS_ORDER_NUMBER\",
-    catalog_sales.\"CS_WAREHOUSE_SK\"),
+    catalog_sales.\"CS_WAREHOUSE_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\"),
 ugly as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
@@ -24,7 +24,7 @@ GROUP BY
     catalog_returns.\"CR_ORDER_NUMBER\"),
 deeply as (
 SELECT
-    count(ruthless.\"cs_warehouse_id\") as \"_agg_count_6430482449237259\",
+    count(ruthless.\"cs_warehouse_id\") as \"_virt_agg_count_6430482449237259\",
     ruthless.\"cs_order_number\" as \"cs_order_number\"
 FROM
     ruthless
@@ -32,7 +32,7 @@ GROUP BY
     ruthless.\"cs_order_number\"),
 eminent as (
 SELECT
-    CASE WHEN deeply.\"_agg_count_6430482449237259\" > 1 THEN deeply.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN deeply.\"_virt_agg_count_6430482449237259\" > 1 THEN deeply.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
     deeply),
 badger as (
@@ -44,9 +44,9 @@ GROUP BY
     eminent.\"multi_warehouse_sales\"),
 blue as (
 SELECT
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
 FROM
     memory.catalog_sales as catalog_sales
@@ -54,10 +54,10 @@ WHERE
     catalog_sales.\"CS_ORDER_NUMBER\" not in (select ugly.\"cr_order_number\" from ugly where ugly.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select badger.\"multi_warehouse_sales\" from badger where badger.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_ORDER_NUMBER\",
     catalog_sales.\"CS_SHIP_ADDR_SK\",
-    catalog_sales.\"CS_CALL_CENTER_SK\",
-    catalog_sales.\"CS_SHIP_DATE_SK\"),
+    catalog_sales.\"CS_SHIP_DATE_SK\",
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_CALL_CENTER_SK\"),
 boa as (
 SELECT
     catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
@@ -70,8 +70,8 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales
     INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
     INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select ugly.\"cr_order_number\" from ugly where ugly.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select badger.\"multi_warehouse_sales\" from badger where badger.\"multi_warehouse_sales\" is not null)
 ),
@@ -83,8 +83,8 @@ SELECT
     call_center.\"CC_COUNTY\" as \"cs_call_center_county\"
 FROM
     blue
-    INNER JOIN memory.customer_address as customer_address on blue.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
     INNER JOIN memory.call_center as call_center on blue.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.customer_address as customer_address on blue.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
     INNER JOIN memory.date_dim as date on blue.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and blue.\"cs_order_number\" not in (select ugly.\"cr_order_number\" from ugly where ugly.\"cr_order_number\" is not null) and blue.\"cs_order_number\" in (select badger.\"multi_warehouse_sales\" from badger where badger.\"multi_warehouse_sales\" is not null)

@@ -214,7 +214,7 @@ def get_node_joins(
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
         # sort so that anything with a partial match on the target is later
-        key=lambda x: len(
+        key=lambda x: (len(
             [
                 partial
                 for partial in identifier_map[x].partial_concepts
@@ -225,7 +225,7 @@ def get_node_joins(
                 for output in identifier_map[x].output_concepts
                 if output.address in grain_pseudonyms
             ]
-        ),
+        ), x),
     )
 
     for left in node_list:
