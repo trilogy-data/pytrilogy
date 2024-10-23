@@ -1743,12 +1743,23 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
             for c in self.output_components
         ]
 
+        condition = None
+        if self.where_clause:
+            condition = self.where_clause.conditional
+        if self.having_clause:
+            if condition:
+                condition = self.having_clause.conditional + condition
+            else:
+                condition = self.having_clause.conditional
+
         new_datasource = Datasource(
             identifier=identifier,
             address=address,
             grain=grain or self.grain,
             columns=columns,
             namespace=namespace,
+            where=WhereClause(conditional=condition) if condition else None,
+            non_partial_for=WhereClause(conditional=condition) if condition else None,
         )
         for column in columns:
             column.concept = column.concept.with_grain(new_datasource.grain)
@@ -2059,6 +2070,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
     )
     where: Optional[WhereClause] = None
+    non_partial_for: Optional[WhereClause] = None
 
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -4234,6 +4246,9 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
 
 class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
     conditional: Union[SubselectComparison, Comparison, Conditional, "Parenthetical"]
+
+    def __repr__(self):
+        return str(self.conditional)
 
     @property
     def input(self) -> List[Concept]:

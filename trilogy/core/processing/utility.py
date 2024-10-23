@@ -40,6 +40,7 @@ from logging import Logger
 from pydantic import BaseModel
 
 from trilogy.core.enums import FunctionClass
+from trilogy.constants import logger
 
 
 class NodeType(Enum):
@@ -183,6 +184,8 @@ def get_node_joins(
     datasources: List[QueryDatasource],
     grain: List[Concept],
     environment: Environment,
+    output_concepts: List[Concept],
+    partial_concepts: List[Concept],
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
@@ -199,6 +202,9 @@ def get_node_joins(
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
+    from trilogy.hooks.graph_hook import GraphHook
+
+    GraphHook().query_graph_built(graph)
     joins: defaultdict[str, set] = defaultdict(set)
     identifier_map: dict[str, Datasource | QueryDatasource] = {
         x.identifier: x for x in datasources
@@ -214,7 +220,58 @@ def get_node_joins(
     node_list = sorted(
         [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
         # sort so that anything with a partial match on the target is later
+        # key=lambda x: (
+        #     len(
+        #         [
+        #             partial
+        #             for partial in identifier_map[x].partial_concepts
+        #             if partial in grain
+        #         ]
+        #         + [
+        #             output
+        #             for output in identifier_map[x].output_concepts
+        #             if output.address in grain_pseudonyms
+        #         ]
+        #     )
+        # ),
         key=lambda x: (
+            # partials last
+            len(
+                [
+                    partial
+                    for partial in identifier_map[x].partial_concepts
+                    if partial in grain
+                ]
+                + [
+                    output
+                    for output in identifier_map[x].output_concepts
+                    if output.address in grain_pseudonyms
+                ]
+            ),
+            # items in grain sooner
+            -len([x for x in identifier_map[x] if x in grain]),
+            # then by name for constant ordering
+            x,
+        ),
+    )
+    node_list1 = {
+        x: len(
+            [
+                partial
+                for partial in identifier_map[x].partial_concepts
+                if partial in grain
+            ]
+            + [
+                output
+                for output in identifier_map[x].output_concepts
+                if output.address in grain_pseudonyms
+            ]
+        )
+        for x in graph.nodes
+        if graph.nodes[x]["type"] == NodeType.NODE
+    }
+    node_list2 = {
+        x: (
             len(
                 [
                     partial
@@ -228,9 +285,13 @@ def get_node_joins(
                 ]
             ),
             x,
-        ),
-    )
-
+        )
+        for x in graph.nodes
+        if graph.nodes[x]["type"] == NodeType.NODE
+    }
+    logger.error("order debug")
+    logger.error(f"Node list is {node_list1}")
+    logger.error(f"node list 2 is {node_list2}")
     for left in node_list:
         # the constant dataset is a special case
         # and can never be on the left of a join
@@ -250,19 +311,29 @@ def get_node_joins(
 
     final_joins_pre: List[BaseJoin] = []
 
+    non_partial_targets = [x for x in output_concepts]
     for key, join_concepts in joins.items():
         left, right = key.split("-")
         local_concepts: List[Concept] = unique(
             [c for c in concepts if c.address in join_concepts], "address"
         )
+        local_upgrade_to_full: List[Concept] = unique(
+            non_partial_targets+  [c for c in concepts if c.address in join_concepts], "address"
+        )
+
+        logger.info(f'Required to upgrade to full {[c.address for c in local_upgrade_to_full]}')
         if all([c.granularity == Granularity.SINGLE_ROW for c in local_concepts]):
             # for the constant join, make it a full outer join on 1=1
             join_type = JoinType.FULL
             local_concepts = []
         elif any(
             [
-                c.address in [x.address for x in identifier_map[left].partial_concepts]
-                for c in local_concepts
+                c.address in identifier_map[left].partial_concepts
+                for c in local_upgrade_to_full
+            ]
+            +  [
+                c.address in identifier_map[right].partial_concepts
+                for c in local_upgrade_to_full
             ]
         ):
             join_type = JoinType.FULL
@@ -270,11 +341,6 @@ def get_node_joins(
                 c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
         elif any(
-            [
-                c.address in [x.address for x in identifier_map[right].partial_concepts]
-                for c in local_concepts
-            ]
-        ) or any(
             [
                 c.address in [x.address for x in identifier_map[left].nullable_concepts]
                 for c in local_concepts
@@ -290,8 +356,9 @@ def get_node_joins(
             local_concepts = [
                 c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
             ]
-
+        
         relevant = concept_to_relevant_joins(local_concepts)
+        logger.info(f'Join type is {join_type} for {[c.address for c in relevant]}')
         left_datasource = identifier_map[left]
         right_datasource = identifier_map[right]
         join_tuples: list[ConceptPair] = []

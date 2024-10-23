@@ -46,7 +46,9 @@ SELECT
             count(customer.id
      ) as cnt6
 WHERE
-    customer.id in relevant_customers
+    customer.id in relevant_customers 
+    # filter to just demographics contents
+    and customer.demographics.gender is not null
 ORDER BY
     customer.demographics.gender asc,
     customer.demographics.marital_status asc,

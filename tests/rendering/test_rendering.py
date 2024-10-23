@@ -561,10 +561,10 @@ where id in (1,2,3);
 
     assert (
         rendered
-        == """PERSIST test INTO test FROM SELECT
-    id,
-WHERE
-    id in (1, 2, 3);"""
+        == """PERSIST test INTO test FROM WHERE
+    id in (1, 2, 3)
+SELECT
+    id,;"""
     ), rendered
 
 

@@ -1,7 +1,7 @@
 query_id = 3
-parse_time = 14.962846
-exec_time = 0.072821
-comp_time = 0.059366
+parse_time = 22.476826
+exec_time = 0.122894
+comp_time = 0.092878
 gen_length = 1359
 generated_sql = """
 
@@ -17,9 +17,9 @@ SELECT
     store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     items.\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
-    memory.store_sales as store_sales
+    memory.date_dim as date
+    INNER JOIN memory.store_sales as store_sales on date.\"D_DATE_SK\" = store_sales.\"SS_SOLD_DATE_SK\"
     INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
 )
@@ -31,8 +31,8 @@ SELECT
 FROM
     vacuous
 GROUP BY 
-    vacuous.\"store_sales_item_brand_name\",
     vacuous.\"store_sales_item_brand_id\",
+    vacuous.\"store_sales_item_brand_name\",
     vacuous.\"store_sales_date_year\"
 ORDER BY 
     vacuous.\"store_sales_date_year\" asc,
