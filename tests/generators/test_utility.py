@@ -1,11 +1,15 @@
 from trilogy.core.processing.node_generators.common import (
     resolve_join_order,
+    # resolve_join_order_v2,
     NodeJoin,
     StrategyNode,
 )
+from trilogy.core.processing.utility import resolve_join_order_v2
 from trilogy import parse
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.enums import JoinType
+from networkx import Graph, common_neighbors
+from trilogy.hooks.graph_hook import GraphHook
 
 
 def test_resolve_join_order():
@@ -72,87 +76,48 @@ property product_id.price float;
         assert isinstance(e, SyntaxError)
 
 
-def resolve_join_order(sources):
-    pass
 
 
-from networkx import Graph, common_neighbors
-from trilogy.hooks.graph_hook import GraphHook
 
 def test_resolve_join_order_v2():
 
-    test = Graph()
+    g = Graph()
 
-    test.add_edge("ds~orders", "c~order_id")
-    test.add_edge("ds~orders", "c~product_id")
-    test.add_edge("ds~orders", "c~customer_id")
-    test.add_edge("ds~products", "c~product_id")
-    test.add_edge("ds~products", "c~price")
-    test.add_edge("ds~customer", "c~customer_id")
-    test.add_edge("ds~customer", "c~customer_name")
-    test.add_edge("ds~customer_address", "c~customer_id")
-    test.add_edge("ds~customer_address", "c~address")
-    test.add_edge("ds~customer_address", "c~city")
+    g.add_edge("ds~orders", "c~order_id")
+    g.add_edge("ds~orders", "c~product_id")
+    g.add_edge("ds~orders", "c~customer_id")
+    g.add_edge("ds~products", "c~product_id")
+    g.add_edge("ds~products", "c~price")
+    g.add_edge("ds~customer", "c~customer_id")
+    g.add_edge("ds~customer", "c~customer_name")
+    g.add_edge("ds~customer_address", "c~customer_id")
+    g.add_edge("ds~customer_address", "c~address")
+    g.add_edge("ds~customer_address", "c~city")
 
     partials = {
         "ds~orders": ["c~customer_id", "c~product_id"],
         "ds~customer_address": ["c~customer_id"],
     }
 
-    datasources = [x for x in test.nodes if x.startswith("ds~")]
+    output = resolve_join_order_v2(g, partials)
 
-    # GraphHook().query_graph_built(test)
-    concepts = [x for x in test.nodes if x.startswith("c~")]
-    roots = {}
-    for concept in concepts:
-        eligible = [
-            x
-            for x in test.neighbors(concept)
-            if x in datasources and test not in partials.get(x, [])
-        ]
-        if eligible:
-            roots[concept] = eligible
-
-    first = list(roots.values())[0][0]
-    output = []
-    finished = False
-    seen = set(
-        [
-            first,
-        ]
-    )
-    attempted = set(
-        [
-            first,
-        ]
-    )
-    all = set(datasources)
-    pivot_map = {concept:[x for x in test.neighbors(concept) if x in datasources] for concept in concepts}
-    pivots = sorted([x for x in pivot_map if len(pivot_map[x]) > 1], key=lambda x: len(pivot_map[x]))
-    
-    
-    while pivots:
-        root = pivots.pop()
-        # technically we should check all possible join keys for partials?
-        partial_weight = {x: len(partials.get(x, [])) for x in pivot_map[root]}
-        print(partial_weight)
-        # sort so less partials is lest
-        to_join = sorted([x for x in pivot_map[root]], key = lambda x: 0 if root in partials.get(x, []) else 1 )
-        left = to_join.pop()
-        while to_join:
-            right = to_join.pop()
-            left_is_partial = left in partials.get(root, [])
-            right_is_partial = right in partials.get(root, [])
-            left_is_nullable = left in partials.get(root, [])
-            right_is_nullable = right in partials.get(root, [])
-            if left_is_partial:
-                join_type = JoinType.FULL
-            elif right_is_partial or right_is_nullable:
-                join_type = JoinType.LEFT_OUTER
-            else:
-                join_type = JoinType.INNER
-            output.append({'left':left, 'right':right, 'type':join_type, 'keys': common_neighbors(test, left, right)})
-        
-
-    print(output)
-    assert 1 == 0
+    assert output == [
+        {
+            "left": "ds~customer",
+            "right": "ds~customer_address",
+            "type": JoinType.LEFT_OUTER,
+            "keys": {"c~customer_id"},
+        },
+        {
+            "left": "ds~customer",
+            "right": "ds~orders",
+            "type": JoinType.LEFT_OUTER,
+            "keys": {"c~customer_id"},
+        },
+        {
+            "left": "ds~orders",
+            "right": "ds~products",
+            "type": JoinType.FULL,
+            "keys": {"c~product_id"},
+        },
+    ]

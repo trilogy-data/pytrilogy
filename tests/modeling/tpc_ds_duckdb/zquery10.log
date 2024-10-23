@@ -1,7 +1,7 @@
 query_id = 10
-parse_time = 4.425921
-exec_time = 0.385834
-comp_time = 1.848024
+parse_time = 3.233345
+exec_time = 0.287451
+comp_time = 0.499559
 gen_length = 5625
 generated_sql = """
 
@@ -13,13 +13,13 @@ SELECT
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_CUSTOMER_SK\",
-    store_sales.\"SS_SOLD_DATE_SK\"),
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_CUSTOMER_SK\"),
 cooperative as (
 SELECT
     date.\"D_MOY\" as \"web_sales_date_month_of_year\",
-    cast(\"D_YEAR\" as int) as \"web_sales_date_year\",
-    date.\"D_DATE_SK\" as \"web_sales_date_id\"
+    date.\"D_DATE_SK\" as \"web_sales_date_id\",
+    cast(\"D_YEAR\" as int) as \"web_sales_date_year\"
 FROM
     memory.date_dim as date),
 abundant as (
@@ -33,15 +33,15 @@ GROUP BY
     web_sales.\"WS_BILL_CUSTOMER_SK\"),
 uneven as (
 SELECT
+    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
-    date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
-    cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\"
+    date.\"D_MOY\" as \"catalog_sales_date_month_of_year\"
 FROM
     memory.date_dim as date),
 juicy as (
 SELECT
-    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
-    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\"
+    catalog_sales.\"CS_SHIP_CUSTOMER_SK\" as \"customer_id\",
+    catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
@@ -51,14 +51,14 @@ vacuous as (
 SELECT
     customers.\"C_CUSTOMER_SK\" as \"relevant_customers\"
 FROM
-    memory.customer_address as customer_address
-    INNER JOIN memory.customer as customers on customer_address.\"CA_ADDRESS_SK\" = customers.\"C_CURRENT_ADDR_SK\"
-    LEFT OUTER JOIN thoughtful on customers.\"C_CUSTOMER_SK\" = thoughtful.\"customer_id\"
-    LEFT OUTER JOIN abundant on customers.\"C_CUSTOMER_SK\" = abundant.\"customer_id\"
+    memory.customer as customers
     LEFT OUTER JOIN juicy on customers.\"C_CUSTOMER_SK\" = juicy.\"customer_id\"
-    LEFT OUTER JOIN memory.date_dim as date on thoughtful.\"store_sales_date_id\" = date.\"D_DATE_SK\"
-    LEFT OUTER JOIN cooperative on abundant.\"web_sales_date_id\" = cooperative.\"web_sales_date_id\"
+    LEFT OUTER JOIN abundant on customers.\"C_CUSTOMER_SK\" = abundant.\"customer_id\"
+    LEFT OUTER JOIN thoughtful on customers.\"C_CUSTOMER_SK\" = thoughtful.\"customer_id\"
+    INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
     LEFT OUTER JOIN uneven on juicy.\"catalog_sales_date_id\" = uneven.\"catalog_sales_date_id\"
+    LEFT OUTER JOIN cooperative on abundant.\"web_sales_date_id\" = cooperative.\"web_sales_date_id\"
+    LEFT OUTER JOIN memory.date_dim as date on thoughtful.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     cast(\"D_YEAR\" as int) = 2002 and date.\"D_MOY\" in (1,2,3,4) and customer_address.\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County') and ( ( cooperative.\"web_sales_date_year\" = 2002 and cooperative.\"web_sales_date_month_of_year\" in (1,2,3,4) ) or ( uneven.\"catalog_sales_date_year\" = 2002 and uneven.\"catalog_sales_date_month_of_year\" in (1,2,3,4) ) )
 ),
@@ -81,8 +81,8 @@ SELECT
     customer_demographics.\"CD_MARITAL_STATUS\" as \"customer_demographics_marital_status\",
     customer_demographics.\"CD_PURCHASE_ESTIMATE\" as \"customer_demographics_purchase_estimate\"
 FROM
-    memory.customer_demographics as customer_demographics
-    INNER JOIN memory.customer as customers on customer_demographics.\"CD_DEMO_SK\" = customers.\"C_CURRENT_CDEMO_SK\"
+    memory.customer as customers
+    INNER JOIN memory.customer_demographics as customer_demographics on customers.\"C_CURRENT_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
 WHERE
     customers.\"C_CUSTOMER_SK\" in (select concerned.\"relevant_customers\" from concerned where concerned.\"relevant_customers\" is not null) and customer_demographics.\"CD_GENDER\" is not null
 )
@@ -104,14 +104,14 @@ SELECT
 FROM
     young
 GROUP BY 
-    young.\"customer_demographics_purchase_estimate\",
-    young.\"customer_demographics_dependent_count\",
+    young.\"customer_demographics_marital_status\",
+    young.\"customer_demographics_employed_dependent_count\",
+    young.\"customer_demographics_college_dependent_count\",
     young.\"customer_demographics_education_status\",
     young.\"customer_demographics_gender\",
     young.\"customer_demographics_credit_rating\",
-    young.\"customer_demographics_marital_status\",
-    young.\"customer_demographics_employed_dependent_count\",
-    young.\"customer_demographics_college_dependent_count\"
+    young.\"customer_demographics_dependent_count\",
+    young.\"customer_demographics_purchase_estimate\"
 ORDER BY 
     young.\"customer_demographics_gender\" asc,
     young.\"customer_demographics_marital_status\" asc,

@@ -41,6 +41,98 @@ from pydantic import BaseModel
 
 from trilogy.core.enums import FunctionClass
 from trilogy.constants import logger
+# from trilogy.core.processing.node_generators.common import resolve_join_order_v2
+
+
+
+from dataclasses import dataclass
+
+@dataclass
+class JoinOrderOutput:
+    left:str
+    right:str
+    type:JoinType
+    keys:list[str]
+
+def resolve_join_order_v2(g: nx.Graph, partials: dict[str, list[str]]) -> list[JoinOrderOutput]:
+    datasources = [x for x in g.nodes if x.startswith("ds~")]
+    concepts = [x for x in g.nodes if x.startswith("c~")]
+
+    output: list[JoinOrderOutput] = []
+    pivot_map = {
+        concept: [x for x in g.neighbors(concept) if x in datasources]
+        for concept in concepts
+    }
+    pivots = list(
+        sorted(
+            [x for x in pivot_map if len(pivot_map[x]) > 1],
+            key=lambda x: len(pivot_map[x]),
+        )
+    )
+    eligible_left = set()
+    while pivots:
+        root = pivots.pop()
+        # sort so less partials is last and eligible lefts are
+        def score_key(x: str) -> int:
+            base = 1
+            # if it's left, higher weight
+            if x in eligible_left:
+                base += 3
+            # if it has the concept as a partial, lower weight
+            if root in partials.get(x, []):
+                base -= 1
+            return base
+
+        to_join = sorted([x for x in pivot_map[root]], key=score_key)
+
+        left = to_join.pop()
+        while to_join:
+            right = to_join.pop()
+            # assume for now we don't have join z on z.a = x.a and z.a = y.a
+            # but if need to support that include existing keys in the join
+            # ex: for left_candidate in [left] + existing:
+            for left_candidate in [left]:
+                common = nx.common_neighbors(g, left_candidate, right)
+                if not common:
+                    continue
+                left_is_partial = any(
+                    key in partials.get(left_candidate, []) for key in common
+                )
+                right_is_partial = any(key in partials.get(right, []) for key in common)
+                # we don't care if left is nullable for join type (just keys), but if we did
+                # ex: left_is_nullable = any(key in partials.get(left_candidate, [])
+                right_is_nullable = any(
+                    key in partials.get(right, []) for key in common
+                )
+                if left_is_partial:
+                    join_type = JoinType.FULL
+                elif right_is_partial or right_is_nullable:
+                    join_type = JoinType.LEFT_OUTER
+                # we can't inner join if the left was an outer join
+
+                else:
+                    join_type = JoinType.INNER
+                output.append(
+                    JoinOrderOutput(
+                        left=left_candidate,
+                        right=right,
+                        type=join_type,
+                        keys=common,
+                    )
+                )
+                eligible_left.add(left_candidate)
+                eligible_left.add(right)
+    # only once we have all joins
+    # do we know if some inners need to be left outers
+    for review_join in output:
+        if review_join.type in (JoinType.LEFT_OUTER, JoinType.FULL):
+            continue
+        logger.info('CHECKING')
+        logger.info(review_join)
+        logger.info(any([ review_join.left==join.right for join in output if join.type == JoinType.LEFT_OUTER]))
+        if any([ review_join.left==join.right for join in output if join.type == JoinType.LEFT_OUTER]):
+            review_join.type = JoinType.LEFT_OUTER
+    return output
 
 
 class NodeType(Enum):
@@ -186,6 +278,36 @@ def get_node_joins(
     environment: Environment,
     output_concepts: List[Concept],
     partial_concepts: List[Concept],
+    # concepts:List[Concept],  
+):
+    
+    graph = nx.Graph()
+    concepts: List[Concept] = []
+    partials = {}
+    ds_node_map = {}
+    concept_map = {}
+    for datasource in datasources:
+        ds_node = f'ds~{datasource.identifier}'
+        ds_node_map[ds_node] = datasource
+        graph.add_node(f'ds~{datasource.identifier}', type=NodeType.NODE)
+        partials[ds_node] = [f'c~{c.address}' for c in datasource.partial_concepts]
+        for concept in datasource.output_concepts:
+            concepta = f'c~{concept.address}'
+            concept_map[concepta] = concept
+            graph.add_edge(ds_node, concepta)
+            # add_node_join_concept(graph, concept, datasource, concepts, environment)
+
+    joins = resolve_join_order_v2(graph, partials=partials)
+
+    return [BaseJoin(left_datasource = ds_node_map[j.left], right_datasource = ds_node_map[j.right], join_type = j.type, concepts = [concept_map[z] for z in j.keys]) for j in joins]
+    
+
+def get_node_joins_old(
+    datasources: List[QueryDatasource],
+    grain: List[Concept],
+    environment: Environment,
+    output_concepts: List[Concept],
+    partial_concepts: List[Concept],
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
@@ -202,9 +324,7 @@ def get_node_joins(
                 for node in graph.nodes:
                     if graph.nodes[node]["type"] == NodeType.NODE:
                         graph.add_edge(node, concept.address)
-    from trilogy.hooks.graph_hook import GraphHook
-
-    GraphHook().query_graph_built(graph)
+    
     joins: defaultdict[str, set] = defaultdict(set)
     identifier_map: dict[str, Datasource | QueryDatasource] = {
         x.identifier: x for x in datasources
