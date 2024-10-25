@@ -1,7 +1,6 @@
 from typing import List, Tuple, Callable
-from networkx import Graph, common_neighbors
 
-from trilogy.core.enums import PurposeLineage, Purpose, JoinType
+from trilogy.core.enums import PurposeLineage, Purpose
 from trilogy.core.models import (
     Concept,
     Function,
@@ -218,8 +217,6 @@ def gen_enrichment_node(
     )
 
 
-
-
 def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
     if not joins:
         return []
@@ -257,4 +254,3 @@ def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
                 new_final_joins_pre.append(join)
         final_joins_pre = new_final_joins_pre
     return final_joins
-

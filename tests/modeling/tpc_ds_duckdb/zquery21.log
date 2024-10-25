@@ -1,12 +1,12 @@
 query_id = 21
-parse_time = 10.016504
-exec_time = 1.993143
-comp_time = 0.058161
-gen_length = 2545
+parse_time = 3.092248
+exec_time = 0.035982
+comp_time = 0.032661
+gen_length = 2540
 generated_sql = """
 
 WITH 
-cougar as (
+jackal as (
 SELECT
     cast(\"D_DATE\" as date) as \"inventory_date_date\",
     items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
@@ -16,57 +16,57 @@ SELECT
     date.\"D_DATE_SK\" as \"inventory_date_id\",
     warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
 FROM
-    memory.date_dim as date
-    INNER JOIN memory.inventory as warehouse_inventory on date.\"D_DATE_SK\" = warehouse_inventory.\"inv_date_sk\"
-    LEFT OUTER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"
-    INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"
+    memory.item as items
+    INNER JOIN memory.inventory as warehouse_inventory on items.\"I_ITEM_SK\" = warehouse_inventory.\"inv_item_sk\"
+    INNER JOIN memory.date_dim as date on warehouse_inventory.\"inv_date_sk\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
 )
 SELECT
-    cougar.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    cougar.\"inventory_item_name\" as \"inventory_item_name\",
+    jackal.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    jackal.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN cougar.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN cougar.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    cougar
+    jackal
 GROUP BY 
-    cougar.\"inventory_warehouse_name\",
-    cougar.\"inventory_item_name\"
+    jackal.\"inventory_warehouse_name\",
+    jackal.\"inventory_item_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN cougar.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN cougar.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN cougar.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN cougar.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN cougar.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN cougar.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cougar.\"inventory_quantity_on_hand\"
+	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    cougar.\"inventory_warehouse_name\" asc nulls first,
-    cougar.\"inventory_item_name\" asc nulls first
+    jackal.\"inventory_warehouse_name\" asc nulls first,
+    jackal.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

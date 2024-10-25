@@ -1,8 +1,8 @@
 query_id = 8
-parse_time = 4.83511
-exec_time = 0.203748
-comp_time = 0.121376
-gen_length = 6728
+parse_time = 2.266721
+exec_time = 0.11218
+comp_time = 0.056076
+gen_length = 6812
 generated_sql = """
 
 WITH 
@@ -32,7 +32,7 @@ SELECT
     resonant.\"customer_id\" as \"customer_id\"
 FROM
     resonant
-    INNER JOIN dapper on resonant.\"customer_id\" = dapper.\"customer_id\"),
+    INNER JOIN dapper on resonant.\"customer_preferred_cust_flag\" = dapper.\"customer_preferred_cust_flag\" AND resonant.\"customer_id\" = dapper.\"customer_id\"),
 vast as (
 SELECT
     count(courageous.\"_virt_7470647693515630\") as \"zip_p_count\",
@@ -47,8 +47,8 @@ SELECT
     customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
     vast.\"zip_p_count\" as \"zip_p_count\"
 FROM
-    memory.customer_address as customer_address
-    INNER JOIN vast on customer_address.\"CA_ZIP\" = vast.\"customer_zip\"),
+    vast
+    INNER JOIN memory.customer_address as customer_address on vast.\"customer_zip\" = customer_address.\"CA_ZIP\"),
 elated as (
 SELECT
     SUBSTRING(CASE WHEN cool.\"zip_p_count\" > 10 THEN cool.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_1342571877656287\"
@@ -79,9 +79,9 @@ SELECT
     store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
-    memory.date_dim as date
-    INNER JOIN memory.store_sales as store_sales on date.\"D_DATE_SK\" = store_sales.\"SS_SOLD_DATE_SK\"
-    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    memory.store as store
+    INNER JOIN memory.store_sales as store_sales on store.\"S_STORE_SK\" = store_sales.\"SS_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select bewildered.\"final_zips\" from bewildered where bewildered.\"final_zips\" is not null)
 )

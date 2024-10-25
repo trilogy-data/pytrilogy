@@ -11,7 +11,7 @@ from trilogy.core.models import (
     BaseJoin,
     Comparison,
     Join,
-    JoinKey,
+    JoinKeyPair,
     Concept,
     AggregateWrapper,
     RowsetItem,
@@ -190,30 +190,12 @@ def test_base_join(test_environment: Environment):
         right_datasource=test_environment.datasources["products"],
         concepts=[
             test_environment.concepts["product_id"],
-            test_environment.concepts["category_name"],
+            # test_environment.concepts["category_name"],
         ],
         join_type=JoinType.RIGHT_OUTER,
-        filter_to_mutual=True,
     )
 
     assert x.concepts == [test_environment.concepts["product_id"]]
-
-    exc3: SyntaxError | None = None
-    try:
-        x = BaseJoin(
-            left_datasource=test_environment.datasources["revenue"],
-            right_datasource=test_environment.datasources["category"],
-            concepts=[
-                test_environment.concepts["product_id"],
-                test_environment.concepts["category_name"],
-            ],
-            join_type=JoinType.RIGHT_OUTER,
-            filter_to_mutual=True,
-        )
-    except Exception as exc4:
-        exc3 = exc4
-        pass
-    assert isinstance(exc3, SyntaxError)
 
 
 def test_comparison():
@@ -264,7 +246,7 @@ def test_join(test_environment: Environment):
     test = Join(
         left_cte=a,
         right_cte=b,
-        joinkeys=[JoinKey(concept=x) for x in outputs],
+        joinkey_pairs=[JoinKeyPair(concept=x) for x in outputs],
         jointype=JoinType.RIGHT_OUTER,
     )
 

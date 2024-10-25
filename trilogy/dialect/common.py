@@ -68,39 +68,18 @@ def render_join(
         if unnest_mode == UnnestMode.CROSS_JOIN_ALIAS:
             return f"CROSS JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
         return f"FULL JOIN {render_unnest(unnest_mode, quote_character, join.concept_to_unnest, render_func, cte)}"
-    left_name = join.left_name
+    # left_name = join.left_name
     right_name = join.right_name
     right_base = join.right_ref
-    base_joinkeys = [
-        null_wrapper(
-            render_join_concept(
-                left_name,
-                quote_character,
-                join.left_cte,
-                key.concept,
-                render_expr_func,
-                join.inlined_ctes,
-            ),
-            render_join_concept(
-                right_name,
-                quote_character,
-                join.right_cte,
-                key.concept,
-                render_expr_func,
-                join.inlined_ctes,
-            ),
-            modifiers=key.concept.modifiers or [],
-        )
-        for key in join.joinkeys
-    ]
+    base_joinkeys = []
     if join.joinkey_pairs:
         base_joinkeys.extend(
             [
                 null_wrapper(
                     render_join_concept(
-                        left_name,
+                        join.get_name(pair.cte),
                         quote_character,
-                        join.left_cte,
+                        pair.cte,
                         pair.left,
                         render_expr_func,
                         join.inlined_ctes,

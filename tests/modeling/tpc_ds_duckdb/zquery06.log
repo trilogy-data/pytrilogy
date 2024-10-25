@@ -1,16 +1,16 @@
 query_id = 6
-parse_time = 3.585057
-exec_time = 0.086789
-comp_time = 0.120719
+parse_time = 1.621835
+exec_time = 0.037661
+comp_time = 0.078906
 gen_length = 2704
 generated_sql = """
 
 WITH 
 late as (
 SELECT
+    items.\"I_ITEM_SK\" as \"item_id\",
     items.\"I_CATEGORY\" as \"item_category\",
-    items.\"I_CURRENT_PRICE\" as \"item_current_price\",
-    items.\"I_ITEM_SK\" as \"item_id\"
+    items.\"I_CURRENT_PRICE\" as \"item_current_price\"
 FROM
     memory.item as items
 WHERE
@@ -37,8 +37,8 @@ SELECT
     customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
 FROM
     late
-    INNER JOIN memory.store_sales as store_sales on late.\"item_id\" = store_sales.\"SS_ITEM_SK\"
     INNER JOIN memory.item as items on late.\"item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.store_sales as store_sales on late.\"item_id\" = store_sales.\"SS_ITEM_SK\"
     INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"

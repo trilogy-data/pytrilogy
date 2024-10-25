@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 2.053307
-exec_time = 0.374493
-comp_time = 0.267751
-gen_length = 2455
+parse_time = 1.064031
+exec_time = 0.126191
+comp_time = 0.101877
+gen_length = 2471
 generated_sql = """
 
 WITH 
-badger as (
+coyote as (
 SELECT
     catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -18,53 +18,53 @@ SELECT
     catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
-    memory.catalog_sales as catalog_sales
+    memory.date_dim as date
+    INNER JOIN memory.catalog_sales as catalog_sales on date.\"D_DATE_SK\" = catalog_sales.\"CS_SOLD_DATE_SK\"
     INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-barracuda as (
+crocodile as (
 SELECT
-    sum(badger.\"cs_extra_sales_price\") as \"revenue\",
-    badger.\"cs_item_category\" as \"cs_item_category\",
-    badger.\"cs_item_class\" as \"cs_item_class\",
-    badger.\"cs_item_current_price\" as \"cs_item_current_price\",
-    badger.\"cs_item_desc\" as \"cs_item_desc\",
-    badger.\"cs_item_name\" as \"cs_item_name\"
+    sum(coyote.\"cs_extra_sales_price\") as \"revenue\",
+    coyote.\"cs_item_category\" as \"cs_item_category\",
+    coyote.\"cs_item_class\" as \"cs_item_class\",
+    coyote.\"cs_item_current_price\" as \"cs_item_current_price\",
+    coyote.\"cs_item_desc\" as \"cs_item_desc\",
+    coyote.\"cs_item_name\" as \"cs_item_name\"
 FROM
-    badger
+    coyote
 GROUP BY 
-    badger.\"cs_item_desc\",
-    badger.\"cs_item_name\",
-    badger.\"cs_item_class\",
-    badger.\"cs_item_current_price\",
-    badger.\"cs_item_category\"),
-bear as (
+    coyote.\"cs_item_category\",
+    coyote.\"cs_item_class\",
+    coyote.\"cs_item_name\",
+    coyote.\"cs_item_current_price\",
+    coyote.\"cs_item_desc\"),
+dingo as (
 SELECT
-    sum(barracuda.\"revenue\") over (partition by barracuda.\"cs_item_class\") as \"_virt_6483977992947176\",
-    barracuda.\"revenue\" as \"revenue\",
-    barracuda.\"cs_item_class\" as \"cs_item_class\",
-    barracuda.\"cs_item_name\" as \"cs_item_name\",
-    barracuda.\"cs_item_desc\" as \"cs_item_desc\",
-    barracuda.\"cs_item_category\" as \"cs_item_category\",
-    barracuda.\"cs_item_current_price\" as \"cs_item_current_price\"
+    sum(crocodile.\"revenue\") over (partition by crocodile.\"cs_item_class\") as \"_virt_6483977992947176\",
+    crocodile.\"revenue\" as \"revenue\",
+    crocodile.\"cs_item_class\" as \"cs_item_class\",
+    crocodile.\"cs_item_name\" as \"cs_item_name\",
+    crocodile.\"cs_item_desc\" as \"cs_item_desc\",
+    crocodile.\"cs_item_category\" as \"cs_item_category\",
+    crocodile.\"cs_item_current_price\" as \"cs_item_current_price\"
 FROM
-    barracuda)
+    crocodile)
 SELECT
-    bear.\"cs_item_name\" as \"cs_item_name\",
-    bear.\"cs_item_desc\" as \"cs_item_desc\",
-    bear.\"cs_item_category\" as \"cs_item_category\",
-    bear.\"cs_item_class\" as \"cs_item_class\",
-    bear.\"cs_item_current_price\" as \"cs_item_current_price\",
-    bear.\"revenue\" as \"revenue\",
-    bear.\"revenue\" * 100.0 / bear.\"_virt_6483977992947176\" as \"revenue_ratio\"
+    dingo.\"cs_item_name\" as \"cs_item_name\",
+    dingo.\"cs_item_desc\" as \"cs_item_desc\",
+    dingo.\"cs_item_category\" as \"cs_item_category\",
+    dingo.\"cs_item_class\" as \"cs_item_class\",
+    dingo.\"cs_item_current_price\" as \"cs_item_current_price\",
+    dingo.\"revenue\" as \"revenue\",
+    dingo.\"revenue\" * 100.0 / dingo.\"_virt_6483977992947176\" as \"revenue_ratio\"
 FROM
-    bear
+    dingo
 ORDER BY 
-    bear.\"cs_item_category\" asc nulls first,
-    bear.\"cs_item_class\" asc nulls first,
-    bear.\"cs_item_name\" asc nulls first,
-    bear.\"cs_item_desc\" asc nulls first,
-    bear.\"revenue\" * 100.0 / bear.\"_virt_6483977992947176\" asc nulls first
+    dingo.\"cs_item_category\" asc nulls first,
+    dingo.\"cs_item_class\" asc nulls first,
+    dingo.\"cs_item_name\" asc nulls first,
+    dingo.\"cs_item_desc\" asc nulls first,
+    dingo.\"revenue\" * 100.0 / dingo.\"_virt_6483977992947176\" asc nulls first
 LIMIT (100)"""

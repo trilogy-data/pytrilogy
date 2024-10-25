@@ -2271,6 +2271,7 @@ class InstantiatedUnnestJoin(BaseModel):
 class ConceptPair(BaseModel):
     left: Concept
     right: Concept
+    existing_datasource: Union[Datasource, "QueryDatasource"]
     modifiers: List[Modifier] = Field(default_factory=list)
 
     @property
@@ -2282,17 +2283,34 @@ class ConceptPair(BaseModel):
         return Modifier.NULLABLE in self.modifiers
 
 
+class CTEConceptPair(ConceptPair):
+    cte: CTE
+
+
 class BaseJoin(BaseModel):
-    left_datasource: Union[Datasource, "QueryDatasource"]
     right_datasource: Union[Datasource, "QueryDatasource"]
-    concepts: List[Concept]
     join_type: JoinType
-    filter_to_mutual: bool = False
+    concepts: Optional[List[Concept]] = None
+    left_datasource: Optional[Union[Datasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
+
+    @property
+    def left_datasources(self) -> List[Union[Datasource, "QueryDatasource"]]:
+        base = []
+        if self.left_datasource:
+            base.append(self.left_datasource)
+        if self.concept_pairs:
+            for pair in self.concept_pairs:
+                if pair.existing_datasource:
+                    base.append(pair.existing_datasource)
+        return base
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        if self.left_datasource.full_name == self.right_datasource.full_name:
+        if (
+            self.left_datasource
+            and self.left_datasource.full_name == self.right_datasource.full_name
+        ):
             raise SyntaxError(
                 f"Cannot join a dataself to itself, joining {self.left_datasource} and"
                 f" {self.right_datasource}"
@@ -2302,8 +2320,10 @@ class BaseJoin(BaseModel):
         # if we have a list of concept pairs
         if self.concept_pairs:
             return
-
-        for concept in self.concepts:
+        if self.concepts == []:
+            return
+        assert self.left_datasource and self.right_datasource
+        for concept in self.concepts or []:
             include = True
             for ds in [self.left_datasource, self.right_datasource]:
                 synonyms = []
@@ -2313,13 +2333,10 @@ class BaseJoin(BaseModel):
                     concept.address not in [c.address for c in ds.output_concepts]
                     and concept.address not in synonyms
                 ):
-                    if self.filter_to_mutual:
-                        include = False
-                    else:
-                        raise SyntaxError(
-                            f"Invalid join, missing {concept} on {ds.name}, have"
-                            f" {[c.address for c in ds.output_concepts]}"
-                        )
+                    raise SyntaxError(
+                        f"Invalid join, missing {concept} on {ds.name}, have"
+                        f" {[c.address for c in ds.output_concepts]}"
+                    )
             if include:
                 final_concepts.append(concept)
         if not final_concepts and self.concepts:
@@ -2336,7 +2353,7 @@ class BaseJoin(BaseModel):
                     self.concepts = []
                     return
                 # if everything is at abstract grain, we can skip joins
-                if all([c.grain == Grain() for c in ds.output_concepts]):
+                if all([c.grain.abstract for c in ds.output_concepts]):
                     self.concepts = []
                     return
 
@@ -2354,21 +2371,27 @@ class BaseJoin(BaseModel):
 
     @property
     def unique_id(self) -> str:
-        # TODO: include join type?
-        return (
-            self.left_datasource.name
-            + self.right_datasource.name
-            + self.join_type.value
-        )
+        return str(self)
+
+    @property
+    def input_concepts(self) -> List[Concept]:
+        base = []
+        if self.concept_pairs:
+            for pair in self.concept_pairs:
+                base += [pair.left, pair.right]
+        elif self.concepts:
+            base += self.concepts
+        return base
 
     def __str__(self):
         if self.concept_pairs:
             return (
-                f"{self.join_type.value} on"
-                f" {','.join([str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
+                f"{self.join_type.value} {self.right_datasource.name} on"
+                f" {','.join([str(k.existing_datasource.name) + '.'+ str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
             )
         return (
-            f"{self.join_type.value} on" f" {','.join([str(k) for k in self.concepts])}"
+            f"{self.join_type.value} {self.right_datasource.name} on"
+            f" {','.join([str(k) for k in self.concepts])}"
         )
 
 
@@ -2413,19 +2436,9 @@ class QueryDatasource(BaseModel):
         for join in v:
             if not isinstance(join, BaseJoin):
                 continue
-            if join.left_datasource.identifier == join.right_datasource.identifier:
-                raise SyntaxError(
-                    f"Cannot join a datasource to itself, joining {join.left_datasource}"
-                )
-            pairing = "".join(
-                sorted(
-                    [join.left_datasource.identifier, join.right_datasource.identifier]
-                )
-            )
+            pairing = str(join)
             if pairing in unique_pairs:
-                raise SyntaxError(
-                    f"Duplicate join {join.left_datasource.identifier} and {join.right_datasource.identifier}"
-                )
+                raise SyntaxError(f"Duplicate join {str(join)}")
             unique_pairs.add(pairing)
         return v
 
@@ -2686,13 +2699,7 @@ class CTE(BaseModel):
                     join
                     for join in self.joins
                     if not isinstance(join, Join)
-                    or (
-                        isinstance(join, Join)
-                        and (
-                            join.right_cte.name != removed_cte
-                            and join.left_cte.name != removed_cte
-                        )
-                    )
+                    or (isinstance(join, Join) and (join.right_cte.name != removed_cte))
                 ]
                 for join in self.joins:
                     if isinstance(join, UnnestJoin) and concept in join.concepts:
@@ -2761,8 +2768,12 @@ class CTE(BaseModel):
         for join in self.joins:
             if isinstance(join, InstantiatedUnnestJoin):
                 continue
-            if join.left_cte.name == parent.name:
+            if join.left_cte and join.left_cte.name == parent.name:
                 join.inline_cte(parent)
+            if join.joinkey_pairs:
+                for pair in join.joinkey_pairs:
+                    if pair.cte and pair.cte.name == parent.name:
+                        join.inline_cte(parent)
             if join.right_cte.name == parent.name:
                 join.inline_cte(parent)
         for k, v in self.source_map.items():
@@ -2985,33 +2996,32 @@ class JoinKey(BaseModel):
 
 
 class Join(BaseModel):
-    left_cte: CTE
+
     right_cte: CTE
     jointype: JoinType
-    joinkeys: List[JoinKey]
-    joinkey_pairs: List[ConceptPair] | None = None
+    left_cte: CTE | None = None
+    joinkey_pairs: List[CTEConceptPair] | None = None
     inlined_ctes: set[str] = Field(default_factory=set)
 
     def inline_cte(self, cte: CTE):
         self.inlined_ctes.add(cte.name)
 
-    @property
-    def left_name(self) -> str:
-        if self.left_cte.name in self.inlined_ctes:
-            return self.left_cte.source.datasources[0].identifier
-        return self.left_cte.name
+    # @property
+    # def left_name(self) -> str:
+    #     if self.left_cte.name in self.inlined_ctes:
+    #         return self.left_cte.source.datasources[0].identifier
+    #     return self.left_cte.name
+
+    def get_name(self, cte: CTE):
+        if cte.name in self.inlined_ctes:
+            return cte.source.datasources[0].identifier
+        return cte.name
 
     @property
     def right_name(self) -> str:
         if self.right_cte.name in self.inlined_ctes:
             return self.right_cte.source.datasources[0].identifier
         return self.right_cte.name
-
-    @property
-    def left_ref(self) -> str:
-        if self.left_cte.name in self.inlined_ctes:
-            return f"{self.left_cte.source.datasources[0].safe_location} as {self.left_cte.source.datasources[0].identifier}"
-        return self.left_cte.name
 
     @property
     def right_ref(self) -> str:
@@ -3021,19 +3031,21 @@ class Join(BaseModel):
 
     @property
     def unique_id(self) -> str:
-        return self.left_name + self.right_name + self.jointype.value
+        return str(self)
 
     def __str__(self):
         if self.joinkey_pairs:
             return (
-                f"{self.jointype.value} JOIN {self.left_name} and"
+                f"{self.jointype.value} JOIN "
                 f" {self.right_name} on"
-                f" {','.join([str(k.left)+'='+str(k.right)+str(k.modifiers) for k in self.joinkey_pairs])}"
+                f" {','.join([k.cte.name + '.'+str(k.left)+'='+str(k.right)+str(k.modifiers) for k in self.joinkey_pairs])}"
             )
-        return (
-            f"{self.jointype.value} JOIN {self.left_name} and"
-            f" {self.right_name} on {','.join([str(k) for k in self.joinkeys])}"
-        )
+        elif self.left_cte:
+            return (
+                f"{self.jointype.value} JOIN {self.left_cte.name} and"
+                f" {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
+            )
+        return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
 
 
 class UndefinedConcept(Concept, Mergeable, Namespaced):

@@ -1,64 +1,64 @@
 query_id = 16
-parse_time = 72.423792
-exec_time = 0.830971
-comp_time = 0.056407
-gen_length = 4574
+parse_time = 36.495753
+exec_time = 0.311634
+comp_time = 0.025252
+gen_length = 4615
 generated_sql = """
 
 WITH 
-exuberant as (
+deeply as (
 SELECT
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
+    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
     catalog_sales.\"CS_WAREHOUSE_SK\",
     catalog_sales.\"CS_ORDER_NUMBER\"),
-vivacious as (
+ruthless as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
     memory.catalog_returns as catalog_returns
 GROUP BY 
     catalog_returns.\"CR_ORDER_NUMBER\"),
-faithful as (
+eminent as (
 SELECT
-    count(exuberant.\"cs_warehouse_id\") as \"_virt_agg_count_6430482449237259\",
-    exuberant.\"cs_order_number\" as \"cs_order_number\"
+    count(deeply.\"cs_warehouse_id\") as \"_virt_agg_count_6430482449237259\",
+    deeply.\"cs_order_number\" as \"cs_order_number\"
 FROM
-    exuberant
+    deeply
 GROUP BY 
-    exuberant.\"cs_order_number\"),
-helpless as (
+    deeply.\"cs_order_number\"),
+badger as (
 SELECT
-    CASE WHEN faithful.\"_virt_agg_count_6430482449237259\" > 1 THEN faithful.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
+    CASE WHEN eminent.\"_virt_agg_count_6430482449237259\" > 1 THEN eminent.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
-    faithful),
-odd as (
+    eminent),
+barracuda as (
 SELECT
-    helpless.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
+    badger.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
-    helpless
+    badger
 GROUP BY 
-    helpless.\"multi_warehouse_sales\"),
-elegant as (
+    badger.\"multi_warehouse_sales\"),
+imported as (
 SELECT
-    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
 FROM
     memory.catalog_sales as catalog_sales
 WHERE
-    catalog_sales.\"CS_ORDER_NUMBER\" not in (select vivacious.\"cr_order_number\" from vivacious where vivacious.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select odd.\"multi_warehouse_sales\" from odd where odd.\"multi_warehouse_sales\" is not null)
+    catalog_sales.\"CS_ORDER_NUMBER\" not in (select ruthless.\"cr_order_number\" from ruthless where ruthless.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select barracuda.\"multi_warehouse_sales\" from barracuda where barracuda.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_SHIP_DATE_SK\",
     catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_SHIP_DATE_SK\",
     catalog_sales.\"CS_CALL_CENTER_SK\",
     catalog_sales.\"CS_ORDER_NUMBER\"),
-imported as (
+cheetah as (
 SELECT
     catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
@@ -68,45 +68,45 @@ SELECT
     catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
     catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\"
 FROM
-    memory.call_center as call_center
-    INNER JOIN memory.catalog_sales as catalog_sales on call_center.\"CC_CALL_CENTER_SK\" = catalog_sales.\"CS_CALL_CENTER_SK\"
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SHIP_DATE_SK\" = date.\"D_DATE_SK\"
+    memory.date_dim as date
+    INNER JOIN memory.catalog_sales as catalog_sales on date.\"D_DATE_SK\" = catalog_sales.\"CS_SHIP_DATE_SK\"
     INNER JOIN memory.customer_address as customer_address on catalog_sales.\"CS_SHIP_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.call_center as call_center on catalog_sales.\"CS_CALL_CENTER_SK\" = call_center.\"CC_CALL_CENTER_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select vivacious.\"cr_order_number\" from vivacious where vivacious.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select odd.\"multi_warehouse_sales\" from odd where odd.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and catalog_sales.\"CS_ORDER_NUMBER\" not in (select ruthless.\"cr_order_number\" from ruthless where ruthless.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select barracuda.\"multi_warehouse_sales\" from barracuda where barracuda.\"multi_warehouse_sales\" is not null)
 ),
-sordid as (
+bear as (
 SELECT
-    elegant.\"cs_order_number\" as \"cs_order_number\",
+    imported.\"cs_order_number\" as \"cs_order_number\",
     cast(\"D_DATE\" as date) as \"cs_ship_date_date\",
     customer_address.\"CA_STATE\" as \"cs_customer_state\",
     call_center.\"CC_COUNTY\" as \"cs_call_center_county\"
 FROM
-    memory.call_center as call_center
-    INNER JOIN elegant on call_center.\"CC_CALL_CENTER_SK\" = elegant.\"cs_call_center_id\"
-    INNER JOIN memory.customer_address as customer_address on elegant.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
-    INNER JOIN memory.date_dim as date on elegant.\"cs_ship_date_id\" = date.\"D_DATE_SK\"
+    memory.date_dim as date
+    INNER JOIN imported on date.\"D_DATE_SK\" = imported.\"cs_ship_date_id\"
+    INNER JOIN memory.customer_address as customer_address on imported.\"cs_customer_address_id\" = customer_address.\"CA_ADDRESS_SK\"
+    INNER JOIN memory.call_center as call_center on imported.\"cs_call_center_id\" = call_center.\"CC_CALL_CENTER_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and elegant.\"cs_order_number\" not in (select vivacious.\"cr_order_number\" from vivacious where vivacious.\"cr_order_number\" is not null) and elegant.\"cs_order_number\" in (select odd.\"multi_warehouse_sales\" from odd where odd.\"multi_warehouse_sales\" is not null)
+    cast(\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(\"D_DATE\" as date) <= cast('2002-04-02' as date) and customer_address.\"CA_STATE\" = 'GA' and call_center.\"CC_COUNTY\" = 'Williamson County' and imported.\"cs_order_number\" not in (select ruthless.\"cr_order_number\" from ruthless where ruthless.\"cr_order_number\" is not null) and imported.\"cs_order_number\" in (select barracuda.\"multi_warehouse_sales\" from barracuda where barracuda.\"multi_warehouse_sales\" is not null)
 ),
-ugly as (
+chimpanzee as (
 SELECT
-    sum(imported.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
-    sum(imported.\"cs_net_profit\") as \"total_net_profit\"
+    sum(cheetah.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
+    sum(cheetah.\"cs_net_profit\") as \"total_net_profit\"
 FROM
-    imported),
-blue as (
+    cheetah),
+boa as (
 SELECT
-    count(distinct sordid.\"cs_order_number\") as \"order_count\"
+    count(distinct bear.\"cs_order_number\") as \"order_count\"
 FROM
-    sordid)
+    bear)
 SELECT
-    blue.\"order_count\" as \"order_count\",
-    ugly.\"total_shipping_cost\" as \"total_shipping_cost\",
-    ugly.\"total_net_profit\" as \"total_net_profit\"
+    boa.\"order_count\" as \"order_count\",
+    chimpanzee.\"total_shipping_cost\" as \"total_shipping_cost\",
+    chimpanzee.\"total_net_profit\" as \"total_net_profit\"
 FROM
-    blue
-    FULL JOIN ugly on 1=1
+    boa
+    FULL JOIN chimpanzee on 1=1
 ORDER BY 
-    blue.\"order_count\" desc
+    boa.\"order_count\" desc
 LIMIT (100)"""

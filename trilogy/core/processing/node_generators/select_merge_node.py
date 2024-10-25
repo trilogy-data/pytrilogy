@@ -150,9 +150,8 @@ def resolve_subgraphs(
         ds: [concepts[c].address for c in subgraphs[ds] if c not in partial_map[ds]]
         for ds in datasources
     }
-    concept_map =  {
-        ds: [concepts[c].address for c in subgraphs[ds]]
-        for ds in datasources
+    concept_map = {
+        ds: [concepts[c].address for c in subgraphs[ds]] for ds in datasources
     }
     pruned_subgraphs = {}
     for key, nodes in subgraphs.items():
@@ -164,12 +163,20 @@ def resolve_subgraphs(
         for other_key, other_all_concepts in concept_map.items():
             other_value = non_partial_map[other_key]
             # needs to be a subset of non partial and a subset of all
-            if key != other_key and set(value).issubset(set(other_value)) and set(all_concepts).issubset(set(other_all_concepts)):
+            if (
+                key != other_key
+                and set(value).issubset(set(other_value))
+                and set(all_concepts).issubset(set(other_all_concepts))
+            ):
                 if len(value) < len(other_value):
                     is_subset = True
-                    logger.debug(f'Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}')
+                    logger.debug(
+                        f"Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}"
+                    )
                     break
-                elif len(value) == len(other_value) and len(all_concepts) == len(other_all_concepts):
+                elif len(value) == len(other_value) and len(all_concepts) == len(
+                    other_all_concepts
+                ):
                     matches.add(other_key)
                     matches.add(key)
         if matches:

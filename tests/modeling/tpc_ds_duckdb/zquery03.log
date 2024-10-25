@@ -1,7 +1,7 @@
 query_id = 3
-parse_time = 22.476826
-exec_time = 0.122894
-comp_time = 0.092878
+parse_time = 10.091206
+exec_time = 0.046793
+comp_time = 0.041897
 gen_length = 1359
 generated_sql = """
 
@@ -32,8 +32,8 @@ FROM
     vacuous
 GROUP BY 
     vacuous.\"store_sales_item_brand_id\",
-    vacuous.\"store_sales_item_brand_name\",
-    vacuous.\"store_sales_date_year\"
+    vacuous.\"store_sales_date_year\",
+    vacuous.\"store_sales_item_brand_name\"
 ORDER BY 
     vacuous.\"store_sales_date_year\" asc,
     sum(vacuous.\"store_sales_ext_sales_price\") desc,

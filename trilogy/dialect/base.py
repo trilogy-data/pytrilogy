@@ -607,6 +607,7 @@ class BaseDialect:
                     else:
                         having = having + x if having else x
 
+        logger.info(f"{len(final_joins)} joins for cte {cte.name}")
         return CompiledCTE(
             name=cte.name,
             statement=self.SQL_TEMPLATE.render(

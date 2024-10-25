@@ -4,12 +4,11 @@ from trilogy.core.processing.node_generators.common import (
     NodeJoin,
     StrategyNode,
 )
-from trilogy.core.processing.utility import resolve_join_order_v2
+from trilogy.core.processing.utility import resolve_join_order_v2, JoinOrderOutput
 from trilogy import parse
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.enums import JoinType
-from networkx import Graph, common_neighbors
-from trilogy.hooks.graph_hook import GraphHook
+from networkx import Graph
 
 
 def test_resolve_join_order():
@@ -76,9 +75,6 @@ property product_id.price float;
         assert isinstance(e, SyntaxError)
 
 
-
-
-
 def test_resolve_join_order_v2():
 
     g = Graph()
@@ -102,22 +98,19 @@ def test_resolve_join_order_v2():
     output = resolve_join_order_v2(g, partials)
 
     assert output == [
-        {
-            "left": "ds~customer",
-            "right": "ds~customer_address",
-            "type": JoinType.LEFT_OUTER,
-            "keys": {"c~customer_id"},
-        },
-        {
-            "left": "ds~customer",
-            "right": "ds~orders",
-            "type": JoinType.LEFT_OUTER,
-            "keys": {"c~customer_id"},
-        },
-        {
-            "left": "ds~orders",
-            "right": "ds~products",
-            "type": JoinType.FULL,
-            "keys": {"c~product_id"},
-        },
+        JoinOrderOutput(
+            right="ds~customer_address",
+            type=JoinType.LEFT_OUTER,
+            keys={"ds~customer": {"c~customer_id"}},
+        ),
+        JoinOrderOutput(
+            right="ds~orders",
+            type=JoinType.LEFT_OUTER,
+            keys={"ds~customer": {"c~customer_id"}},
+        ),
+        JoinOrderOutput(
+            right="ds~products",
+            type=JoinType.FULL,
+            keys={"ds~orders": {"c~product_id"}},
+        ),
     ]
