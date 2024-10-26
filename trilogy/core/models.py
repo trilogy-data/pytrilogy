@@ -2704,7 +2704,10 @@ class CTE(BaseModel):
                         and (
                             join.right_cte.name != removed_cte
                             and any(
-                                [x.cte.name != removed_cte for x in (join.joinkey_pairs or [])]
+                                [
+                                    x.cte.name != removed_cte
+                                    for x in (join.joinkey_pairs or [])
+                                ]
                             )
                         )
                     )

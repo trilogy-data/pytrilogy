@@ -1,7 +1,7 @@
 query_id = 25
-parse_time = 10.465614
-exec_time = 0.315179
-comp_time = 0.068932
+parse_time = 8.086265
+exec_time = 0.169237
+comp_time = 0.046915
 gen_length = 8270
 generated_sql = """
 
@@ -9,8 +9,8 @@ WITH
 ray as (
 SELECT
     date.\"D_DATE_SK\" as \"store_sales_return_date_id\",
-    date.\"D_MOY\" as \"store_sales_return_date_month_of_year\",
-    cast(\"D_YEAR\" as int) as \"store_sales_return_date_year\"
+    cast(\"D_YEAR\" as int) as \"store_sales_return_date_year\",
+    date.\"D_MOY\" as \"store_sales_return_date_month_of_year\"
 FROM
     memory.date_dim as date
 WHERE
@@ -19,8 +19,8 @@ WHERE
 trite as (
 SELECT
     cast(\"D_YEAR\" as int) as \"catalog_sales_date_year\",
-    date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
-    date.\"D_MOY\" as \"catalog_sales_date_month_of_year\"
+    date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
+    date.\"D_DATE_SK\" as \"catalog_sales_date_id\"
 FROM
     memory.date_dim as date
 WHERE
@@ -29,14 +29,14 @@ WHERE
 tiger as (
 SELECT
     catalog_sales.\"CS_SOLD_DATE_SK\" as \"catalog_sales_date_id\",
-    catalog_sales.\"CS_ITEM_SK\" as \"store_sales_item_id\",
-    catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\"
+    catalog_sales.\"CS_BILL_CUSTOMER_SK\" as \"store_sales_customer_id\",
+    catalog_sales.\"CS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
-    catalog_sales.\"CS_SOLD_DATE_SK\",
     catalog_sales.\"CS_ITEM_SK\",
-    catalog_sales.\"CS_BILL_CUSTOMER_SK\"),
+    catalog_sales.\"CS_BILL_CUSTOMER_SK\",
+    catalog_sales.\"CS_SOLD_DATE_SK\"),
 shark as (
 SELECT
     catalog_sales.\"CS_NET_PROFIT\" as \"catalog_sales_net_profit\",
@@ -60,8 +60,8 @@ FROM
     INNER JOIN memory.catalog_sales as catalog_sales on items.\"I_ITEM_SK\" = catalog_sales.\"CS_ITEM_SK\"
     INNER JOIN memory.store_sales as store_sales on items.\"I_ITEM_SK\" = store_sales.\"SS_ITEM_SK\" AND catalog_sales.\"CS_BILL_CUSTOMER_SK\" = store_sales.\"SS_CUSTOMER_SK\" AND catalog_sales.\"CS_ITEM_SK\" = store_sales.\"SS_ITEM_SK\"
     LEFT OUTER JOIN memory.store_returns as store_returns on items.\"I_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\"
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     LEFT OUTER JOIN ray on store_returns.\"SR_RETURNED_DATE_SK\" = ray.\"store_sales_return_date_id\"
     INNER JOIN trite on catalog_sales.\"CS_SOLD_DATE_SK\" = trite.\"catalog_sales_date_id\"
     INNER JOIN memory.customer as customers on catalog_sales.\"CS_BILL_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
@@ -93,8 +93,8 @@ FROM
     INNER JOIN tiger on items.\"I_ITEM_SK\" = tiger.\"store_sales_item_id\" AND store_sales.\"SS_CUSTOMER_SK\" = tiger.\"store_sales_customer_id\" AND store_sales.\"SS_ITEM_SK\" = tiger.\"store_sales_item_id\"
     LEFT OUTER JOIN memory.store_returns as store_returns on items.\"I_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\"
     INNER JOIN trite on tiger.\"catalog_sales_date_id\" = trite.\"catalog_sales_date_id\"
-    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
     LEFT OUTER JOIN ray on store_returns.\"SR_RETURNED_DATE_SK\" = ray.\"store_sales_return_date_id\"
 WHERE
     cast(\"D_YEAR\" as int) = 2001 and date.\"D_MOY\" = 4 and ray.\"store_sales_return_date_year\" = 2001 and ray.\"store_sales_return_date_month_of_year\" >= 4 and ray.\"store_sales_return_date_month_of_year\" <= 10 and trite.\"catalog_sales_date_year\" = 2001 and trite.\"catalog_sales_date_month_of_year\" >= 4 and trite.\"catalog_sales_date_month_of_year\" <= 10 and store_returns.\"SR_CUSTOMER_SK\" = store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
@@ -109,10 +109,10 @@ SELECT
 FROM
     shark
 GROUP BY 
-    shark.\"store_sales_item_name\",
-    shark.\"store_sales_store_text_id\",
     shark.\"store_sales_item_desc\",
-    shark.\"store_sales_store_name\"),
+    shark.\"store_sales_store_name\",
+    shark.\"store_sales_item_name\",
+    shark.\"store_sales_store_text_id\"),
 wolf as (
 SELECT
     sum(viper.\"store_sales_net_profit\") as \"store_sales_profit\",
@@ -124,10 +124,10 @@ SELECT
 FROM
     viper
 GROUP BY 
-    viper.\"store_sales_store_text_id\",
-    viper.\"store_sales_item_desc\",
+    viper.\"store_sales_item_name\",
     viper.\"store_sales_store_name\",
-    viper.\"store_sales_item_name\")
+    viper.\"store_sales_store_text_id\",
+    viper.\"store_sales_item_desc\")
 SELECT
     skua.\"store_sales_item_name\" as \"store_sales_item_name\",
     skua.\"store_sales_item_desc\" as \"store_sales_item_desc\",
