@@ -2294,16 +2294,6 @@ class BaseJoin(BaseModel):
     left_datasource: Optional[Union[Datasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
 
-    @property
-    def left_datasources(self) -> List[Union[Datasource, "QueryDatasource"]]:
-        base = []
-        if self.left_datasource:
-            base.append(self.left_datasource)
-        if self.concept_pairs:
-            for pair in self.concept_pairs:
-                if pair.existing_datasource:
-                    base.append(pair.existing_datasource)
-        return base
 
     def __init__(self, **data: Any):
         super().__init__(**data)
