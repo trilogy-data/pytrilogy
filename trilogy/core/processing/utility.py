@@ -31,15 +31,17 @@ from trilogy.core.models import (
     TupleWrapper,
 )
 
-from trilogy.core.enums import Purpose, Granularity, BooleanOperator, Modifier
-from trilogy.core.constants import CONSTANT_DATASET
+from trilogy.core.enums import Purpose, Granularity, BooleanOperator
 from enum import Enum
 from trilogy.utility import unique
-from collections import defaultdict
+
 from logging import Logger
-from pydantic import BaseModel
+
 
 from trilogy.core.enums import FunctionClass
+
+
+from dataclasses import dataclass
 
 
 class NodeType(Enum):
@@ -47,11 +49,165 @@ class NodeType(Enum):
     NODE = 2
 
 
-class PathInfo(BaseModel):
-    paths: Dict[str, List[str]]
-    datasource: Datasource
-    reduced_concepts: Set[str]
-    concept_subgraphs: List[List[Concept]]
+@dataclass
+class JoinOrderOutput:
+    right: str
+    type: JoinType
+    keys: dict[str, set[str]]
+    left: str | None = None
+
+    @property
+    def lefts(self):
+        return set(self.keys.keys())
+
+
+def resolve_join_order_v2(
+    g: nx.Graph, partials: dict[str, list[str]]
+) -> list[JoinOrderOutput]:
+    datasources = [x for x in g.nodes if x.startswith("ds~")]
+    concepts = [x for x in g.nodes if x.startswith("c~")]
+    # from trilogy.hooks.graph_hook import GraphHook
+
+    # GraphHook().query_graph_built(g)
+
+    output: list[JoinOrderOutput] = []
+    pivot_map = {
+        concept: [x for x in g.neighbors(concept) if x in datasources]
+        for concept in concepts
+    }
+    pivots = list(
+        sorted(
+            [x for x in pivot_map if len(pivot_map[x]) > 1],
+            key=lambda x: len(pivot_map[x]),
+        )
+    )
+    solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
+    eligible_left = set()
+
+    while pivots:
+        next_pivots = [
+            x for x in pivots if any(y in eligible_left for y in pivot_map[x])
+        ]
+        if next_pivots:
+            root = next_pivots[0]
+            pivots = [x for x in pivots if x != root]
+        else:
+            root = pivots.pop()
+
+        # sort so less partials is last and eligible lefts are
+        def score_key(x: str) -> int:
+            base = 1
+            # if it's left, higher weight
+            if x in eligible_left:
+                base += 3
+            # if it has the concept as a partial, lower weight
+            if root in partials.get(x, []):
+                base -= 1
+            return base
+
+        # get remainig un-joined datasets
+        to_join = sorted(
+            [x for x in pivot_map[root] if x not in eligible_left], key=score_key
+        )
+        while to_join:
+            # need to sort this to ensure we join on the best match
+            base = sorted(
+                [x for x in pivot_map[root] if x in eligible_left], key=score_key
+            )
+            if not base:
+                new = to_join.pop()
+                eligible_left.add(new)
+                base = [new]
+            right = to_join.pop()
+            # we already joined it
+            # this could happen if the same pivot is shared with multiple Dses
+            if right in eligible_left:
+                continue
+            joinkeys: dict[str, set[str]] = {}
+            # sorting puts the best candidate last for pop
+            # so iterate over the reversed list
+            join_types = set()
+            for left_candidate in reversed(base):
+                common = nx.common_neighbors(g, left_candidate, right)
+
+                if not common:
+                    continue
+                exists = False
+                for _, v in joinkeys.items():
+                    if v == common:
+                        exists = True
+                if exists:
+                    continue
+                left_is_partial = any(
+                    key in partials.get(left_candidate, []) for key in common
+                )
+                right_is_partial = any(key in partials.get(right, []) for key in common)
+                # we don't care if left is nullable for join type (just keys), but if we did
+                # ex: left_is_nullable = any(key in partials.get(left_candidate, [])
+                right_is_nullable = any(
+                    key in partials.get(right, []) for key in common
+                )
+                if left_is_partial:
+                    join_type = JoinType.FULL
+                elif right_is_partial or right_is_nullable:
+                    join_type = JoinType.LEFT_OUTER
+                # we can't inner join if the left was an outer join
+                else:
+                    join_type = JoinType.INNER
+                join_types.add(join_type)
+                joinkeys[left_candidate] = common
+
+            final_join_type = JoinType.INNER
+            if any([x == JoinType.LEFT_OUTER for x in join_types]):
+                final_join_type = JoinType.LEFT_OUTER
+            elif any([x == JoinType.FULL for x in join_types]):
+                final_join_type = JoinType.FULL
+            output.append(
+                JoinOrderOutput(
+                    # left=left_candidate,
+                    right=right,
+                    type=final_join_type,
+                    keys=joinkeys,
+                )
+            )
+            eligible_left.add(right)
+
+    for concept in solo:
+        for ds in pivot_map[concept]:
+            # if we already have it, skip it
+
+            if ds in eligible_left:
+                continue
+            # if we haven't had ANY left datasources yet
+            # this needs to become it
+            if not eligible_left:
+                eligible_left.add(ds)
+                continue
+            # otherwise do a full out join
+            output.append(
+                JoinOrderOutput(
+                    # pick random one to be left
+                    left=list(eligible_left)[0],
+                    right=ds,
+                    type=JoinType.FULL,
+                    keys={},
+                )
+            )
+            eligible_left.add(ds)
+    # only once we have all joins
+    # do we know if some inners need to be left outers
+    for review_join in output:
+        if review_join.type in (JoinType.LEFT_OUTER, JoinType.FULL):
+            continue
+        if any(
+            [
+                join.right in review_join.lefts
+                for join in output
+                if join.type in (JoinType.LEFT_OUTER, JoinType.FULL)
+            ]
+        ):
+            review_join.type = JoinType.LEFT_OUTER
+    return output
 
 
 def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
@@ -112,273 +268,94 @@ def calculate_graph_relevance(
     return relevance
 
 
-def resolve_join_order(joins: List[BaseJoin]) -> List[BaseJoin]:
-    available_aliases: set[str] = set()
-    final_joins_pre = [*joins]
-    final_joins = []
-    partial = set()
-    while final_joins_pre:
-        new_final_joins_pre: List[BaseJoin] = []
-        for join in final_joins_pre:
-            if join.join_type != JoinType.INNER:
-                partial.add(join.right_datasource.identifier)
-            # an inner join after a left outer implicitly makes that outer an inner
-            # so fix that
-            if (
-                join.left_datasource.identifier in partial
-                and join.join_type == JoinType.INNER
-            ):
-                join.join_type = JoinType.LEFT_OUTER
-            if not available_aliases:
-                final_joins.append(join)
-                available_aliases.add(join.left_datasource.identifier)
-                available_aliases.add(join.right_datasource.identifier)
-            elif join.left_datasource.identifier in available_aliases:
-                # we don't need to join twice
-                # so whatever join we found first, works
-                if join.right_datasource.identifier in available_aliases:
-                    continue
-                final_joins.append(join)
-                available_aliases.add(join.left_datasource.identifier)
-                available_aliases.add(join.right_datasource.identifier)
-            else:
-                new_final_joins_pre.append(join)
-        if len(new_final_joins_pre) == len(final_joins_pre):
-            remaining = [
-                join.left_datasource.identifier for join in new_final_joins_pre
-            ]
-            remaining_right = [
-                join.right_datasource.identifier for join in new_final_joins_pre
-            ]
-            raise SyntaxError(
-                f"did not find any new joins, available {available_aliases} remaining is {remaining + remaining_right} "
-            )
-        final_joins_pre = new_final_joins_pre
-    return final_joins
-
-
 def add_node_join_concept(
     graph: nx.DiGraph,
     concept: Concept,
-    datasource: Datasource | QueryDatasource,
-    concepts: List[Concept],
+    concept_map: dict[str, Concept],
+    ds_node: str,
     environment: Environment,
 ):
-
-    concepts.append(concept)
-
-    graph.add_node(concept.address, type=NodeType.CONCEPT)
-    graph.add_edge(datasource.identifier, concept.address)
+    name = f"c~{concept.address}"
+    graph.add_node(name, type=NodeType.CONCEPT)
+    graph.add_edge(ds_node, name)
+    concept_map[name] = concept
     for v_address in concept.pseudonyms:
         v = environment.alias_origin_lookup.get(
             v_address, environment.concepts[v_address]
         )
-        if v in concepts:
+        if f"c~{v.address}" in graph.nodes:
             continue
         if v != concept.address:
-            add_node_join_concept(graph, v, datasource, concepts, environment)
+            add_node_join_concept(
+                graph=graph,
+                concept=v,
+                concept_map=concept_map,
+                ds_node=ds_node,
+                environment=environment,
+            )
+
+
+def resolve_instantiated_concept(
+    concept: Concept, datasource: QueryDatasource
+) -> Concept:
+    if concept.address in datasource.output_concepts:
+        return concept
+    for k in concept.pseudonyms:
+        if k in datasource.output_concepts:
+            return [x for x in datasource.output_concepts if x.address == k].pop()
+    raise SyntaxError(
+        f"Could not find {concept.address} in {datasource.identifier} output {[c.address for c in datasource.output_concepts]}"
+    )
 
 
 def get_node_joins(
     datasources: List[QueryDatasource],
-    grain: List[Concept],
     environment: Environment,
     # concepts:List[Concept],
-) -> List[BaseJoin]:
+):
+
     graph = nx.Graph()
-    concepts: List[Concept] = []
+    partials: dict[str, list[str]] = {}
+    ds_node_map: dict[str, QueryDatasource] = {}
+    concept_map: dict[str, Concept] = {}
     for datasource in datasources:
-        graph.add_node(datasource.identifier, type=NodeType.NODE)
+        ds_node = f"ds~{datasource.identifier}"
+        ds_node_map[ds_node] = datasource
+        graph.add_node(ds_node, type=NodeType.NODE)
+        partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
         for concept in datasource.output_concepts:
-            add_node_join_concept(graph, concept, datasource, concepts, environment)
-
-    # add edges for every constant to every datasource
-    for datasource in datasources:
-        for concept in datasource.output_concepts:
-            if concept.granularity == Granularity.SINGLE_ROW:
-                for node in graph.nodes:
-                    if graph.nodes[node]["type"] == NodeType.NODE:
-                        graph.add_edge(node, concept.address)
-    joins: defaultdict[str, set] = defaultdict(set)
-    identifier_map: dict[str, Datasource | QueryDatasource] = {
-        x.identifier: x for x in datasources
-    }
-    grain_pseudonyms: set[str] = set()
-    for g in grain:
-        env_lookup = environment.concepts[g.address]
-        # if we're looking up a pseudonym, we would have gotten the remapped value
-        # so double check we got what we were looking for
-        if env_lookup.address == g.address:
-            grain_pseudonyms.update(env_lookup.pseudonyms)
-
-    node_list = sorted(
-        [x for x in graph.nodes if graph.nodes[x]["type"] == NodeType.NODE],
-        # sort so that anything with a partial match on the target is later
-        key=lambda x: len(
-            [
-                partial
-                for partial in identifier_map[x].partial_concepts
-                if partial in grain
-            ]
-            + [
-                output
-                for output in identifier_map[x].output_concepts
-                if output.address in grain_pseudonyms
-            ]
-        ),
-    )
-
-    for left in node_list:
-        # the constant dataset is a special case
-        # and can never be on the left of a join
-        if left == CONSTANT_DATASET:
-            continue
-
-        for cnode in graph.neighbors(left):
-            if graph.nodes[cnode]["type"] == NodeType.CONCEPT:
-                for right in graph.neighbors(cnode):
-                    # skip concepts
-                    if graph.nodes[right]["type"] == NodeType.CONCEPT:
-                        continue
-                    if left == right:
-                        continue
-                    identifier = [left, right]
-                    joins["-".join(identifier)].add(cnode)
-
-    final_joins_pre: List[BaseJoin] = []
-
-    for key, join_concepts in joins.items():
-        left, right = key.split("-")
-        local_concepts: List[Concept] = unique(
-            [c for c in concepts if c.address in join_concepts], "address"
-        )
-        if all([c.granularity == Granularity.SINGLE_ROW for c in local_concepts]):
-            # for the constant join, make it a full outer join on 1=1
-            join_type = JoinType.FULL
-            local_concepts = []
-        elif any(
-            [
-                c.address in [x.address for x in identifier_map[left].partial_concepts]
-                for c in local_concepts
-            ]
-        ):
-            join_type = JoinType.FULL
-            local_concepts = [
-                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
-            ]
-        elif any(
-            [
-                c.address in [x.address for x in identifier_map[right].partial_concepts]
-                for c in local_concepts
-            ]
-        ) or any(
-            [
-                c.address in [x.address for x in identifier_map[left].nullable_concepts]
-                for c in local_concepts
-            ]
-        ):
-            join_type = JoinType.LEFT_OUTER
-            local_concepts = [
-                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
-            ]
-        else:
-            join_type = JoinType.INNER
-            # remove any constants if other join keys exist
-            local_concepts = [
-                c for c in local_concepts if c.granularity != Granularity.SINGLE_ROW
-            ]
-
-        relevant = concept_to_relevant_joins(local_concepts)
-        left_datasource = identifier_map[left]
-        right_datasource = identifier_map[right]
-        join_tuples: list[ConceptPair] = []
-        for joinc in relevant:
-            left_arg = joinc
-            right_arg = joinc
-            if joinc.address not in [
-                c.address for c in left_datasource.output_concepts
-            ]:
-                try:
-                    left_arg = [
-                        x
-                        for x in left_datasource.output_concepts
-                        if x.address in joinc.pseudonyms
-                        or joinc.address in x.pseudonyms
-                    ].pop()
-                except IndexError:
-                    raise SyntaxError(
-                        f"Could not find {joinc.address} in {left_datasource.identifier} output {[c.address for c in left_datasource.output_concepts]}"
-                    )
-            if joinc.address not in [
-                c.address for c in right_datasource.output_concepts
-            ]:
-                try:
-                    right_arg = [
-                        x
-                        for x in right_datasource.output_concepts
-                        if x.address in joinc.pseudonyms
-                        or joinc.address in x.pseudonyms
-                    ].pop()
-                except IndexError:
-                    raise SyntaxError(
-                        f"Could not find {joinc.address} in {right_datasource.identifier} output {[c.address for c in right_datasource.output_concepts]}"
-                    )
-            narg = (left_arg, right_arg)
-            if narg not in join_tuples:
-                modifiers = set()
-                if left_arg.address in [
-                    x.address for x in left_datasource.nullable_concepts
-                ] and right_arg.address in [
-                    x.address for x in right_datasource.nullable_concepts
-                ]:
-                    modifiers.add(Modifier.NULLABLE)
-                join_tuples.append(
-                    ConceptPair(
-                        left=left_arg, right=right_arg, modifiers=list(modifiers)
-                    )
-                )
-
-        # deduplication
-        all_right = []
-        for tuple in join_tuples:
-            all_right.append(tuple.right.address)
-        right_grain = identifier_map[right].grain
-        # if the join includes all the right grain components
-        # we only need to join on those, not everything
-        if all([x.address in all_right for x in right_grain.components]):
-            join_tuples = [
-                x for x in join_tuples if x.right.address in right_grain.components
-            ]
-
-        final_joins_pre.append(
-            BaseJoin(
-                left_datasource=identifier_map[left],
-                right_datasource=identifier_map[right],
-                join_type=join_type,
-                concepts=[],
-                concept_pairs=join_tuples,
+            add_node_join_concept(
+                graph=graph,
+                concept=concept,
+                concept_map=concept_map,
+                ds_node=ds_node,
+                environment=environment,
             )
-        )
-    final_joins = resolve_join_order(final_joins_pre)
 
-    # this is extra validation
-    non_single_row_ds = [x for x in datasources if not x.grain.abstract]
-    if len(non_single_row_ds) > 1:
-        for x in datasources:
-            if x.grain.abstract:
-                continue
-            found = False
-            for join in final_joins:
-                if (
-                    join.left_datasource.identifier == x.identifier
-                    or join.right_datasource.identifier == x.identifier
-                ):
-                    found = True
-            if not found:
-                raise SyntaxError(
-                    f"Could not find join for {x.identifier} with output {[c.address for c in x.output_concepts]}, all {[z.identifier for z in datasources]}"
+    joins = resolve_join_order_v2(graph, partials=partials)
+    return [
+        BaseJoin(
+            left_datasource=ds_node_map[j.left] if j.left else None,
+            right_datasource=ds_node_map[j.right],
+            join_type=j.type,
+            # preserve empty field for maps
+            concepts=[] if not j.keys else None,
+            concept_pairs=[
+                ConceptPair(
+                    left=resolve_instantiated_concept(
+                        concept_map[concept], ds_node_map[k]
+                    ),
+                    right=resolve_instantiated_concept(
+                        concept_map[concept], ds_node_map[j.right]
+                    ),
+                    existing_datasource=ds_node_map[k],
                 )
-    return final_joins
+                for k, v in j.keys.items()
+                for concept in v
+            ],
+        )
+        for j in joins
+    ]
 
 
 def get_disconnected_components(
@@ -523,11 +500,13 @@ def find_nullable_concepts(
             ]:
                 is_on_nullable_condition = True
                 break
+            left_check = (
+                join.left_datasource.identifier
+                if join.left_datasource is not None
+                else pair.existing_datasource.identifier
+            )
             if pair.left.address in [
-                y.address
-                for y in datasource_map[
-                    join.left_datasource.identifier
-                ].nullable_concepts
+                y.address for y in datasource_map[left_check].nullable_concepts
             ]:
                 is_on_nullable_condition = True
                 break

@@ -21,7 +21,7 @@ def test_cli_string():
 def test_cli_fmt_string():
     runner = CliRunner()
     with open("test.sql", "w") as f:
-        f.write("select 1-> test;")
+        f.write("select 1 -> test;")
     result = runner.invoke(
         cli,
         ["fmt", "test.sql"],
@@ -33,7 +33,7 @@ def test_cli_fmt_string():
         assert (
             f.read().strip()
             == """SELECT
-    1->test,;"""
+    1 -> test,;"""
         )
     os.remove("test.sql")
 

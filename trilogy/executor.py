@@ -334,7 +334,9 @@ class Executor(object):
             text(command),
         )
 
-    def execute_text(self, command: str) -> List[CursorResult]:
+    def execute_text(
+        self, command: str, non_interactive: bool = False
+    ) -> List[CursorResult]:
         """Run a preql text command"""
         output = []
         # connection = self.engine.connect()
@@ -351,11 +353,18 @@ class Executor(object):
                     )
                 )
                 continue
+            if non_interactive:
+                if not isinstance(
+                    statement, (ProcessedCopyStatement, ProcessedQueryPersist)
+                ):
+                    continue
             output.append(self.execute_query(statement))
         return output
 
-    def execute_file(self, file: str | Path) -> List[CursorResult]:
+    def execute_file(
+        self, file: str | Path, non_interactive: bool = False
+    ) -> List[CursorResult]:
         file = Path(file)
         with open(file, "r") as f:
             command = f.read()
-        return self.execute_text(command)
+        return self.execute_text(command, non_interactive=non_interactive)

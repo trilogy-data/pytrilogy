@@ -68,6 +68,30 @@ ORDER BY
     )
 
 
+def test_window_over(test_environment):
+    env = Environment()
+    _, parsed = env.parse(
+        """
+key order_id int;
+
+datasource orders (
+    order_id: order_id
+)
+grain (order_id)
+address memory.orders;
+
+select max(order_id) by order_id -> test;
+
+"""
+    )
+    string_query = Renderer().to_string(parsed[-1])
+    assert (
+        string_query
+        == """SELECT
+    max(order_id) by order_id -> test,;"""
+    )
+
+
 def test_multi_select(test_environment):
     query = MultiSelectStatement(
         namespace=DEFAULT_NAMESPACE,
@@ -145,10 +169,10 @@ def test_full_query(test_environment):
     string_query = render_query(query)
     assert (
         string_query
-        == """SELECT
+        == """WHERE
+    order_id = 123 or order_id = 456
+SELECT
     order_id,
-WHERE
-    (order_id = 123 or order_id = 456)
 ORDER BY
     order_id asc
 ;"""
@@ -433,10 +457,10 @@ def test_render_datasource():
         test
         == """datasource useful_data (
     user_id: user_id
-    ) 
-grain (user_id) 
+    )
+grain (user_id)
 address customers.dim_customers
-(user_id = 123 or user_id = 456);"""
+where user_id = 123 or user_id = 456;"""
     )
 
     test = Renderer().to_string(
@@ -466,11 +490,56 @@ address customers.dim_customers
         test
         == """datasource useful_data (
     user_id: user_id
-    ) 
-grain (user_id) 
-query '''SELECT * FROM test'''
-(user_id = 123 or user_id = 456);"""
     )
+grain (user_id)
+query '''SELECT * FROM test'''
+where user_id = 123 or user_id = 456;"""
+    )
+
+    basic = Environment()
+    basic.parse(
+        """key id int;
+property id.date_string string;
+property id.date date;
+property id.year int;
+property id.day_of_week int;
+property id.week_seq int;
+property id.month_of_year int;
+property id.quarter int;
+property id.d_week_seq1 int;
+
+datasource date (
+    D_DATE_SK: id,
+    D_DATE_ID: date_string,
+    D_DATE: date,
+    D_DOW: day_of_week,
+    D_WEEK_SEQ: week_seq,
+    D_MOY: month_of_year,
+    D_QOY: quarter,
+    D_WEEK_SEQ1: d_week_seq1,
+    raw('''cast("D_YEAR" as int)'''): year
+)
+grain (id)
+address memory.date_dim;"""
+    )
+
+    test = Renderer().to_string(basic.datasources["date"])
+    assert (
+        test
+        == """datasource date (
+    D_DATE_SK: id,
+    D_DATE_ID: date_string,
+    D_DATE: date,
+    D_DOW: day_of_week,
+    D_WEEK_SEQ: week_seq,
+    D_MOY: month_of_year,
+    D_QOY: quarter,
+    D_WEEK_SEQ1: d_week_seq1,
+    raw('''cast("D_YEAR" as int)'''): year
+    )
+grain (id)
+address memory.date_dim;"""
+    ), test
 
 
 def test_circular_rendering():
@@ -492,10 +561,10 @@ where id in (1,2,3);
 
     assert (
         rendered
-        == """PERSIST test INTO test FROM SELECT
-    id,
-WHERE
-    id in (1, 2, 3);"""
+        == """PERSIST test INTO test FROM WHERE
+    id in (1, 2, 3)
+SELECT
+    id,;"""
     ), rendered
 
 
@@ -537,3 +606,34 @@ ORDER BY
     order_id asc
 ;"""
     ), string_query
+
+
+def test_render_substring_filter():
+    basic = Environment()
+
+    env, commands = basic.parse(
+        """
+key id list<int>;
+
+auto string_array <- ['abc', 'def', 'gef'];
+const p_cust_zip <- 'abcdef';
+
+auto zips <- unnest(string_array);
+
+auto final_zips <-substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);
+
+select
+final_zips;
+""",
+    )
+
+    final_zips: ConceptDeclarationStatement = commands[-2]
+    assert isinstance(
+        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept
+    ), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
+    rendered = Renderer().to_string(final_zips)
+
+    assert (
+        rendered
+        == "property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
+    )

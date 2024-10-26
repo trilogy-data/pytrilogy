@@ -215,7 +215,7 @@ class MergeNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} inferring node joins to target grain {str(grain)}"
                 )
-                joins = get_node_joins(dataset_list, grain.components, environment)
+                joins = get_node_joins(dataset_list, environment=environment)
         elif final_joins:
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} translating provided node joins {len(final_joins)}"
@@ -314,7 +314,7 @@ class MergeNode(StrategyNode):
         full_join_concepts = []
         for join in joins:
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
-                full_join_concepts += join.concepts
+                full_join_concepts += join.input_concepts
         if self.whole_grain:
             force_group = False
         elif self.force_group is False:

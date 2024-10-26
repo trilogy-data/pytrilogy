@@ -254,8 +254,9 @@ class ParseToObjects(Transformer):
     def IDENTIFIER(self, args) -> str:
         return args.value
 
-    def concept_lit(self, args) -> Concept:
-        return self.environment.concepts.__getitem__(args[0])
+    @v_args(meta=True)
+    def concept_lit(self, meta: Meta, args) -> Concept:
+        return self.environment.concepts.__getitem__(args[0], meta.line)
 
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)

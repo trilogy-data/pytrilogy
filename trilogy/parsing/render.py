@@ -17,6 +17,7 @@ from trilogy.core.models import (
     SelectItem,
     WhereClause,
     Conditional,
+    SubselectComparison,
     Comparison,
     Environment,
     ConceptDeclarationStatement,
@@ -25,6 +26,7 @@ from trilogy.core.models import (
     WindowItem,
     FilterItem,
     ColumnAssignment,
+    RawColumnExpr,
     CaseElse,
     CaseWhen,
     ImportStatement,
@@ -50,13 +52,16 @@ from collections import defaultdict
 
 
 QUERY_TEMPLATE = Template(
-    """SELECT{%- for select in select_columns %}
-    {{ select }},{% endfor %}{% if where %}
-WHERE
-    {{ where }}{% endif %}{%- if order_by %}
+    """{% if where %}WHERE
+    {{ where }}
+{% endif %}SELECT{%- for select in select_columns %}
+    {{ select }},{% endfor %}{% if having %}
+HAVING
+    {{ having }}
+{% endif %}{%- if order_by %}
 ORDER BY{% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}
-{% endfor %}{% endif %}{%- if limit is not none %}
+    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}
+{% endif %}{%- if limit is not none %}
 LIMIT {{ limit }}{% endif %};"""
 )
 
@@ -133,14 +138,14 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: Datasource):
-        assignments = ",\n\t".join([self.to_string(x) for x in arg.columns])
+        assignments = ",\n    ".join([self.to_string(x) for x in arg.columns])
         base = f"""datasource {arg.name} (
     {assignments}
-    ) 
-{self.to_string(arg.grain)} 
+    )
+{self.to_string(arg.grain)}
 {self.to_string(arg.address)}"""
         if arg.where:
-            base += f"\n{self.to_string(arg.where)}"
+            base += f"\nwhere {self.to_string(arg.where)}"
         base += ";"
         return base
 
@@ -209,7 +214,13 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ColumnAssignment"):
-        return f"{arg.alias}: {self.to_string(arg.concept)}"
+        if isinstance(arg.alias, str):
+            return f"{arg.alias}: {self.to_string(arg.concept)}"
+        return f"{self.to_string(arg.alias)}: {self.to_string(arg.concept)}"
+
+    @to_string.register
+    def _(self, arg: "RawColumnExpr"):
+        return f"raw('''{arg.text}''')"
 
     @to_string.register
     def _(self, arg: "ConceptDeclarationStatement"):
@@ -266,6 +277,7 @@ class Renderer:
         return QUERY_TEMPLATE.render(
             select_columns=[self.to_string(c) for c in arg.selection],
             where=self.to_string(arg.where_clause) if arg.where_clause else None,
+            having=self.to_string(arg.having_clause) if arg.having_clause else None,
             order_by=(
                 [self.to_string(c) for c in arg.order_by.items]
                 if arg.order_by
@@ -301,15 +313,22 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: OrderBy):
-        return ",\t".join([self.to_string(c) for c in arg.items])
+        return ",\n".join([self.to_string(c) for c in arg.items])
 
     @to_string.register
     def _(self, arg: "WhereClause"):
-        return f"{self.to_string(arg.conditional)}"
+        base = f"{self.to_string(arg.conditional)}"
+        if base[0] == "(" and base[-1] == ")":
+            return base[1:-1]
+        return base
 
     @to_string.register
     def _(self, arg: "Conditional"):
         return f"({self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)})"
+
+    @to_string.register
+    def _(self, arg: "SubselectComparison"):
+        return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
 
     @to_string.register
     def _(self, arg: "Comparison"):
@@ -319,10 +338,12 @@ class Renderer:
     def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
-        if over:
+        if over and order:
             return (
-                f"{arg.type.value} {self.to_string(arg.content)} by {order} OVER {over}"
+                f"{arg.type.value} {self.to_string(arg.content)} by {order} over {over}"
             )
+        elif over:
+            return f"{arg.type.value} {self.to_string(arg.content)} over {over}"
         return f"{arg.type.value} {self.to_string(arg.content)} by {order}"
 
     @to_string.register
@@ -343,13 +364,15 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ConceptTransform"):
-        return f"{self.to_string(arg.function)}->{arg.output.name}"
+        return f"{self.to_string(arg.function)} -> {arg.output.name}"
 
     @to_string.register
     def _(self, arg: "Function"):
         inputs = ",".join(self.to_string(c) for c in arg.arguments)
         if arg.operator == FunctionType.CONSTANT:
             return f"{inputs}"
+        if arg.operator == FunctionType.CAST:
+            return f"CAST({self.to_string(arg.arguments[0])} AS {self.to_string(arg.arguments[1])})"
         if arg.operator == FunctionType.INDEX_ACCESS:
             return f"{self.to_string(arg.arguments[0])}[{self.to_string(arg.arguments[1])}]"
         return f"{arg.operator.value}({inputs})"
@@ -361,7 +384,8 @@ class Renderer:
     @to_string.register
     def _(self, arg: AggregateWrapper):
         if arg.by:
-            return f"{self.to_string(arg.function)} by {self.to_string(arg.by)}"
+            by = ", ".join([self.to_string(x) for x in arg.by])
+            return f"{self.to_string(arg.function)} by {by}"
         return f"{self.to_string(arg.function)}"
 
     @to_string.register

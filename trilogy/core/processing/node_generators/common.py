@@ -1,6 +1,5 @@
 from typing import List, Tuple, Callable
 
-
 from trilogy.core.enums import PurposeLineage, Purpose
 from trilogy.core.models import (
     Concept,

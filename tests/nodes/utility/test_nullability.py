@@ -77,7 +77,11 @@ select 1 as customer_id
         right_datasource=product_qds,
         join_type=JoinType.LEFT_OUTER,
         concepts=[],
-        concept_pairs=[ConceptPair(left=product_id, right=product_id)],
+        concept_pairs=[
+            ConceptPair(
+                left=product_id, right=product_id, existing_datasource=order_qds
+            )
+        ],
     )
     source_map = {
         order_id.address: {order_qds},

@@ -28,14 +28,18 @@ def extract_address(node: str):
     return node.split("~")[1].split("@")[0]
 
 
-def get_graph_partial_nodes(g: nx.DiGraph) -> dict[str, list[str]]:
+def get_graph_partial_nodes(
+    g: nx.DiGraph, conditions: WhereClause | None
+) -> dict[str, list[str]]:
     datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
     partial: dict[str, list[str]] = {}
     for node in g.nodes:
         if node in datasources:
-            partial[node] = [
-                concept_to_node(c) for c in datasources[node].partial_concepts
-            ]
+            ds = datasources[node]
+            partial[node] = [concept_to_node(c) for c in ds.partial_concepts]
+            if ds.non_partial_for and conditions == ds.non_partial_for:
+                partial[node] = []
+
     return partial
 
 
@@ -49,7 +53,10 @@ def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
 
 
 def create_pruned_concept_graph(
-    g: nx.DiGraph, all_concepts: List[Concept], accept_partial: bool = False
+    g: nx.DiGraph,
+    all_concepts: List[Concept],
+    accept_partial: bool = False,
+    conditions: WhereClause | None = None,
 ) -> nx.DiGraph:
     orig_g = g
     g = g.copy()
@@ -66,11 +73,7 @@ def create_pruned_concept_graph(
     relevent_datasets: list[str] = []
     if not accept_partial:
         partial = {}
-        for node in g.nodes:
-            if node in datasources:
-                partial[node] = [
-                    concept_to_node(c) for c in datasources[node].partial_concepts
-                ]
+        partial = get_graph_partial_nodes(g, conditions)
         to_remove = []
         for edge in g.edges:
             if (
@@ -133,31 +136,53 @@ def create_pruned_concept_graph(
     return g
 
 
-def resolve_subgraphs(g: nx.DiGraph) -> dict[str, list[str]]:
+def resolve_subgraphs(
+    g: nx.DiGraph, conditions: WhereClause | None
+) -> dict[str, list[str]]:
     datasources = [n for n in g.nodes if n.startswith("ds~")]
-    subgraphs = {ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources}
-    partial_map = get_graph_partial_nodes(g)
+    subgraphs: dict[str, list[str]] = {
+        ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources
+    }
+    partial_map = get_graph_partial_nodes(g, conditions)
     grain_length = get_graph_grain_length(g)
-    non_partial = {
-        ds: [c for c in subgraphs[ds] if c not in partial_map[ds]] for ds in datasources
+    concepts: dict[str, Concept] = nx.get_node_attributes(g, "concept")
+    non_partial_map = {
+        ds: [concepts[c].address for c in subgraphs[ds] if c not in partial_map[ds]]
+        for ds in datasources
+    }
+    concept_map = {
+        ds: [concepts[c].address for c in subgraphs[ds]] for ds in datasources
     }
     pruned_subgraphs = {}
-    for key, value in subgraphs.items():
+    for key, nodes in subgraphs.items():
+        value = non_partial_map[key]
+        all_concepts = concept_map[key]
         is_subset = False
         matches = set()
         # Compare current list with other lists
-        for other_key, other_value in non_partial.items():
-            if key != other_key and set(value).issubset(set(other_value)):
+        for other_key, other_all_concepts in concept_map.items():
+            other_value = non_partial_map[other_key]
+            # needs to be a subset of non partial and a subset of all
+            if (
+                key != other_key
+                and set(value).issubset(set(other_value))
+                and set(all_concepts).issubset(set(other_all_concepts))
+            ):
                 if len(value) < len(other_value):
                     is_subset = True
+                    logger.debug(
+                        f"Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}"
+                    )
                     break
-                elif len(value) == len(other_value):
+                elif len(value) == len(other_value) and len(all_concepts) == len(
+                    other_all_concepts
+                ):
                     matches.add(other_key)
                     matches.add(key)
         if matches:
             is_subset = key is not min(matches, key=lambda x: (grain_length[x], x))
         if not is_subset:
-            pruned_subgraphs[key] = value
+            pruned_subgraphs[key] = nodes
     return pruned_subgraphs
 
 
@@ -261,7 +286,9 @@ def gen_select_merge_node(
             force_group=False,
         )
     for attempt in [False, True]:
-        pruned_concept_graph = create_pruned_concept_graph(g, non_constant, attempt)
+        pruned_concept_graph = create_pruned_concept_graph(
+            g, non_constant, attempt, conditions
+        )
         if pruned_concept_graph:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} found covering graph w/ partial flag {attempt}"
@@ -274,7 +301,7 @@ def gen_select_merge_node(
         )
         return None
 
-    sub_nodes = resolve_subgraphs(pruned_concept_graph)
+    sub_nodes = resolve_subgraphs(pruned_concept_graph, conditions)
 
     logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {sub_nodes}")
     parents = [

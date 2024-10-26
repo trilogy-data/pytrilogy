@@ -17,7 +17,6 @@ from trilogy.core.models import (
     CTE,
     Join,
     UnnestJoin,
-    JoinKey,
     MaterializedDataset,
     ProcessedQuery,
     ProcessedQueryPersist,
@@ -28,6 +27,7 @@ from trilogy.core.models import (
     Conditional,
     ProcessedCopyStatement,
     CopyStatement,
+    CTEConceptPair,
 )
 
 from trilogy.utility import unique
@@ -52,44 +52,53 @@ def base_join_to_join(
             concept_to_unnest=base_join.parent.concept_arguments[0],
             alias=base_join.alias,
         )
-    if base_join.left_datasource.identifier == base_join.right_datasource.identifier:
-        raise ValueError(f"Joining on same datasource {base_join}")
-    left_ctes = [
-        cte
-        for cte in ctes
-        if (cte.source.full_name == base_join.left_datasource.full_name)
-    ]
-    if not left_ctes:
-        left_ctes = [
-            cte
-            for cte in ctes
-            if (
-                cte.source.datasources[0].full_name
-                == base_join.left_datasource.full_name
+
+    def get_datasource_cte(datasource: Datasource | QueryDatasource) -> CTE:
+        for cte in ctes:
+            if cte.source.full_name == datasource.full_name:
+                return cte
+        for cte in ctes:
+            if cte.source.datasources[0].full_name == datasource.full_name:
+                return cte
+        raise ValueError(f"Could not find CTE for datasource {datasource.full_name}")
+
+    if base_join.left_datasource is not None:
+        left_cte = get_datasource_cte(base_join.left_datasource)
+    else:
+        # multiple left ctes
+        left_cte = None
+    right_cte = get_datasource_cte(base_join.right_datasource)
+    if base_join.concept_pairs:
+        final_pairs = [
+            CTEConceptPair(
+                left=pair.left,
+                right=pair.right,
+                existing_datasource=pair.existing_datasource,
+                modifiers=pair.modifiers,
+                cte=get_datasource_cte(pair.existing_datasource),
             )
+            for pair in base_join.concept_pairs
         ]
-    left_cte = left_ctes[0]
-    right_ctes = [
-        cte
-        for cte in ctes
-        if (cte.source.full_name == base_join.right_datasource.full_name)
-    ]
-    if not right_ctes:
-        right_ctes = [
-            cte
-            for cte in ctes
-            if (
-                cte.source.datasources[0].full_name
-                == base_join.right_datasource.full_name
+    elif base_join.concepts and base_join.left_datasource:
+        final_pairs = [
+            CTEConceptPair(
+                left=concept,
+                right=concept,
+                existing_datasource=base_join.left_datasource,
+                modifiers=[],
+                cte=get_datasource_cte(
+                    base_join.left_datasource,
+                ),
             )
+            for concept in base_join.concepts
         ]
-    right_cte = right_ctes[0]
+    else:
+        final_pairs = []
     return Join(
         left_cte=left_cte,
         right_cte=right_cte,
-        joinkeys=[JoinKey(concept=concept) for concept in base_join.concepts],
         jointype=base_join.join_type,
-        joinkey_pairs=base_join.concept_pairs if base_join.concept_pairs else None,
+        joinkey_pairs=final_pairs,
     )
 
 
@@ -195,7 +204,6 @@ def resolve_cte_base_name_and_alias_v2(
     source_map: Dict[str, list[str]],
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
-    joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if (
         isinstance(source.datasources[0], Datasource)
         and not source.datasources[0].name == CONSTANT_DATASET
@@ -203,8 +211,12 @@ def resolve_cte_base_name_and_alias_v2(
         ds = source.datasources[0]
         return ds.safe_location, ds.identifier
 
+    joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if joins and len(joins) > 0:
-        candidates = [x.left_cte.name for x in joins]
+        candidates = [x.left_cte.name for x in joins if x.left_cte]
+        for join in joins:
+            if join.joinkey_pairs:
+                candidates += [x.cte.name for x in join.joinkey_pairs if x.cte]
         disallowed = [x.right_cte.name for x in joins]
         try:
             cte = [y for y in candidates if y not in disallowed][0]
@@ -213,7 +225,6 @@ def resolve_cte_base_name_and_alias_v2(
             raise SyntaxError(
                 f"Invalid join configuration {candidates} {disallowed} for {name}",
             )
-
     counts: dict[str, int] = defaultdict(lambda: 0)
     output_addresses = [x.address for x in source.output_concepts]
     input_address = [x.address for x in source.input_concepts]
@@ -269,11 +280,8 @@ def datasource_to_ctes(
 
     human_id = generate_cte_name(query_datasource.full_name, name_map)
 
-    final_joins = [
-        x
-        for x in [base_join_to_join(join, parents) for join in query_datasource.joins]
-        if x
-    ]
+    final_joins = [base_join_to_join(join, parents) for join in query_datasource.joins]
+
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
     )

@@ -1,11 +1,14 @@
 from trilogy.core.processing.node_generators.common import (
     resolve_join_order,
+    # resolve_join_order_v2,
     NodeJoin,
     StrategyNode,
 )
+from trilogy.core.processing.utility import resolve_join_order_v2, JoinOrderOutput
 from trilogy import parse
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.enums import JoinType
+from networkx import Graph
 
 
 def test_resolve_join_order():
@@ -70,3 +73,44 @@ property product_id.price float;
         raise ValueError("test should not get here")
     except Exception as e:
         assert isinstance(e, SyntaxError)
+
+
+def test_resolve_join_order_v2():
+
+    g = Graph()
+
+    g.add_edge("ds~orders", "c~order_id")
+    g.add_edge("ds~orders", "c~product_id")
+    g.add_edge("ds~orders", "c~customer_id")
+    g.add_edge("ds~products", "c~product_id")
+    g.add_edge("ds~products", "c~price")
+    g.add_edge("ds~customer", "c~customer_id")
+    g.add_edge("ds~customer", "c~customer_name")
+    g.add_edge("ds~customer_address", "c~customer_id")
+    g.add_edge("ds~customer_address", "c~address")
+    g.add_edge("ds~customer_address", "c~city")
+
+    partials = {
+        "ds~orders": ["c~customer_id", "c~product_id"],
+        "ds~customer_address": ["c~customer_id"],
+    }
+
+    output = resolve_join_order_v2(g, partials)
+
+    assert output == [
+        JoinOrderOutput(
+            right="ds~customer_address",
+            type=JoinType.LEFT_OUTER,
+            keys={"ds~customer": {"c~customer_id"}},
+        ),
+        JoinOrderOutput(
+            right="ds~orders",
+            type=JoinType.LEFT_OUTER,
+            keys={"ds~customer": {"c~customer_id"}},
+        ),
+        JoinOrderOutput(
+            right="ds~products",
+            type=JoinType.FULL,
+            keys={"ds~orders": {"c~product_id"}},
+        ),
+    ]
