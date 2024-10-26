@@ -39,7 +39,6 @@ from logging import Logger
 
 
 from trilogy.core.enums import FunctionClass
-from trilogy.constants import logger
 
 
 from dataclasses import dataclass
