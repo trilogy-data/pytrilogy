@@ -1,20 +1,20 @@
 query_id = 16
-parse_time = 36.495753
-exec_time = 0.311634
-comp_time = 0.025252
+parse_time = 62.163473
+exec_time = 0.878307
+comp_time = 0.109889
 gen_length = 4615
 generated_sql = """
 
 WITH 
 deeply as (
 SELECT
-    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
 FROM
     memory.catalog_sales as catalog_sales
 GROUP BY 
-    catalog_sales.\"CS_WAREHOUSE_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\"),
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_WAREHOUSE_SK\"),
 ruthless as (
 SELECT
     catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
@@ -54,10 +54,10 @@ WHERE
     catalog_sales.\"CS_ORDER_NUMBER\" not in (select ruthless.\"cr_order_number\" from ruthless where ruthless.\"cr_order_number\" is not null) and catalog_sales.\"CS_ORDER_NUMBER\" in (select barracuda.\"multi_warehouse_sales\" from barracuda where barracuda.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    catalog_sales.\"CS_SHIP_ADDR_SK\",
-    catalog_sales.\"CS_SHIP_DATE_SK\",
     catalog_sales.\"CS_CALL_CENTER_SK\",
-    catalog_sales.\"CS_ORDER_NUMBER\"),
+    catalog_sales.\"CS_ORDER_NUMBER\",
+    catalog_sales.\"CS_SHIP_ADDR_SK\",
+    catalog_sales.\"CS_SHIP_DATE_SK\"),
 cheetah as (
 SELECT
     catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",

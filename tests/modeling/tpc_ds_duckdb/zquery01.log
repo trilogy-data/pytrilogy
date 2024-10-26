@@ -1,7 +1,7 @@
 query_id = 1
-parse_time = 1.873851
-exec_time = 0.077354
-comp_time = 1.299574
+parse_time = 3.335319
+exec_time = 0.156719
+comp_time = 2.699612
 gen_length = 1696
 generated_sql = """
 
@@ -18,8 +18,8 @@ SELECT
 FROM
     memory.customer as customers
     INNER JOIN memory.store_returns as store_returns on customers.\"C_CUSTOMER_SK\" = store_returns.\"SR_CUSTOMER_SK\"
-    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
     INNER JOIN memory.date_dim as date on store_returns.\"SR_RETURNED_DATE_SK\" = date.\"D_DATE_SK\"
+    INNER JOIN memory.store as store on store_returns.\"SR_STORE_SK\" = store.\"S_STORE_SK\"
 WHERE
     store.\"S_STATE\" = 'TN' and cast(\"D_YEAR\" as int) = 2000
 ),

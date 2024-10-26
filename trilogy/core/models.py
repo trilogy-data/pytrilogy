@@ -2699,7 +2699,15 @@ class CTE(BaseModel):
                     join
                     for join in self.joins
                     if not isinstance(join, Join)
-                    or (isinstance(join, Join) and (join.right_cte.name != removed_cte))
+                    or (
+                        isinstance(join, Join)
+                        and (
+                            join.right_cte.name != removed_cte
+                            and any(
+                                [x.cte.name != removed_cte for x in (join.joinkey_pairs or [])]
+                            )
+                        )
+                    )
                 ]
                 for join in self.joins:
                     if isinstance(join, UnnestJoin) and concept in join.concepts:
@@ -3036,9 +3044,9 @@ class Join(BaseModel):
     def __str__(self):
         if self.joinkey_pairs:
             return (
-                f"{self.jointype.value} JOIN "
+                f"{self.jointype.value} join"
                 f" {self.right_name} on"
-                f" {','.join([k.cte.name + '.'+str(k.left)+'='+str(k.right)+str(k.modifiers) for k in self.joinkey_pairs])}"
+                f" {','.join([k.cte.name + '.'+str(k.left.address)+'='+str(k.right.address) for k in self.joinkey_pairs])}"
             )
         elif self.left_cte:
             return (

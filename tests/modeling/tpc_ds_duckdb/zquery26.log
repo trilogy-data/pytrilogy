@@ -1,7 +1,7 @@
 query_id = 26
-parse_time = 1.252299
-exec_time = 0.107525
-comp_time = 0.090172
+parse_time = 1.449818
+exec_time = 0.618949
+comp_time = 0.116627
 gen_length = 1898
 generated_sql = """
 
@@ -24,9 +24,9 @@ SELECT
 FROM
     memory.date_dim as date
     INNER JOIN memory.catalog_sales as catalog_sales on date.\"D_DATE_SK\" = catalog_sales.\"CS_SOLD_DATE_SK\"
-    INNER JOIN memory.customer_demographics as customer_demographics on catalog_sales.\"CS_BILL_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
     INNER JOIN memory.promotion as promotion on catalog_sales.\"CS_PROMO_SK\" = promotion.\"P_PROMO_SK\"
     INNER JOIN memory.item as items on catalog_sales.\"CS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.customer_demographics as customer_demographics on catalog_sales.\"CS_BILL_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
 )

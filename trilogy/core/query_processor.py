@@ -79,15 +79,15 @@ def base_join_to_join(
             )
             for pair in base_join.concept_pairs
         ]
-    elif base_join.concepts:
+    elif base_join.concepts and base_join.left_datasource:
         final_pairs = [
             CTEConceptPair(
                 left=concept,
                 right=concept,
-                existing_datasource=base_join.right_datasource,
+                existing_datasource=base_join.left_datasource,
                 modifiers=[],
                 cte=get_datasource_cte(
-                    base_join.right_datasource,
+                    base_join.left_datasource,
                 ),
             )
             for concept in base_join.concepts

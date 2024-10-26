@@ -11,7 +11,7 @@ from trilogy.core.models import (
     BaseJoin,
     Comparison,
     Join,
-    JoinKeyPair,
+    CTEConceptPair,
     Concept,
     AggregateWrapper,
     RowsetItem,
@@ -246,13 +246,16 @@ def test_join(test_environment: Environment):
     test = Join(
         left_cte=a,
         right_cte=b,
-        joinkey_pairs=[JoinKeyPair(concept=x) for x in outputs],
+        joinkey_pairs=[
+            CTEConceptPair(left=x, right=x, existing_datasource=a.source, cte=a)
+            for x in outputs
+        ],
         jointype=JoinType.RIGHT_OUTER,
     )
 
     assert (
         str(test)
-        == "right outer JOIN test and testb on local.product_id<local.product_id>,local.category_id<local.category_id>"
+        == "right outer join testb on test.local.product_id=local.product_id,test.local.category_id=local.category_id"
     ), str(test)
 
 
