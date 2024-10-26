@@ -110,28 +110,19 @@ def resolve_join_order_v2(
         to_join = sorted(
             [x for x in pivot_map[root] if x not in eligible_left], key=score_key
         )
-        logger.info(f"starting loop for concept {root}")
         while to_join:
             # need to sort this to ensure we join on the best match
             base = sorted(
                 [x for x in pivot_map[root] if x in eligible_left], key=score_key
             )
             if not base:
-                logger.info("no existing left keys, need to add new one")
                 new = to_join.pop()
                 eligible_left.add(new)
                 base = [new]
-            else:
-                logger.info("have an existing left")
-            logger.info(
-                f"looking at concept {root} with eligible_left {base} out of all {pivot_map[root]}"
-            )
             right = to_join.pop()
-            logger.info(f"checking for joins to {right}")
             # we already joined it
             # this could happen if the same pivot is shared with multiple Dses
             if right in eligible_left:
-                logger.info(f"skipping {right} as already joined")
                 continue
             joinkeys: dict[str, set[str]] = {}
             # sorting puts the best candidate last for pop
@@ -172,7 +163,6 @@ def resolve_join_order_v2(
                 final_join_type = JoinType.LEFT_OUTER
             elif any([x == JoinType.FULL for x in join_types]):
                 final_join_type = JoinType.FULL
-            logger.info(f"adding join to right {right}")
             output.append(
                 JoinOrderOutput(
                     # left=left_candidate,

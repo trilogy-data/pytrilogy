@@ -282,9 +282,6 @@ def datasource_to_ctes(
 
     final_joins = [base_join_to_join(join, parents) for join in query_datasource.joins]
 
-    logger.info(f"AAAAAA - {human_id}")
-    logger.info(len(query_datasource.joins))
-    logger.info(len(final_joins))
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
     )
@@ -313,7 +310,6 @@ def datasource_to_ctes(
         base_name_override=base_name,
         base_alias_override=base_alias,
     )
-    logger.info(len(cte.joins))
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
     for x in cte.output_columns:
