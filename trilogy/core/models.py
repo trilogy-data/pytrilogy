@@ -2294,7 +2294,6 @@ class BaseJoin(BaseModel):
     left_datasource: Optional[Union[Datasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
 
-
     def __init__(self, **data: Any):
         super().__init__(**data)
         if (
