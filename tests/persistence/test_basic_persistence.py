@@ -246,5 +246,65 @@ def test_derivations_reparse_new():
         assert test_concept not in env.materialized_concepts
         assert test_concept.derivation == PurposeLineage.BASIC
 
-        # test that the rendered SQL didn't need to use a cASE
+        # test that the rendered SQL did need to use a case
         assert "CASE" in compiled[-1]
+
+
+
+
+def test_persist_with_where():
+    declarations = """
+    key category_id int;
+    property category_id.category_name string;
+    datasource category_source (
+        category_id:category_id,
+        category_name:category_name,
+    )
+    grain (category_id)
+    address category;
+
+    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
+
+    persist bool_is_upper_name into upper_name from
+    select
+        test_upper_case_2
+    where 
+        category_id = 1
+    ;
+    
+    select 
+        test_upper_case_2
+    where
+        category_id = 1;
+
+
+    """
+    env, parsed = parse(declarations)
+    for dialect in TEST_DIALECTS:
+        compiled = []
+
+        for idx, statement in enumerate(parsed[3:]):
+            if idx > 0:
+                hooks = [DebuggingHook()]
+            else:
+                hooks = []
+            processed = process_auto(env, statement, hooks=hooks)
+            if processed:
+                compiled.append(dialect.compile_statement(processed))
+                # force add since we didn't run it
+                if isinstance(processed, ProcessedQueryPersist):
+                    env.add_datasource(processed.datasource)
+        env, _ = parse(
+            """    auto test_upper_case_2 <- CASE WHEN category_name = upper(category_name) then True else False END;
+
+    select 
+    test_upper_case_2;""",
+            environment=env,
+        )
+        test_concept = env.concepts["test_upper_case_2"]
+        assert test_concept.purpose == Purpose.PROPERTY
+
+        # test that the rendered SQL didn't need to use a cASE
+        assert "CASE" not in compiled[-1]
+        assert 'category_id' not in compiled[-1]
+

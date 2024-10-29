@@ -35,8 +35,10 @@
     prop_ident: "<" IDENTIFIER ("," IDENTIFIER )* ","? ">" "." IDENTIFIER
 
     // datasource concepts
-    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? (address | query) where?
-    
+    datasource: "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query) where?
+   
+    whole_grain_clause: "complete" where
+
     grain_clause: "grain" "(" column_list ")"
     
     address: "address" (QUOTED_ADDRESS | ADDRESS)

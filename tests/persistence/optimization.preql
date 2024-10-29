@@ -1,0 +1,19 @@
+const _trilogyt._created_at <- current_datetime();
+
+import generic as generic;
+
+SELECT
+    generic.split,;
+
+SELECT
+    generic.split,
+    generic.scalar,;
+
+PERSIST scalar_445831a9e9e484d7f90c672304367319328b5fd8d8093cc8a12c9d788f4e4bd7 INTO scalar_445831a9e9e484d7f90c672304367319328b5fd8d8093cc8a12c9d788f4e4bd7 FROM SELECT
+    generic.int_array,
+    generic.scalar,;
+
+PERSIST scalar_split_dd968c4c1215b184ec36e1ed881d193d3e8e2ad062dd6750257f78115dccdfd7 INTO scalar_split_dd968c4c1215b184ec36e1ed881d193d3e8e2ad062dd6750257f78115dccdfd7 FROM SELECT
+    generic.split,
+    generic.scalar,;
+

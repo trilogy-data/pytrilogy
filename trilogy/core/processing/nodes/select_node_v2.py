@@ -49,6 +49,7 @@ class SelectNode(StrategyNode):
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
+        render_condition: bool = True
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -65,6 +66,7 @@ class SelectNode(StrategyNode):
             conditions=conditions,
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
+            render_condition =render_condition
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
@@ -120,7 +122,8 @@ class SelectNode(StrategyNode):
             ],
             nullable_concepts=[c.concept for c in datasource.columns if c.is_nullable],
             source_type=SourceType.DIRECT_SELECT,
-            condition=self.conditions,
+            # we can skip rendering conditions
+            condition=self.conditions if self.render_condition else None,
             # select nodes should never group
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
@@ -205,6 +208,7 @@ class SelectNode(StrategyNode):
             conditions=self.conditions,
             preexisting_conditions=self.preexisting_conditions,
             hidden_concepts=self.hidden_concepts,
+            render_condition=self.render_condition,
         )
 
 

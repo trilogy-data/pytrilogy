@@ -491,6 +491,30 @@ select x;
     assert "abcdef as test" in results, results
 
 
+
+
+def test_datasource_where_equivalent():
+
+    text = """
+key x int;
+key y int;
+
+datasource test (
+x:x,
+y:~y)
+grain(x)
+complete where y > 10
+address `abc:def`
+;
+
+
+"""
+    env, parsed = parse_text(text)
+
+    ds = parsed[-1]
+    assert ds.non_partial_for.conditional.right == 10
+
+
 def test_filter_concise():
 
     text = """

@@ -2746,7 +2746,7 @@ class CTE(BaseModel):
             return False
         if any(
             [
-                x.identifier == ds_being_inlined.identifier
+                x.identifier== ds_being_inlined.identifier
                 for x in self.source.datasources
             ]
         ):
@@ -3306,7 +3306,7 @@ class Environment(BaseModel):
     ] = Field(default_factory=EnvironmentDatasourceDict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
-    imports: Dict[str, ImportStatement] = Field(default_factory=dict)
+    imports: Dict[str, list[ImportStatement]] = Field(default_factory=lambda: defaultdict(list))
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
@@ -3438,18 +3438,15 @@ class Environment(BaseModel):
         apath[-1] = apath[-1] + ".preql"
 
         target: Path = Path(self.working_path, *apath)
+        if alias in self.imports:
+            imports = self.imports[alias]
+            for x in imports:
+                if x.path == target:
+                    return imports
         if env:
-            self.imports[alias] = ImportStatement(
+            self.imports[alias].append(ImportStatement(
                 alias=alias, path=target, environment=env
-            )
-
-        elif alias in self.imports:
-            current = self.imports[alias]
-            env = self.imports[alias].environment
-            if current.path != target:
-                raise ImportError(
-                    f"Attempted to import {target} with alias {alias} but {alias} is already imported from {current.path}"
-                )
+            ))
         else:
             try:
                 with open(target, "r", encoding="utf-8") as f:
@@ -3468,14 +3465,13 @@ class Environment(BaseModel):
                     f"Unable to import file {target.parent}, parsing error: {e}"
                 )
             env = nparser.environment
-        if env:
-            for _, concept in env.concepts.items():
-                self.add_concept(concept.with_namespace(alias))
+        for _, concept in env.concepts.items():
+            self.add_concept(concept.with_namespace(alias))
 
-            for _, datasource in env.datasources.items():
-                self.add_datasource(datasource.with_namespace(alias))
+        for _, datasource in env.datasources.items():
+            self.add_datasource(datasource.with_namespace(alias))
         imps = ImportStatement(alias=alias, path=target, environment=env)
-        self.imports[alias] = imps
+        self.imports[alias].append(imps)
         return imps
 
     def parse(
@@ -3539,7 +3535,13 @@ class Environment(BaseModel):
         _ignore_cache: bool = False,
     ):
         self.datasources[datasource.env_label] = datasource
+
+        eligible_to_promote_roots = datasource.non_partial_for is None
+        # mark this as canonical source
         for current_concept in datasource.output_concepts:
+            if not eligible_to_promote_roots:
+                continue
+        
             current_derivation = current_concept.derivation
             # TODO: refine this section;
             # too hacky for maintainability

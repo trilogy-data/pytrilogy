@@ -1,32 +1,32 @@
 query_id = 7
-parse_time = 1.983639
-exec_time = 1.680026
-comp_time = 0.675351
+parse_time = 1.423639
+exec_time = 0.746143
+comp_time = 0.160998
 gen_length = 3937
 generated_sql = """
 
 WITH 
 protective as (
 SELECT
+    store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\",
     store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
-    store_sales.\"SS_PROMO_SK\" as \"store_sales_promotion_id\",
-    store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\",
-    store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
     store_sales.\"SS_QUANTITY\" as \"store_sales_quantity\",
     store_sales.\"SS_CDEMO_SK\" as \"store_sales_customer_demographic_id\",
-    store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\",
-    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\"
+    store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    store_sales.\"SS_SOLD_DATE_SK\" as \"store_sales_date_id\",
+    store_sales.\"SS_PROMO_SK\" as \"store_sales_promotion_id\",
+    store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\"
 FROM
     memory.store_sales as store_sales
 GROUP BY 
-    store_sales.\"SS_SALES_PRICE\",
-    store_sales.\"SS_PROMO_SK\",
     store_sales.\"SS_ITEM_SK\",
-    store_sales.\"SS_QUANTITY\",
-    store_sales.\"SS_SOLD_DATE_SK\",
-    store_sales.\"SS_COUPON_AMT\",
     store_sales.\"SS_CDEMO_SK\",
-    store_sales.\"SS_LIST_PRICE\"),
+    store_sales.\"SS_LIST_PRICE\",
+    store_sales.\"SS_QUANTITY\",
+    store_sales.\"SS_SALES_PRICE\",
+    store_sales.\"SS_COUPON_AMT\",
+    store_sales.\"SS_SOLD_DATE_SK\",
+    store_sales.\"SS_PROMO_SK\"),
 premium as (
 SELECT
     items.\"I_ITEM_ID\" as \"store_sales_item_name\",
@@ -41,11 +41,11 @@ SELECT
     protective.\"store_sales_coupon_amt\" as \"store_sales_coupon_amt\",
     protective.\"store_sales_sales_price\" as \"store_sales_sales_price\"
 FROM
-    memory.date_dim as date
-    INNER JOIN protective on date.\"D_DATE_SK\" = protective.\"store_sales_date_id\"
-    INNER JOIN memory.promotion as promotion on protective.\"store_sales_promotion_id\" = promotion.\"P_PROMO_SK\"
-    INNER JOIN memory.item as items on protective.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    memory.promotion as promotion
+    INNER JOIN protective on promotion.\"P_PROMO_SK\" = protective.\"store_sales_promotion_id\"
     INNER JOIN memory.customer_demographics as customer_demographics on protective.\"store_sales_customer_demographic_id\" = customer_demographics.\"CD_DEMO_SK\"
+    INNER JOIN memory.item as items on protective.\"store_sales_item_id\" = items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as date on protective.\"store_sales_date_id\" = date.\"D_DATE_SK\"
 WHERE
     customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
 ),
@@ -59,17 +59,17 @@ SELECT
 FROM
     premium
 GROUP BY 
+    premium.\"store_sales_customer_demographic_gender\",
     premium.\"store_sales_promotion_channel_event\",
-    premium.\"store_sales_customer_demographic_education_status\",
-    premium.\"store_sales_list_price\",
-    premium.\"store_sales_sales_price\",
-    premium.\"store_sales_customer_demographic_marital_status\",
     premium.\"store_sales_date_year\",
     premium.\"store_sales_promotion_channel_email\",
-    premium.\"store_sales_coupon_amt\",
     premium.\"store_sales_quantity\",
+    premium.\"store_sales_list_price\",
+    premium.\"store_sales_coupon_amt\",
+    premium.\"store_sales_customer_demographic_education_status\",
     premium.\"store_sales_item_name\",
-    premium.\"store_sales_customer_demographic_gender\")
+    premium.\"store_sales_sales_price\",
+    premium.\"store_sales_customer_demographic_marital_status\")
 SELECT
     puzzled.\"filtered_sales_store_sales_item_name\" as \"filtered_sales_store_sales_item_name\",
     avg(puzzled.\"filtered_sales_store_sales_quantity\") as \"avg_quantity\",

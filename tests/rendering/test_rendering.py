@@ -32,6 +32,7 @@ from trilogy.core.models import (
     TupleWrapper,
     CopyStatement,
 )
+from pathlib import Path
 from trilogy import Environment
 from trilogy.core.enums import (
     ComparisonOperator,
@@ -433,7 +434,7 @@ def test_render_datasource():
     test = Renderer().to_string(
         Datasource(
             identifier="useful_data",
-            columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+            columns=[ColumnAssignment(alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL])],
             address="customers.dim_customers",
             grain=Grain(components=[user_id]),
             where=WhereClause(
@@ -451,14 +452,22 @@ def test_render_datasource():
                     operator=BooleanOperator.OR,
                 ),
             ),
+            non_partial_for=WhereClause(
+                conditional=Comparison(
+                        left=user_id,
+                        right=123,
+                        operator=ComparisonOperator.EQ,
+                    )
+            )
         )
     )
     assert (
         test
         == """datasource useful_data (
-    user_id: user_id
+    user_id: ~user_id
     )
 grain (user_id)
+complete where user_id = 123
 address customers.dim_customers
 where user_id = 123 or user_id = 456;"""
     )
@@ -637,3 +646,18 @@ final_zips;
         rendered
         == "property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
     )
+
+
+
+def test_render_environment():
+    x = Environment(working_path = Path(__file__).parent)
+    x.parse(
+        """import a;
+        import b;
+        
+    select a, b;"""
+    )
+
+    rendered = Renderer().to_string(x)
+
+    assert rendered == "import a;\nimport b;", rendered

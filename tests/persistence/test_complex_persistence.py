@@ -38,3 +38,7 @@ def test_complex():
     assert len(r1f) == len(r2f)
     for i in range(len(r1f)):
         assert r1f[i] == r2f[i]
+
+
+def test_persist_in_import():
+    assert 1 == 0

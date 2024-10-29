@@ -123,6 +123,11 @@ from trilogy.parsing.common import (
     arbitrary_to_concept,
     process_function_args,
 )
+from dataclasses import dataclass
+
+@dataclass
+class WholeGrainWrapper:
+    where:WhereClause
 
 CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
@@ -566,8 +571,11 @@ class ParseToObjects(Transformer):
         return args
 
     def grain_clause(self, args) -> Grain:
-        #            namespace=self.environment.namespace,
         return Grain(components=[self.environment.concepts[a] for a in args[0]])
+    
+    def whole_grain_clause(self, args) -> Grain:
+        return WholeGrainWrapper(where=args[0])
+
 
     def MULTILINE_STRING(self, args) -> str:
         return args[3:-3]
@@ -582,11 +590,14 @@ class ParseToObjects(Transformer):
         grain: Optional[Grain] = None
         address: Optional[Address] = None
         where: Optional[WhereClause] = None
+        non_partial_for: Optional[WhereClause] = None
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
             elif isinstance(val, Grain):
                 grain = val
+            elif isinstance(val, WholeGrainWrapper):
+                non_partial_for = val.where
             elif isinstance(val, Query):
                 address = Address(location=f"({val.text})", is_query=True)
             elif isinstance(val, WhereClause):
@@ -604,6 +615,7 @@ class ParseToObjects(Transformer):
             address=address,
             namespace=self.environment.namespace,
             where=where,
+            non_partial_for=non_partial_for,
         )
         for column in columns:
             column.concept = column.concept.with_grain(datasource.grain)
@@ -813,7 +825,9 @@ class ParseToObjects(Transformer):
         imps = ImportStatement(
             alias=alias, path=Path(args[0]), environment=nparser.environment
         )
-        self.environment.imports[alias] = imps
+        exists = any(x.path == imps.path for x in self.environment.imports[alias])
+        if not exists:
+            self.environment.imports[alias].append(imps)
         self.environment.gen_concept_list_caches()
         return imps
 

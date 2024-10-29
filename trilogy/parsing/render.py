@@ -80,6 +80,9 @@ class Renderer:
         metrics = []
         # first, keys
         for concept in arg.concepts.values():
+            if '__preql_internal' in concept.address:
+                continue
+
             # don't render anything that came from an import
             if concept.namespace in arg.imports:
                 continue
@@ -123,9 +126,10 @@ class Renderer:
             if datasource.namespace == DEFAULT_NAMESPACE
         ]
         rendered_imports = [
-            self.to_string(import_statement)
-            for import_statement in arg.imports.values()
         ]
+        for _, imports in arg.imports.items():
+            for import_statement in imports:
+                rendered_imports.append(self.to_string(import_statement))
         components = []
         if rendered_imports:
             components.append(rendered_imports)
@@ -133,19 +137,26 @@ class Renderer:
             components.append(rendered_concepts)
         if rendered_datasources:
             components.append(rendered_datasources)
+        
         final = "\n\n".join("\n".join(x) for x in components)
         return final
 
     @to_string.register
     def _(self, arg: Datasource):
         assignments = ",\n    ".join([self.to_string(x) for x in arg.columns])
+        if arg.non_partial_for:
+            non_partial= f"\ncomplete where {self.to_string(arg.non_partial_for)}"
+        else:
+            non_partial = ""
         base = f"""datasource {arg.name} (
     {assignments}
     )
-{self.to_string(arg.grain)}
+{self.to_string(arg.grain)}{non_partial}
 {self.to_string(arg.address)}"""
+    
         if arg.where:
             base += f"\nwhere {self.to_string(arg.where)}"
+
         base += ";"
         return base
 
@@ -214,9 +225,13 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ColumnAssignment"):
+        if arg.modifiers:
+            modifiers = "".join([self.to_string(modifier) for modifier in arg.modifiers])
+        else:
+            modifiers = ""
         if isinstance(arg.alias, str):
-            return f"{arg.alias}: {self.to_string(arg.concept)}"
-        return f"{self.to_string(arg.alias)}: {self.to_string(arg.concept)}"
+            return f"{arg.alias}: {modifiers}{self.to_string(arg.concept)}"
+        return f"{self.to_string(arg.alias)}: {modifiers}{self.to_string(arg.concept)}"
 
     @to_string.register
     def _(self, arg: "RawColumnExpr"):
@@ -352,6 +367,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ImportStatement"):
+        if arg.alias == DEFAULT_NAMESPACE:
+            return f"import {arg.path};"
         return f"import {arg.path} as {arg.alias};"
 
     @to_string.register

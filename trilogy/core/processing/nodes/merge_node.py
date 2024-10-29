@@ -198,7 +198,7 @@ class MergeNode(StrategyNode):
         environment: Environment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
-        dataset_list: List[QueryDatasource] = sorted(
+        dataset_list: List[QueryDatasource | Datasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
 

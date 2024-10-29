@@ -309,7 +309,7 @@ def resolve_instantiated_concept(
 
 
 def get_node_joins(
-    datasources: List[QueryDatasource],
+    datasources: List[QueryDatasource | Datasource],
     environment: Environment,
     # concepts:List[Concept],
 ):
@@ -319,7 +319,7 @@ def get_node_joins(
     ds_node_map: dict[str, QueryDatasource] = {}
     concept_map: dict[str, Concept] = {}
     for datasource in datasources:
-        ds_node = f"ds~{datasource.identifier}"
+        ds_node = f"ds~{datasource.full_name}"
         ds_node_map[ds_node] = datasource
         graph.add_node(ds_node, type=NodeType.NODE)
         partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
