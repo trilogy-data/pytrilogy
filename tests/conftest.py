@@ -166,7 +166,7 @@ def test_environment():
         ),
     )
     test_revenue = Datasource(
-        identifier="revenue",
+        name="revenue",
         columns=[
             ColumnAssignment(alias="revenue", concept=revenue),
             ColumnAssignment(alias="order_id", concept=order_id),
@@ -178,7 +178,7 @@ def test_environment():
     )
 
     test_product = Datasource(
-        identifier="products",
+        name="products",
         columns=[
             ColumnAssignment(alias="product_id", concept=product_id),
             ColumnAssignment(alias="category_id", concept=category_id),
@@ -188,7 +188,7 @@ def test_environment():
     )
 
     test_category = Datasource(
-        identifier="category",
+        name="category",
         columns=[
             ColumnAssignment(alias="category_id", concept=category_id),
             ColumnAssignment(alias="category_name", concept=category_name),

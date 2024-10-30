@@ -193,6 +193,7 @@ def create_select_node(
     g,
     environment: Environment,
     depth: int,
+    conditions: WhereClause | None = None,
 ) -> StrategyNode:
     ds_name = ds_name.split("~")[1]
     all_concepts = [
@@ -231,6 +232,7 @@ def create_select_node(
         c.concept for c in datasource.columns if c.is_nullable and c.concept in all_lcl
     ]
     nullable_lcl = LooseConceptList(concepts=nullable_concepts)
+    partial_is_full = conditions and (conditions == datasource.non_partial_for)
 
     bcandidate: StrategyNode = SelectNode(
         input_concepts=[c.concept for c in datasource.columns],
@@ -239,12 +241,15 @@ def create_select_node(
         g=g,
         parents=[],
         depth=depth,
-        partial_concepts=[c for c in all_concepts if c in partial_lcl],
+        partial_concepts=(
+            [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
+        ),
         nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
         accept_partial=accept_partial,
         datasource=datasource,
         grain=Grain(components=all_concepts),
         conditions=datasource.where.conditional if datasource.where else None,
+        render_condition=not partial_is_full,
     )
 
     # we need to nest the group node one further
@@ -312,6 +317,7 @@ def gen_select_merge_node(
             accept_partial=accept_partial,
             environment=environment,
             depth=depth,
+            conditions=conditions,
         )
         for k, subgraph in sub_nodes.items()
     ]

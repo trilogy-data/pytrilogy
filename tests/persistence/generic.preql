@@ -1,3 +1,4 @@
+import generic_dependency as generic_dependency;
 
 key scalar int;
 property scalar.int_array list<int>;

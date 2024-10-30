@@ -74,7 +74,7 @@ def setup_titanic(env: Environment):
 
     env.add_datasource(
         Datasource(
-            identifier="raw_data",
+            name="raw_data",
             address="raw_titanic",
             columns=[
                 ColumnAssignment(alias="passengerid", concept=id),

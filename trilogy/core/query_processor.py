@@ -5,7 +5,7 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.enums import BooleanOperator
-from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
+from trilogy.constants import CONFIG
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, History
 from trilogy.core.models import (
     Concept,
@@ -55,12 +55,12 @@ def base_join_to_join(
 
     def get_datasource_cte(datasource: Datasource | QueryDatasource) -> CTE:
         for cte in ctes:
-            if cte.source.full_name == datasource.full_name:
+            if cte.source.identifier == datasource.identifier:
                 return cte
         for cte in ctes:
-            if cte.source.datasources[0].full_name == datasource.full_name:
+            if cte.source.datasources[0].identifier == datasource.identifier:
                 return cte
-        raise ValueError(f"Could not find CTE for datasource {datasource.full_name}")
+        raise ValueError(f"Could not find CTE for datasource {datasource.identifier}")
 
     if base_join.left_datasource is not None:
         left_cte = get_datasource_cte(base_join.left_datasource)
@@ -109,7 +109,7 @@ def generate_source_map(
     # now populate anything derived in this level
     for qdk, qdv in query_datasource.source_map.items():
         unnest = [x for x in qdv if isinstance(x, UnnestJoin)]
-        for x in unnest:
+        for _ in unnest:
             source_map[qdk] = []
         if (
             qdk not in source_map
@@ -119,16 +119,18 @@ def generate_source_map(
             source_map[qdk] = []
         basic = [x for x in qdv if isinstance(x, Datasource)]
         for base in basic:
-            source_map[qdk].append(base.name)
+            source_map[qdk].append(base.safe_identifier)
 
         ctes = [x for x in qdv if isinstance(x, QueryDatasource)]
         if ctes:
-            names = set([x.name for x in ctes])
-            matches = [cte for cte in all_new_ctes if cte.source.name in names]
+            names = set([x.safe_identifier for x in ctes])
+            matches = [
+                cte for cte in all_new_ctes if cte.source.safe_identifier in names
+            ]
 
             if not matches and names:
                 raise SyntaxError(
-                    f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.name for cte in all_new_ctes]}"
+                    f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.safe_identifier for cte in all_new_ctes]}"
                 )
             for cte in matches:
                 output_address = [
@@ -137,11 +139,11 @@ def generate_source_map(
                     if x.address not in [z.address for z in cte.partial_concepts]
                 ]
                 if qdk in output_address:
-                    source_map[qdk].append(cte.name)
+                    source_map[qdk].append(cte.safe_identifier)
             # now do a pass that accepts partials
             for cte in matches:
                 if qdk not in source_map:
-                    source_map[qdk] = [cte.name]
+                    source_map[qdk] = [cte.safe_identifier]
         if qdk not in source_map:
             if not qdv:
                 source_map[qdk] = []
@@ -154,8 +156,10 @@ def generate_source_map(
     # as they cannot be referenced in row resolution
     existence_source_map: Dict[str, list[str]] = defaultdict(list)
     for ek, ev in query_datasource.existence_source_map.items():
-        names = set([x.name for x in ev])
-        ematches = [cte.name for cte in all_new_ctes if cte.source.name in names]
+        ids = set([x.safe_identifier for x in ev])
+        ematches = [
+            cte.name for cte in all_new_ctes if cte.source.safe_identifier in ids
+        ]
         existence_source_map[ek] = ematches
     return {
         k: [] if not v else list(set(v)) for k, v in source_map.items()
@@ -209,7 +213,7 @@ def resolve_cte_base_name_and_alias_v2(
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
-        return ds.safe_location, ds.identifier
+        return ds.safe_location, ds.safe_identifier
 
     joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if joins and len(joins) > 0:
@@ -268,17 +272,17 @@ def datasource_to_ctes(
         # this is required to ensure that constant datasets
         # render properly on initial access; since they have
         # no actual source
-        if source.full_name == DEFAULT_NAMESPACE + "_" + CONSTANT_DATASET:
+        if source.name == CONSTANT_DATASET:
             source_map = {k: [] for k in query_datasource.source_map}
             existence_map = source_map
         else:
             source_map = {
-                k: [] if not v else [source.identifier]
+                k: [] if not v else [source.safe_identifier]
                 for k, v in query_datasource.source_map.items()
             }
             existence_map = source_map
 
-    human_id = generate_cte_name(query_datasource.full_name, name_map)
+    human_id = generate_cte_name(query_datasource.identifier, name_map)
 
     final_joins = [base_join_to_join(join, parents) for join in query_datasource.joins]
 

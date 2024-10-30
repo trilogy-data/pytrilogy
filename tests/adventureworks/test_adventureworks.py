@@ -83,7 +83,7 @@ def test_query_datasources(environment: Environment):
     customer_datasource = customer_node.resolve()
 
     assert (
-        customer_datasource.identifier
+        customer_datasource.safe_identifier
         == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
     )
 
@@ -110,7 +110,7 @@ def test_query_datasources(environment: Environment):
     ).resolve()
 
     assert (
-        customer_datasource.identifier
+        customer_datasource.safe_identifier
         == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
     )
 

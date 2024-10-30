@@ -1,27 +1,27 @@
 query_id = 3
-parse_time = 17.57952
-exec_time = 0.080326
-comp_time = 0.061012
-gen_length = 1359
+parse_time = 15.122883
+exec_time = 0.043666
+comp_time = 0.048621
+gen_length = 1628
 generated_sql = """
 
 WITH 
 vacuous as (
 SELECT
-    store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
-    date.\"D_MOY\" as \"store_sales_date_month_of_year\",
-    items.\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
-    items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
-    items.\"I_BRAND\" as \"store_sales_item_brand_name\",
-    cast(\"D_YEAR\" as int) as \"store_sales_date_year\",
-    store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    items.\"I_ITEM_SK\" as \"store_sales_item_id\"
+    store_sales_store_sales.\"SS_EXT_SALES_PRICE\" as \"store_sales_ext_sales_price\",
+    store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
+    store_sales_item_items.\"I_MANUFACT_ID\" as \"store_sales_item_manufacturer_id\",
+    store_sales_item_items.\"I_BRAND_ID\" as \"store_sales_item_brand_id\",
+    store_sales_item_items.\"I_BRAND\" as \"store_sales_item_brand_name\",
+    cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
+    store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    store_sales_item_items.\"I_ITEM_SK\" as \"store_sales_item_id\"
 FROM
-    memory.date_dim as date
-    INNER JOIN memory.store_sales as store_sales on date.\"D_DATE_SK\" = store_sales.\"SS_SOLD_DATE_SK\"
-    INNER JOIN memory.item as items on store_sales.\"SS_ITEM_SK\" = items.\"I_ITEM_SK\"
+    memory.date_dim as store_sales_date_date
+    INNER JOIN memory.store_sales as store_sales_store_sales on store_sales_date_date.\"D_DATE_SK\" = store_sales_store_sales.\"SS_SOLD_DATE_SK\"
+    INNER JOIN memory.item as store_sales_item_items on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
 WHERE
-    date.\"D_MOY\" = 11 and items.\"I_MANUFACT_ID\" = 128
+    store_sales_date_date.\"D_MOY\" = 11 and store_sales_item_items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
     vacuous.\"store_sales_date_year\" as \"store_sales_date_year\",
@@ -31,9 +31,9 @@ SELECT
 FROM
     vacuous
 GROUP BY 
-    vacuous.\"store_sales_date_year\",
     vacuous.\"store_sales_item_brand_id\",
-    vacuous.\"store_sales_item_brand_name\"
+    vacuous.\"store_sales_item_brand_name\",
+    vacuous.\"store_sales_date_year\"
 ORDER BY 
     vacuous.\"store_sales_date_year\" asc,
     sum(vacuous.\"store_sales_ext_sales_price\") desc,

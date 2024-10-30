@@ -165,6 +165,7 @@ class StrategyNode:
         hidden_concepts: List[Concept] | None = None,
         existence_concepts: List[Concept] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
+        render_condition: bool = True,
     ):
         self.input_concepts: List[Concept] = (
             unique(input_concepts, "address") if input_concepts else []
@@ -208,6 +209,7 @@ class StrategyNode:
             )
         self.validate_parents()
         self.log = True
+        self.render_condition = render_condition
 
     def add_parents(self, parents: list["StrategyNode"]):
         self.parents += parents
@@ -380,6 +382,7 @@ class StrategyNode:
             hidden_concepts=list(self.hidden_concepts),
             existence_concepts=list(self.existence_concepts),
             virtual_output_concepts=list(self.virtual_output_concepts),
+            render_condition=self.render_condition,
         )
 
 

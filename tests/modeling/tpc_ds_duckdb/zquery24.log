@@ -1,41 +1,41 @@
 query_id = 24
-parse_time = 1.545794
-exec_time = 0.595517
-comp_time = 0.318948
-gen_length = 5639
+parse_time = 2.280103
+exec_time = 0.973271
+comp_time = 0.56917
+gen_length = 6475
 generated_sql = """
 
 WITH 
 lion as (
 SELECT
-    store_sales.\"SS_NET_PAID\" as \"store_sales_net_paid\",
-    store.\"S_MARKET_ID\" as \"store_sales_store_market\",
-    customers.\"C_BIRTH_COUNTRY\" as \"store_sales_customer_birth_country\",
-    customer_address.\"CA_COUNTRY\" as \"store_sales_customer_country\",
-    CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
-    store.\"S_ZIP\" as \"store_sales_store_zip\",
-    customer_address.\"CA_ZIP\" as \"store_sales_customer_zip\",
-    items.\"I_COLOR\" as \"store_sales_item_color\",
-    items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
-    customers.\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
-    customers.\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
-    items.\"I_MANAGER_ID\" as \"store_sales_item_manager_id\",
-    store.\"S_STORE_NAME\" as \"store_sales_store_name\",
-    items.\"I_SIZE\" as \"store_sales_item_size\",
-    customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
-    store.\"S_STATE\" as \"store_sales_store_state\",
-    items.\"I_UNITS\" as \"store_sales_item_units\",
-    store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    items.\"I_ITEM_SK\" as \"store_sales_item_id\"
+    store_sales_store_sales.\"SS_NET_PAID\" as \"store_sales_net_paid\",
+    store_sales_store_store.\"S_MARKET_ID\" as \"store_sales_store_market\",
+    store_sales_customer_customers.\"C_BIRTH_COUNTRY\" as \"store_sales_customer_birth_country\",
+    store_sales_customer_customer_address.\"CA_COUNTRY\" as \"store_sales_customer_country\",
+    CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
+    store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\",
+    store_sales_customer_customer_address.\"CA_ZIP\" as \"store_sales_customer_zip\",
+    store_sales_item_items.\"I_COLOR\" as \"store_sales_item_color\",
+    store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    store_sales_customer_customers.\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
+    store_sales_customer_customers.\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
+    store_sales_item_items.\"I_MANAGER_ID\" as \"store_sales_item_manager_id\",
+    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store_sales_item_items.\"I_SIZE\" as \"store_sales_item_size\",
+    store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
+    store_sales_store_store.\"S_STATE\" as \"store_sales_store_state\",
+    store_sales_item_items.\"I_UNITS\" as \"store_sales_item_units\",
+    store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
+    coalesce(store_sales_store_returns.\"SR_ITEM_SK\",store_sales_item_items.\"I_ITEM_SK\",store_sales_store_sales.\"SS_ITEM_SK\") as \"item_id\"
 FROM
-    memory.item as items
-    INNER JOIN memory.store_sales as store_sales on items.\"I_ITEM_SK\" = store_sales.\"SS_ITEM_SK\"
-    LEFT OUTER JOIN memory.store_returns as store_returns on items.\"I_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_ITEM_SK\" = store_returns.\"SR_ITEM_SK\" AND store_sales.\"SS_TICKET_NUMBER\" = store_returns.\"SR_TICKET_NUMBER\"
-    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
-    INNER JOIN memory.customer as customers on store_sales.\"SS_CUSTOMER_SK\" = customers.\"C_CUSTOMER_SK\"
-    INNER JOIN memory.customer_address as customer_address on customers.\"C_CURRENT_ADDR_SK\" = customer_address.\"CA_ADDRESS_SK\"
+    memory.item as store_sales_item_items
+    INNER JOIN memory.store_returns as store_sales_store_returns on store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
+    FULL JOIN memory.store_sales as store_sales_store_sales on store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_sales.\"SS_ITEM_SK\" AND store_sales_store_returns.\"SR_ITEM_SK\" = store_sales_store_sales.\"SS_ITEM_SK\" AND store_sales_store_returns.\"SR_TICKET_NUMBER\" = store_sales_store_sales.\"SS_TICKET_NUMBER\"
+    LEFT OUTER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
+    FULL JOIN memory.customer as store_sales_customer_customers on store_sales_store_sales.\"SS_CUSTOMER_SK\" = store_sales_customer_customers.\"C_CUSTOMER_SK\"
+    LEFT OUTER JOIN memory.customer_address as store_sales_customer_customer_address on store_sales_customer_customers.\"C_CURRENT_ADDR_SK\" = store_sales_customer_customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    store.\"S_MARKET_ID\" = 8 and customers.\"C_BIRTH_COUNTRY\" != UPPER(customer_address.\"CA_COUNTRY\")  and CASE WHEN store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store.\"S_ZIP\" = customer_address.\"CA_ZIP\"
+    store_sales_store_store.\"S_MARKET_ID\" = 8 and store_sales_customer_customers.\"C_BIRTH_COUNTRY\" != UPPER(store_sales_customer_customer_address.\"CA_COUNTRY\")  and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store_sales_store_store.\"S_ZIP\" = store_sales_customer_customer_address.\"CA_ZIP\"
 ),
 lynx as (
 SELECT
@@ -53,16 +53,16 @@ SELECT
 FROM
     lion
 GROUP BY 
-    lion.\"store_sales_customer_state\",
-    lion.\"store_sales_store_state\",
-    lion.\"store_sales_item_manager_id\",
-    lion.\"store_sales_item_units\",
     lion.\"store_sales_store_name\",
-    lion.\"store_sales_item_color\",
-    lion.\"store_sales_item_current_price\",
-    lion.\"store_sales_customer_last_name\",
+    lion.\"store_sales_item_size\",
+    lion.\"store_sales_store_state\",
+    lion.\"store_sales_customer_state\",
     lion.\"store_sales_customer_first_name\",
-    lion.\"store_sales_item_size\"),
+    lion.\"store_sales_item_manager_id\",
+    lion.\"store_sales_customer_last_name\",
+    lion.\"store_sales_item_current_price\",
+    lion.\"store_sales_item_units\",
+    lion.\"store_sales_item_color\"),
 mamba as (
 SELECT
     lynx.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",

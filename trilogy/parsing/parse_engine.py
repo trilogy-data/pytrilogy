@@ -123,6 +123,13 @@ from trilogy.parsing.common import (
     arbitrary_to_concept,
     process_function_args,
 )
+from dataclasses import dataclass
+
+
+@dataclass
+class WholeGrainWrapper:
+    where: WhereClause
+
 
 CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
@@ -566,8 +573,10 @@ class ParseToObjects(Transformer):
         return args
 
     def grain_clause(self, args) -> Grain:
-        #            namespace=self.environment.namespace,
         return Grain(components=[self.environment.concepts[a] for a in args[0]])
+
+    def whole_grain_clause(self, args) -> WholeGrainWrapper:
+        return WholeGrainWrapper(where=args[0])
 
     def MULTILINE_STRING(self, args) -> str:
         return args[3:-3]
@@ -582,11 +591,14 @@ class ParseToObjects(Transformer):
         grain: Optional[Grain] = None
         address: Optional[Address] = None
         where: Optional[WhereClause] = None
+        non_partial_for: Optional[WhereClause] = None
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
             elif isinstance(val, Grain):
                 grain = val
+            elif isinstance(val, WholeGrainWrapper):
+                non_partial_for = val.where
             elif isinstance(val, Query):
                 address = Address(location=f"({val.text})", is_query=True)
             elif isinstance(val, WhereClause):
@@ -596,7 +608,7 @@ class ParseToObjects(Transformer):
                 "Malformed datasource, missing address or query declaration"
             )
         datasource = Datasource(
-            identifier=name,
+            name=name,
             columns=columns,
             # grain will be set by default from args
             # TODO: move to factory
@@ -604,6 +616,7 @@ class ParseToObjects(Transformer):
             address=address,
             namespace=self.environment.namespace,
             where=where,
+            non_partial_for=non_partial_for,
         )
         for column in columns:
             column.concept = column.concept.with_grain(datasource.grain)
@@ -801,20 +814,10 @@ class ParseToObjects(Transformer):
             except Exception as e:
                 raise ImportError(f"Unable to import file {target}, parsing error: {e}")
 
-        for _, concept in nparser.environment.concepts.items():
-            self.environment.add_concept(
-                concept.with_namespace(alias), _ignore_cache=True
-            )
-
-        for _, datasource in nparser.environment.datasources.items():
-            self.environment.add_datasource(
-                datasource.with_namespace(alias), _ignore_cache=True
-            )
         imps = ImportStatement(
             alias=alias, path=Path(args[0]), environment=nparser.environment
         )
-        self.environment.imports[alias] = imps
-        self.environment.gen_concept_list_caches()
+        self.environment.add_import(alias, nparser.environment, imps)
         return imps
 
     @v_args(meta=True)
@@ -841,7 +844,7 @@ class ParseToObjects(Transformer):
                 if self.environment.namespace
                 else DEFAULT_NAMESPACE
             ),
-            identifier=identifier,
+            name=identifier,
             address=Address(location=address),
             grain=grain,
         )

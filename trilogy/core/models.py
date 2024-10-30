@@ -1719,7 +1719,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
     def to_datasource(
         self,
         namespace: str,
-        identifier: str,
+        name: str,
         address: Address,
         grain: Grain | None = None,
     ) -> Datasource:
@@ -1753,7 +1753,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
                 condition = self.having_clause.conditional
 
         new_datasource = Datasource(
-            identifier=identifier,
+            name=name,
             address=address,
             grain=grain or self.grain,
             columns=columns,
@@ -2059,7 +2059,7 @@ class MergeStatementV2(HasUUID, Namespaced, BaseModel):
 
 
 class Datasource(HasUUID, Namespaced, BaseModel):
-    identifier: str
+    name: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
     grain: Grain = Field(
@@ -2094,10 +2094,14 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         self.add_column(target, original[0].alias, modifiers)
 
     @property
-    def env_label(self) -> str:
+    def identifier(self) -> str:
         if not self.namespace or self.namespace == DEFAULT_NAMESPACE:
-            return self.identifier
-        return f"{self.namespace}.{self.identifier}"
+            return self.name
+        return f"{self.namespace}.{self.name}"
+
+    @property
+    def safe_identifier(self) -> str:
+        return self.identifier.replace(".", "_")
 
     @property
     def condition(self):
@@ -2166,13 +2170,13 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return self
 
     def __repr__(self):
-        return f"Datasource<{self.namespace}.{self.identifier}@<{self.grain}>"
+        return f"Datasource<{self.identifier}@<{self.grain}>"
 
     def __str__(self):
         return self.__repr__()
 
     def __hash__(self):
-        return self.full_name.__hash__()
+        return self.identifier.__hash__()
 
     def with_namespace(self, namespace: str):
         new_namespace = (
@@ -2181,7 +2185,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             else namespace
         )
         return Datasource(
-            identifier=self.identifier,
+            name=self.name,
             namespace=new_namespace,
             grain=self.grain.with_namespace(namespace),
             address=self.address,
@@ -2230,19 +2234,6 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have"
             f" {existing}."
         )
-
-    @property
-    def name(self) -> str:
-        return self.identifier
-        # TODO: namespace all references
-        # return f'{self.namespace}_{self.identifier}'
-
-    @property
-    def full_name(self) -> str:
-        if not self.namespace:
-            return self.identifier
-        namespace = self.namespace.replace(".", "_") if self.namespace else ""
-        return f"{namespace}_{self.identifier}"
 
     @property
     def safe_location(self) -> str:
@@ -2298,7 +2289,7 @@ class BaseJoin(BaseModel):
         super().__init__(**data)
         if (
             self.left_datasource
-            and self.left_datasource.full_name == self.right_datasource.full_name
+            and self.left_datasource.identifier == self.right_datasource.identifier
         ):
             raise SyntaxError(
                 f"Cannot join a dataself to itself, joining {self.left_datasource} and"
@@ -2411,6 +2402,10 @@ class QueryDatasource(BaseModel):
         return f"{self.identifier}@<{self.grain}>"
 
     @property
+    def safe_identifier(self):
+        return self.identifier.replace(".", "_")
+
+    @property
     def non_partial_concept_addresses(self) -> List[str]:
         return [
             c.address
@@ -2475,10 +2470,6 @@ class QueryDatasource(BaseModel):
         return self.identifier
 
     @property
-    def full_name(self):
-        return self.identifier
-
-    @property
     def group_required(self) -> bool:
         if self.force_group is True:
             return True
@@ -2524,10 +2515,12 @@ class QueryDatasource(BaseModel):
         merged_datasources = {}
 
         for ds in [*self.datasources, *other.datasources]:
-            if ds.full_name in merged_datasources:
-                merged_datasources[ds.full_name] = merged_datasources[ds.full_name] + ds
+            if ds.safe_identifier in merged_datasources:
+                merged_datasources[ds.safe_identifier] = (
+                    merged_datasources[ds.safe_identifier] + ds
+                )
             else:
-                merged_datasources[ds.full_name] = ds
+                merged_datasources[ds.safe_identifier] = ds
 
         final_source_map = defaultdict(set)
         for key in self.source_map:
@@ -2538,7 +2531,9 @@ class QueryDatasource(BaseModel):
             if key not in final_source_map:
                 final_source_map[key] = other.source_map[key]
         for k, v in final_source_map.items():
-            final_source_map[k] = set(merged_datasources[x.full_name] for x in list(v))
+            final_source_map[k] = set(
+                merged_datasources[x.safe_identifier] for x in list(v)
+            )
         self_hidden = self.hidden_concepts or []
         other_hidden = other.hidden_concepts or []
         hidden = [x for x in self_hidden if x.address in other_hidden]
@@ -2578,7 +2573,7 @@ class QueryDatasource(BaseModel):
         )
         # partial = "_".join([str(c.address).replace(".", "_") for c in self.partial_concepts])
         return (
-            "_join_".join([d.full_name for d in self.datasources])
+            "_join_".join([d.identifier for d in self.datasources])
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
             # + (f"_partial_{partial}" if partial else "")
@@ -2594,8 +2589,9 @@ class QueryDatasource(BaseModel):
         for x in self.datasources:
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
+            #
             use_raw_name = isinstance(x, Datasource) and not force_alias
-            if source and x.identifier != source:
+            if source and x.safe_identifier != source:
                 continue
             try:
                 return x.get_alias(
@@ -2648,6 +2644,14 @@ class CTE(BaseModel):
     limit: Optional[int] = None
     base_name_override: Optional[str] = None
     base_alias_override: Optional[str] = None
+
+    @property
+    def identifier(self):
+        return self.name
+
+    @property
+    def safe_identifier(self):
+        return self.name
 
     @computed_field  # type: ignore
     @property
@@ -2746,7 +2750,7 @@ class CTE(BaseModel):
             return False
         if any(
             [
-                x.identifier == ds_being_inlined.identifier
+                x.safe_identifier == ds_being_inlined.safe_identifier
                 for x in self.source.datasources
             ]
         ):
@@ -2757,39 +2761,49 @@ class CTE(BaseModel):
             *[
                 x
                 for x in self.source.datasources
-                if x.identifier != qds_being_inlined.identifier
+                if x.safe_identifier != qds_being_inlined.safe_identifier
             ],
         ]
         # need to identify this before updating joins
         if self.base_name == parent.name:
             self.base_name_override = ds_being_inlined.safe_location
-            self.base_alias_override = ds_being_inlined.identifier
+            self.base_alias_override = ds_being_inlined.safe_identifier
 
         for join in self.joins:
             if isinstance(join, InstantiatedUnnestJoin):
                 continue
-            if join.left_cte and join.left_cte.name == parent.name:
+            if (
+                join.left_cte
+                and join.left_cte.safe_identifier == parent.safe_identifier
+            ):
                 join.inline_cte(parent)
             if join.joinkey_pairs:
                 for pair in join.joinkey_pairs:
-                    if pair.cte and pair.cte.name == parent.name:
+                    if pair.cte and pair.cte.safe_identifier == parent.safe_identifier:
                         join.inline_cte(parent)
-            if join.right_cte.name == parent.name:
+            if join.right_cte.safe_identifier == parent.safe_identifier:
                 join.inline_cte(parent)
         for k, v in self.source_map.items():
             if isinstance(v, list):
                 self.source_map[k] = [
-                    ds_being_inlined.name if x == parent.name else x for x in v
+                    (
+                        ds_being_inlined.safe_identifier
+                        if x == parent.safe_identifier
+                        else x
+                    )
+                    for x in v
                 ]
-            elif v == parent.name:
-                self.source_map[k] = [ds_being_inlined.name]
+            elif v == parent.safe_identifier:
+                self.source_map[k] = [ds_being_inlined.safe_identifier]
 
         # zip in any required values for lookups
         for k in ds_being_inlined.output_lcl.addresses:
             if k in self.source_map and self.source_map[k]:
                 continue
-            self.source_map[k] = [ds_being_inlined.name]
-        self.parent_ctes = [x for x in self.parent_ctes if x.name != parent.name]
+            self.source_map[k] = [ds_being_inlined.safe_identifier]
+        self.parent_ctes = [
+            x for x in self.parent_ctes if x.safe_identifier != parent.safe_identifier
+        ]
         if force_group:
             self.group_to_grain = True
         return True
@@ -3006,28 +3020,22 @@ class Join(BaseModel):
     def inline_cte(self, cte: CTE):
         self.inlined_ctes.add(cte.name)
 
-    # @property
-    # def left_name(self) -> str:
-    #     if self.left_cte.name in self.inlined_ctes:
-    #         return self.left_cte.source.datasources[0].identifier
-    #     return self.left_cte.name
-
     def get_name(self, cte: CTE):
-        if cte.name in self.inlined_ctes:
-            return cte.source.datasources[0].identifier
-        return cte.name
+        if cte.identifier in self.inlined_ctes:
+            return cte.source.datasources[0].safe_identifier
+        return cte.safe_identifier
 
     @property
     def right_name(self) -> str:
-        if self.right_cte.name in self.inlined_ctes:
-            return self.right_cte.source.datasources[0].identifier
-        return self.right_cte.name
+        if self.right_cte.identifier in self.inlined_ctes:
+            return self.right_cte.source.datasources[0].safe_identifier
+        return self.right_cte.safe_identifier
 
     @property
     def right_ref(self) -> str:
-        if self.right_cte.name in self.inlined_ctes:
-            return f"{self.right_cte.source.datasources[0].safe_location} as {self.right_cte.source.datasources[0].identifier}"
-        return self.right_cte.name
+        if self.right_cte.identifier in self.inlined_ctes:
+            return f"{self.right_cte.source.datasources[0].safe_location} as {self.right_cte.source.datasources[0].safe_identifier}"
+        return self.right_cte.safe_identifier
 
     @property
     def unique_id(self) -> str:
@@ -3306,7 +3314,9 @@ class Environment(BaseModel):
     ] = Field(default_factory=EnvironmentDatasourceDict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
-    imports: Dict[str, ImportStatement] = Field(default_factory=dict)
+    imports: Dict[str, list[ImportStatement]] = Field(
+        default_factory=lambda: defaultdict(list)
+    )
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
@@ -3420,14 +3430,28 @@ class Environment(BaseModel):
             f"Assignment to concept '{lookup}'  is a duplicate declaration;"
         )
 
-    def add_import(self, alias: str, environment: Environment):
-        self.imports[alias] = ImportStatement(
-            alias=alias, path=Path(environment.working_path)
-        )
-        for key, concept in environment.concepts.items():
-            self.concepts[f"{alias}.{key}"] = concept.with_namespace(alias)
-        for key, datasource in environment.datasources.items():
-            self.datasources[f"{alias}.{key}"] = datasource.with_namespace(alias)
+    def add_import(
+        self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
+    ):
+        exists = False
+        existing = self.imports[alias]
+        if imp_stm:
+            if any([x.path == imp_stm.path for x in existing]):
+                exists = True
+
+        else:
+            if any([x.path == source.working_path for x in existing]):
+                exists = True
+            imp_stm = ImportStatement(alias=alias, path=Path(source.working_path))
+
+        if not exists:
+            self.imports[alias].append(imp_stm)
+
+        for _, concept in source.concepts.items():
+            self.add_concept(concept.with_namespace(alias), _ignore_cache=True)
+
+        for _, datasource in source.datasources.items():
+            self.add_datasource(datasource.with_namespace(alias), _ignore_cache=True)
         self.gen_concept_list_caches()
         return self
 
@@ -3438,18 +3462,15 @@ class Environment(BaseModel):
         apath[-1] = apath[-1] + ".preql"
 
         target: Path = Path(self.working_path, *apath)
+        if alias in self.imports:
+            imports = self.imports[alias]
+            for x in imports:
+                if x.path == target:
+                    return imports
         if env:
-            self.imports[alias] = ImportStatement(
-                alias=alias, path=target, environment=env
+            self.imports[alias].append(
+                ImportStatement(alias=alias, path=target, environment=env)
             )
-
-        elif alias in self.imports:
-            current = self.imports[alias]
-            env = self.imports[alias].environment
-            if current.path != target:
-                raise ImportError(
-                    f"Attempted to import {target} with alias {alias} but {alias} is already imported from {current.path}"
-                )
         else:
             try:
                 with open(target, "r", encoding="utf-8") as f:
@@ -3468,14 +3489,13 @@ class Environment(BaseModel):
                     f"Unable to import file {target.parent}, parsing error: {e}"
                 )
             env = nparser.environment
-        if env:
-            for _, concept in env.concepts.items():
-                self.add_concept(concept.with_namespace(alias))
+        for _, concept in env.concepts.items():
+            self.add_concept(concept.with_namespace(alias))
 
-            for _, datasource in env.datasources.items():
-                self.add_datasource(datasource.with_namespace(alias))
+        for _, datasource in env.datasources.items():
+            self.add_datasource(datasource.with_namespace(alias))
         imps = ImportStatement(alias=alias, path=target, environment=env)
-        self.imports[alias] = imps
+        self.imports[alias].append(imps)
         return imps
 
     def parse(
@@ -3538,8 +3558,14 @@ class Environment(BaseModel):
         meta: Meta | None = None,
         _ignore_cache: bool = False,
     ):
-        self.datasources[datasource.env_label] = datasource
+        self.datasources[datasource.identifier] = datasource
+
+        eligible_to_promote_roots = datasource.non_partial_for is None
+        # mark this as canonical source
         for current_concept in datasource.output_concepts:
+            if not eligible_to_promote_roots:
+                continue
+
             current_derivation = current_concept.derivation
             # TODO: refine this section;
             # too hacky for maintainability

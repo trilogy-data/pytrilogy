@@ -89,8 +89,8 @@ def deduplicate_nodes_and_joins(
             joins = [
                 j
                 for j in joins
-                if j.left_node.resolve().full_name not in removed
-                and j.right_node.resolve().full_name not in removed
+                if j.left_node.resolve().identifier not in removed
+                and j.right_node.resolve().identifier not in removed
             ]
     return joins, merged
 
@@ -155,8 +155,8 @@ class MergeNode(StrategyNode):
         for join in node_joins:
             left = join.left_node.resolve()
             right = join.right_node.resolve()
-            if left.full_name == right.full_name:
-                raise SyntaxError(f"Cannot join node {left.full_name} to itself")
+            if left.identifier == right.identifier:
+                raise SyntaxError(f"Cannot join node {left.identifier} to itself")
             joins.append(
                 BaseJoin(
                     left_datasource=left,
@@ -168,7 +168,7 @@ class MergeNode(StrategyNode):
             )
         return joins
 
-    def create_full_joins(self, dataset_list: List[QueryDatasource]):
+    def create_full_joins(self, dataset_list: List[QueryDatasource | Datasource]):
         joins = []
         seen = set()
         for left_value in dataset_list:
@@ -198,7 +198,7 @@ class MergeNode(StrategyNode):
         environment: Environment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
-        dataset_list: List[QueryDatasource] = sorted(
+        dataset_list: List[QueryDatasource | Datasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components_copy)
         )
 
@@ -238,13 +238,13 @@ class MergeNode(StrategyNode):
         merged: dict[str, QueryDatasource | Datasource] = {}
         final_joins: List[NodeJoin] | None = self.node_joins
         for source in parent_sources:
-            if source.full_name in merged:
+            if source.identifier in merged:
                 logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} merging parent node with {source.full_name} into existing"
+                    f"{self.logging_prefix}{LOGGER_PREFIX} merging parent node with {source.identifier} into existing"
                 )
-                merged[source.full_name] = merged[source.full_name] + source
+                merged[source.identifier] = merged[source.identifier] + source
             else:
-                merged[source.full_name] = source
+                merged[source.identifier] = source
 
         # it's possible that we have more sources than we need
         final_joins, merged = deduplicate_nodes_and_joins(

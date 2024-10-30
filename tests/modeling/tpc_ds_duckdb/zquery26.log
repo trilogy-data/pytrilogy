@@ -1,34 +1,34 @@
 query_id = 26
-parse_time = 0.744158
-exec_time = 0.412787
-comp_time = 0.099938
-gen_length = 1898
+parse_time = 1.095776
+exec_time = 0.146199
+comp_time = 0.10568
+gen_length = 2312
 generated_sql = """
 
 WITH 
 canary as (
 SELECT
-    catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
-    customer_demographics.\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
-    customer_demographics.\"CD_MARITAL_STATUS\" as \"cs_bill_customer_demographic_marital_status\",
-    customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
-    promotion.\"P_CHANNEL_EMAIL\" as \"cs_promotion_channel_email\",
-    promotion.\"P_CHANNEL_EVENT\" as \"cs_promotion_channel_event\",
-    cast(\"D_YEAR\" as int) as \"cs_date_year\",
-    items.\"I_ITEM_ID\" as \"cs_item_name\",
-    catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    items.\"I_ITEM_SK\" as \"cs_item_id\",
-    catalog_sales.\"CS_LIST_PRICE\" as \"cs_list_price\",
-    catalog_sales.\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
-    catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\"
+    cs_catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
+    cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
+    cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" as \"cs_bill_customer_demographic_marital_status\",
+    cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
+    cs_promotion_promotion.\"P_CHANNEL_EMAIL\" as \"cs_promotion_channel_email\",
+    cs_promotion_promotion.\"P_CHANNEL_EVENT\" as \"cs_promotion_channel_event\",
+    cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
+    cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\",
+    cs_catalog_sales.\"CS_LIST_PRICE\" as \"cs_list_price\",
+    cs_catalog_sales.\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
+    cs_catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\"
 FROM
-    memory.item as items
-    INNER JOIN memory.catalog_sales as catalog_sales on items.\"I_ITEM_SK\" = catalog_sales.\"CS_ITEM_SK\"
-    INNER JOIN memory.promotion as promotion on catalog_sales.\"CS_PROMO_SK\" = promotion.\"P_PROMO_SK\"
-    INNER JOIN memory.date_dim as date on catalog_sales.\"CS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.customer_demographics as customer_demographics on catalog_sales.\"CS_BILL_CDEMO_SK\" = customer_demographics.\"CD_DEMO_SK\"
+    memory.promotion as cs_promotion_promotion
+    INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_promotion_promotion.\"P_PROMO_SK\" = cs_catalog_sales.\"CS_PROMO_SK\"
+    INNER JOIN memory.customer_demographics as cs_bill_customer_demographic_customer_demographics on cs_catalog_sales.\"CS_BILL_CDEMO_SK\" = cs_bill_customer_demographic_customer_demographics.\"CD_DEMO_SK\"
+    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as cs_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_date_date.\"D_DATE_SK\"
 WHERE
-    customer_demographics.\"CD_GENDER\" = 'M' and customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( promotion.\"P_CHANNEL_EMAIL\" = 'N' or promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(\"D_YEAR\" as int) = 2000
+    cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000
 )
 SELECT
     canary.\"cs_item_name\" as \"cs_item_name\",
