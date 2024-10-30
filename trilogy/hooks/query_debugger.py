@@ -77,7 +77,11 @@ def print_recursive_nodes(
             ]
         ]
     for child in input.parents:
-        display += print_recursive_nodes(child, mode=mode, depth=depth + 1)
+        display += print_recursive_nodes(
+            child,
+            mode=mode,
+            depth=depth + 1,
+        )
     return display
 
 

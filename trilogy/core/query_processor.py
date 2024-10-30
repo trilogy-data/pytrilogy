@@ -5,7 +5,7 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.enums import BooleanOperator
-from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
+from trilogy.constants import CONFIG
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, History
 from trilogy.core.models import (
     Concept,
