@@ -49,7 +49,7 @@ class SelectNode(StrategyNode):
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: List[Concept] | None = None,
-        render_condition: bool = True
+        render_condition: bool = True,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -66,7 +66,7 @@ class SelectNode(StrategyNode):
             conditions=conditions,
             preexisting_conditions=preexisting_conditions,
             hidden_concepts=hidden_concepts,
-            render_condition =render_condition
+            render_condition=render_condition,
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
@@ -131,7 +131,7 @@ class SelectNode(StrategyNode):
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
         datasource = Datasource(
-            identifier=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
+            name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
         return QueryDatasource(
             input_concepts=[],

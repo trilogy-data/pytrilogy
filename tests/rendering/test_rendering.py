@@ -434,7 +434,11 @@ def test_render_datasource():
     test = Renderer().to_string(
         Datasource(
             identifier="useful_data",
-            columns=[ColumnAssignment(alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL])],
+            columns=[
+                ColumnAssignment(
+                    alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL]
+                )
+            ],
             address="customers.dim_customers",
             grain=Grain(components=[user_id]),
             where=WhereClause(
@@ -454,11 +458,11 @@ def test_render_datasource():
             ),
             non_partial_for=WhereClause(
                 conditional=Comparison(
-                        left=user_id,
-                        right=123,
-                        operator=ComparisonOperator.EQ,
-                    )
-            )
+                    left=user_id,
+                    right=123,
+                    operator=ComparisonOperator.EQ,
+                )
+            ),
         )
     )
     assert (
@@ -648,9 +652,8 @@ final_zips;
     )
 
 
-
 def test_render_environment():
-    x = Environment(working_path = Path(__file__).parent)
+    x = Environment(working_path=Path(__file__).parent)
     x.parse(
         """import a;
         import b;

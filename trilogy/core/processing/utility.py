@@ -296,7 +296,7 @@ def add_node_join_concept(
 
 
 def resolve_instantiated_concept(
-    concept: Concept, datasource: QueryDatasource
+    concept: Concept, datasource: QueryDatasource | Datasource
 ) -> Concept:
     if concept.address in datasource.output_concepts:
         return concept
@@ -316,10 +316,10 @@ def get_node_joins(
 
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
-    ds_node_map: dict[str, QueryDatasource] = {}
+    ds_node_map: dict[str, QueryDatasource | Datasource] = {}
     concept_map: dict[str, Concept] = {}
     for datasource in datasources:
-        ds_node = f"ds~{datasource.full_name}"
+        ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
         graph.add_node(ds_node, type=NodeType.NODE)
         partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]

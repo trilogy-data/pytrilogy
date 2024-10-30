@@ -1,7 +1,7 @@
 query_id = 8
-parse_time = 3.635269
-exec_time = 0.138497
-comp_time = 0.097331
+parse_time = 3.72098
+exec_time = 0.175637
+comp_time = 0.127566
 gen_length = 6812
 generated_sql = """
 
@@ -79,9 +79,9 @@ SELECT
     store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\"
 FROM
-    memory.date_dim as date
-    INNER JOIN memory.store_sales as store_sales on date.\"D_DATE_SK\" = store_sales.\"SS_SOLD_DATE_SK\"
-    INNER JOIN memory.store as store on store_sales.\"SS_STORE_SK\" = store.\"S_STORE_SK\"
+    memory.store as store
+    INNER JOIN memory.store_sales as store_sales on store.\"S_STORE_SK\" = store_sales.\"SS_STORE_SK\"
+    INNER JOIN memory.date_dim as date on store_sales.\"SS_SOLD_DATE_SK\" = date.\"D_DATE_SK\"
 WHERE
     date.\"D_QOY\" = 2 and cast(\"D_YEAR\" as int) = 1998 and SUBSTRING(store.\"S_ZIP\",1,2) in (select bewildered.\"final_zips\" from bewildered where bewildered.\"final_zips\" is not null)
 )

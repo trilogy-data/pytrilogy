@@ -250,8 +250,6 @@ def test_derivations_reparse_new():
         assert "CASE" in compiled[-1]
 
 
-
-
 def test_persist_with_where():
     declarations = """
     key category_id int;
@@ -306,5 +304,4 @@ def test_persist_with_where():
 
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]
-        assert 'category_id' not in compiled[-1]
-
+        assert "category_id" not in compiled[-1]

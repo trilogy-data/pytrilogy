@@ -63,14 +63,14 @@ class InlineDatasource(OptimizationRule):
         for replaceable in to_inline:
             if replaceable.name not in self.candidates[cte.name]:
                 self.candidates[cte.name].add(replaceable.name)
-                self.count[replaceable.source.name] += 1
+                self.count[replaceable.source.identifier] += 1
                 return True
             if (
-                self.count[replaceable.source.name]
+                self.count[replaceable.source.identifier]
                 > CONFIG.optimizations.constant_inline_cutoff
             ):
                 self.log(
-                    f"Skipping inlining raw datasource {replaceable.source.name} ({replaceable.name}) due to multiple references"
+                    f"Skipping inlining raw datasource {replaceable.source.identifier} ({replaceable.name}) due to multiple references"
                 )
                 continue
             if not replaceable.source.datasources[0].grain.issubset(replaceable.grain):
@@ -81,7 +81,7 @@ class InlineDatasource(OptimizationRule):
             result = cte.inline_parent_datasource(replaceable, force_group=force_group)
             if result:
                 self.log(
-                    f"Inlined parent {replaceable.name} with {replaceable.source.name}"
+                    f"Inlined parent {replaceable.name} with {replaceable.source.identifier}"
                 )
                 optimized = True
             else:

@@ -6,7 +6,7 @@ from trilogy.core.models import Concept, Datasource
 def concept_to_node(input: Concept) -> str:
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.namespace}.{input.name}@{input.grain}"
+    return f"c~{input.address}@{input.grain}"
 
 
 def datasource_to_node(input: Datasource) -> str:
@@ -14,7 +14,7 @@ def datasource_to_node(input: Datasource) -> str:
     #     return "ds~join~" + ",".join(
     #         [datasource_to_node(sub) for sub in input.datasources]
     #     )
-    return f"ds~{input.namespace}.{input.identifier}"
+    return f"ds~{input.identifier}"
 
 
 class ReferenceGraph(nx.DiGraph):

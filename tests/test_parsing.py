@@ -491,8 +491,6 @@ select x;
     assert "abcdef as test" in results, results
 
 
-
-
 def test_datasource_where_equivalent():
 
     text = """

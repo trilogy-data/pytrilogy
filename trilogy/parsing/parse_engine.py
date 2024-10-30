@@ -125,9 +125,11 @@ from trilogy.parsing.common import (
 )
 from dataclasses import dataclass
 
+
 @dataclass
 class WholeGrainWrapper:
-    where:WhereClause
+    where: WhereClause
+
 
 CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
@@ -572,10 +574,9 @@ class ParseToObjects(Transformer):
 
     def grain_clause(self, args) -> Grain:
         return Grain(components=[self.environment.concepts[a] for a in args[0]])
-    
-    def whole_grain_clause(self, args) -> Grain:
-        return WholeGrainWrapper(where=args[0])
 
+    def whole_grain_clause(self, args) -> WholeGrainWrapper:
+        return WholeGrainWrapper(where=args[0])
 
     def MULTILINE_STRING(self, args) -> str:
         return args[3:-3]
@@ -607,7 +608,7 @@ class ParseToObjects(Transformer):
                 "Malformed datasource, missing address or query declaration"
             )
         datasource = Datasource(
-            identifier=name,
+            name=name,
             columns=columns,
             # grain will be set by default from args
             # TODO: move to factory
@@ -813,22 +814,10 @@ class ParseToObjects(Transformer):
             except Exception as e:
                 raise ImportError(f"Unable to import file {target}, parsing error: {e}")
 
-        for _, concept in nparser.environment.concepts.items():
-            self.environment.add_concept(
-                concept.with_namespace(alias), _ignore_cache=True
-            )
-
-        for _, datasource in nparser.environment.datasources.items():
-            self.environment.add_datasource(
-                datasource.with_namespace(alias), _ignore_cache=True
-            )
         imps = ImportStatement(
             alias=alias, path=Path(args[0]), environment=nparser.environment
         )
-        exists = any(x.path == imps.path for x in self.environment.imports[alias])
-        if not exists:
-            self.environment.imports[alias].append(imps)
-        self.environment.gen_concept_list_caches()
+        self.environment.add_import(alias, nparser.environment, imps)
         return imps
 
     @v_args(meta=True)

@@ -165,7 +165,7 @@ class StrategyNode:
         hidden_concepts: List[Concept] | None = None,
         existence_concepts: List[Concept] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
-        render_condition:bool = True,
+        render_condition: bool = True,
     ):
         self.input_concepts: List[Concept] = (
             unique(input_concepts, "address") if input_concepts else []

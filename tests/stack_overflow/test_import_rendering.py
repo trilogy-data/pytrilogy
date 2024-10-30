@@ -50,14 +50,14 @@ def test_select():
 
 def test_import_violation():
     env = Environment(working_path=dirname(__file__))
-    env.add_file_import(path="so_concepts.circular", alias="c1")
 
-    try:
-        env.add_file_import(path="so_concepts.circular_dep", alias="c1")
-    except ImportError:
-        assert True
-    else:
-        assert False
+    # dupe additions result in nothing
+    env.add_file_import(path="so_concepts.circular", alias="c1")
+    env.add_file_import(path="so_concepts.circular", alias="c1")
+    # new path is new import
+    env.add_file_import(path="so_concepts.circular_dep", alias="c1")
+
+    assert len(env.imports["c1"]) == 2
 
 
 def test_circular_base():

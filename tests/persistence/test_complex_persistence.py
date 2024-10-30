@@ -1,5 +1,4 @@
-from trilogy import Environment
-from trilogy import Dialects
+from trilogy import Environment, Dialects
 from pathlib import Path
 from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -41,4 +40,12 @@ def test_complex():
 
 
 def test_persist_in_import():
-    assert 1 == 0
+    env = Environment(
+        working_path=Path(__file__).parent
+    )  # .parse_file(Path(__file__).parent / "query_one.preql")
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+
+    results = engine.execute_file(Path(__file__).parent / "query_one.preql")
+    rlist = results[-1].fetchall()
+    assert len(rlist) == 4
+    assert rlist[0] == (4, "two")

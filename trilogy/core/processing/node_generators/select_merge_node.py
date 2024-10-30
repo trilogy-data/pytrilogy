@@ -241,12 +241,15 @@ def create_select_node(
         g=g,
         parents=[],
         depth=depth,
-        partial_concepts=[] if partial_is_full else [c for c in all_concepts if c in partial_lcl],
+        partial_concepts=(
+            [] if partial_is_full else [c for c in all_concepts if c in partial_lcl]
+        ),
         nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
         accept_partial=accept_partial,
         datasource=datasource,
         grain=Grain(components=all_concepts),
         conditions=datasource.where.conditional if datasource.where else None,
+        render_condition=not partial_is_full,
     )
 
     # we need to nest the group node one further
@@ -314,7 +317,7 @@ def gen_select_merge_node(
             accept_partial=accept_partial,
             environment=environment,
             depth=depth,
-            conditions=conditions
+            conditions=conditions,
         )
         for k, subgraph in sub_nodes.items()
     ]

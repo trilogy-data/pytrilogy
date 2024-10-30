@@ -80,7 +80,7 @@ class Renderer:
         metrics = []
         # first, keys
         for concept in arg.concepts.values():
-            if '__preql_internal' in concept.address:
+            if "__preql_internal" in concept.address:
                 continue
 
             # don't render anything that came from an import
@@ -125,8 +125,7 @@ class Renderer:
             for datasource in arg.datasources.values()
             if datasource.namespace == DEFAULT_NAMESPACE
         ]
-        rendered_imports = [
-        ]
+        rendered_imports = []
         for _, imports in arg.imports.items():
             for import_statement in imports:
                 rendered_imports.append(self.to_string(import_statement))
@@ -137,7 +136,7 @@ class Renderer:
             components.append(rendered_concepts)
         if rendered_datasources:
             components.append(rendered_datasources)
-        
+
         final = "\n\n".join("\n".join(x) for x in components)
         return final
 
@@ -145,7 +144,7 @@ class Renderer:
     def _(self, arg: Datasource):
         assignments = ",\n    ".join([self.to_string(x) for x in arg.columns])
         if arg.non_partial_for:
-            non_partial= f"\ncomplete where {self.to_string(arg.non_partial_for)}"
+            non_partial = f"\ncomplete where {self.to_string(arg.non_partial_for)}"
         else:
             non_partial = ""
         base = f"""datasource {arg.name} (
@@ -153,7 +152,7 @@ class Renderer:
     )
 {self.to_string(arg.grain)}{non_partial}
 {self.to_string(arg.address)}"""
-    
+
         if arg.where:
             base += f"\nwhere {self.to_string(arg.where)}"
 
@@ -226,7 +225,9 @@ class Renderer:
     @to_string.register
     def _(self, arg: "ColumnAssignment"):
         if arg.modifiers:
-            modifiers = "".join([self.to_string(modifier) for modifier in arg.modifiers])
+            modifiers = "".join(
+                [self.to_string(modifier) for modifier in arg.modifiers]
+            )
         else:
             modifiers = ""
         if isinstance(arg.alias, str):

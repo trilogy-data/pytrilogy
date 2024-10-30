@@ -1,7 +1,7 @@
 query_id = 21
-parse_time = 6.248765
-exec_time = 0.136523
-comp_time = 0.068338
+parse_time = 4.522702
+exec_time = 0.047403
+comp_time = 0.031248
 gen_length = 2540
 generated_sql = """
 
@@ -16,10 +16,10 @@ SELECT
     date.\"D_DATE_SK\" as \"inventory_date_id\",
     warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
 FROM
-    memory.date_dim as date
-    INNER JOIN memory.inventory as warehouse_inventory on date.\"D_DATE_SK\" = warehouse_inventory.\"inv_date_sk\"
+    memory.warehouse as warehouse
+    INNER JOIN memory.inventory as warehouse_inventory on warehouse.\"w_warehouse_sk\" = warehouse_inventory.\"inv_warehouse_sk\"
+    INNER JOIN memory.date_dim as date on warehouse_inventory.\"inv_date_sk\" = date.\"D_DATE_SK\"
     INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"
-    INNER JOIN memory.warehouse as warehouse on warehouse_inventory.\"inv_warehouse_sk\" = warehouse.\"w_warehouse_sk\"
 WHERE
     cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
 )
