@@ -2403,7 +2403,7 @@ class QueryDatasource(BaseModel):
 
     @property
     def safe_identifier(self):
-        return self.identifier
+        return self.identifier.replace(".", "_")
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
