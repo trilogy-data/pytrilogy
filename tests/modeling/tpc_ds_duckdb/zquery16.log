@@ -1,20 +1,20 @@
 query_id = 16
-parse_time = 43.837045
-exec_time = 0.395955
-comp_time = 0.059532
+parse_time = 31.891937
+exec_time = 0.434694
+comp_time = 0.03455
 gen_length = 5078
 generated_sql = """
 
 WITH 
 deeply as (
 SELECT
-    cs_catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
 GROUP BY 
-    cs_catalog_sales.\"CS_WAREHOUSE_SK\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\"),
+    cs_catalog_sales.\"CS_ORDER_NUMBER\",
+    cs_catalog_sales.\"CS_WAREHOUSE_SK\"),
 ruthless as (
 SELECT
     cr_catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
@@ -44,20 +44,20 @@ GROUP BY
     badger.\"multi_warehouse_sales\"),
 imported as (
 SELECT
-    cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
-    cs_catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\"
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
+    cs_catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
 WHERE
     cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select ruthless.\"cr_order_number\" from ruthless where ruthless.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select barracuda.\"multi_warehouse_sales\" from barracuda where barracuda.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    cs_catalog_sales.\"CS_ORDER_NUMBER\",
+    cs_catalog_sales.\"CS_CALL_CENTER_SK\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\",
-    cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
-    cs_catalog_sales.\"CS_CALL_CENTER_SK\"),
+    cs_catalog_sales.\"CS_ORDER_NUMBER\",
+    cs_catalog_sales.\"CS_SHIP_ADDR_SK\"),
 cheetah as (
 SELECT
     cs_catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
@@ -70,8 +70,8 @@ SELECT
 FROM
     memory.customer_address as cs_customer_customer_address
     INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_customer_customer_address.\"CA_ADDRESS_SK\" = cs_catalog_sales.\"CS_SHIP_ADDR_SK\"
-    INNER JOIN memory.date_dim as cs_ship_date_date on cs_catalog_sales.\"CS_SHIP_DATE_SK\" = cs_ship_date_date.\"D_DATE_SK\"
     INNER JOIN memory.call_center as cs_call_center_call_center on cs_catalog_sales.\"CS_CALL_CENTER_SK\" = cs_call_center_call_center.\"CC_CALL_CENTER_SK\"
+    INNER JOIN memory.date_dim as cs_ship_date_date on cs_catalog_sales.\"CS_SHIP_DATE_SK\" = cs_ship_date_date.\"D_DATE_SK\"
 WHERE
     cast(cs_ship_date_date.\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(cs_ship_date_date.\"D_DATE\" as date) <= cast('2002-04-02' as date) and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select ruthless.\"cr_order_number\" from ruthless where ruthless.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select barracuda.\"multi_warehouse_sales\" from barracuda where barracuda.\"multi_warehouse_sales\" is not null)
 ),
@@ -84,8 +84,8 @@ SELECT
 FROM
     memory.customer_address as cs_customer_customer_address
     INNER JOIN imported on cs_customer_customer_address.\"CA_ADDRESS_SK\" = imported.\"cs_customer_address_id\"
-    INNER JOIN memory.call_center as cs_call_center_call_center on imported.\"cs_call_center_id\" = cs_call_center_call_center.\"CC_CALL_CENTER_SK\"
     INNER JOIN memory.date_dim as cs_ship_date_date on imported.\"cs_ship_date_id\" = cs_ship_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.call_center as cs_call_center_call_center on imported.\"cs_call_center_id\" = cs_call_center_call_center.\"CC_CALL_CENTER_SK\"
 WHERE
     cast(cs_ship_date_date.\"D_DATE\" as date) >= cast('2002-02-01' as date) and cast(cs_ship_date_date.\"D_DATE\" as date) <= cast('2002-04-02' as date) and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and imported.\"cs_order_number\" not in (select ruthless.\"cr_order_number\" from ruthless where ruthless.\"cr_order_number\" is not null) and imported.\"cs_order_number\" in (select barracuda.\"multi_warehouse_sales\" from barracuda where barracuda.\"multi_warehouse_sales\" is not null)
 ),

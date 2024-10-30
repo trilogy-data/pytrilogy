@@ -1,7 +1,7 @@
 query_id = 24
-parse_time = 2.35293
-exec_time = 1.011691
-comp_time = 0.596936
+parse_time = 2.280103
+exec_time = 0.973271
+comp_time = 0.56917
 gen_length = 6475
 generated_sql = """
 
@@ -30,9 +30,9 @@ SELECT
 FROM
     memory.item as store_sales_item_items
     INNER JOIN memory.store_returns as store_sales_store_returns on store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
-    FULL JOIN memory.store_sales as store_sales_store_sales on store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_sales.\"SS_ITEM_SK\" AND store_sales_store_returns.\"SR_TICKET_NUMBER\" = store_sales_store_sales.\"SS_TICKET_NUMBER\" AND store_sales_store_returns.\"SR_ITEM_SK\" = store_sales_store_sales.\"SS_ITEM_SK\"
-    FULL JOIN memory.customer as store_sales_customer_customers on store_sales_store_sales.\"SS_CUSTOMER_SK\" = store_sales_customer_customers.\"C_CUSTOMER_SK\"
+    FULL JOIN memory.store_sales as store_sales_store_sales on store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_sales.\"SS_ITEM_SK\" AND store_sales_store_returns.\"SR_ITEM_SK\" = store_sales_store_sales.\"SS_ITEM_SK\" AND store_sales_store_returns.\"SR_TICKET_NUMBER\" = store_sales_store_sales.\"SS_TICKET_NUMBER\"
     LEFT OUTER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
+    FULL JOIN memory.customer as store_sales_customer_customers on store_sales_store_sales.\"SS_CUSTOMER_SK\" = store_sales_customer_customers.\"C_CUSTOMER_SK\"
     LEFT OUTER JOIN memory.customer_address as store_sales_customer_customer_address on store_sales_customer_customers.\"C_CURRENT_ADDR_SK\" = store_sales_customer_customer_address.\"CA_ADDRESS_SK\"
 WHERE
     store_sales_store_store.\"S_MARKET_ID\" = 8 and store_sales_customer_customers.\"C_BIRTH_COUNTRY\" != UPPER(store_sales_customer_customer_address.\"CA_COUNTRY\")  and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END is True and store_sales_store_store.\"S_ZIP\" = store_sales_customer_customer_address.\"CA_ZIP\"
@@ -54,15 +54,15 @@ FROM
     lion
 GROUP BY 
     lion.\"store_sales_store_name\",
-    lion.\"store_sales_item_current_price\",
-    lion.\"store_sales_customer_state\",
-    lion.\"store_sales_item_color\",
-    lion.\"store_sales_customer_last_name\",
-    lion.\"store_sales_store_state\",
     lion.\"store_sales_item_size\",
-    lion.\"store_sales_item_units\",
+    lion.\"store_sales_store_state\",
+    lion.\"store_sales_customer_state\",
+    lion.\"store_sales_customer_first_name\",
     lion.\"store_sales_item_manager_id\",
-    lion.\"store_sales_customer_first_name\"),
+    lion.\"store_sales_customer_last_name\",
+    lion.\"store_sales_item_current_price\",
+    lion.\"store_sales_item_units\",
+    lion.\"store_sales_item_color\"),
 mamba as (
 SELECT
     lynx.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
@@ -103,8 +103,8 @@ FROM
     monitor
 GROUP BY 
     monitor.\"su_store_sales_customer_first_name\",
-    monitor.\"su_store_sales_customer_last_name\",
-    monitor.\"su_store_sales_store_name\"),
+    monitor.\"su_store_sales_store_name\",
+    monitor.\"su_store_sales_customer_last_name\"),
 marlin as (
 SELECT
     avg(mandrill.\"su_net_paid\") as \"avg_store_customer_sales\"

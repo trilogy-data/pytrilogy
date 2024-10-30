@@ -1,7 +1,7 @@
 query_id = 20
-parse_time = 0.785184
-exec_time = 0.114622
-comp_time = 0.231357
+parse_time = 0.516938
+exec_time = 0.08654
+comp_time = 0.22117
 gen_length = 2638
 generated_sql = """
 
@@ -35,11 +35,11 @@ SELECT
 FROM
     coyote
 GROUP BY 
-    coyote.\"cs_item_class\",
-    coyote.\"cs_item_desc\",
-    coyote.\"cs_item_category\",
+    coyote.\"cs_item_name\",
     coyote.\"cs_item_current_price\",
-    coyote.\"cs_item_name\"),
+    coyote.\"cs_item_class\",
+    coyote.\"cs_item_category\",
+    coyote.\"cs_item_desc\"),
 dingo as (
 SELECT
     sum(crocodile.\"revenue\") over (partition by crocodile.\"cs_item_class\") as \"_virt_6483977992947176\",

@@ -3433,17 +3433,19 @@ class Environment(BaseModel):
     def add_import(
         self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
     ):
+        exists = False
         existing = self.imports[alias]
         if imp_stm:
             if any([x.path == imp_stm.path for x in existing]):
-                return
+                exists = True
 
         else:
             if any([x.path == source.working_path for x in existing]):
-                return
+                exists = True
             imp_stm = ImportStatement(alias=alias, path=Path(source.working_path))
 
-        self.imports[alias].append(imp_stm)
+        if not exists:
+            self.imports[alias].append(imp_stm)
 
         for _, concept in source.concepts.items():
             self.add_concept(concept.with_namespace(alias), _ignore_cache=True)

@@ -1,7 +1,7 @@
 query_id = 21
-parse_time = 5.815742
-exec_time = 0.047382
-comp_time = 0.047008
+parse_time = 3.976513
+exec_time = 0.037142
+comp_time = 0.025227
 gen_length = 2865
 generated_sql = """
 
@@ -37,8 +37,8 @@ SELECT
 FROM
     jackal
 GROUP BY 
-    jackal.\"inventory_item_name\",
-    jackal.\"inventory_warehouse_name\"
+    jackal.\"inventory_warehouse_name\",
+    jackal.\"inventory_item_name\"
 HAVING
     CASE
 	WHEN sum(CASE

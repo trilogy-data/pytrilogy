@@ -213,7 +213,7 @@ def resolve_cte_base_name_and_alias_v2(
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
-        return ds.safe_location, ds.identifier
+        return ds.safe_location, ds.safe_identifier
 
     joins: List[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if joins and len(joins) > 0:
@@ -272,12 +272,12 @@ def datasource_to_ctes(
         # this is required to ensure that constant datasets
         # render properly on initial access; since they have
         # no actual source
-        if source.identifier == DEFAULT_NAMESPACE + "_" + CONSTANT_DATASET:
+        if source.name == CONSTANT_DATASET:
             source_map = {k: [] for k in query_datasource.source_map}
             existence_map = source_map
         else:
             source_map = {
-                k: [] if not v else [source.identifier]
+                k: [] if not v else [source.safe_identifier]
                 for k, v in query_datasource.source_map.items()
             }
             existence_map = source_map

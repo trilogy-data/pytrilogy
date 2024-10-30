@@ -1,7 +1,7 @@
 query_id = 12
-parse_time = 0.438805
-exec_time = 0.1732
-comp_time = 0.141285
+parse_time = 0.326249
+exec_time = 0.116837
+comp_time = 0.094355
 gen_length = 3088
 generated_sql = """
 
@@ -35,11 +35,11 @@ SELECT
 FROM
     colossal
 GROUP BY 
+    colossal.\"web_sales_item_desc\",
+    colossal.\"web_sales_item_current_price\",
     colossal.\"web_sales_item_class\",
     colossal.\"web_sales_item_category\",
-    colossal.\"web_sales_item_name\",
-    colossal.\"web_sales_item_current_price\",
-    colossal.\"web_sales_item_desc\"),
+    colossal.\"web_sales_item_name\"),
 obsolete as (
 SELECT
     sum(sloppy.\"itemrevenue\") over (partition by sloppy.\"web_sales_item_class\") as \"_virt_8498692139463401\",

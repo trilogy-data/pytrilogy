@@ -1,7 +1,7 @@
 query_id = 8
-parse_time = 2.327501
-exec_time = 0.110126
-comp_time = 0.078688
+parse_time = 2.00313
+exec_time = 0.086754
+comp_time = 0.065048
 gen_length = 7230
 generated_sql = """
 
@@ -79,9 +79,9 @@ SELECT
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales_store_sales.\"SS_ITEM_SK\" as \"item_id\"
 FROM
-    memory.store as store_sales_store_store
-    INNER JOIN memory.store_sales as store_sales_store_sales on store_sales_store_store.\"S_STORE_SK\" = store_sales_store_sales.\"SS_STORE_SK\"
-    INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
+    memory.date_dim as store_sales_date_date
+    INNER JOIN memory.store_sales as store_sales_store_sales on store_sales_date_date.\"D_DATE_SK\" = store_sales_store_sales.\"SS_SOLD_DATE_SK\"
+    INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
 WHERE
     store_sales_date_date.\"D_QOY\" = 2 and cast(store_sales_date_date.\"D_YEAR\" as int) = 1998 and SUBSTRING(store_sales_store_store.\"S_ZIP\",1,2) in (select wary.\"final_zips\" from wary where wary.\"final_zips\" is not null)
 )
