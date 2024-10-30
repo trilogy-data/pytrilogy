@@ -1,27 +1,27 @@
 query_id = 21
-parse_time = 4.522702
-exec_time = 0.047403
-comp_time = 0.031248
-gen_length = 2540
+parse_time = 5.815742
+exec_time = 0.047382
+comp_time = 0.047008
+gen_length = 2865
 generated_sql = """
 
 WITH 
 jackal as (
 SELECT
-    cast(\"D_DATE\" as date) as \"inventory_date_date\",
-    items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
-    warehouse_inventory.\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\",
-    warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
-    items.\"I_ITEM_ID\" as \"inventory_item_name\",
-    date.\"D_DATE_SK\" as \"inventory_date_id\",
-    warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
+    cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
+    inventory_item_items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
+    inventory_warehouse_inventory.\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\",
+    inventory_warehouse_warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
+    inventory_item_items.\"I_ITEM_ID\" as \"inventory_item_name\",
+    inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
+    inventory_warehouse_warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
 FROM
-    memory.warehouse as warehouse
-    INNER JOIN memory.inventory as warehouse_inventory on warehouse.\"w_warehouse_sk\" = warehouse_inventory.\"inv_warehouse_sk\"
-    INNER JOIN memory.date_dim as date on warehouse_inventory.\"inv_date_sk\" = date.\"D_DATE_SK\"
-    INNER JOIN memory.item as items on warehouse_inventory.\"inv_item_sk\" = items.\"I_ITEM_SK\"
+    memory.warehouse as inventory_warehouse_warehouse
+    INNER JOIN memory.inventory as inventory_warehouse_inventory on inventory_warehouse_warehouse.\"w_warehouse_sk\" = inventory_warehouse_inventory.\"inv_warehouse_sk\"
+    INNER JOIN memory.date_dim as inventory_date_date on inventory_warehouse_inventory.\"inv_date_sk\" = inventory_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.item as inventory_item_items on inventory_warehouse_inventory.\"inv_item_sk\" = inventory_item_items.\"I_ITEM_SK\"
 WHERE
-    cast(\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(\"D_DATE\" as date) <= cast('2000-04-10' as date) and items.\"I_CURRENT_PRICE\" >= 0.99 and items.\"I_CURRENT_PRICE\" <= 1.49
+    cast(inventory_date_date.\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(inventory_date_date.\"D_DATE\" as date) <= cast('2000-04-10' as date) and inventory_item_items.\"I_CURRENT_PRICE\" >= 0.99 and inventory_item_items.\"I_CURRENT_PRICE\" <= 1.49
 )
 SELECT
     jackal.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",

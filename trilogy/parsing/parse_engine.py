@@ -844,7 +844,7 @@ class ParseToObjects(Transformer):
                 if self.environment.namespace
                 else DEFAULT_NAMESPACE
             ),
-            identifier=identifier,
+            name=identifier,
             address=Address(location=address),
             grain=grain,
         )

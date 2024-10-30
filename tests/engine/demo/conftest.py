@@ -201,7 +201,7 @@ def setup_richest_environment(env: Environment):
 
     env.add_datasource(
         Datasource(
-            identifier="rich_info",
+            name="rich_info",
             address="rich_info",
             columns=[
                 ColumnAssignment(alias="Name", concept=name),
@@ -330,7 +330,7 @@ def setup_titanic_distributed(env: Environment):
 
     env.add_datasource(
         Datasource(
-            identifier="dim_passenger",
+            name="dim_passenger",
             address="dim_passenger",
             columns=[
                 ColumnAssignment(alias="id", concept=id),
@@ -349,7 +349,7 @@ def setup_titanic_distributed(env: Environment):
 
     env.add_datasource(
         Datasource(
-            identifier="fact_titanic",
+            name="fact_titanic",
             address="fact_titanic",
             columns=[
                 ColumnAssignment(alias="passengerid", concept=id),
@@ -365,7 +365,7 @@ def setup_titanic_distributed(env: Environment):
 
     env.add_datasource(
         Datasource(
-            identifier="dim_class",
+            name="dim_class",
             address="dim_class",
             columns=[
                 ColumnAssignment(alias="id", concept=class_id),
@@ -492,7 +492,7 @@ def setup_titanic(env: Environment):
     assert name in last_name.sources
     env.add_datasource(
         Datasource(
-            identifier="raw_data",
+            name="raw_data",
             address="raw_titanic",
             columns=[
                 ColumnAssignment(alias="passengerid", concept=id),

@@ -203,7 +203,7 @@ def test_persist(test_environment: Environment):
         select=select,
         datasource=select.to_datasource(
             namespace=test_environment.namespace,
-            identifier="test",
+            name="test",
             address=Address(location="tbl_test"),
         ),
     )
@@ -433,7 +433,7 @@ def test_render_datasource():
     )
     test = Renderer().to_string(
         Datasource(
-            identifier="useful_data",
+            name="useful_data",
             columns=[
                 ColumnAssignment(
                     alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL]
@@ -478,7 +478,7 @@ where user_id = 123 or user_id = 456;"""
 
     test = Renderer().to_string(
         Datasource(
-            identifier="useful_data",
+            name="useful_data",
             columns=[ColumnAssignment(alias="user_id", concept=user_id)],
             address=Address(is_query=True, location="SELECT * FROM test"),
             grain=Grain(components=[user_id]),

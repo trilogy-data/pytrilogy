@@ -1719,7 +1719,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
     def to_datasource(
         self,
         namespace: str,
-        identifier: str,
+        name: str,
         address: Address,
         grain: Grain | None = None,
     ) -> Datasource:
@@ -1753,7 +1753,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
                 condition = self.having_clause.conditional
 
         new_datasource = Datasource(
-            name=identifier,
+            name=name,
             address=address,
             grain=grain or self.grain,
             columns=columns,
