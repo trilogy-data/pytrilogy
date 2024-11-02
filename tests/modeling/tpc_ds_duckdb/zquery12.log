@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 0.326249
-exec_time = 0.116837
-comp_time = 0.094355
-gen_length = 3088
+parse_time = 0.723659
+exec_time = 0.121008
+comp_time = 0.100706
+gen_length = 3115
 generated_sql = """
 
 WITH 
-colossal as (
+tenuous as (
 SELECT
     web_sales_web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(web_sales_date_date.\"D_DATE\" as date) as \"web_sales_date_date\",
@@ -18,53 +18,53 @@ SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
     web_sales_item_items.\"I_ITEM_SK\" as \"web_sales_item_id\"
 FROM
-    memory.date_dim as web_sales_date_date
-    INNER JOIN memory.web_sales as web_sales_web_sales on web_sales_date_date.\"D_DATE_SK\" = web_sales_web_sales.\"WS_SOLD_DATE_SK\"
+    memory.web_sales as web_sales_web_sales
     INNER JOIN memory.item as web_sales_item_items on web_sales_web_sales.\"WS_ITEM_SK\" = web_sales_item_items.\"I_ITEM_SK\"
+    INNER JOIN memory.date_dim as web_sales_date_date on web_sales_web_sales.\"WS_SOLD_DATE_SK\" = web_sales_date_date.\"D_DATE_SK\"
 WHERE
     cast(web_sales_date_date.\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(web_sales_date_date.\"D_DATE\" as date) <= cast('1999-03-24' as date) and web_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home')
 ),
-sloppy as (
+abstracted as (
 SELECT
-    sum(colossal.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    sum(tenuous.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    tenuous.\"web_sales_item_category\" as \"web_sales_item_category\",
+    tenuous.\"web_sales_item_class\" as \"web_sales_item_class\",
+    tenuous.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    tenuous.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    tenuous.\"web_sales_item_name\" as \"web_sales_item_name\"
+FROM
+    tenuous
+GROUP BY 
+    tenuous.\"web_sales_item_class\",
+    tenuous.\"web_sales_item_name\",
+    tenuous.\"web_sales_item_category\",
+    tenuous.\"web_sales_item_desc\",
+    tenuous.\"web_sales_item_current_price\"),
+colossal as (
+SELECT
+    sum(abstracted.\"itemrevenue\") over (partition by abstracted.\"web_sales_item_class\") as \"_virt_8498692139463401\",
+    abstracted.\"itemrevenue\" as \"itemrevenue\",
+    abstracted.\"web_sales_item_class\" as \"web_sales_item_class\",
+    abstracted.\"web_sales_item_name\" as \"web_sales_item_name\",
+    abstracted.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    abstracted.\"web_sales_item_category\" as \"web_sales_item_category\",
+    abstracted.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+FROM
+    abstracted)
+SELECT
+    colossal.\"web_sales_item_name\" as \"web_sales_item_name\",
+    colossal.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     colossal.\"web_sales_item_category\" as \"web_sales_item_category\",
     colossal.\"web_sales_item_class\" as \"web_sales_item_class\",
     colossal.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    colossal.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    colossal.\"web_sales_item_name\" as \"web_sales_item_name\"
+    colossal.\"itemrevenue\" as \"itemrevenue\",
+    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_8498692139463401\" as \"revenueratio\"
 FROM
     colossal
-GROUP BY 
-    colossal.\"web_sales_item_desc\",
-    colossal.\"web_sales_item_current_price\",
-    colossal.\"web_sales_item_class\",
-    colossal.\"web_sales_item_category\",
-    colossal.\"web_sales_item_name\"),
-obsolete as (
-SELECT
-    sum(sloppy.\"itemrevenue\") over (partition by sloppy.\"web_sales_item_class\") as \"_virt_8498692139463401\",
-    sloppy.\"itemrevenue\" as \"itemrevenue\",
-    sloppy.\"web_sales_item_class\" as \"web_sales_item_class\",
-    sloppy.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sloppy.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    sloppy.\"web_sales_item_category\" as \"web_sales_item_category\",
-    sloppy.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
-FROM
-    sloppy)
-SELECT
-    obsolete.\"web_sales_item_name\" as \"web_sales_item_name\",
-    obsolete.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    obsolete.\"web_sales_item_category\" as \"web_sales_item_category\",
-    obsolete.\"web_sales_item_class\" as \"web_sales_item_class\",
-    obsolete.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    obsolete.\"itemrevenue\" as \"itemrevenue\",
-    obsolete.\"itemrevenue\" * 100.0 / obsolete.\"_virt_8498692139463401\" as \"revenueratio\"
-FROM
-    obsolete
 ORDER BY 
-    obsolete.\"web_sales_item_category\" asc,
-    obsolete.\"web_sales_item_class\" asc,
-    obsolete.\"web_sales_item_name\" asc,
-    obsolete.\"web_sales_item_desc\" asc,
-    obsolete.\"itemrevenue\" * 100.0 / obsolete.\"_virt_8498692139463401\" asc
+    colossal.\"web_sales_item_category\" asc,
+    colossal.\"web_sales_item_class\" asc,
+    colossal.\"web_sales_item_name\" asc,
+    colossal.\"web_sales_item_desc\" asc,
+    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_8498692139463401\" asc
 LIMIT (100)"""

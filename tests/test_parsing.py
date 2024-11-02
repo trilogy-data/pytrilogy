@@ -178,7 +178,7 @@ select
     )
 
     for name in ["name_alphabetical", "name_alphabetical_2"]:
-        assert name in env.concepts
+        assert f"local.{name}" in env.concepts
         assert env.concepts[name].purpose == Purpose.PROPERTY
         assert env.concepts[name].keys == (env.concepts["id"],)
 
@@ -197,7 +197,6 @@ select
     )
 
     for name in ["join_id"]:
-        assert name in env.concepts
         assert env.concepts[name].purpose == Purpose.PROPERTY
         assert env.concepts[name].keys == (
             env.concepts["id"],
@@ -225,7 +224,6 @@ select
     )
     # assert output_purpose == Purpose.METRIC
     for name in ["test_name_count"]:
-        assert name in env.concepts
         assert env.concepts[name].purpose == Purpose.METRIC
 
 

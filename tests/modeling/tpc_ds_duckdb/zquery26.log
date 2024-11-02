@@ -1,12 +1,12 @@
 query_id = 26
-parse_time = 1.095776
-exec_time = 0.146199
-comp_time = 0.10568
+parse_time = 1.328629
+exec_time = 0.213631
+comp_time = 0.145102
 gen_length = 2312
 generated_sql = """
 
 WITH 
-canary as (
+avocet as (
 SELECT
     cs_catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
@@ -22,24 +22,24 @@ SELECT
     cs_catalog_sales.\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
     cs_catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\"
 FROM
-    memory.promotion as cs_promotion_promotion
-    INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_promotion_promotion.\"P_PROMO_SK\" = cs_catalog_sales.\"CS_PROMO_SK\"
-    INNER JOIN memory.customer_demographics as cs_bill_customer_demographic_customer_demographics on cs_catalog_sales.\"CS_BILL_CDEMO_SK\" = cs_bill_customer_demographic_customer_demographics.\"CD_DEMO_SK\"
-    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
+    memory.customer_demographics as cs_bill_customer_demographic_customer_demographics
+    INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_bill_customer_demographic_customer_demographics.\"CD_DEMO_SK\" = cs_catalog_sales.\"CS_BILL_CDEMO_SK\"
     INNER JOIN memory.date_dim as cs_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
+    INNER JOIN memory.promotion as cs_promotion_promotion on cs_catalog_sales.\"CS_PROMO_SK\" = cs_promotion_promotion.\"P_PROMO_SK\"
 WHERE
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000
 )
 SELECT
-    canary.\"cs_item_name\" as \"cs_item_name\",
-    avg(canary.\"cs_quantity\") as \"agg1\",
-    avg(canary.\"cs_list_price\") as \"agg2\",
-    avg(canary.\"cs_coupon_amt\") as \"agg3\",
-    avg(canary.\"cs_sales_price\") as \"agg4\"
+    avocet.\"cs_item_name\" as \"cs_item_name\",
+    avg(avocet.\"cs_quantity\") as \"agg1\",
+    avg(avocet.\"cs_list_price\") as \"agg2\",
+    avg(avocet.\"cs_coupon_amt\") as \"agg3\",
+    avg(avocet.\"cs_sales_price\") as \"agg4\"
 FROM
-    canary
+    avocet
 GROUP BY 
-    canary.\"cs_item_name\"
+    avocet.\"cs_item_name\"
 ORDER BY 
-    canary.\"cs_item_name\" asc
+    avocet.\"cs_item_name\" asc
 LIMIT (100)"""

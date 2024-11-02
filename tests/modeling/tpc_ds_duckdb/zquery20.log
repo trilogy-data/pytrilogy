@@ -1,12 +1,12 @@
 query_id = 20
-parse_time = 0.516938
-exec_time = 0.08654
-comp_time = 0.22117
-gen_length = 2638
+parse_time = 0.806649
+exec_time = 0.060793
+comp_time = 0.204545
+gen_length = 2611
 generated_sql = """
 
 WITH 
-coyote as (
+cobra as (
 SELECT
     cs_catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
     cs_item_items.\"I_CATEGORY\" as \"cs_item_category\",
@@ -18,53 +18,53 @@ SELECT
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
-    memory.item as cs_item_items
-    INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_item_items.\"I_ITEM_SK\" = cs_catalog_sales.\"CS_ITEM_SK\"
+    memory.catalog_sales as cs_catalog_sales
     INNER JOIN memory.date_dim as cs_sold_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_sold_date_date.\"D_DATE_SK\"
+    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
 WHERE
     cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(cs_sold_date_date.\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
-crocodile as (
+cougar as (
 SELECT
-    sum(coyote.\"cs_extra_sales_price\") as \"revenue\",
+    sum(cobra.\"cs_extra_sales_price\") as \"revenue\",
+    cobra.\"cs_item_category\" as \"cs_item_category\",
+    cobra.\"cs_item_class\" as \"cs_item_class\",
+    cobra.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cobra.\"cs_item_desc\" as \"cs_item_desc\",
+    cobra.\"cs_item_name\" as \"cs_item_name\"
+FROM
+    cobra
+GROUP BY 
+    cobra.\"cs_item_class\",
+    cobra.\"cs_item_current_price\",
+    cobra.\"cs_item_name\",
+    cobra.\"cs_item_category\",
+    cobra.\"cs_item_desc\"),
+coyote as (
+SELECT
+    sum(cougar.\"revenue\") over (partition by cougar.\"cs_item_class\") as \"_virt_6483977992947176\",
+    cougar.\"revenue\" as \"revenue\",
+    cougar.\"cs_item_class\" as \"cs_item_class\",
+    cougar.\"cs_item_name\" as \"cs_item_name\",
+    cougar.\"cs_item_desc\" as \"cs_item_desc\",
+    cougar.\"cs_item_category\" as \"cs_item_category\",
+    cougar.\"cs_item_current_price\" as \"cs_item_current_price\"
+FROM
+    cougar)
+SELECT
+    coyote.\"cs_item_name\" as \"cs_item_name\",
+    coyote.\"cs_item_desc\" as \"cs_item_desc\",
     coyote.\"cs_item_category\" as \"cs_item_category\",
     coyote.\"cs_item_class\" as \"cs_item_class\",
     coyote.\"cs_item_current_price\" as \"cs_item_current_price\",
-    coyote.\"cs_item_desc\" as \"cs_item_desc\",
-    coyote.\"cs_item_name\" as \"cs_item_name\"
+    coyote.\"revenue\" as \"revenue\",
+    coyote.\"revenue\" * 100.0 / coyote.\"_virt_6483977992947176\" as \"revenue_ratio\"
 FROM
     coyote
-GROUP BY 
-    coyote.\"cs_item_name\",
-    coyote.\"cs_item_current_price\",
-    coyote.\"cs_item_class\",
-    coyote.\"cs_item_category\",
-    coyote.\"cs_item_desc\"),
-dingo as (
-SELECT
-    sum(crocodile.\"revenue\") over (partition by crocodile.\"cs_item_class\") as \"_virt_6483977992947176\",
-    crocodile.\"revenue\" as \"revenue\",
-    crocodile.\"cs_item_class\" as \"cs_item_class\",
-    crocodile.\"cs_item_name\" as \"cs_item_name\",
-    crocodile.\"cs_item_desc\" as \"cs_item_desc\",
-    crocodile.\"cs_item_category\" as \"cs_item_category\",
-    crocodile.\"cs_item_current_price\" as \"cs_item_current_price\"
-FROM
-    crocodile)
-SELECT
-    dingo.\"cs_item_name\" as \"cs_item_name\",
-    dingo.\"cs_item_desc\" as \"cs_item_desc\",
-    dingo.\"cs_item_category\" as \"cs_item_category\",
-    dingo.\"cs_item_class\" as \"cs_item_class\",
-    dingo.\"cs_item_current_price\" as \"cs_item_current_price\",
-    dingo.\"revenue\" as \"revenue\",
-    dingo.\"revenue\" * 100.0 / dingo.\"_virt_6483977992947176\" as \"revenue_ratio\"
-FROM
-    dingo
 ORDER BY 
-    dingo.\"cs_item_category\" asc nulls first,
-    dingo.\"cs_item_class\" asc nulls first,
-    dingo.\"cs_item_name\" asc nulls first,
-    dingo.\"cs_item_desc\" asc nulls first,
-    dingo.\"revenue\" * 100.0 / dingo.\"_virt_6483977992947176\" asc nulls first
+    coyote.\"cs_item_category\" asc nulls first,
+    coyote.\"cs_item_class\" asc nulls first,
+    coyote.\"cs_item_name\" asc nulls first,
+    coyote.\"cs_item_desc\" asc nulls first,
+    coyote.\"revenue\" * 100.0 / coyote.\"_virt_6483977992947176\" asc nulls first
 LIMIT (100)"""

@@ -1,2 +1,11 @@
 
 key id int;
+
+datasource id_source (
+id:id,
+)
+grain (id)
+address tbl_id;
+
+
+select id;

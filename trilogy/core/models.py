@@ -606,6 +606,8 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         return self.grain.components_copy if self.grain else []
 
     def with_namespace(self, namespace: str) -> "Concept":
+        if namespace == self.namespace:
+            return self
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -3253,7 +3255,6 @@ class EnvironmentConceptDict(dict):
                 )
                 self.undefined[key] = undefined
                 return undefined
-
             matches = self._find_similar_concepts(key)
             message = f"Undefined concept: {key}."
             if matches:
@@ -3263,8 +3264,15 @@ class EnvironmentConceptDict(dict):
                 raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
             raise UndefinedConceptException(message, matches)
 
-    def _find_similar_concepts(self, concept_name):
-        matches = difflib.get_close_matches(concept_name, self.keys())
+    def _find_similar_concepts(self, concept_name: str):
+        def strip_local(input: str):
+            if input.startswith(f"{DEFAULT_NAMESPACE}."):
+                return input[len(DEFAULT_NAMESPACE) + 1 :]
+            return input
+
+        matches = difflib.get_close_matches(
+            strip_local(concept_name), [strip_local(x) for x in self.keys()]
+        )
         return matches
 
     def items(self) -> ItemsView[str, Concept]:  # type: ignore
@@ -3325,7 +3333,6 @@ class Environment(BaseModel):
 
     materialized_concepts: List[Concept] = Field(default_factory=list)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
-    canonical_map: Dict[str, str] = Field(default_factory=dict)
     _parse_count: int = 0
 
     @classmethod
@@ -3444,14 +3451,38 @@ class Environment(BaseModel):
                 exists = True
             imp_stm = ImportStatement(alias=alias, path=Path(source.working_path))
 
+        same_namespace = alias == self.namespace
+
         if not exists:
             self.imports[alias].append(imp_stm)
 
-        for _, concept in source.concepts.items():
-            self.add_concept(concept.with_namespace(alias), _ignore_cache=True)
+        for k, concept in source.concepts.items():
+            if same_namespace:
+                new = self.add_concept(concept, _ignore_cache=True)
+            else:
+                new = self.add_concept(
+                    concept.with_namespace(alias), _ignore_cache=True
+                )
+
+                k = address_with_namespace(k, alias)
+            # set this explicitly, to handle aliasing
+            self.concepts[k] = new
 
         for _, datasource in source.datasources.items():
-            self.add_datasource(datasource.with_namespace(alias), _ignore_cache=True)
+            if same_namespace:
+                self.add_datasource(datasource, _ignore_cache=True)
+            else:
+                self.add_datasource(
+                    datasource.with_namespace(alias), _ignore_cache=True
+                )
+        for key, val in source.alias_origin_lookup.items():
+            if same_namespace:
+                self.alias_origin_lookup[key] = val
+            else:
+                self.alias_origin_lookup[address_with_namespace(key, alias)] = (
+                    val.with_namespace(alias)
+                )
+
         self.gen_concept_list_caches()
         return self
 
@@ -3542,8 +3573,6 @@ class Environment(BaseModel):
             existing = self.validate_concept(concept, meta=meta)
             if existing:
                 concept = existing
-        if concept.namespace == DEFAULT_NAMESPACE:
-            self.concepts[concept.name] = concept
         self.concepts[concept.address] = concept
         from trilogy.core.environment_helpers import generate_related_concepts
 
@@ -3631,7 +3660,6 @@ class Environment(BaseModel):
                 v.pseudonyms.add(source.address)
             if v.address == source.address:
                 replacements[k] = target
-                self.canonical_map[k] = target.address
                 v.pseudonyms.add(target.address)
             # we need to update keys and grains of all concepts
             else:

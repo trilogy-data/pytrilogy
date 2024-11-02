@@ -276,6 +276,20 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
+    def parse_file(self, file: str | Path, persist: bool = False) -> Generator[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement,
+        None,
+        None,
+    ]:
+        file = Path(file)
+        with open(file, "r") as f:
+            command = f.read()
+            return self.parse_text_generator(command, persist=persist)
+
     def parse_text(
         self, command: str, persist: bool = False
     ) -> List[
@@ -319,9 +333,11 @@ class Executor(object):
             x = self.generator.generate_queries(
                 self.environment, [t], hooks=self.hooks
             )[0]
+
+            yield x
+
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
-            yield x
 
     def execute_raw_sql(
         self, command: str, variables: dict | None = None

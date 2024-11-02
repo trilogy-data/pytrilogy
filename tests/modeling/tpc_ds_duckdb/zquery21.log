@@ -1,12 +1,12 @@
 query_id = 21
-parse_time = 3.976513
-exec_time = 0.037142
-comp_time = 0.025227
-gen_length = 2865
+parse_time = 4.040114
+exec_time = 0.090846
+comp_time = 0.031247
+gen_length = 2793
 generated_sql = """
 
 WITH 
-jackal as (
+fox as (
 SELECT
     cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
     inventory_item_items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
@@ -16,57 +16,57 @@ SELECT
     inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
     inventory_warehouse_warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
 FROM
-    memory.warehouse as inventory_warehouse_warehouse
-    INNER JOIN memory.inventory as inventory_warehouse_inventory on inventory_warehouse_warehouse.\"w_warehouse_sk\" = inventory_warehouse_inventory.\"inv_warehouse_sk\"
+    memory.inventory as inventory_warehouse_inventory
+    INNER JOIN memory.warehouse as inventory_warehouse_warehouse on inventory_warehouse_inventory.\"inv_warehouse_sk\" = inventory_warehouse_warehouse.\"w_warehouse_sk\"
     INNER JOIN memory.date_dim as inventory_date_date on inventory_warehouse_inventory.\"inv_date_sk\" = inventory_date_date.\"D_DATE_SK\"
     INNER JOIN memory.item as inventory_item_items on inventory_warehouse_inventory.\"inv_item_sk\" = inventory_item_items.\"I_ITEM_SK\"
 WHERE
     cast(inventory_date_date.\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(inventory_date_date.\"D_DATE\" as date) <= cast('2000-04-10' as date) and inventory_item_items.\"I_CURRENT_PRICE\" >= 0.99 and inventory_item_items.\"I_CURRENT_PRICE\" <= 1.49
 )
 SELECT
-    jackal.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    jackal.\"inventory_item_name\" as \"inventory_item_name\",
+    fox.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    fox.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN jackal.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    jackal
+    fox
 GROUP BY 
-    jackal.\"inventory_warehouse_name\",
-    jackal.\"inventory_item_name\"
+    fox.\"inventory_item_name\",
+    fox.\"inventory_warehouse_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN jackal.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN jackal.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN jackal.\"inventory_date_date\" < cast('2000-03-11' as date) THEN jackal.\"inventory_quantity_on_hand\"
+	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    jackal.\"inventory_warehouse_name\" asc nulls first,
-    jackal.\"inventory_item_name\" asc nulls first
+    fox.\"inventory_warehouse_name\" asc nulls first,
+    fox.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

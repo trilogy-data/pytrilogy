@@ -1,7 +1,7 @@
 query_id = 1
-parse_time = 1.894445
-exec_time = 0.118446
-comp_time = 1.968237
+parse_time = 5.000513
+exec_time = 0.142712
+comp_time = 4.092331
 gen_length = 1963
 generated_sql = """
 
@@ -16,10 +16,10 @@ SELECT
     returns_store_returns.\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
     returns_store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
 FROM
-    memory.customer as returns_customer_customers
-    INNER JOIN memory.store_returns as returns_store_returns on returns_customer_customers.\"C_CUSTOMER_SK\" = returns_store_returns.\"SR_CUSTOMER_SK\"
+    memory.store_returns as returns_store_returns
     INNER JOIN memory.date_dim as returns_return_date_date on returns_store_returns.\"SR_RETURNED_DATE_SK\" = returns_return_date_date.\"D_DATE_SK\"
     INNER JOIN memory.store as returns_store_store on returns_store_returns.\"SR_STORE_SK\" = returns_store_store.\"S_STORE_SK\"
+    INNER JOIN memory.customer as returns_customer_customers on returns_store_returns.\"SR_CUSTOMER_SK\" = returns_customer_customers.\"C_CUSTOMER_SK\"
 WHERE
     returns_store_store.\"S_STATE\" = 'TN' and cast(returns_return_date_date.\"D_YEAR\" as int) = 2000
 ),
@@ -31,8 +31,8 @@ SELECT
 FROM
     cheerful
 GROUP BY 
-    cheerful.\"returns_store_id\",
-    cheerful.\"returns_customer_text_id\"),
+    cheerful.\"returns_customer_text_id\",
+    cheerful.\"returns_store_id\"),
 cooperative as (
 SELECT
     avg(thoughtful.\"total_returns\") as \"avg_store_returns\",
