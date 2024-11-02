@@ -3255,7 +3255,6 @@ class EnvironmentConceptDict(dict):
                 )
                 self.undefined[key] = undefined
                 return undefined
-            # force includiosn of local namespace for raw references
             matches = self._find_similar_concepts(key)
             message = f"Undefined concept: {key}."
             if matches:
