@@ -1,36 +1,36 @@
 query_id = 24
-parse_time = 2.710393
-exec_time = 0.584382
-comp_time = 0.415592
+parse_time = 3.265151
+exec_time = 0.392251
+comp_time = 0.299665
 gen_length = 6467
 generated_sql = """
 
 WITH 
 komodo as (
 SELECT
-    store_sales_store_sales.\"SS_NET_PAID\" as \"store_sales_net_paid\",
-    store_sales_store_store.\"S_MARKET_ID\" as \"store_sales_store_market\",
-    store_sales_customer_customers.\"C_BIRTH_COUNTRY\" as \"store_sales_customer_birth_country\",
-    store_sales_customer_customer_address.\"CA_COUNTRY\" as \"store_sales_customer_country\",
     CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
-    store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\",
+    store_sales_customer_customer_address.\"CA_COUNTRY\" as \"store_sales_customer_country\",
+    store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
     store_sales_customer_customer_address.\"CA_ZIP\" as \"store_sales_customer_zip\",
-    store_sales_item_items.\"I_COLOR\" as \"store_sales_item_color\",
-    store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    store_sales_customer_customers.\"C_BIRTH_COUNTRY\" as \"store_sales_customer_birth_country\",
     store_sales_customer_customers.\"C_FIRST_NAME\" as \"store_sales_customer_first_name\",
     store_sales_customer_customers.\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
+    store_sales_item_items.\"I_COLOR\" as \"store_sales_item_color\",
+    store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
+    store_sales_item_items.\"I_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_item_items.\"I_MANAGER_ID\" as \"store_sales_item_manager_id\",
-    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
     store_sales_item_items.\"I_SIZE\" as \"store_sales_item_size\",
-    store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
-    store_sales_store_store.\"S_STATE\" as \"store_sales_store_state\",
     store_sales_item_items.\"I_UNITS\" as \"store_sales_item_units\",
+    store_sales_store_sales.\"SS_NET_PAID\" as \"store_sales_net_paid\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    store_sales_item_items.\"I_ITEM_SK\" as \"store_sales_item_id\"
+    store_sales_store_store.\"S_MARKET_ID\" as \"store_sales_store_market\",
+    store_sales_store_store.\"S_STATE\" as \"store_sales_store_state\",
+    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\"
 FROM
     memory.store_sales as store_sales_store_sales
     INNER JOIN memory.item as store_sales_item_items on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
-    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\" AND store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
+    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\" AND store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
     INNER JOIN memory.customer as store_sales_customer_customers on store_sales_store_sales.\"SS_CUSTOMER_SK\" = store_sales_customer_customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as store_sales_customer_customer_address on store_sales_customer_customers.\"C_CURRENT_ADDR_SK\" = store_sales_customer_customer_address.\"CA_ADDRESS_SK\"
@@ -39,43 +39,43 @@ WHERE
 ),
 leopard as (
 SELECT
-    sum(komodo.\"store_sales_net_paid\") as \"net_paid\",
-    komodo.\"store_sales_item_color\" as \"store_sales_item_color\",
-    komodo.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     komodo.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
     komodo.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    komodo.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
-    komodo.\"store_sales_store_name\" as \"store_sales_store_name\",
-    komodo.\"store_sales_item_size\" as \"store_sales_item_size\",
     komodo.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    komodo.\"store_sales_item_color\" as \"store_sales_item_color\",
+    komodo.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
+    komodo.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
+    komodo.\"store_sales_item_size\" as \"store_sales_item_size\",
+    komodo.\"store_sales_item_units\" as \"store_sales_item_units\",
+    komodo.\"store_sales_store_name\" as \"store_sales_store_name\",
     komodo.\"store_sales_store_state\" as \"store_sales_store_state\",
-    komodo.\"store_sales_item_units\" as \"store_sales_item_units\"
+    sum(komodo.\"store_sales_net_paid\") as \"net_paid\"
 FROM
     komodo
 GROUP BY 
-    komodo.\"store_sales_customer_last_name\",
-    komodo.\"store_sales_item_manager_id\",
     komodo.\"store_sales_item_color\",
-    komodo.\"store_sales_item_size\",
-    komodo.\"store_sales_customer_state\",
     komodo.\"store_sales_store_name\",
-    komodo.\"store_sales_item_units\",
+    komodo.\"store_sales_store_state\",
+    komodo.\"store_sales_customer_last_name\",
     komodo.\"store_sales_customer_first_name\",
+    komodo.\"store_sales_customer_state\",
     komodo.\"store_sales_item_current_price\",
-    komodo.\"store_sales_store_state\"),
+    komodo.\"store_sales_item_units\",
+    komodo.\"store_sales_item_manager_id\",
+    komodo.\"store_sales_item_size\"),
 lion as (
 SELECT
+    leopard.\"net_paid\" as \"su_net_paid\",
     leopard.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     leopard.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     leopard.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
-    leopard.\"store_sales_store_state\" as \"su_store_sales_store_state\",
-    leopard.\"store_sales_store_name\" as \"su_store_sales_store_name\",
     leopard.\"store_sales_item_color\" as \"su_store_sales_item_color\",
     leopard.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
     leopard.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
-    leopard.\"store_sales_item_units\" as \"su_store_sales_item_units\",
     leopard.\"store_sales_item_size\" as \"su_store_sales_item_size\",
-    leopard.\"net_paid\" as \"su_net_paid\"
+    leopard.\"store_sales_item_units\" as \"su_store_sales_item_units\",
+    leopard.\"store_sales_store_name\" as \"su_store_sales_store_name\",
+    leopard.\"store_sales_store_state\" as \"su_store_sales_store_state\"
 FROM
     leopard),
 mandrill as (
@@ -89,22 +89,22 @@ FROM
     lion),
 lynx as (
 SELECT
-    lion.\"su_net_paid\" as \"su_net_paid\",
-    1 as \"__preql_internal_all_rows\"
+    1 as \"__preql_internal_all_rows\",
+    lion.\"su_net_paid\" as \"su_net_paid\"
 FROM
     lion),
 marlin as (
 SELECT
-    sum(mandrill.\"_virt_5818638680298942\") as \"peach_sales\",
     mandrill.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     mandrill.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    mandrill.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
+    mandrill.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    sum(mandrill.\"_virt_5818638680298942\") as \"peach_sales\"
 FROM
     mandrill
 GROUP BY 
     mandrill.\"su_store_sales_store_name\",
-    mandrill.\"su_store_sales_customer_last_name\",
-    mandrill.\"su_store_sales_customer_first_name\"),
+    mandrill.\"su_store_sales_customer_first_name\",
+    mandrill.\"su_store_sales_customer_last_name\"),
 mamba as (
 SELECT
     avg(lynx.\"su_net_paid\") as \"avg_store_customer_sales\"

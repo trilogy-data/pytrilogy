@@ -1,7 +1,7 @@
 query_id = 21
-parse_time = 4.080038
-exec_time = 0.064705
-comp_time = 0.033754
+parse_time = 4.938347
+exec_time = 0.067703
+comp_time = 0.055179
 gen_length = 2793
 generated_sql = """
 
@@ -9,11 +9,11 @@ WITH
 fox as (
 SELECT
     cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
+    inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
     inventory_item_items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
+    inventory_item_items.\"I_ITEM_ID\" as \"inventory_item_name\",
     inventory_warehouse_inventory.\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\",
     inventory_warehouse_warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
-    inventory_item_items.\"I_ITEM_ID\" as \"inventory_item_name\",
-    inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
     inventory_warehouse_warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
 FROM
     memory.inventory as inventory_warehouse_inventory
