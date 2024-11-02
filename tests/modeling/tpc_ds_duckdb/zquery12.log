@@ -1,7 +1,7 @@
 query_id = 12
-parse_time = 0.723659
-exec_time = 0.121008
-comp_time = 0.100706
+parse_time = 1.07001
+exec_time = 0.189911
+comp_time = 0.170294
 gen_length = 3115
 generated_sql = """
 
@@ -35,11 +35,11 @@ SELECT
 FROM
     tenuous
 GROUP BY 
-    tenuous.\"web_sales_item_class\",
+    tenuous.\"web_sales_item_current_price\",
     tenuous.\"web_sales_item_name\",
-    tenuous.\"web_sales_item_category\",
+    tenuous.\"web_sales_item_class\",
     tenuous.\"web_sales_item_desc\",
-    tenuous.\"web_sales_item_current_price\"),
+    tenuous.\"web_sales_item_category\"),
 colossal as (
 SELECT
     sum(abstracted.\"itemrevenue\") over (partition by abstracted.\"web_sales_item_class\") as \"_virt_8498692139463401\",

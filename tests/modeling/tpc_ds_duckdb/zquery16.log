@@ -1,7 +1,7 @@
 query_id = 16
-parse_time = 36.560293
-exec_time = 0.48797
-comp_time = 0.029147
+parse_time = 38.676133
+exec_time = 0.442259
+comp_time = 0.035864
 gen_length = 5026
 generated_sql = """
 
@@ -44,19 +44,19 @@ GROUP BY
     deeply.\"multi_warehouse_sales\"),
 sordid as (
 SELECT
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    cs_catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
+    cs_catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\",
     cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
-    cs_catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
 WHERE
     cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select imported.\"cr_order_number\" from imported where imported.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select eminent.\"multi_warehouse_sales\" from eminent where eminent.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
+    cs_catalog_sales.\"CS_ORDER_NUMBER\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\",
     cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\",
     cs_catalog_sales.\"CS_CALL_CENTER_SK\"),
 bear as (
 SELECT

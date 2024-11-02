@@ -1,20 +1,20 @@
 query_id = 1
-parse_time = 5.000513
-exec_time = 0.142712
-comp_time = 4.092331
+parse_time = 2.841425
+exec_time = 0.109136
+comp_time = 2.423043
 gen_length = 1963
 generated_sql = """
 
 WITH 
 cheerful as (
 SELECT
-    returns_store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
-    returns_store_store.\"S_STATE\" as \"returns_store_state\",
     cast(returns_return_date_date.\"D_YEAR\" as int) as \"returns_return_date_year\",
-    returns_store_store.\"S_STORE_SK\" as \"returns_store_id\",
     returns_customer_customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
+    returns_store_returns.\"SR_ITEM_SK\" as \"returns_item_id\",
+    returns_store_returns.\"SR_RETURN_AMT\" as \"returns_return_amount\",
     returns_store_returns.\"SR_TICKET_NUMBER\" as \"returns_store_sales_ticket_number\",
-    returns_store_returns.\"SR_ITEM_SK\" as \"returns_item_id\"
+    returns_store_store.\"S_STATE\" as \"returns_store_state\",
+    returns_store_store.\"S_STORE_SK\" as \"returns_store_id\"
 FROM
     memory.store_returns as returns_store_returns
     INNER JOIN memory.date_dim as returns_return_date_date on returns_store_returns.\"SR_RETURNED_DATE_SK\" = returns_return_date_date.\"D_DATE_SK\"
@@ -25,14 +25,14 @@ WHERE
 ),
 thoughtful as (
 SELECT
-    sum(cheerful.\"returns_return_amount\") as \"total_returns\",
+    cheerful.\"returns_customer_text_id\" as \"returns_customer_text_id\",
     cheerful.\"returns_store_id\" as \"returns_store_id\",
-    cheerful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
+    sum(cheerful.\"returns_return_amount\") as \"total_returns\"
 FROM
     cheerful
 GROUP BY 
-    cheerful.\"returns_customer_text_id\",
-    cheerful.\"returns_store_id\"),
+    cheerful.\"returns_store_id\",
+    cheerful.\"returns_customer_text_id\"),
 cooperative as (
 SELECT
     avg(thoughtful.\"total_returns\") as \"avg_store_returns\",

@@ -1,7 +1,7 @@
 query_id = 20
-parse_time = 0.806649
-exec_time = 0.060793
-comp_time = 0.204545
+parse_time = 1.477113
+exec_time = 0.072769
+comp_time = 0.238937
 gen_length = 2611
 generated_sql = """
 
@@ -36,10 +36,10 @@ FROM
     cobra
 GROUP BY 
     cobra.\"cs_item_class\",
-    cobra.\"cs_item_current_price\",
-    cobra.\"cs_item_name\",
     cobra.\"cs_item_category\",
-    cobra.\"cs_item_desc\"),
+    cobra.\"cs_item_desc\",
+    cobra.\"cs_item_current_price\",
+    cobra.\"cs_item_name\"),
 coyote as (
 SELECT
     sum(cougar.\"revenue\") over (partition by cougar.\"cs_item_class\") as \"_virt_6483977992947176\",

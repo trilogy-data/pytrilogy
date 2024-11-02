@@ -561,6 +561,7 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.hidden_concepts]
             ]
+        select_columns = sorted(select_columns, key=lambda x: x)
         source: str | None = cte.base_name
         if not cte.render_from_clause:
             if len(cte.joins) > 0:
@@ -635,7 +636,7 @@ class BaseDialect:
                 where=(self.render_expr(where, cte) if where else None),
                 having=(self.render_expr(having, cte) if having else None),
                 order_by=(
-                    [self.render_order_item(i, cte) for i in cte.order_by.items]
+                    sorted([self.render_order_item(i, cte) for i in cte.order_by.items])
                     if cte.order_by
                     else None
                 ),

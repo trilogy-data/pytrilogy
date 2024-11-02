@@ -838,9 +838,8 @@ def _search_concepts(
             f" {accept_partial} (complete: {complete}), have {found} from {[n for n in stack]} (missing {missing} partial {partial} virtual {virtual}), attempted {attempted}, mandatory w/ filter {mandatory_completion}"
         )
         if complete == ValidationResult.INCOMPLETE_CONDITION:
-            raise SyntaxError(
-                {str(node): node.preexisting_conditions for node in stack}
-            )
+            cond_dict = {str(node): node.preexisting_conditions for node in stack}
+            raise SyntaxError(f"Have {cond_dict} and need {str(conditions)}")
         # early exit if we have a complete stack with one node
         # we can only early exit if we have a complete stack
         # and we are not looking for more non-partial sources

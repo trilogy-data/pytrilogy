@@ -1,7 +1,7 @@
 query_id = 24
-parse_time = 2.466835
-exec_time = 0.669189
-comp_time = 0.45021
+parse_time = 2.710393
+exec_time = 0.584382
+comp_time = 0.415592
 gen_length = 6467
 generated_sql = """
 
@@ -53,16 +53,16 @@ SELECT
 FROM
     komodo
 GROUP BY 
-    komodo.\"store_sales_item_color\",
     komodo.\"store_sales_customer_last_name\",
-    komodo.\"store_sales_item_units\",
+    komodo.\"store_sales_item_manager_id\",
+    komodo.\"store_sales_item_color\",
     komodo.\"store_sales_item_size\",
     komodo.\"store_sales_customer_state\",
+    komodo.\"store_sales_store_name\",
+    komodo.\"store_sales_item_units\",
     komodo.\"store_sales_customer_first_name\",
     komodo.\"store_sales_item_current_price\",
-    komodo.\"store_sales_store_name\",
-    komodo.\"store_sales_store_state\",
-    komodo.\"store_sales_item_manager_id\"),
+    komodo.\"store_sales_store_state\"),
 lion as (
 SELECT
     leopard.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
@@ -102,8 +102,8 @@ SELECT
 FROM
     mandrill
 GROUP BY 
-    mandrill.\"su_store_sales_customer_last_name\",
     mandrill.\"su_store_sales_store_name\",
+    mandrill.\"su_store_sales_customer_last_name\",
     mandrill.\"su_store_sales_customer_first_name\"),
 mamba as (
 SELECT
