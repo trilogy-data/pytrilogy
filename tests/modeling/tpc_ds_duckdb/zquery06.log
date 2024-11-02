@@ -1,19 +1,19 @@
 query_id = 6
-parse_time = 3.242204
-exec_time = 0.119057
-comp_time = 0.13596
+parse_time = 1.665956
+exec_time = 0.049859
+comp_time = 0.066149
 gen_length = 2922
 generated_sql = """
 
 WITH 
 macho as (
 SELECT
-    item_items.\"I_CATEGORY\" as \"item_category\",
-    store_sales_customer_customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
+    item_items.\"I_CATEGORY\" as \"item_category\",
+    store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
+    store_sales_customer_customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
-    store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\",
-    store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\"
+    store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\"
 FROM
     memory.store_sales as store_sales_store_sales
     INNER JOIN memory.item as store_sales_item_items on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
@@ -39,10 +39,10 @@ friendly as (
 SELECT
     macho.\"item_category\" as \"item_category\",
     macho.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    macho.\"store_sales_date_year\" as \"store_sales_date_year\",
-    macho.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
-    macho.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     macho.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    macho.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    macho.\"store_sales_date_year\" as \"store_sales_date_year\",
+    macho.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     scrawny.\"_virt_6264207893106521\" as \"_virt_6264207893106521\"
 FROM
     macho

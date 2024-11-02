@@ -1,7 +1,7 @@
 query_id = 8
-parse_time = 4.056759
-exec_time = 0.135429
-comp_time = 0.092151
+parse_time = 2.531098
+exec_time = 0.087619
+comp_time = 0.062161
 gen_length = 7242
 generated_sql = """
 
@@ -15,9 +15,9 @@ FROM
     memory.customer as customer_customers),
 yellow as (
 SELECT
+    customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
-    customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\",
-    customer_customer_address.\"CA_ZIP\" as \"customer_zip\"
+    customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     memory.customer_address as customer_customer_address
     INNER JOIN memory.customer as customer_customers on customer_customer_address.\"CA_ADDRESS_SK\" = customer_customers.\"C_CURRENT_ADDR_SK\"),
@@ -28,11 +28,11 @@ SELECT
 resonant as (
 SELECT
     sedate.\"_virt_7470647693515630\" as \"_virt_7470647693515630\",
-    yellow.\"customer_zip\" as \"customer_zip\",
-    sedate.\"customer_id\" as \"customer_id\"
+    sedate.\"customer_id\" as \"customer_id\",
+    yellow.\"customer_zip\" as \"customer_zip\"
 FROM
     yellow
-    INNER JOIN sedate on yellow.\"customer_preferred_cust_flag\" = sedate.\"customer_preferred_cust_flag\" AND yellow.\"customer_id\" = sedate.\"customer_id\"),
+    INNER JOIN sedate on yellow.\"customer_id\" = sedate.\"customer_id\" AND yellow.\"customer_preferred_cust_flag\" = sedate.\"customer_preferred_cust_flag\"),
 dapper as (
 SELECT
     count(resonant.\"_virt_7470647693515630\") as \"zip_p_count\",
@@ -43,8 +43,8 @@ GROUP BY
     resonant.\"customer_zip\"),
 courageous as (
 SELECT
-    customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
     customer_customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
+    customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
     dapper.\"zip_p_count\" as \"zip_p_count\"
 FROM
     dapper
@@ -71,13 +71,13 @@ GROUP BY
     cool.\"final_zips\"),
 wary as (
 SELECT
-    store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
-    store_sales_date_date.\"D_QOY\" as \"store_sales_date_quarter\",
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
-    store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\",
-    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store_sales_date_date.\"D_QOY\" as \"store_sales_date_quarter\",
+    store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\"
+    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\"
 FROM
     memory.store_sales as store_sales_store_sales
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"

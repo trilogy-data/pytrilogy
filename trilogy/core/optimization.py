@@ -13,7 +13,7 @@ from trilogy.core.optimizations import (
     PredicatePushdownRemove,
     InlineDatasource,
 )
-
+from trilogy.core.processing.utility import sort_select_output
 
 MAX_OPTIMIZATION_LOOPS = 100
 
@@ -152,20 +152,6 @@ def is_direct_return_eligible(cte: CTE) -> CTE | None:
         f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}"
     )
     return direct_parent
-
-
-def sort_select_output(cte: CTE, query: SelectStatement | MultiSelectStatement):
-    hidden_addresses = [c.address for c in query.hidden_components]
-    output_addresses = [
-        c.address for c in query.output_components if c.address not in hidden_addresses
-    ]
-
-    mapping = {x.address: x for x in cte.output_columns}
-
-    new_output = []
-    for x in output_addresses:
-        new_output.append(mapping[x])
-    cte.output_columns = new_output
 
 
 def optimize_ctes(

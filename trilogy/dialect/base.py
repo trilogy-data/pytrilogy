@@ -2,7 +2,11 @@ from typing import List, Union, Optional, Dict, Any, Sequence, Callable
 
 from jinja2 import Template
 
-from trilogy.core.processing.utility import is_scalar_condition, decompose_condition
+from trilogy.core.processing.utility import (
+    is_scalar_condition,
+    decompose_condition,
+    sort_select_output,
+)
 from trilogy.constants import CONFIG, logger, MagicConstants
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.enums import (
@@ -537,7 +541,7 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
-    def render_cte(self, cte: CTE):
+    def render_cte(self, cte: CTE, auto_sort: bool = True):
         if self.UNNEST_MODE in (
             UnnestMode.CROSS_APPLY,
             UnnestMode.CROSS_JOIN,
@@ -561,7 +565,8 @@ class BaseDialect:
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.hidden_concepts]
             ]
-        select_columns = sorted(select_columns, key=lambda x: x)
+        if auto_sort:
+            select_columns = sorted(select_columns, key=lambda x: x)
         source: str | None = cte.base_name
         if not cte.render_from_clause:
             if len(cte.joins) > 0:
@@ -636,7 +641,7 @@ class BaseDialect:
                 where=(self.render_expr(where, cte) if where else None),
                 having=(self.render_expr(having, cte) if having else None),
                 order_by=(
-                    sorted([self.render_order_item(i, cte) for i in cte.order_by.items])
+                    [self.render_order_item(i, cte) for i in cte.order_by.items]
                     if cte.order_by
                     else None
                 ),
@@ -658,8 +663,11 @@ class BaseDialect:
     def generate_ctes(
         self,
         query: ProcessedQuery,
-    ):
-        return [self.render_cte(cte) for cte in query.ctes]
+    ) -> List[CompiledCTE]:
+        return [self.render_cte(cte) for cte in query.ctes[:-1]] + [
+            # last CTE needs to respect the user output order
+            self.render_cte(sort_select_output(query.ctes[-1], query), auto_sort=False)
+        ]
 
     def generate_queries(
         self,
@@ -790,11 +798,6 @@ class BaseDialect:
             )
 
         compiled_ctes = self.generate_ctes(query)
-
-        # restort selections by the order they were written in
-        sorted_select: List[str] = []
-        for output_c in output_addresses:
-            sorted_select.append(select_columns[output_c])
 
         final = self.SQL_TEMPLATE.render(
             output=(

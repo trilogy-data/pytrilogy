@@ -1,21 +1,21 @@
 query_id = 20
-parse_time = 1.477113
-exec_time = 0.072769
-comp_time = 0.238937
+parse_time = 1.467589
+exec_time = 0.113236
+comp_time = 0.213365
 gen_length = 2611
 generated_sql = """
 
 WITH 
 cobra as (
 SELECT
-    cs_catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
-    cs_item_items.\"I_CATEGORY\" as \"cs_item_category\",
     cast(cs_sold_date_date.\"D_DATE\" as date) as \"cs_sold_date_date\",
+    cs_catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_item_items.\"I_CATEGORY\" as \"cs_item_category\",
     cs_item_items.\"I_CLASS\" as \"cs_item_class\",
     cs_item_items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     cs_item_items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
@@ -26,29 +26,29 @@ WHERE
 ),
 cougar as (
 SELECT
-    sum(cobra.\"cs_extra_sales_price\") as \"revenue\",
     cobra.\"cs_item_category\" as \"cs_item_category\",
     cobra.\"cs_item_class\" as \"cs_item_class\",
     cobra.\"cs_item_current_price\" as \"cs_item_current_price\",
     cobra.\"cs_item_desc\" as \"cs_item_desc\",
-    cobra.\"cs_item_name\" as \"cs_item_name\"
+    cobra.\"cs_item_name\" as \"cs_item_name\",
+    sum(cobra.\"cs_extra_sales_price\") as \"revenue\"
 FROM
     cobra
 GROUP BY 
-    cobra.\"cs_item_class\",
     cobra.\"cs_item_category\",
-    cobra.\"cs_item_desc\",
+    cobra.\"cs_item_class\",
+    cobra.\"cs_item_name\",
     cobra.\"cs_item_current_price\",
-    cobra.\"cs_item_name\"),
+    cobra.\"cs_item_desc\"),
 coyote as (
 SELECT
-    sum(cougar.\"revenue\") over (partition by cougar.\"cs_item_class\") as \"_virt_6483977992947176\",
-    cougar.\"revenue\" as \"revenue\",
-    cougar.\"cs_item_class\" as \"cs_item_class\",
-    cougar.\"cs_item_name\" as \"cs_item_name\",
-    cougar.\"cs_item_desc\" as \"cs_item_desc\",
     cougar.\"cs_item_category\" as \"cs_item_category\",
-    cougar.\"cs_item_current_price\" as \"cs_item_current_price\"
+    cougar.\"cs_item_class\" as \"cs_item_class\",
+    cougar.\"cs_item_current_price\" as \"cs_item_current_price\",
+    cougar.\"cs_item_desc\" as \"cs_item_desc\",
+    cougar.\"cs_item_name\" as \"cs_item_name\",
+    cougar.\"revenue\" as \"revenue\",
+    sum(cougar.\"revenue\") over (partition by cougar.\"cs_item_class\") as \"_virt_6483977992947176\"
 FROM
     cougar)
 SELECT

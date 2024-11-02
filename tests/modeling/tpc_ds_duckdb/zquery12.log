@@ -1,22 +1,22 @@
 query_id = 12
-parse_time = 1.07001
-exec_time = 0.189911
-comp_time = 0.170294
+parse_time = 0.80835
+exec_time = 0.116389
+comp_time = 0.118943
 gen_length = 3115
 generated_sql = """
 
 WITH 
 tenuous as (
 SELECT
-    web_sales_web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
     cast(web_sales_date_date.\"D_DATE\" as date) as \"web_sales_date_date\",
     web_sales_item_items.\"I_CATEGORY\" as \"web_sales_item_category\",
     web_sales_item_items.\"I_CLASS\" as \"web_sales_item_class\",
     web_sales_item_items.\"I_CURRENT_PRICE\" as \"web_sales_item_current_price\",
     web_sales_item_items.\"I_ITEM_DESC\" as \"web_sales_item_desc\",
     web_sales_item_items.\"I_ITEM_ID\" as \"web_sales_item_name\",
-    web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
-    web_sales_item_items.\"I_ITEM_SK\" as \"web_sales_item_id\"
+    web_sales_item_items.\"I_ITEM_SK\" as \"web_sales_item_id\",
+    web_sales_web_sales.\"WS_EXT_SALES_PRICE\" as \"web_sales_external_sales_price\",
+    web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\"
 FROM
     memory.web_sales as web_sales_web_sales
     INNER JOIN memory.item as web_sales_item_items on web_sales_web_sales.\"WS_ITEM_SK\" = web_sales_item_items.\"I_ITEM_SK\"
@@ -35,20 +35,20 @@ SELECT
 FROM
     tenuous
 GROUP BY 
-    tenuous.\"web_sales_item_current_price\",
-    tenuous.\"web_sales_item_name\",
-    tenuous.\"web_sales_item_class\",
     tenuous.\"web_sales_item_desc\",
-    tenuous.\"web_sales_item_category\"),
+    tenuous.\"web_sales_item_current_price\",
+    tenuous.\"web_sales_item_category\",
+    tenuous.\"web_sales_item_name\",
+    tenuous.\"web_sales_item_class\"),
 colossal as (
 SELECT
-    sum(abstracted.\"itemrevenue\") over (partition by abstracted.\"web_sales_item_class\") as \"_virt_8498692139463401\",
     abstracted.\"itemrevenue\" as \"itemrevenue\",
-    abstracted.\"web_sales_item_class\" as \"web_sales_item_class\",
-    abstracted.\"web_sales_item_name\" as \"web_sales_item_name\",
-    abstracted.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     abstracted.\"web_sales_item_category\" as \"web_sales_item_category\",
-    abstracted.\"web_sales_item_current_price\" as \"web_sales_item_current_price\"
+    abstracted.\"web_sales_item_class\" as \"web_sales_item_class\",
+    abstracted.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    abstracted.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    abstracted.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sum(abstracted.\"itemrevenue\") over (partition by abstracted.\"web_sales_item_class\") as \"_virt_8498692139463401\"
 FROM
     abstracted)
 SELECT
