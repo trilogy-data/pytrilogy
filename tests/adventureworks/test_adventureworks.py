@@ -277,7 +277,7 @@ def test_two_properties_query(environment: Environment):
     ) as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
-    assert "total_sales_amount_debug_2" in set(list(environment.concepts.keys()))
+    assert "local.total_sales_amount_debug_2" in set(list(environment.concepts.keys()))
     environment_graph = generate_graph(environment)
     assert (
         len(

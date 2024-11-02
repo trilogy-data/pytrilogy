@@ -1,7 +1,7 @@
 query_id = 12
-parse_time = 0.326249
-exec_time = 0.116837
-comp_time = 0.094355
+parse_time = 1.259036
+exec_time = 0.269726
+comp_time = 0.249077
 gen_length = 3088
 generated_sql = """
 
@@ -18,9 +18,9 @@ SELECT
     web_sales_web_sales.\"WS_ORDER_NUMBER\" as \"web_sales_order_number\",
     web_sales_item_items.\"I_ITEM_SK\" as \"web_sales_item_id\"
 FROM
-    memory.date_dim as web_sales_date_date
-    INNER JOIN memory.web_sales as web_sales_web_sales on web_sales_date_date.\"D_DATE_SK\" = web_sales_web_sales.\"WS_SOLD_DATE_SK\"
-    INNER JOIN memory.item as web_sales_item_items on web_sales_web_sales.\"WS_ITEM_SK\" = web_sales_item_items.\"I_ITEM_SK\"
+    memory.item as web_sales_item_items
+    INNER JOIN memory.web_sales as web_sales_web_sales on web_sales_item_items.\"I_ITEM_SK\" = web_sales_web_sales.\"WS_ITEM_SK\"
+    INNER JOIN memory.date_dim as web_sales_date_date on web_sales_web_sales.\"WS_SOLD_DATE_SK\" = web_sales_date_date.\"D_DATE_SK\"
 WHERE
     cast(web_sales_date_date.\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(web_sales_date_date.\"D_DATE\" as date) <= cast('1999-03-24' as date) and web_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home')
 ),
@@ -35,11 +35,11 @@ SELECT
 FROM
     colossal
 GROUP BY 
-    colossal.\"web_sales_item_desc\",
-    colossal.\"web_sales_item_current_price\",
-    colossal.\"web_sales_item_class\",
     colossal.\"web_sales_item_category\",
-    colossal.\"web_sales_item_name\"),
+    colossal.\"web_sales_item_class\",
+    colossal.\"web_sales_item_current_price\",
+    colossal.\"web_sales_item_name\",
+    colossal.\"web_sales_item_desc\"),
 obsolete as (
 SELECT
     sum(sloppy.\"itemrevenue\") over (partition by sloppy.\"web_sales_item_class\") as \"_virt_8498692139463401\",

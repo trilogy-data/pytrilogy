@@ -1,7 +1,7 @@
 query_id = 20
-parse_time = 0.516938
-exec_time = 0.08654
-comp_time = 0.22117
+parse_time = 1.562719
+exec_time = 0.519829
+comp_time = 0.280952
 gen_length = 2638
 generated_sql = """
 
@@ -18,9 +18,9 @@ SELECT
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
-    memory.item as cs_item_items
-    INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_item_items.\"I_ITEM_SK\" = cs_catalog_sales.\"CS_ITEM_SK\"
-    INNER JOIN memory.date_dim as cs_sold_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_sold_date_date.\"D_DATE_SK\"
+    memory.date_dim as cs_sold_date_date
+    INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_sold_date_date.\"D_DATE_SK\" = cs_catalog_sales.\"CS_SOLD_DATE_SK\"
+    INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
 WHERE
     cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(cs_sold_date_date.\"D_DATE\" as date) <= cast('1999-03-24' as date)
 ),
@@ -35,9 +35,9 @@ SELECT
 FROM
     coyote
 GROUP BY 
-    coyote.\"cs_item_name\",
     coyote.\"cs_item_current_price\",
     coyote.\"cs_item_class\",
+    coyote.\"cs_item_name\",
     coyote.\"cs_item_category\",
     coyote.\"cs_item_desc\"),
 dingo as (

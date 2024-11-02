@@ -20,7 +20,7 @@ def test_environment_from_path():
 
     env = Environment.from_file(Path(__file__).parent / "test_env.preql")
 
-    assert "id" in env.concepts
+    assert "local.id" in env.concepts
 
 
 def test_environment_merge():

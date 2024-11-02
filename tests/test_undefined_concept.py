@@ -32,6 +32,6 @@ def test_undefined_concept_dict():
     try:
         env["orid"]
     except UndefinedConceptException as e:
-        assert e.suggestions == ["order_id"]
+        assert e.suggestions == ["local.order_id"]
         assert "suggestions" in e.message.lower()
         assert "order_id" in e.message.lower()
