@@ -1,26 +1,26 @@
 query_id = 26
-parse_time = 1.328629
-exec_time = 0.213631
-comp_time = 0.145102
+parse_time = 1.178354
+exec_time = 0.105567
+comp_time = 0.081971
 gen_length = 2312
 generated_sql = """
 
 WITH 
 avocet as (
 SELECT
-    cs_catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
+    cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
+    cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" as \"cs_bill_customer_demographic_gender\",
     cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" as \"cs_bill_customer_demographic_marital_status\",
-    cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
-    cs_promotion_promotion.\"P_CHANNEL_EMAIL\" as \"cs_promotion_channel_email\",
-    cs_promotion_promotion.\"P_CHANNEL_EVENT\" as \"cs_promotion_channel_event\",
-    cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
-    cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\",
-    cs_catalog_sales.\"CS_LIST_PRICE\" as \"cs_list_price\",
     cs_catalog_sales.\"CS_COUPON_AMT\" as \"cs_coupon_amt\",
-    cs_catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\"
+    cs_catalog_sales.\"CS_LIST_PRICE\" as \"cs_list_price\",
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_catalog_sales.\"CS_QUANTITY\" as \"cs_quantity\",
+    cs_catalog_sales.\"CS_SALES_PRICE\" as \"cs_sales_price\",
+    cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
+    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\",
+    cs_promotion_promotion.\"P_CHANNEL_EMAIL\" as \"cs_promotion_channel_email\",
+    cs_promotion_promotion.\"P_CHANNEL_EVENT\" as \"cs_promotion_channel_event\"
 FROM
     memory.customer_demographics as cs_bill_customer_demographic_customer_demographics
     INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_bill_customer_demographic_customer_demographics.\"CD_DEMO_SK\" = cs_catalog_sales.\"CS_BILL_CDEMO_SK\"

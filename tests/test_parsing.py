@@ -7,6 +7,7 @@ from trilogy.core.models import (
     Environment,
     Comparison,
     TupleWrapper,
+    Datasource,
 )
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.parsing.parse_engine import (
@@ -509,6 +510,35 @@ address `abc:def`
 
     ds = parsed[-1]
     assert ds.non_partial_for.conditional.right == 10
+
+
+def test_datasource_from_persist():
+
+    text = """
+key x int;
+key y int;
+
+datasource test (
+x:x,
+y:y)
+grain(x)
+address `abc:def`
+;
+
+persist alias into tbl_alias from
+select
+x,
+y
+where y>10;
+
+
+
+"""
+    env, parsed = parse_text(text)
+
+    ds: Datasource = parsed[-1].datasource
+    assert ds.non_partial_for.conditional.right == 10
+    assert not ds.where
 
 
 def test_filter_concise():

@@ -1,7 +1,7 @@
 query_id = 16
-parse_time = 36.560293
-exec_time = 0.48797
-comp_time = 0.029147
+parse_time = 33.951821
+exec_time = 0.311458
+comp_time = 0.048836
 gen_length = 5026
 generated_sql = """
 
@@ -44,9 +44,9 @@ GROUP BY
     deeply.\"multi_warehouse_sales\"),
 sordid as (
 SELECT
+    cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_catalog_sales.\"CS_SHIP_ADDR_SK\" as \"cs_customer_address_id\",
-    cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\" as \"cs_ship_date_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
@@ -54,19 +54,19 @@ WHERE
     cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select imported.\"cr_order_number\" from imported where imported.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select eminent.\"multi_warehouse_sales\" from eminent where eminent.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    cs_catalog_sales.\"CS_SHIP_DATE_SK\",
-    cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
+    cs_catalog_sales.\"CS_CALL_CENTER_SK\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\",
-    cs_catalog_sales.\"CS_CALL_CENTER_SK\"),
+    cs_catalog_sales.\"CS_SHIP_DATE_SK\",
+    cs_catalog_sales.\"CS_SHIP_ADDR_SK\"),
 bear as (
 SELECT
-    cs_catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
-    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\",
     cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
-    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cs_catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
-    cs_catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\"
+    cs_catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\",
+    cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
+    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\"
 FROM
     memory.customer_address as cs_customer_customer_address
     INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_customer_customer_address.\"CA_ADDRESS_SK\" = cs_catalog_sales.\"CS_SHIP_ADDR_SK\"
@@ -77,10 +77,10 @@ WHERE
 ),
 badger as (
 SELECT
-    sordid.\"cs_order_number\" as \"cs_order_number\",
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
+    cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
     cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\",
-    cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\"
+    sordid.\"cs_order_number\" as \"cs_order_number\"
 FROM
     sordid
     INNER JOIN memory.customer_address as cs_customer_customer_address on sordid.\"cs_customer_address_id\" = cs_customer_customer_address.\"CA_ADDRESS_SK\"

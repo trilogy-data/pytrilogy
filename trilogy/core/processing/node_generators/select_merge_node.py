@@ -233,7 +233,6 @@ def create_select_node(
     ]
     nullable_lcl = LooseConceptList(concepts=nullable_concepts)
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
-
     bcandidate: StrategyNode = SelectNode(
         input_concepts=[c.concept for c in datasource.columns],
         output_concepts=all_concepts,
@@ -249,7 +248,9 @@ def create_select_node(
         datasource=datasource,
         grain=Grain(components=all_concepts),
         conditions=datasource.where.conditional if datasource.where else None,
-        render_condition=not partial_is_full,
+        preexisting_conditions=(
+            conditions.conditional if partial_is_full and conditions else None
+        ),
     )
 
     # we need to nest the group node one further
@@ -263,6 +264,9 @@ def create_select_node(
             depth=depth,
             partial_concepts=bcandidate.partial_concepts,
             nullable_concepts=bcandidate.nullable_concepts,
+            preexisting_conditions=(
+                conditions.conditional if partial_is_full and conditions else None
+            ),
         )
     else:
         candidate = bcandidate
@@ -340,6 +344,15 @@ def gen_select_merge_node(
 
     if len(parents) == 1:
         return parents[0]
+    preexisting_conditions = None
+    if conditions and all(
+        [
+            x.preexisting_conditions
+            and x.preexisting_conditions == conditions.conditional
+            for x in parents
+        ]
+    ):
+        preexisting_conditions = conditions.conditional
     return MergeNode(
         output_concepts=all_concepts,
         input_concepts=non_constant,
@@ -347,4 +360,5 @@ def gen_select_merge_node(
         g=g,
         depth=depth,
         parents=parents,
+        preexisting_conditions=preexisting_conditions,
     )

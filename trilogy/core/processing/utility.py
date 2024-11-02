@@ -29,6 +29,10 @@ from trilogy.core.models import (
     NumericType,
     ListType,
     TupleWrapper,
+    CTE,
+    MultiSelectStatement,
+    SelectStatement,
+    ProcessedQuery,
 )
 
 from trilogy.core.enums import Purpose, Granularity, BooleanOperator
@@ -528,3 +532,37 @@ def find_nullable_concepts(
             if set(v).issubset(all_ds):
                 final_nullable.add(k)
     return list(sorted(final_nullable))
+
+
+def sort_select_output_processed(cte: CTE, query: ProcessedQuery) -> CTE:
+    hidden_addresses = [c.address for c in query.hidden_columns]
+    output_addresses = [
+        c.address for c in query.output_columns if c.address not in hidden_addresses
+    ]
+
+    mapping = {x.address: x for x in cte.output_columns}
+
+    new_output = []
+    for x in output_addresses:
+        new_output.append(mapping[x])
+    cte.output_columns = new_output
+    return cte
+
+
+def sort_select_output(
+    cte: CTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
+) -> CTE:
+    if isinstance(query, ProcessedQuery):
+        return sort_select_output_processed(cte, query)
+    hidden_addresses = [c.address for c in query.hidden_components]
+    output_addresses = [
+        c.address for c in query.output_components if c.address not in hidden_addresses
+    ]
+
+    mapping = {x.address: x for x in cte.output_columns}
+
+    new_output = []
+    for x in output_addresses:
+        new_output.append(mapping[x])
+    cte.output_columns = new_output
+    return cte

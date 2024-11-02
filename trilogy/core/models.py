@@ -1760,7 +1760,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
             grain=grain or self.grain,
             columns=columns,
             namespace=namespace,
-            where=WhereClause(conditional=condition) if condition else None,
             non_partial_for=WhereClause(conditional=condition) if condition else None,
         )
         for column in columns:

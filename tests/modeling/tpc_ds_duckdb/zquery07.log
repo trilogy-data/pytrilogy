@@ -1,26 +1,26 @@
 query_id = 7
-parse_time = 0.91292
-exec_time = 0.524633
-comp_time = 0.124336
+parse_time = 1.016192
+exec_time = 0.190943
+comp_time = 0.166172
 gen_length = 2784
 generated_sql = """
 
 WITH 
 protective as (
 SELECT
-    store_sales_store_sales.\"SS_QUANTITY\" as \"store_sales_quantity\",
+    cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
+    store_sales_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"store_sales_customer_demographic_education_status\",
     store_sales_customer_demographic_customer_demographics.\"CD_GENDER\" as \"store_sales_customer_demographic_gender\",
     store_sales_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" as \"store_sales_customer_demographic_marital_status\",
-    store_sales_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"store_sales_customer_demographic_education_status\",
+    store_sales_item_items.\"I_ITEM_ID\" as \"store_sales_item_name\",
+    store_sales_item_items.\"I_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_promotion_promotion.\"P_CHANNEL_EMAIL\" as \"store_sales_promotion_channel_email\",
     store_sales_promotion_promotion.\"P_CHANNEL_EVENT\" as \"store_sales_promotion_channel_event\",
-    cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
-    store_sales_item_items.\"I_ITEM_ID\" as \"store_sales_item_name\",
-    store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
-    store_sales_item_items.\"I_ITEM_SK\" as \"store_sales_item_id\",
-    store_sales_store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\",
     store_sales_store_sales.\"SS_COUPON_AMT\" as \"store_sales_coupon_amt\",
-    store_sales_store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\"
+    store_sales_store_sales.\"SS_LIST_PRICE\" as \"store_sales_list_price\",
+    store_sales_store_sales.\"SS_QUANTITY\" as \"store_sales_quantity\",
+    store_sales_store_sales.\"SS_SALES_PRICE\" as \"store_sales_sales_price\",
+    store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\"
 FROM
     memory.customer_demographics as store_sales_customer_demographic_customer_demographics
     INNER JOIN memory.store_sales as store_sales_store_sales on store_sales_customer_demographic_customer_demographics.\"CD_DEMO_SK\" = store_sales_store_sales.\"SS_CDEMO_SK\"
