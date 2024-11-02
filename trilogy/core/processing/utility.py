@@ -92,7 +92,7 @@ def resolve_join_order_v2(
             root = pivots.pop()
 
         # sort so less partials is last and eligible lefts are
-        def score_key(x: str) -> int:
+        def score_key(x: str) -> tuple[int, int, str]:
             base = 1
             # if it's left, higher weight
             if x in eligible_left:
