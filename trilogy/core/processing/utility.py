@@ -66,9 +66,6 @@ def resolve_join_order_v2(
 ) -> list[JoinOrderOutput]:
     datasources = [x for x in g.nodes if x.startswith("ds~")]
     concepts = [x for x in g.nodes if x.startswith("c~")]
-    # from trilogy.hooks.graph_hook import GraphHook
-
-    # GraphHook().query_graph_built(g)
 
     output: list[JoinOrderOutput] = []
     pivot_map = {
@@ -78,7 +75,7 @@ def resolve_join_order_v2(
     pivots = list(
         sorted(
             [x for x in pivot_map if len(pivot_map[x]) > 1],
-            key=lambda x: len(pivot_map[x]),
+            key=lambda x: (len(pivot_map[x]), len(x), x),
         )
     )
     solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
@@ -103,7 +100,7 @@ def resolve_join_order_v2(
             # if it has the concept as a partial, lower weight
             if root in partials.get(x, []):
                 base -= 1
-            return base
+            return (base, len(x), x)
 
         # get remainig un-joined datasets
         to_join = sorted(
