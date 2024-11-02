@@ -1,2 +1,5 @@
 
 key id int;
+
+
+select id;
