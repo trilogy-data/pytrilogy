@@ -331,6 +331,60 @@ END;"""
     ), test
 
 
+def test_render_math():
+    # addition
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.ADD,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 + 2"
+
+    # subtraction
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.SUBTRACT,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 - 2"
+
+    # multiplication
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.MULTIPLY,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 * 2"
+
+    # division
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.DIVIDE,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 / 2"
+
+
 def test_render_anon(test_environment: Environment):
     test = Renderer().to_string(
         Concept(
