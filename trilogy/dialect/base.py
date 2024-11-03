@@ -646,12 +646,14 @@ class BaseDialect:
                     else None
                 ),
                 group_by=(
-                    list(
-                        set(
-                            [
-                                self.render_concept_sql(c, cte, alias=False)
-                                for c in cte.group_concepts
-                            ]
+                    sorted(
+                        list(
+                            set(
+                                [
+                                    self.render_concept_sql(c, cte, alias=False)
+                                    for c in cte.group_concepts
+                                ]
+                            )
                         )
                     )
                     if cte.group_to_grain
