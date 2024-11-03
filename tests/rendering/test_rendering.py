@@ -315,6 +315,75 @@ def test_render_case(test_environment: Environment):
     test = Renderer().to_string(case_when)
     assert test == "WHEN order_id = 123 THEN order_id"
 
+    env, parsed = Environment().parse(
+        """
+
+key x int;
+auto y <- case when x = 1 then 1 else 2 end;"""
+    )
+
+    test = Renderer().to_string(parsed[-1])
+    assert (
+        test
+        == """property y <- CASE WHEN x = 1 THEN 1
+ELSE 2
+END;"""
+    ), test
+
+
+def test_render_math():
+    # addition
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.ADD,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 + 2"
+
+    # subtraction
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.SUBTRACT,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 - 2"
+
+    # multiplication
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.MULTIPLY,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 * 2"
+
+    # division
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2],
+            operator=FunctionType.DIVIDE,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=2,
+        )
+    )
+
+    assert test == "1 / 2"
+
 
 def test_render_anon(test_environment: Environment):
     test = Renderer().to_string(

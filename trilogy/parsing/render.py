@@ -386,13 +386,31 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "Function"):
-        inputs = ",".join(self.to_string(c) for c in arg.arguments)
+        args = [self.to_string(c) for c in arg.arguments]
+
+        if arg.operator == FunctionType.SUBTRACT:
+            return f"{args[0]} - {args[1]}"
+        if arg.operator == FunctionType.ADD:
+            return f"{args[0]} + {args[1]}"
+        if arg.operator == FunctionType.MULTIPLY:
+            return f"{args[0]} * {args[1]}"
+        if arg.operator == FunctionType.DIVIDE:
+            return f"{args[0]} / {args[1]}"
+        if arg.operator == FunctionType.MOD:
+            return f"{args[0]} % {args[1]}"
+
+        inputs = ",".join(args)
+
         if arg.operator == FunctionType.CONSTANT:
             return f"{inputs}"
         if arg.operator == FunctionType.CAST:
             return f"CAST({self.to_string(arg.arguments[0])} AS {self.to_string(arg.arguments[1])})"
         if arg.operator == FunctionType.INDEX_ACCESS:
             return f"{self.to_string(arg.arguments[0])}[{self.to_string(arg.arguments[1])}]"
+
+        if arg.operator == FunctionType.CASE:
+            inputs = "\n".join(args)
+            return f"CASE {inputs}\nEND"
         return f"{arg.operator.value}({inputs})"
 
     @to_string.register
