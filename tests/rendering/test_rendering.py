@@ -315,6 +315,21 @@ def test_render_case(test_environment: Environment):
     test = Renderer().to_string(case_when)
     assert test == "WHEN order_id = 123 THEN order_id"
 
+    env, parsed = Environment().parse(
+        """
+
+key x int;
+auto y <- case when x = 1 then 1 else 2 end;"""
+    )
+
+    test = Renderer().to_string(parsed[-1])
+    assert (
+        test
+        == """property y <- CASE WHEN x = 1 THEN 1
+ELSE 2
+END;"""
+    ), test
+
 
 def test_render_anon(test_environment: Environment):
     test = Renderer().to_string(
