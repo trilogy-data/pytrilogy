@@ -101,5 +101,6 @@ def render_join(
         )
     if not base_joinkeys:
         base_joinkeys = ["1=1"]
-    joinkeys = " AND ".join(base_joinkeys)
+
+    joinkeys = " AND ".join(sorted(base_joinkeys))
     return f"{join.jointype.value.upper()} JOIN {right_base} on {joinkeys}"

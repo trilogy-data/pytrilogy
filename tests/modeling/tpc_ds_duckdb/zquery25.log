@@ -1,7 +1,7 @@
 query_id = 25
-parse_time = 6.166624
-exec_time = 0.35026
-comp_time = 0.099832
+parse_time = 14.617639
+exec_time = 0.391852
+comp_time = 0.090522
 gen_length = 9166
 generated_sql = """
 
@@ -14,9 +14,9 @@ SELECT
 FROM
     memory.catalog_sales as catalog_sales_catalog_sales
 GROUP BY 
-    catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\",
+    catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\",
-    catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\"),
+    catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\"),
 salamander as (
 SELECT
     CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END as \"store_sales_is_returned\",
@@ -39,7 +39,7 @@ FROM
     memory.catalog_sales as catalog_sales_catalog_sales
     INNER JOIN memory.store_sales as store_sales_store_sales on catalog_sales_catalog_sales.\"CS_BILL_CUSTOMER_SK\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" AND catalog_sales_catalog_sales.\"CS_ITEM_SK\" = store_sales_store_sales.\"SS_ITEM_SK\"
     INNER JOIN memory.item as store_sales_item_items on catalog_sales_catalog_sales.\"CS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
-    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on catalog_sales_catalog_sales.\"CS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\" AND store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
+    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on catalog_sales_catalog_sales.\"CS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\"
     INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
     INNER JOIN memory.date_dim as catalog_sales_date_date on catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" = catalog_sales_date_date.\"D_DATE_SK\"
@@ -71,7 +71,7 @@ FROM
     shark
     INNER JOIN memory.store_sales as store_sales_store_sales on shark.\"store_sales_customer_id\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" AND shark.\"store_sales_item_id\" = store_sales_store_sales.\"SS_ITEM_SK\"
     INNER JOIN memory.item as store_sales_item_items on shark.\"store_sales_item_id\" = store_sales_item_items.\"I_ITEM_SK\"
-    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on shark.\"store_sales_item_id\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\" AND store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
+    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on shark.\"store_sales_item_id\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\"
     INNER JOIN memory.date_dim as store_sales_date_date on store_sales_store_sales.\"SS_SOLD_DATE_SK\" = store_sales_date_date.\"D_DATE_SK\"
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
     INNER JOIN memory.date_dim as catalog_sales_date_date on shark.\"catalog_sales_date_id\" = catalog_sales_date_date.\"D_DATE_SK\"
@@ -89,10 +89,10 @@ SELECT
 FROM
     salamander
 GROUP BY 
-    salamander.\"store_sales_store_name\",
-    salamander.\"store_sales_store_text_id\",
     salamander.\"store_sales_item_desc\",
-    salamander.\"store_sales_item_name\"),
+    salamander.\"store_sales_item_name\",
+    salamander.\"store_sales_store_name\",
+    salamander.\"store_sales_store_text_id\"),
 tiger as (
 SELECT
     skua.\"store_sales_item_desc\" as \"store_sales_item_desc\",
@@ -105,9 +105,9 @@ FROM
     skua
 GROUP BY 
     skua.\"store_sales_item_desc\",
-    skua.\"store_sales_store_text_id\",
     skua.\"store_sales_item_name\",
-    skua.\"store_sales_store_name\")
+    skua.\"store_sales_store_name\",
+    skua.\"store_sales_store_text_id\")
 SELECT
     serval.\"store_sales_item_name\" as \"store_sales_item_name\",
     serval.\"store_sales_item_desc\" as \"store_sales_item_desc\",
