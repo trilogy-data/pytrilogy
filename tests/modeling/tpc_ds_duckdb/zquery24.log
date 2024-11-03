@@ -1,7 +1,7 @@
 query_id = 24
-parse_time = 3.265151
-exec_time = 0.392251
-comp_time = 0.299665
+parse_time = 3.521615
+exec_time = 0.529498
+comp_time = 0.508309
 gen_length = 6467
 generated_sql = """
 
@@ -30,7 +30,7 @@ SELECT
 FROM
     memory.store_sales as store_sales_store_sales
     INNER JOIN memory.item as store_sales_item_items on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_item_items.\"I_ITEM_SK\"
-    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\" AND store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
+    LEFT OUTER JOIN memory.store_returns as store_sales_store_returns on store_sales_store_sales.\"SS_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\" AND store_sales_store_sales.\"SS_TICKET_NUMBER\" = store_sales_store_returns.\"SR_TICKET_NUMBER\" AND store_sales_item_items.\"I_ITEM_SK\" = store_sales_store_returns.\"SR_ITEM_SK\"
     INNER JOIN memory.store as store_sales_store_store on store_sales_store_sales.\"SS_STORE_SK\" = store_sales_store_store.\"S_STORE_SK\"
     INNER JOIN memory.customer as store_sales_customer_customers on store_sales_store_sales.\"SS_CUSTOMER_SK\" = store_sales_customer_customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as store_sales_customer_customer_address on store_sales_customer_customers.\"C_CURRENT_ADDR_SK\" = store_sales_customer_customer_address.\"CA_ADDRESS_SK\"
@@ -53,16 +53,16 @@ SELECT
 FROM
     komodo
 GROUP BY 
-    komodo.\"store_sales_item_color\",
-    komodo.\"store_sales_store_name\",
     komodo.\"store_sales_store_state\",
-    komodo.\"store_sales_customer_last_name\",
-    komodo.\"store_sales_customer_first_name\",
+    komodo.\"store_sales_item_size\",
+    komodo.\"store_sales_item_units\",
     komodo.\"store_sales_customer_state\",
     komodo.\"store_sales_item_current_price\",
-    komodo.\"store_sales_item_units\",
+    komodo.\"store_sales_customer_last_name\",
     komodo.\"store_sales_item_manager_id\",
-    komodo.\"store_sales_item_size\"),
+    komodo.\"store_sales_store_name\",
+    komodo.\"store_sales_item_color\",
+    komodo.\"store_sales_customer_first_name\"),
 lion as (
 SELECT
     leopard.\"net_paid\" as \"su_net_paid\",
@@ -102,9 +102,9 @@ SELECT
 FROM
     mandrill
 GROUP BY 
+    mandrill.\"su_store_sales_customer_last_name\",
     mandrill.\"su_store_sales_store_name\",
-    mandrill.\"su_store_sales_customer_first_name\",
-    mandrill.\"su_store_sales_customer_last_name\"),
+    mandrill.\"su_store_sales_customer_first_name\"),
 mamba as (
 SELECT
     avg(lynx.\"su_net_paid\") as \"avg_store_customer_sales\"

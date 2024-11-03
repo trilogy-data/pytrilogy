@@ -1,7 +1,7 @@
 query_id = 20
-parse_time = 1.467589
-exec_time = 0.113236
-comp_time = 0.213365
+parse_time = 1.801117
+exec_time = 0.081266
+comp_time = 0.222127
 gen_length = 2611
 generated_sql = """
 
@@ -35,10 +35,10 @@ SELECT
 FROM
     cobra
 GROUP BY 
-    cobra.\"cs_item_category\",
-    cobra.\"cs_item_class\",
     cobra.\"cs_item_name\",
+    cobra.\"cs_item_category\",
     cobra.\"cs_item_current_price\",
+    cobra.\"cs_item_class\",
     cobra.\"cs_item_desc\"),
 coyote as (
 SELECT

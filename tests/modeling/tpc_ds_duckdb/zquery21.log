@@ -1,7 +1,7 @@
 query_id = 21
-parse_time = 4.938347
-exec_time = 0.067703
-comp_time = 0.055179
+parse_time = 5.781513
+exec_time = 0.047621
+comp_time = 0.054797
 gen_length = 2793
 generated_sql = """
 
@@ -37,8 +37,8 @@ SELECT
 FROM
     fox
 GROUP BY 
-    fox.\"inventory_item_name\",
-    fox.\"inventory_warehouse_name\"
+    fox.\"inventory_warehouse_name\",
+    fox.\"inventory_item_name\"
 HAVING
     CASE
 	WHEN sum(CASE

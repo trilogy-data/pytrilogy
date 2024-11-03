@@ -164,8 +164,8 @@ def parse_concept_reference(
 
 def expr_to_boolean(
     root,
-) -> Union[Comparison, Conditional, SubselectComparison, Parenthetical]:
-    if not isinstance(root, (Comparison, Conditional, Parenthetical)):
+) -> Union[Comparison, SubselectComparison, Conditional]:
+    if not isinstance(root, (Comparison, SubselectComparison, Conditional)):
         if arg_to_datatype(root) == DataType.BOOL:
             root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
         else:

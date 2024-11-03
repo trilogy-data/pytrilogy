@@ -1,7 +1,7 @@
 query_id = 16
-parse_time = 33.951821
-exec_time = 0.311458
-comp_time = 0.048836
+parse_time = 48.789664
+exec_time = 0.409686
+comp_time = 0.054623
 gen_length = 5026
 generated_sql = """
 
@@ -54,10 +54,10 @@ WHERE
     cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select imported.\"cr_order_number\" from imported where imported.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select eminent.\"multi_warehouse_sales\" from eminent where eminent.\"multi_warehouse_sales\" is not null)
 
 GROUP BY 
-    cs_catalog_sales.\"CS_CALL_CENTER_SK\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\",
-    cs_catalog_sales.\"CS_SHIP_DATE_SK\",
-    cs_catalog_sales.\"CS_SHIP_ADDR_SK\"),
+    cs_catalog_sales.\"CS_CALL_CENTER_SK\",
+    cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
+    cs_catalog_sales.\"CS_SHIP_DATE_SK\"),
 bear as (
 SELECT
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
