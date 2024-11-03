@@ -1,7 +1,7 @@
 query_id = 8
-parse_time = 3.763265
-exec_time = 0.124744
-comp_time = 0.105322
+parse_time = 3.854862
+exec_time = 0.174724
+comp_time = 0.108034
 gen_length = 7242
 generated_sql = """
 
@@ -32,7 +32,7 @@ SELECT
     yellow.\"customer_zip\" as \"customer_zip\"
 FROM
     yellow
-    INNER JOIN sedate on yellow.\"customer_preferred_cust_flag\" = sedate.\"customer_preferred_cust_flag\" AND yellow.\"customer_id\" = sedate.\"customer_id\"),
+    INNER JOIN sedate on yellow.\"customer_id\" = sedate.\"customer_id\" AND yellow.\"customer_preferred_cust_flag\" = sedate.\"customer_preferred_cust_flag\"),
 dapper as (
 SELECT
     count(resonant.\"_virt_7470647693515630\") as \"zip_p_count\",
