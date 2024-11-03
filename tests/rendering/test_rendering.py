@@ -330,6 +330,23 @@ ELSE 2
 END;"""
     ), test
 
+    #  property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
+
+    env, parsed = Environment().parse(
+        """
+
+key category_name string;
+auto y <- CASE WHEN category_name like '%abc%' then True else False END;"""
+    )
+
+    test = Renderer().to_string(parsed[-1])
+    assert (
+        test
+        == """property y <- CASE WHEN like(category_name,'%abc%') = True THEN True
+ELSE False
+END;"""
+    ), test
+
 
 def test_render_math():
     # addition

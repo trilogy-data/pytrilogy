@@ -162,6 +162,21 @@ def parse_concept_reference(
     return lookup, namespace, name, parent
 
 
+def expr_to_boolean(
+    root,
+) -> Union[Comparison, Conditional, SubselectComparison, Parenthetical]:
+    if not isinstance(root, (Comparison, Conditional, Parenthetical)):
+        if arg_to_datatype(root) == DataType.BOOL:
+            root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
+        else:
+            root = Comparison(
+                left=root,
+                right=MagicConstants.NULL,
+                operator=ComparisonOperator.IS_NOT,
+            )
+    return root
+
+
 def unwrap_transformation(
     input: Union[
         FilterItem,
@@ -1022,15 +1037,7 @@ class ParseToObjects(Transformer):
 
     def where(self, args):
         root = args[0]
-        if not isinstance(root, (Comparison, Conditional, Parenthetical)):
-            if arg_to_datatype(root) == DataType.BOOL:
-                root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
-            else:
-                root = Comparison(
-                    left=root,
-                    right=MagicConstants.NULL,
-                    operator=ComparisonOperator.IS_NOT,
-                )
+        root = expr_to_boolean(root)
         return WhereClause(conditional=root)
 
     def having(self, args):
@@ -1838,7 +1845,8 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fcase_when(self, meta, args) -> CaseWhen:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        return CaseWhen(comparison=args[0], expr=args[1])
+        root = expr_to_boolean(args[0])
+        return CaseWhen(comparison=root, expr=args[1])
 
     @v_args(meta=True)
     def fcase_else(self, meta, args) -> CaseElse:

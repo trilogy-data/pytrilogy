@@ -212,6 +212,27 @@ def test_case_function(test_environment):
         assert test_environment.concepts["test_upper_case"].datatype == DataType.BOOL
 
 
+def test_case_like_function(test_environment):
+    declarations = """
+    property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
+    select
+        category_name,
+        test_like
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    assert (
+        test_environment.concepts["category_name"]
+        in test_environment.concepts["test_like"].lineage.concept_arguments
+    )
+    select: SelectStatement = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        compiled = dialect.compile_statement(process_query(test_environment, select))
+        assert "CASE" in compiled
+        assert "ELSE" in compiled
+        assert "END" in compiled
+        assert test_environment.concepts["test_like"].datatype == DataType.BOOL
+
+
 def test_split_and_index_function(test_environment):
     declarations = """
     constant test_string <- 'abc_def';
