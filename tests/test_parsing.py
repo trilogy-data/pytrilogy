@@ -422,6 +422,17 @@ select
     assert env.concepts["labels"].datatype.value_type == DataType.INTEGER
 
 
+def test_empty_string():
+    env, parsed = parse_text(
+        """
+const labels <- '';
+
+
+"""
+    )
+    assert env.concepts["labels"].datatype == DataType.STRING
+
+
 def test_struct_attr_access():
 
     text = """

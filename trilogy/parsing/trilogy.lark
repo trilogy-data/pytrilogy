@@ -84,7 +84,7 @@
 
     COPY_TYPE: "csv"i
 
-    copy_statement: "copy"i "into"i COPY_TYPE _string_lit "from"i select_statement
+    copy_statement: "copy"i "into"i COPY_TYPE string_lit "from"i select_statement
 
     // FUNCTION blocks
     function: raw_function
@@ -118,7 +118,7 @@
     _assignment: ("->") | "as"i
     select_transform : expr _assignment IDENTIFIER metadata?
     
-    metadata: "metadata" "(" IDENTIFIER "=" _string_lit ")"
+    metadata: "metadata" "(" IDENTIFIER "=" string_lit ")"
     
     limit: "LIMIT"i /[0-9]+/
     
@@ -169,8 +169,8 @@
     unnest: _UNNEST expr ")"
     //indexing into an expression is a function
     index_access: expr "[" int_lit "]"
-    map_key_access: expr "[" _string_lit "]"
-    attr_access: expr  "." _string_lit 
+    map_key_access: expr "[" string_lit "]"
+    attr_access: expr  "." string_lit 
 
     expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like 
     
@@ -209,16 +209,16 @@
     
     //string
     _LIKE.1: "like("i
-    like:  _LIKE expr "," _string_lit ")"
+    like:  _LIKE expr "," string_lit ")"
     _ILIKE.1: "ilike("i
-    ilike:   _ILIKE expr "," _string_lit ")"
+    ilike:   _ILIKE expr "," string_lit ")"
     alt_like: expr  "like"i expr
     _UPPER.1: "upper("i
     upper: _UPPER expr ")"
    _LOWER.1: "lower("i
     lower: _LOWER expr ")"  
     _SPLIT.1: "split("i  
-    fsplit: _SPLIT expr "," _string_lit ")"
+    fsplit: _SPLIT expr "," string_lit ")"
    _STRPOS.1: "strpos("i
     fstrpos: _STRPOS expr "," expr ")"
     _SUBSTRING.1: "substring("i
@@ -301,7 +301,7 @@
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '
     _single_quote: "'" ( SINGLE_STRING_CHARS )* "'" 
     _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
-    _string_lit: _single_quote | _double_quote
+    string_lit: _single_quote | _double_quote
 
     MINUS: "-"
 
@@ -322,7 +322,7 @@
 
     !null_lit.1: "null"i
     
-    literal: null_lit | _string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit | struct_lit | tuple_lit
+    literal: null_lit | string_lit | int_lit | float_lit | bool_lit | array_lit | map_lit | struct_lit | tuple_lit
 
     MODIFIER: "Optional"i | "Partial"i | "Nullable"i
 
