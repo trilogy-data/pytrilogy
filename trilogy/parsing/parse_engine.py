@@ -1121,7 +1121,6 @@ class ParseToObjects(Transformer):
         return wrapped
 
     def literal(self, args):
-        print(args)
         return args[0]
 
     def comparison(self, args) -> Comparison:
