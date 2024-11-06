@@ -76,6 +76,11 @@ def test_aggregate_at_grain(duckdb_engine: Executor, expected_results):
     assert results[0].avg_count_per_product == expected_results["avg_count_per_product"]
 
 
+def test_empty_string(duckdb_engine: Executor, expected_results):
+    results = duckdb_engine.execute_text("""select '' as empty_string;""")[0].fetchall()
+    assert results[0].empty_string == ""
+
+
 def test_constants(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const usd_conversion <- 2;

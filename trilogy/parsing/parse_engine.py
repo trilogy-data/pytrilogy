@@ -1098,6 +1098,11 @@ class ParseToObjects(Transformer):
     def tuple_lit(self, args):
         return tuple_to_wrapper(args)
 
+    def string_lit(self, args) -> str:
+        if not args:
+            return ""
+        return args[0]
+
     def struct_lit(self, args):
 
         zipped = dict(zip(args[::2], args[1::2]))
