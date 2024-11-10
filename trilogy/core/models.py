@@ -2077,7 +2077,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         original = [c for c in self.columns if c.concept.address == source.address]
-        early_exit_check = [c for c in self.columns if c.concept.address == target.address]
+        early_exit_check = [
+            c for c in self.columns if c.concept.address == target.address
+        ]
         if early_exit_check:
             return None
         if len(original) != 1:
