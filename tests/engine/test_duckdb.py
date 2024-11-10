@@ -202,6 +202,33 @@ select my_rowset.x, my_rowset.z;"""
     assert len(results) == 1
 
 
+
+def test_rowset_hidden(duckdb_engine: Executor):
+    test = """const x <- unnest([1,2,2,3]);
+const y <- 5;
+auto z <- rank x order by x asc;
+
+rowset my_rowset <- 
+select 
+    x, 
+    z, 
+    --x+1 as x_plus_one
+where z = 1;
+
+where 
+
+    max(my_rowset.x_plus_one) by my_rowset.x = 2
+select 
+    my_rowset.x, my_rowset.z;"""
+    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+    z = duckdb_engine.environment.concepts["z"]
+    x = duckdb_engine.environment.concepts["x"]
+    assert z.grain == Grain(components=[x])
+    assert str(z) == "local.z<local.x>"
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 1
+
+
 def test_rowset_agg(duckdb_engine: Executor):
     test = """const x <- unnest([1,2,2,3]);
 const y <- 5;

@@ -1,9 +1,5 @@
 import store_sales as store_sales;
 
-
-#Report the total extended sales price per item brand of a specific manufacturer for all sales in a specific month
-# of the year
-
 SELECT
     store_sales.date.year,
     store_sales.item.brand_id,

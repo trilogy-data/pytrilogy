@@ -1,7 +1,6 @@
 
 import store_returns as returns;
 
-
 where
     returns.store.state = 'TN' and
     returns.return_date.year = 2000

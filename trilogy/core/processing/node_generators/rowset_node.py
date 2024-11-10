@@ -87,9 +87,9 @@ def gen_rowset_node(
 
     node.rebuild_cache()
 
-    if not local_optional or all(
+    if (not local_optional or all(
         x.address in node.output_concepts for x in local_optional
-    ):
+    )) and not conditions:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional found or no optional; exiting early."
         )
@@ -102,13 +102,16 @@ def gen_rowset_node(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
         )
         return node
+    base_mandatory =  local_optional
+    if conditions:
+        base_mandatory += conditions.row_arguments
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        mandatory_list=possible_joins + local_optional,
+        mandatory_list=possible_joins + base_mandatory,
         environment=environment,
         g=g,
         depth=depth + 1,
-        conditions=conditions,
+        # conditions=conditions,
     )
     if not enrich_node:
         logger.info(
@@ -117,7 +120,7 @@ def gen_rowset_node(
         return node
     return MergeNode(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
-        output_concepts=node.output_concepts + local_optional,
+        output_concepts=node.output_concepts + base_mandatory,
         environment=environment,
         g=g,
         depth=depth,
@@ -126,5 +129,6 @@ def gen_rowset_node(
             enrich_node,
         ],
         partial_concepts=node.partial_concepts,
-        preexisting_conditions=conditions.conditional if conditions else None,
+        conditions=conditions.conditional if conditions else None
+        # preexisting_conditions=conditions.conditional if conditions else None,
     )
