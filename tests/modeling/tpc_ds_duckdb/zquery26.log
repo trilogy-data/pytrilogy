@@ -1,12 +1,12 @@
 query_id = 26
-parse_time = 2.675785
-exec_time = 0.273823
-comp_time = 0.226611
-gen_length = 2312
+parse_time = 0.450233
+exec_time = 0.083245
+comp_time = 0.083363
+gen_length = 2348
 generated_sql = """
 
 WITH 
-avocet as (
+thoughtful as (
 SELECT
     cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
     cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
@@ -31,15 +31,15 @@ WHERE
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000
 )
 SELECT
-    avocet.\"cs_item_name\" as \"cs_item_name\",
-    avg(avocet.\"cs_quantity\") as \"agg1\",
-    avg(avocet.\"cs_list_price\") as \"agg2\",
-    avg(avocet.\"cs_coupon_amt\") as \"agg3\",
-    avg(avocet.\"cs_sales_price\") as \"agg4\"
+    thoughtful.\"cs_item_name\" as \"cs_item_name\",
+    avg(thoughtful.\"cs_quantity\") as \"agg1\",
+    avg(thoughtful.\"cs_list_price\") as \"agg2\",
+    avg(thoughtful.\"cs_coupon_amt\") as \"agg3\",
+    avg(thoughtful.\"cs_sales_price\") as \"agg4\"
 FROM
-    avocet
+    thoughtful
 GROUP BY 
-    avocet.\"cs_item_name\"
+    thoughtful.\"cs_item_name\"
 ORDER BY 
-    avocet.\"cs_item_name\" asc
+    thoughtful.\"cs_item_name\" asc
 LIMIT (100)"""

@@ -2077,6 +2077,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         original = [c for c in self.columns if c.concept.address == source.address]
+        early_exit_check = [
+            c for c in self.columns if c.concept.address == target.address
+        ]
+        if early_exit_check:
+            return None
         if len(original) != 1:
             raise ValueError(
                 f"Expected exactly one column to merge, got {len(original)} for {source.address}, {[x.alias for x in original]}"
@@ -3332,7 +3337,6 @@ class Environment(BaseModel):
 
     materialized_concepts: List[Concept] = Field(default_factory=list)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
-    _parse_count: int = 0
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
@@ -3442,19 +3446,22 @@ class Environment(BaseModel):
         exists = False
         existing = self.imports[alias]
         if imp_stm:
-            if any([x.path == imp_stm.path for x in existing]):
+            if any(
+                [x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing]
+            ):
                 exists = True
-
         else:
-            if any([x.path == source.working_path for x in existing]):
+            if any(
+                [x.path == source.working_path and x.alias == alias for x in existing]
+            ):
                 exists = True
             imp_stm = ImportStatement(alias=alias, path=Path(source.working_path))
-
         same_namespace = alias == self.namespace
 
         if not exists:
             self.imports[alias].append(imp_stm)
-
+        else:
+            return self
         for k, concept in source.concepts.items():
             if same_namespace:
                 new = self.add_concept(concept, _ignore_cache=True)
@@ -3485,13 +3492,25 @@ class Environment(BaseModel):
         self.gen_concept_list_caches()
         return self
 
-    def add_file_import(self, path: str, alias: str, env: Environment | None = None):
-        from trilogy.parsing.parse_engine import ParseToObjects, PARSER
+    def add_file_import(
+        self, path: str | Path, alias: str, env: Environment | None = None
+    ):
+        from trilogy.parsing.parse_engine import (
+            ParseToObjects,
+            PARSER,
+            gen_cache_lookup,
+        )
 
-        apath = path.split(".")
-        apath[-1] = apath[-1] + ".preql"
-
-        target: Path = Path(self.working_path, *apath)
+        if isinstance(path, str):
+            if path.endswith(".preql"):
+                path = path.rsplit(".", 1)[0]
+            if "." not in path:
+                target = Path(self.working_path, path)
+            else:
+                target = Path(self.working_path, *path.split("."))
+            target = target.with_suffix(".preql")
+        else:
+            target = path
         if alias in self.imports:
             imports = self.imports[alias]
             for x in imports:
@@ -3502,17 +3521,19 @@ class Environment(BaseModel):
                 ImportStatement(alias=alias, path=target, environment=env)
             )
         else:
+            parse_address = gen_cache_lookup(str(target), alias, str(self.working_path))
             try:
                 with open(target, "r", encoding="utf-8") as f:
                     text = f.read()
                 nparser = ParseToObjects(
                     visit_tokens=True,
-                    text=text,
                     environment=Environment(
                         working_path=target.parent,
                     ),
-                    parse_address=str(target),
+                    parse_address=parse_address,
+                    token_address=target,
                 )
+                nparser.set_text(text)
                 nparser.transform(PARSER.parse(text))
             except Exception as e:
                 raise ImportError(

@@ -1,12 +1,12 @@
 query_id = 12
-parse_time = 0.955274
-exec_time = 0.174357
-comp_time = 0.202949
-gen_length = 3115
+parse_time = 0.455261
+exec_time = 0.083579
+comp_time = 0.070339
+gen_length = 3124
 generated_sql = """
 
 WITH 
-tenuous as (
+wakeful as (
 SELECT
     cast(web_sales_date_date.\"D_DATE\" as date) as \"web_sales_date_date\",
     web_sales_item_items.\"I_CATEGORY\" as \"web_sales_item_category\",
@@ -24,47 +24,47 @@ FROM
 WHERE
     cast(web_sales_date_date.\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(web_sales_date_date.\"D_DATE\" as date) <= cast('1999-03-24' as date) and web_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home')
 ),
-abstracted as (
+cheerful as (
 SELECT
-    sum(tenuous.\"web_sales_external_sales_price\") as \"itemrevenue\",
-    tenuous.\"web_sales_item_category\" as \"web_sales_item_category\",
-    tenuous.\"web_sales_item_class\" as \"web_sales_item_class\",
-    tenuous.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    tenuous.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    tenuous.\"web_sales_item_name\" as \"web_sales_item_name\"
+    sum(wakeful.\"web_sales_external_sales_price\") as \"itemrevenue\",
+    wakeful.\"web_sales_item_category\" as \"web_sales_item_category\",
+    wakeful.\"web_sales_item_class\" as \"web_sales_item_class\",
+    wakeful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    wakeful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    wakeful.\"web_sales_item_name\" as \"web_sales_item_name\"
 FROM
-    tenuous
+    wakeful
 GROUP BY 
-    tenuous.\"web_sales_item_category\",
-    tenuous.\"web_sales_item_class\",
-    tenuous.\"web_sales_item_current_price\",
-    tenuous.\"web_sales_item_desc\",
-    tenuous.\"web_sales_item_name\"),
-colossal as (
+    wakeful.\"web_sales_item_category\",
+    wakeful.\"web_sales_item_class\",
+    wakeful.\"web_sales_item_current_price\",
+    wakeful.\"web_sales_item_desc\",
+    wakeful.\"web_sales_item_name\"),
+thoughtful as (
 SELECT
-    abstracted.\"itemrevenue\" as \"itemrevenue\",
-    abstracted.\"web_sales_item_category\" as \"web_sales_item_category\",
-    abstracted.\"web_sales_item_class\" as \"web_sales_item_class\",
-    abstracted.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    abstracted.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    abstracted.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(abstracted.\"itemrevenue\") over (partition by abstracted.\"web_sales_item_class\") as \"_virt_8498692139463401\"
+    cheerful.\"itemrevenue\" as \"itemrevenue\",
+    cheerful.\"web_sales_item_category\" as \"web_sales_item_category\",
+    cheerful.\"web_sales_item_class\" as \"web_sales_item_class\",
+    cheerful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    cheerful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    cheerful.\"web_sales_item_name\" as \"web_sales_item_name\",
+    sum(cheerful.\"itemrevenue\") over (partition by cheerful.\"web_sales_item_class\") as \"_virt_882751776668408\"
 FROM
-    abstracted)
+    cheerful)
 SELECT
-    colossal.\"web_sales_item_name\" as \"web_sales_item_name\",
-    colossal.\"web_sales_item_desc\" as \"web_sales_item_desc\",
-    colossal.\"web_sales_item_category\" as \"web_sales_item_category\",
-    colossal.\"web_sales_item_class\" as \"web_sales_item_class\",
-    colossal.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
-    colossal.\"itemrevenue\" as \"itemrevenue\",
-    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_8498692139463401\" as \"revenueratio\"
+    thoughtful.\"web_sales_item_name\" as \"web_sales_item_name\",
+    thoughtful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
+    thoughtful.\"web_sales_item_category\" as \"web_sales_item_category\",
+    thoughtful.\"web_sales_item_class\" as \"web_sales_item_class\",
+    thoughtful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
+    thoughtful.\"itemrevenue\" as \"itemrevenue\",
+    thoughtful.\"itemrevenue\" * 100.0 / thoughtful.\"_virt_882751776668408\" as \"revenueratio\"
 FROM
-    colossal
+    thoughtful
 ORDER BY 
-    colossal.\"web_sales_item_category\" asc,
-    colossal.\"web_sales_item_class\" asc,
-    colossal.\"web_sales_item_name\" asc,
-    colossal.\"web_sales_item_desc\" asc,
-    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_8498692139463401\" asc
+    thoughtful.\"web_sales_item_category\" asc,
+    thoughtful.\"web_sales_item_class\" asc,
+    thoughtful.\"web_sales_item_name\" asc,
+    thoughtful.\"web_sales_item_desc\" asc,
+    thoughtful.\"itemrevenue\" * 100.0 / thoughtful.\"_virt_882751776668408\" asc
 LIMIT (100)"""

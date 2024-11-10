@@ -1,7 +1,7 @@
 from os.path import dirname, join
 from typing import List, Optional, Tuple, Union
 from re import IGNORECASE
-from lark import Lark, Transformer, v_args, Tree
+from lark import Lark, Transformer, v_args, Tree, ParseTree
 from lark.exceptions import (
     UnexpectedCharacters,
     UnexpectedEOF,
@@ -32,6 +32,7 @@ from trilogy.core.enums import (
     ShowCategory,
     FunctionClass,
     IOType,
+    ConceptSource,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -126,12 +127,15 @@ from trilogy.parsing.common import (
 from dataclasses import dataclass
 
 
+CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
+
+SELF_LABEL = "root"
+
+
 @dataclass
 class WholeGrainWrapper:
     where: WhereClause
 
-
-CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
 with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
     PARSER = Lark(
@@ -142,6 +146,10 @@ with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
         parser="lalr",
         cache=True,
     )
+
+
+def gen_cache_lookup(path: str, alias: str, parent: str) -> str:
+    return path + alias + parent
 
 
 def parse_concept_reference(
@@ -220,25 +228,30 @@ class ParseToObjects(Transformer):
     def __init__(
         self,
         visit_tokens,
-        text,
         environment: Environment,
         parse_address: str | None = None,
+        token_address: Path | None = None,
         parsed: dict[str, "ParseToObjects"] | None = None,
+        tokens: dict[Path | str, ParseTree] | None = None,
+        text_lookup: dict[Path | str, str] | None = None,
     ):
         Transformer.__init__(self, visit_tokens)
-        self.text = text
         self.environment: Environment = environment
-        self.parse_address = parse_address or "root"
+        self.parse_address: str = parse_address or SELF_LABEL
+        self.token_address: Path | str = token_address or SELF_LABEL
         self.parsed: dict[str, ParseToObjects] = parsed if parsed else {}
+        self.tokens: dict[Path | str, ParseTree] = tokens or {}
+        self.text_lookup: dict[Path | str, str] = text_lookup or {}
         # we do a second pass to pick up circular dependencies
         # after initial parsing
         self.pass_count = 1
-        self._results_stash = None
 
-    def transform(self, tree):
+    def set_text(self, text: str):
+        self.text_lookup[self.token_address] = text
+
+    def transform(self, tree: Tree):
         results = super().transform(tree)
-        self._results_stash = results
-        self.environment._parse_count += 1
+        self.tokens[self.token_address] = tree
         return results
 
     def hydrate_missing(self):
@@ -248,10 +261,10 @@ class ParseToObjects(Transformer):
             if v.pass_count == 2:
                 continue
             v.hydrate_missing()
-        self.environment.concepts.fail_on_missing = True
+        # self.environment.concepts.fail_on_missing = True
         # if not self.environment.concepts.undefined:
         #     return self._results_stash
-        reparsed = self.transform(PARSER.parse(self.text))
+        reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
         return reparsed
 
@@ -266,6 +279,18 @@ class ParseToObjects(Transformer):
                     output.concept.metadata.description
                     or args[1].text.split("#")[1].strip()
                 )
+        if isinstance(output, ImportStatement):
+            if len(args) > 1 and isinstance(args[1], Comment):
+                comment = args[1].text.split("#")[1].strip()
+                namespace = output.alias
+                for _, v in self.environment.concepts.items():
+                    if v.namespace == namespace:
+                        if v.metadata.description:
+                            v.metadata.description = (
+                                f"{comment}: {v.metadata.description}"
+                            )
+                        else:
+                            v.metadata.description = comment
 
         return args[0]
 
@@ -647,45 +672,41 @@ class ParseToObjects(Transformer):
         return Comment(text=args.value)
 
     @v_args(meta=True)
-    def select_transform(self, meta, args) -> ConceptTransform:
+    def select_transform(self, meta: Meta, args) -> ConceptTransform:
 
         output: str = args[1]
-        function = unwrap_transformation(args[0])
+        transformation = unwrap_transformation(args[0])
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
 
-        if isinstance(function, AggregateWrapper):
-            concept = agg_wrapper_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, WindowItem):
-            concept = window_item_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, FilterItem):
-            concept = filter_item_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, CONSTANT_TYPES):
-            concept = constant_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, Function):
-            concept = function_to_concept(function, namespace=namespace, name=output)
-        else:
-            if function.output_purpose == Purpose.PROPERTY:
-                pkeys = [x for x in function.arguments if isinstance(x, Concept)]
-                grain = Grain(components=pkeys)
-                keys = tuple(grain.components_copy)
-            else:
-                grain = None
-                keys = None
-            concept = Concept(
-                name=output,
-                datatype=function.output_datatype,
-                purpose=function.output_purpose,
-                lineage=function,
-                namespace=namespace,
-                grain=Grain(components=[]) if not grain else grain,
-                keys=keys,
+        metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
+
+        if isinstance(transformation, AggregateWrapper):
+            concept = agg_wrapper_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
             )
-        if concept.metadata:
-            concept.metadata.line_number = meta.line
+        elif isinstance(transformation, WindowItem):
+            concept = window_item_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        elif isinstance(transformation, FilterItem):
+            concept = filter_item_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        elif isinstance(transformation, CONSTANT_TYPES):
+            concept = constant_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        elif isinstance(transformation, Function):
+            concept = function_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        else:
+            raise SyntaxError("Invalid transformation")
+
         self.environment.add_concept(concept, meta=meta)
-        return ConceptTransform(function=function, output=concept)
+        return ConceptTransform(function=transformation, output=concept)
 
     @v_args(meta=True)
     def concept_nullable_modifier(self, meta: Meta, args) -> Modifier:
@@ -709,7 +730,7 @@ class ParseToObjects(Transformer):
         if len(args) != 1:
             raise ParseError(
                 "Malformed select statement"
-                f" {args} {self.text[meta.start_pos:meta.end_pos]}"
+                f" {args} {self.text_lookup[self.parse_address][meta.start_pos:meta.end_pos]}"
             )
         content = args[0]
         if isinstance(content, ConceptTransform):
@@ -807,25 +828,46 @@ class ParseToObjects(Transformer):
         path = args[0].split(".")
 
         target = join(self.environment.working_path, *path) + ".preql"
-        if target in self.parsed:
-            nparser = self.parsed[target]
+
+        # tokens + text are cached by path
+        token_lookup = Path(target)
+
+        # cache lookups by the target, the alias, and the file we're importing it from
+        cache_lookup = gen_cache_lookup(
+            path=target, alias=alias, parent=str(self.token_address)
+        )
+        if token_lookup in self.tokens:
+            raw_tokens = self.tokens[token_lookup]
+            text = self.text_lookup[token_lookup]
+        else:
+            text = self.resolve_import_address(target)
+            self.text_lookup[token_lookup] = text
+
+            raw_tokens = PARSER.parse(text)
+            self.tokens[token_lookup] = raw_tokens
+
+        if cache_lookup in self.parsed:
+            nparser = self.parsed[cache_lookup]
         else:
             try:
-                text = self.resolve_import_address(target)
                 nparser = ParseToObjects(
                     visit_tokens=True,
-                    text=text,
                     environment=Environment(
                         working_path=dirname(target),
                         # namespace=alias,
                     ),
-                    parse_address=target,
+                    parse_address=cache_lookup,
+                    token_address=token_lookup,
                     parsed={**self.parsed, **{self.parse_address: self}},
+                    tokens={**self.tokens, **{token_lookup: raw_tokens}},
+                    text_lookup={**self.text_lookup, **{token_lookup: text}},
                 )
-                nparser.transform(PARSER.parse(text))
-                self.parsed[target] = nparser
+                nparser.transform(raw_tokens)
+                self.parsed[cache_lookup] = nparser
                 # add the parsed objects of the import in
                 self.parsed = {**self.parsed, **nparser.parsed}
+                self.tokens = {**self.tokens, **nparser.tokens}
+                self.text_lookup = {**self.text_lookup, **nparser.text_lookup}
             except Exception as e:
                 raise ImportError(f"Unable to import file {target}, parsing error: {e}")
 
@@ -1912,9 +1954,10 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
     ],
 ]:
     environment = environment or Environment()
-    parser = ParseToObjects(visit_tokens=True, text=text, environment=environment)
+    parser = ParseToObjects(visit_tokens=True, environment=environment)
 
     try:
+        parser.set_text(text)
         parser.transform(PARSER.parse(text))
         # handle circular dependencies
         pass_two = parser.hydrate_missing()

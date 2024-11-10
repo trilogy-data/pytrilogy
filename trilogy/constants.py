@@ -36,7 +36,7 @@ class Comments:
     basic: bool = True
     joins: bool = True
     nullable: bool = False
-    partial: bool = False
+    partial: bool = True
 
 
 # TODO: support loading from environments
