@@ -161,6 +161,7 @@ def function_to_concept(
         purpose = Purpose.CONSTANT
     else:
         purpose = parent.output_purpose
+    fmetadata = metadata or Metadata()
     if grain is not None:
         return Concept(
             name=name,
@@ -171,7 +172,7 @@ def function_to_concept(
             keys=keys,
             modifiers=modifiers,
             grain=grain,
-            metadata=metadata,
+            metadata=fmetadata,
         )
 
     return Concept(
@@ -182,7 +183,7 @@ def function_to_concept(
         namespace=namespace,
         keys=keys,
         modifiers=modifiers,
-        metadata=metadata,
+        metadata=fmetadata,
     )
 
 

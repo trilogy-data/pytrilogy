@@ -1,7 +1,7 @@
 query_id = 20
-parse_time = 2.349717
-exec_time = 0.127165
-comp_time = 0.329839
+parse_time = 0.38543
+exec_time = 0.031358
+comp_time = 0.105342
 gen_length = 2611
 generated_sql = """
 
@@ -48,7 +48,7 @@ SELECT
     cougar.\"cs_item_desc\" as \"cs_item_desc\",
     cougar.\"cs_item_name\" as \"cs_item_name\",
     cougar.\"revenue\" as \"revenue\",
-    sum(cougar.\"revenue\") over (partition by cougar.\"cs_item_class\") as \"_virt_6483977992947176\"
+    sum(cougar.\"revenue\") over (partition by cougar.\"cs_item_class\") as \"_virt_4232581866916624\"
 FROM
     cougar)
 SELECT
@@ -58,7 +58,7 @@ SELECT
     coyote.\"cs_item_class\" as \"cs_item_class\",
     coyote.\"cs_item_current_price\" as \"cs_item_current_price\",
     coyote.\"revenue\" as \"revenue\",
-    coyote.\"revenue\" * 100.0 / coyote.\"_virt_6483977992947176\" as \"revenue_ratio\"
+    coyote.\"revenue\" * 100.0 / coyote.\"_virt_4232581866916624\" as \"revenue_ratio\"
 FROM
     coyote
 ORDER BY 
@@ -66,5 +66,5 @@ ORDER BY
     coyote.\"cs_item_class\" asc nulls first,
     coyote.\"cs_item_name\" asc nulls first,
     coyote.\"cs_item_desc\" asc nulls first,
-    coyote.\"revenue\" * 100.0 / coyote.\"_virt_6483977992947176\" asc nulls first
+    coyote.\"revenue\" * 100.0 / coyote.\"_virt_4232581866916624\" asc nulls first
 LIMIT (100)"""

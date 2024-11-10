@@ -7,7 +7,6 @@ import catalog_sales as catalog_sales;
 #dependent count, employed dependent count and college dependent count who live in certain counties and who
 # have purchased from both stores and another sales channel during a three month time period of a given year.
 
-
 merge catalog_sales.customer.id into ~customer.id;
 merge web_sales.customer.id into ~customer.id;
 merge store_sales.customer.id into ~customer.id;
@@ -21,9 +20,12 @@ auto relevant_customers <-  customer.id ?
     'La Porte County',
 )
     and ((web_sales.date.year = 2002 and web_sales.date.month_of_year in (1,2,3,4)) or (catalog_sales.date.year = 2002 and catalog_sales.date.month_of_year in (1,2,3,4) ) )
-    ;
+;
 
-
+WHERE
+    customer.id in relevant_customers 
+    # filter to just demographics contents
+    and customer.demographics.gender is not null
 SELECT
     customer.demographics.gender,
     customer.demographics.marital_status,
@@ -45,10 +47,6 @@ SELECT
     customer.demographics.college_dependent_count,
             count(customer.id
      ) as cnt6
-WHERE
-    customer.id in relevant_customers 
-    # filter to just demographics contents
-    and customer.demographics.gender is not null
 ORDER BY
     customer.demographics.gender asc,
     customer.demographics.marital_status asc,

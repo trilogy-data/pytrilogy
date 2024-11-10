@@ -1,8 +1,8 @@
 query_id = 8
-parse_time = 3.854862
-exec_time = 0.174724
-comp_time = 0.108034
-gen_length = 7242
+parse_time = 0.851589
+exec_time = 0.071513
+comp_time = 0.052267
+gen_length = 7230
 generated_sql = """
 
 WITH 
@@ -73,7 +73,7 @@ wary as (
 SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     store_sales_date_date.\"D_QOY\" as \"store_sales_date_quarter\",
-    store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
+    store_sales_store_sales.\"SS_ITEM_SK\" as \"item_id\",
     store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",

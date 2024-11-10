@@ -21,4 +21,7 @@ def test_import_metadata():
     )
 
     assert "Dragon metrics" in env.concepts["env.id"].metadata.description
-    assert "Dragon metrics" not in env.concepts["env2.id"].metadata.description
+
+    env2 = env.concepts["env2.id"]
+    assert env2.namespace == "env2"
+    assert env.concepts["env2.id"].metadata.description is None

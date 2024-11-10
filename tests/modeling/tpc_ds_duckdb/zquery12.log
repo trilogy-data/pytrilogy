@@ -1,8 +1,8 @@
 query_id = 12
-parse_time = 0.955274
-exec_time = 0.174357
-comp_time = 0.202949
-gen_length = 3115
+parse_time = 0.213471
+exec_time = 0.102051
+comp_time = 0.065613
+gen_length = 3112
 generated_sql = """
 
 WITH 
@@ -48,7 +48,7 @@ SELECT
     abstracted.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     abstracted.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     abstracted.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(abstracted.\"itemrevenue\") over (partition by abstracted.\"web_sales_item_class\") as \"_virt_8498692139463401\"
+    sum(abstracted.\"itemrevenue\") over (partition by abstracted.\"web_sales_item_class\") as \"_virt_882751776668408\"
 FROM
     abstracted)
 SELECT
@@ -58,7 +58,7 @@ SELECT
     colossal.\"web_sales_item_class\" as \"web_sales_item_class\",
     colossal.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     colossal.\"itemrevenue\" as \"itemrevenue\",
-    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_8498692139463401\" as \"revenueratio\"
+    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_882751776668408\" as \"revenueratio\"
 FROM
     colossal
 ORDER BY 
@@ -66,5 +66,5 @@ ORDER BY
     colossal.\"web_sales_item_class\" asc,
     colossal.\"web_sales_item_name\" asc,
     colossal.\"web_sales_item_desc\" asc,
-    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_8498692139463401\" asc
+    colossal.\"itemrevenue\" * 100.0 / colossal.\"_virt_882751776668408\" asc
 LIMIT (100)"""
