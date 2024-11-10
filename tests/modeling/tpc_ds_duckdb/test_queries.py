@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Executor
+from trilogy import Executor, Environment
 import pytest
 from datetime import datetime
 import tomli_w
@@ -9,7 +9,7 @@ working_path = Path(__file__).parent
 
 
 def run_query(engine: Executor, idx: int):
-
+    engine.environment = Environment(working_path = working_path)
     with open(working_path / f"query{idx:02d}.preql") as f:
         text = f.read()
 

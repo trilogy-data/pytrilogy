@@ -1,12 +1,12 @@
 query_id = 26
-parse_time = 1.069677
-exec_time = 0.113507
-comp_time = 0.083453
-gen_length = 2312
+parse_time = 0.450233
+exec_time = 0.083245
+comp_time = 0.083363
+gen_length = 2348
 generated_sql = """
 
 WITH 
-budgie as (
+thoughtful as (
 SELECT
     cast(cs_date_date.\"D_YEAR\" as int) as \"cs_date_year\",
     cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" as \"cs_bill_customer_demographic_education_status\",
@@ -31,15 +31,15 @@ WHERE
     cs_bill_customer_demographic_customer_demographics.\"CD_GENDER\" = 'M' and cs_bill_customer_demographic_customer_demographics.\"CD_MARITAL_STATUS\" = 'S' and cs_bill_customer_demographic_customer_demographics.\"CD_EDUCATION_STATUS\" = 'College' and ( cs_promotion_promotion.\"P_CHANNEL_EMAIL\" = 'N' or cs_promotion_promotion.\"P_CHANNEL_EVENT\" = 'N' ) and cast(cs_date_date.\"D_YEAR\" as int) = 2000
 )
 SELECT
-    budgie.\"cs_item_name\" as \"cs_item_name\",
-    avg(budgie.\"cs_quantity\") as \"agg1\",
-    avg(budgie.\"cs_list_price\") as \"agg2\",
-    avg(budgie.\"cs_coupon_amt\") as \"agg3\",
-    avg(budgie.\"cs_sales_price\") as \"agg4\"
+    thoughtful.\"cs_item_name\" as \"cs_item_name\",
+    avg(thoughtful.\"cs_quantity\") as \"agg1\",
+    avg(thoughtful.\"cs_list_price\") as \"agg2\",
+    avg(thoughtful.\"cs_coupon_amt\") as \"agg3\",
+    avg(thoughtful.\"cs_sales_price\") as \"agg4\"
 FROM
-    budgie
+    thoughtful
 GROUP BY 
-    budgie.\"cs_item_name\"
+    thoughtful.\"cs_item_name\"
 ORDER BY 
-    budgie.\"cs_item_name\" asc
+    thoughtful.\"cs_item_name\" asc
 LIMIT (100)"""

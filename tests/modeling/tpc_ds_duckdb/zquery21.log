@@ -1,12 +1,12 @@
 query_id = 21
-parse_time = 0.806532
-exec_time = 0.026985
-comp_time = 0.033736
-gen_length = 2793
+parse_time = 0.086045
+exec_time = 0.031967
+comp_time = 0.01676
+gen_length = 2913
 generated_sql = """
 
 WITH 
-fox as (
+cheerful as (
 SELECT
     cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
     inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
@@ -24,49 +24,49 @@ WHERE
     cast(inventory_date_date.\"D_DATE\" as date) >= cast('2000-02-10' as date) and cast(inventory_date_date.\"D_DATE\" as date) <= cast('2000-04-10' as date) and inventory_item_items.\"I_CURRENT_PRICE\" >= 0.99 and inventory_item_items.\"I_CURRENT_PRICE\" <= 1.49
 )
 SELECT
-    fox.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
-    fox.\"inventory_item_name\" as \"inventory_item_name\",
+    cheerful.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
+    cheerful.\"inventory_item_name\" as \"inventory_item_name\",
     sum(CASE
-	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_before\",
     sum(CASE
-	WHEN fox.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) as \"inv_after\"
 FROM
-    fox
+    cheerful
 GROUP BY 
-    fox.\"inventory_item_name\",
-    fox.\"inventory_warehouse_name\"
+    cheerful.\"inventory_item_name\",
+    cheerful.\"inventory_warehouse_name\"
 HAVING
     CASE
 	WHEN sum(CASE
-	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN fox.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END >= 2.0 / 3.0 and CASE
 	WHEN sum(CASE
-	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) > 0 THEN sum(CASE
-	WHEN fox.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" >= cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END) * 1.0 / sum(CASE
-	WHEN fox.\"inventory_date_date\" < cast('2000-03-11' as date) THEN fox.\"inventory_quantity_on_hand\"
+	WHEN cheerful.\"inventory_date_date\" < cast('2000-03-11' as date) THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
 	ELSE null
 	END <= 3.0 / 2.0
 
 ORDER BY 
-    fox.\"inventory_warehouse_name\" asc nulls first,
-    fox.\"inventory_item_name\" asc nulls first
+    cheerful.\"inventory_warehouse_name\" asc nulls first,
+    cheerful.\"inventory_item_name\" asc nulls first
 LIMIT (100)"""

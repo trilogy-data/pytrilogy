@@ -1,12 +1,12 @@
 query_id = 3
-parse_time = 0.66863
-exec_time = 0.041577
-comp_time = 0.038685
+parse_time = 0.613052
+exec_time = 0.032062
+comp_time = 0.032381
 gen_length = 1628
 generated_sql = """
 
 WITH 
-vacuous as (
+wakeful as (
 SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
@@ -24,18 +24,18 @@ WHERE
     store_sales_date_date.\"D_MOY\" = 11 and store_sales_item_items.\"I_MANUFACT_ID\" = 128
 )
 SELECT
-    vacuous.\"store_sales_date_year\" as \"store_sales_date_year\",
-    vacuous.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
-    vacuous.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
-    sum(vacuous.\"store_sales_ext_sales_price\") as \"sum_agg\"
+    wakeful.\"store_sales_date_year\" as \"store_sales_date_year\",
+    wakeful.\"store_sales_item_brand_id\" as \"store_sales_item_brand_id\",
+    wakeful.\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
+    sum(wakeful.\"store_sales_ext_sales_price\") as \"sum_agg\"
 FROM
-    vacuous
+    wakeful
 GROUP BY 
-    vacuous.\"store_sales_date_year\",
-    vacuous.\"store_sales_item_brand_id\",
-    vacuous.\"store_sales_item_brand_name\"
+    wakeful.\"store_sales_date_year\",
+    wakeful.\"store_sales_item_brand_id\",
+    wakeful.\"store_sales_item_brand_name\"
 ORDER BY 
-    vacuous.\"store_sales_date_year\" asc,
-    sum(vacuous.\"store_sales_ext_sales_price\") desc,
-    vacuous.\"store_sales_item_brand_id\" asc
+    wakeful.\"store_sales_date_year\" asc,
+    sum(wakeful.\"store_sales_ext_sales_price\") desc,
+    wakeful.\"store_sales_item_brand_id\" asc
 LIMIT (100)"""

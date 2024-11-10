@@ -836,7 +836,6 @@ class ParseToObjects(Transformer):
         cache_lookup = gen_cache_lookup(
             path=target, alias=alias, parent=str(self.token_address)
         )
-        print(f'importing {token_lookup.stem} with {alias}' )
         if token_lookup in self.tokens:
             raw_tokens = self.tokens[token_lookup]
             text = self.text_lookup[token_lookup]
@@ -848,10 +847,8 @@ class ParseToObjects(Transformer):
             self.tokens[token_lookup] = raw_tokens
 
         if cache_lookup in self.parsed:
-            print('cached')
             nparser = self.parsed[cache_lookup]
         else:
-            print('not cached')
             try:
                 nparser = ParseToObjects(
                     visit_tokens=True,
