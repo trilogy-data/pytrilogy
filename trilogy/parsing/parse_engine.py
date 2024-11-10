@@ -32,6 +32,7 @@ from trilogy.core.enums import (
     ShowCategory,
     FunctionClass,
     IOType,
+    ConceptSource,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -266,6 +267,21 @@ class ParseToObjects(Transformer):
                     output.concept.metadata.description
                     or args[1].text.split("#")[1].strip()
                 )
+        if isinstance(output, ImportStatement):
+            if len(args) > 1 and isinstance(args[1], Comment):
+                comment = args[1].text.split("#")[1].strip()
+                namespace = output.alias
+                for _, v in self.environment.concepts.items():
+                    if v.namespace == namespace:
+                        print(output)
+                        print(v.namespace)
+                        print(namespace)
+                        if v.metadata.description:
+                            v.metadata.description = (
+                                f"{comment}: {v.metadata.description}"
+                            )
+                        else:
+                            v.metadata.description = comment
 
         return args[0]
 
@@ -647,45 +663,41 @@ class ParseToObjects(Transformer):
         return Comment(text=args.value)
 
     @v_args(meta=True)
-    def select_transform(self, meta, args) -> ConceptTransform:
+    def select_transform(self, meta: Meta, args) -> ConceptTransform:
 
         output: str = args[1]
-        function = unwrap_transformation(args[0])
+        transformation = unwrap_transformation(args[0])
         lookup, namespace, output, parent = parse_concept_reference(
             output, self.environment
         )
 
-        if isinstance(function, AggregateWrapper):
-            concept = agg_wrapper_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, WindowItem):
-            concept = window_item_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, FilterItem):
-            concept = filter_item_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, CONSTANT_TYPES):
-            concept = constant_to_concept(function, namespace=namespace, name=output)
-        elif isinstance(function, Function):
-            concept = function_to_concept(function, namespace=namespace, name=output)
-        else:
-            if function.output_purpose == Purpose.PROPERTY:
-                pkeys = [x for x in function.arguments if isinstance(x, Concept)]
-                grain = Grain(components=pkeys)
-                keys = tuple(grain.components_copy)
-            else:
-                grain = None
-                keys = None
-            concept = Concept(
-                name=output,
-                datatype=function.output_datatype,
-                purpose=function.output_purpose,
-                lineage=function,
-                namespace=namespace,
-                grain=Grain(components=[]) if not grain else grain,
-                keys=keys,
+        metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
+
+        if isinstance(transformation, AggregateWrapper):
+            concept = agg_wrapper_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
             )
-        if concept.metadata:
-            concept.metadata.line_number = meta.line
+        elif isinstance(transformation, WindowItem):
+            concept = window_item_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        elif isinstance(transformation, FilterItem):
+            concept = filter_item_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        elif isinstance(transformation, CONSTANT_TYPES):
+            concept = constant_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        elif isinstance(transformation, Function):
+            concept = function_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
+        else:
+            raise SyntaxError("Invalid transformation")
+
         self.environment.add_concept(concept, meta=meta)
-        return ConceptTransform(function=function, output=concept)
+        return ConceptTransform(function=transformation, output=concept)
 
     @v_args(meta=True)
     def concept_nullable_modifier(self, meta: Meta, args) -> Modifier:

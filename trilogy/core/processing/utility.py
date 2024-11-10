@@ -425,6 +425,8 @@ def is_scalar_condition(
             return True
         if element.lineage and isinstance(element.lineage, AggregateWrapper):
             return is_scalar_condition(element.lineage, materialized)
+        if element.lineage and isinstance(element.lineage, Function):
+            return is_scalar_condition(element.lineage, materialized)
         return True
     elif isinstance(element, AggregateWrapper):
         return is_scalar_condition(element.function, materialized)

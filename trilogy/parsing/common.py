@@ -133,7 +133,9 @@ def constant_to_concept(
     )
 
 
-def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
+def function_to_concept(
+    parent: Function, name: str, namespace: str, metadata: Metadata | None = None
+) -> Concept:
     pkeys: List[Concept] = []
     for x in parent.arguments:
         pkeys += [
@@ -169,6 +171,7 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
             keys=keys,
             modifiers=modifiers,
             grain=grain,
+            metadata=metadata,
         )
 
     return Concept(
@@ -179,6 +182,7 @@ def function_to_concept(parent: Function, name: str, namespace: str) -> Concept:
         namespace=namespace,
         keys=keys,
         modifiers=modifiers,
+        metadata=metadata,
     )
 
 
@@ -305,7 +309,7 @@ def arbitrary_to_concept(
     elif isinstance(parent, Function):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
-        return function_to_concept(parent, name, namespace)
+        return function_to_concept(parent, name, namespace, metadata=metadata)
     elif isinstance(parent, ListWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"

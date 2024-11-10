@@ -3485,13 +3485,18 @@ class Environment(BaseModel):
         self.gen_concept_list_caches()
         return self
 
-    def add_file_import(self, path: str, alias: str, env: Environment | None = None):
+    def add_file_import(
+        self, path: str | Path, alias: str, env: Environment | None = None
+    ):
         from trilogy.parsing.parse_engine import ParseToObjects, PARSER
 
-        apath = path.split(".")
-        apath[-1] = apath[-1] + ".preql"
-
-        target: Path = Path(self.working_path, *apath)
+        if isinstance(path, str):
+            if "." not in path:
+                target = Path(self.working_path, path + ".preql")
+            else:
+                target = Path(path)
+        else:
+            target = path
         if alias in self.imports:
             imports = self.imports[alias]
             for x in imports:
