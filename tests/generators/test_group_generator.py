@@ -90,13 +90,13 @@ def test_proper_parents(test_environment):
         agg_wrapper_to_concept(
             AggregateWrapper(
                 function=base,
-                by=[test_environment.concepts["product_name"]],
+                by=[test_environment.concepts["category_name"]],
             ),
             name="agg_to_alt_grain",
             namespace="local",
         )
     )
 
-    assert len(resolved) == 3
-    assert test_environment.concepts["product_name"] in resolved
-    assert test_environment.concepts["product_id"] not in resolved
+    assert len(resolved) == 2
+    assert test_environment.concepts["category_name"] in resolved
+    assert test_environment.concepts["category_id"] in resolved

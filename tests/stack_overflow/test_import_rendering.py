@@ -65,7 +65,7 @@ def test_circular_base():
 
     env.add_file_import(path="so_concepts.circular", alias="c1")
     assert env.concepts["c1.id"]
-    assert env.concepts["c2.id"]
+    assert env.concepts["c1.c2.id"]
     validated = False
     assert len(env.datasources) == 3
     for n, datasource in env.datasources.items():

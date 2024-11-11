@@ -227,7 +227,6 @@ def unwrap_transformation(
 class ParseToObjects(Transformer):
     def __init__(
         self,
-        visit_tokens,
         environment: Environment,
         parse_address: str | None = None,
         token_address: Path | None = None,
@@ -235,7 +234,7 @@ class ParseToObjects(Transformer):
         tokens: dict[Path | str, ParseTree] | None = None,
         text_lookup: dict[Path | str, str] | None = None,
     ):
-        Transformer.__init__(self, visit_tokens)
+        Transformer.__init__(self, True)
         self.environment: Environment = environment
         self.parse_address: str = parse_address or SELF_LABEL
         self.token_address: Path | str = token_address or SELF_LABEL
@@ -254,16 +253,20 @@ class ParseToObjects(Transformer):
         self.tokens[self.token_address] = tree
         return results
 
+    def prepare_parse(self):
+        self.pass_count = 1
+        self.environment.concepts.fail_on_missing = False
+        for _, v in self.parsed.items():
+            v.prepare_parse()
+
     def hydrate_missing(self):
         self.pass_count = 2
         for k, v in self.parsed.items():
-
             if v.pass_count == 2:
                 continue
+            print(f"Hydrating {k}")
             v.hydrate_missing()
-        # self.environment.concepts.fail_on_missing = True
-        # if not self.environment.concepts.undefined:
-        #     return self._results_stash
+        self.environment.concepts.fail_on_missing = True
         reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
         return reparsed
@@ -850,12 +853,12 @@ class ParseToObjects(Transformer):
             nparser = self.parsed[cache_lookup]
         else:
             try:
+                new_env = Environment(
+                    working_path=dirname(target),
+                )
+                new_env.concepts.fail_on_missing = False
                 nparser = ParseToObjects(
-                    visit_tokens=True,
-                    environment=Environment(
-                        working_path=dirname(target),
-                        # namespace=alias,
-                    ),
+                    environment=new_env,
                     parse_address=cache_lookup,
                     token_address=token_lookup,
                     parsed={**self.parsed, **{self.parse_address: self}},
@@ -1954,12 +1957,14 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
     ],
 ]:
     environment = environment or Environment()
-    parser = ParseToObjects(visit_tokens=True, environment=environment)
+    parser = ParseToObjects(environment=environment)
 
     try:
         parser.set_text(text)
+        # disable fail on missing to allow for circular dependencies
+        parser.prepare_parse()
         parser.transform(PARSER.parse(text))
-        # handle circular dependencies
+        # this will reset fail on missing
         pass_two = parser.hydrate_missing()
         output = [v for v in pass_two if v]
     except VisitError as e:

@@ -1,6 +1,7 @@
 from trilogy.core.models import Environment
 from pathlib import Path
 from trilogy.core.enums import Modifier
+from trilogy.core.exceptions import UndefinedConceptException
 
 
 def test_environment_serialization(test_environment: Environment):
@@ -21,6 +22,21 @@ def test_environment_from_path():
     env = Environment.from_file(Path(__file__).parent / "test_env.preql")
 
     assert "local.id" in env.concepts
+
+
+def test_environment_invalid():
+
+    env = Environment()
+    env.concepts.fail_on_missing = False
+    x = env.concepts["abc"]
+    assert x.name == "abc"
+
+    env.concepts.fail_on_missing = True
+    try:
+        x = env.concepts["abc"]
+        assert 1 == 0
+    except Exception as e:
+        assert isinstance(e, UndefinedConceptException)
 
 
 def test_environment_merge():
