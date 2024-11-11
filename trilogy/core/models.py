@@ -3460,8 +3460,8 @@ class Environment(BaseModel):
 
         if not exists:
             self.imports[alias].append(imp_stm)
-        else:
-            return self
+        # we can't exit early
+        # as there may be new concepts
         for k, concept in source.concepts.items():
             if same_namespace:
                 new = self.add_concept(concept, _ignore_cache=True)
@@ -3525,6 +3525,10 @@ class Environment(BaseModel):
             try:
                 with open(target, "r", encoding="utf-8") as f:
                     text = f.read()
+                nenv = Environment(
+                    working_path=target.parent,
+                )
+                nenv.concepts.fail_on_missing = False
                 nparser = ParseToObjects(
                     environment=Environment(
                         working_path=target.parent,
@@ -3534,6 +3538,7 @@ class Environment(BaseModel):
                 )
                 nparser.set_text(text)
                 nparser.transform(PARSER.parse(text))
+
             except Exception as e:
                 raise ImportError(
                     f"Unable to import file {target.parent}, parsing error: {e}"

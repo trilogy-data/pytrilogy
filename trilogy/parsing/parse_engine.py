@@ -253,12 +253,18 @@ class ParseToObjects(Transformer):
         self.tokens[self.token_address] = tree
         return results
 
+    def prepare_parse(self):
+        self.pass_count = 1
+        self.environment.concepts.fail_on_missing = False
+        for _, v in self.parsed.items():
+            v.prepare_parse()
+
     def hydrate_missing(self):
         self.pass_count = 2
         for k, v in self.parsed.items():
-
             if v.pass_count == 2:
                 continue
+            print(f"Hydrating {k}")
             v.hydrate_missing()
         self.environment.concepts.fail_on_missing = True
         reparsed = self.transform(self.tokens[self.token_address])
@@ -847,11 +853,12 @@ class ParseToObjects(Transformer):
             nparser = self.parsed[cache_lookup]
         else:
             try:
+                new_env = Environment(
+                    working_path=dirname(target),
+                )
+                new_env.concepts.fail_on_missing = False
                 nparser = ParseToObjects(
-                    environment=Environment(
-                        working_path=dirname(target),
-                        # namespace=alias,
-                    ),
+                    environment=new_env,
                     parse_address=cache_lookup,
                     token_address=token_lookup,
                     parsed={**self.parsed, **{self.parse_address: self}},
@@ -1955,7 +1962,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
     try:
         parser.set_text(text)
         # disable fail on missing to allow for circular dependencies
-        parser.environment.concepts.fail_on_missing = False
+        parser.prepare_parse()
         parser.transform(PARSER.parse(text))
         # this will reset fail on missing
         pass_two = parser.hydrate_missing()
