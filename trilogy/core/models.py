@@ -3218,7 +3218,7 @@ class EnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(self, *args, **kwargs)
         self.undefined: dict[str, UndefinedConcept] = {}
-        self.fail_on_missing: bool = False
+        self.fail_on_missing: bool = True
         self.populate_default_concepts()
 
     def populate_default_concepts(self):
@@ -3526,7 +3526,6 @@ class Environment(BaseModel):
                 with open(target, "r", encoding="utf-8") as f:
                     text = f.read()
                 nparser = ParseToObjects(
-                    visit_tokens=True,
                     environment=Environment(
                         working_path=target.parent,
                     ),

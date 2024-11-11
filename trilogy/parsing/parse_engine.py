@@ -227,7 +227,6 @@ def unwrap_transformation(
 class ParseToObjects(Transformer):
     def __init__(
         self,
-        visit_tokens,
         environment: Environment,
         parse_address: str | None = None,
         token_address: Path | None = None,
@@ -235,7 +234,7 @@ class ParseToObjects(Transformer):
         tokens: dict[Path | str, ParseTree] | None = None,
         text_lookup: dict[Path | str, str] | None = None,
     ):
-        Transformer.__init__(self, visit_tokens)
+        Transformer.__init__(self, True)
         self.environment: Environment = environment
         self.parse_address: str = parse_address or SELF_LABEL
         self.token_address: Path | str = token_address or SELF_LABEL
@@ -261,9 +260,7 @@ class ParseToObjects(Transformer):
             if v.pass_count == 2:
                 continue
             v.hydrate_missing()
-        # self.environment.concepts.fail_on_missing = True
-        # if not self.environment.concepts.undefined:
-        #     return self._results_stash
+        self.environment.concepts.fail_on_missing = True
         reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
         return reparsed
@@ -851,7 +848,6 @@ class ParseToObjects(Transformer):
         else:
             try:
                 nparser = ParseToObjects(
-                    visit_tokens=True,
                     environment=Environment(
                         working_path=dirname(target),
                         # namespace=alias,
@@ -1954,12 +1950,14 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
     ],
 ]:
     environment = environment or Environment()
-    parser = ParseToObjects(visit_tokens=True, environment=environment)
+    parser = ParseToObjects(environment=environment)
 
     try:
         parser.set_text(text)
+        # disable fail on missing to allow for circular dependencies
+        parser.environment.concepts.fail_on_missing = False
         parser.transform(PARSER.parse(text))
-        # handle circular dependencies
+        # this will reset fail on missing
         pass_two = parser.hydrate_missing()
         output = [v for v in pass_two if v]
     except VisitError as e:
