@@ -128,3 +128,22 @@ def test_modifiers():
     text = generator.compile_statement(query)
     assert "2 = 2" in text
     assert "as `b`" not in text
+
+
+def test_having_without_select():
+    q1 = """
+    const a <- 1;
+    const b <- 2;
+    
+    select
+        a,
+
+    having b =2
+    ;"""
+    failed = False
+    try:
+        env, parsed = parse(q1)
+    except Exception as e:
+        assert "that is not in the select projection in the HAVING clause" in str(e)
+        failed = True
+    assert failed

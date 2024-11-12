@@ -13,3 +13,4 @@ snowflake-sqlalchemy
 fakesnow
 matplotlib
 tomli-w
+types-tabulate

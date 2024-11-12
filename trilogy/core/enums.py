@@ -215,10 +215,27 @@ class Boolean(Enum):
     TRUE = "true"
     FALSE = "false"
 
+    @classmethod
+    def _missing_(cls, value):
+        if value is True:
+            return Boolean.TRUE
+        elif value is False:
+            return Boolean.FALSE
+        strval = str(value)
+        if strval.lower() != strval:
+            return Boolean(strval.lower())
+
 
 class BooleanOperator(Enum):
     AND = "and"
     OR = "or"
+
+    @classmethod
+    def _missing_(cls, value):
+        strval = str(value)
+        if strval.lower() != strval:
+            return BooleanOperator(strval.lower())
+        return None
 
 
 class ComparisonOperator(Enum):
