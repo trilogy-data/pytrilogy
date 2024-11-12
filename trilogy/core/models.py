@@ -1629,6 +1629,45 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
                     self.grain
                 )
 
+    def validate(self):
+        all_in_output = [x.address for x in self.output_components]
+        if self.where_clause:
+            for concept in self.where_clause.concept_arguments:
+
+                if (
+                    concept.lineage
+                    and isinstance(concept.lineage, Function)
+                    and concept.lineage.operator
+                    in FunctionClass.AGGREGATE_FUNCTIONS.value
+                ):
+                    if concept.address in self.locally_derived:
+                        raise SyntaxError(
+                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                        )
+
+                if (
+                    concept.lineage
+                    and isinstance(concept.lineage, AggregateWrapper)
+                    and concept.lineage.function.operator
+                    in FunctionClass.AGGREGATE_FUNCTIONS.value
+                ):
+                    if concept.address in self.locally_derived:
+                        raise SyntaxError(
+                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                        )
+        if self.having_clause:
+            for concept in self.having_clause.concept_arguments:
+                if concept.address not in [x.address for x in self.output_components]:
+                    raise SyntaxError(
+                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
+                    )
+        if self.order_by:
+            for concept in self.order_by.concept_arguments:
+                if concept.address not in all_in_output:
+                    raise SyntaxError(
+                        f"Cannot order by a column that is not in the output projection; {self.meta.line_number}"
+                    )
+
     def __str__(self):
         from trilogy.parsing.render import render_query
 

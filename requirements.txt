@@ -5,3 +5,4 @@ networkx
 pyodbc
 pydantic
 duckdb-engine
+click

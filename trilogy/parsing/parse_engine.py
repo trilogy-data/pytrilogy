@@ -30,7 +30,6 @@ from trilogy.core.enums import (
     WindowType,
     DatePart,
     ShowCategory,
-    FunctionClass,
     IOType,
     ConceptSource,
 )
@@ -264,7 +263,6 @@ class ParseToObjects(Transformer):
         for k, v in self.parsed.items():
             if v.pass_count == 2:
                 continue
-            print(f"Hydrating {k}")
             v.hydrate_missing()
         self.environment.concepts.fail_on_missing = True
         reparsed = self.transform(self.tokens[self.token_address])
@@ -988,8 +986,6 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        locally_derived: set[str] = set()
-        all_in_output: set[str] = set()
         for item in select_items:
             # we don't know the grain of an aggregate at assignment time
             # so rebuild at this point in the tree
@@ -998,25 +994,16 @@ class ParseToObjects(Transformer):
                 new_concept = item.content.output.with_select_context(
                     output.grain,
                     conditional=None,
-                    # conditional=(
-                    #     output.where_clause.conditional
-                    #     if output.where_clause
-                    #     and output.where_clause_category == SelectFiltering.IMPLICIT
-                    #     else None
-                    # ),
                     environment=self.environment,
                 )
                 self.environment.add_concept(new_concept, meta=meta)
                 item.content.output = new_concept
-                locally_derived.add(new_concept.address)
-                all_in_output.add(new_concept.address)
             elif isinstance(item.content, Concept):
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
                 item.content = self.environment.concepts[
                     item.content.address
                 ].with_grain(item.content.grain)
-                all_in_output.add(item.content.address)
         if order_by:
             for orderitem in order_by.items:
                 if isinstance(orderitem.expr, Concept):
@@ -1024,52 +1011,9 @@ class ParseToObjects(Transformer):
                         orderitem.expr = orderitem.expr.with_select_context(
                             output.grain,
                             conditional=None,
-                            # conditional=(
-                            #     output.where_clause.conditional
-                            #     if output.where_clause
-                            #     and output.where_clause_category
-                            #     == SelectFiltering.IMPLICIT
-                            #     else None
-                            # ),
                             environment=self.environment,
                         )
-        if output.where_clause:
-            for concept in output.where_clause.concept_arguments:
-
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, Function)
-                    and concept.lineage.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}"
-                        )
-
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, AggregateWrapper)
-                    and concept.lineage.function.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {meta.line}"
-                        )
-        if output.having_clause:
-            for concept in output.having_clause.concept_arguments:
-                if concept.address not in all_in_output:
-                    raise SyntaxError(
-                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {meta.line}"
-                    )
-        if output.order_by:
-            for concept in output.order_by.concept_arguments:
-                if concept.address not in all_in_output:
-                    raise SyntaxError(
-                        f"Cannot order by a column that is not in the output projection; {meta.line}"
-                    )
-
+        output.validate()
         return output
 
     @v_args(meta=True)

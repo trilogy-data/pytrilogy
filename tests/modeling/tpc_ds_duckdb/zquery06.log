@@ -1,8 +1,8 @@
 query_id = 6
-parse_time = 1.080427
-exec_time = 0.047884
-comp_time = 0.054215
-gen_length = 3036
+parse_time = 0.67687
+exec_time = 0.034462
+comp_time = 1.51899
+gen_length = 3161
 generated_sql = """
 
 WITH 
@@ -13,6 +13,7 @@ SELECT
     store_sales_customer_customer_address.\"CA_STATE\" as \"store_sales_customer_state\",
     store_sales_customer_customers.\"C_CUSTOMER_SK\" as \"store_sales_customer_id\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
+    store_sales_item_items.\"I_CATEGORY\" as \"store_sales_item_category\",
     store_sales_item_items.\"I_CURRENT_PRICE\" as \"store_sales_item_current_price\"
 FROM
     memory.store_sales as store_sales_store_sales
@@ -22,7 +23,7 @@ FROM
     INNER JOIN memory.customer as store_sales_customer_customers on store_sales_store_sales.\"SS_CUSTOMER_SK\" = store_sales_customer_customers.\"C_CUSTOMER_SK\"
     INNER JOIN memory.customer_address as store_sales_customer_customer_address on store_sales_customer_customers.\"C_CURRENT_ADDR_SK\" = store_sales_customer_customer_address.\"CA_ADDRESS_SK\"
 WHERE
-    cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 1 and item_items.\"I_CATEGORY\" is not null
+    cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 1 and store_sales_item_items.\"I_CATEGORY\" is not null
 ),
 questionable as (
 SELECT
@@ -30,9 +31,6 @@ SELECT
     item_items.\"I_CATEGORY\" as \"item_category\"
 FROM
     memory.item as item_items
-WHERE
-    item_items.\"I_CATEGORY\" is not null
-
 GROUP BY 
     item_items.\"I_CATEGORY\"),
 abundant as (
@@ -42,13 +40,14 @@ SELECT
     cooperative.\"store_sales_customer_state\" as \"store_sales_customer_state\",
     cooperative.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
     cooperative.\"store_sales_date_year\" as \"store_sales_date_year\",
+    cooperative.\"store_sales_item_category\" as \"store_sales_item_category\",
     cooperative.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     questionable.\"_virt_6264207893106521\" as \"_virt_6264207893106521\"
 FROM
     cooperative
     INNER JOIN questionable on (cooperative.\"item_category\" = questionable.\"item_category\" or (cooperative.\"item_category\" is null and questionable.\"item_category\" is null))
 WHERE
-    cooperative.\"store_sales_date_year\" = 2001 and cooperative.\"store_sales_date_month_of_year\" = 1 and cooperative.\"store_sales_item_current_price\" > 1.2 * questionable.\"_virt_6264207893106521\" and cooperative.\"item_category\" is not null
+    cooperative.\"store_sales_date_year\" = 2001 and cooperative.\"store_sales_date_month_of_year\" = 1 and cooperative.\"store_sales_item_current_price\" > 1.2 * questionable.\"_virt_6264207893106521\" and cooperative.\"store_sales_item_category\" is not null
 )
 SELECT
     abundant.\"store_sales_customer_state\" as \"store_sales_customer_state\",
