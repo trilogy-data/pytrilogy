@@ -217,7 +217,13 @@ class Boolean(Enum):
 
     @classmethod
     def _missing_(cls, value):
-        return super()._missing_(str(value).lower())
+        if value is True:
+            return Boolean.TRUE
+        elif value is False:
+            return Boolean.FALSE
+        strval = str(value)
+        if strval.lower() != strval:
+            return Boolean(strval.lower())
 
 
 class BooleanOperator(Enum):
@@ -226,7 +232,10 @@ class BooleanOperator(Enum):
 
     @classmethod
     def _missing_(cls, value):
-        return super()._missing_(str(value).lower())
+        strval = str(value)
+        if strval.lower() != strval:
+            return BooleanOperator(strval.lower())
+        return None
 
 
 class ComparisonOperator(Enum):

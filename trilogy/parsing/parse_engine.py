@@ -1013,7 +1013,7 @@ class ParseToObjects(Transformer):
                             conditional=None,
                             environment=self.environment,
                         )
-        output.validate()
+        output.validate_syntax()
         return output
 
     @v_args(meta=True)

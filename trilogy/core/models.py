@@ -1629,7 +1629,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
                     self.grain
                 )
 
-    def validate(self):
+    def validate_syntax(self):
         all_in_output = [x.address for x in self.output_components]
         if self.where_clause:
             for concept in self.where_clause.concept_arguments:
