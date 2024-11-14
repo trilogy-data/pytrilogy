@@ -1,0 +1,22 @@
+import store as store;
+import web_sales as web_sales;
+import item as item;
+import date as return_date;
+import time as time;
+import customer as customer;
+import address as return_address;
+
+property <web_sales.order_number, item.id>.return_amount float;
+
+datasource web_returns(
+    WR_RETURNED_DATE_SK: return_date.id,
+    WR_RETURN_TIME_SK: time.id,
+    WR_ITEM_SK: item.id,
+    WR_RETURNING_CUSTOMER_SK: customer.id,
+    WR_RETURNING_ADDR_SK: return_address.id,
+    WR_RETURN_AMT: return_amount,
+    WR_ORDER_NUMBER: web_sales.order_number,
+    WR_STORE_SK: store.id,
+)
+grain (web_sales.order_number, item.id)
+address memory.web_returns;
