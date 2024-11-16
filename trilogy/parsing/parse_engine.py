@@ -302,6 +302,9 @@ class ParseToObjects(Transformer):
     def IDENTIFIER(self, args) -> str:
         return args.value
 
+    def QUOTED_IDENTIFIER(self, args) -> str:
+        return args.value[1:-1]
+
     @v_args(meta=True)
     def concept_lit(self, meta: Meta, args) -> Concept:
         return self.environment.concepts.__getitem__(args[0], meta.line)
