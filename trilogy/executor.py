@@ -205,11 +205,11 @@ class Executor(object):
         return MockResult(
             [
                 {
-                    "path": query.path,
-                    "alias": query.alias,
+                    "source": query.source.address,
+                    "target": query.target.address,
                 }
             ],
-            ["path", "alias"],
+            ["source", "target"],
         )
 
     @execute_query.register
