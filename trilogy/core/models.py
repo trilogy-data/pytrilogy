@@ -3276,7 +3276,7 @@ class EnvironmentConceptDict(dict):
             return default
 
     def __getitem__(
-        self, key, line_no: int | None = None
+        self, key, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConcept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
@@ -3304,6 +3304,10 @@ class EnvironmentConceptDict(dict):
                 message += f" Suggestions: {matches}"
 
             if line_no:
+                if file:
+                    raise UndefinedConceptException(
+                        f"{file}: {line_no}: " + message, matches
+                    )
                 raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
             raise UndefinedConceptException(message, matches)
 

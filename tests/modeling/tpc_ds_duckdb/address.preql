@@ -1,0 +1,22 @@
+
+key id int;
+property id.address_id_string string;
+property id.street string;
+property id.city string;
+property id.state string?;
+property id.zip string;
+property id.county string;
+property id.country string;
+
+
+datasource customer_address(
+    CA_ADDRESS_SK: id,
+    CA_STREET: street,
+    CA_CITY: city,
+    CA_STATE: state,
+    CA_ZIP: zip,
+    CA_COUNTY: county,
+    CA_COUNTRY:country,
+)
+grain (id)
+address memory.customer_address;

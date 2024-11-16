@@ -302,6 +302,9 @@ class ParseToObjects(Transformer):
     def IDENTIFIER(self, args) -> str:
         return args.value
 
+    def QUOTED_IDENTIFIER(self, args) -> str:
+        return args.value[1:-1]
+
     @v_args(meta=True)
     def concept_lit(self, meta: Meta, args) -> Concept:
         return self.environment.concepts.__getitem__(args[0], meta.line)
@@ -386,7 +389,7 @@ class ParseToObjects(Transformer):
             modifiers += concept_list[:-1]
         concept = concept_list[-1]
         resolved = self.environment.concepts.__getitem__(  # type: ignore
-            key=concept, line_no=meta.line
+            key=concept, line_no=meta.line, file=self.token_address
         )
         return ColumnAssignment(alias=alias, modifiers=modifiers, concept=resolved)
 

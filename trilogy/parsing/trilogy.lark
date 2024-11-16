@@ -49,7 +49,7 @@
     
     //column_assignment
     //figure out if we want static
-    column_assignment: (raw_column_assignment | IDENTIFIER |  _static_functions  ) ":" concept_assignment
+    column_assignment: (raw_column_assignment | IDENTIFIER | QUOTED_IDENTIFIER |  _static_functions  ) ":" concept_assignment
     
     RAW_ENTRY.1: /raw\s*\(/s
 
@@ -292,6 +292,7 @@
     // base language constructs
     concept_lit: IDENTIFIER
     IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.]*/
+    QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
     QUOTED_ADDRESS:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:]*`/
     ADDRESS: IDENTIFIER
 

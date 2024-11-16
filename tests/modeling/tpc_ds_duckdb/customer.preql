@@ -6,7 +6,14 @@ property id.text_id string;
 property id.last_name string;
 property id.first_name string;
 property id.preferred_cust_flag string;
+property id.birth_day int;
+property id.birth_month int;
+property id.birth_year int;
 property id.birth_country string;
+property id.salutation string;
+property id.email_address string;
+property id.login string;
+property id.last_review_date string;
 
 key address_id int;
 property address_id.address_id_string string;
@@ -18,6 +25,7 @@ property address_id.county string;
 property address_id.country string;
 
 
+
 datasource customers (
     C_CUSTOMER_SK: id,
     C_CUSTOMER_ID: text_id,
@@ -27,6 +35,13 @@ datasource customers (
     C_CURRENT_CDEMO_SK: demographics.id,
     C_PREFERRED_CUST_FLAG: preferred_cust_flag,
     C_BIRTH_COUNTRY: birth_country,
+    C_SALUTATION: salutation,
+    C_EMAIL_ADDRESS: email_address,
+    C_BIRTH_DAY: birth_day,
+    C_BIRTH_MONTH: birth_month,
+    C_BIRTH_YEAR: birth_year,
+    C_LOGIN: login,
+    C_LAST_REVIEW_DATE_SK:last_review_date,
 )
 grain (id)
 address memory.customer;

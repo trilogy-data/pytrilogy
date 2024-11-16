@@ -1,6 +1,18 @@
 import web_returns as web_returns;
 
+
+# merge web_returns.customer.state into ~web_returns.return_address.state;
+
+auto customer_state_returns_2002 <- sum( web_returns.return_amount ? web_returns.return_date.year = 2002) by web_returns.return_address.state, web_returns.customer.id ;
+auto scaled_state_returns_2002 <- 1.2 * avg(customer_state_returns_2002) by web_returns.return_address.state;
+
+
+WHERE 
+    customer_state_returns_2002 > scaled_state_returns_2002 
+    and web_returns.customer.state = 'GA'
+    and web_returns.return_address.state is not null
 SELECT 
+    -- web_returns.customer.id, # avoid deduplication
     web_returns.customer.text_id,
     web_returns.customer.salutation,
     web_returns.customer.first_name,
@@ -12,7 +24,20 @@ SELECT
     web_returns.customer.birth_country,
     web_returns.customer.login,
     web_returns.customer.email_address,
-    web_returns.customer.last_review_date_sk,
-    sum(web_returns.total_returns) by web_returns.customer.text_id -> ctr_total_return
-where
-    web_returns.customer.address.state = 'GA'
+    web_returns.customer.last_review_date,
+    customer_state_returns_2002,
+ORDER BY
+    web_returns.customer.text_id asc NULLS FIRST,
+    web_returns.customer.salutation asc  NULLS FIRST,
+    web_returns.customer.first_name asc  NULLS FIRST,
+    web_returns.customer.last_name asc NULLS FIRST,
+    web_returns.customer.preferred_cust_flag asc NULLS FIRST,
+    web_returns.customer.birth_day asc NULLS FIRST,
+    web_returns.customer.birth_month asc NULLS FIRST,
+    web_returns.customer.birth_year asc NULLS FIRST,
+    web_returns.customer.birth_country asc NULLS FIRST,
+    web_returns.customer.login asc NULLS FIRST,
+    web_returns.customer.email_address asc NULLS FIRST,
+    web_returns.customer.last_review_date asc NULLS FIRST,
+    customer_state_returns_2002 asc  NULLS FIRST
+LIMIT 100;

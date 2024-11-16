@@ -20,6 +20,8 @@ from trilogy.core.models import (
     ConceptDeclarationStatement,
     Datasource,
     CopyStatement,
+    ImportStatement,
+    MergeStatementV2,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -104,6 +106,7 @@ class Executor(object):
                 ProcessedShowStatement,
                 ProcessedQueryPersist,
                 ProcessedCopyStatement,
+                ProcessedRawSQLStatement,
             ),
         ):
             return None
@@ -142,7 +145,6 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: str) -> CursorResult:
-
         return self.execute_text(query)[-1]
 
     @execute_query.register
@@ -179,6 +181,35 @@ class Executor(object):
                 for x in query.output_values
                 if isinstance(x, ProcessedQuery)
             ],
+        )
+
+    @execute_query.register
+    def _(self, query: ImportStatement) -> CursorResult:
+        self.environment.add_file_import(query.path, query.alias)
+        return MockResult(
+            [
+                {
+                    "path": query.path,
+                    "alias": query.alias,
+                }
+            ],
+            ["path", "alias"],
+        )
+
+    @execute_query.register
+    def _(self, query: MergeStatementV2) -> CursorResult:
+
+        self.environment.merge_concept(
+            query.source, query.target, modifiers=query.modifiers
+        )
+        return MockResult(
+            [
+                {
+                    "source": query.source.address,
+                    "target": query.target.address,
+                }
+            ],
+            ["source", "target"],
         )
 
     @execute_query.register
