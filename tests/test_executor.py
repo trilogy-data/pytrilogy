@@ -1,4 +1,4 @@
-from trilogy import Dialects, parse
+from trilogy import Dialects, parse, Environment
 from pathlib import Path
 
 
@@ -9,12 +9,18 @@ def test_file_parsing():
 
 
 def test_can_handle_everything():
+    env = Environment(working_path=Path(__file__).parent)
     env, queries = parse(
         """
+import test_env as test_env;
+
 key x int;
+
+merge test_env.id into x;
                          
 RAW_SQL('''select 1 ''');
-"""
+""",
+        environment=env,
     )
     execs = Dialects.DUCK_DB.default_executor(environment=env)
     for q in queries:
