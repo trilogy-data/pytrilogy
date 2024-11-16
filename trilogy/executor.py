@@ -21,6 +21,7 @@ from trilogy.core.models import (
     Datasource,
     CopyStatement,
     ImportStatement,
+    MergeStatementV2,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -184,7 +185,23 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ImportStatement) -> CursorResult:
+        self.environment.add_file_import(query.path, query.alias)
+        return MockResult(
+            [
+                {
+                    "path": query.path,
+                    "alias": query.alias,
+                }
+            ],
+            ["path", "alias"],
+        )
 
+    @execute_query.register
+    def _(self, query: MergeStatementV2) -> CursorResult:
+
+        self.environment.merge_concept(
+            query.source, query.target, modifiers=query.modifiers
+        )
         return MockResult(
             [
                 {
