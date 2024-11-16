@@ -368,9 +368,15 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ImportStatement"):
-        if arg.alias == DEFAULT_NAMESPACE:
-            return f"import {arg.path};"
-        return f"import {arg.path} as {arg.alias};"
+        path: str = str(arg.path).replace("\\", ".")
+        path = path.replace("/", ".")
+        if path.endswith(".preql"):
+            path = path.rsplit(".", 1)[0]
+        if path.startswith("."):
+            path = path[1:]
+        if arg.alias == DEFAULT_NAMESPACE or not arg.alias:
+            return f"import {path};"
+        return f"import {path} as {arg.alias};"
 
     @to_string.register
     def _(self, arg: "Concept"):

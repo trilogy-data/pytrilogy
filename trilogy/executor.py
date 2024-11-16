@@ -20,6 +20,7 @@ from trilogy.core.models import (
     ConceptDeclarationStatement,
     Datasource,
     CopyStatement,
+    ImportStatement,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -104,6 +105,7 @@ class Executor(object):
                 ProcessedShowStatement,
                 ProcessedQueryPersist,
                 ProcessedCopyStatement,
+                ProcessedRawSQLStatement,
             ),
         ):
             return None
@@ -142,7 +144,6 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: str) -> CursorResult:
-
         return self.execute_text(query)[-1]
 
     @execute_query.register
@@ -179,6 +180,19 @@ class Executor(object):
                 for x in query.output_values
                 if isinstance(x, ProcessedQuery)
             ],
+        )
+
+    @execute_query.register
+    def _(self, query: ImportStatement) -> CursorResult:
+
+        return MockResult(
+            [
+                {
+                    "path": query.path,
+                    "alias": query.alias,
+                }
+            ],
+            ["path", "alias"],
         )
 
     @execute_query.register

@@ -386,7 +386,7 @@ class ParseToObjects(Transformer):
             modifiers += concept_list[:-1]
         concept = concept_list[-1]
         resolved = self.environment.concepts.__getitem__(  # type: ignore
-            key=concept, line_no=meta.line, file = self.token_address
+            key=concept, line_no=meta.line, file=self.token_address
         )
         return ColumnAssignment(alias=alias, modifiers=modifiers, concept=resolved)
 

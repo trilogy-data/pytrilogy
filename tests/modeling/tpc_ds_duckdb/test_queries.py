@@ -31,7 +31,9 @@ def run_query(engine: Executor, idx: int):
 
     # # check we got it
     if len(base_results) != len(comp_results):
-        assert False, f"Row count mismatch: expected {len(base_results)}, got {len(comp_results)}"
+        assert (
+            False
+        ), f"Row count mismatch: expected {len(base_results)}, got {len(comp_results)}"
     for qidx, row in enumerate(base_results):
         assert (
             row == comp_results[qidx]

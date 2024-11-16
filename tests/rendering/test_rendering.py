@@ -31,8 +31,9 @@ from trilogy.core.models import (
     ListType,
     TupleWrapper,
     CopyStatement,
+    ImportStatement,
 )
-from pathlib import Path
+from pathlib import Path, PureWindowsPath, PurePosixPath
 from trilogy import Environment
 from trilogy.core.enums import (
     ComparisonOperator,
@@ -508,6 +509,29 @@ def test_render_index_access():
     )
 
     assert test == "user_id[1]"
+
+
+def test_render_import():
+    base = Path("/path/to/file.preql")
+    test = Renderer().to_string(
+        ImportStatement(alias="user_id", path=str(PureWindowsPath(base)))
+    )
+
+    assert test == "import path.to.file as user_id;"
+
+    base = Path("/path/to/file.preql")
+    test = Renderer().to_string(
+        ImportStatement(alias="user_id", path=str(PurePosixPath(base)))
+    )
+
+    assert test == "import path.to.file as user_id;"
+
+    base = Path("/path/to/file.preql")
+    test = Renderer().to_string(
+        ImportStatement(alias="", path=str(PurePosixPath(base)))
+    )
+
+    assert test == "import path.to.file;"
 
 
 def test_render_datasource():
