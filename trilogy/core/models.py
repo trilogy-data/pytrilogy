@@ -3381,6 +3381,21 @@ class Environment(BaseModel):
     materialized_concepts: List[Concept] = Field(default_factory=list)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        self.concepts["_env_working_path"] = Concept(
+            name="_env_working_path",
+            namespace=self.namespace,
+            lineage=Function(
+                operator=FunctionType.CONSTANT,
+                arguments=[str(self.working_path)],
+                output_datatype=DataType.STRING,
+                output_purpose=Purpose.CONSTANT,
+            ),
+            datatype=DataType.STRING,
+            purpose=Purpose.CONSTANT,
+        )
+
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
         with open(path, "r") as f:
@@ -3554,16 +3569,7 @@ class Environment(BaseModel):
             target = target.with_suffix(".preql")
         else:
             target = path
-        if alias in self.imports:
-            imports = self.imports[alias]
-            for x in imports:
-                if x.path == target:
-                    return imports
-        if env:
-            self.imports[alias].append(
-                ImportStatement(alias=alias, path=target, environment=env)
-            )
-        else:
+        if not env:
             parse_address = gen_cache_lookup(str(target), alias, str(self.working_path))
             try:
                 with open(target, "r", encoding="utf-8") as f:
@@ -3587,13 +3593,8 @@ class Environment(BaseModel):
                     f"Unable to import file {target.parent}, parsing error: {e}"
                 )
             env = nparser.environment
-        for _, concept in env.concepts.items():
-            self.add_concept(concept.with_namespace(alias))
-
-        for _, datasource in env.datasources.items():
-            self.add_datasource(datasource.with_namespace(alias))
         imps = ImportStatement(alias=alias, path=target, environment=env)
-        self.imports[alias].append(imps)
+        self.add_import(alias, source=env, imp_stm=imps)
         return imps
 
     def parse(

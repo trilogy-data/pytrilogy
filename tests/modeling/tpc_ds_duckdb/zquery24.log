@@ -1,8 +1,8 @@
 query_id = 24
-parse_time = 1.220743
-exec_time = 0.328906
-comp_time = 0.266944
-gen_length = 6653
+parse_time = 0.584851
+exec_time = 0.351502
+comp_time = 0.266474
+gen_length = 6678
 generated_sql = """
 
 WITH 
@@ -89,7 +89,7 @@ FROM
     uneven),
 yummy as (
 SELECT
-    1 as \"__preql_internal_all_rows\",
+    :__preql_internal_all_rows as \"__preql_internal_all_rows\",
     uneven.\"su_net_paid\" as \"su_net_paid\"
 FROM
     uneven),

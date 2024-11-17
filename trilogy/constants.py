@@ -39,6 +39,13 @@ class Comments:
     partial: bool = True
 
 
+@dataclass
+class Rendering:
+    """Control how the SQL is rendered"""
+
+    parameters: bool = True
+
+
 # TODO: support loading from environments
 @dataclass
 class Config:
@@ -48,6 +55,7 @@ class Config:
     validate_missing: bool = True
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
+    rendering: Rendering = field(default_factory=Rendering)
 
     @property
     def show_comments(self) -> bool:

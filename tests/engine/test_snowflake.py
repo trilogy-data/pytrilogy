@@ -1,7 +1,7 @@
 def test_render_query(snowflake_engine):
     results = snowflake_engine.generate_sql("""select pi;""")[0]
 
-    assert "3.14" in results
+    assert ":pi" in results
 
     results2 = snowflake_engine.generate_sql(
         """

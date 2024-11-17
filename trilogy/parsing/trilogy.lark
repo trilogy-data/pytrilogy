@@ -302,7 +302,7 @@
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '
     _single_quote: "'" ( SINGLE_STRING_CHARS )* "'" 
     _double_quote: "\"" ( DOUBLE_STRING_CHARS )* "\"" 
-    string_lit: _single_quote | _double_quote
+    string_lit: _single_quote | _double_quote | MULTILINE_STRING
 
     MINUS: "-"
 

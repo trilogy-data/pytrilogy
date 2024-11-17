@@ -10,7 +10,7 @@ from trilogy.engine import ExecutionEngine, EngineConnection, EngineResult
 from trilogy.dialect.config import SnowflakeConfig, PrestoConfig, TrinoConfig
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.dialect.enums import DialectConfig
-import fakesnow
+
 
 ENV_PATH = abspath(__file__)
 
@@ -209,6 +209,8 @@ def postgres_engine(presto_model) -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def snowflake_engine(presto_model) -> Generator[Executor, None, None]:
+    import fakesnow
+
     with fakesnow.patch():
         executor = Dialects.SNOWFLAKE.default_executor(
             environment=presto_model,

@@ -22,6 +22,7 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.models import LooseConceptList
+from pathlib import Path
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -595,7 +596,7 @@ select reduced;
 
     default_duckdb_engine.hooks = [DebuggingHook()]
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    assert results[0] == (Decimal("1.45"),)
+    assert results[0] == (Decimal("1.46"),)
     assert len(results) == 1
 
 
@@ -751,3 +752,41 @@ order by
     assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
     assert len(results) == 1
     assert results[0] == ("hammer", 2)
+
+
+def test_duckdb_load():
+    env = Environment(working_path=Path(__file__).parent)
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+
+    results = exec.execute_query(
+        r"""
+        auto csv <- _env_working_path || '/test.csv';
+
+        RAW_SQL('''
+        CREATE TABLE ages AS FROM read_csv(:csv);
+        '''
+        );"""
+    )
+
+    results = exec.execute_raw_sql("SELECT * FROM ages;").fetchall()
+
+    assert results[0].age == 23
+
+
+def test_duckdb_string_quotes():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor()
+
+    results = exec.execute_query(
+        r"""
+        const csv <- '''this string has quotes ' like this''';
+
+    select csv;
+        """
+    )
+
+    results = results.fetchall()
+
+    assert results[0].csv == """this string has quotes ' like this"""

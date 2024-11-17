@@ -804,7 +804,8 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def rawsql_statement(self, meta: Meta, args) -> RawSQLStatement:
-        return RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
+        statement = RawSQLStatement(meta=Metadata(line_number=meta.line), text=args[0])
+        return statement
 
     def COPY_TYPE(self, args) -> IOType:
         return IOType(args.value)

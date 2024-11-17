@@ -22,10 +22,14 @@ from trilogy.core.models import (
     CopyStatement,
     ImportStatement,
     MergeStatementV2,
+    Function,
+    FunctionType,
+    MapWrapper,
+    ListWrapper,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
-from trilogy.core.enums import IOType
+from trilogy.core.enums import IOType, Granularity
 from trilogy.parser import parse_text
 from trilogy.hooks.base_hook import BaseHook
 from pathlib import Path
@@ -185,7 +189,6 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ImportStatement) -> CursorResult:
-        self.environment.add_file_import(query.path, query.alias)
         return MockResult(
             [
                 {
@@ -219,8 +222,7 @@ class Executor(object):
     @execute_query.register
     def _(self, query: ProcessedQuery) -> CursorResult:
         sql = self.generator.compile_statement(query)
-        # connection = self.engine.connect()
-        output = self.connection.execute(text(sql))
+        output = self.execute_raw_sql(sql)
         return output
 
     @execute_query.register
@@ -228,14 +230,14 @@ class Executor(object):
 
         sql = self.generator.compile_statement(query)
 
-        output = self.connection.execute(text(sql))
+        output = self.execute_raw_sql(sql)
         self.environment.add_datasource(query.datasource)
         return output
 
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> CursorResult:
         sql = self.generator.compile_statement(query)
-        output: CursorResult = self.connection.execute(text(sql))
+        output: CursorResult = self.execute_raw_sql(sql)
         if query.target_type == IOType.CSV:
             import csv
 
@@ -244,7 +246,7 @@ class Executor(object):
                 outcsv.writerow(output.keys())
                 outcsv.writerows(output)
         else:
-            raise NotImplementedError(f"Unsupported IOType {query.target_type}")
+            raise NotImplementedError(f"Unsupported IO Type {query.target_type}")
         # now return the query we ran through IO
         # TODO: instead return how many rows were written?
         return generate_result_set(
@@ -370,13 +372,50 @@ class Executor(object):
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
 
+    def _hydrate_param(self, param: str) -> Any:
+        matched = [
+            v
+            for v in self.environment.concepts.values()
+            if v.safe_address == param or v.address == param
+        ]
+        if not matched:
+            raise SyntaxError(f"No concept found for parameter {param}")
+
+        concept: Concept = matched.pop()
+        if not concept.granularity == Granularity.SINGLE_ROW:
+            raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
+        if (
+            isinstance(concept.lineage, Function)
+            and concept.lineage.operator == FunctionType.CONSTANT
+        ):
+            rval = concept.lineage.arguments[0]
+            if isinstance(rval, ListWrapper):
+                return [x for x in rval]
+            if isinstance(rval, MapWrapper):
+                return {k: v for k, v in rval.items()}
+            return rval
+        else:
+            results = self.execute_query(f"select {concept.name} limit 1;").fetchone()
+        if not results:
+            return None
+        return results[0]
+
     def execute_raw_sql(
         self, command: str, variables: dict | None = None
     ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine"""
+        final_params = None
+        q = text(command)
         if variables:
-            return self.connection.execute(text(command), variables)
+            final_params = variables
+        else:
+            params = q.compile().params
+            if params:
+                final_params = {x: self._hydrate_param(x) for x in params}
+
+        if final_params:
+            return self.connection.execute(text(command), final_params)
         return self.connection.execute(
             text(command),
         )
