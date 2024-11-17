@@ -14,12 +14,15 @@ def test_numeric_query(presto_engine):
 
 def test_unnest_query(presto_engine):
     from trilogy.hooks.query_debugger import DebuggingHook
+    from trilogy.constants import CONFIG
 
     presto_engine.hooks = [DebuggingHook()]
+    current = CONFIG.rendering.parameters
+    CONFIG.rendering.parameters = False
     results = presto_engine.generate_sql(
         """
 auto numbers <- unnest([1,2,3,4]);  
 select numbers;"""
     )[0]
-
+    CONFIG.rendering.parameters = current
     assert 'unnest(ARRAY[1, 2, 3, 4]) as unnest_wrapper ("numbers")' in results, results
