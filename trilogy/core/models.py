@@ -2094,7 +2094,7 @@ class MergeStatementV2(HasUUID, Namespaced, BaseModel):
     def with_namespace(self, namespace: str) -> "MergeStatementV2":
         new = MergeStatementV2(
             sources=[x.with_namespace(namespace) for x in self.sources],
-            targets={k:v.with_namespace(namespace) for k, v in self.targets.items()},
+            targets={k: v.with_namespace(namespace) for k, v in self.targets.items()},
             modifiers=self.modifiers,
         )
         return new

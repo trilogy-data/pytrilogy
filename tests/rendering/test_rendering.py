@@ -440,29 +440,33 @@ def test_render_anon(test_environment: Environment):
 def test_render_merge():
     test = Renderer().to_string(
         MergeStatementV2(
-            sources=[Concept(
-                name="materialized",
-                purpose=Purpose.CONSTANT,
-                datatype=DataType.INTEGER,
-                lineage=Function(
-                    arguments=[[1, 2, 3, 4]],
-                    operator=FunctionType.CONSTANT,
-                    output_purpose=Purpose.CONSTANT,
-                    output_datatype=DataType.ARRAY,
-                ),
-            )],
-            targets={'local.materialized':Concept(
-                name="materialized",
-                purpose=Purpose.CONSTANT,
-                namespace="test",
-                datatype=DataType.INTEGER,
-                lineage=Function(
-                    arguments=[[1, 2, 3, 4]],
-                    operator=FunctionType.CONSTANT,
-                    output_purpose=Purpose.CONSTANT,
-                    output_datatype=DataType.ARRAY,
-                ),
-            )},
+            sources=[
+                Concept(
+                    name="materialized",
+                    purpose=Purpose.CONSTANT,
+                    datatype=DataType.INTEGER,
+                    lineage=Function(
+                        arguments=[[1, 2, 3, 4]],
+                        operator=FunctionType.CONSTANT,
+                        output_purpose=Purpose.CONSTANT,
+                        output_datatype=DataType.ARRAY,
+                    ),
+                )
+            ],
+            targets={
+                "local.materialized": Concept(
+                    name="materialized",
+                    purpose=Purpose.CONSTANT,
+                    namespace="test",
+                    datatype=DataType.INTEGER,
+                    lineage=Function(
+                        arguments=[[1, 2, 3, 4]],
+                        operator=FunctionType.CONSTANT,
+                        output_purpose=Purpose.CONSTANT,
+                        output_datatype=DataType.ARRAY,
+                    ),
+                )
+            },
             modifiers=[Modifier.PARTIAL],
         )
     )

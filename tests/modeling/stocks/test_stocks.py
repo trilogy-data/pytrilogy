@@ -1,13 +1,15 @@
 from trilogy import Environment, Dialects
 from pathlib import Path
 
+
 def test_query():
 
-    env = Environment.from_file(Path(__file__).parent / 'entrypoint.preql')
+    env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
 
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)
 
-    _ = duckdb.generate_sql("""SELECT
+    _ = duckdb.generate_sql(
+        """SELECT
     symbol.sector,
     symbol.industry,
     sum(holdings.qty) as total_holding_qty,
@@ -16,4 +18,5 @@ def test_query():
 order by
     total_holding_qty desc
 ;
-    """)
+    """
+    )

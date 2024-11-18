@@ -36,16 +36,14 @@ from pathlib import Path
 from dataclasses import dataclass
 
 
-
 class ResultProtocol(Protocol):
     values: List[Any]
     columns: List[str]
 
-    def fetchall(self) -> List[Any]:
-        ...
+    def fetchall(self) -> List[Any]: ...
 
-    def keys(self) -> List[str]:
-        ...
+    def keys(self) -> List[str]: ...
+
 
 @dataclass
 class MockResult:
@@ -213,13 +211,15 @@ class Executor(object):
     @execute_query.register
     def _(self, query: MergeStatementV2) -> CursorResult:
         for concept in query.sources:
-            self.environment.merge_concept(concept, query.targets[concept.address], modifiers=query.modifiers)
+            self.environment.merge_concept(
+                concept, query.targets[concept.address], modifiers=query.modifiers
+            )
 
         return MockResult(
             [
                 {
-                    "sources": ','.join([x.address for x in  query.sources]),
-                    "targets": ','.join([x.address for _, x in query.targets.items()]),
+                    "sources": ",".join([x.address for x in query.sources]),
+                    "targets": ",".join([x.address for _, x in query.targets.items()]),
                 }
             ],
             ["source", "target"],
@@ -319,18 +319,20 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
-    def parse_file(self, file: str | Path, persist: bool = False) -> Generator[
+    def parse_file(
+        self, file: str | Path, persist: bool = False
+    ) -> list[
         ProcessedQuery
         | ProcessedQueryPersist
         | ProcessedShowStatement
         | ProcessedRawSQLStatement
         | ProcessedCopyStatement,
-        None,
-        None,
     ]:
         return list(self.parse_file_generator(file, persist=persist))
-        
-    def parse_file_generator(self, file: str | Path, persist: bool = False) -> Generator[
+
+    def parse_file_generator(
+        self, file: str | Path, persist: bool = False
+    ) -> Generator[
         ProcessedQuery
         | ProcessedQueryPersist
         | ProcessedShowStatement
@@ -343,7 +345,7 @@ class Executor(object):
         with open(file, "r") as f:
             command = f.read()
             return self.parse_text_generator(command, persist=persist)
-        
+
     def parse_text(
         self, command: str, persist: bool = False
     ) -> List[

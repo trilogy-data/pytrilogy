@@ -826,9 +826,10 @@ class ParseToObjects(Transformer):
             source_wildcard=source_wildcard,
             target_wildcard=target_wildcard,
         )
-        for _, source in enumerate(new.sources):
-            if target:
-                self.environment.merge_concept(source, targets[source.address], modifiers)
+        for source_c in new.sources:
+            self.environment.merge_concept(
+                source_c, targets[source_c.address], modifiers
+            )
 
         return new
 
