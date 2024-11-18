@@ -1,0 +1,20 @@
+
+
+key id int;
+property id.name <-  CASE
+    WHEN id = 1 THEN 'robinhood'
+    WHEN id = 2 THEN 'alpaca'
+    WHEN id = 3 THEN 'webull'
+    WHEN id = 4 THEN 'schwab'
+    WHEN id = 5 THEN 'moomoo'
+    ELSE 'unknown'
+END;
+
+
+
+datasource provider_data (
+    id: id,
+    name:name,
+)
+grain (id)
+address providers;

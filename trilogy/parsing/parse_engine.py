@@ -302,6 +302,9 @@ class ParseToObjects(Transformer):
     def IDENTIFIER(self, args) -> str:
         return args.value
 
+    def WILDCARD_IDENTIFIER(self, args) -> str:
+        return args.value
+
     def QUOTED_IDENTIFIER(self, args) -> str:
         return args.value[1:-1]
 
@@ -786,19 +789,47 @@ class ParseToObjects(Transformer):
         return [x for x in args]
 
     @v_args(meta=True)
-    def merge_statement_v2(self, meta: Meta, args) -> MergeStatementV2:
+    def merge_statement(self, meta: Meta, args) -> MergeStatementV2:
         modifiers = []
-        concepts = []
+        cargs: list[str] = []
+        source_wildcard = None
+        target_wildcard = None
         for arg in args:
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
             else:
-                concepts.append(self.environment.concepts[arg])
+                cargs.append(arg)
+        source, target = cargs
+        if source.endswith(".*"):
+            if not target.endswith(".*"):
+                raise ValueError("Invalid merge, source is wildcard, target is not")
+            source_wildcard = source[:-2]
+            target_wildcard = target[:-2]
+            sources = [
+                v
+                for k, v in self.environment.concepts.items()
+                if v.namespace == source_wildcard
+            ]
+            targets = {}
+            for x in sources:
+                target = target_wildcard + "." + x.name
+                if target in self.environment.concepts:
+                    targets[x.address] = self.environment.concepts[target]
+            sources = [x for x in sources if x.address in targets]
+        else:
+            sources = [self.environment.concepts[source]]
+            targets = {sources[0].address: self.environment.concepts[target]}
         new = MergeStatementV2(
-            source=concepts[0], target=concepts[1], modifiers=modifiers
+            sources=sources,
+            targets=targets,
+            modifiers=modifiers,
+            source_wildcard=source_wildcard,
+            target_wildcard=target_wildcard,
         )
-
-        self.environment.merge_concept(new.source, new.target, modifiers)
+        for source_c in new.sources:
+            self.environment.merge_concept(
+                source_c, targets[source_c.address], modifiers
+            )
 
         return new
 
@@ -1745,7 +1776,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 
@@ -1758,7 +1789,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 
@@ -1771,20 +1802,21 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 
     @v_args(meta=True)
     def fdiv(self, meta: Meta, args):
         args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
+        # 2024-11-18 - this is a bit of a hack, but division always returns a float
+        # output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
         return Function(
             operator=FunctionType.DIVIDE,
             arguments=args,
-            output_datatype=output_datatype,
+            output_datatype=DataType.FLOAT,  # division always returns a float
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 

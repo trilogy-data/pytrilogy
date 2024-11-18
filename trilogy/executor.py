@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Generator
+from typing import List, Optional, Any, Generator, Protocol
 from functools import singledispatchmethod
 from sqlalchemy import text
 from sqlalchemy.engine import Engine, CursorResult
@@ -34,6 +34,15 @@ from trilogy.parser import parse_text
 from trilogy.hooks.base_hook import BaseHook
 from pathlib import Path
 from dataclasses import dataclass
+
+
+class ResultProtocol(Protocol):
+    values: List[Any]
+    columns: List[str]
+
+    def fetchall(self) -> List[Any]: ...
+
+    def keys(self) -> List[str]: ...
 
 
 @dataclass
@@ -201,15 +210,16 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: MergeStatementV2) -> CursorResult:
+        for concept in query.sources:
+            self.environment.merge_concept(
+                concept, query.targets[concept.address], modifiers=query.modifiers
+            )
 
-        self.environment.merge_concept(
-            query.source, query.target, modifiers=query.modifiers
-        )
         return MockResult(
             [
                 {
-                    "source": query.source.address,
-                    "target": query.target.address,
+                    "sources": ",".join([x.address for x in query.sources]),
+                    "targets": ",".join([x.address for _, x in query.targets.items()]),
                 }
             ],
             ["source", "target"],
@@ -309,7 +319,20 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
-    def parse_file(self, file: str | Path, persist: bool = False) -> Generator[
+    def parse_file(
+        self, file: str | Path, persist: bool = False
+    ) -> list[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement,
+    ]:
+        return list(self.parse_file_generator(file, persist=persist))
+
+    def parse_file_generator(
+        self, file: str | Path, persist: bool = False
+    ) -> Generator[
         ProcessedQuery
         | ProcessedQueryPersist
         | ProcessedShowStatement

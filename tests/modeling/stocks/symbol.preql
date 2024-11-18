@@ -1,0 +1,16 @@
+key id int;
+property id.ticker string;
+property id.name string;
+property id.sector string;
+property id.class string; #one of STOCK, CRYPTO, other
+property id.industry string;
+
+datasource symbol_data (
+    id: id,
+    ticker:ticker,
+    name:name,
+    sector:sector,
+    industry:industry,
+)
+grain (id)
+address symbols;

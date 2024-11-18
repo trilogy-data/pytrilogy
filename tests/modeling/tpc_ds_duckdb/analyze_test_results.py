@@ -4,6 +4,11 @@ import pandas as pd
 import json
 import matplotlib.pyplot as plt
 import tomllib
+from os import environ
+
+# https://github.com/python/cpython/issues/125235#issuecomment-2412948604
+if not environ.get("TCL_LIBRARY"):
+    environ["TCL_LIBRARY"] = r"C:\Program Files\Python313\tcl\tcl8.6"
 
 
 def analyze(show: bool = False):
