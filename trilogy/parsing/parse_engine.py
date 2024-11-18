@@ -1776,7 +1776,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 
@@ -1789,7 +1789,7 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 
@@ -1802,20 +1802,21 @@ class ParseToObjects(Transformer):
             arguments=args,
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 
     @v_args(meta=True)
     def fdiv(self, meta: Meta, args):
         args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
+        # 2024-11-18 - this is a bit of a hack, but division always returns a float
+        # output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
         return Function(
             operator=FunctionType.DIVIDE,
             arguments=args,
-            output_datatype=output_datatype,
+            output_datatype=DataType.FLOAT,  # division always returns a float
             output_purpose=function_args_to_output_purpose(args),
-            # valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
+            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             arg_count=2,
         )
 
