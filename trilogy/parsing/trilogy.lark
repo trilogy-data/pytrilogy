@@ -9,7 +9,7 @@
     | rowset_derivation_statement
     | import_statement
     | copy_statement
-    | merge_statement_v2
+    | merge_statement
     | rawsql_statement
     
     _TERMINATOR:  ";"i /\s*/
@@ -74,8 +74,7 @@
 
     align_clause: align_item ("AND"i align_item)*  "AND"i?
 
-    // merge_v2
-    merge_statement_v2: "merge"i  IDENTIFIER "into"i SHORTHAND_MODIFIER? IDENTIFIER 
+    merge_statement: "merge"i  WILDCARD_IDENTIFIER "into"i SHORTHAND_MODIFIER? WILDCARD_IDENTIFIER
 
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
@@ -291,7 +290,8 @@
 
     // base language constructs
     concept_lit: IDENTIFIER
-    IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
+    IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.]*/
+    WILDCARD_IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
     QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
     QUOTED_ADDRESS:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:]*`/
     ADDRESS: IDENTIFIER

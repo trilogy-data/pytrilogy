@@ -432,7 +432,9 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: MergeStatementV2):
-        return f"MERGE {self.to_string(arg.source)} into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{self.to_string(arg.target)};"
+        if len(arg.sources) == 1:
+            return f"MERGE {self.to_string(arg.sources[0])} into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{self.to_string(arg.targets[arg.sources[0].address])};"
+        return f"MERGE {arg.source_wildcard}.* into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{arg.target_wildcard}.*;"
 
     @to_string.register
     def _(self, arg: Modifier):

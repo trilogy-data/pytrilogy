@@ -302,6 +302,9 @@ class ParseToObjects(Transformer):
     def IDENTIFIER(self, args) -> str:
         return args.value
 
+    def WILDCARD_IDENTIFIER(self, args) -> str:
+        return args.value
+
     def QUOTED_IDENTIFIER(self, args) -> str:
         return args.value[1:-1]
 
@@ -786,9 +789,11 @@ class ParseToObjects(Transformer):
         return [x for x in args]
 
     @v_args(meta=True)
-    def merge_statement_v2(self, meta: Meta, args) -> MergeStatementV2:
+    def merge_statement(self, meta: Meta, args) -> MergeStatementV2:
         modifiers = []
-        cargs:list[str] = []
+        cargs: list[str] = []
+        source_wildcard = None
+        target_wildcard = None
         for arg in args:
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
@@ -798,18 +803,32 @@ class ParseToObjects(Transformer):
         if source.endswith(".*"):
             if not target.endswith(".*"):
                 raise ValueError("Invalid merge, source is wildcard, target is not")
-            namespace = source[:-2]
-            target_namespace = target[:-2]
-            sources = [v for k, v in self.environment.concepts.items() if v.namespace == namespace]
-            targets = [v for k, v in self.environment.concepts.items() if v.namespace == target_namespace]
+            source_wildcard = source[:-2]
+            target_wildcard = target[:-2]
+            sources = [
+                v
+                for k, v in self.environment.concepts.items()
+                if v.namespace == source_wildcard
+            ]
+            targets = {}
+            for x in sources:
+                target = target_wildcard + "." + x.name
+                if target in self.environment.concepts:
+                    targets[x.address] = self.environment.concepts[target]
+            sources = [x for x in sources if x.address in targets]
         else:
             sources = [self.environment.concepts[source]]
-            targets = [self.environment.concepts[target]]
+            targets = {sources[0].address: self.environment.concepts[target]}
         new = MergeStatementV2(
-            sources=sources, targets=targets, modifiers=modifiers
+            sources=sources,
+            targets=targets,
+            modifiers=modifiers,
+            source_wildcard=source_wildcard,
+            target_wildcard=target_wildcard,
         )
-        for idx, source in enumerate(new.sources):
-            self.environment.merge_concept(source, targets[idx], modifiers)
+        for _, source in enumerate(new.sources):
+            if target:
+                self.environment.merge_concept(source, targets[source.address], modifiers)
 
         return new
 

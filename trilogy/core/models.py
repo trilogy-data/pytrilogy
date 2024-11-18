@@ -2086,13 +2086,15 @@ class DatasourceMetadata(BaseModel):
 
 class MergeStatementV2(HasUUID, Namespaced, BaseModel):
     sources: list[Concept]
-    targets: list[Concept]
+    targets: dict[str, Concept]
+    source_wildcard: str | None = None
+    target_wildcard: str | None = None
     modifiers: List[Modifier] = Field(default_factory=list)
 
     def with_namespace(self, namespace: str) -> "MergeStatementV2":
         new = MergeStatementV2(
             sources=[x.with_namespace(namespace) for x in self.sources],
-            targets=[x.with_namespace(namespace) for x in self.targets],
+            targets={k:v.with_namespace(namespace) for k, v in self.targets.items()},
             modifiers=self.modifiers,
         )
         return new

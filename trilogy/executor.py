@@ -212,15 +212,14 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: MergeStatementV2) -> CursorResult:
+        for concept in query.sources:
+            self.environment.merge_concept(concept, query.targets[concept.address], modifiers=query.modifiers)
 
-        self.environment.merge_concept(
-            query.source, query.target, modifiers=query.modifiers
-        )
         return MockResult(
             [
                 {
-                    "source": query.source.address,
-                    "target": query.target.address,
+                    "sources": ','.join([x.address for x in  query.sources]),
+                    "targets": ','.join([x.address for _, x in query.targets.items()]),
                 }
             ],
             ["source", "target"],

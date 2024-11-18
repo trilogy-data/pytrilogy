@@ -440,7 +440,7 @@ def test_render_anon(test_environment: Environment):
 def test_render_merge():
     test = Renderer().to_string(
         MergeStatementV2(
-            source=Concept(
+            sources=[Concept(
                 name="materialized",
                 purpose=Purpose.CONSTANT,
                 datatype=DataType.INTEGER,
@@ -450,8 +450,8 @@ def test_render_merge():
                     output_purpose=Purpose.CONSTANT,
                     output_datatype=DataType.ARRAY,
                 ),
-            ),
-            target=Concept(
+            )],
+            targets={'local.materialized':Concept(
                 name="materialized",
                 purpose=Purpose.CONSTANT,
                 namespace="test",
@@ -462,7 +462,7 @@ def test_render_merge():
                     output_purpose=Purpose.CONSTANT,
                     output_datatype=DataType.ARRAY,
                 ),
-            ),
+            )},
             modifiers=[Modifier.PARTIAL],
         )
     )
