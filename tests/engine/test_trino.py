@@ -1,4 +1,4 @@
 def test_render_query(trino_engine):
     results = trino_engine.generate_sql("""select pi;""")[0]
 
-    assert "3.14" in results
+    assert ":pi" in results

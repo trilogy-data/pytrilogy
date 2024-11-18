@@ -337,6 +337,13 @@ class BaseDialect:
                         " target grain"
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
+            elif (
+                isinstance(c.lineage, Function)
+                and c.lineage.operator == FunctionType.CONSTANT
+                and CONFIG.rendering.parameters is True
+                and c.datatype.data_type != DataType.MAP
+            ):
+                rval = f":{c.safe_address}"
             else:
                 args = [
                     self.render_expr(
@@ -541,7 +548,7 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
-    def render_cte(self, cte: CTE, auto_sort: bool = True):
+    def render_cte(self, cte: CTE, auto_sort: bool = True) -> CompiledCTE:
         if self.UNNEST_MODE in (
             UnnestMode.CROSS_APPLY,
             UnnestMode.CROSS_JOIN,

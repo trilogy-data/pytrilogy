@@ -19,7 +19,7 @@ def test_constant_optimization():
     exec = Dialects.DUCK_DB.default_executor()
 
     generated = exec.generate_sql(test_query)[0]
-    assert '"array" = 1' in generated
+    assert '"array" = :x' in generated
 
 
 def test_constant_filter():
