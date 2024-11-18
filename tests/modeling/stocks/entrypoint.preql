@@ -1,0 +1,8 @@
+import dividend as dividend;
+import symbol as symbol;
+import provider as provider;
+import holdings as holdings;
+
+merge dividend.symbol.* into ~symbol.*;
+merge holdings.symbol.* into ~symbol.*;
+                           

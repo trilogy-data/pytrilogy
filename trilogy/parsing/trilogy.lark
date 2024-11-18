@@ -291,7 +291,7 @@
 
     // base language constructs
     concept_lit: IDENTIFIER
-    IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.]*/
+    IDENTIFIER: /[a-zA-Z\_][a-zA-Z0-9\_\-\.\*]*/
     QUOTED_IDENTIFIER:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:\s]*`/
     QUOTED_ADDRESS:  /`[a-zA-Z\_][a-zA-Z0-9\_\.\-\*\:]*`/
     ADDRESS: IDENTIFIER

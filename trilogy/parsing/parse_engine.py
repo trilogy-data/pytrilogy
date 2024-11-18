@@ -788,17 +788,28 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def merge_statement_v2(self, meta: Meta, args) -> MergeStatementV2:
         modifiers = []
-        concepts = []
+        cargs:list[str] = []
         for arg in args:
             if isinstance(arg, Modifier):
                 modifiers.append(arg)
             else:
-                concepts.append(self.environment.concepts[arg])
+                cargs.append(arg)
+        source, target = cargs
+        if source.endswith(".*"):
+            if not target.endswith(".*"):
+                raise ValueError("Invalid merge, source is wildcard, target is not")
+            namespace = source[:-2]
+            target_namespace = target[:-2]
+            sources = [v for k, v in self.environment.concepts.items() if v.namespace == namespace]
+            targets = [v for k, v in self.environment.concepts.items() if v.namespace == target_namespace]
+        else:
+            sources = [self.environment.concepts[source]]
+            targets = [self.environment.concepts[target]]
         new = MergeStatementV2(
-            source=concepts[0], target=concepts[1], modifiers=modifiers
+            sources=sources, targets=targets, modifiers=modifiers
         )
-
-        self.environment.merge_concept(new.source, new.target, modifiers)
+        for idx, source in enumerate(new.sources):
+            self.environment.merge_concept(source, targets[idx], modifiers)
 
         return new
 

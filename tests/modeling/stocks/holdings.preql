@@ -1,0 +1,17 @@
+import symbol as symbol;
+import provider as provider;
+
+property <symbol.id, provider.id>.qty float;
+property <symbol.id, provider.id>.cost_basis float;
+property <symbol.id, provider.id>.value float;
+property <symbol.id, provider.id>.appreciation <- value - cost_basis;
+
+datasource ticker_holdings (
+    symbol:symbol.id,
+    provider:provider.id,
+    qty:qty,
+    cost_basis:cost_basis,
+    value:value
+)
+grain (symbol.id, provider.id)
+address ticker_holdings;

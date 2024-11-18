@@ -1,0 +1,17 @@
+import symbol as symbol;
+import provider as provider;
+
+key id int;
+property id.date date;
+property id.amount float;
+
+
+datasource dividend_data (
+    id: id,
+    symbol:symbol.id,
+    dividend_date: date,
+    dividend: amount,
+    provider: provider.id,
+)
+grain (id)
+address dividends;

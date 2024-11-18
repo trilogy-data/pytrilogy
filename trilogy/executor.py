@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Generator
+from typing import List, Optional, Any, Generator, Protocol
 from functools import singledispatchmethod
 from sqlalchemy import text
 from sqlalchemy.engine import Engine, CursorResult
@@ -35,6 +35,17 @@ from trilogy.hooks.base_hook import BaseHook
 from pathlib import Path
 from dataclasses import dataclass
 
+
+
+class ResultProtocol(Protocol):
+    values: List[Any]
+    columns: List[str]
+
+    def fetchall(self) -> List[Any]:
+        ...
+
+    def keys(self) -> List[str]:
+        ...
 
 @dataclass
 class MockResult:
@@ -318,11 +329,22 @@ class Executor(object):
         None,
         None,
     ]:
+        return list(self.parse_file_generator(file, persist=persist))
+        
+    def parse_file_generator(self, file: str | Path, persist: bool = False) -> Generator[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement,
+        None,
+        None,
+    ]:
         file = Path(file)
         with open(file, "r") as f:
             command = f.read()
             return self.parse_text_generator(command, persist=persist)
-
+        
     def parse_text(
         self, command: str, persist: bool = False
     ) -> List[
