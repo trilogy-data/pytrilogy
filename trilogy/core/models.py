@@ -3385,7 +3385,7 @@ class Environment(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        self.concepts["_env_working_path"] = Concept(
+        concept = Concept(
             name="_env_working_path",
             namespace=self.namespace,
             lineage=Function(
@@ -3397,6 +3397,7 @@ class Environment(BaseModel):
             datatype=DataType.STRING,
             purpose=Purpose.CONSTANT,
         )
+        self.add_concept(concept)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
