@@ -1777,7 +1777,7 @@ class ParseToObjects(Transformer):
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
             valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=2,
+            arg_count=-1,
         )
 
     @v_args(meta=True)
@@ -1790,7 +1790,7 @@ class ParseToObjects(Transformer):
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
             valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=2,
+            arg_count=-1,
         )
 
     @v_args(meta=True)
@@ -1803,7 +1803,7 @@ class ParseToObjects(Transformer):
             output_datatype=output_datatype,
             output_purpose=function_args_to_output_purpose(args),
             valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=2,
+            arg_count=-1,
         )
 
     @v_args(meta=True)
@@ -1817,7 +1817,7 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.FLOAT,  # division always returns a float
             output_purpose=function_args_to_output_purpose(args),
             valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=2,
+            arg_count=-1,
         )
 
     @v_args(meta=True)

@@ -402,6 +402,18 @@ def test_render_math():
 
     assert test == "1 / 2"
 
+    test = Renderer().to_string(
+        Function(
+            arguments=[1, 2, 3],
+            operator=FunctionType.DIVIDE,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.INTEGER,
+            arg_count=-1,
+        )
+    )
+
+    assert test == "1 / 2 / 3"
+
 
 def test_render_anon(test_environment: Environment):
     test = Renderer().to_string(

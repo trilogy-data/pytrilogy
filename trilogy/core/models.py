@@ -448,8 +448,8 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     ] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[Tuple["Concept", ...]] = None
-    grain: "Grain" = Field(default=None, validate_default=True)
-    modifiers: Optional[List[Modifier]] = Field(default_factory=list)
+    grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
+    modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
     _address_cache: str | None = None
 
@@ -3372,7 +3372,7 @@ class Environment(BaseModel):
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, list[ImportStatement]] = Field(
-        default_factory=lambda: defaultdict(list)
+        default_factory=lambda: defaultdict(list)  # type: ignore
     )
     namespace: str = DEFAULT_NAMESPACE
     working_path: str | Path = Field(default_factory=lambda: os.getcwd())

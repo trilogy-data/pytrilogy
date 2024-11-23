@@ -138,10 +138,10 @@ FUNCTION_MAP = {
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
     # math
-    FunctionType.ADD: lambda x: f"{x[0]} + {x[1]}",
-    FunctionType.SUBTRACT: lambda x: f"{x[0]} - {x[1]}",
-    FunctionType.DIVIDE: lambda x: f"{x[0]} / {x[1]}",
-    FunctionType.MULTIPLY: lambda x: f"{x[0]} * {x[1]}",
+    FunctionType.ADD: lambda x: " + ".join(x),
+    FunctionType.SUBTRACT: lambda x: " - ".join(x),
+    FunctionType.DIVIDE: lambda x: " / ".join(x),
+    FunctionType.MULTIPLY: lambda x: " * ".join(x),
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
     FunctionType.MOD: lambda x: f"({x[0]} % {x[1]})",
     # aggregate types
