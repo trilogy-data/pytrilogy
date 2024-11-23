@@ -395,13 +395,13 @@ class Renderer:
         args = [self.to_string(c) for c in arg.arguments]
 
         if arg.operator == FunctionType.SUBTRACT:
-            return f"{args[0]} - {args[1]}"
+            return " - ".join(args)
         if arg.operator == FunctionType.ADD:
-            return f"{args[0]} + {args[1]}"
+            return " + ".join(args)
         if arg.operator == FunctionType.MULTIPLY:
-            return f"{args[0]} * {args[1]}"
+            return " * ".join(args)
         if arg.operator == FunctionType.DIVIDE:
-            return f"{args[0]} / {args[1]}"
+            return " / ".join(args)
         if arg.operator == FunctionType.MOD:
             return f"{args[0]} % {args[1]}"
 
