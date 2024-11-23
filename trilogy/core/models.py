@@ -428,9 +428,6 @@ class MultiLineage(BaseModel):
     ]
 
 
-default_modifiers: Callable[[], list[Modifier]] = lambda: list
-
-
 class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
@@ -452,7 +449,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[Tuple["Concept", ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
-    modifiers: List[Modifier] = Field(default_factory=default_modifiers)
+    modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
     _address_cache: str | None = None
 
