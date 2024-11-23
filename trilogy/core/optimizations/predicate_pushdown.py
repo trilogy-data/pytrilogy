@@ -6,6 +6,7 @@ from trilogy.core.models import (
     ConceptArgs,
     Comparison,
     Parenthetical,
+    WindowItem,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 from trilogy.core.processing.utility import is_scalar_condition
@@ -45,7 +46,15 @@ class PredicatePushdown(OptimizationRule):
         all_inputs = {x.address for x in candidate.concept_arguments}
         if is_child_of(candidate, parent_cte.condition):
             return False
-
+        non_materialized = [k for k, v in parent_cte.source_map.items() if v == []]
+        concrete = [
+            x for x in parent_cte.output_columns if x.address in non_materialized
+        ]
+        if any(isinstance(x.lineage, WindowItem) for x in concrete):
+            self.debug(
+                f"CTE {parent_cte.name} has window clause calculation, cannot push up to this without changing results"
+            )
+            return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}
         if not row_conditions or not materialized:
             return False
@@ -108,12 +117,12 @@ class PredicatePushdown(OptimizationRule):
 
         if not cte.parent_ctes:
             self.debug(f"No parent CTEs for {cte.name}")
-
             return False
 
         if not cte.condition:
             self.debug(f"No CTE condition for {cte.name}")
             return False
+
         if self.complete.get(cte.name):
             self.debug("Have done this CTE before")
             return False

@@ -1,7 +1,7 @@
 # directly select out a basic derivation
 from typing import List
 
-from trilogy.core.models import Concept, WhereClause
+from trilogy.core.models import Concept, WhereClause, Function
 from trilogy.core.processing.nodes import StrategyNode, History
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
@@ -10,6 +10,17 @@ from trilogy.constants import logger
 from trilogy.core.enums import SourceType
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
+
+
+def is_equivalent_basic_function_lineage(
+    x: Concept,
+    y: Concept,
+):
+    if not isinstance(x.lineage, Function) or not isinstance(y.lineage, Function):
+        return False
+    if x.lineage.operator == y.lineage.operator:
+        return True
+    return True
 
 
 def gen_basic_node(
@@ -32,8 +43,11 @@ def gen_basic_node(
     equivalent_optional = [
         x
         for x in local_optional
-        if x.lineage == concept.lineage and x.address != concept.address
+        if is_equivalent_basic_function_lineage(concept, x)
+        and x.address != concept.address
     ]
+    for eo in equivalent_optional:
+        parent_concepts += resolve_function_parent_concepts(eo)
     non_equivalent_optional = [
         x for x in local_optional if x not in equivalent_optional
     ]

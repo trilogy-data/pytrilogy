@@ -75,7 +75,7 @@ def window_factory(string: str, include_concept: bool = False) -> Callable:
     ) -> str:
         if not include_concept:
             concept = ""
-        if offset:
+        if offset is not None:
             base = f"{string}({concept}, {offset})"
         else:
             base = f"{string}({concept})"
@@ -313,7 +313,10 @@ class BaseDialect:
                     )
                     for x in c.lineage.over
                 ]
-                rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
+                rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content,
+                                                                                                      cte=cte, alias=False, raise_invalid=raise_invalid), 
+                                                                   window=','.join(rendered_over_components), sort=','.join(rendered_order_components), 
+                                                                   offset=c.lineage.index)}"  # noqa: E501
             elif isinstance(c.lineage, FilterItem):
                 # for cases when we've optimized this
                 if cte.condition == c.lineage.where.conditional:

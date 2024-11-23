@@ -10,16 +10,16 @@ from trilogy.core.processing.utility import padding
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
 
-def resolve_window_parent_concepts(concept: Concept) -> List[Concept]:
+def resolve_window_parent_concepts(concept: Concept) -> tuple[Concept, List[Concept]]:
     if not isinstance(concept.lineage, WindowItem):
         raise ValueError
-    base = [concept.lineage.content]
+    base = []
     if concept.lineage.over:
         base += concept.lineage.over
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
             base += [item.expr.output]
-    return unique(base, "address")
+    return concept.lineage.content, unique(base, "address")
 
 
 def gen_window_node(
@@ -32,9 +32,24 @@ def gen_window_node(
     history: History | None = None,
     conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
-    parent_concepts = resolve_window_parent_concepts(concept)
-    parent_node = source_concepts(
-        mandatory_list=parent_concepts + local_optional,
+    base, parent_concepts = resolve_window_parent_concepts(concept)
+    equivalent_optional = [
+        x
+        for x in local_optional
+        if isinstance(x.lineage, WindowItem)
+        and resolve_window_parent_concepts(x)[1] == parent_concepts
+    ]
+
+    non_equivalent_optional = [
+        x for x in local_optional if x.address not in equivalent_optional
+    ]
+    targets = [base]
+    if equivalent_optional:
+        for x in equivalent_optional:
+            targets.append(x.lineage.content)
+
+    parent_node: StrategyNode = source_concepts(
+        mandatory_list=parent_concepts + targets + non_equivalent_optional,
         environment=environment,
         g=g,
         depth=depth + 1,
@@ -61,7 +76,7 @@ def gen_window_node(
         )
         raise SyntaxError
     _window_node = WindowNode(
-        input_concepts=parent_concepts + local_optional,
+        input_concepts=parent_concepts + targets + non_equivalent_optional,
         output_concepts=[concept] + parent_concepts + local_optional,
         environment=environment,
         g=g,
