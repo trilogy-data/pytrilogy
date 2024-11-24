@@ -415,8 +415,10 @@ order by
 
 
 def test_case_group():
+    from trilogy.hooks.query_debugger import DebuggingHook
 
-    default_duckdb_engine = Dialects.DUCK_DB.default_executor()
+    DebuggingHook()
+    default_duckdb_engine = Dialects.DUCK_DB.default_executor(hooks=[DebuggingHook()])
 
     test = """
 const x <- 1;

@@ -25,7 +25,7 @@ datasource posts (
     text: post_text
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 
 property post_length <- len(post_text);
@@ -44,7 +44,7 @@ datasource users (
     about_me: about_me,
     )
     grain (user_id)
-    address bigquery-public-data.stackoverflow.users
+    address `bigquery-public-data.stackoverflow.users`
 ;
 
 

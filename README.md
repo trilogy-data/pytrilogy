@@ -156,7 +156,7 @@ datasource usa_names(
     gender:gender,
     state:state
 )
-address bigquery-public-data.usa_names.usa_1910_2013;
+address `bigquery-public-data.usa_names.usa_1910_2013`;
 
 '''
 )

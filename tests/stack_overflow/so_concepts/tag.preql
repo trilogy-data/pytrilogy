@@ -11,4 +11,4 @@ datasource tags (
     tag_name: name,
     count: count,
     )
-address bigquery-public-data.stackoverflow.tags;
+address `bigquery-public-data.stackoverflow.tags`;

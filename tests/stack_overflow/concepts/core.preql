@@ -20,7 +20,7 @@ datasource posts (
     text: post_text
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 
 
@@ -29,7 +29,7 @@ datasource users (
     display_name: display_name,
     about_me: about_me,
     )
-    address bigquery-public-data.stackoverflow.users
+    address `bigquery-public-data.stackoverflow.users`
 ;
 
 key badge_id int;
@@ -46,4 +46,4 @@ datasource badges (
     class: class,
     tag_based: tag_based
     )
-address bigquery-public-data.stackoverflow.badges;
+address `bigquery-public-data.stackoverflow.badges`;

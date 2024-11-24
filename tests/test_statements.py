@@ -40,7 +40,7 @@ datasource posts (
     id: post_id
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 """
     parse(text)
@@ -76,7 +76,7 @@ datasource x_posts (
     id: post_id
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
     where post_id = 2
 ;
 """

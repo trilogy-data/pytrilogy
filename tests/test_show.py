@@ -16,7 +16,7 @@ def test_show_bigquery():
         id: post_id
         )
         grain (post_id)
-        address bigquery-public-data.stackoverflow.post_history
+        address `bigquery-public-data.stackoverflow.post_history`
     ;
 
 
@@ -26,7 +26,7 @@ def test_show_bigquery():
         about_me: about_me,
         )
         grain (user_id)
-        address bigquery-public-data.stackoverflow.users
+        address `bigquery-public-data.stackoverflow.users`
     ;
 
 

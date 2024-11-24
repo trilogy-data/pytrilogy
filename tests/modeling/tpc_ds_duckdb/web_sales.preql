@@ -6,7 +6,7 @@ import customer as customer;
 key order_number int;
 property <order_number,item.id>.quantity int;
 property <order_number,item.id>.sales_price float;
-property <order_number,item.id>.external_sales_price float;
+property <order_number,item.id>.extra_sales_price float;
 
 datasource web_sales (
     WS_SOLD_DATE_SK: date.id,
@@ -15,7 +15,7 @@ datasource web_sales (
     WS_ORDER_NUMBER: order_number,
     WS_ITEM_SK:item.id,
     WS_SALES_PRICE: sales_price,
-    WS_EXT_SALES_PRICE: external_sales_price
+    WS_EXT_SALES_PRICE: extra_sales_price
 
 )
 grain (order_number, item.id)

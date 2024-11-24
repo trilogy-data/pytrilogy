@@ -24,7 +24,6 @@ datasource date (
     D_WEEK_SEQ: week_seq,
     D_MOY: month_of_year,
     D_QOY: quarter,
-    D_WEEK_SEQ1: d_week_seq1,
     D_YEAR: _year_string,
     cast(_year_string as int): year
 )

@@ -14,4 +14,4 @@ datasource badges (
     class: class,
     tag_based: tag_based
     )
-address bigquery-public-data.stackoverflow.badges;
+address `bigquery-public-data.stackoverflow.badges`;

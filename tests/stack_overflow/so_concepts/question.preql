@@ -24,7 +24,7 @@ datasource posts (
     comment_count: comment_count
     )
     grain (id)
-    address bigquery-public-data.stackoverflow.posts_questions
+    address `bigquery-public-data.stackoverflow.posts_questions`
 ;
 
 

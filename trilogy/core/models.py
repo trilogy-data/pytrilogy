@@ -1375,6 +1375,9 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
     over: List["Concept"] = Field(default_factory=list)
     index: Optional[int] = None
 
+    def __repr__(self) -> str:
+        return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
+
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "WindowItem":
@@ -1383,6 +1386,7 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
             content=self.content.with_merge(source, target, modifiers),
             over=[x.with_merge(source, target, modifiers) for x in self.over],
             order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
+            index=self.index,
         )
 
     def with_namespace(self, namespace: str) -> "WindowItem":
@@ -1391,6 +1395,7 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
             content=self.content.with_namespace(namespace),
             over=[x.with_namespace(namespace) for x in self.over],
             order_by=[x.with_namespace(namespace) for x in self.order_by],
+            index=self.index,
         )
 
     def with_select_context(
@@ -1410,6 +1415,7 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
                 x.with_select_context(grain, conditional, environment)
                 for x in self.order_by
             ],
+            index=self.index,
         )
 
     @property

@@ -22,7 +22,7 @@ datasource posts (
     id: post_id
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 
 
@@ -56,7 +56,7 @@ datasource posts (
     id: post_id
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 
 select

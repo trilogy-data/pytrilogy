@@ -37,7 +37,7 @@ datasource citibike_stations (
     last_reported:last_reported
 )
 grain (id)
-address bigquery-public-data.new_york_citibike.citibike_stations;
+address `bigquery-public-data.new_york_citibike.citibike_stations`;
 
 
 datasource citibike_station_rental_methods(
