@@ -235,6 +235,7 @@ def window_item_to_concept(
     else:
         grain = parent.over + [parent.content.output]
     modifiers = get_upstream_modifiers(parent.content.concept_arguments)
+    datatype = parent.content.datatype
     if parent.type in (
         WindowType.RANK,
         WindowType.ROW_NUMBER,
@@ -242,8 +243,7 @@ def window_item_to_concept(
         WindowType.COUNT_DISTINCT,
     ):
         datatype = DataType.INTEGER
-    else:
-        datatype = parent.content.datatype
+
     return Concept(
         name=name,
         datatype=datatype,

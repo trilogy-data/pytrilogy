@@ -44,7 +44,7 @@ def gen_window_node(
         x
         for x in local_optional
         if isinstance(x.lineage, WindowItem)
-        and resolve_window_parent_concepts(x)[1] == parent_concepts
+        and resolve_window_parent_concepts(x, environment)[1] == parent_concepts
     ]
 
     non_equivalent_optional = [
