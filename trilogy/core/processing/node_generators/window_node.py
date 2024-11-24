@@ -46,6 +46,7 @@ def gen_window_node(
     targets = [base]
     if equivalent_optional:
         for x in equivalent_optional:
+            assert isinstance(x.lineage, WindowItem)
             targets.append(x.lineage.content)
 
     parent_node: StrategyNode = source_concepts(
