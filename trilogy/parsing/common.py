@@ -13,6 +13,7 @@ from trilogy.core.models import (
     Parenthetical,
     FunctionClass,
     Environment,
+    DataType,
 )
 from typing import List, Tuple
 from trilogy.core.functions import (
@@ -25,7 +26,7 @@ from trilogy.core.enums import PurposeLineage
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
-from trilogy.core.enums import Modifier
+from trilogy.core.enums import Modifier, WindowType
 
 
 def get_upstream_modifiers(keys: List[Concept]) -> list[Modifier]:
@@ -234,9 +235,18 @@ def window_item_to_concept(
     else:
         grain = parent.over + [parent.content.output]
     modifiers = get_upstream_modifiers(parent.content.concept_arguments)
+    if parent.type in (
+        WindowType.RANK,
+        WindowType.ROW_NUMBER,
+        WindowType.COUNT,
+        WindowType.COUNT_DISTINCT,
+    ):
+        datatype = DataType.INTEGER
+    else:
+        datatype = parent.content.datatype
     return Concept(
         name=name,
-        datatype=parent.content.datatype,
+        datatype=datatype,
         purpose=local_purpose,
         lineage=parent,
         metadata=fmetadata,

@@ -89,6 +89,16 @@ def test_window_functions(test_environment):
         dialect.compile_statement(process_query(test_environment, select))
 
 
+def test_window_datatype(test_environment):
+    declarations = """
+
+    auto category_rank <- rank category_name order by count(order_id) desc;
+
+        """
+    env, parsed = parse(declarations, environment=test_environment)
+    assert env.concepts["category_rank"].datatype == DataType.INTEGER
+
+
 def test_date_functions(test_environment):
     declarations = """
 
