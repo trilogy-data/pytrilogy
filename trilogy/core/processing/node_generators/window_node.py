@@ -10,7 +10,9 @@ from trilogy.core.processing.utility import padding
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
 
-def resolve_window_parent_concepts(concept: Concept) -> tuple[Concept, List[Concept]]:
+def resolve_window_parent_concepts(
+    concept: Concept, environment: Environment
+) -> tuple[Concept, List[Concept]]:
     if not isinstance(concept.lineage, WindowItem):
         raise ValueError
     base = []
@@ -18,6 +20,11 @@ def resolve_window_parent_concepts(concept: Concept) -> tuple[Concept, List[Conc
         base += concept.lineage.over
     if concept.lineage.order_by:
         for item in concept.lineage.order_by:
+            # TODO: we do want to use the rehydrated value, but
+            # that introduces a circular dependency on an aggregate
+            # that is grouped by a window
+            # need to figure out how to resolve this
+            # base += [environment.concepts[item.expr.output.address]]
             base += [item.expr.output]
     return concept.lineage.content, unique(base, "address")
 
@@ -32,7 +39,7 @@ def gen_window_node(
     history: History | None = None,
     conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
-    base, parent_concepts = resolve_window_parent_concepts(concept)
+    base, parent_concepts = resolve_window_parent_concepts(concept, environment)
     equivalent_optional = [
         x
         for x in local_optional
