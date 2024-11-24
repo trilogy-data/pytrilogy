@@ -14,7 +14,7 @@ datasource posts (
     id: post_id
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 
 auto user_post_count <- count(post_id) by user_id;
@@ -43,7 +43,7 @@ datasource posts (
     id: post_id
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 
 auto user_post_count <- count(post_id) by user_id;

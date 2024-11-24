@@ -1,8 +1,8 @@
 query_id = 24
-parse_time = 0.820413
-exec_time = 0.256494
-comp_time = 0.241259
-gen_length = 6653
+parse_time = 0.878185
+exec_time = 0.345596
+comp_time = 0.245022
+gen_length = 6678
 generated_sql = """
 
 WITH 

@@ -19,7 +19,7 @@ datasource posts (
     id: post_id
     )
     grain (post_id)
-    address bigquery-public-data.stackoverflow.post_history
+    address `bigquery-public-data.stackoverflow.post_history`
 ;
 
 select
@@ -36,7 +36,7 @@ datasource users (
     about_me: about_me,
     )
     grain (user_id)
-    address bigquery-public-data.stackoverflow.users
+    address `bigquery-public-data.stackoverflow.users`
 ;
 
 
