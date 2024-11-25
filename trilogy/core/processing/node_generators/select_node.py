@@ -34,7 +34,7 @@ def gen_select_node(
         concepts=[
             x
             for x in all_concepts
-            if x.address in [z for z in environment.materialized_concepts]
+            if x.address in environment.materialized_concepts
             or x.derivation == PurposeLineage.CONSTANT
         ]
     )

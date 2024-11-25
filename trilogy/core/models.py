@@ -67,7 +67,10 @@ from trilogy.core.enums import (
     SelectFiltering,
     IOType,
 )
-from trilogy.core.exceptions import UndefinedConceptException, InvalidSyntaxException
+from trilogy.core.exceptions import (
+    UndefinedConceptException,
+    InvalidSyntaxException,
+)
 from trilogy.utility import unique
 from collections import UserList, UserDict
 from functools import cached_property
@@ -555,6 +558,8 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             v = Grain(components=[])
         elif isinstance(v, Concept):
             v = Grain(components=[v])
+        elif isinstance(v, dict):
+            v = Grain.model_validate(v)
         if not v:
             raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
         return v
@@ -3337,7 +3342,7 @@ class EnvironmentConceptDict(dict):
 class ImportStatement(HasUUID, BaseModel):
     alias: str
     path: Path
-    environment: Union["Environment", None] = None
+    # environment: Union["Environment", None] = None
     # TODO: this might result in a lot of duplication
     # environment:"Environment"
 
@@ -3386,8 +3391,14 @@ class Environment(BaseModel):
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
 
-    materialized_concepts: List[Concept] = Field(default_factory=list)
+    materialized_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
+    frozen: bool = False
+
+    def copy(self):
+        from copy import deepcopy
+
+        return deepcopy(self)
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -3404,6 +3415,12 @@ class Environment(BaseModel):
             purpose=Purpose.CONSTANT,
         )
         self.add_concept(concept)
+
+    def freeze(self):
+        self.frozen = True
+
+    def thaw(self):
+        self.frozen = False
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
@@ -3435,14 +3452,17 @@ class Environment(BaseModel):
         for datasource in self.datasources.values():
             for concept in datasource.output_concepts:
                 concrete_addresses.add(concept.address)
-        self.materialized_concepts = unique(
-            [c for c in self.concepts.values() if c.address in concrete_addresses]
+        self.materialized_concepts = set(
+            [
+                c.address
+                for c in self.concepts.values()
+                if c.address in concrete_addresses
+            ]
             + [
-                c
+                c.address
                 for c in self.alias_origin_lookup.values()
                 if c.address in concrete_addresses
             ],
-            "address",
         )
 
     def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
@@ -3510,6 +3530,8 @@ class Environment(BaseModel):
     def add_import(
         self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
     ):
+        if self.frozen:
+            raise AttributeError("Environment is frozen, cannot add imports")
         exists = False
         existing = self.imports[alias]
         if imp_stm:
@@ -3602,7 +3624,7 @@ class Environment(BaseModel):
                     f"Unable to import file {target.parent}, parsing error: {e}"
                 )
             env = nparser.environment
-        imps = ImportStatement(alias=alias, path=target, environment=env)
+        imps = ImportStatement(alias=alias, path=target)
         self.add_import(alias, source=env, imp_stm=imps)
         return imps
 
