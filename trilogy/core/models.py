@@ -3390,15 +3390,12 @@ class Environment(BaseModel):
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
-
     materialized_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     frozen: bool = False
 
-    def copy(self):
-        from copy import deepcopy
-
-        return deepcopy(self)
+    def duplicate(self):
+        return self.model_copy(deep=True)
 
     def __init__(self, **data):
         super().__init__(**data)
