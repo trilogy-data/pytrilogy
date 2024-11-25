@@ -3392,7 +3392,8 @@ class Environment(BaseModel):
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     materialized_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
-    frozen: bool = False
+    # TODO: support freezing environments to avoid mutation
+    # frozen: bool = False
 
     def duplicate(self):
         return self.model_copy(deep=True)
@@ -3413,11 +3414,11 @@ class Environment(BaseModel):
         )
         self.add_concept(concept)
 
-    def freeze(self):
-        self.frozen = True
+    # def freeze(self):
+    #     self.frozen = True
 
-    def thaw(self):
-        self.frozen = False
+    # def thaw(self):
+    #     self.frozen = False
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
