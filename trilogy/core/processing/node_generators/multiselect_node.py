@@ -3,6 +3,7 @@ from trilogy.core.models import (
     Environment,
     MultiSelectStatement,
     WhereClause,
+    Conditional,
 )
 from trilogy.core.processing.nodes import MergeNode, NodeJoin, History
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
@@ -14,7 +15,7 @@ from trilogy.core.processing.utility import padding
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from collections import defaultdict
 from itertools import combinations
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import Purpose, BooleanOperator
 from trilogy.core.processing.node_generators.common import resolve_join_order
 
 LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
@@ -76,14 +77,22 @@ def gen_multiselect_node(
             g=g,
             depth=depth + 1,
             history=history,
+            conditions=select.where_clause,
         )
         if not snode:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
             )
             return None
-        if select.where_clause:
-            snode.conditions = select.where_clause.conditional
+        if select.having_clause:
+            if snode.conditions:
+                snode.conditions = Conditional(
+                    left=snode.conditions,
+                    right=select.having_clause.conditional,
+                    operator=BooleanOperator.AND,
+                )
+            else:
+                snode.conditions = select.having_clause.conditional
         merge_concepts = []
         for x in [*snode.output_concepts]:
             merge = lineage.get_merge_concept(x)
