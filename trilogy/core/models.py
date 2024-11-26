@@ -3528,8 +3528,6 @@ class Environment(BaseModel):
     def add_import(
         self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
     ):
-        if self.frozen:
-            raise AttributeError("Environment is frozen, cannot add imports")
         exists = False
         existing = self.imports[alias]
         if imp_stm:
