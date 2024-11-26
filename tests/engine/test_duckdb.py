@@ -82,6 +82,21 @@ def test_empty_string(duckdb_engine: Executor, expected_results):
     assert results[0].empty_string == ""
 
 
+def test_order_of_operations(duckdb_engine: Executor, expected_results):
+    results = duckdb_engine.execute_query(
+        """
+    const x <- 7;
+    const y <- 8;
+
+    auto z <- x + y;
+    auto a <- z/2;
+                                          
+    select a;
+"""
+    ).fetchall()
+    assert results[0].a == 7.5, results[0].a
+
+
 def test_constants(duckdb_engine: Executor, expected_results):
     results = duckdb_engine.execute_text(
         """const usd_conversion <- 2;

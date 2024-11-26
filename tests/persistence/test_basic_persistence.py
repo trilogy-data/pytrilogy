@@ -83,7 +83,7 @@ def test_derivations():
 
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
-        assert test_concept in env.materialized_concepts
+        assert test_concept.address in env.materialized_concepts
         assert test_concept.derivation == PurposeLineage.ROOT
 
         persist: PersistStatement = parsed[-2]
@@ -185,7 +185,7 @@ def test_derivations_reparse():
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.PERSIST_STATEMENT
-        assert test_concept in env.materialized_concepts
+        assert test_concept.address in env.materialized_concepts
         assert test_concept.derivation == PurposeLineage.ROOT
 
         # test that the rendered SQL didn't need to use a cASE

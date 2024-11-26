@@ -907,9 +907,7 @@ class ParseToObjects(Transformer):
             except Exception as e:
                 raise ImportError(f"Unable to import file {target}, parsing error: {e}")
 
-        imps = ImportStatement(
-            alias=alias, path=Path(args[0]), environment=nparser.environment
-        )
+        imps = ImportStatement(alias=alias, path=Path(args[0]))
         self.environment.add_import(alias, nparser.environment, imps)
         return imps
 

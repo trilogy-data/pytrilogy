@@ -16,6 +16,10 @@ class NoDatasourceException(Exception):
     pass
 
 
+class FrozenEnvironmentException(Exception):
+    pass
+
+
 class AmbiguousRelationshipResolutionException(Exception):
     def __init__(self, message, parents: List[set[str]]):
         super().__init__(self, message)
