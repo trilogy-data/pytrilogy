@@ -138,8 +138,8 @@ FUNCTION_MAP = {
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
     # math
-    FunctionType.ADD: lambda x: "(" + " + ".join(x) + ")",
-    FunctionType.SUBTRACT: lambda x: "(" + " - ".join(x) + ")",
+    FunctionType.ADD: lambda x: " + ".join(x),
+    FunctionType.SUBTRACT: lambda x: " - ".join(x),
     FunctionType.DIVIDE: lambda x: " / ".join(x),
     FunctionType.MULTIPLY: lambda x: " * ".join(x),
     FunctionType.ROUND: lambda x: f"round({x[0]},{x[1]})",
@@ -348,12 +348,31 @@ class BaseDialect:
             ):
                 rval = f":{c.safe_address}"
             else:
-                args = [
-                    self.render_expr(
-                        v, cte=cte, raise_invalid=raise_invalid
-                    )  # , alias=False)
-                    for v in c.lineage.arguments
-                ]
+                args = []
+                for arg in c.lineage.arguments:
+                    if (
+                        isinstance(arg, Concept)
+                        and arg.lineage
+                        and isinstance(arg.lineage, Function)
+                        and arg.lineage.operator
+                        in (
+                            FunctionType.ADD,
+                            FunctionType.SUBTRACT,
+                            FunctionType.DIVIDE,
+                            FunctionType.MULTIPLY,
+                        )
+                    ):
+                        args.append(
+                            self.render_expr(
+                                Parenthetical(content=arg),
+                                cte=cte,
+                                raise_invalid=raise_invalid,
+                            )
+                        )
+                    else:
+                        args.append(
+                            self.render_expr(arg, cte=cte, raise_invalid=raise_invalid)
+                        )
 
                 if cte.group_to_grain:
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args)}"
@@ -492,25 +511,39 @@ class BaseDialect:
         elif isinstance(e, CaseElse):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
         elif isinstance(e, Function):
+            arguments = []
+            for arg in e.arguments:
+                if (
+                    isinstance(arg, Concept)
+                    and arg.lineage
+                    and isinstance(arg.lineage, Function)
+                    and arg.lineage.operator
+                    in (
+                        FunctionType.ADD,
+                        FunctionType.SUBTRACT,
+                        FunctionType.DIVIDE,
+                        FunctionType.MULTIPLY,
+                    )
+                ):
+                    arguments.append(
+                        self.render_expr(
+                            Parenthetical(content=arg),
+                            cte=cte,
+                            cte_map=cte_map,
+                            raise_invalid=raise_invalid,
+                        )
+                    )
+                else:
+                    arguments.append(
+                        self.render_expr(
+                            arg, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
+                        )
+                    )
 
             if cte and cte.group_to_grain:
-                return self.FUNCTION_MAP[e.operator](
-                    [
-                        self.render_expr(
-                            z, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                        )
-                        for z in e.arguments
-                    ]
-                )
+                return self.FUNCTION_MAP[e.operator](arguments)
 
-            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](
-                [
-                    self.render_expr(
-                        z, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                    )
-                    for z in e.arguments
-                ]
-            )
+            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments)
         elif isinstance(e, AggregateWrapper):
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid

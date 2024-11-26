@@ -1,8 +1,8 @@
 query_id = 2
-parse_time = 8.925773
-exec_time = 0.266183
-comp_time = 0.088224
-gen_length = 9982
+parse_time = 8.934098
+exec_time = 0.232084
+comp_time = 0.077289
+gen_length = 9968
 generated_sql = """
 
 WITH 
@@ -117,14 +117,14 @@ GROUP BY
     wakeful.\"date_week_seq\"),
 yummy as (
 SELECT
-    (questionable.\"_virt_1509796867940095\" + cheerful.\"_virt_1900390020562438\") as \"yearly_agg_tuesday_sales\",
-    (questionable.\"_virt_2674229030918237\" + cheerful.\"_virt_3072933958886594\") as \"yearly_agg_friday_sales\",
-    (questionable.\"_virt_4241182155400568\" + cheerful.\"_virt_2005409577793585\") as \"yearly_agg_monday_sales\",
-    (questionable.\"_virt_628571582465146\" + cheerful.\"_virt_1686049322505568\") as \"yearly_agg_saturday_sales\",
-    (questionable.\"_virt_7659915543538790\" + cheerful.\"_virt_7830132902767713\") as \"yearly_agg_wednesday_sales\",
-    (questionable.\"_virt_7925017690385460\" + cheerful.\"_virt_1839451380137276\") as \"yearly_agg_sunday_sales\",
-    (questionable.\"_virt_8414085047694243\" + cheerful.\"_virt_8675768522390353\") as \"yearly_agg_thursday_sales\",
-    cheerful.\"date_week_seq\" as \"yearly_agg_date_week_seq\"
+    cheerful.\"date_week_seq\" as \"yearly_agg_date_week_seq\",
+    questionable.\"_virt_1509796867940095\" + cheerful.\"_virt_1900390020562438\" as \"yearly_agg_tuesday_sales\",
+    questionable.\"_virt_2674229030918237\" + cheerful.\"_virt_3072933958886594\" as \"yearly_agg_friday_sales\",
+    questionable.\"_virt_4241182155400568\" + cheerful.\"_virt_2005409577793585\" as \"yearly_agg_monday_sales\",
+    questionable.\"_virt_628571582465146\" + cheerful.\"_virt_1686049322505568\" as \"yearly_agg_saturday_sales\",
+    questionable.\"_virt_7659915543538790\" + cheerful.\"_virt_7830132902767713\" as \"yearly_agg_wednesday_sales\",
+    questionable.\"_virt_7925017690385460\" + cheerful.\"_virt_1839451380137276\" as \"yearly_agg_sunday_sales\",
+    questionable.\"_virt_8414085047694243\" + cheerful.\"_virt_8675768522390353\" as \"yearly_agg_thursday_sales\"
 FROM
     cheerful
     INNER JOIN questionable on cheerful.\"date_week_seq\" = questionable.\"date_week_seq\"
