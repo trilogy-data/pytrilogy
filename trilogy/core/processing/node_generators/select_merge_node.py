@@ -20,6 +20,9 @@ from trilogy.core.graph_models import concept_to_node
 from trilogy.constants import logger
 from trilogy.core.processing.utility import padding
 from trilogy.core.enums import PurposeLineage
+from trilogy.core.processing.nodes.base_node import (
+    concept_list_to_grain,
+)
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 
@@ -353,7 +356,7 @@ def gen_select_merge_node(
         ]
     ):
         preexisting_conditions = conditions.conditional
-    return MergeNode(
+    base = MergeNode(
         output_concepts=all_concepts,
         input_concepts=non_constant,
         environment=environment,
@@ -362,3 +365,16 @@ def gen_select_merge_node(
         parents=parents,
         preexisting_conditions=preexisting_conditions,
     )
+    target_grain = concept_list_to_grain(all_concepts, [])
+    if not base.resolve().grain.issubset(target_grain):
+        return GroupNode(
+            output_concepts=all_concepts,
+            input_concepts=all_concepts,
+            environment=environment,
+            g=g,
+            parents=[base],
+            depth=depth,
+            preexisting_conditions=preexisting_conditions,
+            partial_concepts=base.partial_concepts,
+        )
+    return base
