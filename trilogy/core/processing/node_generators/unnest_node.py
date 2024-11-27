@@ -60,6 +60,7 @@ def gen_unnest_node(
         g=g,
         parents=[base],
         preexisting_conditions=conditions.conditional if conditions else None,
+        # we don't know what the grain is at this point, after an unnest
     )
     qds = new.resolve()
     assert qds.source_map[concept.address] == {base.resolve()}

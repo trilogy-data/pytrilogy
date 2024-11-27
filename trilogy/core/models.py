@@ -2307,9 +2307,11 @@ class UnnestJoin(BaseModel):
     rendering_required: bool = True
 
     def __hash__(self):
-        return (
-            self.alias + "".join([str(s.address) for s in self.concepts])
-        ).__hash__()
+        return self.safe_identifier.__hash__()
+
+    @property
+    def safe_identifier(self) -> str:
+        return self.alias + "".join([str(s.address) for s in self.concepts])
 
 
 class InstantiatedUnnestJoin(BaseModel):
@@ -2544,7 +2546,7 @@ class QueryDatasource(BaseModel):
                 return True
         return False
 
-    def __add__(self, other):
+    def __add__(self, other) -> "QueryDatasource":
         # these are syntax errors to avoid being caught by current
         if not isinstance(other, QueryDatasource):
             raise SyntaxError("Can only merge two query datasources")
@@ -2570,7 +2572,7 @@ class QueryDatasource(BaseModel):
             f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
 
-        merged_datasources = {}
+        merged_datasources: dict[str, Union[Datasource, "QueryDatasource"]] = {}
 
         for ds in [*self.datasources, *other.datasources]:
             if ds.safe_identifier in merged_datasources:
@@ -2580,20 +2582,29 @@ class QueryDatasource(BaseModel):
             else:
                 merged_datasources[ds.safe_identifier] = ds
 
-        final_source_map = defaultdict(set)
+        final_source_map: defaultdict[
+            str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]
+        ] = defaultdict(set)
+
+        # add our sources
         for key in self.source_map:
             final_source_map[key] = self.source_map[key].union(
                 other.source_map.get(key, set())
             )
+        # add their sources
         for key in other.source_map:
             if key not in final_source_map:
                 final_source_map[key] = other.source_map[key]
+
+        # if a ds was merged (to combine columns), we need to update the source map
+        # to use the merged item
         for k, v in final_source_map.items():
             final_source_map[k] = set(
-                merged_datasources[x.safe_identifier] for x in list(v)
+                merged_datasources.get(x.safe_identifier, x) for x in list(v)
             )
         self_hidden = self.hidden_concepts or []
         other_hidden = other.hidden_concepts or []
+        # hidden is the minimum overlapping set
         hidden = [x for x in self_hidden if x.address in other_hidden]
         qds = QueryDatasource(
             input_concepts=unique(
@@ -2606,11 +2617,10 @@ class QueryDatasource(BaseModel):
             datasources=list(merged_datasources.values()),
             grain=self.grain,
             joins=unique(self.joins + other.joins, "unique_id"),
-            # joins = self.joins,
             condition=(
                 self.condition + other.condition
-                if (self.condition or other.condition)
-                else None
+                if self.condition and other.condition
+                else self.condition or other.condition
             ),
             source_type=self.source_type,
             partial_concepts=unique(
