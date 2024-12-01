@@ -709,7 +709,6 @@ class ParseToObjects(Transformer):
         else:
             raise SyntaxError("Invalid transformation")
 
-        self.environment.add_concept(concept, meta=meta)
         return ConceptTransform(function=transformation, output=concept)
 
     @v_args(meta=True)
@@ -1024,7 +1023,7 @@ class ParseToObjects(Transformer):
                     conditional=None,
                     environment=self.environment,
                 )
-                self.environment.add_concept(new_concept, meta=meta)
+                output.local_concepts[new_concept.address] = new_concept
                 item.content.output = new_concept
             elif isinstance(item.content, Concept):
                 # Sometimes cached values here don't have the latest info

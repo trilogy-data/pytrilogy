@@ -553,11 +553,13 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             v = Grain(components=values["lineage"].by)
         elif not v:
             v = Grain(components=[])
+        elif isinstance(v, Grain):
+            return v
         elif isinstance(v, Concept):
             v = Grain(components=[v])
         elif isinstance(v, dict):
             v = Grain.model_validate(v)
-        if not v:
+        else:
             raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
         return v
 
@@ -1019,6 +1021,78 @@ class Grain(Mergeable, BaseModel):
             return self.__add__(other)
 
 
+class EnvironmentConceptDict(dict):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(self, *args, **kwargs)
+        self.undefined: dict[str, UndefinedConcept] = {}
+        self.fail_on_missing: bool = True
+        self.populate_default_concepts()
+
+    def populate_default_concepts(self):
+        from trilogy.core.internal import DEFAULT_CONCEPTS
+
+        for concept in DEFAULT_CONCEPTS.values():
+            self[concept.address] = concept
+
+    def values(self) -> ValuesView[Concept]:  # type: ignore
+        return super().values()
+
+    def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore
+        try:
+            return self.__getitem__(key)
+        except UndefinedConceptException:
+            return default
+
+    def __getitem__(
+        self, key, line_no: int | None = None, file: Path | None = None
+    ) -> Concept | UndefinedConcept:
+        try:
+            return super(EnvironmentConceptDict, self).__getitem__(key)
+
+        except KeyError:
+            if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
+                return self.__getitem__(key.split(".", 1)[1], line_no)
+            if DEFAULT_NAMESPACE + "." + key in self:
+                return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
+            if not self.fail_on_missing:
+                if key in self.undefined:
+                    return self.undefined[key]
+                undefined = UndefinedConcept(
+                    name=key,
+                    line_no=line_no,
+                    environment=self,
+                    datatype=DataType.UNKNOWN,
+                    purpose=Purpose.KEY,
+                )
+                self.undefined[key] = undefined
+                return undefined
+            matches = self._find_similar_concepts(key)
+            message = f"Undefined concept: {key}."
+            if matches:
+                message += f" Suggestions: {matches}"
+
+            if line_no:
+                if file:
+                    raise UndefinedConceptException(
+                        f"{file}: {line_no}: " + message, matches
+                    )
+                raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
+            raise UndefinedConceptException(message, matches)
+
+    def _find_similar_concepts(self, concept_name: str):
+        def strip_local(input: str):
+            if input.startswith(f"{DEFAULT_NAMESPACE}."):
+                return input[len(DEFAULT_NAMESPACE) + 1 :]
+            return input
+
+        matches = difflib.get_close_matches(
+            strip_local(concept_name), [strip_local(x) for x in self.keys()]
+        )
+        return matches
+
+    def items(self) -> ItemsView[str, Concept]:  # type: ignore
+        return super().items()
+    
 class RawColumnExpr(BaseModel):
     text: str
 
@@ -1635,6 +1709,9 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    local_concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
+        Field(default_factory=EnvironmentConceptDict)
+    )
 
     def refresh_bindings(self, environment: Environment):
         for item in self.selection:
@@ -3345,77 +3422,6 @@ class EnvironmentDatasourceDict(dict):
         return super().items()
 
 
-class EnvironmentConceptDict(dict):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(self, *args, **kwargs)
-        self.undefined: dict[str, UndefinedConcept] = {}
-        self.fail_on_missing: bool = True
-        self.populate_default_concepts()
-
-    def populate_default_concepts(self):
-        from trilogy.core.internal import DEFAULT_CONCEPTS
-
-        for concept in DEFAULT_CONCEPTS.values():
-            self[concept.address] = concept
-
-    def values(self) -> ValuesView[Concept]:  # type: ignore
-        return super().values()
-
-    def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore
-        try:
-            return self.__getitem__(key)
-        except UndefinedConceptException:
-            return default
-
-    def __getitem__(
-        self, key, line_no: int | None = None, file: Path | None = None
-    ) -> Concept | UndefinedConcept:
-        try:
-            return super(EnvironmentConceptDict, self).__getitem__(key)
-
-        except KeyError:
-            if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
-                return self.__getitem__(key.split(".", 1)[1], line_no)
-            if DEFAULT_NAMESPACE + "." + key in self:
-                return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
-            if not self.fail_on_missing:
-                if key in self.undefined:
-                    return self.undefined[key]
-                undefined = UndefinedConcept(
-                    name=key,
-                    line_no=line_no,
-                    environment=self,
-                    datatype=DataType.UNKNOWN,
-                    purpose=Purpose.KEY,
-                )
-                self.undefined[key] = undefined
-                return undefined
-            matches = self._find_similar_concepts(key)
-            message = f"Undefined concept: {key}."
-            if matches:
-                message += f" Suggestions: {matches}"
-
-            if line_no:
-                if file:
-                    raise UndefinedConceptException(
-                        f"{file}: {line_no}: " + message, matches
-                    )
-                raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
-            raise UndefinedConceptException(message, matches)
-
-    def _find_similar_concepts(self, concept_name: str):
-        def strip_local(input: str):
-            if input.startswith(f"{DEFAULT_NAMESPACE}."):
-                return input[len(DEFAULT_NAMESPACE) + 1 :]
-            return input
-
-        matches = difflib.get_close_matches(
-            strip_local(concept_name), [strip_local(x) for x in self.keys()]
-        )
-        return matches
-
-    def items(self) -> ItemsView[str, Concept]:  # type: ignore
-        return super().items()
 
 
 class ImportStatement(HasUUID, BaseModel):
@@ -3472,7 +3478,13 @@ class Environment(BaseModel):
     materialized_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
-    # frozen: bool = False
+    frozen: bool = False
+
+    def freeze(self):
+        self.frozen = True
+    
+    def thaw(self):
+        self.frozen = False
 
     def duplicate(self):
         return self.model_copy(deep=True)
@@ -3607,6 +3619,8 @@ class Environment(BaseModel):
     def add_import(
         self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
     ):
+        if self.frozen:
+            raise ValueError("Environment is frozen, cannot add imports")
         exists = False
         existing = self.imports[alias]
         if imp_stm:
@@ -3659,6 +3673,8 @@ class Environment(BaseModel):
     def add_file_import(
         self, path: str | Path, alias: str, env: Environment | None = None
     ):
+        if self.frozen:
+            raise ValueError("Environment is frozen, cannot add imports")
         from trilogy.parsing.parse_engine import (
             PARSER,
             ParseToObjects,
@@ -3743,6 +3759,8 @@ class Environment(BaseModel):
         add_derived: bool = True,
         _ignore_cache: bool = False,
     ):
+        if self.frozen:
+            raise ValueError("Environment is frozen, cannot add concepts")
         if not force:
             existing = self.validate_concept(concept, meta=meta)
             if existing:
@@ -3761,6 +3779,8 @@ class Environment(BaseModel):
         meta: Meta | None = None,
         _ignore_cache: bool = False,
     ):
+        if self.frozen:
+            raise ValueError("Environment is frozen, cannot add datasource")
         self.datasources[datasource.identifier] = datasource
 
         eligible_to_promote_roots = datasource.non_partial_for is None
@@ -3812,6 +3832,8 @@ class Environment(BaseModel):
         address: str,
         meta: Meta | None = None,
     ) -> bool:
+        if self.frozen:
+            raise ValueError("Environment is frozen, cannot delete datsources")
         if address in self.datasources:
             del self.datasources[address]
             self.gen_concept_list_caches()
@@ -3819,14 +3841,17 @@ class Environment(BaseModel):
         return False
 
     def merge_concept(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ):
+        self, source: Concept, target: Concept, modifiers: List[Modifier],
+        force:bool = False
+    )->bool:
+        if self.frozen:
+            raise ValueError("Environment is frozen, cannot merge concepts")
         replacements = {}
 
         # exit early if we've run this
-        if source.address in self.alias_origin_lookup:
+        if source.address in self.alias_origin_lookup and not force:
             if self.concepts[source.address] == target:
-                return
+                return False
         self.alias_origin_lookup[source.address] = source
         for k, v in self.concepts.items():
             if v.address == target.address:
@@ -3842,7 +3867,7 @@ class Environment(BaseModel):
         for k, ds in self.datasources.items():
             if source.address in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
-
+        return True
 
 class LazyEnvironment(Environment):
     """Variant of environment to defer parsing of a path

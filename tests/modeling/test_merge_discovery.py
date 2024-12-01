@@ -1,7 +1,7 @@
 from trilogy import Dialects, Executor
 from trilogy.core.models import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
-
+# from pydantic.functional_validators import merge
 
 def test_merge_discovery(test_environment: Environment, test_executor: Executor):
     # test keys
@@ -127,3 +127,50 @@ order by
     results = exec.execute_text(test_select)[0].fetchall()
     assert len(list(results)) == 2
     assert results[0].p1_firstname == "John"
+
+
+
+def test_merge_no_duplication():
+    # test keys
+
+    base = Environment()
+
+    imports = Environment()
+
+    imports.parse(
+        """
+key firstname string;
+key lastname string;
+
+datasource people (
+    lastname:lastname,
+    firstname:firstname,)
+grain (lastname, firstname)
+query '''
+SELECT 'John' as firstname, 'Doe' as lastname
+UNION
+SELECT 'Jane' as firstname, 'Doe' as lastname
+UNION
+SELECT 'John' as firstname, 'Smith' as lastname
+''';
+""",
+    )
+
+    base.add_import("p1", imports)
+    base.add_import("p2", imports)
+    base.add_import("p3", imports)
+    # merge p1.firstname, p3.firstname and p1.lastname, p3.lastname;
+    base.parse(
+        """
+merge  p2.firstname into p1.firstname;
+merge p2.lastname  into p1.lastname;
+
+"""
+    )
+    merge = base.merge_concept(base.concepts['p2.firstname'], base.concepts['p1.firstname'], [])
+    assert not merge
+    base_size = base.model_dump_json()
+    for x in range(0,10):
+        merge = base.merge_concept(base.concepts['p2.firstname'], base.concepts['p1.firstname'], [], force=True)
+        new_size = base.model_dump_json()
+        assert len(base_size) == len(new_size)

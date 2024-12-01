@@ -3,7 +3,7 @@ from trilogy.core.models import Grain, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
-
+from trilogy import Dialects
 
 def test_select():
     declarations = """
@@ -146,3 +146,32 @@ def test_having_without_select():
         assert "that is not in the select projection in the HAVING clause" in str(e)
         failed = True
     assert failed
+
+
+
+def test_local_select_concepts():
+    q1 = """
+
+key id int;
+datasource local (
+
+    id: id
+    )
+    grain (id)
+query '''
+
+SELECT 1 as id
+''';
+
+
+select id + 2 as three;
+
+"""
+
+    env, parsed = parse(q1)
+    assert 'local.three' not in env.concepts
+
+
+    result = Dialects.DUCK_DB.default_executor(environment=env).execute_text(q1)[-1]
+    assert result.fetchone().three == 3
+
