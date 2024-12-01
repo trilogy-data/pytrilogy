@@ -4,6 +4,6 @@ from trilogy.executor import Executor
 from trilogy.parser import parse
 from trilogy.constants import CONFIG
 
-__version__ = "0.0.2.45"
+__version__ = "0.0.2.46"
 
 __all__ = ["parse", "Executor", "Dialects", "Environment", "CONFIG"]
