@@ -161,6 +161,9 @@ class Namespaced(ABC):
 class Mergeable(ABC):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
+    
+    def hydrate_missing(self, concepts:EnvironmentConceptDict):
+        return self
 
 
 class ConceptArgs(ABC):
@@ -871,6 +874,12 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             environment.add_concept(new)
         return new
 
+class ConceptRef(BaseModel):
+    address:str
+    line_no:int
+
+    def hydrate(self, environment: Environment) -> Concept:
+        return environment.concepts.__getitem__(self.address, self.line_no)
 
 class Grain(Mergeable, BaseModel):
     nested: bool = False
@@ -1746,6 +1755,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
                             f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
                         )
         if self.having_clause:
+            self.having_clause.hydrate_missing(self.local_concepts)
             for concept in self.having_clause.concept_arguments:
                 if concept.address not in [x.address for x in self.output_components]:
                     raise SyntaxError(
@@ -2019,6 +2029,11 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    local_concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
+        Field(default_factory=EnvironmentConceptDict)
+    )
+
+
 
     def refresh_bindings(self, environment: Environment):
         for select in self.selects:
@@ -2086,6 +2101,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
                 if self.where_clause
                 else None
             ),
+            local_concepts={k: v.with_namespace(namespace) for k, v in self.local_concepts.items()},
         )
 
     @property
@@ -3940,6 +3956,17 @@ class Comparison(
     ]
     operator: ComparisonOperator
 
+    def hydrate_missing(self, concepts:EnvironmentConceptDict):
+        if isinstance(self.left, UndefinedConcept) and self.left.address in concepts:
+            self.left = concepts[self.left.address]
+        if isinstance(self.right, UndefinedConcept) and self.right.address in concepts:
+            self.right = concepts[self.right.address]
+        if isinstance(self.left, Mergeable):
+            self.left.hydrate_missing(concepts)
+        if isinstance(self.right, Mergeable):
+            self.right.hydrate_missing(concepts)
+        return self
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
@@ -4574,6 +4601,9 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
 class HavingClause(WhereClause):
     pass
 
+    def hydrate_missing(self, concepts:EnvironmentConceptDict):
+        self.conditional.hydrate_missing(concepts)
+
 
 class MaterializedDataset(BaseModel):
     address: Address
@@ -4595,6 +4625,9 @@ class ProcessedQuery(BaseModel):
     where_clause: Optional[WhereClause] = None
     having_clause: Optional[HavingClause] = None
     order_by: Optional[OrderBy] = None
+    local_concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
+        Field(default_factory=EnvironmentConceptDict)
+    )
 
 
 class PersistQueryMixin(BaseModel):

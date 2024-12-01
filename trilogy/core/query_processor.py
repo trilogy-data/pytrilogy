@@ -477,6 +477,9 @@ def process_query(
     hooks = hooks or []
     statement.refresh_bindings(environment)
     graph = generate_graph(environment)
+    environment=environment.duplicate()
+    for k, v in statement.local_concepts.items():
+        environment.concepts[k] = v
     root_datasource = get_query_datasources(
         environment=environment, graph=graph, statement=statement, hooks=hooks
     )
@@ -516,4 +519,5 @@ def process_query(
         # we no longer do any joins at final level, this should always happen in parent CTEs
         joins=[],
         hidden_columns=[x for x in statement.hidden_components],
+        local_concepts = statement.local_concepts,
     )

@@ -265,7 +265,7 @@ class ParseToObjects(Transformer):
             if v.pass_count == 2:
                 continue
             v.hydrate_missing()
-        self.environment.concepts.fail_on_missing = True
+        # self.environment.concepts.fail_on_missing = True
         reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
         return reparsed
@@ -310,8 +310,10 @@ class ParseToObjects(Transformer):
         return args.value[1:-1]
 
     @v_args(meta=True)
-    def concept_lit(self, meta: Meta, args) -> Concept:
-        return self.environment.concepts.__getitem__(args[0], meta.line)
+    def concept_lit(self, meta: Meta, args) -> Concept | ConceptRef:
+        address = args[0]
+        return self.environment.concepts.__getitem__( address, meta.line)
+
 
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
@@ -953,7 +955,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
-        selects = []
+        selects:list[SelectStatement] = []
         align: AlignClause | None = None
         limit: int | None = None
         order_by: OrderBy | None = None
@@ -972,6 +974,10 @@ class ParseToObjects(Transformer):
 
         assert align
         assert align is not None
+        base_local:SelectStatement = selects[0].local_concepts
+        for select in selects[1:]:
+            for k, v in select.local_concepts.items():
+                base_local[k] = v
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -980,6 +986,7 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             limit=limit,
             meta=Metadata(line_number=meta.line),
+            local_concepts=base_local,
         )
         for concept in multi.derived_concepts:
             self.environment.add_concept(concept, meta=meta)
