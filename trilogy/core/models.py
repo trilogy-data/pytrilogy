@@ -2194,7 +2194,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             v = Address(location=v)
         return v
 
-    @field_validator("grain", mode="plain")
+    @field_validator("grain", mode="before")
     @classmethod
     def grain_enforcement(cls, v: Grain, info: ValidationInfo):
         values = info.data
@@ -3129,7 +3129,9 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
     name: str
     environment: "EnvironmentConceptDict"
     line_no: int | None = None
-    datatype: DataType = DataType.UNKNOWN
+    datatype: DataType | ListType | StructType | MapType | NumericType = (
+        DataType.UNKNOWN
+    )
     purpose: Purpose = Purpose.KEY
 
     def with_merge(
