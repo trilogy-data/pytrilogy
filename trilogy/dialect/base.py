@@ -313,10 +313,18 @@ class BaseDialect:
                     )
                     for x in c.lineage.over
                 ]
-                rval = f"{self.WINDOW_FUNCTION_MAP[c.lineage.type](concept = self.render_concept_sql(c.lineage.content,
-                                                                                                      cte=cte, alias=False, raise_invalid=raise_invalid), 
-                                                                   window=','.join(rendered_over_components), sort=','.join(rendered_order_components), 
-                                                                   offset=c.lineage.index)}"  # noqa: E501
+
+                rval = self.WINDOW_FUNCTION_MAP[c.lineage.type](
+                    concept=self.render_concept_sql(
+                        c.lineage.content,
+                        cte=cte,
+                        alias=False,
+                        raise_invalid=raise_invalid,
+                    ),
+                    window=",".join(rendered_over_components),
+                    sort=",".join(rendered_order_components),
+                    offset=c.lineage.index,
+                )
             elif isinstance(c.lineage, FilterItem):
                 # for cases when we've optimized this
                 if cte.condition == c.lineage.where.conditional:
