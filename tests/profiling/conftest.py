@@ -17,9 +17,10 @@ def engine():
         conf=DuckDBConfig(),
     )
     memory = working_path / "memory" / "schema.sql"
+    import_path = working_path / "memory"
     if Path(memory).exists():
         # TODO: Detect if loaded
-        engine.execute_raw_sql(f"IMPORT DATABASE '{working_path / "memory"}';")
+        engine.execute_raw_sql(f"IMPORT DATABASE '{import_path}';")
     results = engine.execute_raw_sql("SHOW TABLES;").fetchall()
     tables = [r[0] for r in results]
     if "store_sales" not in tables:
@@ -28,6 +29,6 @@ def engine():
         INSTALL tpcds;
         LOAD tpcds;
         SELECT * FROM dsdgen(sf=1);
-        EXPORT DATABASE '{working_path / "memory"}' (FORMAT PARQUET);"""
+        EXPORT DATABASE '{import_path}' (FORMAT PARQUET);"""
         )
     yield engine
