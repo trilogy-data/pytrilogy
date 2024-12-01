@@ -20,6 +20,7 @@ AdventureWorksDW2019.bak
 
 .temp
 .cache
+.coverage
 
 .preql
 
