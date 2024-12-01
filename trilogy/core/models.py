@@ -3129,7 +3129,9 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
     name: str
     environment: "EnvironmentConceptDict"
     line_no: int | None = None
-    datatype: DataType | ListType | StructType | MapType | NumericType  = DataType.UNKNOWN
+    datatype: DataType | ListType | StructType | MapType | NumericType = (
+        DataType.UNKNOWN
+    )
     purpose: Purpose = Purpose.KEY
 
     def with_merge(

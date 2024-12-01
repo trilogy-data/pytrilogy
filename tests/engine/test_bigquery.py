@@ -1,6 +1,9 @@
 from trilogy import Dialects, Environment
+import pytest
+import sys
 
-
+# bigquery is not supported on 13 yet
+@pytest.mark.skipif(sys.version_info == (13, 3))
 def test_date_diff_rendering():
     environment = Environment()
 
@@ -19,6 +22,7 @@ def test_date_diff_rendering():
     assert "DATE_ADD(current_date(), INTERVAL -30 day)" in sql[0]
 
 
+@pytest.mark.skipif(sys.version_info == (13, 3))
 def test_readme():
 
     environment = Environment()
