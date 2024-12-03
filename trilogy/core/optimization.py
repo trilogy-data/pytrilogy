@@ -1,5 +1,6 @@
 from trilogy.core.models import (
     CTE,
+    UnionCTE,
     SelectStatement,
     MultiSelectStatement,
     Conditional,
@@ -113,6 +114,8 @@ def is_direct_return_eligible(cte: CTE) -> CTE | None:
     if len(cte.parent_ctes) != 1:
         return None
     direct_parent = cte.parent_ctes[0]
+    if isinstance(direct_parent, UnionCTE):
+        return False
 
     output_addresses = set([x.address for x in cte.output_columns])
     parent_output_addresses = set([x.address for x in direct_parent.output_columns])
@@ -155,8 +158,8 @@ def is_direct_return_eligible(cte: CTE) -> CTE | None:
 
 
 def optimize_ctes(
-    input: list[CTE], root_cte: CTE, select: SelectStatement | MultiSelectStatement
-) -> list[CTE]:
+    input: list[CTE | UnionCTE], root_cte: CTE | UnionCTE, select: SelectStatement | MultiSelectStatement
+) -> list[CTE | UnionCTE]:
 
     direct_parent: CTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
@@ -178,7 +181,7 @@ def optimize_ctes(
                 direct_parent.condition = root_cte.condition
         root_cte = direct_parent
 
-    sort_select_output(root_cte, select)
+        sort_select_output(root_cte, select)
 
     REGISTERED_RULES: list["OptimizationRule"] = []
     if CONFIG.optimizations.constant_inlining:

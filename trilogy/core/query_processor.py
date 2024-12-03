@@ -4,7 +4,7 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
-from trilogy.core.enums import BooleanOperator
+from trilogy.core.enums import BooleanOperator, SourceType
 from trilogy.constants import CONFIG
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, History
 from trilogy.core.models import (
@@ -15,6 +15,7 @@ from trilogy.core.models import (
     SelectStatement,
     MultiSelectStatement,
     CTE,
+    UnionCTE,
     Join,
     UnnestJoin,
     MaterializedDataset,
@@ -103,7 +104,7 @@ def base_join_to_join(
 
 
 def generate_source_map(
-    query_datasource: QueryDatasource, all_new_ctes: List[CTE]
+    query_datasource: QueryDatasource, all_new_ctes: List[CTE | UnionCTE]
 ) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
     source_map: Dict[str, list[str]] = defaultdict(list)
     # now populate anything derived in this level
@@ -246,11 +247,25 @@ def resolve_cte_base_name_and_alias_v2(
     return None, None
 
 
-def datasource_to_ctes(
+def datasource_to_cte(
     query_datasource: QueryDatasource, name_map: dict[str, str]
-) -> List[CTE]:
-    output: List[CTE] = []
-    parents: list[CTE] = []
+) -> CTE | UnionCTE:
+    if query_datasource.source_type == SourceType.UNION:
+        direct_parents = []
+        for child in query_datasource.datasources:
+            child_cte = datasource_to_cte(child, name_map=name_map)
+            direct_parents.append(child_cte)
+        human_id = generate_cte_name(query_datasource.identifier, name_map)
+        final = UnionCTE(
+            name=human_id,
+            parent_ctes=direct_parents,
+            output_columns=[
+                c.with_grain(query_datasource.grain)
+                for c in query_datasource.output_concepts
+            ],
+        )
+        return final
+    parents: list[CTE | UnionCTE] = []
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
     ):
@@ -261,9 +276,9 @@ def datasource_to_ctes(
             else:
                 sub_datasource = datasource_to_query_datasource(datasource)
 
-            sub_cte = datasource_to_ctes(sub_datasource, name_map)
-            parents += sub_cte
-            all_new_ctes += sub_cte
+            sub_cte = datasource_to_cte(sub_datasource, name_map)
+            parents.append(sub_cte)
+            all_new_ctes.append(sub_cte)
         source_map, existence_map = generate_source_map(query_datasource, all_new_ctes)
 
     else:
@@ -326,8 +341,7 @@ def datasource_to_ctes(
                 f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
             )
 
-    output.append(cte)
-    return output
+    return cte
 
 
 def get_query_node(
@@ -393,7 +407,7 @@ def get_query_datasources(
     return final_qds
 
 
-def flatten_ctes(input: CTE) -> list[CTE]:
+def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     output = [input]
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
@@ -464,10 +478,10 @@ def process_query(
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
-    root_cte = datasource_to_ctes(root_datasource, environment.cte_name_map)[0]
+    root_cte = datasource_to_cte(root_datasource, environment.cte_name_map)
     for hook in hooks:
         hook.process_root_cte(root_cte)
-    raw_ctes: List[CTE] = list(reversed(flatten_ctes(root_cte)))
+    raw_ctes: List[CTE | UnionCTE] = list(reversed(flatten_ctes(root_cte)))
     seen = dict()
     # we can have duplicate CTEs at this point
     # so merge them together
@@ -492,7 +506,7 @@ def process_query(
         where_clause=statement.where_clause,
         having_clause=statement.having_clause,
         output_columns=statement.output_components,
-        ctes=final_ctes,
+            ctes=final_ctes,
         base=root_cte,
         # we no longer do any joins at final level, this should always happen in parent CTEs
         joins=[],

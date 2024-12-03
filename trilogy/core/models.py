@@ -791,6 +791,12 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
+            and self.lineage.operator == FunctionType.UNION
+        ):
+            return PurposeLineage.UNION
+        elif (
+            self.lineage
+            and isinstance(self.lineage, Function)
             and self.lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
             return PurposeLineage.CONSTANT
@@ -827,7 +833,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNNEST
+            and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
         ):
             return Granularity.MULTI_ROW
         elif self.lineage and all(
@@ -2701,7 +2707,7 @@ class CTE(BaseModel):
     base: bool = False
     group_to_grain: bool = False
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
-    parent_ctes: List["CTE"] = Field(default_factory=list)
+    parent_ctes: List[Union["CTE", "UnionCTE"]] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
@@ -3050,6 +3056,20 @@ class CTE(BaseModel):
     @property
     def sourced_concepts(self) -> List[Concept]:
         return [c for c in self.output_columns if c.address in self.source_map]
+
+
+class UnionCTE(BaseModel):
+    name: str
+    parent_ctes: list[CTE]
+    output_columns: List[Concept]
+    operator: str = "UNION ALL"
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+    hidden_concepts: Optional[list[Concept]] = Field(default_factory=list)
+
+    @property
+    def group_to_grain(self)->bool:
+        return False
 
 
 def merge_ctes(ctes: List[CTE]) -> List[CTE]:
@@ -4497,8 +4517,8 @@ class MaterializedDataset(BaseModel):
 
 class ProcessedQuery(BaseModel):
     output_columns: List[Concept]
-    ctes: List[CTE]
-    base: CTE
+    ctes: List[CTE | UnionCTE]
+    base: CTE | UnionCTE
     joins: List[Join]
     grain: Grain
     hidden_columns: List[Concept] = Field(default_factory=list)

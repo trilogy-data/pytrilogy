@@ -1422,8 +1422,21 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.STRING,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            arg_count=99,
+            arg_count=-1,
             # output_grain=args[0].grain,
+        )
+
+    @v_args(meta=True)
+    def union(self, meta, args):
+        args = process_function_args(args, meta=meta, environment=self.environment)
+        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
+        return Function(
+            operator=FunctionType.UNION,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.KEY,
+            valid_inputs={*DataType},
+            arg_count=-1,
         )
 
     @v_args(meta=True)

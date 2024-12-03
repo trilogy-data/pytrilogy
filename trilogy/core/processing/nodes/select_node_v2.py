@@ -98,6 +98,7 @@ class SelectNode(StrategyNode):
                 PurposeLineage.BASIC,
                 PurposeLineage.ROWSET,
                 PurposeLineage.BASIC,
+                PurposeLineage.UNION,
             ):
                 source_map[x.address] = set()
 

@@ -5,6 +5,7 @@ from .select_node_v2 import SelectNode, ConstantNode
 from .window_node import WindowNode
 from .base_node import StrategyNode, NodeJoin
 from .unnest_node import UnnestNode
+from .union_node import UnionNode
 from pydantic import BaseModel, Field, ConfigDict
 from trilogy.core.models import Concept, Environment, WhereClause
 

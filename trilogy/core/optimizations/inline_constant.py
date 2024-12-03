@@ -1,5 +1,6 @@
 from trilogy.core.models import (
     CTE,
+    UnionCTE,
     Concept,
 )
 from trilogy.core.enums import PurposeLineage
@@ -10,6 +11,8 @@ from trilogy.core.optimizations.base_optimization import OptimizationRule
 class InlineConstant(OptimizationRule):
 
     def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+        if isinstance(cte, UnionCTE):
+            return False
 
         to_inline: list[Concept] = []
         for x in cte.source.input_concepts:

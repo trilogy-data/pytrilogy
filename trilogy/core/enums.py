@@ -44,6 +44,7 @@ class PurposeLineage(Enum):
     FILTER = "filter"
     CONSTANT = "constant"
     UNNEST = "unnest"
+    UNION = "union"
     ROOT = "root"
     ROWSET = "rowset"
     MULTISELECT = "multiselect"
@@ -113,6 +114,9 @@ class FunctionType(Enum):
 
     # structural
     UNNEST = "unnest"
+
+    UNION = "union"
+
     ALIAS = "alias"
 
     # Generic
@@ -133,6 +137,7 @@ class FunctionType(Enum):
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"
+    LENGTH = "len"
 
     # Math
     DIVIDE = "divide"
@@ -154,7 +159,6 @@ class FunctionType(Enum):
     MAX = "max"
     MIN = "min"
     AVG = "avg"
-    LENGTH = "len"
 
     # String
     LIKE = "like"
@@ -299,6 +303,7 @@ class SourceType(Enum):
     ROWSET = "rowset"
     MERGE = "merge"
     BASIC = "basic"
+    UNION = "union"
 
 
 class ShowCategory(Enum):

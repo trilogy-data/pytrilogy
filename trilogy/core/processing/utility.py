@@ -33,6 +33,7 @@ from trilogy.core.models import (
     MultiSelectStatement,
     SelectStatement,
     ProcessedQuery,
+    UnionCTE,
 )
 
 from trilogy.core.enums import Purpose, Granularity, BooleanOperator
@@ -552,7 +553,7 @@ def sort_select_output_processed(cte: CTE, query: ProcessedQuery) -> CTE:
 
 
 def sort_select_output(
-    cte: CTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
+    cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
 ) -> CTE:
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)

@@ -79,6 +79,8 @@
     // raw sql statement
     rawsql_statement: "raw_sql"i "(" MULTILINE_STRING ")"
 
+
+
     // copy statement
 
     COPY_TYPE: "csv"i
@@ -166,12 +168,17 @@
     //unnesting is a function
     _UNNEST.1: "UNNEST("i
     unnest: _UNNEST expr ")"
+
+    // union statement
+    _UNION.1: "UNION("i
+    union: _UNION   (expr ",")* expr ")"
+
     //indexing into an expression is a function
     index_access: expr "[" int_lit "]"
     map_key_access: expr "[" string_lit "]"
     attr_access: expr  "." string_lit 
 
-    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like 
+    expr:  _constant_functions | window_item | filter_item | subselect_comparison | between_comparison |  fgroup |  aggregate_functions | unnest | union | _static_functions |  literal |  concept_lit  | index_access |  map_key_access | attr_access | parenthetical | expr_tuple | comparison |  alt_like 
     
     // functions
     

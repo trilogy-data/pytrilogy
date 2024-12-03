@@ -807,3 +807,94 @@ def test_duckdb_string_quotes():
     results = results.fetchall()
 
     assert results[0].csv == """this string has quotes ' like this"""
+
+
+def test_demo_recursive_error():
+    query = """key idx int;
+property idx.idx_val int;
+datasource numbers(
+    idx: idx,
+    x: idx_val
+)
+grain (idx)
+query '''
+select 1 idx, 1 x
+union all
+select 2, 2
+union all
+select 3, 2
+union all
+select 4, 3
+''';
+
+SELECT
+  idx_val,
+  count(idx) as number_count
+order by
+    idx_val asc;"""
+
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor()
+
+    results = exec.execute_query(query)
+
+    results = results.fetchall()
+
+
+def test_union():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor()
+
+    results = exec.execute_query(
+        r"""
+key space_one int;
+key space_two int;
+
+
+property space_one.one_name string;
+property space_two.two_name string;
+
+auto space_all <- union(space_one, space_two);
+property space_all.name <- union(one_name, two_name);
+
+datasource sone (
+x: space_one,
+y: one_name )
+grain (space_one)
+query '''
+select 2 as x , 'test' as y
+union all
+select 1, 'fun'
+''';
+
+
+datasource stwo (
+x: space_two,
+y: two_name )
+grain (space_two)
+query '''
+select 4 as x, 'bravo' as y
+union all
+select 5, 'alpha'
+''';
+
+
+
+select
+    space_all,
+    name,
+order by
+    space_all asc
+limit 100;
+        """
+    )
+
+    results = list(results.fetchall())
+
+    assert results[0].space_all == 1
+    assert results[0].name == "fun"
+    assert results[-1].space_all == 5

@@ -113,6 +113,9 @@ class PredicatePushdown(OptimizationRule):
         return False
 
     def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+        # TODO - pushdown through unions
+        if isinstance(cte, UnionCTE):
+            return False
         optimized = False
 
         if not cte.parent_ctes:
@@ -173,6 +176,8 @@ class PredicatePushdownRemove(OptimizationRule):
         self.complete: dict[str, bool] = {}
 
     def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+        if isinstance(cte, UnionCTE):
+            return False
         optimized = False
 
         if not cte.parent_ctes:

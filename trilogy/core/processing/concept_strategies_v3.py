@@ -29,6 +29,7 @@ from trilogy.core.processing.node_generators import (
     gen_group_node,
     gen_basic_node,
     gen_unnest_node,
+    gen_union_node,
     gen_merge_node,
     gen_group_to_node,
     gen_rowset_node,
@@ -107,6 +108,9 @@ def get_priority_concept(
             +
             # then rowsets to remove them from scope, as they cannot get partials
             [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
+            +
+            # then rowsets to remove them from scope, as they cannot get partials
+            [c for c in remaining_concept if c.derivation == PurposeLineage.UNION]
             # we should be home-free here
             +
             # then aggregates to remove them from scope, as they cannot get partials
@@ -241,6 +245,20 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating unnest node with optional {[x.address for x in local_optional]} and condition {conditions}"
         )
         return gen_unnest_node(
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
+        )
+    elif concept.derivation == PurposeLineage.UNION:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating union node with optional {[x.address for x in local_optional]} and condition {conditions}"
+        )
+        return gen_union_node(
             concept,
             local_optional,
             environment,

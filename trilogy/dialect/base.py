@@ -19,6 +19,7 @@ from trilogy.core.models import (
     DataType,
     Concept,
     CTE,
+    UnionCTE,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedShowStatement,
@@ -130,7 +131,7 @@ FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
     FunctionType.BOOL: lambda x: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
-    # complex
+    # Complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
@@ -255,15 +256,18 @@ class BaseDialect:
     UNNEST_MODE = UnnestMode.CROSS_APPLY
 
     def render_order_item(
-        self, order_item: OrderItem, cte: CTE, final: bool = False
+        self, order_item: OrderItem, cte: CTE | UnionCTE, final: bool = False, alias: bool = True
     ) -> str:
         if final:
+            if not alias:
+                return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+
             return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
         return f"{self.render_concept_sql(order_item.expr, cte=cte, alias=False)} {order_item.order.value}"
 
     def render_concept_sql(
-        self, c: Concept, cte: CTE, alias: bool = True, raise_invalid: bool = False
+        self, c: Concept, cte: CTE | UnionCTE, alias: bool = True, raise_invalid: bool = False
     ) -> str:
         result = None
         if c.pseudonyms:
@@ -348,6 +352,18 @@ class BaseDialect:
                         " target grain"
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
+            elif (
+                isinstance(c.lineage, Function)
+                and c.lineage.operator == FunctionType.UNION
+            ):
+                local_matched = [
+                    x for x in c.lineage.arguments if isinstance(x, Concept) and x.address in cte.output_columns
+                ]
+                if not local_matched:
+                    raise SyntaxError(
+                        "Could not find appropriate source element for union"
+                    )
+                rval = self.render_expr(local_matched[0], cte)
             elif (
                 isinstance(c.lineage, Function)
                 and c.lineage.operator == FunctionType.CONSTANT
@@ -592,7 +608,20 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
-    def render_cte(self, cte: CTE, auto_sort: bool = True) -> CompiledCTE:
+    
+    
+    def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
+        if isinstance(cte, UnionCTE):
+            base_statement = f"\n{cte.operator}\n".join(
+                [self.render_cte(child).statement for child in cte.parent_ctes]
+            )
+            if cte.order_by:
+                ordering = [
+                    self.render_order_item(i, cte, final=True, alias=False)
+                    for i in cte.order_by.items
+                ]
+                base_statement += "\nORDER BY " + ",".join(ordering)
+            return CompiledCTE(name=cte.name, statement=base_statement)
         if self.UNNEST_MODE in (
             UnnestMode.CROSS_APPLY,
             UnnestMode.CROSS_JOIN,
