@@ -3,21 +3,18 @@ from itertools import combinations
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import JoinType, Purpose
+from trilogy.core.enums import BooleanOperator, JoinType, Purpose
 from trilogy.core.models import (
     Concept,
+    Conditional,
     Environment,
     MultiSelectStatement,
     WhereClause,
-    Conditional,
 )
-from trilogy.core.processing.nodes import MergeNode, NodeJoin, History
-from trilogy.core.processing.nodes.base_node import concept_list_to_grain, StrategyNode
-
-from trilogy.core.processing.utility import padding
-from trilogy.core.processing.utility import concept_to_relevant_joins
-from trilogy.core.enums import BooleanOperator
 from trilogy.core.processing.node_generators.common import resolve_join_order
+from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
+from trilogy.core.processing.nodes.base_node import StrategyNode, concept_list_to_grain
+from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 

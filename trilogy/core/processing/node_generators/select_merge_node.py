@@ -20,10 +20,10 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.utility import padding
 from trilogy.core.processing.nodes.base_node import (
     concept_list_to_grain,
 )
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 

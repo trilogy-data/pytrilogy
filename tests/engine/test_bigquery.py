@@ -1,6 +1,8 @@
-from trilogy import Dialects, Environment
-import pytest
 import sys
+
+import pytest
+
+from trilogy import Dialects, Environment
 
 
 # bigquery is not supported on 13 yet

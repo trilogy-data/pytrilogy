@@ -1,12 +1,12 @@
 from trilogy.core.models import (
     CTE,
-    UnionCTE,
     BooleanOperator,
     Comparison,
     ConceptArgs,
     Conditional,
     Datasource,
     Parenthetical,
+    UnionCTE,
     WindowItem,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule

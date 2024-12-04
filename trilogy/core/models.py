@@ -75,8 +75,8 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.exceptions import (
-    UndefinedConceptException,
     InvalidSyntaxException,
+    UndefinedConceptException,
 )
 from trilogy.utility import unique
 
