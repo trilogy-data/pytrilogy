@@ -40,7 +40,9 @@ def analyze(show: bool = False):
 
     df = df.sort_values("query_id")
 
-    ax.boxplot([df["exec_time"], df["comp_time"]], tick_labels=["Trilogy", "DuckDBDefault"])
+    ax.boxplot(
+        [df["exec_time"], df["comp_time"]], tick_labels=["Trilogy", "DuckDBDefault"]
+    )
     if show:
         plt.show()
     else:

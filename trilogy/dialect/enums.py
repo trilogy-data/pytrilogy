@@ -13,9 +13,13 @@ def default_factory(conf: DialectConfig, config_type):
     from sqlalchemy import create_engine
 
     if not isinstance(conf, config_type):
-        raise TypeError(f"Invalid dialect configuration for type {type(config_type).__name__}")
+        raise TypeError(
+            f"Invalid dialect configuration for type {type(config_type).__name__}"
+        )
     if conf.connect_args:
-        return create_engine(conf.connection_string(), future=True, connect_args=conf.connect_args)
+        return create_engine(
+            conf.connection_string(), future=True, connect_args=conf.connect_args
+        )
     return create_engine(conf.connection_string(), future=True)
 
 
@@ -61,12 +65,16 @@ class Dialects(Enum):
 
             return _engine_factory(conf, SnowflakeConfig)
         elif self == Dialects.POSTGRES:
-            logger.warn("WARN: Using experimental postgres dialect. Most functionality will not work.")
+            logger.warn(
+                "WARN: Using experimental postgres dialect. Most functionality will not work."
+            )
             import importlib
 
             spec = importlib.util.find_spec("psycopg2")
             if spec is None:
-                raise ImportError("postgres driver not installed. python -m pip install pypreql[postgres]")
+                raise ImportError(
+                    "postgres driver not installed. python -m pip install pypreql[postgres]"
+                )
             from trilogy.dialect.config import PostgresConfig
 
             return _engine_factory(conf, PostgresConfig)
@@ -79,7 +87,9 @@ class Dialects(Enum):
 
             return _engine_factory(conf, TrinoConfig)
         else:
-            raise ValueError(f"Unsupported dialect {self} for default engine creation; create one explicitly.")
+            raise ValueError(
+                f"Unsupported dialect {self} for default engine creation; create one explicitly."
+            )
 
     def default_executor(
         self,

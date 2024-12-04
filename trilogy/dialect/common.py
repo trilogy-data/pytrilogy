@@ -93,7 +93,9 @@ def render_join(
                         render_expr_func,
                         join.inlined_ctes,
                     ),
-                    modifiers=pair.modifiers + (pair.left.modifiers or []) + (pair.right.modifiers or []),
+                    modifiers=pair.modifiers
+                    + (pair.left.modifiers or [])
+                    + (pair.right.modifiers or []),
                 )
                 for pair in join.joinkey_pairs
             ]

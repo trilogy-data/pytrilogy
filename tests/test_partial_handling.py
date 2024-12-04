@@ -27,7 +27,9 @@ def setup_engine() -> Executor:
 
 def setup_titanic(env: Environment):
     namespace = "passenger"
-    id = Concept(name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    id = Concept(
+        name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     age = Concept(
         name="age",
         namespace=namespace,
@@ -119,7 +121,9 @@ def test_partial_assignment():
     assert len(resolved.partial_concepts) == 0
 
     # check at the source level
-    sourced = search_concepts([family, env.concepts["surviving_passenger"]], environment=env, g=g, depth=0)
+    sourced = search_concepts(
+        [family, env.concepts["surviving_passenger"]], environment=env, g=g, depth=0
+    )
     assert isinstance(sourced, MergeNode)
     assert len(sourced.parents) == 2
 

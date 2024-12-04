@@ -30,10 +30,18 @@ SELECT
     
                                     """
     )
-    assert isinstance(executor.environment.concepts["unnest_array"].datatype, StructType)
+    assert isinstance(
+        executor.environment.concepts["unnest_array"].datatype, StructType
+    )
     b_side = executor.environment.concepts["b"]
-    assert "unnest_array.b" in executor.environment.concepts["b"].pseudonyms, b_side.pseudonyms
-    assert "unnest_array.b" in executor.environment.concepts["local.b"].pseudonyms is not None, b_side.pseudonyms
+    assert (
+        "unnest_array.b" in executor.environment.concepts["b"].pseudonyms
+    ), b_side.pseudonyms
+    assert (
+        "unnest_array.b"
+        in executor.environment.concepts["local.b"].pseudonyms
+        is not None
+    ), b_side.pseudonyms
     for x in results[-1].output_columns:
         assert len(list(x.pseudonyms)) == 1, x.pseudonyms
     results = executor.execute_text(

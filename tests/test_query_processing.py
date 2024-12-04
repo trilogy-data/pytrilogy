@@ -14,10 +14,14 @@ def test_direct_select(test_environment, test_environment_graph):
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {"products"}
+    assert set([datasource.name for datasource in datasource.datasources]) == {
+        "products"
+    }
 
 
-def test_get_datasource_from_window_function(test_environment: Environment, test_environment_graph):
+def test_get_datasource_from_window_function(
+    test_environment: Environment, test_environment_graph
+):
     # test without grouping
     product_rank = test_environment.concepts["product_revenue_rank"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
@@ -36,7 +40,9 @@ def test_get_datasource_from_window_function(test_environment: Environment, test
     assert isinstance(datasource, QueryDatasource)
     assert datasource.grain.set == product_rank.grain.set
 
-    product_rank_by_category = test_environment.concepts["product_revenue_rank_by_category"]
+    product_rank_by_category = test_environment.concepts[
+        "product_revenue_rank_by_category"
+    ]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = search_concepts(
         [product_rank_by_category] + product_rank_by_category.grain.components_copy,
@@ -50,7 +56,9 @@ def test_get_datasource_from_window_function(test_environment: Environment, test
     assert isinstance(datasource, QueryDatasource)
 
 
-def test_get_datasource_for_filter(test_environment: Environment, test_environment_graph):
+def test_get_datasource_for_filter(
+    test_environment: Environment, test_environment_graph
+):
     hi_rev_product = test_environment.concepts["products_with_revenue_over_50"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
@@ -85,7 +93,9 @@ def test_select_output(test_environment, test_environment_graph):
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
-    assert set([datasource.name for datasource in datasource.datasources]) == {"products"}
+    assert set([datasource.name for datasource in datasource.datasources]) == {
+        "products"
+    }
 
 
 def test_basic_aggregate(test_environment: Environment, test_environment_graph):
@@ -120,7 +130,9 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
 
 def test_query_aggregation(test_environment, test_environment_graph):
     select = SelectStatement(selection=[test_environment.concepts["total_revenue"]])
-    datasource = get_query_datasources(environment=test_environment, graph=test_environment_graph, statement=select)
+    datasource = get_query_datasources(
+        environment=test_environment, graph=test_environment_graph, statement=select
+    )
 
     assert {datasource.identifier} == {"revenue_at_local_order_id_at_abstract"}
     check = datasource
@@ -138,7 +150,9 @@ def test_query_datasources(test_environment, test_environment_graph):
             test_environment.concepts["total_revenue"],
         ]
     )
-    get_query_datasources(environment=test_environment, graph=test_environment_graph, statement=select)
+    get_query_datasources(
+        environment=test_environment, graph=test_environment_graph, statement=select
+    )
 
 
 def test_full_query(test_environment, test_environment_graph):

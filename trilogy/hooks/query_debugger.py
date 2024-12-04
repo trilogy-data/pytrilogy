@@ -24,7 +24,9 @@ class PrintMode(Enum):
 renderer = BigqueryDialect()
 
 
-def print_recursive_resolved(input: Union[QueryDatasource, Datasource], mode: PrintMode, depth: int = 0):
+def print_recursive_resolved(
+    input: Union[QueryDatasource, Datasource], mode: PrintMode, depth: int = 0
+):
     extra = []
     if isinstance(input, QueryDatasource):
         if input.joins:
@@ -54,7 +56,9 @@ def print_recursive_resolved(input: Union[QueryDatasource, Datasource], mode: Pr
     return display
 
 
-def print_recursive_nodes(input: StrategyNode, mode: PrintMode = PrintMode.BASIC, depth: int = 0):
+def print_recursive_nodes(
+    input: StrategyNode, mode: PrintMode = PrintMode.BASIC, depth: int = 0
+):
     resolved = input.resolve()
     if mode == PrintMode.FULL:
         display = [
@@ -85,7 +89,9 @@ def print_recursive_nodes(input: StrategyNode, mode: PrintMode = PrintMode.BASIC
     return display
 
 
-def print_recursive_ctes(input: CTE | UnionCTE, depth: int = 0, max_depth: int | None = None):
+def print_recursive_ctes(
+    input: CTE | UnionCTE, depth: int = 0, max_depth: int | None = None
+):
     if max_depth and depth > max_depth:
         return
     select_statement = [c.address for c in input.output_columns]

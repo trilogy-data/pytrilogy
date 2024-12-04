@@ -42,8 +42,14 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
         right="%abc%",
     )
     node = gen_filter_node(
-        concept=test_environment.concepts["product_id"].with_filter(conditional, test_environment),
-        local_optional=[test_environment.concepts["category_id"].with_filter(conditional, test_environment)],
+        concept=test_environment.concepts["product_id"].with_filter(
+            conditional, test_environment
+        ),
+        local_optional=[
+            test_environment.concepts["category_id"].with_filter(
+                conditional, test_environment
+            )
+        ],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -59,8 +65,14 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
         right="%abc%",
     )
     node = gen_filter_node(
-        concept=test_environment.concepts["product_id"].with_filter(conditional, test_environment),
-        local_optional=[test_environment.concepts["category_id"].with_filter(conditional, test_environment)],
+        concept=test_environment.concepts["product_id"].with_filter(
+            conditional, test_environment
+        ),
+        local_optional=[
+            test_environment.concepts["category_id"].with_filter(
+                conditional, test_environment
+            )
+        ],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,

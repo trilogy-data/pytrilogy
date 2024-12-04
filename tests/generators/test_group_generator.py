@@ -47,7 +47,9 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
     DebuggingHook()
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]
-    immediate_aggregate_input = test_environment.concepts["products_with_revenue_over_50"]
+    immediate_aggregate_input = test_environment.concepts[
+        "products_with_revenue_over_50"
+    ]
     gnode = gen_group_node(
         concept=test_environment.concepts["category_top_50_revenue_products"],
         local_optional=[],

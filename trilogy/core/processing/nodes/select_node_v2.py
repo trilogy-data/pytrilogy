@@ -75,9 +75,15 @@ class SelectNode(StrategyNode):
         datasource: Datasource = self.datasource
 
         all_concepts_final: List[Concept] = unique(self.all_concepts, "address")
-        source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {concept.address: {datasource} for concept in self.input_concepts}
+        source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
+            concept.address: {datasource} for concept in self.input_concepts
+        }
 
-        derived_concepts = [c for c in datasource.columns if isinstance(c.alias, Function) and c.concept.address in source_map]
+        derived_concepts = [
+            c
+            for c in datasource.columns
+            if isinstance(c.alias, Function) and c.concept.address in source_map
+        ]
         for c in derived_concepts:
             if not isinstance(c.alias, Function):
                 continue
@@ -108,7 +114,9 @@ class SelectNode(StrategyNode):
             datasources=[datasource],
             grain=grain,
             joins=[],
-            partial_concepts=[c.concept for c in datasource.columns if not c.is_complete],
+            partial_concepts=[
+                c.concept for c in datasource.columns if not c.is_complete
+            ],
             nullable_concepts=[c.concept for c in datasource.columns if c.is_nullable],
             source_type=SourceType.DIRECT_SELECT,
             # we can skip rendering conditions
@@ -119,7 +127,9 @@ class SelectNode(StrategyNode):
         )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
-        datasource = Datasource(name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[])
+        datasource = Datasource(
+            name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
+        )
         return QueryDatasource(
             input_concepts=[],
             output_concepts=unique(self.all_concepts, "address"),
@@ -136,8 +146,21 @@ class SelectNode(StrategyNode):
     def _resolve(self) -> QueryDatasource:
         # if we have parent nodes, we do not need to go to a datasource
         resolution: QueryDatasource | None = None
-        if all([(c.derivation == PurposeLineage.CONSTANT or (c.purpose == Purpose.CONSTANT and c.derivation == PurposeLineage.MULTISELECT)) for c in self.all_concepts]):
-            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource")
+        if all(
+            [
+                (
+                    c.derivation == PurposeLineage.CONSTANT
+                    or (
+                        c.purpose == Purpose.CONSTANT
+                        and c.derivation == PurposeLineage.MULTISELECT
+                    )
+                )
+                for c in self.all_concepts
+            ]
+        ):
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} have a constant datasource"
+            )
             resolution = self.resolve_from_constant_datasources()
         if self.datasource and not resolution:
             resolution = self.resolve_from_provided_datasource()
@@ -146,7 +169,9 @@ class SelectNode(StrategyNode):
             if not resolution:
                 return super()._resolve()
             # zip in our parent source map
-            parent_sources: List[QueryDatasource | Datasource] = [p.resolve() for p in self.parents]
+            parent_sources: List[QueryDatasource | Datasource] = [
+                p.resolve() for p in self.parents
+            ]
 
             resolution.datasources += parent_sources
 

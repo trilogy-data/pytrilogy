@@ -20,7 +20,9 @@ from trilogy.parsing.parse_engine import (
 
 
 def test_in():
-    _, parsed = parse_text("const order_id <- 3; SELECT order_id  WHERE order_id IN (1,2,3);")
+    _, parsed = parse_text(
+        "const order_id <- 3; SELECT order_id  WHERE order_id IN (1,2,3);"
+    )
     query = parsed[-1]
     right = query.where_clause.conditional.right
     assert isinstance(
@@ -31,7 +33,9 @@ def test_in():
     rendered = BaseDialect().render_expr(right)
     assert rendered.strip() == "(1,2,3)".strip()
 
-    _, parsed = parse_text("const order_id <- 3; SELECT order_id  WHERE order_id IN (1,);")
+    _, parsed = parse_text(
+        "const order_id <- 3; SELECT order_id  WHERE order_id IN (1,);"
+    )
     query = parsed[-1]
     right = query.where_clause.conditional.right
     assert isinstance(
@@ -44,7 +48,9 @@ def test_in():
 
 
 def test_not_in():
-    _, parsed = parse_text("const order_id <- 4; SELECT order_id  WHERE order_id NOT IN (1,2,3);")
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  WHERE order_id NOT IN (1,2,3);"
+    )
     query: ProcessedQuery = parsed[-1]
     right = query.where_clause.conditional.right
     assert isinstance(right, TupleWrapper), type(right)
@@ -54,7 +60,9 @@ def test_not_in():
 
 
 def test_is_not_null():
-    _, parsed = parse_text("const order_id <- 4; SELECT order_id  WHERE order_id is not null;")
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  WHERE order_id is not null;"
+    )
     query = parsed[-1]
     right = query.where_clause.conditional.right
     assert isinstance(right, MagicConstants), type(right)
@@ -63,10 +71,16 @@ def test_is_not_null():
 
 
 def test_sort():
-    _, parsed = parse_text("const order_id <- 4; SELECT order_id  ORDER BY order_id desc;")
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  ORDER BY order_id desc;"
+    )
 
-    _, parsed = parse_text("const order_id <- 4; SELECT order_id  ORDER BY order_id DESC;")
-    _, parsed = parse_text("const order_id <- 4; SELECT order_id  ORDER BY order_id DesC;")
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  ORDER BY order_id DESC;"
+    )
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  ORDER BY order_id DesC;"
+    )
 
 
 def test_arg_to_datatype():
@@ -87,20 +101,35 @@ def test_argument_to_purpose(test_environment: Environment):
         )
         == Purpose.CONSTANT
     )
-    assert function_args_to_output_purpose(["test", 1.00, test_environment.concepts["order_id"]]) == Purpose.PROPERTY
+    assert (
+        function_args_to_output_purpose(
+            ["test", 1.00, test_environment.concepts["order_id"]]
+        )
+        == Purpose.PROPERTY
+    )
     unnest_env, parsed = parse_text("const random <- unnest([1,2,3,4]);")
-    assert function_args_to_output_purpose([unnest_env.concepts["random"]]) == Purpose.PROPERTY
+    assert (
+        function_args_to_output_purpose([unnest_env.concepts["random"]])
+        == Purpose.PROPERTY
+    )
 
 
 def test_show(test_environment):
-    _, parsed = parse_text("const order_id <- 4; SHOW SELECT order_id  WHERE order_id is not null;")
+    _, parsed = parse_text(
+        "const order_id <- 4; SHOW SELECT order_id  WHERE order_id is not null;"
+    )
     query = parsed[-1]
     assert isinstance(query, ShowStatement)
-    assert query.content.output_components[0].address == test_environment.concepts["order_id"].address
+    assert (
+        query.content.output_components[0].address
+        == test_environment.concepts["order_id"].address
+    )
 
 
 def test_conditional(test_environment):
-    _, parsed = parse_text("const order_id <- 4; SELECT order_id  WHERE order_id =4 and order_id = 10;")
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  WHERE order_id =4 and order_id = 10;"
+    )
     query = parsed[-1]
     assert isinstance(query, SelectStatement)
     assert query.where_clause.conditional.operator == BooleanOperator.AND
@@ -198,7 +227,9 @@ select
 
 
 def test_between():
-    _, parsed = parse_text("const order_id <- 4; SELECT order_id  WHERE order_id BETWEEN 3 and 5;")
+    _, parsed = parse_text(
+        "const order_id <- 4; SELECT order_id  WHERE order_id BETWEEN 3 and 5;"
+    )
     query: ProcessedQuery = parsed[-1]
     left = query.where_clause.conditional.left
     assert isinstance(

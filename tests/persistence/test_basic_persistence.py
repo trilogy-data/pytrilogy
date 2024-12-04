@@ -88,7 +88,9 @@ def test_derivations():
         persist: PersistStatement = parsed[-2]
         select: SelectStatement = parsed[-1]
         assert persist.select.grain == Grain(components=[test_concept])
-        assert select.output_components == [test_concept.with_grain(Grain(components=[test_concept]))]
+        assert select.output_components == [
+            test_concept.with_grain(Grain(components=[test_concept]))
+        ]
         assert len(compiled) == 2
 
         g = generate_graph(env)
@@ -114,7 +116,9 @@ def test_derivations():
         assert "CASE" not in compiled[-1]
 
         assert test_concept.purpose == Purpose.PROPERTY
-        assert env.datasources["bool_is_upper_name"].grain == Grain(components=[test_concept])
+        assert env.datasources["bool_is_upper_name"].grain == Grain(
+            components=[test_concept]
+        )
 
         # test that we can resolve a select
         test = SelectNode(

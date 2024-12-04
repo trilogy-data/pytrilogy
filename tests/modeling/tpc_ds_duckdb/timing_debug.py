@@ -29,7 +29,9 @@ def run_query(engine: Executor, start, idx: int):
 
 
 if __name__ == "__main__":
-    engine = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=working_path), hooks=[])
+    engine = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=working_path), hooks=[]
+    )
     # TODO: Detect if loaded
     start = datetime.now()
     #     engine.execute_raw_sql('''

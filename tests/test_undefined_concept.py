@@ -20,7 +20,9 @@ def test_undefined_concept_query(test_environment):
 
 def test_undefined_concept_dict():
     env = EnvironmentConceptDict()
-    env["order_id"] = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    env["order_id"] = Concept(
+        name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     try:
         env["zzz"]
     except UndefinedConceptException as e:

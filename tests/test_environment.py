@@ -76,7 +76,10 @@ key  order_id int;
 
     found = False
     for x in env1.datasources["replacements.replacements"].columns:
-        if x.alias == "order_id" and x.concept.address == env1.concepts["order_id"].address:
+        if (
+            x.alias == "order_id"
+            and x.concept.address == env1.concepts["order_id"].address
+        ):
             assert x.concept == env1.concepts["order_id"]
             assert x.modifiers == [Modifier.PARTIAL]
             found = True

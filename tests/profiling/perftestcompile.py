@@ -36,7 +36,9 @@ def gen_environment():
     env = Environment()
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
-    order_timestamp = Concept(name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY)
+    order_timestamp = Concept(
+        name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
+    )
 
     order_count = Concept(
         name="order_count",
@@ -79,11 +81,15 @@ def gen_environment():
             operator=FunctionType.SUM,
         ),
     )
-    product_id = Concept(name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    product_id = Concept(
+        name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
 
     assert product_id.grain.components[0].name == "product_id"
 
-    category_id = Concept(name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    category_id = Concept(
+        name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     category_name = Concept(
         name="category_name",
         datatype=DataType.STRING,
@@ -125,7 +131,9 @@ def gen_environment():
         lineage=WindowItem(
             type=WindowType.RANK,
             content=product_id,
-            order_by=[OrderItem(expr=total_revenue.with_grain(product_id), order="desc")],
+            order_by=[
+                OrderItem(expr=total_revenue.with_grain(product_id), order="desc")
+            ],
         ),
         grain=product_id,
     )

@@ -55,7 +55,13 @@ def extract_ds_components(g: nx.DiGraph, nodelist: list[str]) -> list[list[str]]
             local = g.copy()
             filter_pseudonyms_for_source(local, node)
             ds_graph: nx.DiGraph = nx.ego_graph(local, node, radius=10).copy()
-            graphs.append([extract_address(x) for x in ds_graph.nodes if not str(x).startswith("ds~")])
+            graphs.append(
+                [
+                    extract_address(x)
+                    for x in ds_graph.nodes
+                    if not str(x).startswith("ds~")
+                ]
+            )
     # if we had no ego graphs, return all concepts
     if not graphs:
         return [[extract_address(node) for node in nodelist]]
@@ -94,7 +100,9 @@ def determine_induced_minimal_nodes(
     zero_out = list(x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist)
     while zero_out:
         H.remove_nodes_from(zero_out)
-        zero_out = list(x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist)
+        zero_out = list(
+            x for x in H.nodes if G.out_degree(x) == 0 and x not in nodelist
+        )
 
     try:
         paths = nx.multi_source_dijkstra_path(H, nodelist)
@@ -116,8 +124,18 @@ def determine_induced_minimal_nodes(
             final.add_edge(*edge)
     # all concept nodes must have a parent
 
-    if not all([final.in_degree(node) > 0 for node in final.nodes if node.startswith("c~") and node in nodelist]):
-        missing = [node for node in final.nodes if node.startswith("c~") and final.in_degree(node) == 0]
+    if not all(
+        [
+            final.in_degree(node) > 0
+            for node in final.nodes
+            if node.startswith("c~") and node in nodelist
+        ]
+    ):
+        missing = [
+            node
+            for node in final.nodes
+            if node.startswith("c~") and final.in_degree(node) == 0
+        ]
         logger.debug(f"Skipping graph for {nodelist} as no in_degree {missing}")
         return None
 
@@ -128,7 +146,9 @@ def determine_induced_minimal_nodes(
     return final
 
 
-def detect_ambiguity_and_raise(all_concepts: list[Concept], reduced_concept_sets: list[set[str]]) -> None:
+def detect_ambiguity_and_raise(
+    all_concepts: list[Concept], reduced_concept_sets: list[set[str]]
+) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
     # find all values that show up in every join_additions
@@ -148,11 +168,23 @@ def detect_ambiguity_and_raise(all_concepts: list[Concept], reduced_concept_sets
 
 
 def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
-    return any(c.address in concept.pseudonyms or concept.address in c.pseudonyms for sublist in others for c in sublist)
+    return any(
+        c.address in concept.pseudonyms or concept.address in c.pseudonyms
+        for sublist in others
+        for c in sublist
+    )
 
 
 def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Concept]]:
-    return [subgraph for subgraph in subgraphs if len(subgraph) > 1 or (len(subgraph) == 1 and not has_synonym(subgraph[0], [x for x in subgraphs if x != subgraph]))]
+    return [
+        subgraph
+        for subgraph in subgraphs
+        if len(subgraph) > 1
+        or (
+            len(subgraph) == 1
+            and not has_synonym(subgraph[0], [x for x in subgraphs if x != subgraph])
+        )
+    ]
 
 
 def resolve_weak_components(
@@ -171,7 +203,11 @@ def resolve_weak_components(
     # to ensure there are not ambiguous loops
     # (if we did not care about raising ambiguity errors, we could just use the first one)
     count = 0
-    node_list = [concept_to_node(c.with_default_grain()) for c in all_concepts if "__preql_internal" not in c.address]
+    node_list = [
+        concept_to_node(c.with_default_grain())
+        for c in all_concepts
+        if "__preql_internal" not in c.address
+    ]
     synonyms: set[str] = set()
     for x in all_concepts:
         synonyms = synonyms.union(x.pseudonyms)
@@ -195,7 +231,11 @@ def resolve_weak_components(
                 break_flag = True
                 continue
 
-            all_graph_concepts = [extract_concept(extract_address(node), environment) for node in g.nodes if node.startswith("c~")]
+            all_graph_concepts = [
+                extract_concept(extract_address(node), environment)
+                for node in g.nodes
+                if node.startswith("c~")
+            ]
             new = [x for x in all_graph_concepts if x.address not in all_concepts]
 
             new_addresses = set([x.address for x in new if x.address not in synonyms])
@@ -257,9 +297,13 @@ def subgraphs_to_merge_node(
     enable_early_exit: bool = True,
 ):
     parents: List[StrategyNode] = []
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {[[c.address for c in subgraph] for subgraph in concept_subgraphs]}")
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} fetching subgraphs {[[c.address for c in subgraph] for subgraph in concept_subgraphs]}"
+    )
     for graph in concept_subgraphs:
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]}")
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} fetching subgraph {[c.address for c in graph]}"
+        )
 
         parent: StrategyNode | None = source_concepts(
             mandatory_list=graph,
@@ -270,9 +314,13 @@ def subgraphs_to_merge_node(
             # conditions=search_conditions,
         )
         if not parent:
-            logger.info(f"{padding(depth)}{LOGGER_PREFIX} Unable to instantiate target subgraph")
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} Unable to instantiate target subgraph"
+            )
             return None
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} finished subgraph fetch for {[c.address for c in graph]}, have parent {type(parent)} w/ {[c.address for c in parent.output_concepts]}")
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} finished subgraph fetch for {[c.address for c in graph]}, have parent {type(parent)} w/ {[c.address for c in parent.output_concepts]}"
+        )
         parents.append(parent)
     input_c = []
     for x in parents:
@@ -318,7 +366,9 @@ def gen_merge_node(
         )
         if weak_resolve:
             log_graph = [[y.address for y in x] for x in weak_resolve]
-            logger.info(f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}")
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
+            )
             return subgraphs_to_merge_node(
                 weak_resolve,
                 depth=depth,

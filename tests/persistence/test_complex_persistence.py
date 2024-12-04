@@ -41,7 +41,9 @@ def test_complex():
 
 
 def test_persist_in_import():
-    env = Environment(working_path=Path(__file__).parent)  # .parse_file(Path(__file__).parent / "query_one.preql")
+    env = Environment(
+        working_path=Path(__file__).parent
+    )  # .parse_file(Path(__file__).parent / "query_one.preql")
     engine = Dialects.DUCK_DB.default_executor(environment=env)
 
     results = engine.execute_file(Path(__file__).parent / "query_one.preql")

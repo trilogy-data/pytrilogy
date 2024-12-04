@@ -23,10 +23,16 @@ def create_function_derived_concept(
     namespace: str,
     operator: FunctionType,
     arguments: list[Concept],
-    output_type: Optional[DataType | ListType | StructType | MapType | NumericType] = None,
+    output_type: Optional[
+        DataType | ListType | StructType | MapType | NumericType
+    ] = None,
     output_purpose: Optional[Purpose] = None,
 ) -> Concept:
-    purpose = function_args_to_output_purpose(arguments) if output_purpose is None else output_purpose
+    purpose = (
+        function_args_to_output_purpose(arguments)
+        if output_purpose is None
+        else output_purpose
+    )
     output_type = arg_to_datatype(arguments[0]) if output_type is None else output_type
     return Concept(
         name=name,
@@ -57,7 +63,11 @@ def argument_to_purpose(arg) -> Purpose:
         return Purpose.PROPERTY
     elif isinstance(arg, Concept):
         base = arg.purpose
-        if isinstance(arg.lineage, AggregateWrapper) and arg.lineage.by and base == Purpose.METRIC:
+        if (
+            isinstance(arg.lineage, AggregateWrapper)
+            and arg.lineage.by
+            and base == Purpose.METRIC
+        ):
             return Purpose.PROPERTY
         return arg.purpose
     elif isinstance(arg, (int, float, str, bool, list, NumericType, DataType)):
@@ -244,7 +254,9 @@ def MapAccess(args: list[Concept]):
     )
 
 
-def get_attr_datatype(arg: Concept, lookup) -> DataType | ListType | StructType | MapType | NumericType:
+def get_attr_datatype(
+    arg: Concept, lookup
+) -> DataType | ListType | StructType | MapType | NumericType:
     if isinstance(arg.datatype, StructType):
         return arg_to_datatype(arg.datatype.fields_map[lookup])
     return arg.datatype
@@ -285,7 +297,9 @@ def Abs(args: list[Concept]) -> Function:
 def Coalesce(args: list[Concept]) -> Function:
     non_null = [x for x in args if not x == MagicConstants.NULL]
     if not len(set(arg_to_datatype(x) for x in non_null if x)) == 1:
-        raise InvalidSyntaxException(f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)}")
+        raise InvalidSyntaxException(
+            f"All arguments to coalesce must be of the same type, have {set(arg_to_datatype(x) for x in args)}"
+        )
     return Function(
         operator=FunctionType.COALESCE,
         arguments=args,

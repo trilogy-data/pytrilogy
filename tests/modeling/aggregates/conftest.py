@@ -17,7 +17,9 @@ def test_environment():
 
 @fixture(scope="session")
 def test_executor(test_environment: Environment):
-    yield Dialects.DUCK_DB.default_executor(environment=test_environment, hooks=[DebuggingHook(level=INFO)])
+    yield Dialects.DUCK_DB.default_executor(
+        environment=test_environment, hooks=[DebuggingHook(level=INFO)]
+    )
 
 
 @fixture(scope="session")

@@ -97,7 +97,9 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
     assert "passenger.last_name" in concepts
 
     assert "rich_info.last_name" in set([x for x in concepts if x.startswith("r")])
-    assert "rich_info.net_worth_1918_dollars" in set([x for x in concepts if x.startswith("r")])
+    assert "rich_info.net_worth_1918_dollars" in set(
+        [x for x in concepts if x.startswith("r")]
+    )
 
     test_pre = """merge rich_info.last_name into ~passenger.last_name;"""
     normalized_engine.parse_text(test_pre)
@@ -105,7 +107,10 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
     g = generate_graph(test_env)
     # from trilogy.hooks.graph_hook import GraphHook
     # GraphHook().query_graph_built(g)
-    target_select_concepts = [test_env.concepts[c] for c in ["passenger.last_name", "rich_info.net_worth_1918_dollars"]]
+    target_select_concepts = [
+        test_env.concepts[c]
+        for c in ["passenger.last_name", "rich_info.net_worth_1918_dollars"]
+    ]
 
     path = determine_induced_minimal_nodes(
         g,

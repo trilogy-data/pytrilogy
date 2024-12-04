@@ -52,7 +52,9 @@ def test_readme():
 
     """
     )
-    executor = Dialects.BIGQUERY.default_executor(environment=environment, hooks=[DebuggingHook()])
+    executor = Dialects.BIGQUERY.default_executor(
+        environment=environment, hooks=[DebuggingHook()]
+    )
 
     results = executor.execute_text(
         """SELECT

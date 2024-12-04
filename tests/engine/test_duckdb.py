@@ -71,7 +71,9 @@ def test_render_query(duckdb_engine: Executor, expected_results):
 
 
 def test_aggregate_at_grain(duckdb_engine: Executor, expected_results):
-    results = duckdb_engine.execute_text("""select avg_count_per_product;""")[0].fetchall()
+    results = duckdb_engine.execute_text("""select avg_count_per_product;""")[
+        0
+    ].fetchall()
     assert results[0].avg_count_per_product == expected_results["avg_count_per_product"]
 
 
@@ -107,8 +109,13 @@ def test_constants(duckdb_engine: Executor, expected_results):
     # expected_results["converted_total_count"]
     scaled_metric = duckdb_engine.environment.concepts["converted_total_count"]
     assert scaled_metric.purpose == Purpose.METRIC
-    assert duckdb_engine.environment.concepts["usd_conversion"].granularity == Granularity.SINGLE_ROW
-    parent_arg: Concept = [x for x in scaled_metric.lineage.arguments if x.name == "total_count"][0]
+    assert (
+        duckdb_engine.environment.concepts["usd_conversion"].granularity
+        == Granularity.SINGLE_ROW
+    )
+    parent_arg: Concept = [
+        x for x in scaled_metric.lineage.arguments if x.name == "total_count"
+    ][0]
     assert len(parent_arg.lineage.arguments[0].grain.components) == 2
     # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
@@ -185,7 +192,10 @@ def test_basic(duckdb_engine: Executor):
   ;
     """
     duckdb_engine.parse_text(test)
-    assert duckdb_engine.environment.concepts["tomorrow"].granularity == Granularity.SINGLE_ROW
+    assert (
+        duckdb_engine.environment.concepts["tomorrow"].granularity
+        == Granularity.SINGLE_ROW
+    )
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results[0]) == 3
 
@@ -373,16 +383,24 @@ select
 
     customer_orders = default_duckdb_engine.environment.concepts["customer_orders"]
     assert set([x.address for x in customer_orders.keys]) == {"local.customer"}
-    assert set([x.address for x in customer_orders.grain.components]) == {"local.customer"}
+    assert set([x.address for x in customer_orders.grain.components]) == {
+        "local.customer"
+    }
 
     customer_orders_2 = customer_orders.with_select_context(Grain())
     assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
-    assert set([x.address for x in customer_orders_2.grain.components]) == {"local.customer"}
+    assert set([x.address for x in customer_orders_2.grain.components]) == {
+        "local.customer"
+    }
 
-    count_by_customer = default_duckdb_engine.environment.concepts["avg_customer_orders"].lineage.arguments[0]
+    count_by_customer = default_duckdb_engine.environment.concepts[
+        "avg_customer_orders"
+    ].lineage.arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)
     assert set([x.address for x in count_by_customer.keys]) == {"local.customer"}
-    assert set([x.address for x in count_by_customer.grain.components]) == {"local.customer"}
+    assert set([x.address for x in count_by_customer.grain.components]) == {
+        "local.customer"
+    }
     assert len(results) == 1
     assert results[0].avg_customer_orders == 2
     assert round(results[0].avg_store_orders, 2) == 1.33
@@ -432,7 +450,9 @@ select
     cased = default_duckdb_engine.environment.concepts["cased"]
     total = default_duckdb_engine.environment.concepts["total_mod_two"]
     assert cased.purpose == Purpose.PROPERTY
-    assert LooseConceptList(concepts=cased.keys) == LooseConceptList(concepts=[default_duckdb_engine.environment.concepts["orid"]])
+    assert LooseConceptList(concepts=cased.keys) == LooseConceptList(
+        concepts=[default_duckdb_engine.environment.concepts["orid"]]
+    )
 
     assert total.derivation == PurposeLineage.AGGREGATE
     x = resolve_function_parent_concepts(total)
@@ -736,7 +756,9 @@ order by
     parsed: SelectStatement = duckdb_engine.parse_text(test)[0]
     row_args = parsed.where_clause.row_arguments
     assert parsed.having_clause
-    assert parsed.grain == Grain(components=[duckdb_engine.environment.concepts["item"]])
+    assert parsed.grain == Grain(
+        components=[duckdb_engine.environment.concepts["item"]]
+    )
     assert len(row_args) == 1
     # assert target.grain.components == [duckdb_engine.environment.concepts["item"]]
     results = duckdb_engine.execute_text(test)[0].fetchall()

@@ -43,7 +43,9 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
     assert results[3] == (4, 4, 2)
 
 
-def test_rowset_with_aggregation(test_environment: Environment, test_executor: Executor):
+def test_rowset_with_aggregation(
+    test_environment: Environment, test_executor: Executor
+):
     test_select = """
 
     rowset even_orders <- select order_id, store_id, revenue where (order_id % 2) = 0;
@@ -72,7 +74,9 @@ def test_rowset_with_aggregation(test_environment: Environment, test_executor: E
 
     for count in [
         test_environment.concepts["local.even_order_count"],
-        [x for x in statements[-1].output_components if x.name == "even_order_count"][0],
+        [x for x in statements[-1].output_components if x.name == "even_order_count"][
+            0
+        ],
     ]:
         assert count.derivation == PurposeLineage.AGGREGATE
         assert count.purpose == Purpose.METRIC
@@ -105,7 +109,9 @@ def test_in_select(test_environment: Environment, test_executor: Executor):
     _, statements = parse(test_select, test_environment)
 
     select: SelectStatement = statements[-1]
-    assert select.where_clause.conditional.existence_arguments, str(select.where_clause.conditional.__class__) + str(select.where_clause.conditional)
+    assert select.where_clause.conditional.existence_arguments, str(
+        select.where_clause.conditional.__class__
+    ) + str(select.where_clause.conditional)
     assert select.where_clause.existence_arguments
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())

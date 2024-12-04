@@ -37,9 +37,13 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
 
     # # check we got it
     if len(base_results) != len(comp_results):
-        assert False, f"Row count mismatch: expected {len(base_results)}, got {len(comp_results)}"
+        assert (
+            False
+        ), f"Row count mismatch: expected {len(base_results)}, got {len(comp_results)}"
     for qidx, row in enumerate(base_results):
-        assert row == comp_results[qidx], f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
+        assert (
+            row == comp_results[qidx]
+        ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
     with open(working_path / f"zquery{idx:02d}.log", "w") as f:
         f.write(
@@ -159,7 +163,9 @@ def run_adhoc(number: int, text: str | None = None):
     from trilogy.hooks.query_debugger import DebuggingHook
 
     env = Environment(working_path=Path(__file__).parent)
-    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[DebuggingHook(INFO)])
+    engine: Executor = Dialects.DUCK_DB.default_executor(
+        environment=env, hooks=[DebuggingHook(INFO)]
+    )
     engine.execute_raw_sql(
         """INSTALL tpcds;
 LOAD tpcds;

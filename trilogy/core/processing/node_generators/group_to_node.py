@@ -27,7 +27,9 @@ def gen_group_to_node(
     if not isinstance(concept.lineage, Function):
         raise SyntaxError("Group to should have function lineage")
     parent_concepts: List[Concept] = concept.lineage.concept_arguments
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}")
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
+    )
     parents: List[StrategyNode] = [
         source_concepts(
             mandatory_list=parent_concepts,
@@ -63,11 +65,15 @@ def gen_group_to_node(
         history=history,
     )
     if not enrich_node:
-        logger.info(f"{padding(depth)}{LOGGER_PREFIX} group by node enrich node, returning group node only.")
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} group by node enrich node, returning group node only."
+        )
         return group_node
 
     return MergeNode(
-        input_concepts=[concept] + local_optional + [x for x in parent_concepts if x.address != concept.address],
+        input_concepts=[concept]
+        + local_optional
+        + [x for x in parent_concepts if x.address != concept.address],
         output_concepts=[concept] + local_optional,
         environment=environment,
         g=g,

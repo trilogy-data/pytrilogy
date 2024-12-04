@@ -74,7 +74,9 @@ def create_fact(
 def setup_normalized_engine() -> Executor:
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / "train.csv"
-    output = Executor(engine=engine, dialect=Dialects.DUCK_DB, hooks=[DebuggingHook(level=INFO)])
+    output = Executor(
+        engine=engine, dialect=Dialects.DUCK_DB, hooks=[DebuggingHook(level=INFO)]
+    )
     df = pd.read_csv(csv)
     output.execute_raw_sql("register(:name, :df)", {"name": "df", "df": df})
     output.execute_raw_sql("CREATE TABLE raw_data AS SELECT * FROM df")
@@ -127,8 +129,14 @@ def create_function_derived_concept(
     output_purpose: Optional[Purpose] = None,
     metadata: Optional[Metadata] = None,
 ) -> Concept:
-    purpose = function_args_to_output_purpose(arguments) if output_purpose is None else output_purpose
-    output_type = arg_to_datatype(arguments[0]).data_type if output_type is None else output_type
+    purpose = (
+        function_args_to_output_purpose(arguments)
+        if output_purpose is None
+        else output_purpose
+    )
+    output_type = (
+        arg_to_datatype(arguments[0]).data_type if output_type is None else output_type
+    )
     return Concept(
         name=name,
         namespace=namespace,
@@ -206,7 +214,9 @@ def setup_richest_environment(env: Environment):
 
 def setup_titanic_distributed(env: Environment):
     namespace = "passenger"
-    id = Concept(name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    id = Concept(
+        name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     age = Concept(
         name="age",
         namespace=namespace,
@@ -373,7 +383,9 @@ def setup_titanic_distributed(env: Environment):
 
 def setup_titanic(env: Environment):
     namespace = "passenger"
-    id = Concept(name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    id = Concept(
+        name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     age = Concept(
         name="age",
         namespace=namespace,

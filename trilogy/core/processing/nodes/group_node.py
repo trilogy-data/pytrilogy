@@ -62,7 +62,9 @@ class GroupNode(StrategyNode):
         )
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [p.resolve() for p in self.parents]
+        parent_sources: List[QueryDatasource | Datasource] = [
+            p.resolve() for p in self.parents
+        ]
 
         grain = self.grain or concept_list_to_grain(self.output_concepts, [])
         comp_grain = Grain()
@@ -74,9 +76,18 @@ class GroupNode(StrategyNode):
         if comp_grain == grain and self.force_group is not True:
             # if there is no group by, and inputs equal outputs
             # return the parent
-            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output" f" grains {comp_grain} and {grain}")
-            if (len(parent_sources) == 1 and LooseConceptList(concepts=parent_sources[0].output_concepts) == self.output_lcl) and isinstance(parent_sources[0], QueryDatasource):
-                logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} No group by required as inputs match outputs of parent; returning parent node")
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output"
+                f" grains {comp_grain} and {grain}"
+            )
+            if (
+                len(parent_sources) == 1
+                and LooseConceptList(concepts=parent_sources[0].output_concepts)
+                == self.output_lcl
+            ) and isinstance(parent_sources[0], QueryDatasource):
+                logger.info(
+                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required as inputs match outputs of parent; returning parent node"
+                )
                 will_return: QueryDatasource = parent_sources[0]
                 if self.conditions:
                     will_return.condition = self.conditions + will_return.condition
@@ -112,8 +123,12 @@ class GroupNode(StrategyNode):
             ),
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
-        nullable_addresses = find_nullable_concepts(source_map=source_map, joins=[], datasources=parent_sources)
-        nullable_concepts = [x for x in self.output_concepts if x.address in nullable_addresses]
+        nullable_addresses = find_nullable_concepts(
+            source_map=source_map, joins=[], datasources=parent_sources
+        )
+        nullable_concepts = [
+            x for x in self.output_concepts if x.address in nullable_addresses
+        ]
         base = QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=self.output_concepts,

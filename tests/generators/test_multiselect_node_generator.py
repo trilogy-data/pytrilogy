@@ -55,7 +55,7 @@ ALIGN
     resolved = gnode.resolve()
     assert len(resolved.source_map["local.one_key"]) == 2
 
-    cte = datasource_to_cte(resolved, {})[0]
+    cte = datasource_to_cte(resolved, {})
     assert len(cte.source_map["local.one_key"]) == 2
 
 

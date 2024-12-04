@@ -47,8 +47,12 @@ def test_auto_property_assignments(test_environment: Environment):
 
     for candidate in [store_name, upper_store_name, upper_store_name_2]:
         assert candidate.purpose == Purpose.PROPERTY
-        assert candidate.keys == (store_id,), f"keys for {candidate.address}: {candidate.keys} should be store_id"
-        assert {x.address for x in candidate.grain.components} == set([store_id.address]), f"grain for {candidate.address}: {candidate.keys} should be store_id"
+        assert candidate.keys == (
+            store_id,
+        ), f"keys for {candidate.address}: {candidate.keys} should be store_id"
+        assert {x.address for x in candidate.grain.components} == set(
+            [store_id.address]
+        ), f"grain for {candidate.address}: {candidate.keys} should be store_id"
 
 
 def test_metric_assignments(test_environment: Environment):
@@ -162,7 +166,9 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert set([x.address for x in statement.grain.components]) == {"local.even_order_id"}
+    assert set([x.address for x in statement.grain.components]) == {
+        "local.even_order_id"
+    }
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2
@@ -197,7 +203,9 @@ def test_filter_grain_different(test_environment: Environment, test_executor: Ex
     assert len(results) == 5
 
 
-def test_inline_source_derivation(test_environment: Environment, test_executor: Executor):
+def test_inline_source_derivation(
+    test_environment: Environment, test_executor: Executor
+):
     test_select = """
 
     SELECT

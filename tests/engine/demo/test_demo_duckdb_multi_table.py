@@ -7,7 +7,9 @@ from trilogy.core.processing.nodes.base_node import StrategyNode
 
 
 def fingerprint(node: StrategyNode) -> str:
-    base = node.__class__.__name__ + ",".join([fingerprint(node) for node in node.parents])
+    base = node.__class__.__name__ + ",".join(
+        [fingerprint(node) for node in node.parents]
+    )
     if isinstance(node, SelectNode):
         base += node.datasource.name
     base += str(node.conditions)

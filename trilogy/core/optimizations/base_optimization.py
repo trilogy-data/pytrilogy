@@ -5,7 +5,9 @@ from trilogy.core.models import CTE, UnionCTE
 
 
 class OptimizationRule(ABC):
-    def optimize(self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]) -> bool:
+    def optimize(
+        self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> bool:
         raise NotImplementedError
 
     def log(self, message: str):

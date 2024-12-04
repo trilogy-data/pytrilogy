@@ -53,7 +53,9 @@ def test_graph_resolution():
         "c~rich_info.full_name@Grain<rich_info.full_name>",
         "c~rich_info.last_name@Grain<Abstract>",
     ]
-    assert assocs["ds~local.__virtual_bridge_passenger_last_name_rich_info_last_name"] == [
+    assert assocs[
+        "ds~local.__virtual_bridge_passenger_last_name_rich_info_last_name"
+    ] == [
         "c~rich_info.last_name@Grain<Abstract>",
         "c~passenger.last_name@Grain<Abstract>",
         "c~passenger.last_name@Grain<passenger.id>",

@@ -5,7 +5,9 @@ def test_render_query(presto_engine):
 
 
 def test_numeric_query(presto_engine):
-    results = presto_engine.generate_sql("""select cast(1.235 as NUMERIC(12,2))->decimal_name;""")[0]
+    results = presto_engine.generate_sql(
+        """select cast(1.235 as NUMERIC(12,2))->decimal_name;"""
+    )[0]
 
     assert "DECIMAL(12,2)" in results
 

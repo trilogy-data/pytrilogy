@@ -60,7 +60,9 @@ class MockResult:
 
 def generate_result_set(columns: List[Concept], output_data: list[Any]) -> MockResult:
     names = [x.address.replace(".", "_") for x in columns]
-    return MockResult(values=[dict(zip(names, [row])) for row in output_data], columns=names)
+    return MockResult(
+        values=[dict(zip(names, [row])) for row in output_data], columns=names
+    )
 
 
 class Executor(object):
@@ -159,12 +161,16 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: SelectStatement) -> CursorResult:
-        sql = self.generator.generate_queries(self.environment, [query], hooks=self.hooks)
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
         return self.execute_query(sql[0])
 
     @execute_query.register
     def _(self, query: PersistStatement) -> CursorResult:
-        sql = self.generator.generate_queries(self.environment, [query], hooks=self.hooks)
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
         return self.execute_query(sql[0])
 
     @execute_query.register
@@ -173,14 +179,20 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ShowStatement) -> CursorResult:
-        sql = self.generator.generate_queries(self.environment, [query], hooks=self.hooks)
+        sql = self.generator.generate_queries(
+            self.environment, [query], hooks=self.hooks
+        )
         return self.execute_query(sql[0])
 
     @execute_query.register
     def _(self, query: ProcessedShowStatement) -> CursorResult:
         return generate_result_set(
             query.output_columns,
-            [self.generator.compile_statement(x) for x in query.output_values if isinstance(x, ProcessedQuery)],
+            [
+                self.generator.compile_statement(x)
+                for x in query.output_values
+                if isinstance(x, ProcessedQuery)
+            ],
         )
 
     @execute_query.register
@@ -198,7 +210,9 @@ class Executor(object):
     @execute_query.register
     def _(self, query: MergeStatementV2) -> CursorResult:
         for concept in query.sources:
-            self.environment.merge_concept(concept, query.targets[concept.address], modifiers=query.modifiers)
+            self.environment.merge_concept(
+                concept, query.targets[concept.address], modifiers=query.modifiers
+            )
 
         return MockResult(
             [
@@ -250,7 +264,9 @@ class Executor(object):
 
     @singledispatchmethod
     def generate_sql(self, command) -> list[str]:
-        raise NotImplementedError("Cannot generate sql for type {}".format(type(command)))
+        raise NotImplementedError(
+            "Cannot generate sql for type {}".format(type(command))
+        )
 
     @generate_sql.register  # type: ignore
     def _(self, command: ProcessedQuery) -> List[str]:
@@ -262,7 +278,9 @@ class Executor(object):
     @generate_sql.register  # type: ignore
     def _(self, command: MultiSelectStatement) -> List[str]:
         output = []
-        sql = self.generator.generate_queries(self.environment, [command], hooks=self.hooks)
+        sql = self.generator.generate_queries(
+            self.environment, [command], hooks=self.hooks
+        )
         for statement in sql:
             compiled_sql = self.generator.compile_statement(statement)
             output.append(compiled_sql)
@@ -273,7 +291,9 @@ class Executor(object):
     @generate_sql.register  # type: ignore
     def _(self, command: SelectStatement) -> List[str]:
         output = []
-        sql = self.generator.generate_queries(self.environment, [command], hooks=self.hooks)
+        sql = self.generator.generate_queries(
+            self.environment, [command], hooks=self.hooks
+        )
         for statement in sql:
             compiled_sql = self.generator.compile_statement(statement)
             output.append(compiled_sql)
@@ -283,8 +303,12 @@ class Executor(object):
     def _(self, command: str) -> List[str]:
         """generate SQL for execution"""
         _, parsed = parse_text(command, self.environment)
-        generatable = [x for x in parsed if isinstance(x, (SelectStatement, PersistStatement))]
-        sql = self.generator.generate_queries(self.environment, generatable, hooks=self.hooks)
+        generatable = [
+            x for x in parsed if isinstance(x, (SelectStatement, PersistStatement))
+        ]
+        sql = self.generator.generate_queries(
+            self.environment, generatable, hooks=self.hooks
+        )
         output = []
         for statement in sql:
             if isinstance(statement, ProcessedShowStatement):
@@ -293,13 +317,25 @@ class Executor(object):
             output.append(compiled_sql)
         return output
 
-    def parse_file(self, file: str | Path, persist: bool = False) -> list[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | ProcessedRawSQLStatement | ProcessedCopyStatement,]:
+    def parse_file(
+        self, file: str | Path, persist: bool = False
+    ) -> list[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement,
+    ]:
         return list(self.parse_file_generator(file, persist=persist))
 
     def parse_file_generator(
         self, file: str | Path, persist: bool = False
     ) -> Generator[
-        ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | ProcessedRawSQLStatement | ProcessedCopyStatement,
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement,
         None,
         None,
     ]:
@@ -308,13 +344,23 @@ class Executor(object):
             command = f.read()
             return self.parse_text_generator(command, persist=persist)
 
-    def parse_text(self, command: str, persist: bool = False) -> List[ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | ProcessedRawSQLStatement | ProcessedCopyStatement]:
+    def parse_text(
+        self, command: str, persist: bool = False
+    ) -> List[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement
+    ]:
         return list(self.parse_text_generator(command, persist=persist))
 
-    def parse_text_generator(
-        self, command: str, persist: bool = False
-    ) -> Generator[
-        ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | ProcessedRawSQLStatement | ProcessedCopyStatement,
+    def parse_text_generator(self, command: str, persist: bool = False) -> Generator[
+        ProcessedQuery
+        | ProcessedQueryPersist
+        | ProcessedShowStatement
+        | ProcessedRawSQLStatement
+        | ProcessedCopyStatement,
         None,
         None,
     ]:
@@ -337,7 +383,9 @@ class Executor(object):
         ]
         while generatable:
             t = generatable.pop(0)
-            x = self.generator.generate_queries(self.environment, [t], hooks=self.hooks)[0]
+            x = self.generator.generate_queries(
+                self.environment, [t], hooks=self.hooks
+            )[0]
 
             yield x
 
@@ -345,14 +393,21 @@ class Executor(object):
                 self.environment.add_datasource(x.datasource)
 
     def _hydrate_param(self, param: str) -> Any:
-        matched = [v for v in self.environment.concepts.values() if v.safe_address == param or v.address == param]
+        matched = [
+            v
+            for v in self.environment.concepts.values()
+            if v.safe_address == param or v.address == param
+        ]
         if not matched:
             raise SyntaxError(f"No concept found for parameter {param}")
 
         concept: Concept = matched.pop()
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
-        if isinstance(concept.lineage, Function) and concept.lineage.operator == FunctionType.CONSTANT:
+        if (
+            isinstance(concept.lineage, Function)
+            and concept.lineage.operator == FunctionType.CONSTANT
+        ):
             rval = concept.lineage.arguments[0]
             if isinstance(rval, ListWrapper):
                 return [x for x in rval]
@@ -365,7 +420,9 @@ class Executor(object):
             return None
         return results[0]
 
-    def execute_raw_sql(self, command: str, variables: dict | None = None) -> CursorResult:
+    def execute_raw_sql(
+        self, command: str, variables: dict | None = None
+    ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine"""
         final_params = None
@@ -383,7 +440,9 @@ class Executor(object):
             text(command),
         )
 
-    def execute_text(self, command: str, non_interactive: bool = False) -> List[CursorResult]:
+    def execute_text(
+        self, command: str, non_interactive: bool = False
+    ) -> List[CursorResult]:
         """Run a preql text command"""
         output = []
         # connection = self.engine.connect()
@@ -392,17 +451,25 @@ class Executor(object):
                 output.append(
                     generate_result_set(
                         statement.output_columns,
-                        [self.generator.compile_statement(x) for x in statement.output_values if isinstance(x, ProcessedQuery)],
+                        [
+                            self.generator.compile_statement(x)
+                            for x in statement.output_values
+                            if isinstance(x, ProcessedQuery)
+                        ],
                     )
                 )
                 continue
             if non_interactive:
-                if not isinstance(statement, (ProcessedCopyStatement, ProcessedQueryPersist)):
+                if not isinstance(
+                    statement, (ProcessedCopyStatement, ProcessedQueryPersist)
+                ):
                     continue
             output.append(self.execute_query(statement))
         return output
 
-    def execute_file(self, file: str | Path, non_interactive: bool = False) -> List[CursorResult]:
+    def execute_file(
+        self, file: str | Path, non_interactive: bool = False
+    ) -> List[CursorResult]:
         file = Path(file)
         with open(file, "r") as f:
             command = f.read()

@@ -63,7 +63,9 @@ select
     )
     select: SelectStatement = parsed[-1]
 
-    BaseDialect().compile_statement(process_query(test_environment, select, hooks=[DebuggingHook()]))
+    BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
 
 
 def test_select_where_joins(test_environment):
@@ -250,7 +252,9 @@ where
     env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
-    query = BaseDialect().compile_statement(process_query(test_environment, select, hooks=[DebuggingHook()]))
+    query = BaseDialect().compile_statement(
+        process_query(test_environment, select, hooks=[DebuggingHook()])
+    )
 
     # check to make sure our subselect is well-formed
     assert "`category_id` not in (select" in query, query

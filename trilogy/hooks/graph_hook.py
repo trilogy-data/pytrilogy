@@ -50,7 +50,13 @@ class GraphHook(BaseHook):
                 else:
                     edge_colors.append("black")
             kwargs["edge_color"] = edge_colors
-        nx.draw(graph, pos=pos, node_color=color_map, connectionstyle="arc3, rad = 0.1", **kwargs)  # Draw the original graph
+        nx.draw(
+            graph,
+            pos=pos,
+            node_color=color_map,
+            connectionstyle="arc3, rad = 0.1",
+            **kwargs
+        )  # Draw the original graph
         # Please note, the code below uses the original idea of re-calculating a dictionary of adjusted label positions per node.
         pos_labels = {}
         # For each node in the Graph

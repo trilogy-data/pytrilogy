@@ -25,7 +25,11 @@ class History(BaseModel):
         conditions: WhereClause | None = None,
     ) -> str:
         if conditions:
-            return "-".join([c.address for c in search]) + str(accept_partial) + str(conditions)
+            return (
+                "-".join([c.address for c in search])
+                + str(accept_partial)
+                + str(conditions)
+            )
         return "-".join([c.address for c in search]) + str(accept_partial)
 
     def search_to_history(
@@ -35,7 +39,9 @@ class History(BaseModel):
         output: StrategyNode | None,
         conditions: WhereClause | None = None,
     ):
-        self.history[self._concepts_to_lookup(search, accept_partial, conditions=conditions)] = output
+        self.history[
+            self._concepts_to_lookup(search, accept_partial, conditions=conditions)
+        ] = output
 
     def get_history(
         self,
@@ -50,7 +56,9 @@ class History(BaseModel):
             conditions,
         )
         if parent_key and parent_key == key:
-            raise ValueError(f"Parent key {parent_key} is the same as the current key {key}")
+            raise ValueError(
+                f"Parent key {parent_key} is the same as the current key {key}"
+            )
         if key in self.history:
             node = self.history[key]
             if node:
@@ -96,7 +104,15 @@ class History(BaseModel):
         accept_partial_optional: bool,
         conditions: WhereClause | None = None,
     ) -> str:
-        return str(main.address) + "|" + "-".join([c.address for c in search]) + str(accept_partial) + str(fail_if_not_found) + str(accept_partial_optional) + str(conditions)
+        return (
+            str(main.address)
+            + "|"
+            + "-".join([c.address for c in search])
+            + str(accept_partial)
+            + str(fail_if_not_found)
+            + str(accept_partial_optional)
+            + str(conditions)
+        )
 
     def gen_select_node(
         self,

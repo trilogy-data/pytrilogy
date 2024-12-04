@@ -10,6 +10,9 @@ def test_declarations():
 
     assert env.concepts["namespace.user_id"].namespace == "namespace"
     assert env.concepts["namespace.count"].namespace == "namespace"
-    assert env.concepts["namespace.distinct_count"].metadata.description == "the distinct count of user ids"
+    assert (
+        env.concepts["namespace.distinct_count"].metadata.description
+        == "the distinct count of user ids"
+    )
 
     assert env.concepts["namespace.user_id"].metadata.description == "the description"

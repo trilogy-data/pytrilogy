@@ -20,7 +20,9 @@ from typing import List, Tuple
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
-from trilogy.core.enums import Modifier, WindowType
+from trilogy.core.enums import Modifier, WindowType, FunctionType, PurposeLineage
+from trilogy.utility import string_to_hash, unique
+from trilogy.core.functions import function_args_to_output_purpose, arg_to_datatype
 
 
 def get_upstream_modifiers(keys: List[Concept]) -> list[Modifier]:
@@ -45,7 +47,10 @@ def process_function_args(
         if isinstance(arg, Function):
             # if it's not an aggregate function, we can skip the virtual concepts
             # to simplify anonymous function handling
-            if arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value and arg.operator != FunctionType.UNNEST:
+            if (
+                arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value
+                and arg.operator != FunctionType.UNNEST
+            ):
                 final.append(arg)
                 continue
             id_hash = string_to_hash(str(arg))
@@ -59,7 +64,9 @@ def process_function_args(
                 concept.metadata.line_number = meta.line
             environment.add_concept(concept, meta=meta)
             final.append(concept)
-        elif isinstance(arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)):
+        elif isinstance(
+            arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
+        ):
             id_hash = string_to_hash(str(arg))
             concept = arbitrary_to_concept(
                 arg,
@@ -76,7 +83,9 @@ def process_function_args(
     return final
 
 
-def get_purpose_and_keys(purpose: Purpose | None, args: Tuple[Concept, ...] | None) -> Tuple[Purpose, Tuple[Concept, ...] | None]:
+def get_purpose_and_keys(
+    purpose: Purpose | None, args: Tuple[Concept, ...] | None
+) -> Tuple[Purpose, Tuple[Concept, ...] | None]:
     local_purpose = purpose or function_args_to_output_purpose(args)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args)
@@ -121,10 +130,16 @@ def constant_to_concept(
     )
 
 
-def function_to_concept(parent: Function, name: str, namespace: str, metadata: Metadata | None = None) -> Concept:
+def function_to_concept(
+    parent: Function, name: str, namespace: str, metadata: Metadata | None = None
+) -> Concept:
     pkeys: List[Concept] = []
     for x in parent.arguments:
-        pkeys += [x for x in parent.concept_arguments if not x.derivation == PurposeLineage.CONSTANT]
+        pkeys += [
+            x
+            for x in parent.concept_arguments
+            if not x.derivation == PurposeLineage.CONSTANT
+        ]
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
@@ -186,8 +201,16 @@ def filter_item_to_concept(
         metadata=fmetadata,
         namespace=namespace,
         # filtered copies cannot inherit keys
-        keys=(parent.content.keys if parent.content.purpose == Purpose.PROPERTY else (parent.content,)),
-        grain=(parent.content.grain if parent.content.purpose == Purpose.PROPERTY else Grain()),
+        keys=(
+            parent.content.keys
+            if parent.content.purpose == Purpose.PROPERTY
+            else (parent.content,)
+        ),
+        grain=(
+            parent.content.grain
+            if parent.content.purpose == Purpose.PROPERTY
+            else Grain()
+        ),
         modifiers=modifiers,
     )
 
@@ -238,7 +261,9 @@ def agg_wrapper_to_concept(
     metadata: Metadata | None = None,
     purpose: Purpose | None = None,
 ) -> Concept:
-    local_purpose, keys = get_purpose_and_keys(Purpose.METRIC, tuple(parent.by) if parent.by else None)
+    local_purpose, keys = get_purpose_and_keys(
+        Purpose.METRIC, tuple(parent.by) if parent.by else None
+    )
     # anything grouped to a grain should be a property
     # at that grain
     fmetadata = metadata or Metadata()
@@ -259,7 +284,17 @@ def agg_wrapper_to_concept(
 
 
 def arbitrary_to_concept(
-    parent: (AggregateWrapper | WindowItem | FilterItem | Function | ListWrapper | MapWrapper | int | float | str),
+    parent: (
+        AggregateWrapper
+        | WindowItem
+        | FilterItem
+        | Function
+        | ListWrapper
+        | MapWrapper
+        | int
+        | float
+        | str
+    ),
     namespace: str,
     name: str | None = None,
     metadata: Metadata | None = None,

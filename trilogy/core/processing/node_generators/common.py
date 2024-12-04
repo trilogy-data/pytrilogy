@@ -58,16 +58,24 @@ def resolve_filter_parent_concepts(
     concept: Concept,
 ) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
     if not isinstance(concept.lineage, FilterItem):
-        raise ValueError(f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}")
+        raise ValueError(
+            f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
+        )
     direct_parent = concept.lineage.content
     base_existence = []
     base_rows = [direct_parent]
-    condition_rows, condition_existence = resolve_condition_parent_concepts(concept.lineage.where)
+    condition_rows, condition_existence = resolve_condition_parent_concepts(
+        concept.lineage.where
+    )
     base_rows += condition_rows
     base_existence += condition_existence
     if direct_parent.grain:
         base_rows += direct_parent.grain.components_copy
-    if isinstance(direct_parent, Concept) and direct_parent.purpose == Purpose.PROPERTY and direct_parent.keys:
+    if (
+        isinstance(direct_parent, Concept)
+        and direct_parent.purpose == Purpose.PROPERTY
+        and direct_parent.keys
+    ):
         base_rows += direct_parent.keys
     if concept.lineage.where.existence_arguments:
         return (
@@ -100,7 +108,8 @@ def gen_property_enrichment_node(
         log_lambda(f"Generating enrichment node for {_k} with {vs}")
         ks = _k.split("-")
         enrich_node: StrategyNode = source_concepts(
-            mandatory_list=[environment.concepts[k] for k in ks] + [environment.concepts[v] for v in vs],
+            mandatory_list=[environment.concepts[k] for k in ks]
+            + [environment.concepts[v] for v in vs],
             environment=environment,
             g=g,
             depth=depth + 1,
@@ -110,7 +119,13 @@ def gen_property_enrichment_node(
         final_nodes.append(enrich_node)
     return MergeNode(
         input_concepts=unique(
-            base_node.output_concepts + extra_properties + [environment.concepts[v] for k, values in required_keys.items() for v in values],
+            base_node.output_concepts
+            + extra_properties
+            + [
+                environment.concepts[v]
+                for k, values in required_keys.items()
+                for v in values
+            ],
             "address",
         ),
         output_concepts=base_node.output_concepts + extra_properties,
@@ -138,13 +153,22 @@ def gen_enrichment_node(
 ):
     local_opts = LooseConceptList(concepts=local_optional)
 
-    extra_required = [x for x in local_opts if x not in base_node.output_lcl or x in base_node.partial_lcl]
+    extra_required = [
+        x
+        for x in local_opts
+        if x not in base_node.output_lcl or x in base_node.partial_lcl
+    ]
 
     # property lookup optimization
     # this helps when evaluating a normalized star schema as you only want to lookup the missing properties based on the relevant keys
     if all([x.purpose == Purpose.PROPERTY for x in extra_required]):
-        if all(x.keys and all([key in base_node.output_lcl for key in x.keys]) for x in extra_required):
-            log_lambda(f"{str(type(base_node).__name__)} returning property optimized enrichment node")
+        if all(
+            x.keys and all([key in base_node.output_lcl for key in x.keys])
+            for x in extra_required
+        ):
+            log_lambda(
+                f"{str(type(base_node).__name__)} returning property optimized enrichment node"
+            )
             return gen_property_enrichment_node(
                 base_node,
                 extra_required,
@@ -156,7 +180,9 @@ def gen_enrichment_node(
                 conditions=conditions,
                 log_lambda=log_lambda,
             )
-    log_lambda(f"{str(type(base_node).__name__)} searching for join keys {LooseConceptList(concepts=join_keys)} and extra required {local_opts}")
+    log_lambda(
+        f"{str(type(base_node).__name__)} searching for join keys {LooseConceptList(concepts=join_keys)} and extra required {local_opts}"
+    )
     enrich_node: StrategyNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=join_keys + extra_required,
@@ -167,10 +193,18 @@ def gen_enrichment_node(
         conditions=conditions,
     )
     if not enrich_node:
-        log_lambda(f"{str(type(base_node).__name__)} enrichment node unresolvable, returning just group node")
+        log_lambda(
+            f"{str(type(base_node).__name__)} enrichment node unresolvable, returning just group node"
+        )
         return base_node
-    log_lambda(f"{str(type(base_node).__name__)} returning merge node with group node + enrichment node")
-    non_hidden = [x for x in base_node.output_concepts if x.address not in [y.address for y in base_node.hidden_concepts]]
+    log_lambda(
+        f"{str(type(base_node).__name__)} returning merge node with group node + enrichment node"
+    )
+    non_hidden = [
+        x
+        for x in base_node.output_concepts
+        if x.address not in [y.address for y in base_node.hidden_concepts]
+    ]
     return MergeNode(
         input_concepts=unique(join_keys + extra_required + non_hidden, "address"),
         output_concepts=unique(join_keys + extra_required + non_hidden, "address"),
@@ -197,7 +231,9 @@ def resolve_join_order(joins: List[NodeJoin]) -> List[NodeJoin]:
     potential_basis = left.difference(right)
     base_candidates = [x for x in final_joins_pre if x.left_node in potential_basis]
     if not base_candidates:
-        raise SyntaxError(f"Unresolvable join dependencies, left requires {left} and right requires {right}")
+        raise SyntaxError(
+            f"Unresolvable join dependencies, left requires {left} and right requires {right}"
+        )
     base = base_candidates[0]
     final_joins.append(base)
     available_aliases.add(base.left_node)

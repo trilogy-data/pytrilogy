@@ -15,7 +15,9 @@ from trilogy.core.models import (
 
 def setup_titanic(env: Environment):
     namespace = "passenger"
-    id = Concept(name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    id = Concept(
+        name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     age = Concept(
         name="age",
         namespace=namespace,
@@ -187,14 +189,26 @@ select
     assert set(x.address for x in env.concepts["survivors"].keys) == {
         "passenger.class",
     }
-    assert len(Grain(components=[env.concepts["survivors"], env.concepts["passenger.class"]]).components) == 1
+    assert (
+        len(
+            Grain(
+                components=[env.concepts["survivors"], env.concepts["passenger.class"]]
+            ).components
+        )
+        == 1
+    )
 
-    testc = function_to_concept(parent=env.concepts["ratio"].lineage, name="test", namespace="test")
+    testc = function_to_concept(
+        parent=env.concepts["ratio"].lineage, name="test", namespace="test"
+    )
     assert set(x.address for x in testc.keys) == {
         "passenger.class",
     }
 
-    assert LooseConceptList(concepts=env.concepts["survivors"].grain.components).addresses == LooseConceptList(concepts=[env.concepts["passenger.class"]]).addresses
+    assert (
+        LooseConceptList(concepts=env.concepts["survivors"].grain.components).addresses
+        == LooseConceptList(concepts=[env.concepts["passenger.class"]]).addresses
+    )
     results = executor.execute_text(test)
 
     for row in results[0]:
@@ -321,8 +335,12 @@ order by passenger.decade desc
 ;"""
     # raw = executor.generate_sql(test)
     results = executor.execute_text(test)[-1].fetchall()
-    assert executor.environment.concepts["passenger.age"].modifiers == [Modifier.NULLABLE], "age should be nullable"
-    assert executor.environment.concepts["passenger.decade"].modifiers == [Modifier.NULLABLE], "decade should be nullable"
+    assert executor.environment.concepts["passenger.age"].modifiers == [
+        Modifier.NULLABLE
+    ], "age should be nullable"
+    assert executor.environment.concepts["passenger.decade"].modifiers == [
+        Modifier.NULLABLE
+    ], "decade should be nullable"
 
     assert len(results) == 10
 

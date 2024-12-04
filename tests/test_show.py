@@ -47,5 +47,11 @@ def test_show_bigquery():
     env, parsed = parse(q1, environment=env)
     select: ShowStatement = parsed[-1]
 
-    query = Dialects.DUCK_DB.default_executor(environment=env).execute_query(select).fetchall()
-    assert "FULL JOIN wakeful on 1=1" in query[0]["__preql_internal_query_text"], query[0]["__preql_internal_query_text"]
+    query = (
+        Dialects.DUCK_DB.default_executor(environment=env)
+        .execute_query(select)
+        .fetchall()
+    )
+    assert "FULL JOIN wakeful on 1=1" in query[0]["__preql_internal_query_text"], query[
+        0
+    ]["__preql_internal_query_text"]

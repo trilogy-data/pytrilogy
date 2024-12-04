@@ -210,7 +210,10 @@ def test_case_function(test_environment):
         test_upper_case
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    assert test_environment.concepts["category_name"] in test_environment.concepts["test_upper_case"].lineage.concept_arguments
+    assert (
+        test_environment.concepts["category_name"]
+        in test_environment.concepts["test_upper_case"].lineage.concept_arguments
+    )
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         compiled = dialect.compile_statement(process_query(test_environment, select))
@@ -228,7 +231,10 @@ def test_case_like_function(test_environment):
         test_like
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    assert test_environment.concepts["category_name"] in test_environment.concepts["test_like"].lineage.concept_arguments
+    assert (
+        test_environment.concepts["category_name"]
+        in test_environment.concepts["test_like"].lineage.concept_arguments
+    )
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         compiled = dialect.compile_statement(process_query(test_environment, select))

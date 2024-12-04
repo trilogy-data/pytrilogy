@@ -59,4 +59,6 @@ select
     sql = generator.compile_statement(query)
 
     assert re.search(r"(count\([A-z0-9\_]+\.`id`\) as `user_post_count`)", sql)
-    assert re.search(r"avg\([A-z0-9\_]+\.`user_post_count`\) as `avg_user_post_count`", sql)
+    assert re.search(
+        r"avg\([A-z0-9\_]+\.`user_post_count`\) as `avg_user_post_count`", sql
+    )

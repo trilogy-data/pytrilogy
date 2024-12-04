@@ -8,7 +8,9 @@ from trilogy.core.optimizations.base_optimization import OptimizationRule
 
 
 class InlineConstant(OptimizationRule):
-    def optimize(self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]) -> bool:
+    def optimize(
+        self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> bool:
         if isinstance(cte, UnionCTE):
             return any(self.optimize(x, inverse_map) for x in cte.internal_ctes)
 

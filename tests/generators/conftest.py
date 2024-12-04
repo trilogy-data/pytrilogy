@@ -31,7 +31,9 @@ def test_environment():
     env = Environment()
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
-    order_timestamp = Concept(name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY)
+    order_timestamp = Concept(
+        name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
+    )
 
     order_count = Concept(
         name="order_count",
@@ -74,7 +76,9 @@ def test_environment():
             operator=FunctionType.SUM,
         ),
     )
-    product_id = Concept(name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    product_id = Concept(
+        name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     constant_one = Concept(
         name="constant_one",
         datatype=DataType.INTEGER,
@@ -113,7 +117,9 @@ def test_environment():
 
     assert product_id.grain.components[0].name == "product_id"
 
-    category_id = Concept(name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    category_id = Concept(
+        name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
+    )
     category_name = Concept(
         name="category_name",
         datatype=DataType.STRING,
@@ -178,7 +184,9 @@ def test_environment():
         name="category_top_50_revenue_products",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=AggregateWrapper(function=Count([products_with_revenue_over_50]), by=[category_id]),
+        lineage=AggregateWrapper(
+            function=Count([products_with_revenue_over_50]), by=[category_id]
+        ),
         grain=Grain(components=[category_id]),
     )
 
@@ -194,7 +202,9 @@ def test_environment():
         columns=[
             ColumnAssignment(alias="revenue", concept=revenue),
             ColumnAssignment(alias="order_id", concept=order_id),
-            ColumnAssignment(alias="product_id", concept=product_id, modifiers=[Modifier.PARTIAL]),
+            ColumnAssignment(
+                alias="product_id", concept=product_id, modifiers=[Modifier.PARTIAL]
+            ),
             ColumnAssignment(alias="order_timestamp", concept=order_timestamp),
         ],
         address="tblRevenue",
@@ -205,7 +215,9 @@ def test_environment():
         name="products",
         columns=[
             ColumnAssignment(alias="product_id", concept=product_id),
-            ColumnAssignment(alias="category_id", concept=category_id, modifiers=[Modifier.PARTIAL]),
+            ColumnAssignment(
+                alias="category_id", concept=category_id, modifiers=[Modifier.PARTIAL]
+            ),
         ],
         address="tblProducts",
         grain=Grain(components=[product_id]),

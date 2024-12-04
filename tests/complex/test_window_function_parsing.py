@@ -128,7 +128,9 @@ limit 100
     select: SelectStatement = parsed[-1]
 
     assert env.concepts["rank_derived"].keys == (env.concepts["user_id"],)
-    assert concept_to_relevant_joins([env.concepts[x] for x in ["user_id", "rank_derived"]]) == [env.concepts["user_id"]]
+    assert concept_to_relevant_joins(
+        [env.concepts[x] for x in ["user_id", "rank_derived"]]
+    ) == [env.concepts["user_id"]]
     assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
 
     get_query_datasources(environment=env, statement=select)
@@ -164,7 +166,9 @@ order by x asc;"""
     )
     assert z.keys == (x,)
 
-    ds = search_concepts([z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0).resolve()
+    ds = search_concepts(
+        [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0
+    ).resolve()
 
     assert x in ds.output_concepts
     assert z in ds.output_concepts

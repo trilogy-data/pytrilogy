@@ -152,7 +152,9 @@ def gen_cache_lookup(path: str, alias: str, parent: str) -> str:
     return path + alias + parent
 
 
-def parse_concept_reference(name: str, environment: Environment, purpose: Optional[Purpose] = None) -> Tuple[str, str, str, str | None]:
+def parse_concept_reference(
+    name: str, environment: Environment, purpose: Optional[Purpose] = None
+) -> Tuple[str, str, str, str | None]:
     parent = None
     if "." in name:
         if purpose == Purpose.PROPERTY:
@@ -275,7 +277,10 @@ class ParseToObjects(Transformer):
         output = args[0]
         if isinstance(output, ConceptDeclarationStatement):
             if len(args) > 1 and isinstance(args[1], Comment):
-                output.concept.metadata.description = output.concept.metadata.description or args[1].text.split("#")[1].strip()
+                output.concept.metadata.description = (
+                    output.concept.metadata.description
+                    or args[1].text.split("#")[1].strip()
+                )
         if isinstance(output, ImportStatement):
             if len(args) > 1 and isinstance(args[1], Comment):
                 comment = args[1].text.split("#")[1].strip()
@@ -283,7 +288,9 @@ class ParseToObjects(Transformer):
                 for _, v in self.environment.concepts.items():
                     if v.namespace == namespace:
                         if v.metadata.description:
-                            v.metadata.description = f"{comment}: {v.metadata.description}"
+                            v.metadata.description = (
+                                f"{comment}: {v.metadata.description}"
+                            )
                         else:
                             v.metadata.description = comment
 
@@ -326,7 +333,9 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
-        final: list[DataType | MapType | ListType | NumericType | StructType | Concept] = []
+        final: list[
+            DataType | MapType | ListType | NumericType | StructType | Concept
+        ] = []
         for arg in args:
             new = self.environment.concepts.__getitem__(  # type: ignore
                 key=arg, line_no=meta.line
@@ -347,7 +356,9 @@ class ParseToObjects(Transformer):
     def map_type(self, args) -> MapType:
         return MapType(key_type=args[0], value_type=args[1])
 
-    def data_type(self, args) -> DataType | ListType | StructType | MapType | NumericType:
+    def data_type(
+        self, args
+    ) -> DataType | ListType | StructType | MapType | NumericType:
         resolved = args[0]
         if isinstance(resolved, StructType):
             return resolved
@@ -436,7 +447,9 @@ class ParseToObjects(Transformer):
                 namespace = self.environment.namespace or DEFAULT_NAMESPACE
         else:
             if "." not in declaration:
-                raise ParseError(f"Property declaration {args[1]} must be fully qualified with a parent key")
+                raise ParseError(
+                    f"Property declaration {args[1]} must be fully qualified with a parent key"
+                )
             grain, name = declaration.rsplit(".", 1)
             parent = self.environment.concepts[grain]
             parents = [parent]
@@ -490,7 +503,9 @@ class ParseToObjects(Transformer):
         raw_name = args[1]
         # abc.def.property pattern
         if isinstance(raw_name, str):
-            lookup, namespace, name, parent_concept = parse_concept_reference(raw_name, self.environment, purpose)
+            lookup, namespace, name, parent_concept = parse_concept_reference(
+                raw_name, self.environment, purpose
+            )
         # <abc.def,zef.gf>.property pattern
         else:
             keys, name = raw_name
@@ -504,7 +519,9 @@ class ParseToObjects(Transformer):
         while isinstance(source_value, Parenthetical):
             source_value = source_value.content
 
-        if isinstance(source_value, (FilterItem, WindowItem, AggregateWrapper, Function)):
+        if isinstance(
+            source_value, (FilterItem, WindowItem, AggregateWrapper, Function)
+        ):
             concept = arbitrary_to_concept(
                 source_value,
                 name=name,
@@ -531,10 +548,15 @@ class ParseToObjects(Transformer):
             self.environment.add_concept(concept, meta=meta)
             return ConceptDerivation(concept=concept)
 
-        raise SyntaxError(f"Received invalid type {type(args[2])} {args[2]} as input to select" " transform")
+        raise SyntaxError(
+            f"Received invalid type {type(args[2])} {args[2]} as input to select"
+            " transform"
+        )
 
     @v_args(meta=True)
-    def rowset_derivation_statement(self, meta: Meta, args) -> RowsetDerivationStatement:
+    def rowset_derivation_statement(
+        self, meta: Meta, args
+    ) -> RowsetDerivationStatement:
         name = args[0]
         select: SelectStatement | MultiSelectStatement = args[1]
         output = RowsetDerivationStatement(
@@ -557,7 +579,9 @@ class ParseToObjects(Transformer):
             metadata = None
         name = args[1]
         constant: Union[str, float, int, bool, MapWrapper, ListWrapper] = args[2]
-        lookup, namespace, name, parent = parse_concept_reference(name, self.environment)
+        lookup, namespace, name, parent = parse_concept_reference(
+            name, self.environment
+        )
         concept = Concept(
             name=name,
             datatype=arg_to_datatype(constant),
@@ -625,7 +649,9 @@ class ParseToObjects(Transformer):
             elif isinstance(val, WhereClause):
                 where = val
         if not address:
-            raise ValueError("Malformed datasource, missing address or query declaration")
+            raise ValueError(
+                "Malformed datasource, missing address or query declaration"
+            )
         datasource = Datasource(
             name=name,
             columns=columns,
@@ -654,20 +680,32 @@ class ParseToObjects(Transformer):
     def select_transform(self, meta: Meta, args) -> ConceptTransform:
         output: str = args[1]
         transformation = unwrap_transformation(args[0])
-        lookup, namespace, output, parent = parse_concept_reference(output, self.environment)
+        lookup, namespace, output, parent = parse_concept_reference(
+            output, self.environment
+        )
 
         metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
 
         if isinstance(transformation, AggregateWrapper):
-            concept = agg_wrapper_to_concept(transformation, namespace=namespace, name=output, metadata=metadata)
+            concept = agg_wrapper_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
         elif isinstance(transformation, WindowItem):
-            concept = window_item_to_concept(transformation, namespace=namespace, name=output, metadata=metadata)
+            concept = window_item_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
         elif isinstance(transformation, FilterItem):
-            concept = filter_item_to_concept(transformation, namespace=namespace, name=output, metadata=metadata)
+            concept = filter_item_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
         elif isinstance(transformation, CONSTANT_TYPES):
-            concept = constant_to_concept(transformation, namespace=namespace, name=output, metadata=metadata)
+            concept = constant_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
         elif isinstance(transformation, Function):
-            concept = function_to_concept(transformation, namespace=namespace, name=output, metadata=metadata)
+            concept = function_to_concept(
+                transformation, namespace=namespace, name=output, metadata=metadata
+            )
         else:
             raise SyntaxError("Invalid transformation")
 
@@ -694,7 +732,10 @@ class ParseToObjects(Transformer):
         if not args:
             return None
         if len(args) != 1:
-            raise ParseError("Malformed select statement" f" {args} {self.text_lookup[self.parse_address][meta.start_pos:meta.end_pos]}")
+            raise ParseError(
+                "Malformed select statement"
+                f" {args} {self.text_lookup[self.parse_address][meta.start_pos:meta.end_pos]}"
+            )
         content = args[0]
         if isinstance(content, ConceptTransform):
             return SelectItem(content=content, modifiers=modifiers)
@@ -760,7 +801,11 @@ class ParseToObjects(Transformer):
                 raise ValueError("Invalid merge, source is wildcard, target is not")
             source_wildcard = source[:-2]
             target_wildcard = target[:-2]
-            sources = [v for k, v in self.environment.concepts.items() if v.namespace == source_wildcard]
+            sources = [
+                v
+                for k, v in self.environment.concepts.items()
+                if v.namespace == source_wildcard
+            ]
             targets = {}
             for x in sources:
                 target = target_wildcard + "." + x.name
@@ -778,7 +823,9 @@ class ParseToObjects(Transformer):
             target_wildcard=target_wildcard,
         )
         for source_c in new.sources:
-            self.environment.merge_concept(source_c, targets[source_c.address], modifiers)
+            self.environment.merge_concept(
+                source_c, targets[source_c.address], modifiers
+            )
 
         return new
 
@@ -817,7 +864,9 @@ class ParseToObjects(Transformer):
         token_lookup = Path(target)
 
         # cache lookups by the target, the alias, and the file we're importing it from
-        cache_lookup = gen_cache_lookup(path=target, alias=alias, parent=str(self.token_address))
+        cache_lookup = gen_cache_lookup(
+            path=target, alias=alias, parent=str(self.token_address)
+        )
         if token_lookup in self.tokens:
             raw_tokens = self.tokens[token_lookup]
             text = self.text_lookup[token_lookup]
@@ -876,7 +925,11 @@ class ParseToObjects(Transformer):
             grain = None
 
         new_datasource = select.to_datasource(
-            namespace=(self.environment.namespace if self.environment.namespace else DEFAULT_NAMESPACE),
+            namespace=(
+                self.environment.namespace
+                if self.environment.namespace
+                else DEFAULT_NAMESPACE
+            ),
             name=identifier,
             address=Address(location=address),
             grain=grain,
@@ -976,7 +1029,9 @@ class ParseToObjects(Transformer):
             elif isinstance(item.content, Concept):
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
-                item.content = self.environment.concepts[item.content.address].with_grain(item.content.grain)
+                item.content = self.environment.concepts[
+                    item.content.address
+                ].with_grain(item.content.grain)
         if order_by:
             for orderitem in order_by.items:
                 if isinstance(orderitem.expr, Concept):
@@ -1109,8 +1164,12 @@ class ParseToObjects(Transformer):
         left_bound = args[1]
         right_bound = args[2]
         return Conditional(
-            left=Comparison(left=args[0], right=left_bound, operator=ComparisonOperator.GTE),
-            right=Comparison(left=args[0], right=right_bound, operator=ComparisonOperator.LTE),
+            left=Comparison(
+                left=args[0], right=left_bound, operator=ComparisonOperator.GTE
+            ),
+            right=Comparison(
+                left=args[0], right=right_bound, operator=ComparisonOperator.LTE
+            ),
             operator=BooleanOperator.AND,
         )
 
@@ -1158,7 +1217,9 @@ class ParseToObjects(Transformer):
                 if len(args) == 1:
                     return args[0]
                 else:
-                    return Conditional(left=args[0], operator=args[1], right=munch_args(args[2:]))
+                    return Conditional(
+                        left=args[0], operator=args[1], right=munch_args(args[2:])
+                    )
 
         return munch_args(args)
 
@@ -1208,7 +1269,9 @@ class ParseToObjects(Transformer):
                 )
                 self.environment.add_concept(concept, meta=meta)
         assert concept
-        return WindowItem(type=type, content=concept, over=over, order_by=order_by, index=index)
+        return WindowItem(
+            type=type, content=concept, over=over, order_by=order_by, index=index
+        )
 
     def filter_item(self, args) -> FilterItem:
         where: WhereClause
@@ -1802,7 +1865,9 @@ class ParseToObjects(Transformer):
                 datatypes.add(output_datatype)
             mapz[str(arg.expr)] = output_datatype
         if not len(datatypes) == 1:
-            raise SyntaxError(f"All case expressions must have the same output datatype, got {datatypes} from {mapz}")
+            raise SyntaxError(
+                f"All case expressions must have the same output datatype, got {datatypes} from {mapz}"
+            )
         return Function(
             operator=FunctionType.CASE,
             arguments=args,
@@ -1853,7 +1918,9 @@ def unpack_visit_error(e: VisitError):
         raise e.orig_exc
     elif isinstance(e.orig_exc, (SyntaxError, TypeError)):
         if isinstance(e.obj, Tree):
-            raise InvalidSyntaxException(str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}")
+            raise InvalidSyntaxException(
+                str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
+            )
         raise InvalidSyntaxException(str(e.orig_exc))
     raise e
 
@@ -1862,11 +1929,17 @@ def parse_text_raw(text: str, environment: Optional[Environment] = None):
     PARSER.parse(text)
 
 
-def parse_text(
-    text: str, environment: Optional[Environment] = None
-) -> Tuple[
+def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
     Environment,
-    List[Datasource | ImportStatement | SelectStatement | PersistStatement | ShowStatement | RawSQLStatement | None],
+    List[
+        Datasource
+        | ImportStatement
+        | SelectStatement
+        | PersistStatement
+        | ShowStatement
+        | RawSQLStatement
+        | None
+    ],
 ]:
     environment = environment or Environment()
     parser = ParseToObjects(environment=environment)

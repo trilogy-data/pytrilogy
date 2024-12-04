@@ -29,7 +29,9 @@ property product_id.price float;
     orders = env.concepts["order_id"]
     price = env.concepts["price"]
     product = env.concepts["product_id"]
-    left = StrategyNode(input_concepts=[orders], output_concepts=[orders], environment=env, g=g)
+    left = StrategyNode(
+        input_concepts=[orders], output_concepts=[orders], environment=env, g=g
+    )
     right = StrategyNode(
         input_concepts=[orders, product],
         output_concepts=[orders, product],

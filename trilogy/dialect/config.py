@@ -34,7 +34,9 @@ class DuckDBConfig(DialectConfig):
 
 
 class PostgresConfig(DialectConfig):
-    def __init__(self, host: str, port: int, username: str, password: str, database: str):
+    def __init__(
+        self, host: str, port: int, username: str, password: str, database: str
+    ):
         self.host = host
         self.port = port
         self.username = username
@@ -46,7 +48,9 @@ class PostgresConfig(DialectConfig):
 
 
 class SQLServerConfig(DialectConfig):
-    def __init__(self, host: str, port: int, username: str, password: str, database: str):
+    def __init__(
+        self, host: str, port: int, username: str, password: str, database: str
+    ):
         self.host = host
         self.port = port
         self.username = username

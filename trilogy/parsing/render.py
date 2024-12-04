@@ -83,7 +83,10 @@ class Renderer:
             # don't render anything that came from an import
             if concept.namespace in arg.imports:
                 continue
-            if concept.metadata and concept.metadata.concept_source == ConceptSource.AUTO_DERIVED:
+            if (
+                concept.metadata
+                and concept.metadata.concept_source == ConceptSource.AUTO_DERIVED
+            ):
                 continue
             elif not concept.lineage and concept.purpose == Purpose.CONSTANT:
                 constants.append(concept)
@@ -107,7 +110,10 @@ class Renderer:
             output_concepts += properties.get(key.name, [])
         output_concepts += metrics
 
-        rendered_concepts = [self.to_string(ConceptDeclarationStatement(concept=concept)) for concept in output_concepts]
+        rendered_concepts = [
+            self.to_string(ConceptDeclarationStatement(concept=concept))
+            for concept in output_concepts
+        ]
 
         rendered_datasources = [
             # extra padding between datasources
@@ -165,7 +171,9 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "CaseWhen"):
-        return f"""WHEN {self.to_string(arg.comparison)} THEN {self.to_string(arg.expr)}"""
+        return (
+            f"""WHEN {self.to_string(arg.comparison)} THEN {self.to_string(arg.expr)}"""
+        )
 
     @to_string.register
     def _(self, arg: "CaseElse"):
@@ -214,7 +222,9 @@ class Renderer:
     @to_string.register
     def _(self, arg: "ColumnAssignment"):
         if arg.modifiers:
-            modifiers = "".join([self.to_string(modifier) for modifier in arg.modifiers])
+            modifiers = "".join(
+                [self.to_string(modifier) for modifier in arg.modifiers]
+            )
         else:
             modifiers = ""
         if isinstance(arg.alias, str):
@@ -281,7 +291,11 @@ class Renderer:
             select_columns=[self.to_string(c) for c in arg.selection],
             where=self.to_string(arg.where_clause) if arg.where_clause else None,
             having=self.to_string(arg.having_clause) if arg.having_clause else None,
-            order_by=([self.to_string(c) for c in arg.order_by.items] if arg.order_by else None),
+            order_by=(
+                [self.to_string(c) for c in arg.order_by.items]
+                if arg.order_by
+                else None
+            ),
             limit=arg.limit,
         )
 
@@ -338,7 +352,9 @@ class Renderer:
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
         if over and order:
-            return f"{arg.type.value} {self.to_string(arg.content)} by {order} over {over}"
+            return (
+                f"{arg.type.value} {self.to_string(arg.content)} by {order} over {over}"
+            )
         elif over:
             return f"{arg.type.value} {self.to_string(arg.content)} over {over}"
         return f"{arg.type.value} {self.to_string(arg.content)} by {order}"

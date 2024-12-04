@@ -70,13 +70,21 @@ def test_cte_merge(test_environment, test_environment_graph):
 def test_concept(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[0]
     new = test_concept.with_namespace("test")
-    assert new.namespace == ("test" + "." + test_concept.namespace) if test_concept.namespace != "local" else "test"
+    assert (
+        new.namespace == ("test" + "." + test_concept.namespace)
+        if test_concept.namespace != "local"
+        else "test"
+    )
 
 
 def test_concept_filter(test_environment, test_environment_graph):
     test_concept: Concept = list(test_environment.concepts.values())[0]
-    new = test_concept.with_filter(Comparison(left=1, right=2, operator=ComparisonOperator.EQ))
-    new2 = test_concept.with_filter(Comparison(left=1, right=2, operator=ComparisonOperator.EQ))
+    new = test_concept.with_filter(
+        Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
+    )
+    new2 = test_concept.with_filter(
+        Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
+    )
 
     assert new.name == new2.name != test_concept.name
 
@@ -87,13 +95,23 @@ def test_concept_filter(test_environment, test_environment_graph):
 def test_conditional(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[-1]
 
-    condition_a = Conditional(left=test_concept, right=test_concept, operator=BooleanOperator.AND)
-    condition_b = Conditional(left=test_concept, right=test_concept, operator=BooleanOperator.AND)
+    condition_a = Conditional(
+        left=test_concept, right=test_concept, operator=BooleanOperator.AND
+    )
+    condition_b = Conditional(
+        left=test_concept, right=test_concept, operator=BooleanOperator.AND
+    )
     merged = condition_a + condition_b
     assert merged == condition_a
 
-    test_concept_two = [x for x in test_environment.concepts.values() if x.address != test_concept.address].pop()
-    condition_c = Conditional(left=test_concept, right=test_concept_two, operator=BooleanOperator.AND)
+    test_concept_two = [
+        x
+        for x in test_environment.concepts.values()
+        if x.address != test_concept.address
+    ].pop()
+    condition_c = Conditional(
+        left=test_concept, right=test_concept_two, operator=BooleanOperator.AND
+    )
     merged_two = condition_a + condition_c
     assert merged_two.left == condition_a, f"{str(merged_two.left), str(condition_a)}"
     assert merged_two.right == condition_c
@@ -128,7 +146,9 @@ def test_select(test_environment: Environment):
     cid = test_environment.concepts["category_id"]
     cname = test_environment.concepts["category_name"]
     x = SelectStatement(selection=[oid, pid, cid, cname])
-    ds = x.to_datasource(test_environment.namespace, "test", address=Address(location="test"))
+    ds = x.to_datasource(
+        test_environment.namespace, "test", address=Address(location="test")
+    )
 
     assert ds.grain == Grain(components=[oid, pid, cid])
 
@@ -227,11 +247,17 @@ def test_join(test_environment: Environment):
     test = Join(
         left_cte=a,
         right_cte=b,
-        joinkey_pairs=[CTEConceptPair(left=x, right=x, existing_datasource=a.source, cte=a) for x in outputs],
+        joinkey_pairs=[
+            CTEConceptPair(left=x, right=x, existing_datasource=a.source, cte=a)
+            for x in outputs
+        ],
         jointype=JoinType.RIGHT_OUTER,
     )
 
-    assert str(test) == "right outer join testb on test.local.product_id=local.product_id,test.local.category_id=local.category_id", str(test)
+    assert (
+        str(test)
+        == "right outer join testb on test.local.product_id=local.product_id,test.local.category_id=local.category_id"
+    ), str(test)
 
 
 def test_concept_address_in_check():

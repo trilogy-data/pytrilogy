@@ -2,7 +2,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
-from trilogy.core.enums import BooleanOperator, Granularity, JoinType, Purpose, PurposeLineage
+from trilogy.core.enums import (
+    BooleanOperator,
+    Granularity,
+    JoinType,
+    Purpose,
+    PurposeLineage,
+)
 from trilogy.core.models import (
     Comparison,
     Concept,
@@ -20,12 +26,20 @@ from trilogy.core.models import (
 from trilogy.utility import unique
 
 
-def concept_list_to_grain(inputs: List[Concept], parent_sources: Sequence[QueryDatasource | Datasource]) -> Grain:
-    candidates = [c for c in inputs if c.purpose == Purpose.KEY and c.granularity != Granularity.SINGLE_ROW]
+def concept_list_to_grain(
+    inputs: List[Concept], parent_sources: Sequence[QueryDatasource | Datasource]
+) -> Grain:
+    candidates = [
+        c
+        for c in inputs
+        if c.purpose == Purpose.KEY and c.granularity != Granularity.SINGLE_ROW
+    ]
     for x in inputs:
         if x.granularity == Granularity.SINGLE_ROW:
             continue
-        if x.purpose == Purpose.PROPERTY and not any([key in candidates for key in (x.keys or [])]):
+        if x.purpose == Purpose.PROPERTY and not any(
+            [key in candidates for key in (x.keys or [])]
+        ):
             candidates.append(x)
         elif x.purpose == Purpose.CONSTANT:
             candidates.append(x)
@@ -44,14 +58,18 @@ def resolve_concept_map(
     full_joins: List[Concept] | None = None,
 ) -> dict[str, set[Datasource | QueryDatasource | UnnestJoin]]:
     targets = targets or []
-    concept_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = defaultdict(set)
+    concept_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = (
+        defaultdict(set)
+    )
     full_addresses = {c.address for c in full_joins} if full_joins else set()
     inherited = set([t.address for t in inherited_inputs])
     for input in inputs:
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
-            if isinstance(input, QueryDatasource) and concept.address in [x.address for x in input.hidden_concepts]:
+            if isinstance(input, QueryDatasource) and concept.address in [
+                x.address for x in input.hidden_concepts
+            ]:
                 continue
             if concept.address in full_addresses:
                 concept_map[concept.address].add(input)
@@ -67,7 +85,10 @@ def resolve_concept_map(
         for concept in input.output_concepts:
             if concept.address not in [t for t in inherited_inputs]:
                 continue
-            if isinstance(input, QueryDatasource) and concept.address in input.hidden_concepts:
+            if (
+                isinstance(input, QueryDatasource)
+                and concept.address in input.hidden_concepts
+            ):
                 continue
             if len(concept_map.get(concept.address, [])) == 0:
                 concept_map[concept.address].add(input)
@@ -80,20 +101,49 @@ def resolve_concept_map(
     return concept_map
 
 
-def get_all_parent_partial(all_concepts: List[Concept], parents: List["StrategyNode"]) -> List[Concept]:
+def get_all_parent_partial(
+    all_concepts: List[Concept], parents: List["StrategyNode"]
+) -> List[Concept]:
     return unique(
         [
             c
             for c in all_concepts
-            if len([p for p in parents if c.address in [x.address for x in p.partial_concepts]]) >= 1 and all([c.address in p.partial_lcl for p in parents if c.address in p.output_lcl])
+            if len(
+                [
+                    p
+                    for p in parents
+                    if c.address in [x.address for x in p.partial_concepts]
+                ]
+            )
+            >= 1
+            and all(
+                [
+                    c.address in p.partial_lcl
+                    for p in parents
+                    if c.address in p.output_lcl
+                ]
+            )
         ],
         "address",
     )
 
 
-def get_all_parent_nullable(all_concepts: List[Concept], parents: List["StrategyNode"]) -> List[Concept]:
+def get_all_parent_nullable(
+    all_concepts: List[Concept], parents: List["StrategyNode"]
+) -> List[Concept]:
     return unique(
-        [c for c in all_concepts if len([p for p in parents if c.address in [x.address for x in p.nullable_concepts]]) >= 1],
+        [
+            c
+            for c in all_concepts
+            if len(
+                [
+                    p
+                    for p in parents
+                    if c.address in [x.address for x in p.nullable_concepts]
+                ]
+            )
+            >= 1
+        ],
         "address",
     )
 
@@ -120,7 +170,9 @@ class StrategyNode:
         existence_concepts: List[Concept] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
     ):
-        self.input_concepts: List[Concept] = unique(input_concepts, "address") if input_concepts else []
+        self.input_concepts: List[Concept] = (
+            unique(input_concepts, "address") if input_concepts else []
+        )
         self.input_lcl = LooseConceptList(concepts=self.input_concepts)
         self.output_concepts: List[Concept] = unique(output_concepts, "address")
         self.output_lcl = LooseConceptList(concepts=self.output_concepts)
@@ -130,8 +182,12 @@ class StrategyNode:
         self.whole_grain = whole_grain
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
-        self.partial_concepts = partial_concepts or get_all_parent_partial(self.output_concepts, self.parents)
-        self.nullable_concepts = nullable_concepts or get_all_parent_nullable(self.output_concepts, self.parents)
+        self.partial_concepts = partial_concepts or get_all_parent_partial(
+            self.output_concepts, self.parents
+        )
+        self.nullable_concepts = nullable_concepts or get_all_parent_nullable(
+            self.output_concepts, self.parents
+        )
 
         self.depth = depth
         self.conditions = conditions
@@ -144,7 +200,11 @@ class StrategyNode:
         self.preexisting_conditions = preexisting_conditions
         if self.conditions and not self.preexisting_conditions:
             self.preexisting_conditions = self.conditions
-        elif self.conditions and self.preexisting_conditions and self.conditions != self.preexisting_conditions:
+        elif (
+            self.conditions
+            and self.preexisting_conditions
+            and self.conditions != self.preexisting_conditions
+        ):
             self.preexisting_conditions = Conditional(
                 left=self.conditions,
                 right=self.preexisting_conditions,
@@ -158,13 +218,17 @@ class StrategyNode:
         self.validate_parents()
         return self
 
-    def set_preexisting_conditions(self, conditions: Conditional | Comparison | Parenthetical):
+    def set_preexisting_conditions(
+        self, conditions: Conditional | Comparison | Parenthetical
+    ):
         self.preexisting_conditions = conditions
         return self
 
     def add_condition(self, condition: Conditional | Comparison | Parenthetical):
         if self.conditions:
-            self.conditions = Conditional(left=self.conditions, right=condition, operator=BooleanOperator.AND)
+            self.conditions = Conditional(
+                left=self.conditions, right=condition, operator=BooleanOperator.AND
+            )
         else:
             self.conditions = condition
         self.set_preexisting_conditions(condition)
@@ -180,7 +244,9 @@ class StrategyNode:
 
         # TODO: make this accurate
         if self.parents:
-            self.partial_concepts = get_all_parent_partial(self.output_concepts, self.parents)
+            self.partial_concepts = get_all_parent_partial(
+                self.output_concepts, self.parents
+            )
 
         self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
 
@@ -226,7 +292,9 @@ class StrategyNode:
         for x in concepts:
             self.hidden_concepts.append(x)
         addresses = [x.address for x in concepts]
-        self.output_concepts = [x for x in self.output_concepts if x.address not in addresses]
+        self.output_concepts = [
+            x for x in self.output_concepts if x.address not in addresses
+        ]
         if rebuild:
             self.rebuild_cache()
         return self
@@ -253,9 +321,15 @@ class StrategyNode:
         return f"{self.__class__.__name__}<{contents}>"
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [p.resolve() for p in self.parents]
+        parent_sources: List[QueryDatasource | Datasource] = [
+            p.resolve() for p in self.parents
+        ]
 
-        grain = self.grain if self.grain else concept_list_to_grain(self.output_concepts, [])
+        grain = (
+            self.grain
+            if self.grain
+            else concept_list_to_grain(self.output_concepts, [])
+        )
         source_map = resolve_concept_map(
             parent_sources,
             targets=self.output_concepts,
@@ -333,14 +407,19 @@ class NodeJoin:
                     if self.filter_to_mutual:
                         include = False
                     else:
-                        raise SyntaxError(f"Invalid join, missing {concept} on {str(ds)}, have" f" {[c.address for c in ds.all_concepts]}")
+                        raise SyntaxError(
+                            f"Invalid join, missing {concept} on {str(ds)}, have"
+                            f" {[c.address for c in ds.all_concepts]}"
+                        )
             if include:
                 final_concepts.append(concept)
         if not final_concepts and self.concepts:
             # if one datasource only has constants
             # we can join on 1=1
             for ds in [self.left_node, self.right_node]:
-                if all([c.derivation == PurposeLineage.CONSTANT for c in ds.all_concepts]):
+                if all(
+                    [c.derivation == PurposeLineage.CONSTANT for c in ds.all_concepts]
+                ):
                     self.concepts = []
                     return
 
@@ -348,7 +427,11 @@ class NodeJoin:
             right_keys = [c.address for c in self.right_node.all_concepts]
             match_concepts = [c.address for c in self.concepts]
             raise SyntaxError(
-                "No mutual join keys found between" f" {self.left_node} and" f" {self.right_node}, left_keys {left_keys}," f" right_keys {right_keys}," f" provided join concepts {match_concepts}"
+                "No mutual join keys found between"
+                f" {self.left_node} and"
+                f" {self.right_node}, left_keys {left_keys},"
+                f" right_keys {right_keys},"
+                f" provided join concepts {match_concepts}"
             )
         self.concepts = final_concepts
 
@@ -358,4 +441,8 @@ class NodeJoin:
         return str(nodes) + self.join_type.value
 
     def __str__(self):
-        return f"{self.join_type.value} JOIN {self.left_node} and" f" {self.right_node} on" f" {','.join([str(k) for k in self.concepts])}"
+        return (
+            f"{self.join_type.value} JOIN {self.left_node} and"
+            f" {self.right_node} on"
+            f" {','.join([str(k) for k in self.concepts])}"
+        )

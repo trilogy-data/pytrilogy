@@ -2,8 +2,13 @@ from trilogy import parse
 
 
 def test_derivations(test_environment):
-    assert test_environment.concepts["order_timestamp"].address == "local.order_timestamp"
-    assert test_environment.concepts["order_timestamp.date"].address == "local.order_timestamp.date"
+    assert (
+        test_environment.concepts["order_timestamp"].address == "local.order_timestamp"
+    )
+    assert (
+        test_environment.concepts["order_timestamp.date"].address
+        == "local.order_timestamp.date"
+    )
 
 
 def test_filtering_where_on_derived_aggregate(test_environment):
@@ -28,7 +33,9 @@ def test_filtering_where_on_derived_aggregate(test_environment):
         )
     except Exception as e:
         exception = True
-        assert str(e).startswith("Cannot reference an aggregate derived in the select (local.filtered_cst) in the same statement where clause")
+        assert str(e).startswith(
+            "Cannot reference an aggregate derived in the select (local.filtered_cst) in the same statement where clause"
+        )
     assert exception, "should have an exception"
 
 
@@ -54,7 +61,9 @@ def test_filtering_having_on_unincluded_value(test_environment):
         )
     except Exception as e:
         exception = True
-        assert str(e).startswith("Cannot reference a column (local.x) that is not in the select projection in the HAVING clause, move to WHERE"), str(e)
+        assert str(e).startswith(
+            "Cannot reference a column (local.x) that is not in the select projection in the HAVING clause, move to WHERE"
+        ), str(e)
     assert exception, "should have an exception"
 
 

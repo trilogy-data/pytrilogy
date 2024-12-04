@@ -179,7 +179,9 @@ thrush
 toucan
 turkey
 vulture
-warbler""".split("\n")
+warbler""".split(
+    "\n"
+)
 
 
 def generate_cte_names():
