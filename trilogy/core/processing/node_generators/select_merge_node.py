@@ -21,7 +21,6 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
-from trilogy.core.enums import PurposeLineage
 from trilogy.core.processing.nodes.base_node import (
     concept_list_to_grain,
 )
