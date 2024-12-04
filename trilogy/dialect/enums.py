@@ -1,12 +1,12 @@
 from enum import Enum
-from typing import List, TYPE_CHECKING, Optional, Callable
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 if TYPE_CHECKING:
+    from trilogy import Environment, Executor
     from trilogy.hooks.base_hook import BaseHook
-    from trilogy import Executor, Environment
 
-from trilogy.dialect.config import DialectConfig
 from trilogy.constants import logger
+from trilogy.dialect.config import DialectConfig
 
 
 def default_factory(conf: DialectConfig, config_type):
@@ -42,6 +42,7 @@ class Dialects(Enum):
         if self == Dialects.BIGQUERY:
             from google.auth import default
             from google.cloud import bigquery
+
             from trilogy.dialect.config import BigQueryConfig
 
             credentials, project = default()
@@ -52,7 +53,6 @@ class Dialects(Enum):
                 BigQueryConfig,
             )
         elif self == Dialects.SQL_SERVER:
-
             raise NotImplementedError()
         elif self == Dialects.DUCK_DB:
             from trilogy.dialect.config import DuckDBConfig
@@ -98,7 +98,7 @@ class Dialects(Enum):
         conf: DialectConfig | None = None,
         _engine_factory: Callable | None = None,
     ) -> "Executor":
-        from trilogy import Executor, Environment
+        from trilogy import Environment, Executor
 
         if _engine_factory is not None:
             return Executor(

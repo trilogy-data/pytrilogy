@@ -1,6 +1,5 @@
 # from trilogy.compiler import compile
-from trilogy.core.models import Grain
-from trilogy.core.models import SelectStatement
+from trilogy.core.models import Grain, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse

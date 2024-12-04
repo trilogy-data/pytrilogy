@@ -1,82 +1,84 @@
 from __future__ import annotations
+
 import difflib
+import hashlib
 import os
+from abc import ABC
+from collections import UserDict, UserList, defaultdict
 from enum import Enum
+from functools import cached_property
+from pathlib import Path
 from typing import (
+    Annotated,
+    Any,
+    Callable,
     Dict,
-    TypeVar,
+    Generic,
+    ItemsView,
     List,
     Optional,
-    Union,
-    Set,
-    Any,
     Sequence,
-    ValuesView,
-    Callable,
-    Annotated,
-    get_args,
-    Generic,
+    Set,
     Tuple,
     Type,
-    ItemsView,
+    TypeVar,
+    Union,
+    ValuesView,
+    get_args,
 )
-from pydantic_core import core_schema
-from pydantic.functional_validators import PlainValidator
+
+from lark.tree import Meta
 from pydantic import (
     BaseModel,
-    Field,
     ConfigDict,
-    field_validator,
+    Field,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
     computed_field,
+    field_validator,
 )
-from lark.tree import Meta
-from pathlib import Path
+from pydantic.functional_validators import PlainValidator
+from pydantic_core import core_schema
+
 from trilogy.constants import (
-    logger,
+    CONFIG,
     DEFAULT_NAMESPACE,
     ENV_CACHE_NAME,
     MagicConstants,
-    CONFIG,
+    logger,
 )
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
-    INTERNAL_NAMESPACE,
     CONSTANT_DATASET,
+    INTERNAL_NAMESPACE,
     PERSISTED_CONCEPT_PREFIX,
 )
 from trilogy.core.enums import (
-    InfiniteFunctionArgs,
-    Purpose,
-    JoinType,
-    Ordering,
-    Modifier,
-    FunctionType,
-    FunctionClass,
     BooleanOperator,
     ComparisonOperator,
-    WindowOrder,
-    PurposeLineage,
-    SourceType,
-    WindowType,
     ConceptSource,
     DatePart,
-    ShowCategory,
+    FunctionClass,
+    FunctionType,
     Granularity,
-    SelectFiltering,
+    InfiniteFunctionArgs,
     IOType,
+    JoinType,
+    Modifier,
+    Ordering,
+    Purpose,
+    PurposeLineage,
+    SelectFiltering,
+    ShowCategory,
+    SourceType,
+    WindowOrder,
+    WindowType,
 )
 from trilogy.core.exceptions import (
-    UndefinedConceptException,
     InvalidSyntaxException,
+    UndefinedConceptException,
 )
 from trilogy.utility import unique
-from collections import UserList, UserDict
-from functools import cached_property
-from abc import ABC
-from collections import defaultdict
-import hashlib
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -152,19 +154,16 @@ NAMESPACED_TYPES = Union[
 
 
 class Namespaced(ABC):
-
     def with_namespace(self, namespace: str):
         raise NotImplementedError
 
 
 class Mergeable(ABC):
-
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
 
 
 class ConceptArgs(ABC):
-
     @property
     def concept_arguments(self) -> List["Concept"]:
         raise NotImplementedError
@@ -179,7 +178,6 @@ class ConceptArgs(ABC):
 
 
 class SelectContext(ABC):
-
     def with_select_context(
         self,
         grain: Grain,
@@ -195,7 +193,6 @@ class ConstantInlineable(ABC):
 
 
 class HasUUID(ABC):
-
     @property
     def uuid(self) -> str:
         return hashlib.md5(str(self).encode()).hexdigest()
@@ -791,6 +788,12 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
+            and self.lineage.operator == FunctionType.UNION
+        ):
+            return PurposeLineage.UNION
+        elif (
+            self.lineage
+            and isinstance(self.lineage, Function)
             and self.lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
             return PurposeLineage.CONSTANT
@@ -827,7 +830,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNNEST
+            and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
         ):
             return Granularity.MULTI_ROW
         elif self.lineage and all(
@@ -1644,7 +1647,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         all_in_output = [x.address for x in self.output_components]
         if self.where_clause:
             for concept in self.where_clause.concept_arguments:
-
                 if (
                     concept.lineage
                     and isinstance(concept.lineage, Function)
@@ -2024,7 +2026,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
             output.append(item.gen_concept(self))
         return output
 
-    def find_source(self, concept: Concept, cte: CTE) -> Concept:
+    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
         for x in self.align.items:
             if concept.name == x.alias:
                 for c in x.concepts:
@@ -2701,7 +2703,7 @@ class CTE(BaseModel):
     base: bool = False
     group_to_grain: bool = False
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
-    parent_ctes: List["CTE"] = Field(default_factory=list)
+    parent_ctes: List[Union["CTE", "UnionCTE"]] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
     partial_concepts: List[Concept] = Field(default_factory=list)
@@ -2876,7 +2878,9 @@ class CTE(BaseModel):
             self.group_to_grain = True
         return True
 
-    def __add__(self, other: "CTE"):
+    def __add__(self, other: "CTE" | UnionCTE):
+        if isinstance(other, UnionCTE):
+            raise ValueError("cannot merge CTE and union CTE")
         logger.info('Merging two copies of CTE "%s"', self.name)
         if not self.grain == other.grain:
             error = (
@@ -3052,8 +3056,72 @@ class CTE(BaseModel):
         return [c for c in self.output_columns if c.address in self.source_map]
 
 
-def merge_ctes(ctes: List[CTE]) -> List[CTE]:
-    final_ctes_dict: Dict[str, CTE] = {}
+class UnionCTE(BaseModel):
+    name: str
+    source: QueryDatasource
+    parent_ctes: list[CTE | UnionCTE]
+    internal_ctes: list[CTE | UnionCTE]
+    output_columns: List[Concept]
+    grain: Grain
+    operator: str = "UNION ALL"
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+    hidden_concepts: list[Concept] = Field(default_factory=list)
+    partial_concepts: list[Concept] = Field(default_factory=list)
+    existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
+
+    @computed_field  # type: ignore
+    @property
+    def output_lcl(self) -> LooseConceptList:
+        return LooseConceptList(concepts=self.output_columns)
+
+    def get_alias(self, concept: Concept, source: str | None = None) -> str:
+        for cte in self.parent_ctes:
+            if concept.address in cte.output_columns:
+                if source and source != cte.name:
+                    continue
+                return concept.safe_address
+        return "INVALID_ALIAS"
+
+    def get_concept(self, address: str) -> Concept | None:
+        for cte in self.internal_ctes:
+            if address in cte.output_columns:
+                match = [x for x in cte.output_columns if x.address == address].pop()
+                return match
+
+        match_list = [x for x in self.output_columns if x.address == address]
+        if match_list:
+            return match_list.pop()
+        return None
+
+    @property
+    def source_map(self):
+        return {x.address: [] for x in self.output_columns}
+
+    @property
+    def condition(self):
+        return None
+
+    @condition.setter
+    def condition(self, value):
+        raise NotImplementedError
+
+    @property
+    def safe_identifier(self):
+        return self.name
+
+    @property
+    def group_to_grain(self) -> bool:
+        return False
+
+    def __add__(self, other):
+        if not isinstance(other, UnionCTE) or not other.name == self.name:
+            raise SyntaxError("Cannot merge union CTEs")
+        return self
+
+
+def merge_ctes(ctes: List[CTE | UnionCTE]) -> List[CTE | UnionCTE]:
+    final_ctes_dict: Dict[str, CTE | UnionCTE] = {}
     # merge CTEs
     for cte in ctes:
         if cte.name not in final_ctes_dict:
@@ -3078,7 +3146,6 @@ class JoinKey(BaseModel):
 
 
 class Join(BaseModel):
-
     right_cte: CTE
     jointype: JoinType
     left_cte: CTE | None = None
@@ -3593,8 +3660,8 @@ class Environment(BaseModel):
         self, path: str | Path, alias: str, env: Environment | None = None
     ):
         from trilogy.parsing.parse_engine import (
-            ParseToObjects,
             PARSER,
+            ParseToObjects,
             gen_cache_lookup,
         )
 
@@ -3762,7 +3829,6 @@ class Environment(BaseModel):
                 return
         self.alias_origin_lookup[source.address] = source
         for k, v in self.concepts.items():
-
             if v.address == target.address:
                 v.pseudonyms.add(source.address)
             if v.address == source.address:
@@ -4042,7 +4108,6 @@ class Comparison(
 
 
 class SubselectComparison(Comparison):
-
     def __eq__(self, other):
         if not isinstance(other, SubselectComparison):
             return False
@@ -4215,7 +4280,6 @@ class Conditional(
         return f"{str(self.left)} {self.operator.value} {str(self.right)}"
 
     def __eq__(self, other):
-
         if not isinstance(other, Conditional):
             return False
         return (
@@ -4497,8 +4561,8 @@ class MaterializedDataset(BaseModel):
 
 class ProcessedQuery(BaseModel):
     output_columns: List[Concept]
-    ctes: List[CTE]
-    base: CTE
+    ctes: List[CTE | UnionCTE]
+    base: CTE | UnionCTE
     joins: List[Join]
     grain: Grain
     hidden_columns: List[Concept] = Field(default_factory=list)
@@ -4606,7 +4670,6 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
                     components=[orig[c.address] for c in x.grain.components_copy]
                 )
             else:
-
                 x.grain = default_grain
         return output
 

@@ -1,11 +1,10 @@
-from trilogy.core.processing.utility import find_nullable_concepts
-from trilogy.core.models import QueryDatasource, BaseJoin, Grain, JoinType, ConceptPair
 from trilogy import parse
 from trilogy.core.enums import Modifier
+from trilogy.core.models import BaseJoin, ConceptPair, Grain, JoinType, QueryDatasource
+from trilogy.core.processing.utility import find_nullable_concepts
 
 
 def test_find_nullable_concepts():
-
     env, _ = parse(
         """
 key order_id int;

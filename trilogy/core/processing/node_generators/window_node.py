@@ -1,11 +1,10 @@
 from typing import List
 
-
-from trilogy.core.models import Concept, WindowItem, Environment, WhereClause
-from trilogy.utility import unique
-from trilogy.core.processing.nodes import WindowNode, StrategyNode, History
 from trilogy.constants import logger
+from trilogy.core.models import Concept, Environment, WhereClause, WindowItem
+from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 

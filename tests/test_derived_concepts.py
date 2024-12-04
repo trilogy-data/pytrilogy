@@ -68,7 +68,6 @@ def test_filtering_having_on_unincluded_value(test_environment):
 
 
 def test_filtering_valid(test_environment):
-
     env, _ = parse(
         """key x int;
 property x.cost float;

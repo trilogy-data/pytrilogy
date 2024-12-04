@@ -1,14 +1,15 @@
+from networkx import Graph
+
+from trilogy import parse
+from trilogy.core.enums import JoinType
+from trilogy.core.env_processor import generate_graph
 from trilogy.core.processing.node_generators.common import (
-    resolve_join_order,
     # resolve_join_order_v2,
     NodeJoin,
     StrategyNode,
+    resolve_join_order,
 )
-from trilogy.core.processing.utility import resolve_join_order_v2, JoinOrderOutput
-from trilogy import parse
-from trilogy.core.env_processor import generate_graph
-from trilogy.core.enums import JoinType
-from networkx import Graph
+from trilogy.core.processing.utility import JoinOrderOutput, resolve_join_order_v2
 
 
 def test_resolve_join_order():
@@ -76,7 +77,6 @@ property product_id.price float;
 
 
 def test_resolve_join_order_v2():
-
     g = Graph()
 
     g.add_edge("ds~orders", "c~order_id")

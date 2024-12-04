@@ -1,6 +1,6 @@
-from trilogy.core.processing.nodes.window_node import WindowNode
-from trilogy.core.models import Environment
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.models import Environment
+from trilogy.core.processing.nodes.window_node import WindowNode
 
 
 def test_window_node_copy():

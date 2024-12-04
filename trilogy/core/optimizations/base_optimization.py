@@ -1,13 +1,13 @@
-from trilogy.core.models import (
-    CTE,
-)
-from trilogy.constants import logger
 from abc import ABC
+
+from trilogy.constants import logger
+from trilogy.core.models import CTE, UnionCTE
 
 
 class OptimizationRule(ABC):
-
-    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+    def optimize(
+        self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> bool:
         raise NotImplementedError
 
     def log(self, message: str):

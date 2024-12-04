@@ -1,11 +1,17 @@
 from typing import List
 
-from trilogy.core.models import Concept, SourceType
-from trilogy.core.processing.nodes.base_node import QueryDatasource, StrategyNode
+from trilogy.core.models import (
+    Concept,
+    QueryDatasource,
+    SourceType,
+)
+from trilogy.core.processing.nodes.base_node import StrategyNode
 
 
-class WindowNode(StrategyNode):
-    source_type = SourceType.WINDOW
+class UnionNode(StrategyNode):
+    """Union nodes represent combining two keyspaces"""
+
+    source_type = SourceType.UNION
 
     def __init__(
         self,
@@ -28,11 +34,12 @@ class WindowNode(StrategyNode):
         )
 
     def _resolve(self) -> QueryDatasource:
+        """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
         return base
 
-    def copy(self) -> "WindowNode":
-        return WindowNode(
+    def copy(self) -> "UnionNode":
+        return UnionNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,

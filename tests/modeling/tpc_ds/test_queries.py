@@ -1,7 +1,6 @@
-from trilogy import parse
 from pathlib import Path
 
-from trilogy import Environment, Dialects
+from trilogy import Dialects, Environment, parse
 from trilogy.hooks.query_debugger import DebuggingHook
 
 working_path = Path(__file__).parent

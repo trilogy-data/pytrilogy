@@ -1,28 +1,27 @@
 from typing import List, Optional, Tuple
 
-
 from trilogy.constants import logger
 from trilogy.core.models import (
     BaseJoin,
+    Comparison,
+    Concept,
+    Conditional,
+    Datasource,
+    Environment,
     Grain,
     JoinType,
-    QueryDatasource,
-    Datasource,
-    SourceType,
-    Concept,
-    UnnestJoin,
-    Conditional,
-    Comparison,
     Parenthetical,
-    Environment,
+    QueryDatasource,
+    SourceType,
+    UnnestJoin,
 )
-from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import (
+    NodeJoin,
     StrategyNode,
     resolve_concept_map,
-    NodeJoin,
 )
-from trilogy.core.processing.utility import get_node_joins, find_nullable_concepts
+from trilogy.core.processing.utility import find_nullable_concepts, get_node_joins
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 

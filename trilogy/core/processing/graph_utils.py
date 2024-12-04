@@ -1,18 +1,17 @@
-from typing import Dict, List
-from trilogy.core.models import Concept
 from collections import defaultdict
+from typing import Dict, List
+
+from trilogy.core.models import Concept
 from trilogy.utility import unique
 
 
 def extract_required_subgraphs(
     assocs: defaultdict[str, list], path: List[str]
 ) -> defaultdict[str, list]:
-
     ds = path[0]
     current: list[str] = []
     for idx, val in enumerate(path):
         if val.startswith("ds~"):
-
             if current:
                 assocs[ds] += current
                 current = [path[idx - 1]] if idx > 0 else []

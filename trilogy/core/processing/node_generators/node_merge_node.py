@@ -1,16 +1,16 @@
 from typing import List, Optional
 
-from trilogy.core.models import Concept, Environment, Conditional, WhereClause
-from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
 import networkx as nx
-from trilogy.core.graph_models import concept_to_node
-from trilogy.constants import logger
-from trilogy.utility import unique
-from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
-from trilogy.core.processing.utility import padding
 from networkx.algorithms import approximation as ax
-from trilogy.core.enums import PurposeLineage
 
+from trilogy.constants import logger
+from trilogy.core.enums import PurposeLineage
+from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
+from trilogy.core.graph_models import concept_to_node
+from trilogy.core.models import Concept, Conditional, Environment, WhereClause
+from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
+from trilogy.core.processing.utility import padding
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_MERGE_NODE]"
 AMBIGUITY_CHECK_LIMIT = 20
@@ -194,7 +194,6 @@ def resolve_weak_components(
     filter_downstream: bool = True,
     accept_partial: bool = False,
 ) -> list[list[Concept]] | None:
-
     break_flag = False
     found = []
     search_graph = environment_graph.copy()
@@ -355,7 +354,6 @@ def gen_merge_node(
     conditions: Conditional | None = None,
     search_conditions: WhereClause | None = None,
 ) -> Optional[MergeNode]:
-
     if search_conditions:
         all_concepts = unique(all_concepts + search_conditions.row_arguments, "address")
     for filter_downstream in [True, False]:

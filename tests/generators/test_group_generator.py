@@ -1,12 +1,11 @@
-from trilogy.core.processing.node_generators import gen_group_node
-from trilogy.core.processing.nodes import GroupNode
+from trilogy.core.enums import FunctionType, Purpose, PurposeLineage
+from trilogy.core.models import AggregateWrapper, DataType, Environment, Function
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.node_generators import gen_group_node
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.processing.nodes import MergeNode
-from trilogy.core.models import Environment, AggregateWrapper, Function, DataType
-from trilogy.core.enums import PurposeLineage, FunctionType, Purpose
+from trilogy.core.processing.nodes import GroupNode, MergeNode
 from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 

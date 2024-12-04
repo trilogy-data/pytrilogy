@@ -1,3 +1,20 @@
+from trilogy import parse
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    Purpose,
+)
+from trilogy.core.models import (
+    CTE,
+    Comparison,
+    Conditional,
+    DataType,
+    Environment,
+    Function,
+    Grain,
+    QueryDatasource,
+)
 from trilogy.core.optimization import (
     PredicatePushdown,
     PredicatePushdownRemove,
@@ -6,25 +23,6 @@ from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
 )
 from trilogy.core.processing.utility import decompose_condition
-from trilogy.core.models import (
-    CTE,
-    QueryDatasource,
-    Conditional,
-    Environment,
-    Grain,
-    Comparison,
-    Function,
-    DataType,
-)
-
-from trilogy import parse
-
-from trilogy.core.enums import (
-    BooleanOperator,
-    ComparisonOperator,
-    FunctionType,
-    Purpose,
-)
 
 
 def test_is_child_function():
@@ -294,7 +292,6 @@ def test_invalid_aggregate_pushdown(
 
 
 def test_decomposition_pushdown(test_environment: Environment, test_environment_graph):
-
     category_ds = test_environment.datasources["category"]
     products = test_environment.datasources["products"]
     product_id = test_environment.concepts["product_id"]

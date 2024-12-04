@@ -1,55 +1,52 @@
+from collections import defaultdict
 from functools import singledispatchmethod
 
 from jinja2 import Template
 
-from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants, VIRTUAL_CONCEPT_PREFIX
-from trilogy.core.enums import Purpose, ConceptSource, DatePart, FunctionType
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
+from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Modifier, Purpose
 from trilogy.core.models import (
-    DataType,
     Address,
-    Query,
-    Concept,
-    ConceptTransform,
-    Function,
-    Grain,
-    OrderItem,
-    SelectStatement,
-    SelectItem,
-    WhereClause,
-    Conditional,
-    SubselectComparison,
-    Comparison,
-    Environment,
-    ConceptDeclarationStatement,
-    ConceptDerivation,
-    Datasource,
-    WindowItem,
-    FilterItem,
-    ColumnAssignment,
-    RawColumnExpr,
-    CaseElse,
-    CaseWhen,
-    ImportStatement,
-    Parenthetical,
     AggregateWrapper,
-    PersistStatement,
-    ListWrapper,
-    ListType,
-    TupleWrapper,
-    RowsetDerivationStatement,
-    MultiSelectStatement,
-    OrderBy,
     AlignClause,
     AlignItem,
-    RawSQLStatement,
-    NumericType,
-    MergeStatementV2,
+    CaseElse,
+    CaseWhen,
+    ColumnAssignment,
+    Comparison,
+    Concept,
+    ConceptDeclarationStatement,
+    ConceptDerivation,
+    ConceptTransform,
+    Conditional,
     CopyStatement,
+    Datasource,
+    DataType,
+    Environment,
+    FilterItem,
+    Function,
+    Grain,
+    ImportStatement,
+    ListType,
+    ListWrapper,
+    MergeStatementV2,
+    MultiSelectStatement,
+    NumericType,
+    OrderBy,
+    OrderItem,
+    Parenthetical,
+    PersistStatement,
+    Query,
+    RawColumnExpr,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
+    SubselectComparison,
+    TupleWrapper,
+    WhereClause,
+    WindowItem,
 )
-from trilogy.core.enums import Modifier
-
-from collections import defaultdict
-
 
 QUERY_TEMPLATE = Template(
     """{% if where %}WHERE

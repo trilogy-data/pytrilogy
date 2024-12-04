@@ -1,23 +1,22 @@
-from trilogy.core.enums import Purpose, ComparisonOperator
-from trilogy.core.models import (
-    DataType,
-    ProcessedQuery,
-    ShowStatement,
-    SelectStatement,
-    Environment,
-    Comparison,
-    TupleWrapper,
-    Datasource,
-)
+from trilogy import Dialects
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
+from trilogy.core.models import (
+    Comparison,
+    Datasource,
+    DataType,
+    Environment,
+    ProcessedQuery,
+    SelectStatement,
+    ShowStatement,
+    TupleWrapper,
+)
+from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
     arg_to_datatype,
     parse_text,
 )
-from trilogy.constants import MagicConstants
-from trilogy.dialect.base import BaseDialect
-from trilogy.core.enums import BooleanOperator
-from trilogy import Dialects
 
 
 def test_in():
@@ -206,7 +205,6 @@ select
 
 
 def test_output_purpose():
-
     env, parsed = parse_text(
         """key id int;
 property id.name string;
@@ -274,7 +272,6 @@ def test_the_comments():
 
 
 def test_purpose_nesting():
-
     env, parsed = parse_text(
         """key year int;
 """
@@ -434,7 +431,6 @@ const labels <- '';
 
 
 def test_struct_attr_access():
-
     text = """
 const labels <- struct(a=1, b=2, c=3);
 
@@ -459,7 +455,6 @@ select
 
 
 def test_datasource_colon():
-
     text = """
 key x int;
 key y int;
@@ -502,7 +497,6 @@ select x;
 
 
 def test_datasource_where_equivalent():
-
     text = """
 key x int;
 key y int;
@@ -524,7 +518,6 @@ address `abc:def`
 
 
 def test_datasource_quoted():
-
     text = """
 key x int;
 key y int;
@@ -546,7 +539,6 @@ address `abc:def`
 
 
 def test_datasource_from_persist():
-
     text = """
 key x int;
 key y int;
@@ -575,7 +567,6 @@ where y>10;
 
 
 def test_filter_concise():
-
     text = """
 key x int;
 key y int;

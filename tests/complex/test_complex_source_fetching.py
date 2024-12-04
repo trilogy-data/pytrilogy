@@ -2,21 +2,22 @@
 
 
 # from trilogy.compiler import compile
+import re
+
+from trilogy.core.enums import Purpose
 from trilogy.core.models import (
-    SelectStatement,
-    Grain,
     Datasource,
-    QueryDatasource,
     Environment,
+    Grain,
+    QueryDatasource,
+    SelectStatement,
 )
 from trilogy.core.processing.concept_strategies_v3 import (
-    search_concepts,
     generate_graph,
+    search_concepts,
 )
-from trilogy.core.query_processor import process_query, datasource_to_ctes
+from trilogy.core.query_processor import datasource_to_cte, process_query
 from trilogy.dialect.sql_server import SqlServerDialect
-from trilogy.core.enums import Purpose
-import re
 
 
 def test_aggregate_of_property_function(stackoverflow_environment: Environment) -> None:
@@ -115,9 +116,9 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     assert posts == root
     assert post_id in root.concepts
 
-    ctes = datasource_to_ctes(datasource, {})
+    ctes = datasource_to_cte(datasource, {})
 
-    final_cte = ctes[0]
+    final_cte = ctes
     assert len(final_cte.parent_ctes) > 0
 
     # now validate

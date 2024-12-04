@@ -1,10 +1,9 @@
 from typing import List
 
-
-from trilogy.core.models import Concept, Function, WhereClause
-from trilogy.core.processing.nodes import UnnestNode, History, StrategyNode
-from trilogy.core.processing.utility import padding
 from trilogy.constants import logger
+from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 

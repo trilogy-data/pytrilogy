@@ -1,13 +1,13 @@
-from trilogy.core.models import Concept, Environment, Function, WhereClause
-from trilogy.core.processing.nodes import (
-    GroupNode,
-    StrategyNode,
-    MergeNode,
-    History,
-)
 from typing import List
 
 from trilogy.constants import logger
+from trilogy.core.models import Concept, Environment, Function, WhereClause
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    History,
+    MergeNode,
+    StrategyNode,
+)
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_GROUP_TO_NODE]"

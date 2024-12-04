@@ -1,9 +1,10 @@
+from datetime import datetime
 from pathlib import Path
 
-from trilogy import Executor, Environment
 import pytest
-from datetime import datetime
 import tomli_w
+
+from trilogy import Environment, Executor
 
 working_path = Path(__file__).parent
 
@@ -154,9 +155,11 @@ def test_thirty(engine):
 
 
 def run_adhoc(number: int, text: str | None = None):
-    from trilogy import Environment, Dialects
-    from trilogy.hooks.query_debugger import DebuggingHook
     from logging import INFO
+
+    from trilogy import Dialects, Environment
+    from trilogy.hooks.query_debugger import DebuggingHook
+
 
     env = Environment(working_path=Path(__file__).parent)
     engine: Executor = Dialects.DUCK_DB.default_executor(

@@ -1,10 +1,10 @@
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models import (
     NumericType,
 )
 from trilogy.parsing.parse_engine import (
     parse_text,
 )
-from trilogy.core.exceptions import InvalidSyntaxException
 
 
 def test_numeric():

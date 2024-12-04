@@ -2,28 +2,27 @@ from pytest import fixture
 
 from trilogy import Environment
 from trilogy.core.enums import (
-    Purpose,
-    FunctionType,
     ComparisonOperator,
-    WindowType,
+    FunctionType,
     Modifier,
+    Purpose,
+    WindowType,
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
-from trilogy.core.models import AggregateWrapper
-
 from trilogy.core.models import (
-    Concept,
-    DataType,
-    Datasource,
+    AggregateWrapper,
     ColumnAssignment,
+    Comparison,
+    Concept,
+    Datasource,
+    DataType,
+    FilterItem,
     Function,
     Grain,
-    WindowItem,
-    FilterItem,
     OrderItem,
     WhereClause,
-    Comparison,
+    WindowItem,
 )
 
 

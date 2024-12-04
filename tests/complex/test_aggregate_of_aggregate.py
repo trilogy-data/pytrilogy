@@ -1,9 +1,10 @@
+import re
+
 from trilogy.core.models import SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse
-import re
 
 
 def test_select():

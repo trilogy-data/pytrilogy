@@ -1,37 +1,35 @@
 from cProfile import Profile
 from pstats import SortKey, Stats
-from trilogy.core.models import SelectStatement
-from trilogy import parse
+
+from trilogy import Environment, parse
+from trilogy.core.enums import (
+    ComparisonOperator,
+    FunctionType,
+    Purpose,
+    WindowType,
+)
+from trilogy.core.functions import Count, CountDistinct, Max, Min
 
 # from trilogy.compiler import compile
-
-from trilogy.core.models import DataType
+from trilogy.core.models import (
+    ColumnAssignment,
+    Comparison,
+    Concept,
+    Datasource,
+    DataType,
+    FilterItem,
+    Function,
+    Grain,
+    OrderItem,
+    SelectStatement,
+    WhereClause,
+    WindowItem,
+)
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.sql_server import SqlServerDialect
-
-from trilogy import Environment
-from trilogy.core.enums import (
-    Purpose,
-    FunctionType,
-    ComparisonOperator,
-    WindowType,
-)
-from trilogy.core.functions import Count, CountDistinct, Max, Min
-from trilogy.core.models import (
-    Concept,
-    Datasource,
-    ColumnAssignment,
-    Function,
-    Grain,
-    WindowItem,
-    FilterItem,
-    OrderItem,
-    WhereClause,
-    Comparison,
-)
 
 
 def gen_environment():

@@ -1,25 +1,27 @@
-import pandas as pd
-from trilogy import Executor, Dialects
-from trilogy.core.models import Environment
-from sqlalchemy import create_engine
-from trilogy.core.models import (
-    Datasource,
-    Concept,
-    ColumnAssignment,
-    Grain,
-    DataType,
-    Function,
-    Metadata,
-)
-from trilogy.core.enums import Purpose, FunctionType, Modifier
+from logging import INFO
 from os.path import dirname
 from pathlib import PurePath
-from trilogy.hooks.query_debugger import DebuggingHook
-from logging import INFO
 from typing import Optional
-from trilogy.core.functions import function_args_to_output_purpose, arg_to_datatype
-from trilogy.parsing.common import function_to_concept
+
+import pandas as pd
 from pytest import fixture
+from sqlalchemy import create_engine
+
+from trilogy import Dialects, Executor
+from trilogy.core.enums import FunctionType, Modifier, Purpose
+from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
+from trilogy.core.models import (
+    ColumnAssignment,
+    Concept,
+    Datasource,
+    DataType,
+    Environment,
+    Function,
+    Grain,
+    Metadata,
+)
+from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.parsing.common import function_to_concept
 
 
 def create_passenger_dimension(exec: Executor, name: str):
@@ -70,7 +72,6 @@ def create_fact(
 
 
 def setup_normalized_engine() -> Executor:
-
     engine = create_engine(r"duckdb:///:memory:", future=True)
     csv = PurePath(dirname(__file__)) / "train.csv"
     output = Executor(

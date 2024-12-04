@@ -1,41 +1,41 @@
 from collections import defaultdict
+from enum import Enum
 from typing import List, Optional, Protocol, Union
 
 from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage, Granularity, FunctionType
+from trilogy.core.enums import FunctionType, Granularity, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models import (
     Concept,
     Environment,
     Function,
-    WhereClause,
     RowsetItem,
+    WhereClause,
+)
+from trilogy.core.processing.node_generators import (
+    gen_basic_node,
+    gen_filter_node,
+    gen_group_node,
+    gen_group_to_node,
+    gen_merge_node,
+    gen_multiselect_node,
+    gen_rowset_node,
+    gen_union_node,
+    gen_unnest_node,
+    gen_window_node,
+)
+from trilogy.core.processing.nodes import (
+    ConstantNode,
+    GroupNode,
+    History,
+    MergeNode,
+    StrategyNode,
 )
 from trilogy.core.processing.utility import (
     get_disconnected_components,
 )
 from trilogy.utility import unique
-from trilogy.core.processing.nodes import (
-    ConstantNode,
-    MergeNode,
-    GroupNode,
-    StrategyNode,
-    History,
-)
-from trilogy.core.processing.node_generators import (
-    gen_filter_node,
-    gen_window_node,
-    gen_group_node,
-    gen_basic_node,
-    gen_unnest_node,
-    gen_merge_node,
-    gen_group_to_node,
-    gen_rowset_node,
-    gen_multiselect_node,
-)
-
-from enum import Enum
 
 
 class ValidationResult(Enum):
@@ -107,6 +107,9 @@ def get_priority_concept(
             +
             # then rowsets to remove them from scope, as they cannot get partials
             [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
+            +
+            # then rowsets to remove them from scope, as they cannot get partials
+            [c for c in remaining_concept if c.derivation == PurposeLineage.UNION]
             # we should be home-free here
             +
             # then aggregates to remove them from scope, as they cannot get partials
@@ -241,6 +244,20 @@ def generate_node(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating unnest node with optional {[x.address for x in local_optional]} and condition {conditions}"
         )
         return gen_unnest_node(
+            concept,
+            local_optional,
+            environment,
+            g,
+            depth + 1,
+            source_concepts,
+            history,
+            conditions=conditions,
+        )
+    elif concept.derivation == PurposeLineage.UNION:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating union node with optional {[x.address for x in local_optional]} and condition {conditions}"
+        )
+        return gen_union_node(
             concept,
             local_optional,
             environment,
@@ -495,11 +512,9 @@ def validate_concept(
     seen: set[str],
     environment: Environment,
 ):
-
     found_map[str(node)].add(concept)
     seen.add(concept.address)
     if concept not in node.partial_concepts:
-
         found_addresses.add(concept.address)
         non_partial_addresses.add(concept.address)
         # remove it from our partial tracking
@@ -658,7 +673,6 @@ def search_concepts(
     history: History | None = None,
     conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
-
     history = history or History()
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions
@@ -698,7 +712,6 @@ def _search_concepts(
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
-
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
 

@@ -1,7 +1,7 @@
-from trilogy.dialect.common import render_join_concept
-from trilogy.dialect.base import BaseDialect
-from trilogy.core.models import CTE, Grain, QueryDatasource
 from trilogy import parse
+from trilogy.core.models import CTE, Grain, QueryDatasource
+from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.common import render_join_concept
 
 
 def test_render_join_concept():

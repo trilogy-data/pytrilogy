@@ -1,23 +1,21 @@
-from trilogy import Executor, Dialects
-
 # from trilogy.core.models import Environment
 from sqlalchemy import create_engine
+
+from trilogy import Dialects, Executor
+from trilogy.core.enums import Purpose
 from trilogy.core.models import (
-    DataType,
-    Datasource,
-    Concept,
     ColumnAssignment,
+    Concept,
+    Datasource,
+    DataType,
     Environment,
 )
-from trilogy.core.enums import Purpose
-
-
-from trilogy.core.query_processor import generate_graph
-from trilogy.core.processing.nodes import MergeNode
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import (
     gen_filter_node,
 )
+from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.query_processor import generate_graph
 from trilogy.hooks.query_debugger import DebuggingHook
 
 

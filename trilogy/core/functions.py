@@ -1,20 +1,21 @@
+from typing import Optional
+
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import DatePart, FunctionType, Granularity, Purpose
+from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models import (
-    Function,
-    Concept,
     AggregateWrapper,
-    Parenthetical,
-    arg_to_datatype,
-    WindowItem,
+    Concept,
     DataType,
+    Function,
     ListType,
-    StructType,
     MapType,
     NumericType,
+    Parenthetical,
+    StructType,
+    WindowItem,
+    arg_to_datatype,
 )
-from trilogy.core.enums import FunctionType, Purpose, Granularity, DatePart
-from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.constants import MagicConstants
-from typing import Optional
 
 
 def create_function_derived_concept(

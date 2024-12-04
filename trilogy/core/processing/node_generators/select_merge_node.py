@@ -1,28 +1,29 @@
 from typing import List, Optional
 
+import networkx as nx
+
+from trilogy.constants import logger
+from trilogy.core.enums import PurposeLineage
+from trilogy.core.graph_models import concept_to_node
 from trilogy.core.models import (
     Concept,
+    Datasource,
     Environment,
     Grain,
-    Datasource,
-    WhereClause,
     LooseConceptList,
+    WhereClause,
 )
 from trilogy.core.processing.nodes import (
-    MergeNode,
-    StrategyNode,
-    GroupNode,
     ConstantNode,
+    GroupNode,
+    MergeNode,
     SelectNode,
+    StrategyNode,
 )
-import networkx as nx
-from trilogy.core.graph_models import concept_to_node
-from trilogy.constants import logger
-from trilogy.core.processing.utility import padding
-from trilogy.core.enums import PurposeLineage
 from trilogy.core.processing.nodes.base_node import (
     concept_list_to_grain,
 )
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 

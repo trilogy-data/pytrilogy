@@ -2,25 +2,24 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.models import (
-    Grain,
-    QueryDatasource,
-    Datasource,
-    SourceType,
-    Concept,
-    Environment,
-    LooseConceptList,
-    Conditional,
     Comparison,
+    Concept,
+    Conditional,
+    Datasource,
+    Environment,
+    Grain,
+    LooseConceptList,
     Parenthetical,
+    QueryDatasource,
+    SourceType,
 )
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
-    resolve_concept_map,
     concept_list_to_grain,
+    resolve_concept_map,
 )
+from trilogy.core.processing.utility import find_nullable_concepts, is_scalar_condition
 from trilogy.utility import unique
-from trilogy.core.processing.utility import is_scalar_condition
-from trilogy.core.processing.utility import find_nullable_concepts
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
@@ -96,7 +95,6 @@ class GroupNode(StrategyNode):
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
-
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different grain than parents; forcing group"
                 f" upstream grains {[str(source.grain) for source in parent_sources]}"

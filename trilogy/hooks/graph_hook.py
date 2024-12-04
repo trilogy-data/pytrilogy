@@ -1,5 +1,6 @@
-from trilogy.hooks.base_hook import BaseHook
 import networkx as nx
+
+from trilogy.hooks.base_hook import BaseHook
 
 
 class GraphHook(BaseHook):

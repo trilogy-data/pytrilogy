@@ -1,20 +1,18 @@
 from typing import List
 
-
+from trilogy.constants import logger
 from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
-from trilogy.core.processing.nodes import (
-    FilterNode,
-    MergeNode,
-    History,
-    StrategyNode,
-    SelectNode,
-)
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
-from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, unique
-from trilogy.core.processing.utility import is_scalar_condition
+from trilogy.core.processing.nodes import (
+    FilterNode,
+    History,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
+from trilogy.core.processing.utility import is_scalar_condition, padding, unique
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 

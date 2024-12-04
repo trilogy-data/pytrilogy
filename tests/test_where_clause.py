@@ -1,9 +1,9 @@
 # from trilogy.compiler import compile
-from trilogy.core.models import SelectStatement, Grain, Parenthetical
+from trilogy.core.models import Grain, Parenthetical, SelectStatement
+from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
 from trilogy.parser import parse
-from trilogy.core.processing.utility import is_scalar_condition
 
 
 def test_select_where(test_environment):

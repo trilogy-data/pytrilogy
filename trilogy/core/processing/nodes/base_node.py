@@ -1,24 +1,29 @@
-from typing import List, Optional, Sequence
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import List, Optional, Sequence
 
+from trilogy.core.enums import (
+    BooleanOperator,
+    Granularity,
+    JoinType,
+    Purpose,
+    PurposeLineage,
+)
 from trilogy.core.models import (
+    Comparison,
+    Concept,
+    ConceptPair,
+    Conditional,
+    Datasource,
+    Environment,
     Grain,
+    LooseConceptList,
+    Parenthetical,
     QueryDatasource,
     SourceType,
-    Concept,
-    Environment,
-    Conditional,
     UnnestJoin,
-    Datasource,
-    Comparison,
-    Parenthetical,
-    LooseConceptList,
-    ConceptPair,
 )
-from trilogy.core.enums import Purpose, JoinType, PurposeLineage, Granularity
 from trilogy.utility import unique
-from dataclasses import dataclass
-from trilogy.core.enums import BooleanOperator
 
 
 def concept_list_to_grain(
@@ -67,7 +72,6 @@ def resolve_concept_map(
             ]:
                 continue
             if concept.address in full_addresses:
-
                 concept_map[concept.address].add(input)
             elif concept.address not in concept_map:
                 # equi_targets = [x for x in targets if concept.address in x.pseudonyms or x.address in concept.pseudonyms]

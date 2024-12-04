@@ -1,25 +1,23 @@
 from typing import List, Optional
 
-
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.models import (
+    Comparison,
+    Concept,
+    Conditional,
+    Datasource,
+    Environment,
     Function,
     Grain,
+    Parenthetical,
     QueryDatasource,
     SourceType,
-    Concept,
-    Environment,
     UnnestJoin,
-    Datasource,
-    Conditional,
-    Comparison,
-    Parenthetical,
 )
-from trilogy.utility import unique
 from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
-
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
 
@@ -98,6 +96,7 @@ class SelectNode(StrategyNode):
                 PurposeLineage.BASIC,
                 PurposeLineage.ROWSET,
                 PurposeLineage.BASIC,
+                PurposeLineage.UNION,
             ):
                 source_map[x.address] = set()
 

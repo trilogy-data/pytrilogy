@@ -1,18 +1,19 @@
 # from trilogy.compiler import compile
+from logging import INFO
+
 from pytest import raises
 
+from trilogy.constants import logger
+from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models import DataType, SelectStatement, ListType, Environment
+from trilogy.core.models import DataType, Environment, ListType, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
-from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
+from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
-from logging import INFO
-from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage, Purpose
 
 logger.setLevel(INFO)
 

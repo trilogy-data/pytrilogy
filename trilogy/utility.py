@@ -1,5 +1,5 @@
 import hashlib
-from typing import List, Any, Union, Callable
+from typing import Any, Callable, List, Union
 
 from trilogy.constants import DEFAULT_NAMESPACE
 

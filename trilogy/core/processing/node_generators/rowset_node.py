@@ -1,19 +1,19 @@
+from typing import List
+
+from trilogy.constants import logger
+from trilogy.core.enums import PurposeLineage
 from trilogy.core.models import (
     Concept,
     Environment,
-    SelectStatement,
+    MultiSelectStatement,
     RowsetDerivationStatement,
     RowsetItem,
-    MultiSelectStatement,
+    SelectStatement,
     WhereClause,
 )
-from trilogy.core.processing.nodes import MergeNode, History, StrategyNode
-from typing import List
-
-from trilogy.core.enums import PurposeLineage
-from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, concept_to_relevant_joins
+from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.nodes.base_node import concept_list_to_grain
+from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 

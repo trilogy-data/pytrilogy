@@ -1,7 +1,8 @@
-from trilogy.parser import parse
+from pathlib import Path
+
 from trilogy import Dialects
 from trilogy.core.models import ProcessedCopyStatement
-from pathlib import Path
+from trilogy.parser import parse
 
 # from trilogy.compiler import compile
 

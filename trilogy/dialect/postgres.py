@@ -1,8 +1,8 @@
-from typing import Mapping, Callable, Any
+from typing import Any, Callable, Mapping
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, WindowType, DatePart
+from trilogy.core.enums import DatePart, FunctionType, WindowType
 from trilogy.dialect.base import BaseDialect
 
 

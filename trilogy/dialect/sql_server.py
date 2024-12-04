@@ -1,17 +1,16 @@
-from typing import Mapping, Callable, Any
+from typing import Any, Callable, Mapping
 
 from jinja2 import Template
-from trilogy.utility import string_to_hash
-
 
 from trilogy.core.enums import FunctionType, WindowType
 from trilogy.core.models import (
     ProcessedQuery,
     ProcessedQueryPersist,
-    ProcessedShowStatement,
     ProcessedRawSQLStatement,
+    ProcessedShowStatement,
 )
 from trilogy.dialect.base import BaseDialect
+from trilogy.utility import string_to_hash
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 

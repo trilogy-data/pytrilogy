@@ -1,23 +1,22 @@
+from typing import List
+
+from trilogy.constants import logger
 from trilogy.core.models import (
+    AggregateWrapper,
     Concept,
     Environment,
+    Function,
+    Grain,
     LooseConceptList,
     WhereClause,
-    Function,
-    AggregateWrapper,
-    Grain,
 )
-from trilogy.utility import unique
-from trilogy.core.processing.nodes import GroupNode, StrategyNode, History
-from typing import List
-from trilogy.core.processing.node_generators.common import (
-    resolve_function_parent_concepts,
-)
-from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, create_log_lambda
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
+    resolve_function_parent_concepts,
 )
+from trilogy.core.processing.nodes import GroupNode, History, StrategyNode
+from trilogy.core.processing.utility import create_log_lambda, padding
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 

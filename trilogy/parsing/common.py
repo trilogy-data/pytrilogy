@@ -1,32 +1,28 @@
-from trilogy.core.models import (
-    AggregateWrapper,
-    Concept,
-    Function,
-    Grain,
-    Purpose,
-    Metadata,
-    FilterItem,
-    ListWrapper,
-    MapWrapper,
-    WindowItem,
-    Meta,
-    Parenthetical,
-    FunctionClass,
-    Environment,
-    DataType,
-)
 from typing import List, Tuple
-from trilogy.core.functions import (
-    function_args_to_output_purpose,
-    FunctionType,
-    arg_to_datatype,
-)
-from trilogy.utility import unique, string_to_hash
-from trilogy.core.enums import PurposeLineage
+
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
-from trilogy.core.enums import Modifier, WindowType
+from trilogy.core.enums import FunctionType, Modifier, PurposeLineage, WindowType
+from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
+from trilogy.core.models import (
+    AggregateWrapper,
+    Concept,
+    DataType,
+    Environment,
+    FilterItem,
+    Function,
+    FunctionClass,
+    Grain,
+    ListWrapper,
+    MapWrapper,
+    Meta,
+    Metadata,
+    Parenthetical,
+    Purpose,
+    WindowItem,
+)
+from trilogy.utility import string_to_hash, unique
 
 
 def get_upstream_modifiers(keys: List[Concept]) -> list[Modifier]:
@@ -304,7 +300,6 @@ def arbitrary_to_concept(
     metadata: Metadata | None = None,
     purpose: Purpose | None = None,
 ) -> Concept:
-
     if isinstance(parent, AggregateWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"

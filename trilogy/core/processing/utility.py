@@ -1,51 +1,47 @@
-from typing import List, Tuple, Dict, Set, Any
-import networkx as nx
-from trilogy.core.models import (
-    Datasource,
-    JoinType,
-    BaseJoin,
-    Concept,
-    QueryDatasource,
-    LooseConceptList,
-    Environment,
-    Conditional,
-    SubselectComparison,
-    Comparison,
-    Parenthetical,
-    Function,
-    FilterItem,
-    MagicConstants,
-    WindowItem,
-    AggregateWrapper,
-    DataType,
-    ConceptPair,
-    UnnestJoin,
-    CaseWhen,
-    CaseElse,
-    MapWrapper,
-    ListWrapper,
-    MapType,
-    DatePart,
-    NumericType,
-    ListType,
-    TupleWrapper,
-    CTE,
-    MultiSelectStatement,
-    SelectStatement,
-    ProcessedQuery,
-)
-
-from trilogy.core.enums import Purpose, Granularity, BooleanOperator
-from enum import Enum
-from trilogy.utility import unique
-
-from logging import Logger
-
-
-from trilogy.core.enums import FunctionClass
-
-
 from dataclasses import dataclass
+from enum import Enum
+from logging import Logger
+from typing import Any, Dict, List, Set, Tuple
+
+import networkx as nx
+
+from trilogy.core.enums import BooleanOperator, FunctionClass, Granularity, Purpose
+from trilogy.core.models import (
+    CTE,
+    AggregateWrapper,
+    BaseJoin,
+    CaseElse,
+    CaseWhen,
+    Comparison,
+    Concept,
+    ConceptPair,
+    Conditional,
+    Datasource,
+    DataType,
+    DatePart,
+    Environment,
+    FilterItem,
+    Function,
+    JoinType,
+    ListType,
+    ListWrapper,
+    LooseConceptList,
+    MagicConstants,
+    MapType,
+    MapWrapper,
+    MultiSelectStatement,
+    NumericType,
+    Parenthetical,
+    ProcessedQuery,
+    QueryDatasource,
+    SelectStatement,
+    SubselectComparison,
+    TupleWrapper,
+    UnionCTE,
+    UnnestJoin,
+    WindowItem,
+)
+from trilogy.utility import unique
 
 
 class NodeType(Enum):
@@ -314,7 +310,6 @@ def get_node_joins(
     environment: Environment,
     # concepts:List[Concept],
 ):
-
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     ds_node_map: dict[str, QueryDatasource | Datasource] = {}
@@ -536,7 +531,9 @@ def find_nullable_concepts(
     return list(sorted(final_nullable))
 
 
-def sort_select_output_processed(cte: CTE, query: ProcessedQuery) -> CTE:
+def sort_select_output_processed(
+    cte: CTE | UnionCTE, query: ProcessedQuery
+) -> CTE | UnionCTE:
     hidden_addresses = [c.address for c in query.hidden_columns]
     output_addresses = [
         c.address for c in query.output_columns if c.address not in hidden_addresses
@@ -552,8 +549,8 @@ def sort_select_output_processed(cte: CTE, query: ProcessedQuery) -> CTE:
 
 
 def sort_select_output(
-    cte: CTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
-) -> CTE:
+    cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
+) -> CTE | UnionCTE:
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)
     hidden_addresses = [c.address for c in query.hidden_components]

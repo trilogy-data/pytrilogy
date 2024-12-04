@@ -1,6 +1,8 @@
-from trilogy import Dialects, Environment
-import pytest
 import sys
+
+import pytest
+
+from trilogy import Dialects, Environment
 
 
 # bigquery is not supported on 13 yet
@@ -29,7 +31,6 @@ def test_date_diff_rendering():
     sys.version_info >= (3, 13), reason="BigQuery not supported on 3.13"
 )
 def test_readme():
-
     environment = Environment()
     from trilogy.hooks.query_debugger import DebuggingHook
 

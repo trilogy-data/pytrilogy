@@ -1,16 +1,15 @@
-from os.path import dirname, abspath
+from os.path import abspath, dirname
 from typing import Generator
 
 from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
-from trilogy import Executor, Dialects, parse, Environment
-from trilogy.engine import ExecutionEngine, EngineConnection, EngineResult
-from trilogy.dialect.config import SnowflakeConfig, PrestoConfig, TrinoConfig
-from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy import Dialects, Environment, Executor, parse
+from trilogy.dialect.config import PrestoConfig, SnowflakeConfig, TrinoConfig
 from trilogy.dialect.enums import DialectConfig
-
+from trilogy.engine import EngineConnection, EngineResult, ExecutionEngine
+from trilogy.hooks.query_debugger import DebuggingHook
 
 ENV_PATH = abspath(__file__)
 

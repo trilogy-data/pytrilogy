@@ -1,18 +1,19 @@
-from trilogy import parse, Dialects
-from trilogy.executor import Executor
+from logging import INFO
 from pathlib import Path
+
+from trilogy import Dialects, parse
+from trilogy.core.enums import Granularity, Purpose
+from trilogy.core.functions import CurrentDatetime
 from trilogy.core.models import (
-    ProcessedQuery,
-    Environment,
     Concept,
     DataType,
+    Environment,
     Function,
+    ProcessedQuery,
     SelectItem,
 )
-from trilogy.core.enums import Purpose, Granularity
-from trilogy.core.functions import CurrentDatetime
+from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
-from logging import INFO
 
 ENVIRONMENT_CONCEPTS = [
     Concept(

@@ -1,13 +1,14 @@
+from typing import Callable
+
+from trilogy.core.enums import Modifier, UnnestMode
 from trilogy.core.models import (
-    Join,
-    InstantiatedUnnestJoin,
     CTE,
     Concept,
     Function,
+    InstantiatedUnnestJoin,
+    Join,
     RawColumnExpr,
 )
-from trilogy.core.enums import UnnestMode, Modifier
-from typing import Callable
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:

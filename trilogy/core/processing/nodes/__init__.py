@@ -1,12 +1,15 @@
+from pydantic import BaseModel, ConfigDict, Field
+
+from trilogy.core.models import Concept, Environment, WhereClause
+
+from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode
 from .group_node import GroupNode
 from .merge_node import MergeNode
-from .select_node_v2 import SelectNode, ConstantNode
-from .window_node import WindowNode
-from .base_node import StrategyNode, NodeJoin
+from .select_node_v2 import ConstantNode, SelectNode
+from .union_node import UnionNode
 from .unnest_node import UnnestNode
-from pydantic import BaseModel, Field, ConfigDict
-from trilogy.core.models import Concept, Environment, WhereClause
+from .window_node import WindowNode
 
 
 class History(BaseModel):
@@ -160,5 +163,6 @@ __all__ = [
     "NodeJoin",
     "ConstantNode",
     "UnnestNode",
+    "UnionNode",
     "History",
 ]

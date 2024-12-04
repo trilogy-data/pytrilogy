@@ -1,6 +1,6 @@
-from trilogy.core.processing.nodes.base_node import StrategyNode, get_all_parent_partial
-from trilogy.core.models import Environment
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.models import Environment
+from trilogy.core.processing.nodes.base_node import StrategyNode, get_all_parent_partial
 
 
 def test_base_node_copy():

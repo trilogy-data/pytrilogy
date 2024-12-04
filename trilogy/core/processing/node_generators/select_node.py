@@ -1,19 +1,19 @@
+from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
+from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models import (
     Concept,
     Environment,
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.processing.nodes import (
-    StrategyNode,
-)
-from trilogy.core.exceptions import NoDatasourceException
-from trilogy.constants import logger
-from trilogy.core.processing.utility import padding
 from trilogy.core.processing.node_generators.select_merge_node import (
     gen_select_merge_node,
 )
+from trilogy.core.processing.nodes import (
+    StrategyNode,
+)
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 

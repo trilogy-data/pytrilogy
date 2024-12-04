@@ -1,14 +1,13 @@
+from trilogy.core.env_processor import concept_to_node, generate_graph
 from trilogy.core.models import Environment
-from trilogy.core.processing.node_generators.node_merge_node import (
-    gen_merge_node,
-    determine_induced_minimal_nodes,
-)
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
-from trilogy.core.env_processor import generate_graph, concept_to_node
+from trilogy.core.processing.node_generators.node_merge_node import (
+    determine_induced_minimal_nodes,
+    gen_merge_node,
+)
 
 
 def test_demo_merge(normalized_engine, test_env: Environment):
-
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     concepts = set(list(normalized_engine.environment.concepts.keys()))
@@ -35,7 +34,6 @@ and passenger.last_name is not null;
 
 
 def test_demo_merge_rowset(normalized_engine, test_env: Environment):
-
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     concepts = set(list(normalized_engine.environment.concepts.keys()))
@@ -92,7 +90,6 @@ merge rich_info.last_name into ~passenger.last_name;
 
 
 def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environment):
-
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     concepts = set(list(normalized_engine.environment.concepts.keys()))
@@ -155,6 +152,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
 def test_demo_merge_rowset_e2e(normalized_engine, test_env: Environment):
     # assert test_env.concept_links[test_env.concepts["passenger.last_name"]][0] == test_env.concepts["rich_info.last_name"]
     from logging import DEBUG
+
     from trilogy.constants import logger
 
     logger.setLevel(DEBUG)

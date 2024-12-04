@@ -1,5 +1,6 @@
-from trilogy import parse, Environment
 from pathlib import Path
+
+from trilogy import Environment, parse
 
 
 def test_metadata():

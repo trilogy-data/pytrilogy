@@ -1,10 +1,9 @@
-from trilogy.core.processing.node_generators import gen_multiselect_node
-from trilogy.core.processing.concept_strategies_v3 import search_concepts
-
-from trilogy.core.models import Environment
 from trilogy import parse
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.query_processor import datasource_to_ctes
+from trilogy.core.models import Environment
+from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.node_generators import gen_multiselect_node
+from trilogy.core.query_processor import datasource_to_cte
 
 
 def test_multi_select(test_environment: Environment, test_environment_graph):
@@ -56,7 +55,7 @@ ALIGN
     resolved = gnode.resolve()
     assert len(resolved.source_map["local.one_key"]) == 2
 
-    cte = datasource_to_ctes(resolved, {})[0]
+    cte = datasource_to_cte(resolved, {})
     assert len(cte.source_map["local.one_key"]) == 2
 
 

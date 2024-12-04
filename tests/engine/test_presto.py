@@ -13,8 +13,8 @@ def test_numeric_query(presto_engine):
 
 
 def test_unnest_query(presto_engine):
-    from trilogy.hooks.query_debugger import DebuggingHook
     from trilogy.constants import CONFIG
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     presto_engine.hooks = [DebuggingHook()]
     current = CONFIG.rendering.parameters

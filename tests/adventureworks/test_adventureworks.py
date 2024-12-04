@@ -2,23 +2,23 @@
 from os.path import dirname, join
 
 import pytest
+
 from trilogy import Executor
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models import (
-    SelectStatement,
-    QueryDatasource,
-    Grain,
+    Concept,
     Environment,
+    Grain,
     ProcessedQuery,
     ProcessedQueryPersist,
-    Concept,
+    QueryDatasource,
+    SelectStatement,
 )
-
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
-from trilogy.core.query_processor import datasource_to_ctes, get_query_datasources
+from trilogy.core.processing.nodes import MergeNode, SelectNode
+from trilogy.core.query_processor import datasource_to_cte, get_query_datasources
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
-from trilogy.core.processing.nodes import MergeNode, SelectNode
 
 
 @pytest.mark.adventureworks
@@ -118,7 +118,7 @@ def test_query_datasources(environment: Environment):
         environment=environment, graph=environment_graph, statement=test
     )
 
-    cte = datasource_to_ctes(datasource, {})[0]
+    cte = datasource_to_cte(datasource, {})
 
     assert {c.address for c in cte.output_columns} == {
         "internet_sales.customer.first_name",
@@ -269,8 +269,8 @@ def test_group_to_grain(environment: Environment):
 
 @pytest.mark.adventureworks
 def test_two_properties_query(environment: Environment):
-    from trilogy.core.processing.node_generators import gen_group_node
     from trilogy.core.processing.concept_strategies_v3 import search_concepts
+    from trilogy.core.processing.node_generators import gen_group_node
 
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"

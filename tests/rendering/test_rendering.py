@@ -1,48 +1,49 @@
-from trilogy.parsing.render import render_query, render_environment, Renderer
+from pathlib import Path, PurePosixPath, PureWindowsPath
+
+from trilogy import Environment
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    IOType,
+    Modifier,
+)
 from trilogy.core.models import (
+    Address,
+    AlignClause,
+    AlignItem,
+    CaseElse,
+    CaseWhen,
+    ColumnAssignment,
+    Comparison,
+    Concept,
+    ConceptDeclarationStatement,
+    Conditional,
+    CopyStatement,
+    Datasource,
+    DataType,
+    Function,
+    Grain,
+    ImportStatement,
+    ListType,
+    ListWrapper,
+    MergeStatementV2,
+    MultiSelectStatement,
+    NumericType,
     OrderBy,
     Ordering,
     OrderItem,
-    SelectStatement,
-    WhereClause,
-    Conditional,
-    Comparison,
     PersistStatement,
-    Address,
-    SelectItem,
-    ConceptDeclarationStatement,
-    Function,
     Purpose,
-    DataType,
-    RowsetDerivationStatement,
-    CaseElse,
-    CaseWhen,
-    Concept,
-    MergeStatementV2,
-    MultiSelectStatement,
-    AlignClause,
-    AlignItem,
     RawSQLStatement,
-    NumericType,
-    Datasource,
-    ColumnAssignment,
-    Grain,
-    ListWrapper,
-    ListType,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
     TupleWrapper,
-    CopyStatement,
-    ImportStatement,
+    WhereClause,
 )
-from pathlib import Path, PureWindowsPath, PurePosixPath
-from trilogy import Environment
-from trilogy.core.enums import (
-    ComparisonOperator,
-    BooleanOperator,
-    Modifier,
-    FunctionType,
-    IOType,
-)
-from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
+from trilogy.parsing.render import Renderer, render_environment, render_query
 
 
 def test_basic_query(test_environment):
@@ -294,7 +295,6 @@ ORDER BY
 
 
 def test_render_case(test_environment: Environment):
-
     case_else = CaseElse(
         expr=test_environment.concepts["order_id"],
     )

@@ -1,7 +1,8 @@
-from trilogy.parsing.parse_engine import ParseToObjects, PARSER, unpack_visit_error
+from pytest import raises
+
 from trilogy import Environment
 from trilogy.core.exceptions import UndefinedConceptException
-from pytest import raises
+from trilogy.parsing.parse_engine import PARSER, ParseToObjects, unpack_visit_error
 
 TEXT = """
 const a <- 1;

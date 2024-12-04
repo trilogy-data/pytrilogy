@@ -1,7 +1,10 @@
+from dataclasses import dataclass
 from os.path import dirname, join
-from typing import List, Optional, Tuple, Union
+from pathlib import Path
 from re import IGNORECASE
-from lark import Lark, Transformer, v_args, Tree, ParseTree
+from typing import List, Optional, Tuple, Union
+
+from lark import Lark, ParseTree, Transformer, Tree, v_args
 from lark.exceptions import (
     UnexpectedCharacters,
     UnexpectedEOF,
@@ -9,10 +12,9 @@ from lark.exceptions import (
     UnexpectedToken,
     VisitError,
 )
-from pathlib import Path
 from lark.tree import Meta
 from pydantic import ValidationError
-from trilogy.core.internal import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
+
 from trilogy.constants import (
     DEFAULT_NAMESPACE,
     NULL_VALUE,
@@ -21,110 +23,109 @@ from trilogy.constants import (
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
+    ConceptSource,
+    DatePart,
     FunctionType,
     InfiniteFunctionArgs,
+    IOType,
     Modifier,
     Ordering,
     Purpose,
+    ShowCategory,
     WindowOrder,
     WindowType,
-    DatePart,
-    ShowCategory,
-    IOType,
-    ConceptSource,
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
+    Abs,
+    AttrAccess,
+    Bool,
+    Coalesce,
     Count,
     CountDistinct,
+    CurrentDate,
+    CurrentDatetime,
     Group,
+    IndexAccess,
+    IsNull,
+    MapAccess,
     Max,
     Min,
     Split,
-    IndexAccess,
-    MapAccess,
-    AttrAccess,
-    Abs,
-    Unnest,
-    Coalesce,
-    function_args_to_output_purpose,
-    CurrentDate,
-    CurrentDatetime,
-    IsNull,
-    Bool,
-    SubString,
     StrPos,
+    SubString,
+    Unnest,
+    function_args_to_output_purpose,
 )
+from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models import (
     Address,
+    AggregateWrapper,
     AlignClause,
     AlignItem,
-    AggregateWrapper,
     CaseElse,
     CaseWhen,
     ColumnAssignment,
     Comment,
     Comparison,
-    SubselectComparison,
     Concept,
+    ConceptDeclarationStatement,
+    ConceptDerivation,
     ConceptTransform,
     Conditional,
+    CopyStatement,
     Datasource,
-    MergeStatementV2,
+    DataType,
     Environment,
     FilterItem,
     Function,
     Grain,
+    HavingClause,
     ImportStatement,
     Limit,
+    ListType,
+    ListWrapper,
+    MapType,
+    MapWrapper,
+    MergeStatementV2,
     Metadata,
     MultiSelectStatement,
+    NumericType,
     OrderBy,
     OrderItem,
     Parenthetical,
     PersistStatement,
     Query,
+    RawColumnExpr,
     RawSQLStatement,
-    CopyStatement,
-    SelectStatement,
+    RowsetDerivationStatement,
     SelectItem,
+    SelectStatement,
+    ShowStatement,
+    StructType,
+    SubselectComparison,
+    TupleWrapper,
     WhereClause,
     Window,
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
-    RawColumnExpr,
     arg_to_datatype,
-    merge_datatypes,
-    ListWrapper,
-    MapWrapper,
-    MapType,
-    ShowStatement,
-    DataType,
-    StructType,
-    ListType,
-    ConceptDeclarationStatement,
-    ConceptDerivation,
-    RowsetDerivationStatement,
-    list_to_wrapper,
-    tuple_to_wrapper,
     dict_to_map_wrapper,
-    NumericType,
-    HavingClause,
-    TupleWrapper,
+    list_to_wrapper,
+    merge_datatypes,
+    tuple_to_wrapper,
 )
-from trilogy.parsing.exceptions import ParseError
 from trilogy.parsing.common import (
     agg_wrapper_to_concept,
-    window_item_to_concept,
-    function_to_concept,
-    filter_item_to_concept,
-    constant_to_concept,
     arbitrary_to_concept,
+    constant_to_concept,
+    filter_item_to_concept,
+    function_to_concept,
     process_function_args,
+    window_item_to_concept,
 )
-from dataclasses import dataclass
-
+from trilogy.parsing.exceptions import ParseError
 
 CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
@@ -195,7 +196,7 @@ def unwrap_transformation(
         str,
         float,
         bool,
-    ]
+    ],
 ) -> Function | FilterItem | WindowItem | AggregateWrapper:
     if isinstance(input, Function):
         return input
@@ -429,7 +430,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_property_declaration(self, meta: Meta, args) -> Concept:
-
         metadata = Metadata()
         modifiers = []
         for arg in args:
@@ -493,7 +493,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_derivation(self, meta: Meta, args) -> ConceptDerivation:
-
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -604,7 +603,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept(self, meta: Meta, args) -> ConceptDeclarationStatement:
-
         if isinstance(args[0], Concept):
             concept: Concept = args[0]
         else:
@@ -680,7 +678,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def select_transform(self, meta: Meta, args) -> ConceptTransform:
-
         output: str = args[1]
         transformation = unwrap_transformation(args[0])
         lookup, namespace, output, parent = parse_concept_reference(
@@ -761,7 +758,6 @@ class ParseToObjects(Transformer):
         return Ordering(base)
 
     def order_list(self, args):
-
         def handle_order_item(x, namespace: str):
             if not isinstance(x, Concept):
                 x = arbitrary_to_concept(
@@ -843,7 +839,6 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def copy_statement(self, meta: Meta, args) -> CopyStatement:
-
         return CopyStatement(
             target=args[1],
             target_type=args[0],
@@ -1126,7 +1121,6 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def struct_lit(self, args):
-
         zipped = dict(zip(args[::2], args[1::2]))
         types = [arg_to_datatype(x) for x in args[1::2]]
         return Function(
@@ -1422,8 +1416,21 @@ class ParseToObjects(Transformer):
             output_datatype=DataType.STRING,
             output_purpose=Purpose.PROPERTY,
             valid_inputs={DataType.STRING},
-            arg_count=99,
+            arg_count=-1,
             # output_grain=args[0].grain,
+        )
+
+    @v_args(meta=True)
+    def union(self, meta, args):
+        args = process_function_args(args, meta=meta, environment=self.environment)
+        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
+        return Function(
+            operator=FunctionType.UNION,
+            arguments=args,
+            output_datatype=output_datatype,
+            output_purpose=Purpose.KEY,
+            valid_inputs={*DataType},
+            arg_count=-1,
         )
 
     @v_args(meta=True)

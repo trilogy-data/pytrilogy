@@ -1,39 +1,40 @@
-from typing import List, Optional, Any, Generator, Protocol
+from dataclasses import dataclass
 from functools import singledispatchmethod
+from pathlib import Path
+from typing import Any, Generator, List, Optional, Protocol
+
 from sqlalchemy import text
-from sqlalchemy.engine import Engine, CursorResult
+from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
+from trilogy.core.enums import Granularity, IOType
 from trilogy.core.models import (
-    Environment,
-    ProcessedQuery,
-    ProcessedShowStatement,
-    ProcessedQueryPersist,
-    ProcessedRawSQLStatement,
-    ProcessedCopyStatement,
-    RawSQLStatement,
-    MultiSelectStatement,
-    SelectStatement,
-    PersistStatement,
-    ShowStatement,
     Concept,
     ConceptDeclarationStatement,
-    Datasource,
     CopyStatement,
-    ImportStatement,
-    MergeStatementV2,
+    Datasource,
+    Environment,
     Function,
     FunctionType,
-    MapWrapper,
+    ImportStatement,
     ListWrapper,
+    MapWrapper,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    ProcessedCopyStatement,
+    ProcessedQuery,
+    ProcessedQueryPersist,
+    ProcessedRawSQLStatement,
+    ProcessedShowStatement,
+    RawSQLStatement,
+    SelectStatement,
+    ShowStatement,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
-from trilogy.core.enums import IOType, Granularity
-from trilogy.parser import parse_text
 from trilogy.hooks.base_hook import BaseHook
-from pathlib import Path
-from dataclasses import dataclass
+from trilogy.parser import parse_text
 
 
 class ResultProtocol(Protocol):
@@ -103,7 +104,6 @@ class Executor(object):
 
             self.generator = PostgresDialect()
         elif self.dialect == Dialects.SNOWFLAKE:
-
             from trilogy.dialect.snowflake import SnowflakeDialect
 
             self.generator = SnowflakeDialect()
@@ -146,7 +146,6 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: Datasource) -> CursorResult:
-
         return MockResult(
             [
                 {
@@ -237,7 +236,6 @@ class Executor(object):
 
     @execute_query.register
     def _(self, query: ProcessedQueryPersist) -> CursorResult:
-
         sql = self.generator.compile_statement(query)
 
         output = self.execute_raw_sql(sql)
@@ -355,7 +353,6 @@ class Executor(object):
         | ProcessedRawSQLStatement
         | ProcessedCopyStatement
     ]:
-
         return list(self.parse_text_generator(command, persist=persist))
 
     def parse_text_generator(self, command: str, persist: bool = False) -> Generator[

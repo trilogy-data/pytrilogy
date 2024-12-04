@@ -1,10 +1,9 @@
-from trilogy.core.models import Environment, SelectStatement
-from trilogy import parse, Executor, Dialects
+from trilogy import Dialects, Executor, parse
 from trilogy.core.enums import Purpose, PurposeLineage
+from trilogy.core.models import Environment, LooseConceptList, SelectStatement
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.models import LooseConceptList
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):
@@ -79,7 +78,6 @@ def test_rowset_with_aggregation(
             0
         ],
     ]:
-
         assert count.derivation == PurposeLineage.AGGREGATE
         assert count.purpose == Purpose.METRIC
         count_grain_lcl = LooseConceptList(concepts=count.grain.components_copy)
@@ -162,7 +160,6 @@ def test_window_alt(test_environment: Environment, test_executor: Executor):
 
 
 def test_maps():
-
     test_executor = Dialects.DUCK_DB.default_executor()
     test_select = """
     const num_map <- {1: 10, 2: 20};
@@ -177,7 +174,6 @@ def test_maps():
 
 
 def test_anon_agg():
-
     test_executor = Dialects.DUCK_DB.default_executor()
     test_select = """
     auto nums <- [1,2];

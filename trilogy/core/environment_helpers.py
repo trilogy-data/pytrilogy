@@ -1,15 +1,15 @@
+from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.enums import ConceptSource, FunctionType, Purpose
+from trilogy.core.functions import AttrAccess
 from trilogy.core.models import (
-    DataType,
     Concept,
+    DataType,
     Environment,
     Function,
     Metadata,
     StructType,
 )
-from trilogy.core.functions import AttrAccess
-from trilogy.core.enums import Purpose, FunctionType, ConceptSource
-from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.parsing.common import process_function_args, arg_to_datatype, Meta
+from trilogy.parsing.common import Meta, arg_to_datatype, process_function_args
 
 
 def generate_date_concepts(concept: Concept, environment: Environment):

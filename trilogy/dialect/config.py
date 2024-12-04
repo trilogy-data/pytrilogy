@@ -1,5 +1,4 @@
 class DialectConfig:
-
     def __init__(self):
         pass
 
@@ -101,7 +100,6 @@ class PrestoConfig(DialectConfig):
 
 
 class TrinoConfig(PrestoConfig):
-
     def connection_string(self) -> str:
         if self.schema:
             return f"trino://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}/{self.schema}"

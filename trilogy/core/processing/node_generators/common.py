@@ -1,23 +1,23 @@
-from typing import List, Tuple, Callable
+from collections import defaultdict
+from typing import Callable, List, Tuple
 
-from trilogy.core.enums import PurposeLineage, Purpose
+from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.models import (
-    Concept,
-    Function,
     AggregateWrapper,
-    FilterItem,
+    Concept,
     Environment,
+    FilterItem,
+    Function,
     LooseConceptList,
     WhereClause,
 )
-from trilogy.utility import unique
-from trilogy.core.processing.nodes.base_node import StrategyNode
-from trilogy.core.processing.nodes.merge_node import MergeNode
-from trilogy.core.processing.nodes import History
 from trilogy.core.processing.nodes import (
+    History,
     NodeJoin,
 )
-from collections import defaultdict
+from trilogy.core.processing.nodes.base_node import StrategyNode
+from trilogy.core.processing.nodes.merge_node import MergeNode
+from trilogy.utility import unique
 
 
 def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
@@ -151,7 +151,6 @@ def gen_enrichment_node(
     history: History | None = None,
     conditions: WhereClause | None = None,
 ):
-
     local_opts = LooseConceptList(concepts=local_optional)
 
     extra_required = [

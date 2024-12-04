@@ -1,11 +1,12 @@
 from trilogy.core.models import (
     CTE,
-    Conditional,
     BooleanOperator,
-    Datasource,
-    ConceptArgs,
     Comparison,
+    ConceptArgs,
+    Conditional,
+    Datasource,
     Parenthetical,
+    UnionCTE,
     WindowItem,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule
@@ -25,19 +26,20 @@ def is_child_of(a, comparison):
 
 
 class PredicatePushdown(OptimizationRule):
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
 
     def _check_parent(
         self,
-        cte: CTE,
-        parent_cte: CTE,
+        cte: CTE | UnionCTE,
+        parent_cte: CTE | UnionCTE,
         candidate: Conditional | Comparison | Parenthetical | None,
-        inverse_map: dict[str, list[CTE]],
+        inverse_map: dict[str, list[CTE | UnionCTE]],
     ):
         if not isinstance(candidate, ConceptArgs):
+            return False
+        if not isinstance(parent_cte, CTE):
             return False
         row_conditions = {x.address for x in candidate.row_arguments}
         existence_conditions = {
@@ -112,7 +114,12 @@ class PredicatePushdown(OptimizationRule):
         )
         return False
 
-    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+    def optimize(
+        self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> bool:
+        # TODO - pushdown through unions
+        if isinstance(cte, UnionCTE):
+            return False
         optimized = False
 
         if not cte.parent_ctes:
@@ -167,12 +174,15 @@ class PredicatePushdown(OptimizationRule):
 
 
 class PredicatePushdownRemove(OptimizationRule):
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.complete: dict[str, bool] = {}
 
-    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+    def optimize(
+        self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> bool:
+        if isinstance(cte, UnionCTE):
+            return False
         optimized = False
 
         if not cte.parent_ctes:

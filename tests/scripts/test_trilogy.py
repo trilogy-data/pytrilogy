@@ -1,7 +1,9 @@
-from click.testing import CliRunner
-from trilogy.scripts.trilogy import cli
 import os
 from pathlib import Path
+
+from click.testing import CliRunner
+
+from trilogy.scripts.trilogy import cli
 
 path = Path(__file__).parent / "test.db"
 

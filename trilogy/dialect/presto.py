@@ -1,11 +1,10 @@
-from typing import Mapping, Callable, Any
+from typing import Any, Callable, Mapping
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, WindowType
-from trilogy.dialect.base import BaseDialect
+from trilogy.core.enums import FunctionType, UnnestMode, WindowType
 from trilogy.core.models import DataType
-from trilogy.core.enums import UnnestMode
+from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 

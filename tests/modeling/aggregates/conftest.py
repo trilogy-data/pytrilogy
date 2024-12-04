@@ -1,11 +1,11 @@
-from pytest import fixture
-
-from trilogy import Environment
-from trilogy.core.env_processor import generate_graph
-from trilogy import Dialects
-from trilogy.hooks.query_debugger import DebuggingHook
 from logging import INFO
 from pathlib import Path
+
+from pytest import fixture
+
+from trilogy import Dialects, Environment
+from trilogy.core.env_processor import generate_graph
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 @fixture(scope="session")

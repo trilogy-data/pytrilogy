@@ -1,9 +1,9 @@
+from trilogy.core.enums import Purpose
 from trilogy.core.models import (
     CTE,
 )
-from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes import SelectNode
-from trilogy.core.enums import Purpose
+from trilogy.core.processing.nodes.base_node import StrategyNode
 
 
 def fingerprint(node: StrategyNode) -> str:

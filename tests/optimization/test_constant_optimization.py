@@ -2,7 +2,6 @@ from trilogy import Dialects
 
 
 def test_constant_optimization():
-
     test_query = """
     const x <- 1;
 

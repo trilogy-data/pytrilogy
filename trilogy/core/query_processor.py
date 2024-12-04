@@ -1,43 +1,41 @@
-from typing import List, Optional, Set, Union, Dict, Tuple
+from collections import defaultdict
+from math import ceil
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from trilogy.core.env_processor import generate_graph
-from trilogy.core.graph_models import ReferenceGraph
+from trilogy.constants import CONFIG, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
-from trilogy.core.enums import BooleanOperator
-from trilogy.constants import CONFIG
-from trilogy.core.processing.nodes import SelectNode, StrategyNode, History
+from trilogy.core.enums import BooleanOperator, SourceType
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.ergonomics import generate_cte_names
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models import (
-    Concept,
-    Environment,
-    PersistStatement,
-    ConceptDeclarationStatement,
-    SelectStatement,
-    MultiSelectStatement,
     CTE,
+    BaseJoin,
+    Concept,
+    ConceptDeclarationStatement,
+    Conditional,
+    CopyStatement,
+    CTEConceptPair,
+    Datasource,
+    Environment,
+    InstantiatedUnnestJoin,
     Join,
-    UnnestJoin,
     MaterializedDataset,
+    MultiSelectStatement,
+    PersistStatement,
+    ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     QueryDatasource,
-    Datasource,
-    BaseJoin,
-    InstantiatedUnnestJoin,
-    Conditional,
-    ProcessedCopyStatement,
-    CopyStatement,
-    CTEConceptPair,
+    SelectStatement,
+    UnionCTE,
+    UnnestJoin,
 )
-
-from trilogy.utility import unique
-
-from trilogy.hooks.base_hook import BaseHook
-from trilogy.constants import logger
-from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.optimization import optimize_ctes
-from math import ceil
-from collections import defaultdict
+from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.hooks.base_hook import BaseHook
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -103,7 +101,7 @@ def base_join_to_join(
 
 
 def generate_source_map(
-    query_datasource: QueryDatasource, all_new_ctes: List[CTE]
+    query_datasource: QueryDatasource, all_new_ctes: List[CTE | UnionCTE]
 ) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
     source_map: Dict[str, list[str]] = defaultdict(list)
     # now populate anything derived in this level
@@ -246,24 +244,44 @@ def resolve_cte_base_name_and_alias_v2(
     return None, None
 
 
-def datasource_to_ctes(
+def datasource_to_cte(
     query_datasource: QueryDatasource, name_map: dict[str, str]
-) -> List[CTE]:
-    output: List[CTE] = []
-    parents: list[CTE] = []
+) -> CTE | UnionCTE:
+    parents: list[CTE | UnionCTE] = []
+    if query_datasource.source_type == SourceType.UNION:
+        direct_parents: list[CTE | UnionCTE] = []
+        for child in query_datasource.datasources:
+            assert isinstance(child, QueryDatasource)
+            child_cte = datasource_to_cte(child, name_map=name_map)
+            direct_parents.append(child_cte)
+            parents += child_cte.parent_ctes
+        human_id = generate_cte_name(query_datasource.identifier, name_map)
+        final = UnionCTE(
+            name=human_id,
+            source=query_datasource,
+            parent_ctes=parents,
+            internal_ctes=direct_parents,
+            output_columns=[
+                c.with_grain(query_datasource.grain)
+                for c in query_datasource.output_concepts
+            ],
+            grain=direct_parents[0].grain,
+        )
+        return final
+
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
     ):
-        all_new_ctes: List[CTE] = []
+        all_new_ctes: List[CTE | UnionCTE] = []
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
                 sub_datasource = datasource
             else:
                 sub_datasource = datasource_to_query_datasource(datasource)
 
-            sub_cte = datasource_to_ctes(sub_datasource, name_map)
-            parents += sub_cte
-            all_new_ctes += sub_cte
+            sub_cte = datasource_to_cte(sub_datasource, name_map)
+            parents.append(sub_cte)
+            all_new_ctes.append(sub_cte)
         source_map, existence_map = generate_source_map(query_datasource, all_new_ctes)
 
     else:
@@ -284,7 +302,10 @@ def datasource_to_ctes(
 
     human_id = generate_cte_name(query_datasource.identifier, name_map)
 
-    final_joins = [base_join_to_join(join, parents) for join in query_datasource.joins]
+    final_joins = [
+        base_join_to_join(join, [x for x in parents if isinstance(x, CTE)])
+        for join in query_datasource.joins
+    ]
 
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
@@ -326,8 +347,7 @@ def datasource_to_ctes(
                 f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
             )
 
-    output.append(cte)
-    return output
+    return cte
 
 
 def get_query_node(
@@ -383,7 +403,6 @@ def get_query_datasources(
     graph: Optional[ReferenceGraph] = None,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-
     ds = get_query_node(environment, statement, graph)
     final_qds = ds.resolve()
     if hooks:
@@ -393,7 +412,7 @@ def get_query_datasources(
     return final_qds
 
 
-def flatten_ctes(input: CTE) -> list[CTE]:
+def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     output = [input]
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
@@ -464,10 +483,10 @@ def process_query(
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor
-    root_cte = datasource_to_ctes(root_datasource, environment.cte_name_map)[0]
+    root_cte = datasource_to_cte(root_datasource, environment.cte_name_map)
     for hook in hooks:
         hook.process_root_cte(root_cte)
-    raw_ctes: List[CTE] = list(reversed(flatten_ctes(root_cte)))
+    raw_ctes: List[CTE | UnionCTE] = list(reversed(flatten_ctes(root_cte)))
     seen = dict()
     # we can have duplicate CTEs at this point
     # so merge them together
@@ -479,7 +498,7 @@ def process_query(
             seen[cte.name] = seen[cte.name] + cte
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
-    deduped_ctes: List[CTE] = list(seen.values())
+    deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
     root_cte.order_by = statement.order_by
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = [x for x in statement.hidden_components]

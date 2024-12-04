@@ -1,66 +1,67 @@
-from typing import List, Union, Optional, Dict, Any, Sequence, Callable
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from jinja2 import Template
 
-from trilogy.core.processing.utility import (
-    is_scalar_condition,
-    decompose_condition,
-    sort_select_output,
-)
-from trilogy.constants import CONFIG, logger, MagicConstants
-from trilogy.core.internal import DEFAULT_CONCEPTS
+from trilogy.constants import CONFIG, MagicConstants, logger
 from trilogy.core.enums import (
-    FunctionType,
-    WindowType,
     DatePart,
+    FunctionType,
+    UnnestMode,
+    WindowType,
 )
+from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models import (
-    ListType,
-    DataType,
-    Concept,
     CTE,
-    ProcessedQuery,
-    ProcessedQueryPersist,
-    ProcessedShowStatement,
-    CompiledCTE,
-    Conditional,
+    AggregateWrapper,
+    CaseElse,
+    CaseWhen,
     Comparison,
-    SubselectComparison,
-    OrderItem,
-    WindowItem,
+    CompiledCTE,
+    Concept,
+    ConceptDeclarationStatement,
+    Conditional,
+    CopyStatement,
+    Datasource,
+    DataType,
+    Environment,
     FilterItem,
     Function,
-    AggregateWrapper,
-    Parenthetical,
-    CaseWhen,
-    CaseElse,
-    SelectStatement,
-    PersistStatement,
-    Environment,
-    RawColumnExpr,
-    ListWrapper,
-    TupleWrapper,
-    MapWrapper,
-    ShowStatement,
-    RowsetItem,
-    MultiSelectStatement,
-    RowsetDerivationStatement,
-    ConceptDeclarationStatement,
     ImportStatement,
-    RawSQLStatement,
-    ProcessedRawSQLStatement,
-    NumericType,
+    ListType,
+    ListWrapper,
     MapType,
-    StructType,
+    MapWrapper,
     MergeStatementV2,
-    Datasource,
-    CopyStatement,
+    MultiSelectStatement,
+    NumericType,
+    OrderItem,
+    Parenthetical,
+    PersistStatement,
     ProcessedCopyStatement,
+    ProcessedQuery,
+    ProcessedQueryPersist,
+    ProcessedRawSQLStatement,
+    ProcessedShowStatement,
+    RawColumnExpr,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    RowsetItem,
+    SelectStatement,
+    ShowStatement,
+    StructType,
+    SubselectComparison,
+    TupleWrapper,
+    UnionCTE,
+    WindowItem,
 )
-from trilogy.core.query_processor import process_query, process_persist, process_copy
+from trilogy.core.processing.utility import (
+    decompose_condition,
+    is_scalar_condition,
+    sort_select_output,
+)
+from trilogy.core.query_processor import process_copy, process_persist, process_query
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
-from trilogy.core.enums import UnnestMode
 
 LOGGER_PREFIX = "[RENDERING]"
 
@@ -130,7 +131,7 @@ FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
     FunctionType.BOOL: lambda x: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
-    # complex
+    # Complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
     FunctionType.UNNEST: lambda x: f"unnest({x[0]})",
@@ -230,7 +231,7 @@ def safe_quote(string: str, quote_char: str):
     return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
 
 
-def safe_get_cte_value(coalesce, cte: CTE, c: Concept, quote_char: str):
+def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: Concept, quote_char: str):
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -255,15 +256,26 @@ class BaseDialect:
     UNNEST_MODE = UnnestMode.CROSS_APPLY
 
     def render_order_item(
-        self, order_item: OrderItem, cte: CTE, final: bool = False
+        self,
+        order_item: OrderItem,
+        cte: CTE | UnionCTE,
+        final: bool = False,
+        alias: bool = True,
     ) -> str:
         if final:
+            if not alias:
+                return f"{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
+
             return f"{cte.name}.{self.QUOTE_CHARACTER}{order_item.expr.safe_address}{self.QUOTE_CHARACTER} {order_item.order.value}"
 
         return f"{self.render_concept_sql(order_item.expr, cte=cte, alias=False)} {order_item.order.value}"
 
     def render_concept_sql(
-        self, c: Concept, cte: CTE, alias: bool = True, raise_invalid: bool = False
+        self,
+        c: Concept,
+        cte: CTE | UnionCTE,
+        alias: bool = True,
+        raise_invalid: bool = False,
     ) -> str:
         result = None
         if c.pseudonyms:
@@ -290,7 +302,7 @@ class BaseDialect:
         return result
 
     def _render_concept_sql(
-        self, c: Concept, cte: CTE, raise_invalid: bool = False
+        self, c: Concept, cte: CTE | UnionCTE, raise_invalid: bool = False
     ) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -348,6 +360,20 @@ class BaseDialect:
                         " target grain"
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
+            elif (
+                isinstance(c.lineage, Function)
+                and c.lineage.operator == FunctionType.UNION
+            ):
+                local_matched = [
+                    x
+                    for x in c.lineage.arguments
+                    if isinstance(x, Concept) and x.address in cte.output_columns
+                ]
+                if not local_matched:
+                    raise SyntaxError(
+                        "Could not find appropriate source element for union"
+                    )
+                rval = self.render_expr(local_matched[0], cte)
             elif (
                 isinstance(c.lineage, Function)
                 and c.lineage.operator == FunctionType.CONSTANT
@@ -447,13 +473,11 @@ class BaseDialect:
             FilterItem,
             # FilterItem
         ],
-        cte: Optional[CTE] = None,
-        cte_map: Optional[Dict[str, CTE]] = None,
+        cte: Optional[CTE | UnionCTE] = None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
     ) -> str:
-
         if isinstance(e, SubselectComparison):
-
             if isinstance(e.right, Concept):
                 # we won't always have an existnce map
                 # so fall back to the normal map
@@ -592,7 +616,18 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
-    def render_cte(self, cte: CTE, auto_sort: bool = True) -> CompiledCTE:
+    def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
+        if isinstance(cte, UnionCTE):
+            base_statement = f"\n{cte.operator}\n".join(
+                [self.render_cte(child).statement for child in cte.internal_ctes]
+            )
+            if cte.order_by:
+                ordering = [
+                    self.render_order_item(i, cte, final=True, alias=False)
+                    for i in cte.order_by.items
+                ]
+                base_statement += "\nORDER BY " + ",".join(ordering)
+            return CompiledCTE(name=cte.name, statement=base_statement)
         if self.UNNEST_MODE in (
             UnnestMode.CROSS_APPLY,
             UnnestMode.CROSS_JOIN,
