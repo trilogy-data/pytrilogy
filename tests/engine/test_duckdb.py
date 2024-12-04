@@ -7,7 +7,6 @@ from trilogy import Dialects
 from trilogy.core.enums import FunctionType, Granularity, Purpose, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models import (
-    AggregateWrapper,
     Concept,
     Environment,
     FilterItem,

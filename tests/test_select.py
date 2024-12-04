@@ -1,9 +1,10 @@
 # from trilogy.compiler import compile
+from trilogy import Dialects
 from trilogy.core.models import Grain, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
-from trilogy import Dialects
+
 
 def test_select():
     declarations = """

@@ -310,7 +310,7 @@ class ParseToObjects(Transformer):
         return args.value[1:-1]
 
     @v_args(meta=True)
-    def concept_lit(self, meta: Meta, args) -> Concept | ConceptRef:
+    def concept_lit(self, meta: Meta, args) -> Concept:
         address = args[0]
         return self.environment.concepts.__getitem__( address, meta.line)
 

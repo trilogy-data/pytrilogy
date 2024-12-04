@@ -1,6 +1,7 @@
 from trilogy import Dialects, Executor
 from trilogy.core.models import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
+
 # from pydantic.functional_validators import merge
 
 def test_merge_discovery(test_environment: Environment, test_executor: Executor):
