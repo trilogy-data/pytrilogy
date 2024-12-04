@@ -537,7 +537,9 @@ def find_nullable_concepts(
     return list(sorted(final_nullable))
 
 
-def sort_select_output_processed(cte: CTE, query: ProcessedQuery) -> CTE:
+def sort_select_output_processed(
+    cte: CTE | UnionCTE, query: ProcessedQuery
+) -> CTE | UnionCTE:
     hidden_addresses = [c.address for c in query.hidden_columns]
     output_addresses = [
         c.address for c in query.output_columns if c.address not in hidden_addresses
@@ -554,7 +556,7 @@ def sort_select_output_processed(cte: CTE, query: ProcessedQuery) -> CTE:
 
 def sort_select_output(
     cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
-) -> CTE:
+) -> CTE | UnionCTE:
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)
     hidden_addresses = [c.address for c in query.hidden_components]

@@ -1,5 +1,6 @@
 from trilogy.core.models import (
     CTE,
+    UnionCTE,
     Datasource,
 )
 
@@ -15,7 +16,14 @@ class InlineDatasource(OptimizationRule):
         self.candidates = defaultdict(lambda: set())
         self.count = defaultdict(lambda: 0)
 
-    def optimize(self, cte: CTE, inverse_map: dict[str, list[CTE]]) -> bool:
+    def optimize(
+        self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> bool:
+        if isinstance(cte, UnionCTE):
+            return any(
+                self.optimize(x, inverse_map=inverse_map) for x in cte.internal_ctes
+            )
+
         if not cte.parent_ctes:
             return False
 
@@ -25,6 +33,8 @@ class InlineDatasource(OptimizationRule):
         to_inline: list[CTE] = []
         force_group = False
         for parent_cte in cte.parent_ctes:
+            if isinstance(parent_cte, UnionCTE):
+                continue
             if not parent_cte.is_root_datasource:
                 self.debug(f"parent {parent_cte.name} is not root")
                 continue

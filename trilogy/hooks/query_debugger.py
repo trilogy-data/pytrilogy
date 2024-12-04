@@ -1,5 +1,11 @@
 from typing import Union
-from trilogy.core.models import QueryDatasource, CTE, Datasource, SelectStatement, UnionCTE
+from trilogy.core.models import (
+    QueryDatasource,
+    CTE,
+    Datasource,
+    SelectStatement,
+    UnionCTE,
+)
 
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.constants import logger
@@ -85,7 +91,9 @@ def print_recursive_nodes(
     return display
 
 
-def print_recursive_ctes(input: CTE | UnionCTE, depth: int = 0, max_depth: int | None = None):
+def print_recursive_ctes(
+    input: CTE | UnionCTE, depth: int = 0, max_depth: int | None = None
+):
     if max_depth and depth > max_depth:
         return
     select_statement = [c.address for c in input.output_columns]
@@ -99,7 +107,7 @@ def print_recursive_ctes(input: CTE | UnionCTE, depth: int = 0, max_depth: int |
     elif isinstance(input, UnionCTE):
         for child in input.parent_ctes:
             for parent in child.parent_ctes:
-                print_recursive_ctes(parent, depth+1)
+                print_recursive_ctes(parent, depth + 1)
 
 
 class DebuggingHook(BaseHook):
@@ -132,7 +140,7 @@ class DebuggingHook(BaseHook):
             for row in printed:
                 print("".join([str(v) for v in row]))
 
-    def process_root_cte(self, cte: CTE):
+    def process_root_cte(self, cte: CTE | UnionCTE):
         if self.process_ctes != PrintMode.OFF:
             print_recursive_ctes(cte, max_depth=self.max_depth)
 

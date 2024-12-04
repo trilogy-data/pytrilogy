@@ -231,7 +231,7 @@ def safe_quote(string: str, quote_char: str):
     return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
 
 
-def safe_get_cte_value(coalesce, cte: CTE, c: Concept, quote_char: str):
+def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: Concept, quote_char: str):
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -256,7 +256,11 @@ class BaseDialect:
     UNNEST_MODE = UnnestMode.CROSS_APPLY
 
     def render_order_item(
-        self, order_item: OrderItem, cte: CTE | UnionCTE, final: bool = False, alias: bool = True
+        self,
+        order_item: OrderItem,
+        cte: CTE | UnionCTE,
+        final: bool = False,
+        alias: bool = True,
     ) -> str:
         if final:
             if not alias:
@@ -267,7 +271,11 @@ class BaseDialect:
         return f"{self.render_concept_sql(order_item.expr, cte=cte, alias=False)} {order_item.order.value}"
 
     def render_concept_sql(
-        self, c: Concept, cte: CTE | UnionCTE, alias: bool = True, raise_invalid: bool = False
+        self,
+        c: Concept,
+        cte: CTE | UnionCTE,
+        alias: bool = True,
+        raise_invalid: bool = False,
     ) -> str:
         result = None
         if c.pseudonyms:
@@ -294,7 +302,7 @@ class BaseDialect:
         return result
 
     def _render_concept_sql(
-        self, c: Concept, cte: CTE, raise_invalid: bool = False
+        self, c: Concept, cte: CTE | UnionCTE, raise_invalid: bool = False
     ) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -357,7 +365,9 @@ class BaseDialect:
                 and c.lineage.operator == FunctionType.UNION
             ):
                 local_matched = [
-                    x for x in c.lineage.arguments if isinstance(x, Concept) and x.address in cte.output_columns
+                    x
+                    for x in c.lineage.arguments
+                    if isinstance(x, Concept) and x.address in cte.output_columns
                 ]
                 if not local_matched:
                     raise SyntaxError(
@@ -463,8 +473,8 @@ class BaseDialect:
             FilterItem,
             # FilterItem
         ],
-        cte: Optional[CTE] = None,
-        cte_map: Optional[Dict[str, CTE]] = None,
+        cte: Optional[CTE | UnionCTE] = None,
+        cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
     ) -> str:
 
@@ -608,12 +618,10 @@ class BaseDialect:
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 
-    
-    
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):
             base_statement = f"\n{cte.operator}\n".join(
-                [self.render_cte(child).statement for child in cte.parent_ctes]
+                [self.render_cte(child).statement for child in cte.internal_ctes]
             )
             if cte.order_by:
                 ordering = [

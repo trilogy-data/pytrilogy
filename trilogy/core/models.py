@@ -2030,7 +2030,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
             output.append(item.gen_concept(self))
         return output
 
-    def find_source(self, concept: Concept, cte: CTE) -> Concept:
+    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
         for x in self.align.items:
             if concept.name == x.alias:
                 for c in x.concepts:
@@ -2882,7 +2882,9 @@ class CTE(BaseModel):
             self.group_to_grain = True
         return True
 
-    def __add__(self, other: "CTE"):
+    def __add__(self, other: "CTE" | UnionCTE):
+        if isinstance(other, UnionCTE):
+            raise ValueError("cannot merge CTE and union CTE")
         logger.info('Merging two copies of CTE "%s"', self.name)
         if not self.grain == other.grain:
             error = (
@@ -3060,20 +3062,70 @@ class CTE(BaseModel):
 
 class UnionCTE(BaseModel):
     name: str
-    parent_ctes: list[CTE]
+    source: QueryDatasource
+    parent_ctes: list[CTE | UnionCTE]
+    internal_ctes: list[CTE | UnionCTE]
     output_columns: List[Concept]
+    grain: Grain
     operator: str = "UNION ALL"
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    hidden_concepts: Optional[list[Concept]] = Field(default_factory=list)
+    hidden_concepts: list[Concept] = Field(default_factory=list)
+    partial_concepts: list[Concept] = Field(default_factory=list)
+    existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
+
+    @computed_field  # type: ignore
+    @property
+    def output_lcl(self) -> LooseConceptList:
+        return LooseConceptList(concepts=self.output_columns)
+
+    def get_alias(self, concept: Concept, source: str | None = None) -> str:
+        for cte in self.parent_ctes:
+            if concept.address in cte.output_columns:
+                if source and source != cte.name:
+                    continue
+                return concept.safe_address
+        return "INVALID_ALIAS"
+
+    def get_concept(self, address: str) -> Concept | None:
+        for cte in self.internal_ctes:
+            if address in cte.output_columns:
+                match = [x for x in cte.output_columns if x.address == address].pop()
+                return match
+
+        match_list = [x for x in self.output_columns if x.address == address]
+        if match_list:
+            return match_list.pop()
+        return None
 
     @property
-    def group_to_grain(self)->bool:
+    def source_map(self):
+        return {x.address: [] for x in self.output_columns}
+
+    @property
+    def condition(self):
+        return None
+
+    @condition.setter
+    def condition(self, value):
+        raise NotImplementedError
+
+    @property
+    def safe_identifier(self):
+        return self.name
+
+    @property
+    def group_to_grain(self) -> bool:
         return False
 
+    def __add__(self, other):
+        if not isinstance(other, UnionCTE) or not other.name == self.name:
+            raise SyntaxError("Cannot merge union CTEs")
+        return self
 
-def merge_ctes(ctes: List[CTE]) -> List[CTE]:
-    final_ctes_dict: Dict[str, CTE] = {}
+
+def merge_ctes(ctes: List[CTE | UnionCTE]) -> List[CTE | UnionCTE]:
+    final_ctes_dict: Dict[str, CTE | UnionCTE] = {}
     # merge CTEs
     for cte in ctes:
         if cte.name not in final_ctes_dict:

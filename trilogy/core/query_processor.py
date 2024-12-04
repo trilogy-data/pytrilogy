@@ -250,26 +250,32 @@ def resolve_cte_base_name_and_alias_v2(
 def datasource_to_cte(
     query_datasource: QueryDatasource, name_map: dict[str, str]
 ) -> CTE | UnionCTE:
+    parents: list[CTE | UnionCTE] = []
     if query_datasource.source_type == SourceType.UNION:
-        direct_parents = []
+        direct_parents: list[CTE | UnionCTE] = []
         for child in query_datasource.datasources:
+            assert isinstance(child, QueryDatasource)
             child_cte = datasource_to_cte(child, name_map=name_map)
             direct_parents.append(child_cte)
+            parents += child_cte.parent_ctes
         human_id = generate_cte_name(query_datasource.identifier, name_map)
         final = UnionCTE(
             name=human_id,
-            parent_ctes=direct_parents,
+            source=query_datasource,
+            parent_ctes=parents,
+            internal_ctes=direct_parents,
             output_columns=[
                 c.with_grain(query_datasource.grain)
                 for c in query_datasource.output_concepts
             ],
+            grain=direct_parents[0].grain,
         )
         return final
-    parents: list[CTE | UnionCTE] = []
+
     if len(query_datasource.datasources) > 1 or any(
         [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
     ):
-        all_new_ctes: List[CTE] = []
+        all_new_ctes: List[CTE | UnionCTE] = []
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
                 sub_datasource = datasource
@@ -299,7 +305,10 @@ def datasource_to_cte(
 
     human_id = generate_cte_name(query_datasource.identifier, name_map)
 
-    final_joins = [base_join_to_join(join, parents) for join in query_datasource.joins]
+    final_joins = [
+        base_join_to_join(join, [x for x in parents if isinstance(x, CTE)])
+        for join in query_datasource.joins
+    ]
 
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
@@ -493,7 +502,7 @@ def process_query(
             seen[cte.name] = seen[cte.name] + cte
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
-    deduped_ctes: List[CTE] = list(seen.values())
+    deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
     root_cte.order_by = statement.order_by
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = [x for x in statement.hidden_components]
@@ -506,7 +515,7 @@ def process_query(
         where_clause=statement.where_clause,
         having_clause=statement.having_clause,
         output_columns=statement.output_components,
-            ctes=final_ctes,
+        ctes=final_ctes,
         base=root_cte,
         # we no longer do any joins at final level, this should always happen in parent CTEs
         joins=[],

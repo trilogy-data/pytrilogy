@@ -1,6 +1,7 @@
 from trilogy.core.models import (
     QueryDatasource,
     CTE,
+    UnionCTE,
     SelectStatement,
     PersistStatement,
     MultiSelectStatement,
@@ -30,7 +31,7 @@ class BaseHook:
     def process_root_datasource(self, datasource: QueryDatasource):
         pass
 
-    def process_root_cte(self, cte: CTE):
+    def process_root_cte(self, cte: CTE | UnionCTE):
         pass
 
     def process_root_strategy_node(self, node: StrategyNode):

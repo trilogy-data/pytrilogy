@@ -36,7 +36,10 @@ def gen_union_node(
     for arg in arguments:
         relevant_parents: list[Concept] = []
         for other_union in remaining:
-            potential_parents = [z for z in other_union.lineage.arguments if isinstance(z, Concept)]
+            assert other_union.lineage
+            potential_parents = [
+                z for z in other_union.lineage.arguments if isinstance(z, Concept)
+            ]
             relevant_parents += [
                 x for x in potential_parents if x.keys and arg.address in x.keys
             ]
@@ -64,11 +67,10 @@ def gen_union_node(
             )
             return None
 
-    base = UnionNode(
+    return UnionNode(
         input_concepts=[concept] + local_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
         g=g,
         parents=parents,
     )
-    return base

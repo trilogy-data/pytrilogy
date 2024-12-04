@@ -62,12 +62,12 @@ def reorder_ctes(
 
 
 def filter_irrelevant_ctes(
-    input: list[CTE],
-    root_cte: CTE,
+    input: list[CTE | UnionCTE],
+    root_cte: CTE | UnionCTE,
 ):
     relevant_ctes = set()
 
-    def recurse(cte: CTE, inverse_map: dict[str, list[CTE]]):
+    def recurse(cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]):
         # TODO: revisit this
         # if parent := is_locally_irrelevant(cte):
         #     logger.info(
@@ -89,6 +89,9 @@ def filter_irrelevant_ctes(
         relevant_ctes.add(cte.name)
         for cte in cte.parent_ctes:
             recurse(cte, inverse_map)
+        if isinstance(cte, UnionCTE):
+            for cte in cte.internal_ctes:
+                recurse(cte, inverse_map)
 
     inverse_map = gen_inverse_map(input)
     recurse(root_cte, inverse_map)
@@ -98,24 +101,31 @@ def filter_irrelevant_ctes(
     return filter_irrelevant_ctes(final, root_cte)
 
 
-def gen_inverse_map(input: list[CTE]) -> dict[str, list[CTE]]:
-    inverse_map: dict[str, list[CTE]] = {}
+def gen_inverse_map(input: list[CTE | UnionCTE]) -> dict[str, list[CTE | UnionCTE]]:
+    inverse_map: dict[str, list[CTE | UnionCTE]] = {}
     for cte in input:
-        for parent in cte.parent_ctes:
-            if parent.name not in inverse_map:
-                inverse_map[parent.name] = []
-            inverse_map[parent.name].append(cte)
+        if isinstance(cte, UnionCTE):
+            for internal in cte.internal_ctes:
+                if internal.name not in inverse_map:
+                    inverse_map[internal.name] = []
+                inverse_map[internal.name].append(cte)
+        else:
+            for parent in cte.parent_ctes:
+                if parent.name not in inverse_map:
+                    inverse_map[parent.name] = []
+                inverse_map[parent.name].append(cte)
+
     return inverse_map
 
 
-def is_direct_return_eligible(cte: CTE) -> CTE | None:
+def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     # if isinstance(select, (PersistStatement, MultiSelectStatement)):
     #     return False
     if len(cte.parent_ctes) != 1:
         return None
     direct_parent = cte.parent_ctes[0]
     if isinstance(direct_parent, UnionCTE):
-        return False
+        return None
 
     output_addresses = set([x.address for x in cte.output_columns])
     parent_output_addresses = set([x.address for x in direct_parent.output_columns])
@@ -123,6 +133,8 @@ def is_direct_return_eligible(cte: CTE) -> CTE | None:
         return None
     if not direct_parent.grain == cte.grain:
         return None
+
+    assert isinstance(cte, CTE)
     derived_concepts = [
         c
         for c in cte.source.output_concepts + cte.source.hidden_concepts
@@ -158,10 +170,12 @@ def is_direct_return_eligible(cte: CTE) -> CTE | None:
 
 
 def optimize_ctes(
-    input: list[CTE | UnionCTE], root_cte: CTE | UnionCTE, select: SelectStatement | MultiSelectStatement
+    input: list[CTE | UnionCTE],
+    root_cte: CTE | UnionCTE,
+    select: SelectStatement | MultiSelectStatement,
 ) -> list[CTE | UnionCTE]:
 
-    direct_parent: CTE | None = root_cte
+    direct_parent: CTE | UnionCTE | None = root_cte
     while CONFIG.optimizations.direct_return and (
         direct_parent := is_direct_return_eligible(root_cte)
     ):

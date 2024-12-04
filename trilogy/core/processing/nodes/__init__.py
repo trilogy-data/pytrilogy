@@ -161,5 +161,6 @@ __all__ = [
     "NodeJoin",
     "ConstantNode",
     "UnnestNode",
+    "UnionNode",
     "History",
 ]
