@@ -1,31 +1,30 @@
 # from trilogy.compiler import compile
-from trilogy.core.enums import Purpose
+import networkx as nx
+
+from trilogy.core.enums import ConceptSource, Purpose, PurposeLineage
+from trilogy.core.env_processor import (
+    concept_to_node,
+    datasource_to_node,
+    generate_graph,
+)
 from trilogy.core.models import (
     Grain,
+    PersistStatement,
     ProcessedQueryPersist,
     SelectStatement,
-    PersistStatement,
 )
+from trilogy.core.processing.node_generators import (
+    gen_select_node,
+)
+from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.query_processor import process_auto
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
-from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
-from trilogy.core.enums import PurposeLineage, ConceptSource
-from trilogy.parser import parse
-from trilogy.core.processing.nodes.select_node_v2 import SelectNode
-from trilogy.core.processing.node_generators import (
-    gen_select_node,
-)
-from trilogy.core.env_processor import (
-    generate_graph,
-    datasource_to_node,
-    concept_to_node,
-)
+from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.hooks.query_debugger import DebuggingHook
-
-import networkx as nx
+from trilogy.parser import parse
 
 TEST_DIALECTS: list[BaseDialect] = [
     BaseDialect(),
@@ -89,9 +88,7 @@ def test_derivations():
         persist: PersistStatement = parsed[-2]
         select: SelectStatement = parsed[-1]
         assert persist.select.grain == Grain(components=[test_concept])
-        assert select.output_components == [
-            test_concept.with_grain(Grain(components=[test_concept]))
-        ]
+        assert select.output_components == [test_concept.with_grain(Grain(components=[test_concept]))]
         assert len(compiled) == 2
 
         g = generate_graph(env)
@@ -117,9 +114,7 @@ def test_derivations():
         assert "CASE" not in compiled[-1]
 
         assert test_concept.purpose == Purpose.PROPERTY
-        assert env.datasources["bool_is_upper_name"].grain == Grain(
-            components=[test_concept]
-        )
+        assert env.datasources["bool_is_upper_name"].grain == Grain(components=[test_concept])
 
         # test that we can resolve a select
         test = SelectNode(

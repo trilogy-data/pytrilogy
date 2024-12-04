@@ -1,9 +1,10 @@
+import re
+
 from trilogy.core.models import SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse
-import re
 
 
 def test_select():
@@ -58,6 +59,4 @@ select
     sql = generator.compile_statement(query)
 
     assert re.search(r"(count\([A-z0-9\_]+\.`id`\) as `user_post_count`)", sql)
-    assert re.search(
-        r"avg\([A-z0-9\_]+\.`user_post_count`\) as `avg_user_post_count`", sql
-    )
+    assert re.search(r"avg\([A-z0-9\_]+\.`user_post_count`\) as `avg_user_post_count`", sql)

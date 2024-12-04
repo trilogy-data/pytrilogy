@@ -1,18 +1,15 @@
-from typing import Dict, List
-from trilogy.core.models import Concept
 from collections import defaultdict
+from typing import Dict, List
+
+from trilogy.core.models import Concept
 from trilogy.utility import unique
 
 
-def extract_required_subgraphs(
-    assocs: defaultdict[str, list], path: List[str]
-) -> defaultdict[str, list]:
-
+def extract_required_subgraphs(assocs: defaultdict[str, list], path: List[str]) -> defaultdict[str, list]:
     ds = path[0]
     current: list[str] = []
     for idx, val in enumerate(path):
         if val.startswith("ds~"):
-
             if current:
                 assocs[ds] += current
                 current = [path[idx - 1]] if idx > 0 else []
@@ -36,9 +33,5 @@ def extract_mandatory_subgraphs(paths: Dict[str, List[str]], g) -> List[List[Con
         final.append(v)
     final_concepts = []
     for value in final:
-        final_concepts.append(
-            unique(
-                [g.nodes[v]["concept"] for v in value if v.startswith("c~")], "address"
-            )
-        )
+        final_concepts.append(unique([g.nodes[v]["concept"] for v in value if v.startswith("c~")], "address"))
     return final_concepts

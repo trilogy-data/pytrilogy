@@ -1,18 +1,19 @@
-from trilogy import parse, Dialects
-from trilogy.executor import Executor
+from logging import INFO
 from pathlib import Path
+
+from trilogy import Dialects, parse
+from trilogy.core.enums import Granularity, Purpose
+from trilogy.core.functions import CurrentDatetime
 from trilogy.core.models import (
-    ProcessedQuery,
-    Environment,
     Concept,
     DataType,
+    Environment,
     Function,
+    ProcessedQuery,
     SelectItem,
 )
-from trilogy.core.enums import Purpose, Granularity
-from trilogy.core.functions import CurrentDatetime
+from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
-from logging import INFO
 
 ENVIRONMENT_CONCEPTS = [
     Concept(
@@ -35,15 +36,11 @@ def test_sane_rendering():
     with open(Path(__file__).parent / "daily_visits.preql") as f:
         sql = f.read()
 
-    env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
-    )
+    env, statements = parse(sql, environment=Environment(working_path=Path(__file__).parent))
     enrich_environment(env)
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
-    engine: Executor = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook(INFO)]
-    )
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[DebuggingHook(INFO)])
     statements[-1].select.selection.append(SelectItem(content=local_static))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
@@ -73,9 +70,7 @@ def test_daily_job():
     with open(Path(__file__).parent / "daily_analytics.preql") as f:
         sql = f.read()
 
-    env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
-    )
+    env, statements = parse(sql, environment=Environment(working_path=Path(__file__).parent))
     enrich_environment(env)
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
@@ -99,9 +94,7 @@ def test_daily_job():
     for x in parents:
         assert x.namespace == "all_sites"
 
-    engine: Executor = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook(INFO)]
-    )
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[DebuggingHook(INFO)])
     statements[-1].select.selection.append(SelectItem(content=local_static))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
@@ -112,17 +105,11 @@ def test_rolling_analytics():
     with open(Path(__file__).parent / "rolling_analytics.preql") as f:
         sql = f.read()
 
-    env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
-    )
+    env, statements = parse(sql, environment=Environment(working_path=Path(__file__).parent))
 
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env,
-        hooks=[
-            DebuggingHook(
-                INFO, process_other=False, process_ctes=False, process_datasources=False
-            )
-        ],
+        hooks=[DebuggingHook(INFO, process_other=False, process_ctes=False, process_datasources=False)],
     )
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
@@ -136,9 +123,7 @@ def test_counts():
     with open(Path(__file__).parent / "daily_visits.preql") as f:
         sql = f.read()
 
-    env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
-    )
+    env, statements = parse(sql, environment=Environment(working_path=Path(__file__).parent))
     enrich_environment(env)
     local_static = env.concepts["local.static"]
     assert local_static.granularity == Granularity.SINGLE_ROW
@@ -162,9 +147,7 @@ def test_counts():
     for x in parents:
         assert x.namespace == "all_sites"
 
-    engine: Executor = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook(INFO)]
-    )
+    engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[DebuggingHook(INFO)])
     statements[-1].select.selection.append(SelectItem(content=local_static))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]

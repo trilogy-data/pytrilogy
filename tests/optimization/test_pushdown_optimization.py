@@ -1,31 +1,27 @@
-from trilogy import parse, Dialects
-
 from pathlib import Path
 
+from trilogy import Dialects, parse
 from trilogy.core.enums import Purpose
-from trilogy.core.optimizations.predicate_pushdown import (
-    is_child_of,
-)
 from trilogy.core.models import (
-    Conditional,
+    BooleanOperator,
     Comparison,
     ComparisonOperator,
-    BooleanOperator,
+    Conditional,
     SubselectComparison,
+)
+from trilogy.core.optimizations.predicate_pushdown import (
+    is_child_of,
 )
 from trilogy.core.processing.utility import decompose_condition
 
 
 def test_pushdown():
-
     with open(Path(__file__).parent / "pushdown.preql") as f:
         text = f.read()
 
     env, queries = parse(text)
 
-    generated = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(
-        queries[-1]
-    )[0]
+    generated = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(queries[-1])[0]
 
     print(generated)
     test_str = """ = '2024-01-01' """.strip()
@@ -55,17 +51,13 @@ def test_child_of():
     env, queries = parse(text)
 
     test = Conditional(
-        left=SubselectComparison(
-            left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
-        ),
+        left=SubselectComparison(left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ),
         right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
 
     test2 = Conditional(
-        left=SubselectComparison(
-            left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
-        ),
+        left=SubselectComparison(left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ),
         right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )

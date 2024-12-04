@@ -1,15 +1,15 @@
-from trilogy.core.models import SelectStatement, WindowItem
-from trilogy.core.enums import PurposeLineage, Granularity, Purpose
-from trilogy.core.processing.concept_strategies_v3 import (
-    search_concepts,
-    generate_graph,
-)
-from trilogy.core.query_processor import process_query, get_query_datasources
-from trilogy.core.processing.utility import concept_to_relevant_joins
-from trilogy.dialect.bigquery import BigqueryDialect
-from trilogy.dialect import duckdb
-from trilogy.parser import parse
 from trilogy import Dialects
+from trilogy.core.enums import Granularity, Purpose, PurposeLineage
+from trilogy.core.models import SelectStatement, WindowItem
+from trilogy.core.processing.concept_strategies_v3 import (
+    generate_graph,
+    search_concepts,
+)
+from trilogy.core.processing.utility import concept_to_relevant_joins
+from trilogy.core.query_processor import get_query_datasources, process_query
+from trilogy.dialect import duckdb
+from trilogy.dialect.bigquery import BigqueryDialect
+from trilogy.parser import parse
 
 
 def test_select() -> None:
@@ -128,9 +128,7 @@ limit 100
     select: SelectStatement = parsed[-1]
 
     assert env.concepts["rank_derived"].keys == (env.concepts["user_id"],)
-    assert concept_to_relevant_joins(
-        [env.concepts[x] for x in ["user_id", "rank_derived"]]
-    ) == [env.concepts["user_id"]]
+    assert concept_to_relevant_joins([env.concepts[x] for x in ["user_id", "rank_derived"]]) == [env.concepts["user_id"]]
     assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
 
     get_query_datasources(environment=env, statement=select)
@@ -166,9 +164,7 @@ order by x asc;"""
     )
     assert z.keys == (x,)
 
-    ds = search_concepts(
-        [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0
-    ).resolve()
+    ds = search_concepts([z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0).resolve()
 
     assert x in ds.output_concepts
     assert z in ds.output_concepts

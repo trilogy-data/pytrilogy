@@ -1,5 +1,5 @@
 # from trilogy.compiler import compile
-from trilogy.core.models import SelectStatement, Grain
+from trilogy.core.models import Grain, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.parser import parse
 

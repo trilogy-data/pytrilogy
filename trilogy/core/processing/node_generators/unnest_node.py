@@ -1,10 +1,9 @@
 from typing import List
 
-
-from trilogy.core.models import Concept, Function, WhereClause
-from trilogy.core.processing.nodes import UnnestNode, History, StrategyNode
-from trilogy.core.processing.utility import padding
 from trilogy.constants import logger
+from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 
@@ -24,9 +23,7 @@ def gen_unnest_node(
         arguments = concept.lineage.concept_arguments
 
     equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]
-    non_equivalent_optional = [
-        x for x in local_optional if x not in equivalent_optional
-    ]
+    non_equivalent_optional = [x for x in local_optional if x not in equivalent_optional]
     if arguments or local_optional:
         parent = source_concepts(
             mandatory_list=arguments + non_equivalent_optional,
@@ -37,9 +34,7 @@ def gen_unnest_node(
             conditions=conditions,
         )
         if not parent:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} could not find unnest node parents"
-            )
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} could not find unnest node parents")
             return None
 
     base = UnnestNode(

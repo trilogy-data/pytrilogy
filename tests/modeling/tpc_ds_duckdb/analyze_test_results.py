@@ -1,10 +1,11 @@
-from pathlib import Path
-import os
-import pandas as pd
 import json
-import matplotlib.pyplot as plt
-import tomllib
+import os
 from os import environ
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pandas as pd
+import tomllib
 
 # https://github.com/python/cpython/issues/125235#issuecomment-2412948604
 if not environ.get("TCL_LIBRARY"):
@@ -12,7 +13,6 @@ if not environ.get("TCL_LIBRARY"):
 
 
 def analyze(show: bool = False):
-
     results = []
     root = Path(__file__).parent
     for filename in os.listdir(root):
@@ -40,9 +40,7 @@ def analyze(show: bool = False):
 
     df = df.sort_values("query_id")
 
-    ax.boxplot(
-        [df["exec_time"], df["comp_time"]], tick_labels=["Trilogy", "DuckDBDefault"]
-    )
+    ax.boxplot([df["exec_time"], df["comp_time"]], tick_labels=["Trilogy", "DuckDBDefault"])
     if show:
         plt.show()
     else:

@@ -1,48 +1,49 @@
-from trilogy.parsing.render import render_query, render_environment, Renderer
+from pathlib import Path, PurePosixPath, PureWindowsPath
+
+from trilogy import Environment
+from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    IOType,
+    Modifier,
+)
 from trilogy.core.models import (
+    Address,
+    AlignClause,
+    AlignItem,
+    CaseElse,
+    CaseWhen,
+    ColumnAssignment,
+    Comparison,
+    Concept,
+    ConceptDeclarationStatement,
+    Conditional,
+    CopyStatement,
+    Datasource,
+    DataType,
+    Function,
+    Grain,
+    ImportStatement,
+    ListType,
+    ListWrapper,
+    MergeStatementV2,
+    MultiSelectStatement,
+    NumericType,
     OrderBy,
     Ordering,
     OrderItem,
-    SelectStatement,
-    WhereClause,
-    Conditional,
-    Comparison,
     PersistStatement,
-    Address,
-    SelectItem,
-    ConceptDeclarationStatement,
-    Function,
     Purpose,
-    DataType,
-    RowsetDerivationStatement,
-    CaseElse,
-    CaseWhen,
-    Concept,
-    MergeStatementV2,
-    MultiSelectStatement,
-    AlignClause,
-    AlignItem,
     RawSQLStatement,
-    NumericType,
-    Datasource,
-    ColumnAssignment,
-    Grain,
-    ListWrapper,
-    ListType,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
     TupleWrapper,
-    CopyStatement,
-    ImportStatement,
+    WhereClause,
 )
-from pathlib import Path, PureWindowsPath, PurePosixPath
-from trilogy import Environment
-from trilogy.core.enums import (
-    ComparisonOperator,
-    BooleanOperator,
-    Modifier,
-    FunctionType,
-    IOType,
-)
-from trilogy.constants import VIRTUAL_CONCEPT_PREFIX, DEFAULT_NAMESPACE
+from trilogy.parsing.render import Renderer, render_environment, render_query
 
 
 def test_basic_query(test_environment):
@@ -107,13 +108,7 @@ def test_multi_select(test_environment):
                 where_clause=None,
             ),
         ],
-        align=AlignClause(
-            items=[
-                AlignItem(
-                    alias="merge", concepts=[test_environment.concepts["order_id"]]
-                )
-            ]
-        ),
+        align=AlignClause(items=[AlignItem(alias="merge", concepts=[test_environment.concepts["order_id"]])]),
         order_by=OrderBy(
             items=[
                 OrderItem(
@@ -221,26 +216,18 @@ ORDER BY
 
 
 def test_render_select_item(test_environment: Environment):
-    test = Renderer().to_string(
-        SelectItem(
-            content=test_environment.concepts["order_id"], modifiers=[Modifier.HIDDEN]
-        )
-    )
+    test = Renderer().to_string(SelectItem(content=test_environment.concepts["order_id"], modifiers=[Modifier.HIDDEN]))
 
     assert test == "--order_id"
 
 
 def test_render_concept_declaration(test_environment: Environment):
-    test = Renderer().to_string(
-        ConceptDeclarationStatement(concept=test_environment.concepts["order_id"])
-    )
+    test = Renderer().to_string(ConceptDeclarationStatement(concept=test_environment.concepts["order_id"]))
 
     assert test == "key order_id int;"
     env_two = Environment(namespace="test")
     env_two.parse("""key order_id int;""")
-    test = Renderer().to_string(
-        ConceptDeclarationStatement(concept=env_two.concepts["test.order_id"])
-    )
+    test = Renderer().to_string(ConceptDeclarationStatement(concept=env_two.concepts["test.order_id"]))
 
     assert test == "key test.order_id int;"
 
@@ -277,11 +264,7 @@ def test_render_rowset(test_environment: Environment):
             ]
         ),
     )
-    test = Renderer().to_string(
-        RowsetDerivationStatement(
-            select=query, name="test", namespace=DEFAULT_NAMESPACE
-        )
-    )
+    test = Renderer().to_string(RowsetDerivationStatement(select=query, name="test", namespace=DEFAULT_NAMESPACE))
 
     assert (
         test
@@ -294,7 +277,6 @@ ORDER BY
 
 
 def test_render_case(test_environment: Environment):
-
     case_else = CaseElse(
         expr=test_environment.concepts["order_id"],
     )
@@ -529,23 +511,17 @@ def test_render_index_access():
 
 def test_render_import():
     base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="user_id", path=str(PureWindowsPath(base)))
-    )
+    test = Renderer().to_string(ImportStatement(alias="user_id", path=str(PureWindowsPath(base))))
 
     assert test == "import path.to.file as user_id;"
 
     base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="user_id", path=str(PurePosixPath(base)))
-    )
+    test = Renderer().to_string(ImportStatement(alias="user_id", path=str(PurePosixPath(base))))
 
     assert test == "import path.to.file as user_id;"
 
     base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="", path=str(PurePosixPath(base)))
-    )
+    test = Renderer().to_string(ImportStatement(alias="", path=str(PurePosixPath(base))))
 
     assert test == "import path.to.file;"
 
@@ -560,11 +536,7 @@ def test_render_datasource():
     test = Renderer().to_string(
         Datasource(
             name="useful_data",
-            columns=[
-                ColumnAssignment(
-                    alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL]
-                )
-            ],
+            columns=[ColumnAssignment(alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL])],
             address="customers.dim_customers",
             grain=Grain(components=[user_id]),
             where=WhereClause(
@@ -693,9 +665,7 @@ select id
 where id in (1,2,3);
 """,
     )
-    assert isinstance(
-        commands[-1].select.where_clause.conditional.right, TupleWrapper
-    ), type(commands[-1].select.where_clause.conditional.right)
+    assert isinstance(commands[-1].select.where_clause.conditional.right, TupleWrapper), type(commands[-1].select.where_clause.conditional.right)
     rendered = Renderer().to_string(commands[-1])
 
     assert (
@@ -767,15 +737,10 @@ final_zips;
     )
 
     final_zips: ConceptDeclarationStatement = commands[-2]
-    assert isinstance(
-        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept
-    ), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
+    assert isinstance(final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
     rendered = Renderer().to_string(final_zips)
 
-    assert (
-        rendered
-        == "property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
-    )
+    assert rendered == "property final_zips <- substring(filter zips where zips in substring(p_cust_zip,1,5),1,2);"
 
 
 def test_render_environment():

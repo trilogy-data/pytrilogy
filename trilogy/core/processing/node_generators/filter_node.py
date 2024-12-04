@@ -1,20 +1,18 @@
 from typing import List
 
-
+from trilogy.constants import logger
 from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
-from trilogy.core.processing.nodes import (
-    FilterNode,
-    MergeNode,
-    History,
-    StrategyNode,
-    SelectNode,
-)
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
-from trilogy.constants import logger
-from trilogy.core.processing.utility import padding, unique
-from trilogy.core.processing.utility import is_scalar_condition
+from trilogy.core.processing.nodes import (
+    FilterNode,
+    History,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
+from trilogy.core.processing.utility import is_scalar_condition, padding, unique
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
@@ -29,9 +27,7 @@ def gen_filter_node(
     history: History | None = None,
     conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
-    immediate_parent, parent_row_concepts, parent_existence_concepts = (
-        resolve_filter_parent_concepts(concept)
-    )
+    immediate_parent, parent_row_concepts, parent_existence_concepts = resolve_filter_parent_concepts(concept)
     if not isinstance(concept.lineage, FilterItem):
         raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
@@ -41,9 +37,7 @@ def gen_filter_node(
     for x in local_optional:
         if isinstance(x.lineage, FilterItem):
             if concept.lineage.where == where:
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "
-                )
+                logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions ")
                 parent_row_concepts.append(x.lineage.content)
                 optional_included.append(x)
                 continue
@@ -70,9 +64,7 @@ def gen_filter_node(
         for existence_tuple in parent_existence_concepts:
             if not existence_tuple:
                 continue
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} fetching filter node existence parents {[x.address for x in existence_tuple]}"
-            )
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} fetching filter node existence parents {[x.address for x in existence_tuple]}")
             parent_existence = source_concepts(
                 mandatory_list=list(existence_tuple),
                 environment=environment,
@@ -81,15 +73,11 @@ def gen_filter_node(
                 history=history,
             )
             if not parent_existence:
-                logger.info(
-                    f"{padding(depth)}{LOGGER_PREFIX} filter existence node parents could not be found"
-                )
+                logger.info(f"{padding(depth)}{LOGGER_PREFIX} filter existence node parents could not be found")
                 return None
             core_parents.append(parent_existence)
     if not row_parent:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} filter node row parents {[x.address for x in parent_row_concepts]} could not be found")
         return None
 
     optimized_pushdown = False
@@ -98,23 +86,15 @@ def gen_filter_node(
     elif not local_optional:
         optimized_pushdown = True
     elif conditions and conditions == where:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} query conditions are the same as filter conditions, can optimize across all concepts")
         optimized_pushdown = True
     elif optional_included == local_optional:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} all optional concepts are included in the filter, can optimize across all concepts")
         optimized_pushdown = True
     if optimized_pushdown:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} returning optimized filter node with pushdown to parent with condition {where.conditional}")
         if isinstance(row_parent, SelectNode):
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} nesting select node in strategy node"
-            )
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} nesting select node in strategy node")
             parent = StrategyNode(
                 input_concepts=row_parent.output_concepts,
                 output_concepts=[concept] + row_parent.output_concepts,
@@ -128,28 +108,12 @@ def gen_filter_node(
         else:
             parent = row_parent
 
-        expected_output = [concept] + [
-            x
-            for x in local_optional
-            if x.address in [y for y in parent.output_concepts]
-            or x.address in [y for y in optional_included]
-        ]
+        expected_output = [concept] + [x for x in local_optional if x.address in [y for y in parent.output_concepts] or x.address in [y for y in optional_included]]
         parent.add_parents(core_parents)
         parent.add_condition(where.conditional)
-        parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
-            expected_output, False
-        )
+        parent.add_existence_concepts(flattened_existence, False).set_output_concepts(expected_output, False)
         parent.grain = Grain(
-            components=(
-                list(immediate_parent.keys)
-                if immediate_parent.keys
-                else [immediate_parent]
-            )
-            + [
-                x
-                for x in local_optional
-                if x.address in [y.address for y in parent.output_concepts]
-            ]
+            components=(list(immediate_parent.keys) if immediate_parent.keys else [immediate_parent]) + [x for x in local_optional if x.address in [y.address for y in parent.output_concepts]]
         )
         parent.rebuild_cache()
         filter_node = parent
@@ -171,15 +135,9 @@ def gen_filter_node(
             preexisting_conditions=conditions.conditional if conditions else None,
         )
 
-    if not local_optional or all(
-        [x.address in filter_node.output_concepts for x in local_optional]
-    ):
-        optional_outputs = [
-            x for x in filter_node.output_concepts if x.address in local_optional
-        ]
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}"
-        )
+    if not local_optional or all([x.address in filter_node.output_concepts for x in local_optional]):
+        optional_outputs = [x for x in filter_node.output_concepts if x.address in local_optional]
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} no extra enrichment needed for filter node, has all of {[x.address for x in local_optional]}")
         filter_node.set_output_concepts(
             [
                 concept,

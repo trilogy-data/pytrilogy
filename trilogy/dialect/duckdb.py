@@ -1,8 +1,8 @@
-from typing import Mapping, Callable, Any
+from typing import Any, Callable, Mapping
 
 from jinja2 import Template
 
-from trilogy.core.enums import FunctionType, WindowType, UnnestMode
+from trilogy.core.enums import FunctionType, UnnestMode, WindowType
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -12,15 +12,9 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda args: f"sum({args[0]})",
     FunctionType.AVG: lambda args: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args: f"length({args[0]})",
-    FunctionType.LIKE: lambda args: (
-        f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
-    ),
-    FunctionType.CONCAT: lambda args: (
-        f"CONCAT({','.join([f''' {str(a)} ''' for a in args])})"
-    ),
-    FunctionType.SPLIT: lambda args: (
-        f"STRING_SPLIT({','.join([f''' {str(a)} ''' for a in args])})"
-    ),
+    FunctionType.LIKE: lambda args: (f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"),
+    FunctionType.CONCAT: lambda args: (f"CONCAT({','.join([f''' {str(a)} ''' for a in args])})"),
+    FunctionType.SPLIT: lambda args: (f"STRING_SPLIT({','.join([f''' {str(a)} ''' for a in args])})"),
     ## Duckdb indexes from 1, not 0
     FunctionType.INDEX_ACCESS: lambda args: (f"{args[0]}[{args[1]}]"),
     # datetime is aliased

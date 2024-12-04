@@ -11,8 +11,7 @@ from trilogy.core.processing.nodes import StrategyNode, History
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.constants import logger
-from trilogy.core.enums import SourceType
+from trilogy.core.processing.nodes import History, StrategyNode
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
@@ -46,9 +45,7 @@ def gen_basic_node(
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept)
 
-    logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}"
-    )
+    logger.info(f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}")
 
     equivalent_optional = [
         x
@@ -75,9 +72,7 @@ def gen_basic_node(
     )
 
     if not parent_node:
-        logger.info(
-            f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}"
-        )
+        logger.info(f"{depth_prefix}{LOGGER_PREFIX} No basic node could be generated for {concept}")
         return None
 
     parent_node.source_type = SourceType.BASIC
@@ -85,15 +80,7 @@ def gen_basic_node(
     for x in equivalent_optional:
         parent_node.add_output_concept(x)
 
-    parent_node.remove_output_concepts(
-        [
-            x
-            for x in parent_node.output_concepts
-            if x.address not in [concept] + local_optional
-        ]
-    )
+    parent_node.remove_output_concepts([x for x in parent_node.output_concepts if x.address not in [concept] + local_optional])
 
-    logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}"
-    )
+    logger.info(f"{depth_prefix}{LOGGER_PREFIX} Returning basic select for {concept}: output {[x.address for x in parent_node.output_concepts]}")
     return parent_node

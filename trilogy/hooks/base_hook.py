@@ -1,11 +1,11 @@
 from trilogy.core.models import (
-    QueryDatasource,
     CTE,
-    UnionCTE,
-    SelectStatement,
-    PersistStatement,
     MultiSelectStatement,
+    PersistStatement,
+    QueryDatasource,
     RowsetDerivationStatement,
+    SelectStatement,
+    UnionCTE,
 )
 from trilogy.core.processing.nodes import StrategyNode
 

@@ -1,8 +1,8 @@
 # from trilogy.compiler import compile
 from os.path import dirname
 
-from trilogy.core.models import Environment
 from trilogy.core.enums import Modifier
+from trilogy.core.models import Environment
 from trilogy.parser import parse
 from trilogy.parsing.render import render_environment
 
@@ -87,9 +87,7 @@ def test_circular_base():
 
 
 def test_circular():
-    env, parsed = parse(
-        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
-    )
+    env, parsed = parse(CIRC_QUERY, environment=Environment(working_path=dirname(__file__)))
     from trilogy.hooks.query_debugger import DebuggingHook
 
     DebuggingHook()
@@ -115,9 +113,7 @@ def test_circular():
 
 
 def test_partial():
-    env, parsed = parse(
-        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
-    )
+    env, parsed = parse(CIRC_QUERY, environment=Environment(working_path=dirname(__file__)))
     # raise ValueError(env.concepts.keys())
     p_candidate = [c for c in env.datasources["c1.posts"].columns if c.alias == "id2"]
     assert Modifier.PARTIAL in p_candidate[0].modifiers

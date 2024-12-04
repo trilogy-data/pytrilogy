@@ -2,25 +2,25 @@ from pytest import fixture
 
 from trilogy import Environment
 from trilogy.core.enums import (
-    Purpose,
-    FunctionType,
     ComparisonOperator,
+    FunctionType,
+    Purpose,
     WindowType,
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
 from trilogy.core.models import (
-    Concept,
-    DataType,
-    Datasource,
     ColumnAssignment,
+    Comparison,
+    Concept,
+    Datasource,
+    DataType,
+    FilterItem,
     Function,
     Grain,
-    WindowItem,
-    FilterItem,
     OrderItem,
     WhereClause,
-    Comparison,
+    WindowItem,
 )
 
 
@@ -29,9 +29,7 @@ def test_environment():
     env = Environment()
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
-    order_timestamp = Concept(
-        name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
-    )
+    order_timestamp = Concept(name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY)
 
     order_count = Concept(
         name="order_count",
@@ -80,15 +78,11 @@ def test_environment():
             operator=FunctionType.SUM,
         ),
     )
-    product_id = Concept(
-        name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
-    )
+    product_id = Concept(name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
     assert product_id.grain.components[0].name == "product_id"
 
-    category_id = Concept(
-        name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
-    )
+    category_id = Concept(name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
     category_name = Concept(
         name="category_name",
         datatype=DataType.STRING,
@@ -131,9 +125,7 @@ def test_environment():
         lineage=WindowItem(
             type=WindowType.RANK,
             content=product_id,
-            order_by=[
-                OrderItem(expr=total_revenue.with_grain(product_id), order="desc")
-            ],
+            order_by=[OrderItem(expr=total_revenue.with_grain(product_id), order="desc")],
         ),
         grain=product_id,
     )

@@ -1,51 +1,46 @@
-from typing import List, Optional, Set, Union, Dict, Tuple
+from collections import defaultdict
+from math import ceil
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from trilogy.core.env_processor import generate_graph
-from trilogy.core.graph_models import ReferenceGraph
+from trilogy.constants import CONFIG, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.enums import BooleanOperator, SourceType
-from trilogy.constants import CONFIG
-from trilogy.core.processing.nodes import SelectNode, StrategyNode, History
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.ergonomics import generate_cte_names
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models import (
-    Concept,
-    Environment,
-    PersistStatement,
-    ConceptDeclarationStatement,
-    SelectStatement,
-    MultiSelectStatement,
     CTE,
-    UnionCTE,
+    BaseJoin,
+    Concept,
+    ConceptDeclarationStatement,
+    Conditional,
+    CopyStatement,
+    CTEConceptPair,
+    Datasource,
+    Environment,
+    InstantiatedUnnestJoin,
     Join,
-    UnnestJoin,
     MaterializedDataset,
+    MultiSelectStatement,
+    PersistStatement,
+    ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     QueryDatasource,
-    Datasource,
-    BaseJoin,
-    InstantiatedUnnestJoin,
-    Conditional,
-    ProcessedCopyStatement,
-    CopyStatement,
-    CTEConceptPair,
+    SelectStatement,
+    UnionCTE,
+    UnnestJoin,
 )
-
-from trilogy.utility import unique
-
-from trilogy.hooks.base_hook import BaseHook
-from trilogy.constants import logger
-from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.optimization import optimize_ctes
-from math import ceil
-from collections import defaultdict
+from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
+from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.hooks.base_hook import BaseHook
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
 
-def base_join_to_join(
-    base_join: BaseJoin | UnnestJoin, ctes: List[CTE]
-) -> Join | InstantiatedUnnestJoin:
+def base_join_to_join(base_join: BaseJoin | UnnestJoin, ctes: List[CTE]) -> Join | InstantiatedUnnestJoin:
     """This function converts joins at the datasource level
     to joins at the CTE level"""
     if isinstance(base_join, UnnestJoin):
@@ -103,20 +98,14 @@ def base_join_to_join(
     )
 
 
-def generate_source_map(
-    query_datasource: QueryDatasource, all_new_ctes: List[CTE | UnionCTE]
-) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
+def generate_source_map(query_datasource: QueryDatasource, all_new_ctes: List[CTE | UnionCTE]) -> Tuple[Dict[str, list[str]], Dict[str, list[str]]]:
     source_map: Dict[str, list[str]] = defaultdict(list)
     # now populate anything derived in this level
     for qdk, qdv in query_datasource.source_map.items():
         unnest = [x for x in qdv if isinstance(x, UnnestJoin)]
         for _ in unnest:
             source_map[qdk] = []
-        if (
-            qdk not in source_map
-            and len(qdv) == 1
-            and isinstance(list(qdv)[0], UnnestJoin)
-        ):
+        if qdk not in source_map and len(qdv) == 1 and isinstance(list(qdv)[0], UnnestJoin):
             source_map[qdk] = []
         basic = [x for x in qdv if isinstance(x, Datasource)]
         for base in basic:
@@ -125,20 +114,12 @@ def generate_source_map(
         ctes = [x for x in qdv if isinstance(x, QueryDatasource)]
         if ctes:
             names = set([x.safe_identifier for x in ctes])
-            matches = [
-                cte for cte in all_new_ctes if cte.source.safe_identifier in names
-            ]
+            matches = [cte for cte in all_new_ctes if cte.source.safe_identifier in names]
 
             if not matches and names:
-                raise SyntaxError(
-                    f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.safe_identifier for cte in all_new_ctes]}"
-                )
+                raise SyntaxError(f"Missing parent CTEs for source map; expecting {names}, have {[cte.source.safe_identifier for cte in all_new_ctes]}")
             for cte in matches:
-                output_address = [
-                    x.address
-                    for x in cte.output_columns
-                    if x.address not in [z.address for z in cte.partial_concepts]
-                ]
+                output_address = [x.address for x in cte.output_columns if x.address not in [z.address for z in cte.partial_concepts]]
                 if qdk in output_address:
                     source_map[qdk].append(cte.safe_identifier)
             # now do a pass that accepts partials
@@ -149,22 +130,16 @@ def generate_source_map(
             if not qdv:
                 source_map[qdk] = []
             elif CONFIG.validate_missing:
-                raise ValueError(
-                    f"Missing {qdk} in {source_map}, source map {query_datasource.source_map} "
-                )
+                raise ValueError(f"Missing {qdk} in {source_map}, source map {query_datasource.source_map} ")
 
     # existence lookups use a separate map
     # as they cannot be referenced in row resolution
     existence_source_map: Dict[str, list[str]] = defaultdict(list)
     for ek, ev in query_datasource.existence_source_map.items():
         ids = set([x.safe_identifier for x in ev])
-        ematches = [
-            cte.name for cte in all_new_ctes if cte.source.safe_identifier in ids
-        ]
+        ematches = [cte.name for cte in all_new_ctes if cte.source.safe_identifier in ids]
         existence_source_map[ek] = ematches
-    return {
-        k: [] if not v else list(set(v)) for k, v in source_map.items()
-    }, existence_source_map
+    return {k: [] if not v else list(set(v)) for k, v in source_map.items()}, existence_source_map
 
 
 def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
@@ -209,10 +184,7 @@ def resolve_cte_base_name_and_alias_v2(
     source_map: Dict[str, list[str]],
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
-    if (
-        isinstance(source.datasources[0], Datasource)
-        and not source.datasources[0].name == CONSTANT_DATASET
-    ):
+    if isinstance(source.datasources[0], Datasource) and not source.datasources[0].name == CONSTANT_DATASET:
         ds = source.datasources[0]
         return ds.safe_location, ds.safe_identifier
 
@@ -247,9 +219,7 @@ def resolve_cte_base_name_and_alias_v2(
     return None, None
 
 
-def datasource_to_cte(
-    query_datasource: QueryDatasource, name_map: dict[str, str]
-) -> CTE | UnionCTE:
+def datasource_to_cte(query_datasource: QueryDatasource, name_map: dict[str, str]) -> CTE | UnionCTE:
     parents: list[CTE | UnionCTE] = []
     if query_datasource.source_type == SourceType.UNION:
         direct_parents: list[CTE | UnionCTE] = []
@@ -264,17 +234,12 @@ def datasource_to_cte(
             source=query_datasource,
             parent_ctes=parents,
             internal_ctes=direct_parents,
-            output_columns=[
-                c.with_grain(query_datasource.grain)
-                for c in query_datasource.output_concepts
-            ],
+            output_columns=[c.with_grain(query_datasource.grain) for c in query_datasource.output_concepts],
             grain=direct_parents[0].grain,
         )
         return final
 
-    if len(query_datasource.datasources) > 1 or any(
-        [isinstance(x, QueryDatasource) for x in query_datasource.datasources]
-    ):
+    if len(query_datasource.datasources) > 1 or any([isinstance(x, QueryDatasource) for x in query_datasource.datasources]):
         all_new_ctes: List[CTE | UnionCTE] = []
         for datasource in query_datasource.datasources:
             if isinstance(datasource, QueryDatasource):
@@ -297,30 +262,19 @@ def datasource_to_cte(
             source_map = {k: [] for k in query_datasource.source_map}
             existence_map = source_map
         else:
-            source_map = {
-                k: [] if not v else [source.safe_identifier]
-                for k, v in query_datasource.source_map.items()
-            }
+            source_map = {k: [] if not v else [source.safe_identifier] for k, v in query_datasource.source_map.items()}
             existence_map = source_map
 
     human_id = generate_cte_name(query_datasource.identifier, name_map)
 
-    final_joins = [
-        base_join_to_join(join, [x for x in parents if isinstance(x, CTE)])
-        for join in query_datasource.joins
-    ]
+    final_joins = [base_join_to_join(join, [x for x in parents if isinstance(x, CTE)]) for join in query_datasource.joins]
 
-    base_name, base_alias = resolve_cte_base_name_and_alias_v2(
-        human_id, query_datasource, source_map, final_joins
-    )
+    base_name, base_alias = resolve_cte_base_name_and_alias_v2(human_id, query_datasource, source_map, final_joins)
     cte = CTE(
         name=human_id,
         source=query_datasource,
         # output columns are what are selected/grouped by
-        output_columns=[
-            c.with_grain(query_datasource.grain)
-            for c in query_datasource.output_concepts
-        ],
+        output_columns=[c.with_grain(query_datasource.grain) for c in query_datasource.output_concepts],
         source_map=source_map,
         existence_source_map=existence_map,
         # related columns include all referenced columns, such as filtering
@@ -341,14 +295,8 @@ def datasource_to_cte(
     if cte.grain != query_datasource.grain:
         raise ValueError("Grain was corrupted in CTE generation")
     for x in cte.output_columns:
-        if (
-            x.address not in cte.source_map
-            and not any(y in cte.source_map for y in x.pseudonyms)
-            and CONFIG.validate_missing
-        ):
-            raise ValueError(
-                f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} "
-            )
+        if x.address not in cte.source_map and not any(y in cte.source_map for y in x.pseudonyms) and CONFIG.validate_missing:
+            raise ValueError(f"Missing {x.address} in {cte.source_map}, source map {cte.source.source_map.keys()} ")
 
     return cte
 
@@ -360,9 +308,7 @@ def get_query_node(
     history: History | None = None,
 ) -> StrategyNode:
     graph = graph or generate_graph(environment)
-    logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and output {[str(c) for c in statement.output_components]}"
-    )
+    logger.info(f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and output {[str(c) for c in statement.output_components]}")
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
@@ -376,9 +322,7 @@ def get_query_node(
         history=history,
     )
     if not ods:
-        raise ValueError(
-            f"Could not find source query concepts for {[x.address for x in search_concepts]}"
-        )
+        raise ValueError(f"Could not find source query concepts for {[x.address for x in search_concepts]}")
     ds: StrategyNode = ods
     if statement.having_clause:
         final = statement.having_clause.conditional
@@ -406,7 +350,6 @@ def get_query_datasources(
     graph: Optional[ReferenceGraph] = None,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-
     ds = get_query_node(environment, statement, graph)
     final_qds = ds.resolve()
     if hooks:
@@ -442,9 +385,7 @@ def process_persist(
     statement: PersistStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQueryPersist:
-    select = process_query(
-        environment=environment, statement=statement.select, hooks=hooks
-    )
+    select = process_query(environment=environment, statement=statement.select, hooks=hooks)
 
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
@@ -460,9 +401,7 @@ def process_copy(
     statement: CopyStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedCopyStatement:
-    select = process_query(
-        environment=environment, statement=statement.select, hooks=hooks
-    )
+    select = process_query(environment=environment, statement=statement.select, hooks=hooks)
 
     # build our object to return
     arg_dict = {k: v for k, v in select.__dict__.items()}
@@ -481,9 +420,7 @@ def process_query(
     hooks = hooks or []
     statement.refresh_bindings(environment)
     graph = generate_graph(environment)
-    root_datasource = get_query_datasources(
-        environment=environment, graph=graph, statement=statement, hooks=hooks
-    )
+    root_datasource = get_query_datasources(environment=environment, graph=graph, statement=statement, hooks=hooks)
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor

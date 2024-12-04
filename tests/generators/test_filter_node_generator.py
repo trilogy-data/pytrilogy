@@ -1,10 +1,10 @@
-from trilogy.core.processing.node_generators import gen_filter_node
+from trilogy.core.enums import ComparisonOperator, PurposeLineage
+from trilogy.core.models import Comparison, Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
+from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
-from trilogy.core.models import Environment, Comparison
-from trilogy.core.enums import PurposeLineage, ComparisonOperator
 
 
 def test_gen_filter_node_parents(test_environment: Environment, test_environment_graph):
@@ -42,14 +42,8 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
         right="%abc%",
     )
     node = gen_filter_node(
-        concept=test_environment.concepts["product_id"].with_filter(
-            conditional, test_environment
-        ),
-        local_optional=[
-            test_environment.concepts["category_id"].with_filter(
-                conditional, test_environment
-            )
-        ],
+        concept=test_environment.concepts["product_id"].with_filter(conditional, test_environment),
+        local_optional=[test_environment.concepts["category_id"].with_filter(conditional, test_environment)],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -65,14 +59,8 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
         right="%abc%",
     )
     node = gen_filter_node(
-        concept=test_environment.concepts["product_id"].with_filter(
-            conditional, test_environment
-        ),
-        local_optional=[
-            test_environment.concepts["category_id"].with_filter(
-                conditional, test_environment
-            )
-        ],
+        concept=test_environment.concepts["product_id"].with_filter(conditional, test_environment),
+        local_optional=[test_environment.concepts["category_id"].with_filter(conditional, test_environment)],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,

@@ -1,25 +1,21 @@
 from enum import Enum
-from typing import List, TYPE_CHECKING, Optional, Callable
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 if TYPE_CHECKING:
+    from trilogy import Environment, Executor
     from trilogy.hooks.base_hook import BaseHook
-    from trilogy import Executor, Environment
 
-from trilogy.dialect.config import DialectConfig
 from trilogy.constants import logger
+from trilogy.dialect.config import DialectConfig
 
 
 def default_factory(conf: DialectConfig, config_type):
     from sqlalchemy import create_engine
 
     if not isinstance(conf, config_type):
-        raise TypeError(
-            f"Invalid dialect configuration for type {type(config_type).__name__}"
-        )
+        raise TypeError(f"Invalid dialect configuration for type {type(config_type).__name__}")
     if conf.connect_args:
-        return create_engine(
-            conf.connection_string(), future=True, connect_args=conf.connect_args
-        )
+        return create_engine(conf.connection_string(), future=True, connect_args=conf.connect_args)
     return create_engine(conf.connection_string(), future=True)
 
 
@@ -42,6 +38,7 @@ class Dialects(Enum):
         if self == Dialects.BIGQUERY:
             from google.auth import default
             from google.cloud import bigquery
+
             from trilogy.dialect.config import BigQueryConfig
 
             credentials, project = default()
@@ -52,7 +49,6 @@ class Dialects(Enum):
                 BigQueryConfig,
             )
         elif self == Dialects.SQL_SERVER:
-
             raise NotImplementedError()
         elif self == Dialects.DUCK_DB:
             from trilogy.dialect.config import DuckDBConfig
@@ -65,16 +61,12 @@ class Dialects(Enum):
 
             return _engine_factory(conf, SnowflakeConfig)
         elif self == Dialects.POSTGRES:
-            logger.warn(
-                "WARN: Using experimental postgres dialect. Most functionality will not work."
-            )
+            logger.warn("WARN: Using experimental postgres dialect. Most functionality will not work.")
             import importlib
 
             spec = importlib.util.find_spec("psycopg2")
             if spec is None:
-                raise ImportError(
-                    "postgres driver not installed. python -m pip install pypreql[postgres]"
-                )
+                raise ImportError("postgres driver not installed. python -m pip install pypreql[postgres]")
             from trilogy.dialect.config import PostgresConfig
 
             return _engine_factory(conf, PostgresConfig)
@@ -87,9 +79,7 @@ class Dialects(Enum):
 
             return _engine_factory(conf, TrinoConfig)
         else:
-            raise ValueError(
-                f"Unsupported dialect {self} for default engine creation; create one explicitly."
-            )
+            raise ValueError(f"Unsupported dialect {self} for default engine creation; create one explicitly.")
 
     def default_executor(
         self,
@@ -98,7 +88,7 @@ class Dialects(Enum):
         conf: DialectConfig | None = None,
         _engine_factory: Callable | None = None,
     ) -> "Executor":
-        from trilogy import Executor, Environment
+        from trilogy import Environment, Executor
 
         if _engine_factory is not None:
             return Executor(

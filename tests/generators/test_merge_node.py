@@ -1,9 +1,9 @@
-from trilogy.core.processing.nodes import MergeNode
-from trilogy.core.processing.nodes import NodeJoin, ConstantNode
-from trilogy.core.models import Environment
-from trilogy.core.enums import JoinType
-from trilogy.core.processing.graph_utils import extract_required_subgraphs
 from collections import defaultdict
+
+from trilogy.core.enums import JoinType
+from trilogy.core.models import Environment
+from trilogy.core.processing.graph_utils import extract_required_subgraphs
+from trilogy.core.processing.nodes import ConstantNode, MergeNode, NodeJoin
 
 
 def test_same_join_fails(test_environment: Environment, test_environment_graph):
@@ -53,9 +53,7 @@ def test_graph_resolution():
         "c~rich_info.full_name@Grain<rich_info.full_name>",
         "c~rich_info.last_name@Grain<Abstract>",
     ]
-    assert assocs[
-        "ds~local.__virtual_bridge_passenger_last_name_rich_info_last_name"
-    ] == [
+    assert assocs["ds~local.__virtual_bridge_passenger_last_name_rich_info_last_name"] == [
         "c~rich_info.last_name@Grain<Abstract>",
         "c~passenger.last_name@Grain<Abstract>",
         "c~passenger.last_name@Grain<passenger.id>",
@@ -85,7 +83,6 @@ def test_graph_rez_bridge():
             "c~rich_info.net_worth_1918_dollars@Grain<rich_info.full_name>",
         ],
     }.items():
-
         extract_required_subgraphs(assocs, v)
 
     assert set(assocs["ds~rich_info.rich_info"]) == set(

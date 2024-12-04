@@ -1,23 +1,21 @@
-from trilogy import Executor, Dialects
-
 # from trilogy.core.models import Environment
 from sqlalchemy import create_engine
+
+from trilogy import Dialects, Executor
+from trilogy.core.enums import Purpose
 from trilogy.core.models import (
-    DataType,
-    Datasource,
-    Concept,
     ColumnAssignment,
+    Concept,
+    Datasource,
+    DataType,
     Environment,
 )
-from trilogy.core.enums import Purpose
-
-
-from trilogy.core.query_processor import generate_graph
-from trilogy.core.processing.nodes import MergeNode
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import (
     gen_filter_node,
 )
+from trilogy.core.processing.nodes import MergeNode
+from trilogy.core.query_processor import generate_graph
 from trilogy.hooks.query_debugger import DebuggingHook
 
 
@@ -29,9 +27,7 @@ def setup_engine() -> Executor:
 
 def setup_titanic(env: Environment):
     namespace = "passenger"
-    id = Concept(
-        name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
-    )
+    id = Concept(name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY)
     age = Concept(
         name="age",
         namespace=namespace,
@@ -123,9 +119,7 @@ def test_partial_assignment():
     assert len(resolved.partial_concepts) == 0
 
     # check at the source level
-    sourced = search_concepts(
-        [family, env.concepts["surviving_passenger"]], environment=env, g=g, depth=0
-    )
+    sourced = search_concepts([family, env.concepts["surviving_passenger"]], environment=env, g=g, depth=0)
     assert isinstance(sourced, MergeNode)
     assert len(sourced.parents) == 2
 

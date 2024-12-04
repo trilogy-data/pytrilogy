@@ -47,9 +47,7 @@ def can_bind(hostname, port):
 @fixture(scope="session")
 def local_express_flag():
     if os.environ.get("PYPREQL_INTEGRATION_SQLSERVER_EXPRESS", None) == "true":
-        return create_engine(
-            "mssql://*server_name*\\SQLEXPRESS/*database_name*?trusted_connection=yes;DRIVER={ODBC Driver 18 for SQL Server};"
-        )
+        return create_engine("mssql://*server_name*\\SQLEXPRESS/*database_name*?trusted_connection=yes;DRIVER={ODBC Driver 18 for SQL Server};")
     else:
         return False
 
@@ -62,9 +60,7 @@ def db_must(local_express_flag):
         yield TestConfig.LOCAL
         return
     if not can_bind("localhost", 1433):
-        x = os.system(
-            "docker run -p 1433:1433 --name pyreql-test-sqlserver -d  --rm pyreql-test-sqlserver"
-        )
+        x = os.system("docker run -p 1433:1433 --name pyreql-test-sqlserver -d  --rm pyreql-test-sqlserver")
         if x != 0:
             raise TestDependencyError("Error starting database")
         time.sleep(5)

@@ -1,17 +1,16 @@
-from typing import Mapping, Callable, Any
+from typing import Any, Callable, Mapping
 
 from jinja2 import Template
-from trilogy.utility import string_to_hash
-
 
 from trilogy.core.enums import FunctionType, WindowType
 from trilogy.core.models import (
     ProcessedQuery,
     ProcessedQueryPersist,
-    ProcessedShowStatement,
     ProcessedRawSQLStatement,
+    ProcessedShowStatement,
 )
 from trilogy.dialect.base import BaseDialect
+from trilogy.utility import string_to_hash
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
 
@@ -20,12 +19,8 @@ FUNCTION_MAP = {
     FunctionType.SUM: lambda args: f"sum({args[0]})",
     FunctionType.AVG: lambda args: f"avg({args[0]})",
     FunctionType.LENGTH: lambda args: f"length({args[0]})",
-    FunctionType.LIKE: lambda args: (
-        f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"
-    ),
-    FunctionType.CONCAT: lambda args: (
-        f"CONCAT({','.join([f''' '{a}' ''' for a in args])})"
-    ),
+    FunctionType.LIKE: lambda args: (f" CASE WHEN {args[0]} like {args[1]} THEN True ELSE False END"),
+    FunctionType.CONCAT: lambda args: (f"CONCAT({','.join([f''' '{a}' ''' for a in args])})"),
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
@@ -85,12 +80,7 @@ class SqlServerDialect(BaseDialect):
 
     def compile_statement(
         self,
-        query: (
-            ProcessedQuery
-            | ProcessedQueryPersist
-            | ProcessedShowStatement
-            | ProcessedRawSQLStatement
-        ),
+        query: (ProcessedQuery | ProcessedQueryPersist | ProcessedShowStatement | ProcessedRawSQLStatement),
     ) -> str:
         base = super().compile_statement(query)
         if isinstance(base, (ProcessedQuery, ProcessedQueryPersist)):

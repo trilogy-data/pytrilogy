@@ -1,7 +1,6 @@
-from trilogy import parse
 from pathlib import Path
 
-from trilogy import Environment, Dialects
+from trilogy import Dialects, Environment, parse
 from trilogy.hooks.query_debugger import DebuggingHook
 
 working_path = Path(__file__).parent
@@ -13,9 +12,7 @@ def test_one():
     with open(test) as f:
         text = f.read()
         env, queries = parse(text, env)
-    exec = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)]
-    )
+    exec = Dialects.DUCK_DB.default_executor(environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)])
 
     env, queries = parse("""import store_returns as returns;""", env)
 
@@ -35,16 +32,7 @@ def test_one():
     assert found
     assert env.concepts["returns.return_date.year"].address in env.materialized_concepts
     assert len(env.datasources["returns.store_returns"].concepts) == 7
-    assert (
-        len(
-            list(
-                set(
-                    x.address for x in env.datasources["returns.store_returns"].concepts
-                )
-            )
-        )
-        == 7
-    )
+    assert len(list(set(x.address for x in env.datasources["returns.store_returns"].concepts))) == 7
 
     sql = exec.generate_sql(
         """import customer as customer;
@@ -87,9 +75,7 @@ def test_three():
     select = queries[-1]
 
     # g = generate_graph(env)
-    exec = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)]
-    )
+    exec = Dialects.DUCK_DB.default_executor(environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)])
     sql = exec.generate_sql(select)
     assert "SELECT" in sql[-1]
     # assert sql[0] == '123'
@@ -104,9 +90,7 @@ def test_three_alt():
     select = queries[-1]
 
     # g = generate_graph(env)
-    exec = Dialects.DUCK_DB.default_executor(
-        environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)]
-    )
+    exec = Dialects.DUCK_DB.default_executor(environment=env, hooks=[DebuggingHook(process_other=False, process_ctes=False)])
     sql = exec.generate_sql(select)
     assert "SELECT" in sql[-1]
     # assert sql[0] == '123'

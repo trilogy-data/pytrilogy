@@ -5,16 +5,14 @@ def test_render_query(presto_engine):
 
 
 def test_numeric_query(presto_engine):
-    results = presto_engine.generate_sql(
-        """select cast(1.235 as NUMERIC(12,2))->decimal_name;"""
-    )[0]
+    results = presto_engine.generate_sql("""select cast(1.235 as NUMERIC(12,2))->decimal_name;""")[0]
 
     assert "DECIMAL(12,2)" in results
 
 
 def test_unnest_query(presto_engine):
-    from trilogy.hooks.query_debugger import DebuggingHook
     from trilogy.constants import CONFIG
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     presto_engine.hooks = [DebuggingHook()]
     current = CONFIG.rendering.parameters

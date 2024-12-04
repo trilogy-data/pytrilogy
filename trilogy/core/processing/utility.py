@@ -1,52 +1,47 @@
-from typing import List, Tuple, Dict, Set, Any
-import networkx as nx
-from trilogy.core.models import (
-    Datasource,
-    JoinType,
-    BaseJoin,
-    Concept,
-    QueryDatasource,
-    LooseConceptList,
-    Environment,
-    Conditional,
-    SubselectComparison,
-    Comparison,
-    Parenthetical,
-    Function,
-    FilterItem,
-    MagicConstants,
-    WindowItem,
-    AggregateWrapper,
-    DataType,
-    ConceptPair,
-    UnnestJoin,
-    CaseWhen,
-    CaseElse,
-    MapWrapper,
-    ListWrapper,
-    MapType,
-    DatePart,
-    NumericType,
-    ListType,
-    TupleWrapper,
-    CTE,
-    MultiSelectStatement,
-    SelectStatement,
-    ProcessedQuery,
-    UnionCTE,
-)
-
-from trilogy.core.enums import Purpose, Granularity, BooleanOperator
-from enum import Enum
-from trilogy.utility import unique
-
-from logging import Logger
-
-
-from trilogy.core.enums import FunctionClass
-
-
 from dataclasses import dataclass
+from enum import Enum
+from logging import Logger
+from typing import Any, Dict, List, Set, Tuple
+
+import networkx as nx
+
+from trilogy.core.enums import BooleanOperator, FunctionClass, Granularity, Purpose
+from trilogy.core.models import (
+    CTE,
+    AggregateWrapper,
+    BaseJoin,
+    CaseElse,
+    CaseWhen,
+    Comparison,
+    Concept,
+    ConceptPair,
+    Conditional,
+    Datasource,
+    DataType,
+    DatePart,
+    Environment,
+    FilterItem,
+    Function,
+    JoinType,
+    ListType,
+    ListWrapper,
+    LooseConceptList,
+    MagicConstants,
+    MapType,
+    MapWrapper,
+    MultiSelectStatement,
+    NumericType,
+    Parenthetical,
+    ProcessedQuery,
+    QueryDatasource,
+    SelectStatement,
+    SubselectComparison,
+    TupleWrapper,
+    UnionCTE,
+    UnnestJoin,
+    WindowItem,
+)
+from trilogy.utility import unique
 
 
 class NodeType(Enum):
@@ -66,17 +61,12 @@ class JoinOrderOutput:
         return set(self.keys.keys())
 
 
-def resolve_join_order_v2(
-    g: nx.Graph, partials: dict[str, list[str]]
-) -> list[JoinOrderOutput]:
+def resolve_join_order_v2(g: nx.Graph, partials: dict[str, list[str]]) -> list[JoinOrderOutput]:
     datasources = [x for x in g.nodes if x.startswith("ds~")]
     concepts = [x for x in g.nodes if x.startswith("c~")]
 
     output: list[JoinOrderOutput] = []
-    pivot_map = {
-        concept: [x for x in g.neighbors(concept) if x in datasources]
-        for concept in concepts
-    }
+    pivot_map = {concept: [x for x in g.neighbors(concept) if x in datasources] for concept in concepts}
     pivots = list(
         sorted(
             [x for x in pivot_map if len(pivot_map[x]) > 1],
@@ -87,9 +77,7 @@ def resolve_join_order_v2(
     eligible_left = set()
 
     while pivots:
-        next_pivots = [
-            x for x in pivots if any(y in eligible_left for y in pivot_map[x])
-        ]
+        next_pivots = [x for x in pivots if any(y in eligible_left for y in pivot_map[x])]
         if next_pivots:
             root = next_pivots[0]
             pivots = [x for x in pivots if x != root]
@@ -108,14 +96,10 @@ def resolve_join_order_v2(
             return (base, len(x), x)
 
         # get remainig un-joined datasets
-        to_join = sorted(
-            [x for x in pivot_map[root] if x not in eligible_left], key=score_key
-        )
+        to_join = sorted([x for x in pivot_map[root] if x not in eligible_left], key=score_key)
         while to_join:
             # need to sort this to ensure we join on the best match
-            base = sorted(
-                [x for x in pivot_map[root] if x in eligible_left], key=score_key
-            )
+            base = sorted([x for x in pivot_map[root] if x in eligible_left], key=score_key)
             if not base:
                 new = to_join.pop()
                 eligible_left.add(new)
@@ -140,15 +124,11 @@ def resolve_join_order_v2(
                         exists = True
                 if exists:
                     continue
-                left_is_partial = any(
-                    key in partials.get(left_candidate, []) for key in common
-                )
+                left_is_partial = any(key in partials.get(left_candidate, []) for key in common)
                 right_is_partial = any(key in partials.get(right, []) for key in common)
                 # we don't care if left is nullable for join type (just keys), but if we did
                 # ex: left_is_nullable = any(key in partials.get(left_candidate, [])
-                right_is_nullable = any(
-                    key in partials.get(right, []) for key in common
-                )
+                right_is_nullable = any(key in partials.get(right, []) for key in common)
                 if left_is_partial:
                     join_type = JoinType.FULL
                 elif right_is_partial or right_is_nullable:
@@ -201,24 +181,14 @@ def resolve_join_order_v2(
     for review_join in output:
         if review_join.type in (JoinType.LEFT_OUTER, JoinType.FULL):
             continue
-        if any(
-            [
-                join.right in review_join.lefts
-                for join in output
-                if join.type in (JoinType.LEFT_OUTER, JoinType.FULL)
-            ]
-        ):
+        if any([join.right in review_join.lefts for join in output if join.type in (JoinType.LEFT_OUTER, JoinType.FULL)]):
             review_join.type = JoinType.LEFT_OUTER
     return output
 
 
 def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
     addresses = LooseConceptList(concepts=concepts)
-    sub_props = LooseConceptList(
-        concepts=[
-            x for x in concepts if x.keys and all([key in addresses for key in x.keys])
-        ]
-    )
+    sub_props = LooseConceptList(concepts=[x for x in concepts if x.keys and all([key in addresses for key in x.keys])])
     final = [c for c in concepts if c not in sub_props]
     return unique(final, "address")
 
@@ -236,9 +206,7 @@ def create_log_lambda(prefix: str, depth: int, logger: Logger):
     return log_lambda
 
 
-def calculate_graph_relevance(
-    g: nx.DiGraph, subset_nodes: set[str], concepts: set[Concept]
-) -> int:
+def calculate_graph_relevance(g: nx.DiGraph, subset_nodes: set[str], concepts: set[Concept]) -> int:
     """Calculate the relevance of each node in a graph
     Relevance is used to prune irrelevant nodes from the graph
     """
@@ -282,9 +250,7 @@ def add_node_join_concept(
     graph.add_edge(ds_node, name)
     concept_map[name] = concept
     for v_address in concept.pseudonyms:
-        v = environment.alias_origin_lookup.get(
-            v_address, environment.concepts[v_address]
-        )
+        v = environment.alias_origin_lookup.get(v_address, environment.concepts[v_address])
         if f"c~{v.address}" in graph.nodes:
             continue
         if v != concept.address:
@@ -297,17 +263,13 @@ def add_node_join_concept(
             )
 
 
-def resolve_instantiated_concept(
-    concept: Concept, datasource: QueryDatasource | Datasource
-) -> Concept:
+def resolve_instantiated_concept(concept: Concept, datasource: QueryDatasource | Datasource) -> Concept:
     if concept.address in datasource.output_concepts:
         return concept
     for k in concept.pseudonyms:
         if k in datasource.output_concepts:
             return [x for x in datasource.output_concepts if x.address == k].pop()
-    raise SyntaxError(
-        f"Could not find {concept.address} in {datasource.identifier} output {[c.address for c in datasource.output_concepts]}"
-    )
+    raise SyntaxError(f"Could not find {concept.address} in {datasource.identifier} output {[c.address for c in datasource.output_concepts]}")
 
 
 def get_node_joins(
@@ -315,7 +277,6 @@ def get_node_joins(
     environment: Environment,
     # concepts:List[Concept],
 ):
-
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     ds_node_map: dict[str, QueryDatasource | Datasource] = {}
@@ -344,12 +305,8 @@ def get_node_joins(
             concepts=[] if not j.keys else None,
             concept_pairs=[
                 ConceptPair(
-                    left=resolve_instantiated_concept(
-                        concept_map[concept], ds_node_map[k]
-                    ),
-                    right=resolve_instantiated_concept(
-                        concept_map[concept], ds_node_map[j.right]
-                    ),
+                    left=resolve_instantiated_concept(concept_map[concept], ds_node_map[k]),
+                    right=resolve_instantiated_concept(concept_map[concept], ds_node_map[j.right]),
                     existing_datasource=ds_node_map[k],
                 )
                 for k, v in j.keys.items()
@@ -360,9 +317,7 @@ def get_node_joins(
     ]
 
 
-def get_disconnected_components(
-    concept_map: Dict[str, Set[Concept]]
-) -> Tuple[int, List]:
+def get_disconnected_components(concept_map: Dict[str, Set[Concept]]) -> Tuple[int, List]:
     """Find if any of the datasources are not linked"""
     import networkx as nx
 
@@ -375,9 +330,7 @@ def get_disconnected_components(
             graph.add_edge(datasource, concept.address)
             all_concepts.add(concept)
     sub_graphs = list(nx.connected_components(graph))
-    sub_graphs = [
-        x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts) > 0
-    ]
+    sub_graphs = [x for x in sub_graphs if calculate_graph_relevance(graph, x, all_concepts) > 0]
     return len(sub_graphs), sub_graphs
 
 
@@ -414,9 +367,7 @@ def is_scalar_condition(
     elif isinstance(element, SubselectComparison):
         return True
     elif isinstance(element, Comparison):
-        return is_scalar_condition(element.left, materialized) and is_scalar_condition(
-            element.right, materialized
-        )
+        return is_scalar_condition(element.left, materialized) and is_scalar_condition(element.right, materialized)
     elif isinstance(element, Function):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
@@ -432,13 +383,9 @@ def is_scalar_condition(
     elif isinstance(element, AggregateWrapper):
         return is_scalar_condition(element.function, materialized)
     elif isinstance(element, Conditional):
-        return is_scalar_condition(element.left, materialized) and is_scalar_condition(
-            element.right, materialized
-        )
+        return is_scalar_condition(element.left, materialized) and is_scalar_condition(element.right, materialized)
     elif isinstance(element, CaseWhen):
-        return is_scalar_condition(
-            element.comparison, materialized
-        ) and is_scalar_condition(element.expr, materialized)
+        return is_scalar_condition(element.comparison, materialized) and is_scalar_condition(element.expr, materialized)
     elif isinstance(element, CaseElse):
         return is_scalar_condition(element.expr, materialized)
     elif isinstance(element, MagicConstants):
@@ -484,11 +431,7 @@ def find_nullable_concepts(
     that may contain nulls in the output set
     """
     nullable_datasources = set()
-    datasource_map = {
-        x.identifier: x
-        for x in datasources
-        if isinstance(x, (Datasource, QueryDatasource))
-    }
+    datasource_map = {x.identifier: x for x in datasources if isinstance(x, (Datasource, QueryDatasource))}
     for join in joins:
         is_on_nullable_condition = False
         if not isinstance(join, BaseJoin):
@@ -496,22 +439,11 @@ def find_nullable_concepts(
         if not join.concept_pairs:
             continue
         for pair in join.concept_pairs:
-            if pair.right.address in [
-                y.address
-                for y in datasource_map[
-                    join.right_datasource.identifier
-                ].nullable_concepts
-            ]:
+            if pair.right.address in [y.address for y in datasource_map[join.right_datasource.identifier].nullable_concepts]:
                 is_on_nullable_condition = True
                 break
-            left_check = (
-                join.left_datasource.identifier
-                if join.left_datasource is not None
-                else pair.existing_datasource.identifier
-            )
-            if pair.left.address in [
-                y.address for y in datasource_map[left_check].nullable_concepts
-            ]:
+            left_check = join.left_datasource.identifier if join.left_datasource is not None else pair.existing_datasource.identifier
+            if pair.left.address in [y.address for y in datasource_map[left_check].nullable_concepts]:
                 is_on_nullable_condition = True
                 break
         if is_on_nullable_condition:
@@ -519,16 +451,8 @@ def find_nullable_concepts(
     final_nullable = set()
 
     for k, v in source_map.items():
-        local_nullable = [
-            x for x in datasources if k in [v.address for v in x.nullable_concepts]
-        ]
-        if all(
-            [
-                k in [v.address for v in x.nullable_concepts]
-                for x in datasources
-                if k in [z.address for z in x.output_concepts]
-            ]
-        ):
+        local_nullable = [x for x in datasources if k in [v.address for v in x.nullable_concepts]]
+        if all([k in [v.address for v in x.nullable_concepts] for x in datasources if k in [z.address for z in x.output_concepts]]):
             final_nullable.add(k)
         all_ds = set([ds for ds in local_nullable]).union(nullable_datasources)
         if nullable_datasources:
@@ -537,13 +461,9 @@ def find_nullable_concepts(
     return list(sorted(final_nullable))
 
 
-def sort_select_output_processed(
-    cte: CTE | UnionCTE, query: ProcessedQuery
-) -> CTE | UnionCTE:
+def sort_select_output_processed(cte: CTE | UnionCTE, query: ProcessedQuery) -> CTE | UnionCTE:
     hidden_addresses = [c.address for c in query.hidden_columns]
-    output_addresses = [
-        c.address for c in query.output_columns if c.address not in hidden_addresses
-    ]
+    output_addresses = [c.address for c in query.output_columns if c.address not in hidden_addresses]
 
     mapping = {x.address: x for x in cte.output_columns}
 
@@ -554,15 +474,11 @@ def sort_select_output_processed(
     return cte
 
 
-def sort_select_output(
-    cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery
-) -> CTE | UnionCTE:
+def sort_select_output(cte: CTE | UnionCTE, query: SelectStatement | MultiSelectStatement | ProcessedQuery) -> CTE | UnionCTE:
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)
     hidden_addresses = [c.address for c in query.hidden_components]
-    output_addresses = [
-        c.address for c in query.output_components if c.address not in hidden_addresses
-    ]
+    output_addresses = [c.address for c in query.output_components if c.address not in hidden_addresses]
 
     mapping = {x.address: x for x in cte.output_columns}
 

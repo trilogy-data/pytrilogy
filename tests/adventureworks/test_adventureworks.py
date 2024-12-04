@@ -2,30 +2,28 @@
 from os.path import dirname, join
 
 import pytest
+
 from trilogy import Executor
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models import (
-    SelectStatement,
-    QueryDatasource,
-    Grain,
+    Concept,
     Environment,
+    Grain,
     ProcessedQuery,
     ProcessedQueryPersist,
-    Concept,
+    QueryDatasource,
+    SelectStatement,
 )
-
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
-from trilogy.core.query_processor import datasource_to_ctes, get_query_datasources
+from trilogy.core.processing.nodes import MergeNode, SelectNode
+from trilogy.core.query_processor import datasource_to_cte, get_query_datasources
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
-from trilogy.core.processing.nodes import MergeNode, SelectNode
 
 
 @pytest.mark.adventureworks
 def test_parsing(environment: Environment):
-    with open(
-        join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+    with open(join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     SqlServerDialect()
     environment, statements = parse(file, environment=environment)
@@ -33,9 +31,7 @@ def test_parsing(environment: Environment):
 
 @pytest.mark.adventureworks_execution
 def test_finance_queries(adventureworks_engine: Executor, environment: Environment):
-    with open(
-        join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+    with open(join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     generator = SqlServerDialect()
     environment, statements = parse(file, environment=environment)
@@ -51,15 +47,10 @@ def test_finance_queries(adventureworks_engine: Executor, environment: Environme
 
 @pytest.mark.adventureworks
 def test_query_datasources(environment: Environment):
-    with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+    with open(join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
-    assert (
-        str(environment.datasources["internet_sales.fact_internet_sales"].grain)
-        == "Grain<internet_sales.order_line_number,internet_sales.order_number>"
-    )
+    assert str(environment.datasources["internet_sales.fact_internet_sales"].grain) == "Grain<internet_sales.order_line_number,internet_sales.order_number>"
 
     test: SelectStatement = statements[-1]  # multipart join
 
@@ -70,11 +61,7 @@ def test_query_datasources(environment: Environment):
 
     # source query concepts includes extra group by to grain
     customer_node = search_concepts(
-        [
-            environment.concepts[
-                "internet_sales.customer.first_name"
-            ].with_default_grain()
-        ],
+        [environment.concepts["internet_sales.customer.first_name"].with_default_grain()],
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -82,10 +69,7 @@ def test_query_datasources(environment: Environment):
     print_recursive_nodes(customer_node)
     customer_datasource = customer_node.resolve()
 
-    assert (
-        customer_datasource.safe_identifier
-        == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
-    )
+    assert customer_datasource.safe_identifier == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
 
     # assert a join before the group by works
     t_grain = Grain(
@@ -109,16 +93,11 @@ def test_query_datasources(environment: Environment):
         depth=0,
     ).resolve()
 
-    assert (
-        customer_datasource.safe_identifier
-        == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
-    )
+    assert customer_datasource.safe_identifier == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
 
-    datasource = get_query_datasources(
-        environment=environment, graph=environment_graph, statement=test
-    )
+    datasource = get_query_datasources(environment=environment, graph=environment_graph, statement=test)
 
-    cte = datasource_to_ctes(datasource, {})[0]
+    cte = datasource_to_cte(datasource, {})[0]
 
     assert {c.address for c in cte.output_columns} == {
         "internet_sales.customer.first_name",
@@ -141,9 +120,7 @@ def list_to_address(clist: list[Concept]) -> set[str]:
 
 @pytest.mark.adventureworks
 def test_two_properties(environment: Environment):
-    with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+    with open(join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     test: SelectStatement = statements[-3]
@@ -152,8 +129,7 @@ def test_two_properties(environment: Environment):
 
     # assert a group up to the first name works
     _customer_datasource = search_concepts(
-        [environment.concepts["internet_sales.customer.first_name"]]
-        + test.grain.components_copy,
+        [environment.concepts["internet_sales.customer.first_name"]] + test.grain.components_copy,
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -162,40 +138,25 @@ def test_two_properties(environment: Environment):
     assert _customer_datasource
     customer_datasource = _customer_datasource.resolve()
 
-    assert list_to_address(customer_datasource.output_concepts).issuperset(
-        list_to_address(
-            [environment.concepts["internet_sales.customer.first_name"]]
-            + test.grain.components_copy
-        )
-    )
+    assert list_to_address(customer_datasource.output_concepts).issuperset(list_to_address([environment.concepts["internet_sales.customer.first_name"]] + test.grain.components_copy))
 
     order_date_datasource = search_concepts(
-        [environment.concepts["internet_sales.dates.order_date"]]
-        + test.grain.components_copy,
+        [environment.concepts["internet_sales.dates.order_date"]] + test.grain.components_copy,
         environment=environment,
         g=environment_graph,
         depth=0,
     ).resolve()
 
-    assert list_to_address(order_date_datasource.output_concepts).issuperset(
-        list_to_address(
-            [environment.concepts["internet_sales.dates.order_date"]]
-            + test.grain.components_copy
-        )
-    )
+    assert list_to_address(order_date_datasource.output_concepts).issuperset(list_to_address([environment.concepts["internet_sales.dates.order_date"]] + test.grain.components_copy))
 
-    get_query_datasources(
-        environment=environment, graph=environment_graph, statement=test
-    )
+    get_query_datasources(environment=environment, graph=environment_graph, statement=test)
 
 
 @pytest.mark.adventureworks
 def test_grain(environment: Environment):
     from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
-    with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+    with open(join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     environment_graph = generate_graph(environment)
@@ -210,14 +171,8 @@ def test_grain(environment: Environment):
     )
     assert isinstance(test, SelectNode)
     assert len(test.parents) == 0
-    assert (
-        test.grain.set
-        == Grain(components=[environment.concepts["dates.order_key"]]).set
-    )
-    assert (
-        environment.datasources["dates.order_dates"].grain.set
-        == Grain(components=[environment.concepts["dates.order_key"]]).set
-    )
+    assert test.grain.set == Grain(components=[environment.concepts["dates.order_key"]]).set
+    assert environment.datasources["dates.order_dates"].grain.set == Grain(components=[environment.concepts["dates.order_key"]]).set
     resolved = test.resolve()
     assert resolved.grain == Grain(components=[environment.concepts["dates.order_key"]])
     assert test.grain == resolved.grain
@@ -228,20 +183,11 @@ def test_grain(environment: Environment):
 def test_group_to_grain(environment: Environment):
     from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
-    with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+    with open(join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     environment_graph = generate_graph(environment)
-    assert (
-        len(
-            environment.concepts[
-                "internet_sales.total_sales_amount_debug"
-            ].grain.components
-        )
-        == 2
-    )
+    assert len(environment.concepts["internet_sales.total_sales_amount_debug"].grain.components) == 2
     test = search_concepts(
         [
             environment.concepts["internet_sales.total_sales_amount_debug"],
@@ -269,24 +215,15 @@ def test_group_to_grain(environment: Environment):
 
 @pytest.mark.adventureworks
 def test_two_properties_query(environment: Environment):
-    from trilogy.core.processing.node_generators import gen_group_node
     from trilogy.core.processing.concept_strategies_v3 import search_concepts
+    from trilogy.core.processing.node_generators import gen_group_node
 
-    with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+    with open(join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     environment, statements = parse(file, environment=environment)
     assert "local.total_sales_amount_debug_2" in set(list(environment.concepts.keys()))
     environment_graph = generate_graph(environment)
-    assert (
-        len(
-            environment.concepts[
-                "internet_sales.total_sales_amount_debug"
-            ].grain.components
-        )
-        == 2
-    )
+    assert len(environment.concepts["internet_sales.total_sales_amount_debug"].grain.components) == 2
     test = gen_group_node(
         environment.concepts["total_sales_amount_debug_2"],
         local_optional=[environment.concepts["internet_sales.dates.order_date"]],
@@ -303,12 +240,8 @@ def test_two_properties_query(environment: Environment):
 
 
 @pytest.mark.adventureworks_execution
-def test_online_sales_queries(
-    adventureworks_engine: Executor, environment: Environment
-):
-    with open(
-        join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
-    ) as f:
+def test_online_sales_queries(adventureworks_engine: Executor, environment: Environment):
+    with open(join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8") as f:
         file = f.read()
     generator = SqlServerDialect()
     environment, statements = parse(file, environment=environment)

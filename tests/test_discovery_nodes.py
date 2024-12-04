@@ -1,10 +1,10 @@
+from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.models import Environment, Grain
 from trilogy.core.processing.concept_strategies_v3 import (
     GroupNode,
     search_concepts,
 )
 from trilogy.core.processing.node_generators import gen_group_node
-from trilogy.core.models import Environment, Grain
-from trilogy.core.constants import INTERNAL_NAMESPACE, ALL_ROWS_CONCEPT
 
 
 def test_group_node(test_environment, test_environment_graph):
@@ -39,11 +39,7 @@ def test_group_node_property(test_environment: Environment, test_environment_gra
         source_concepts=search_concepts,
         depth=0,
     )
-    input_concept_names = {
-        x.name
-        for x in group_node.parents[0].output_concepts
-        if x not in group_node.parents[0].hidden_concepts
-    }
+    input_concept_names = {x.name for x in group_node.parents[0].output_concepts if x not in group_node.parents[0].hidden_concepts}
     assert input_concept_names == {"category_name_length", "category_id"}
     final = group_node.resolve()
     assert len(final.datasources) == 1
@@ -62,11 +58,7 @@ def test_group_node_property_all(test_environment: Environment, test_environment
         source_concepts=search_concepts,
         depth=0,
     )
-    input_concept_names = {
-        x.name
-        for x in group_node.parents[0].output_concepts
-        if x not in group_node.parents[0].hidden_concepts
-    }
+    input_concept_names = {x.name for x in group_node.parents[0].output_concepts if x not in group_node.parents[0].hidden_concepts}
     assert input_concept_names == {"category_name_length", "category_id"}
     final = group_node.resolve()
     assert len(final.datasources) == 1

@@ -1,5 +1,5 @@
+from trilogy import Executor, parse
 from trilogy.core.models import Environment, Grain
-from trilogy import parse, Executor
 
 
 def test_key_fetch_cardinality(test_environment: Environment, test_executor: Executor):
@@ -40,9 +40,7 @@ SELECT
     assert results[0] == (3,)
 
 
-def test_filtered_key_count_cardinality(
-    test_environment: Environment, test_executor: Executor
-):
+def test_filtered_key_count_cardinality(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 auto aspen_store <- filter stores.name where stores.name = 'aspen';
@@ -53,9 +51,7 @@ SELECT
 ;"""
 
     _, statements = parse(test_select, test_environment)
-    assert test_environment.concepts["aspen_store"].grain == Grain(
-        components=[test_environment.concepts["stores.id"]]
-    )
+    assert test_environment.concepts["aspen_store"].grain == Grain(components=[test_environment.concepts["stores.id"]])
 
     results = test_executor.execute_text(test_select)[0].fetchall()
 

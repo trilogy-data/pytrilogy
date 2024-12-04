@@ -1,5 +1,4 @@
 class DialectConfig:
-
     def __init__(self):
         pass
 
@@ -35,9 +34,7 @@ class DuckDBConfig(DialectConfig):
 
 
 class PostgresConfig(DialectConfig):
-    def __init__(
-        self, host: str, port: int, username: str, password: str, database: str
-    ):
+    def __init__(self, host: str, port: int, username: str, password: str, database: str):
         self.host = host
         self.port = port
         self.username = username
@@ -49,9 +46,7 @@ class PostgresConfig(DialectConfig):
 
 
 class SQLServerConfig(DialectConfig):
-    def __init__(
-        self, host: str, port: int, username: str, password: str, database: str
-    ):
+    def __init__(self, host: str, port: int, username: str, password: str, database: str):
         self.host = host
         self.port = port
         self.username = username
@@ -101,7 +96,6 @@ class PrestoConfig(DialectConfig):
 
 
 class TrinoConfig(PrestoConfig):
-
     def connection_string(self) -> str:
         if self.schema:
             return f"trino://{self.username}:{self.password}@{self.host}:{self.port}/{self.catalog}/{self.schema}"

@@ -1,5 +1,6 @@
-from trilogy import Dialects, parse, Environment
 from pathlib import Path
+
+from trilogy import Dialects, Environment, parse
 
 
 def test_file_parsing():

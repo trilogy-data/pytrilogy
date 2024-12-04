@@ -1,7 +1,7 @@
-from logging import getLogger
+import random
 from dataclasses import dataclass, field
 from enum import Enum
-import random
+from logging import getLogger
 
 logger = getLogger("trilogy")
 

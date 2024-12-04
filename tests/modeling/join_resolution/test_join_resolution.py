@@ -1,8 +1,9 @@
-from trilogy.core.models import Environment, Grain
+import pytest
+
+from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
-from trilogy import parse, Executor
-import pytest
+from trilogy.core.models import Environment, Grain
 
 
 def test_ambiguous_error(test_environment: Environment, test_executor: Executor):
@@ -20,9 +21,7 @@ SELECT
         list(test_executor.execute_text(test_select)[0].fetchall())
 
 
-def test_ambiguous_error_with_forced_join(
-    test_environment: Environment, test_executor: Executor
-):
+def test_ambiguous_error_with_forced_join(test_environment: Environment, test_executor: Executor):
     # check we can resolve it
     test_select = """
 property store_by_warehouse <- group(store_id) by wh_id;
@@ -53,9 +52,7 @@ SELECT
     assert len(results) == 3
 
 
-def test_ambiguous_error_with_forced_join_order(
-    test_environment: Environment, test_executor: Executor
-):
+def test_ambiguous_error_with_forced_join_order(test_environment: Environment, test_executor: Executor):
     # check we can resolve it
     test_select = """
 property store_by_warehouse <- group(store_id) by wh_id;

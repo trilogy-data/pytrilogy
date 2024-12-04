@@ -1,15 +1,15 @@
+from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.enums import ConceptSource, FunctionType, Purpose
+from trilogy.core.functions import AttrAccess
 from trilogy.core.models import (
-    DataType,
     Concept,
+    DataType,
     Environment,
     Function,
     Metadata,
     StructType,
 )
-from trilogy.core.functions import AttrAccess
-from trilogy.core.enums import Purpose, FunctionType, ConceptSource
-from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.parsing.common import process_function_args, arg_to_datatype, Meta
+from trilogy.parsing.common import Meta, arg_to_datatype, process_function_args
 
 
 def generate_date_concepts(concept: Concept, environment: Environment):
@@ -29,20 +29,14 @@ def generate_date_concepts(concept: Concept, environment: Environment):
         FunctionType.DAY_OF_WEEK,
     ]:
         fname = ftype.name.lower()
-        default_type = (
-            Purpose.CONSTANT
-            if concept.purpose == Purpose.CONSTANT
-            else Purpose.PROPERTY
-        )
+        default_type = Purpose.CONSTANT if concept.purpose == Purpose.CONSTANT else Purpose.PROPERTY
         const_function: Function = Function(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
             arguments=[concept],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
+        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
@@ -78,20 +72,14 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         FunctionType.SECOND,
     ]:
         fname = ftype.name.lower()
-        default_type = (
-            Purpose.CONSTANT
-            if concept.purpose == Purpose.CONSTANT
-            else Purpose.PROPERTY
-        )
+        default_type = Purpose.CONSTANT if concept.purpose == Purpose.CONSTANT else Purpose.PROPERTY
         const_function: Function = Function(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
             arguments=[concept],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
+        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
@@ -129,9 +117,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             output_purpose=default_type,
             arguments=[concept],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
+        namespace = None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
@@ -173,19 +159,12 @@ def generate_related_concepts(
 
     if isinstance(concept.datatype, StructType):
         for key, value in concept.datatype.fields_map.items():
-            args = process_function_args(
-                [concept, key], meta=meta, environment=environment
-            )
+            args = process_function_args([concept, key], meta=meta, environment=environment)
             auto = Concept(
                 name=key,
                 datatype=arg_to_datatype(value),
                 purpose=Purpose.PROPERTY,
-                namespace=(
-                    environment.namespace + "." + concept.name
-                    if environment.namespace
-                    and environment.namespace != DEFAULT_NAMESPACE
-                    else concept.name
-                ),
+                namespace=(environment.namespace + "." + concept.name if environment.namespace and environment.namespace != DEFAULT_NAMESPACE else concept.name),
                 lineage=AttrAccess(args),
             )
             environment.add_concept(auto, meta=meta)

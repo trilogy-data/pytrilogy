@@ -29,7 +29,6 @@ def test_date_diff_rendering():
     sys.version_info >= (3, 13), reason="BigQuery not supported on 3.13"
 )
 def test_readme():
-
     environment = Environment()
     from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -53,9 +52,7 @@ def test_readme():
 
     """
     )
-    executor = Dialects.BIGQUERY.default_executor(
-        environment=environment, hooks=[DebuggingHook()]
-    )
+    executor = Dialects.BIGQUERY.default_executor(environment=environment, hooks=[DebuggingHook()])
 
     results = executor.execute_text(
         """SELECT

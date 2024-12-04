@@ -1,4 +1,4 @@
-from trilogy.core.enums import BooleanOperator, Boolean
+from trilogy.core.enums import Boolean, BooleanOperator
 
 
 def test_boolean_operator():

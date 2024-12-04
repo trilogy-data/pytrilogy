@@ -1,11 +1,10 @@
 from typing import List
 
-
-from trilogy.core.models import Concept, Function, WhereClause
-from trilogy.core.processing.nodes import UnionNode, History, StrategyNode
-from trilogy.core.processing.utility import padding
-from trilogy.core.enums import FunctionType, Purpose
 from trilogy.constants import logger
+from trilogy.core.enums import FunctionType, Purpose
+from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.processing.nodes import History, StrategyNode, UnionNode
+from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNION_NODE]"
 
@@ -37,15 +36,9 @@ def gen_union_node(
         relevant_parents: list[Concept] = []
         for other_union in remaining:
             assert other_union.lineage
-            potential_parents = [
-                z for z in other_union.lineage.arguments if isinstance(z, Concept)
-            ]
-            relevant_parents += [
-                x for x in potential_parents if x.keys and arg.address in x.keys
-            ]
-        logger.info(
-            f"For parent arg {arg.address}, including additional union inputs {[c.address for c in relevant_parents]}"
-        )
+            potential_parents = [z for z in other_union.lineage.arguments if isinstance(z, Concept)]
+            relevant_parents += [x for x in potential_parents if x.keys and arg.address in x.keys]
+        logger.info(f"For parent arg {arg.address}, including additional union inputs {[c.address for c in relevant_parents]}")
         parent: StrategyNode = source_concepts(
             mandatory_list=[arg] + relevant_parents,
             environment=environment,
@@ -62,9 +55,7 @@ def gen_union_node(
 
         parents.append(parent)
         if not parent:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} could not find union node parents"
-            )
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} could not find union node parents")
             return None
 
     return UnionNode(

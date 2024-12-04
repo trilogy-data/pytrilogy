@@ -1,9 +1,10 @@
+import pytest
+
 from trilogy.core.models import Parenthetical
+from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
     parse_text,
 )
-from trilogy.dialect.base import BaseDialect
-import pytest
 
 
 # not implemented yet

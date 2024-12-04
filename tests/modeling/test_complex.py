@@ -1,10 +1,9 @@
-from trilogy.core.models import Environment, SelectStatement
-from trilogy import parse, Executor, Dialects
+from trilogy import Dialects, Executor, parse
 from trilogy.core.enums import Purpose, PurposeLineage
+from trilogy.core.models import Environment, LooseConceptList, SelectStatement
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.models import LooseConceptList
 
 
 def test_rowset(test_environment: Environment, test_executor: Executor):
@@ -44,9 +43,7 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
     assert results[3] == (4, 4, 2)
 
 
-def test_rowset_with_aggregation(
-    test_environment: Environment, test_executor: Executor
-):
+def test_rowset_with_aggregation(test_environment: Environment, test_executor: Executor):
     test_select = """
 
     rowset even_orders <- select order_id, store_id, revenue where (order_id % 2) = 0;
@@ -75,11 +72,8 @@ def test_rowset_with_aggregation(
 
     for count in [
         test_environment.concepts["local.even_order_count"],
-        [x for x in statements[-1].output_components if x.name == "even_order_count"][
-            0
-        ],
+        [x for x in statements[-1].output_components if x.name == "even_order_count"][0],
     ]:
-
         assert count.derivation == PurposeLineage.AGGREGATE
         assert count.purpose == Purpose.METRIC
         count_grain_lcl = LooseConceptList(concepts=count.grain.components_copy)
@@ -111,9 +105,7 @@ def test_in_select(test_environment: Environment, test_executor: Executor):
     _, statements = parse(test_select, test_environment)
 
     select: SelectStatement = statements[-1]
-    assert select.where_clause.conditional.existence_arguments, str(
-        select.where_clause.conditional.__class__
-    ) + str(select.where_clause.conditional)
+    assert select.where_clause.conditional.existence_arguments, str(select.where_clause.conditional.__class__) + str(select.where_clause.conditional)
     assert select.where_clause.existence_arguments
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
@@ -162,7 +154,6 @@ def test_window_alt(test_environment: Environment, test_executor: Executor):
 
 
 def test_maps():
-
     test_executor = Dialects.DUCK_DB.default_executor()
     test_select = """
     const num_map <- {1: 10, 2: 20};
@@ -177,7 +168,6 @@ def test_maps():
 
 
 def test_anon_agg():
-
     test_executor = Dialects.DUCK_DB.default_executor()
     test_select = """
     auto nums <- [1,2];

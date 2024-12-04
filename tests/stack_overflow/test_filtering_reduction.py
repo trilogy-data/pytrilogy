@@ -1,9 +1,9 @@
 from os.path import dirname
 
-from trilogy.core.models import SelectStatement, Environment
+from trilogy.core.models import Environment, SelectStatement
 from trilogy.core.query_processor import process_query
-from trilogy.parser import parse
 from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.parser import parse
 
 
 def test_filtering_reduction():

@@ -2,25 +2,24 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.models import (
-    Grain,
-    QueryDatasource,
-    Datasource,
-    SourceType,
-    Concept,
-    Environment,
-    LooseConceptList,
-    Conditional,
     Comparison,
+    Concept,
+    Conditional,
+    Datasource,
+    Environment,
+    Grain,
+    LooseConceptList,
     Parenthetical,
+    QueryDatasource,
+    SourceType,
 )
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
-    resolve_concept_map,
     concept_list_to_grain,
+    resolve_concept_map,
 )
+from trilogy.core.processing.utility import find_nullable_concepts, is_scalar_condition
 from trilogy.utility import unique
-from trilogy.core.processing.utility import is_scalar_condition
-from trilogy.core.processing.utility import find_nullable_concepts
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
@@ -63,9 +62,7 @@ class GroupNode(StrategyNode):
         )
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
-            p.resolve() for p in self.parents
-        ]
+        parent_sources: List[QueryDatasource | Datasource] = [p.resolve() for p in self.parents]
 
         grain = self.grain or concept_list_to_grain(self.output_concepts, [])
         comp_grain = Grain()
@@ -77,18 +74,9 @@ class GroupNode(StrategyNode):
         if comp_grain == grain and self.force_group is not True:
             # if there is no group by, and inputs equal outputs
             # return the parent
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output"
-                f" grains {comp_grain} and {grain}"
-            )
-            if (
-                len(parent_sources) == 1
-                and LooseConceptList(concepts=parent_sources[0].output_concepts)
-                == self.output_lcl
-            ) and isinstance(parent_sources[0], QueryDatasource):
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required as inputs match outputs of parent; returning parent node"
-                )
+            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output" f" grains {comp_grain} and {grain}")
+            if (len(parent_sources) == 1 and LooseConceptList(concepts=parent_sources[0].output_concepts) == self.output_lcl) and isinstance(parent_sources[0], QueryDatasource):
+                logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} No group by required as inputs match outputs of parent; returning parent node")
                 will_return: QueryDatasource = parent_sources[0]
                 if self.conditions:
                     will_return.condition = self.conditions + will_return.condition
@@ -96,7 +84,6 @@ class GroupNode(StrategyNode):
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
-
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different grain than parents; forcing group"
                 f" upstream grains {[str(source.grain) for source in parent_sources]}"
@@ -125,12 +112,8 @@ class GroupNode(StrategyNode):
             ),
             inherited_inputs=self.input_concepts + self.existence_concepts,
         )
-        nullable_addresses = find_nullable_concepts(
-            source_map=source_map, joins=[], datasources=parent_sources
-        )
-        nullable_concepts = [
-            x for x in self.output_concepts if x.address in nullable_addresses
-        ]
+        nullable_addresses = find_nullable_concepts(source_map=source_map, joins=[], datasources=parent_sources)
+        nullable_concepts = [x for x in self.output_concepts if x.address in nullable_addresses]
         base = QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=self.output_concepts,

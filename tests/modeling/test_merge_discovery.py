@@ -1,6 +1,5 @@
+from trilogy import Dialects, Executor
 from trilogy.core.models import Environment
-from trilogy import Executor
-from trilogy import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
 
 

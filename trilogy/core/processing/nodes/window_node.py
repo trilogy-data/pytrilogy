@@ -1,8 +1,7 @@
 from typing import List
 
-
-from trilogy.core.models import SourceType, Concept
-from trilogy.core.processing.nodes.base_node import StrategyNode, QueryDatasource
+from trilogy.core.models import Concept, SourceType
+from trilogy.core.processing.nodes.base_node import QueryDatasource, StrategyNode
 
 
 class WindowNode(StrategyNode):

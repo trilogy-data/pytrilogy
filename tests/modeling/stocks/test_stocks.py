@@ -1,9 +1,9 @@
-from trilogy import Environment, Dialects
 from pathlib import Path
+
+from trilogy import Dialects, Environment
 
 
 def test_query():
-
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
 
     duckdb = Dialects.DUCK_DB.default_executor(environment=env)

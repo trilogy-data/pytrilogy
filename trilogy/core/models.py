@@ -1,82 +1,84 @@
 from __future__ import annotations
+
 import difflib
+import hashlib
 import os
+from abc import ABC
+from collections import UserDict, UserList, defaultdict
 from enum import Enum
+from functools import cached_property
+from pathlib import Path
 from typing import (
+    Annotated,
+    Any,
+    Callable,
     Dict,
-    TypeVar,
+    Generic,
+    ItemsView,
     List,
     Optional,
-    Union,
-    Set,
-    Any,
     Sequence,
-    ValuesView,
-    Callable,
-    Annotated,
-    get_args,
-    Generic,
+    Set,
     Tuple,
     Type,
-    ItemsView,
+    TypeVar,
+    Union,
+    ValuesView,
+    get_args,
 )
-from pydantic_core import core_schema
-from pydantic.functional_validators import PlainValidator
+
+from lark.tree import Meta
 from pydantic import (
     BaseModel,
-    Field,
     ConfigDict,
-    field_validator,
+    Field,
     ValidationInfo,
     ValidatorFunctionWrapHandler,
     computed_field,
+    field_validator,
 )
-from lark.tree import Meta
-from pathlib import Path
+from pydantic.functional_validators import PlainValidator
+from pydantic_core import core_schema
+
 from trilogy.constants import (
-    logger,
+    CONFIG,
     DEFAULT_NAMESPACE,
     ENV_CACHE_NAME,
     MagicConstants,
-    CONFIG,
+    logger,
 )
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
-    INTERNAL_NAMESPACE,
     CONSTANT_DATASET,
+    INTERNAL_NAMESPACE,
     PERSISTED_CONCEPT_PREFIX,
 )
 from trilogy.core.enums import (
-    InfiniteFunctionArgs,
-    Purpose,
-    JoinType,
-    Ordering,
-    Modifier,
-    FunctionType,
-    FunctionClass,
     BooleanOperator,
     ComparisonOperator,
-    WindowOrder,
-    PurposeLineage,
-    SourceType,
-    WindowType,
     ConceptSource,
     DatePart,
-    ShowCategory,
+    FunctionClass,
+    FunctionType,
     Granularity,
-    SelectFiltering,
+    InfiniteFunctionArgs,
     IOType,
+    JoinType,
+    Modifier,
+    Ordering,
+    Purpose,
+    PurposeLineage,
+    SelectFiltering,
+    ShowCategory,
+    SourceType,
+    WindowOrder,
+    WindowType,
 )
 from trilogy.core.exceptions import (
     UndefinedConceptException,
     InvalidSyntaxException,
 )
 from trilogy.utility import unique
-from collections import UserList, UserDict
-from functools import cached_property
-from abc import ABC
-from collections import defaultdict
-import hashlib
 
 LOGGER_PREFIX = "[MODELS]"
 
@@ -133,9 +135,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
-ALL_TYPES = Union[
-    "DataType", "MapType", "ListType", "NumericType", "StructType", "Concept"
-]
+ALL_TYPES = Union["DataType", "MapType", "ListType", "NumericType", "StructType", "Concept"]
 
 NAMESPACED_TYPES = Union[
     "WindowItem",
@@ -152,19 +152,16 @@ NAMESPACED_TYPES = Union[
 
 
 class Namespaced(ABC):
-
     def with_namespace(self, namespace: str):
         raise NotImplementedError
 
 
 class Mergeable(ABC):
-
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         raise NotImplementedError
 
 
 class ConceptArgs(ABC):
-
     @property
     def concept_arguments(self) -> List["Concept"]:
         raise NotImplementedError
@@ -179,7 +176,6 @@ class ConceptArgs(ABC):
 
 
 class SelectContext(ABC):
-
     def with_select_context(
         self,
         grain: Grain,
@@ -195,7 +191,6 @@ class ConstantInlineable(ABC):
 
 
 class HasUUID(ABC):
-
     @property
     def uuid(self) -> str:
         return hashlib.md5(str(self).encode()).hexdigest()
@@ -213,19 +208,11 @@ class SelectTypeMixin(BaseModel):
     def implicit_where_clause_selections(self) -> List[Concept]:
         if not self.where_clause:
             return []
-        filter = set(
-            [
-                str(x.address)
-                for x in self.where_clause.row_arguments
-                if not x.derivation == PurposeLineage.CONSTANT
-            ]
-        )
+        filter = set([str(x.address) for x in self.where_clause.row_arguments if not x.derivation == PurposeLineage.CONSTANT])
         query_output = set([str(z.address) for z in self.output_components])
         delta = filter.difference(query_output)
         if delta:
-            return [
-                x for x in self.where_clause.row_arguments if str(x.address) in delta
-            ]
+            return [x for x in self.where_clause.row_arguments if str(x.address) in delta]
         return []
 
     @property
@@ -354,9 +341,7 @@ class ListWrapper(Generic[VT], UserList):
         self.type = type
 
     @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
             schema = handler(List[args])  # type: ignore
@@ -378,9 +363,7 @@ class MapWrapper(Generic[KT, VT], UserDict):
         self.value_type = value_type
 
     @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
             schema = handler(Dict[args])  # type: ignore
@@ -406,9 +389,7 @@ class Metadata(BaseModel):
     concept_source: ConceptSource = ConceptSource.MANUAL
 
 
-def lineage_validator(
-    v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
-) -> Union[Function, WindowItem, FilterItem, AggregateWrapper]:
+def lineage_validator(v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo) -> Union[Function, WindowItem, FilterItem, AggregateWrapper]:
     if v and not isinstance(v, (Function, WindowItem, FilterItem, AggregateWrapper)):
         raise ValueError(v)
     return v
@@ -461,18 +442,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
 
     @property
     def is_aggregate(self):
-        if (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-        ):
+        if self.lineage and isinstance(self.lineage, Function) and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return True
-        if (
-            self.lineage
-            and isinstance(self.lineage, AggregateWrapper)
-            and self.lineage.function.operator
-            in FunctionClass.AGGREGATE_FUNCTIONS.value
-        ):
+        if self.lineage and isinstance(self.lineage, AggregateWrapper) and self.lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return True
         return False
 
@@ -486,18 +458,10 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
-            lineage=(
-                self.lineage.with_merge(source, target, modifiers)
-                if self.lineage
-                else None
-            ),
+            lineage=(self.lineage.with_merge(source, target, modifiers) if self.lineage else None),
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
-            keys=(
-                tuple(x.with_merge(source, target, modifiers) for x in self.keys)
-                if self.keys
-                else None
-            ),
+            keys=(tuple(x.with_merge(source, target, modifiers) for x in self.keys) if self.keys else None),
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
@@ -548,11 +512,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                     )
                 ]
             )
-        elif (
-            "lineage" in values
-            and isinstance(values["lineage"], AggregateWrapper)
-            and values["lineage"].by
-        ):
+        elif "lineage" in values and isinstance(values["lineage"], AggregateWrapper) and values["lineage"].by:
             v = Grain(components=values["lineage"].by)
         elif not v:
             v = Grain(components=[])
@@ -571,11 +531,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         if not isinstance(other, Concept):
             return False
         return (
-            self.name == other.name
-            and self.datatype == other.datatype
-            and self.purpose == other.purpose
-            and self.namespace == other.namespace
-            and self.grain == other.grain
+            self.name == other.name and self.datatype == other.datatype and self.purpose == other.purpose and self.namespace == other.namespace and self.grain == other.grain
             # and self.keys == other.keys
         )
 
@@ -619,23 +575,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=(
-                self.grain.with_namespace(namespace)
-                if self.grain
-                else Grain(components=[])
-            ),
-            namespace=(
-                namespace + "." + self.namespace
-                if self.namespace
-                and self.namespace != DEFAULT_NAMESPACE
-                and self.namespace != namespace
-                else namespace
-            ),
-            keys=(
-                tuple([x.with_namespace(namespace) for x in self.keys])
-                if self.keys
-                else None
-            ),
+            grain=(self.grain.with_namespace(namespace) if self.grain else Grain(components=[])),
+            namespace=(namespace + "." + self.namespace if self.namespace and self.namespace != DEFAULT_NAMESPACE and self.namespace != namespace else namespace),
+            keys=(tuple([x.with_namespace(namespace) for x in self.keys]) if self.keys else None),
             modifiers=self.modifiers,
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
@@ -651,9 +593,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         new_grain = grain or self.grain
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectContext):
-            new_lineage = self.lineage.with_select_context(
-                new_grain, conditional, environment=environment
-            )
+            new_lineage = self.lineage.with_select_context(new_grain, conditional, environment=environment)
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -744,9 +684,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 for item in expr.arguments:
                     if isinstance(item, Concept):
                         if item.address == self.address:
-                            raise SyntaxError(
-                                f"Concept {self.address} references itself"
-                            )
+                            raise SyntaxError(f"Concept {self.address} references itself")
                         output.append(item)
                         output += item.sources
                     elif isinstance(item, Function):
@@ -776,40 +714,19 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             return PurposeLineage.ROWSET
         elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
             return PurposeLineage.MULTISELECT
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-        ):
+        elif self.lineage and isinstance(self.lineage, Function) and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return PurposeLineage.AGGREGATE
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNNEST
-        ):
+        elif self.lineage and isinstance(self.lineage, Function) and self.lineage.operator == FunctionType.UNNEST:
             return PurposeLineage.UNNEST
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNION
-        ):
+        elif self.lineage and isinstance(self.lineage, Function) and self.lineage.operator == FunctionType.UNION:
             return PurposeLineage.UNION
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.SINGLE_ROW.value
-        ):
+        elif self.lineage and isinstance(self.lineage, Function) and self.lineage.operator in FunctionClass.SINGLE_ROW.value:
             return PurposeLineage.CONSTANT
 
         elif self.lineage and isinstance(self.lineage, Function):
             if not self.lineage.concept_arguments:
                 return PurposeLineage.CONSTANT
-            elif all(
-                [
-                    x.derivation == PurposeLineage.CONSTANT
-                    for x in self.lineage.concept_arguments
-                ]
-            ):
+            elif all([x.derivation == PurposeLineage.CONSTANT for x in self.lineage.concept_arguments]):
                 return PurposeLineage.CONSTANT
             return PurposeLineage.BASIC
         elif self.purpose == Purpose.CONSTANT:
@@ -830,18 +747,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 return Granularity.SINGLE_ROW
         elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
             return Granularity.SINGLE_ROW
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
-        ):
+        elif self.lineage and isinstance(self.lineage, Function) and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION):
             return Granularity.MULTI_ROW
-        elif self.lineage and all(
-            [
-                x.granularity == Granularity.SINGLE_ROW
-                for x in self.lineage.concept_arguments
-            ]
-        ):
+        elif self.lineage and all([x.granularity == Granularity.SINGLE_ROW for x in self.lineage.concept_arguments]):
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 
@@ -882,9 +790,7 @@ class Grain(Mergeable, BaseModel):
     def component_validator(cls, v, info: ValidationInfo):
         values = info.data
         if not values.get("nested", False):
-            v2: List[Concept] = unique(
-                [safe_concept(c).with_default_grain() for c in v], "address"
-            )
+            v2: List[Concept] = unique([safe_concept(c).with_default_grain() for c in v], "address")
         else:
             v2 = unique(v, "address")
         final: List[Concept] = []
@@ -925,21 +831,15 @@ class Grain(Mergeable, BaseModel):
             nested=self.nested,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Grain":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "Grain":
         return Grain(
-            components=[
-                x.with_merge(source, target, modifiers) for x in self.components
-            ],
+            components=[x.with_merge(source, target, modifiers) for x in self.components],
             nested=self.nested,
         )
 
     @property
     def abstract(self):
-        return not self.components or all(
-            [c.name == ALL_ROWS_CONCEPT for c in self.components]
-        )
+        return not self.components or all([c.name == ALL_ROWS_CONCEPT for c in self.components])
 
     @property
     def synonym_set(self) -> set[str]:
@@ -982,10 +882,7 @@ class Grain(Mergeable, BaseModel):
     def union(self, other: "Grain"):
         addresses = self.set.union(other.set)
 
-        return Grain(
-            components=[c for c in self.components if c.address in addresses]
-            + [c for c in other.components if c.address in addresses]
-        )
+        return Grain(components=[c for c in self.components if c.address in addresses] + [c for c in other.components if c.address in addresses])
 
     def isdisjoint(self, other: "Grain"):
         return self.set.isdisjoint(other.set)
@@ -1004,14 +901,9 @@ class Grain(Mergeable, BaseModel):
                 components.append(component.with_default_grain())
         base_components = [c for c in components if c.purpose == Purpose.KEY]
         for c in components:
-            if c.purpose == Purpose.PROPERTY and not any(
-                [key in base_components for key in (c.keys or [])]
-            ):
+            if c.purpose == Purpose.PROPERTY and not any([key in base_components for key in (c.keys or [])]):
                 base_components.append(c)
-            elif (
-                c.purpose == Purpose.CONSTANT
-                and not c.derivation == PurposeLineage.CONSTANT
-            ):
+            elif c.purpose == Purpose.CONSTANT and not c.derivation == PurposeLineage.CONSTANT:
                 base_components.append(c)
         return Grain(components=base_components)
 
@@ -1041,24 +933,16 @@ class ColumnAssignment(BaseModel):
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
         return ColumnAssignment(
-            alias=(
-                self.alias.with_namespace(namespace)
-                if isinstance(self.alias, Function)
-                else self.alias
-            ),
+            alias=(self.alias.with_namespace(namespace) if isinstance(self.alias, Function) else self.alias),
             concept=self.concept.with_namespace(namespace),
             modifiers=self.modifiers,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "ColumnAssignment":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "ColumnAssignment":
         return ColumnAssignment(
             alias=self.alias,
             concept=self.concept.with_merge(source, target, modifiers),
-            modifiers=(
-                modifiers if self.concept.address == source.address else self.modifiers
-            ),
+            modifiers=(modifiers if self.concept.address == source.address else self.modifiers),
         )
 
 
@@ -1172,10 +1056,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
                 )
                 for c in self.arguments
             ]
-            final = [
-                c.with_filter(conditional, environment) if isinstance(c, Concept) else c
-                for c in base
-            ]
+            final = [c.with_filter(conditional, environment) if isinstance(c, Concept) else c for c in base]
             return Function(
                 operator=self.operator,
                 arguments=final,
@@ -1219,10 +1100,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         valid_inputs = values["valid_inputs"]
         if not arg_count <= target_arg_count:
             if target_arg_count != InfiniteFunctionArgs:
-                raise ParseError(
-                    f"Incorrect argument count to {operator_name} function, expects"
-                    f" {target_arg_count}, got {arg_count}"
-                )
+                raise ParseError(f"Incorrect argument count to {operator_name} function, expects" f" {target_arg_count}, got {arg_count}")
         # if all arguments can be any of the set type
         # turn this into an array for validation
         if isinstance(valid_inputs, set):
@@ -1230,24 +1108,12 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
-            if (
-                isinstance(arg, Concept)
-                and arg.datatype.data_type not in valid_inputs[idx]
-            ):
+            if isinstance(arg, Concept) and arg.datatype.data_type not in valid_inputs[idx]:
                 if arg.datatype != DataType.UNKNOWN:
-                    raise TypeError(
-                        f"Invalid input datatype {arg.datatype.data_type} passed into position {idx}"
-                        f" for {operator_name} from concept {arg.name}, valid is {valid_inputs[idx]}"
-                    )
-            if (
-                isinstance(arg, Function)
-                and arg.output_datatype not in valid_inputs[idx]
-            ):
+                    raise TypeError(f"Invalid input datatype {arg.datatype.data_type} passed into position {idx}" f" for {operator_name} from concept {arg.name}, valid is {valid_inputs[idx]}")
+            if isinstance(arg, Function) and arg.output_datatype not in valid_inputs[idx]:
                 if arg.output_datatype != DataType.UNKNOWN:
-                    raise TypeError(
-                        f"Invalid input datatype {arg.output_datatype} passed into"
-                        f" {operator_name} from function {arg.operator.name}"
-                    )
+                    raise TypeError(f"Invalid input datatype {arg.output_datatype} passed into" f" {operator_name} from function {arg.operator.name}")
             # check constants
             comparisons: List[Tuple[Type, DataType]] = [
                 (str, DataType.STRING),
@@ -1261,9 +1127,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
                     # attempt to exit early to avoid checking all types
                     break
                 elif isinstance(arg, ptype):
-                    raise TypeError(
-                        f"Invalid {dtype} constant passed into {operator_name} {arg}, expecting one of {valid_inputs[idx]}"
-                    )
+                    raise TypeError(f"Invalid {dtype} constant passed into {operator_name} {arg}, expecting one of {valid_inputs[idx]}")
         return v
 
     def with_namespace(self, namespace: str) -> "Function":
@@ -1286,9 +1150,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             arg_count=self.arg_count,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Function":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "Function":
         return Function(
             operator=self.operator,
             arguments=[
@@ -1480,9 +1342,7 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "FilterItem":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "FilterItem":
         return FilterItem(
             content=source.with_merge(source, target, modifiers),
             where=self.where.with_merge(source, target, modifiers),
@@ -1559,9 +1419,7 @@ class SelectItem(Mergeable, Namespaced, BaseModel):
     def input(self) -> List[Concept]:
         return self.content.input
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SelectItem":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "SelectItem":
         return SelectItem(
             content=self.content.with_merge(source, target, modifiers),
             modifiers=modifiers,
@@ -1588,18 +1446,12 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         environment: Environment | None = None,
     ) -> "OrderItem":
         return OrderItem(
-            expr=self.expr.with_select_context(
-                grain, conditional=conditional, environment=environment
-            ),
+            expr=self.expr.with_select_context(grain, conditional=conditional, environment=environment),
             order=self.order,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "OrderItem":
-        return OrderItem(
-            expr=source.with_merge(source, target, modifiers), order=self.order
-        )
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "OrderItem":
+        return OrderItem(expr=source.with_merge(source, target, modifiers), order=self.order)
 
     @property
     def input(self):
@@ -1616,12 +1468,8 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
     def with_namespace(self, namespace: str) -> "OrderBy":
         return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "OrderBy":
-        return OrderBy(
-            items=[x.with_merge(source, target, modifiers) for x in self.items]
-        )
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "OrderBy":
+        return OrderBy(items=[x.with_merge(source, target, modifiers) for x in self.items])
 
     @property
     def concept_arguments(self):
@@ -1642,32 +1490,19 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
     def refresh_bindings(self, environment: Environment):
         for item in self.selection:
             if isinstance(item.content, Concept):
-                item.content = environment.concepts[item.content.address].with_grain(
-                    self.grain
-                )
+                item.content = environment.concepts[item.content.address].with_grain(self.grain)
 
     def validate_syntax(self):
         all_in_output = [x.address for x in self.output_components]
         if self.where_clause:
             for concept in self.where_clause.concept_arguments:
-
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, Function)
-                    and concept.lineage.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
+                if concept.lineage and isinstance(concept.lineage, Function) and concept.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                     if concept.address in self.locally_derived:
                         raise SyntaxError(
                             f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
                         )
 
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, AggregateWrapper)
-                    and concept.lineage.function.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
+                if concept.lineage and isinstance(concept.lineage, AggregateWrapper) and concept.lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                     if concept.address in self.locally_derived:
                         raise SyntaxError(
                             f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
@@ -1675,15 +1510,11 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         if self.having_clause:
             for concept in self.having_clause.concept_arguments:
                 if concept.address not in [x.address for x in self.output_components]:
-                    raise SyntaxError(
-                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
-                    )
+                    raise SyntaxError(f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}")
         if self.order_by:
             for concept in self.order_by.concept_arguments:
                 if concept.address not in all_in_output:
-                    raise SyntaxError(
-                        f"Cannot order by a column that is not in the output projection; {self.meta.line_number}"
-                    )
+                    raise SyntaxError(f"Cannot order by a column that is not in the output projection; {self.meta.line_number}")
 
     def __str__(self):
         from trilogy.parsing.render import render_query
@@ -1710,16 +1541,10 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
                 new.append(item)
         return new
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SelectStatement":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "SelectStatement":
         return SelectStatement(
             selection=[x.with_merge(source, target, modifiers) for x in self.selection],
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
+            order_by=(self.order_by.with_merge(source, target, modifiers) if self.order_by else None),
             limit=self.limit,
         )
 
@@ -1770,9 +1595,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
 
     @property
     def all_components(self) -> List[Concept]:
-        return (
-            self.input_components + self.output_components + self.grain.components_copy
-        )
+        return self.input_components + self.output_components + self.grain.components_copy
 
     def to_datasource(
         self,
@@ -1790,11 +1613,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
             # if the concept is a locally derived concept, it cannot ever be partial
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
-                alias=(
-                    c.name.replace(".", "_")
-                    if c.namespace == DEFAULT_NAMESPACE
-                    else c.address.replace(".", "_")
-                ),
+                alias=(c.name.replace(".", "_") if c.namespace == DEFAULT_NAMESPACE else c.address.replace(".", "_")),
                 concept=c,
                 modifiers=modifiers if c.address not in self.locally_derived else [],
             )
@@ -1841,44 +1660,24 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         # we want to group to that grain and ignore the property, which is a derivation
         # otherwise, we need to include property as the group by
         for item in self.output_components:
-            if (
-                item.purpose == Purpose.PROPERTY
-                and item.grain
-                and (
-                    not item.grain.components
-                    or not item.grain.issubset(
-                        Grain(components=unique(output, "address"))
-                    )
-                )
-            ):
+            if item.purpose == Purpose.PROPERTY and item.grain and (not item.grain.components or not item.grain.issubset(Grain(components=unique(output, "address")))):
                 output.append(item)
             if (
                 item.purpose == Purpose.CONSTANT
                 and item.derivation != PurposeLineage.CONSTANT
                 and item.grain
-                and (
-                    not item.grain.components
-                    or not item.grain.issubset(
-                        Grain(components=unique(output, "address"))
-                    )
-                )
+                and (not item.grain.components or not item.grain.issubset(Grain(components=unique(output, "address"))))
             ):
                 output.append(item)
         # TODO: explore implicit filtering more
         # if self.where_clause.conditional and self.where_clause_category == SelectFiltering.IMPLICIT:
         #     output =[x.with_filter(self.where_clause.conditional) for x in output]
-        return Grain(
-            components=unique(output, "address"), where_clause=self.where_clause
-        )
+        return Grain(components=unique(output, "address"), where_clause=self.where_clause)
 
     def with_namespace(self, namespace: str) -> "SelectStatement":
         return SelectStatement(
             selection=[c.with_namespace(namespace) for c in self.selection],
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
+            where_clause=(self.where_clause.with_namespace(namespace) if self.where_clause else None),
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
             limit=self.limit,
         )
@@ -1915,9 +1714,7 @@ class AlignItem(Namespaced, BaseModel):
         datatypes = set([c.datatype for c in self.concepts])
         purposes = set([c.purpose for c in self.concepts])
         if len(datatypes) > 1:
-            raise InvalidSyntaxException(
-                f"Datatypes do not align for merged statements {self.alias}, have {datatypes}"
-            )
+            raise InvalidSyntaxException(f"Datatypes do not align for merged statements {self.alias}, have {datatypes}")
         if len(purposes) > 1:
             purpose = Purpose.KEY
         else:
@@ -1972,25 +1769,15 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
             output += self.where_clause.concept_arguments
         return unique(output, "address")
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "MultiSelectStatement":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "MultiSelectStatement":
         new = MultiSelectStatement(
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
             namespace=self.namespace,
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
+            order_by=(self.order_by.with_merge(source, target, modifiers) if self.order_by else None),
             limit=self.limit,
             meta=self.meta,
-            where_clause=(
-                self.where_clause.with_merge(source, target, modifiers)
-                if self.where_clause
-                else None
-            ),
+            where_clause=(self.where_clause.with_merge(source, target, modifiers) if self.where_clause else None),
         )
         return new
 
@@ -2008,11 +1795,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
             limit=self.limit,
             meta=self.meta,
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
+            where_clause=(self.where_clause.with_namespace(namespace) if self.where_clause else None),
         )
 
     @property
@@ -2036,9 +1819,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
                 for c in x.concepts:
                     if c.address in cte.output_lcl:
                         return c
-        raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
-        )
+        raise SyntaxError(f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})")
 
     @property
     def output_components(self) -> List[Concept]:
@@ -2077,11 +1858,7 @@ class GrainWindow(BaseModel):
     sort_concepts: List[Concept]
 
     def __str__(self):
-        return (
-            "GrainWindow<"
-            + ",".join([c.address for c in self.sort_concepts])
-            + f":{str(self.window)}>"
-        )
+        return "GrainWindow<" + ",".join([c.address for c in self.sort_concepts]) + f":{str(self.window)}>"
 
 
 def safe_grain(v) -> Grain:
@@ -2121,39 +1898,23 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     name: str
     columns: List[ColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = Field(
-        default_factory=lambda: Grain(components=[]), validate_default=True
-    )
+    grain: Grain = Field(default_factory=lambda: Grain(components=[]), validate_default=True)
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    metadata: DatasourceMetadata = Field(
-        default_factory=lambda: DatasourceMetadata(freshness_concept=None)
-    )
+    metadata: DatasourceMetadata = Field(default_factory=lambda: DatasourceMetadata(freshness_concept=None))
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
 
-    def merge_concept(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ):
+    def merge_concept(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         original = [c for c in self.columns if c.concept.address == source.address]
-        early_exit_check = [
-            c for c in self.columns if c.concept.address == target.address
-        ]
+        early_exit_check = [c for c in self.columns if c.concept.address == target.address]
         if early_exit_check:
             return None
         if len(original) != 1:
-            raise ValueError(
-                f"Expected exactly one column to merge, got {len(original)} for {source.address}, {[x.alias for x in original]}"
-            )
+            raise ValueError(f"Expected exactly one column to merge, got {len(original)} for {source.address}, {[x.alias for x in original]}")
         # map to the alias with the modifier, and the original
-        self.columns = [
-            c.with_merge(source, target, modifiers)
-            for c in self.columns
-            if c.concept.address != source.address
-        ] + original
+        self.columns = [c.with_merge(source, target, modifiers) for c in self.columns if c.concept.address != source.address] + original
         self.grain = self.grain.with_merge(source, target, modifiers)
-        self.where = (
-            self.where.with_merge(source, target, modifiers) if self.where else None
-        )
+        self.where = self.where.with_merge(source, target, modifiers) if self.where else None
 
         self.add_column(target, original[0].alias, modifiers)
 
@@ -2207,13 +1968,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         grain: Grain = safe_grain(v)
         if not grain.components:
             columns: List[ColumnAssignment] = values.get("columns", [])
-            grain = Grain(
-                components=[
-                    c.concept.with_grain(Grain())
-                    for c in columns
-                    if c.concept.purpose == Purpose.KEY
-                ]
-            )
+            grain = Grain(components=[c.concept.with_grain(Grain()) for c in columns if c.concept.purpose == Purpose.KEY])
         return grain
 
     def add_column(
@@ -2222,15 +1977,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         alias: str | RawColumnExpr | Function,
         modifiers: List[Modifier] | None = None,
     ):
-        self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or [])
-        )
+        self.columns.append(ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or []))
 
     def __add__(self, other):
         if not other == self:
-            raise ValueError(
-                "Attempted to add two datasources that are not identical, this is not a valid operation"
-            )
+            raise ValueError("Attempted to add two datasources that are not identical, this is not a valid operation")
         return self
 
     def __repr__(self):
@@ -2243,11 +1994,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return self.identifier.__hash__()
 
     def with_namespace(self, namespace: str):
-        new_namespace = (
-            namespace + "." + self.namespace
-            if self.namespace and self.namespace != DEFAULT_NAMESPACE
-            else namespace
-        )
+        new_namespace = namespace + "." + self.namespace if self.namespace and self.namespace != DEFAULT_NAMESPACE else namespace
         return Datasource(
             name=self.name,
             namespace=new_namespace,
@@ -2281,9 +2028,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     def partial_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
 
-    def get_alias(
-        self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
-    ) -> Optional[str | RawColumnExpr] | Function:
+    def get_alias(self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False) -> Optional[str | RawColumnExpr] | Function:
         # 2022-01-22
         # this logic needs to be refined.
         # if concept.lineage:
@@ -2294,10 +2039,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
                     return x.alias
                 return concept.safe_address
         existing = [str(c.concept.with_grain(self.grain)) for c in self.columns]
-        raise ValueError(
-            f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have"
-            f" {existing}."
-        )
+        raise ValueError(f"{LOGGER_PREFIX} Concept {concept} not found on {self.identifier}; have" f" {existing}.")
 
     @property
     def safe_location(self) -> str:
@@ -2353,14 +2095,8 @@ class BaseJoin(BaseModel):
 
     def __init__(self, **data: Any):
         super().__init__(**data)
-        if (
-            self.left_datasource
-            and self.left_datasource.identifier == self.right_datasource.identifier
-        ):
-            raise SyntaxError(
-                f"Cannot join a dataself to itself, joining {self.left_datasource} and"
-                f" {self.right_datasource}"
-            )
+        if self.left_datasource and self.left_datasource.identifier == self.right_datasource.identifier:
+            raise SyntaxError(f"Cannot join a dataself to itself, joining {self.left_datasource} and" f" {self.right_datasource}")
         final_concepts = []
 
         # if we have a list of concept pairs
@@ -2375,14 +2111,8 @@ class BaseJoin(BaseModel):
                 synonyms = []
                 for c in ds.output_concepts:
                     synonyms += list(c.pseudonyms)
-                if (
-                    concept.address not in [c.address for c in ds.output_concepts]
-                    and concept.address not in synonyms
-                ):
-                    raise SyntaxError(
-                        f"Invalid join, missing {concept} on {ds.name}, have"
-                        f" {[c.address for c in ds.output_concepts]}"
-                    )
+                if concept.address not in [c.address for c in ds.output_concepts] and concept.address not in synonyms:
+                    raise SyntaxError(f"Invalid join, missing {concept} on {ds.name}, have" f" {[c.address for c in ds.output_concepts]}")
             if include:
                 final_concepts.append(concept)
         if not final_concepts and self.concepts:
@@ -2390,12 +2120,7 @@ class BaseJoin(BaseModel):
             # we can join on 1=1
             for ds in [self.left_datasource, self.right_datasource]:
                 # single rows
-                if all(
-                    [
-                        c.granularity == Granularity.SINGLE_ROW
-                        for c in ds.output_concepts
-                    ]
-                ):
+                if all([c.granularity == Granularity.SINGLE_ROW for c in ds.output_concepts]):
                     self.concepts = []
                     return
                 # if everything is at abstract grain, we can skip joins
@@ -2431,14 +2156,8 @@ class BaseJoin(BaseModel):
 
     def __str__(self):
         if self.concept_pairs:
-            return (
-                f"{self.join_type.value} {self.right_datasource.name} on"
-                f" {','.join([str(k.existing_datasource.name) + '.'+ str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
-            )
-        return (
-            f"{self.join_type.value} {self.right_datasource.name} on"
-            f" {','.join([str(k) for k in self.concepts])}"
-        )
+            return f"{self.join_type.value} {self.right_datasource.name} on" f" {','.join([str(k.existing_datasource.name) + '.'+ str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
+        return f"{self.join_type.value} {self.right_datasource.name} on" f" {','.join([str(k) for k in self.concepts])}"
 
 
 class QueryDatasource(BaseModel):
@@ -2450,9 +2169,7 @@ class QueryDatasource(BaseModel):
     grain: Grain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
-    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
-        default=None
-    )
+    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(default=None)
     filter_concepts: List[Concept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
@@ -2460,9 +2177,7 @@ class QueryDatasource(BaseModel):
     nullable_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
     force_group: bool | None = None
-    existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(
-        default_factory=dict
-    )
+    existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(default_factory=dict)
 
     def __repr__(self):
         return f"{self.identifier}@<{self.grain}>"
@@ -2473,11 +2188,7 @@ class QueryDatasource(BaseModel):
 
     @property
     def non_partial_concept_addresses(self) -> List[str]:
-        return [
-            c.address
-            for c in self.output_concepts
-            if c.address not in [z.address for z in self.partial_concepts]
-        ]
+        return [c.address for c in self.output_concepts if c.address not in [z.address for z in self.partial_concepts]]
 
     @field_validator("joins")
     @classmethod
@@ -2511,14 +2222,8 @@ class QueryDatasource(BaseModel):
                 continue
             concept: Concept
             for concept in values[key]:
-                if (
-                    concept.address not in v
-                    and not any(x in v for x in concept.pseudonyms)
-                    and CONFIG.validate_missing
-                ):
-                    raise SyntaxError(
-                        f"Missing source map for {concept.address} on {key}, have {v}"
-                    )
+                if concept.address not in v and not any(x in v for x in concept.pseudonyms) and CONFIG.validate_missing:
+                    raise SyntaxError(f"Missing source map for {concept.address} on {key}, have {v}")
         return v
 
     def __str__(self):
@@ -2557,34 +2262,22 @@ class QueryDatasource(BaseModel):
         if not isinstance(other, QueryDatasource):
             raise SyntaxError("Can only merge two query datasources")
         if not other.grain == self.grain:
-            raise SyntaxError(
-                "Can only merge two query datasources with identical grain"
-            )
+            raise SyntaxError("Can only merge two query datasources with identical grain")
         if not self.group_required == other.group_required:
-            raise SyntaxError(
-                "can only merge two datasources if the group required flag is the same"
-            )
+            raise SyntaxError("can only merge two datasources if the group required flag is the same")
         if not self.join_derived_concepts == other.join_derived_concepts:
-            raise SyntaxError(
-                "can only merge two datasources if the join derived concepts are the same"
-            )
+            raise SyntaxError("can only merge two datasources if the join derived concepts are the same")
         if not self.force_group == other.force_group:
-            raise SyntaxError(
-                "can only merge two datasources if the force_group flag is the same"
-            )
+            raise SyntaxError("can only merge two datasources if the force_group flag is the same")
         logger.debug(
-            f"{LOGGER_PREFIX} merging {self.name} with"
-            f" {[c.address for c in self.output_concepts]} concepts and"
-            f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
+            f"{LOGGER_PREFIX} merging {self.name} with" f" {[c.address for c in self.output_concepts]} concepts and" f" {other.name} with {[c.address for c in other.output_concepts]} concepts"
         )
 
         merged_datasources: dict[str, Union[Datasource, "QueryDatasource"]] = {}
 
         for ds in [*self.datasources, *other.datasources]:
             if ds.safe_identifier in merged_datasources:
-                merged_datasources[ds.safe_identifier] = (
-                    merged_datasources[ds.safe_identifier] + ds
-                )
+                merged_datasources[ds.safe_identifier] = merged_datasources[ds.safe_identifier] + ds
             else:
                 merged_datasources[ds.safe_identifier] = ds
 
@@ -2613,12 +2306,8 @@ class QueryDatasource(BaseModel):
         # hidden is the minimum overlapping set
         hidden = [x for x in self_hidden if x.address in other_hidden]
         qds = QueryDatasource(
-            input_concepts=unique(
-                self.input_concepts + other.input_concepts, "address"
-            ),
-            output_concepts=unique(
-                self.output_concepts + other.output_concepts, "address"
-            ),
+            input_concepts=unique(self.input_concepts + other.input_concepts, "address"),
+            output_concepts=unique(self.output_concepts + other.output_concepts, "address"),
             source_map=final_source_map,
             datasources=list(merged_datasources.values()),
             grain=self.grain,
@@ -2629,9 +2318,7 @@ class QueryDatasource(BaseModel):
                 else self.condition or other.condition
             ),
             source_type=self.source_type,
-            partial_concepts=unique(
-                self.partial_concepts + other.partial_concepts, "address"
-            ),
+            partial_concepts=unique(self.partial_concepts + other.partial_concepts, "address"),
             join_derived_concepts=self.join_derived_concepts,
             force_group=self.force_group,
             hidden_concepts=hidden,
@@ -2642,14 +2329,10 @@ class QueryDatasource(BaseModel):
     @property
     def identifier(self) -> str:
         filters = abs(hash(str(self.condition))) if self.condition else ""
-        grain = "_".join(
-            [str(c.address).replace(".", "_") for c in self.grain.components]
-        )
+        grain = "_".join([str(c.address).replace(".", "_") for c in self.grain.components])
         # partial = "_".join([str(c.address).replace(".", "_") for c in self.partial_concepts])
         return (
-            "_join_".join([d.identifier for d in self.datasources])
-            + (f"_at_{grain}" if grain else "_at_abstract")
-            + (f"_filtered_by_{filters}" if filters else "")
+            "_join_".join([d.identifier for d in self.datasources]) + (f"_at_{grain}" if grain else "_at_abstract") + (f"_filtered_by_{filters}" if filters else "")
             # + (f"_partial_{partial}" if partial else "")
         )
 
@@ -2684,10 +2367,7 @@ class QueryDatasource(BaseModel):
 
         existing_str = [str(c) for c in existing]
         datasources = [ds.identifier for ds in self.datasources]
-        raise ValueError(
-            f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier};"
-            f" have {existing_str} from {datasources}."
-        )
+        raise ValueError(f"{LOGGER_PREFIX} Concept {str(concept)} not found on {self.identifier};" f" have {existing_str} from {datasources}.")
 
     @property
     def safe_location(self):
@@ -2754,38 +2434,18 @@ class CTE(BaseModel):
         # if we've entirely removed the need to join to someplace to get the concept
         # drop the join as well.
         for removed_cte in removed:
-            still_required = any(
-                [
-                    removed_cte in x
-                    for x in self.source_map.values()
-                    or self.existence_source_map.values()
-                ]
-            )
+            still_required = any([removed_cte in x for x in self.source_map.values() or self.existence_source_map.values()])
             if not still_required:
                 self.joins = [
                     join
                     for join in self.joins
-                    if not isinstance(join, Join)
-                    or (
-                        isinstance(join, Join)
-                        and (
-                            join.right_cte.name != removed_cte
-                            and any(
-                                [
-                                    x.cte.name != removed_cte
-                                    for x in (join.joinkey_pairs or [])
-                                ]
-                            )
-                        )
-                    )
+                    if not isinstance(join, Join) or (isinstance(join, Join) and (join.right_cte.name != removed_cte and any([x.cte.name != removed_cte for x in (join.joinkey_pairs or [])])))
                 ]
                 for join in self.joins:
                     if isinstance(join, UnnestJoin) and concept in join.concepts:
                         join.rendering_required = False
 
-                self.parent_ctes = [
-                    x for x in self.parent_ctes if x.name != removed_cte
-                ]
+                self.parent_ctes = [x for x in self.parent_ctes if x.name != removed_cte]
                 if removed_cte == self.base_name_override:
                     candidates = [x.name for x in self.parent_ctes]
                     self.base_name_override = candidates[0] if candidates else None
@@ -2801,9 +2461,7 @@ class CTE(BaseModel):
         if self.joins:
             base += f"\n-- Joins: {', '.join([str(x) for x in self.joins])}."
         if self.partial_concepts:
-            base += (
-                f"\n-- Partials: {', '.join([str(x) for x in self.partial_concepts])}."
-            )
+            base += f"\n-- Partials: {', '.join([str(x) for x in self.partial_concepts])}."
         base += f"\n-- Source Map: {self.source_map}."
         base += f"\n-- Output: {', '.join([str(x) for x in self.output_columns])}."
         if self.source.input_concepts:
@@ -2811,9 +2469,7 @@ class CTE(BaseModel):
         if self.hidden_concepts:
             base += f"\n-- Hidden: {', '.join([str(x) for x in self.hidden_concepts])}."
         if self.nullable_concepts:
-            base += (
-                f"\n-- Nullable: {', '.join([str(x) for x in self.nullable_concepts])}."
-            )
+            base += f"\n-- Nullable: {', '.join([str(x) for x in self.nullable_concepts])}."
 
         return base
 
@@ -2822,21 +2478,12 @@ class CTE(BaseModel):
         ds_being_inlined = qds_being_inlined.datasources[0]
         if not isinstance(ds_being_inlined, Datasource):
             return False
-        if any(
-            [
-                x.safe_identifier == ds_being_inlined.safe_identifier
-                for x in self.source.datasources
-            ]
-        ):
+        if any([x.safe_identifier == ds_being_inlined.safe_identifier for x in self.source.datasources]):
             return False
 
         self.source.datasources = [
             ds_being_inlined,
-            *[
-                x
-                for x in self.source.datasources
-                if x.safe_identifier != qds_being_inlined.safe_identifier
-            ],
+            *[x for x in self.source.datasources if x.safe_identifier != qds_being_inlined.safe_identifier],
         ]
         # need to identify this before updating joins
         if self.base_name == parent.name:
@@ -2846,10 +2493,7 @@ class CTE(BaseModel):
         for join in self.joins:
             if isinstance(join, InstantiatedUnnestJoin):
                 continue
-            if (
-                join.left_cte
-                and join.left_cte.safe_identifier == parent.safe_identifier
-            ):
+            if join.left_cte and join.left_cte.safe_identifier == parent.safe_identifier:
                 join.inline_cte(parent)
             if join.joinkey_pairs:
                 for pair in join.joinkey_pairs:
@@ -2859,14 +2503,7 @@ class CTE(BaseModel):
                 join.inline_cte(parent)
         for k, v in self.source_map.items():
             if isinstance(v, list):
-                self.source_map[k] = [
-                    (
-                        ds_being_inlined.safe_identifier
-                        if x == parent.safe_identifier
-                        else x
-                    )
-                    for x in v
-                ]
+                self.source_map[k] = [(ds_being_inlined.safe_identifier if x == parent.safe_identifier else x) for x in v]
             elif v == parent.safe_identifier:
                 self.source_map[k] = [ds_being_inlined.safe_identifier]
 
@@ -2875,9 +2512,7 @@ class CTE(BaseModel):
             if k in self.source_map and self.source_map[k]:
                 continue
             self.source_map[k] = [ds_being_inlined.safe_identifier]
-        self.parent_ctes = [
-            x for x in self.parent_ctes if x.safe_identifier != parent.safe_identifier
-        ]
+        self.parent_ctes = [x for x in self.parent_ctes if x.safe_identifier != parent.safe_identifier]
         if force_group:
             self.group_to_grain = True
         return True
@@ -2893,40 +2528,25 @@ class CTE(BaseModel):
             )
             raise ValueError(error)
         if not self.condition == other.condition:
-            error = (
-                "Attempting to merge two ctes with different conditions"
-                f" {self.name} {other.name} conditions {self.condition} {other.condition}"
-            )
+            error = "Attempting to merge two ctes with different conditions" f" {self.name} {other.name} conditions {self.condition} {other.condition}"
             raise ValueError(error)
         mutually_hidden = []
         for concept in self.hidden_concepts:
             if concept.address in other.hidden_concepts:
                 mutually_hidden.append(concept)
-        self.partial_concepts = unique(
-            self.partial_concepts + other.partial_concepts, "address"
-        )
+        self.partial_concepts = unique(self.partial_concepts + other.partial_concepts, "address")
         self.parent_ctes = merge_ctes(self.parent_ctes + other.parent_ctes)
 
         self.source_map = {**self.source_map, **other.source_map}
 
-        self.output_columns = unique(
-            self.output_columns + other.output_columns, "address"
-        )
+        self.output_columns = unique(self.output_columns + other.output_columns, "address")
         self.joins = unique(self.joins + other.joins, "unique_id")
-        self.partial_concepts = unique(
-            self.partial_concepts + other.partial_concepts, "address"
-        )
-        self.join_derived_concepts = unique(
-            self.join_derived_concepts + other.join_derived_concepts, "address"
-        )
+        self.partial_concepts = unique(self.partial_concepts + other.partial_concepts, "address")
+        self.join_derived_concepts = unique(self.join_derived_concepts + other.join_derived_concepts, "address")
 
         self.source.source_map = {**self.source.source_map, **other.source.source_map}
-        self.source.output_concepts = unique(
-            self.source.output_concepts + other.source.output_concepts, "address"
-        )
-        self.nullable_concepts = unique(
-            self.nullable_concepts + other.nullable_concepts, "address"
-        )
+        self.source.output_concepts = unique(self.source.output_concepts + other.source.output_concepts, "address")
+        self.nullable_concepts = unique(self.nullable_concepts + other.nullable_concepts, "address")
         self.hidden_concepts = mutually_hidden
         self.existence_source_map = {
             **self.existence_source_map,
@@ -2940,11 +2560,7 @@ class CTE(BaseModel):
 
     @property
     def is_root_datasource(self) -> bool:
-        return (
-            len(self.source.datasources) == 1
-            and isinstance(self.source.datasources[0], Datasource)
-            and not self.source.datasources[0].name == CONSTANT_DATASET
-        )
+        return len(self.source.datasources) == 1 and isinstance(self.source.datasources[0], Datasource) and not self.source.datasources[0].name == CONSTANT_DATASET
 
     @property
     def base_name(self) -> str:
@@ -2966,9 +2582,7 @@ class CTE(BaseModel):
     def quote_address(self) -> bool:
         if self.is_root_datasource:
             candidate = self.source.datasources[0]
-            if isinstance(candidate, Datasource) and isinstance(
-                candidate.address, Address
-            ):
+            if isinstance(candidate, Datasource) and isinstance(candidate.address, Address):
                 return candidate.address.quoted
         return False
 
@@ -3037,21 +2651,14 @@ class CTE(BaseModel):
 
     @property
     def render_from_clause(self) -> bool:
-        if (
-            all([c.derivation == PurposeLineage.CONSTANT for c in self.output_columns])
-            and not self.parent_ctes
-            and not self.group_to_grain
-        ):
+        if all([c.derivation == PurposeLineage.CONSTANT for c in self.output_columns]) and not self.parent_ctes and not self.group_to_grain:
             return False
         # if we don't need to source any concepts from anywhere
         # render without from
         # most likely to happen from inlining constants
         if not any([v for v in self.source_map.values()]):
             return False
-        if (
-            len(self.source.datasources) == 1
-            and self.source.datasources[0].name == CONSTANT_DATASET
-        ):
+        if len(self.source.datasources) == 1 and self.source.datasources[0].name == CONSTANT_DATASET:
             return False
         return True
 
@@ -3150,7 +2757,6 @@ class JoinKey(BaseModel):
 
 
 class Join(BaseModel):
-
     right_cte: CTE
     jointype: JoinType
     left_cte: CTE | None = None
@@ -3183,16 +2789,9 @@ class Join(BaseModel):
 
     def __str__(self):
         if self.joinkey_pairs:
-            return (
-                f"{self.jointype.value} join"
-                f" {self.right_name} on"
-                f" {','.join([k.cte.name + '.'+str(k.left.address)+'='+str(k.right.address) for k in self.joinkey_pairs])}"
-            )
+            return f"{self.jointype.value} join" f" {self.right_name} on" f" {','.join([k.cte.name + '.'+str(k.left.address)+'='+str(k.right.address) for k in self.joinkey_pairs])}"
         elif self.left_cte:
-            return (
-                f"{self.jointype.value} JOIN {self.left_cte.name} and"
-                f" {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
-            )
+            return f"{self.jointype.value} JOIN {self.left_cte.name} and" f" {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
         return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
 
 
@@ -3206,9 +2805,7 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
     )
     purpose: Purpose = Purpose.KEY
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "UndefinedConcept" | Concept:
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "UndefinedConcept" | Concept:
         if self.address == source.address:
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
             new.pseudonyms.add(self.address)
@@ -3218,18 +2815,10 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
-            lineage=(
-                self.lineage.with_merge(source, target, modifiers)
-                if self.lineage
-                else None
-            ),
+            lineage=(self.lineage.with_merge(source, target, modifiers) if self.lineage else None),
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
-            keys=(
-                tuple(x.with_merge(source, target, modifiers) for x in self.keys)
-                if self.keys
-                else None
-            ),
+            keys=(tuple(x.with_merge(source, target, modifiers) for x in self.keys) if self.keys else None),
             environment=self.environment,
             line_no=self.line_no,
         )
@@ -3241,11 +2830,7 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=(
-                self.grain.with_namespace(namespace)
-                if self.grain
-                else Grain(components=[])
-            ),
+            grain=(self.grain.with_namespace(namespace) if self.grain else Grain(components=[])),
             namespace=namespace,
             keys=self.keys,
             environment=self.environment,
@@ -3264,9 +2849,7 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         if self.lineage:
             new_lineage = self.lineage
             if isinstance(self.lineage, SelectContext):
-                new_lineage = self.lineage.with_select_context(
-                    new_grain, conditional, environment
-                )
+                new_lineage = self.lineage.with_select_context(new_grain, conditional, environment)
         else:
             new_lineage = None
         return self.__class__(
@@ -3372,9 +2955,7 @@ class EnvironmentConceptDict(dict):
         except UndefinedConceptException:
             return default
 
-    def __getitem__(
-        self, key, line_no: int | None = None, file: Path | None = None
-    ) -> Concept | UndefinedConcept:
+    def __getitem__(self, key, line_no: int | None = None, file: Path | None = None) -> Concept | UndefinedConcept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
 
@@ -3402,9 +2983,7 @@ class EnvironmentConceptDict(dict):
 
             if line_no:
                 if file:
-                    raise UndefinedConceptException(
-                        f"{file}: {line_no}: " + message, matches
-                    )
+                    raise UndefinedConceptException(f"{file}: {line_no}: " + message, matches)
                 raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
             raise UndefinedConceptException(message, matches)
 
@@ -3414,9 +2993,7 @@ class EnvironmentConceptDict(dict):
                 return input[len(DEFAULT_NAMESPACE) + 1 :]
             return input
 
-        matches = difflib.get_close_matches(
-            strip_local(concept_name), [strip_local(x) for x in self.keys()]
-        )
+        matches = difflib.get_close_matches(strip_local(concept_name), [strip_local(x) for x in self.keys()])
         return matches
 
     def items(self) -> ItemsView[str, Concept]:  # type: ignore
@@ -3439,9 +3016,7 @@ def validate_concepts(v) -> EnvironmentConceptDict:
     if isinstance(v, EnvironmentConceptDict):
         return v
     elif isinstance(v, dict):
-        return EnvironmentConceptDict(
-            **{x: Concept.model_validate(y) for x, y in v.items()}
-        )
+        return EnvironmentConceptDict(**{x: Concept.model_validate(y) for x, y in v.items()})
     raise ValueError
 
 
@@ -3449,21 +3024,15 @@ def validate_datasources(v) -> EnvironmentDatasourceDict:
     if isinstance(v, EnvironmentDatasourceDict):
         return v
     elif isinstance(v, dict):
-        return EnvironmentDatasourceDict(
-            **{x: Datasource.model_validate(y) for x, y in v.items()}
-        )
+        return EnvironmentDatasourceDict(**{x: Datasource.model_validate(y) for x, y in v.items()})
     raise ValueError
 
 
 class Environment(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
 
-    concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
-        Field(default_factory=EnvironmentConceptDict)
-    )
-    datasources: Annotated[
-        EnvironmentDatasourceDict, PlainValidator(validate_datasources)
-    ] = Field(default_factory=EnvironmentDatasourceDict)
+    concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = Field(default_factory=EnvironmentConceptDict)
+    datasources: Annotated[EnvironmentDatasourceDict, PlainValidator(validate_datasources)] = Field(default_factory=EnvironmentDatasourceDict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
     imports: Dict[str, list[ImportStatement]] = Field(
@@ -3554,9 +3123,7 @@ class Environment(BaseModel):
             return
 
         def handle_persist():
-            deriv_lookup = (
-                f"{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{existing.name}"
-            )
+            deriv_lookup = f"{existing.namespace}.{PERSISTED_CONCEPT_PREFIX}_{existing.name}"
 
             alt_source = self.alias_origin_lookup.get(deriv_lookup)
             if not alt_source:
@@ -3567,20 +3134,14 @@ class Environment(BaseModel):
             if not new_concept.lineage:
                 return existing
             if str(alt_source.lineage) == str(new_concept.lineage):
-                logger.info(
-                    f"Persisted concept {existing.address} matched redeclaration, keeping current persistence binding."
-                )
+                logger.info(f"Persisted concept {existing.address} matched redeclaration, keeping current persistence binding.")
                 return existing
             logger.warning(
                 f"Persisted concept {existing.address} lineage {str(alt_source.lineage)} did not match redeclaration {str(new_concept.lineage)}, overwriting and invalidating persist binding."
             )
             for k, datasource in self.datasources.items():
                 if existing.address in datasource.output_concepts:
-                    datasource.columns = [
-                        x
-                        for x in datasource.columns
-                        if x.concept.address != existing.address
-                    ]
+                    datasource.columns = [x for x in datasource.columns if x.concept.address != existing.address]
             return None
 
         if existing and self.environment_config.allow_duplicate_declaration:
@@ -3594,35 +3155,19 @@ class Environment(BaseModel):
             if existing.metadata.concept_source == ConceptSource.AUTO_DERIVED:
                 return None
         elif meta and existing.metadata:
-            raise ValueError(
-                f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate"
-                f" declaration; '{lookup}' was originally defined on line"
-                f" {existing.metadata.line_number}"
-            )
+            raise ValueError(f"Assignment to concept '{lookup}' on line {meta.line} is a duplicate" f" declaration; '{lookup}' was originally defined on line" f" {existing.metadata.line_number}")
         elif existing.metadata:
-            raise ValueError(
-                f"Assignment to concept '{lookup}'  is a duplicate declaration;"
-                f" '{lookup}' was originally defined on line"
-                f" {existing.metadata.line_number}"
-            )
-        raise ValueError(
-            f"Assignment to concept '{lookup}'  is a duplicate declaration;"
-        )
+            raise ValueError(f"Assignment to concept '{lookup}'  is a duplicate declaration;" f" '{lookup}' was originally defined on line" f" {existing.metadata.line_number}")
+        raise ValueError(f"Assignment to concept '{lookup}'  is a duplicate declaration;")
 
-    def add_import(
-        self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
-    ):
+    def add_import(self, alias: str, source: Environment, imp_stm: ImportStatement | None = None):
         exists = False
         existing = self.imports[alias]
         if imp_stm:
-            if any(
-                [x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing]
-            ):
+            if any([x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing]):
                 exists = True
         else:
-            if any(
-                [x.path == source.working_path and x.alias == alias for x in existing]
-            ):
+            if any([x.path == source.working_path and x.alias == alias for x in existing]):
                 exists = True
             imp_stm = ImportStatement(alias=alias, path=Path(source.working_path))
         same_namespace = alias == self.namespace
@@ -3635,9 +3180,7 @@ class Environment(BaseModel):
             if same_namespace:
                 new = self.add_concept(concept, _ignore_cache=True)
             else:
-                new = self.add_concept(
-                    concept.with_namespace(alias), _ignore_cache=True
-                )
+                new = self.add_concept(concept.with_namespace(alias), _ignore_cache=True)
 
                 k = address_with_namespace(k, alias)
             # set this explicitly, to handle aliasing
@@ -3647,26 +3190,20 @@ class Environment(BaseModel):
             if same_namespace:
                 self.add_datasource(datasource, _ignore_cache=True)
             else:
-                self.add_datasource(
-                    datasource.with_namespace(alias), _ignore_cache=True
-                )
+                self.add_datasource(datasource.with_namespace(alias), _ignore_cache=True)
         for key, val in source.alias_origin_lookup.items():
             if same_namespace:
                 self.alias_origin_lookup[key] = val
             else:
-                self.alias_origin_lookup[address_with_namespace(key, alias)] = (
-                    val.with_namespace(alias)
-                )
+                self.alias_origin_lookup[address_with_namespace(key, alias)] = val.with_namespace(alias)
 
         self.gen_concept_list_caches()
         return self
 
-    def add_file_import(
-        self, path: str | Path, alias: str, env: Environment | None = None
-    ):
+    def add_file_import(self, path: str | Path, alias: str, env: Environment | None = None):
         from trilogy.parsing.parse_engine import (
-            ParseToObjects,
             PARSER,
+            ParseToObjects,
             gen_cache_lookup,
         )
 
@@ -3700,17 +3237,13 @@ class Environment(BaseModel):
                 nparser.transform(PARSER.parse(text))
 
             except Exception as e:
-                raise ImportError(
-                    f"Unable to import file {target.parent}, parsing error: {e}"
-                )
+                raise ImportError(f"Unable to import file {target.parent}, parsing error: {e}")
             env = nparser.environment
         imps = ImportStatement(alias=alias, path=target)
         self.add_import(alias, source=env, imp_stm=imps)
         return imps
 
-    def parse(
-        self, input: str, namespace: str | None = None, persist: bool = False
-    ) -> Tuple[Environment, list]:
+    def parse(self, input: str, namespace: str | None = None, persist: bool = False) -> Tuple[Environment, list]:
         from trilogy import parse
         from trilogy.core.query_processor import process_persist
 
@@ -3780,26 +3313,17 @@ class Environment(BaseModel):
             if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
                 persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource
-                if (
-                    current_concept.metadata.concept_source
-                    != ConceptSource.PERSIST_STATEMENT
-                ):
+                if current_concept.metadata.concept_source != ConceptSource.PERSIST_STATEMENT:
                     new_concept = current_concept.model_copy(deep=True)
                     new_concept.set_name(persisted)
-                    self.add_concept(
-                        new_concept, meta=meta, force=True, _ignore_cache=True
-                    )
-                    current_concept.metadata.concept_source = (
-                        ConceptSource.PERSIST_STATEMENT
-                    )
+                    self.add_concept(new_concept, meta=meta, force=True, _ignore_cache=True)
+                    current_concept.metadata.concept_source = ConceptSource.PERSIST_STATEMENT
                     # remove the associated lineage
                     # to make this a root for discovery purposes
                     # as it now "exists" in a table
                     current_concept.lineage = None
                     current_concept = current_concept.with_default_grain()
-                    self.add_concept(
-                        current_concept, meta=meta, force=True, _ignore_cache=True
-                    )
+                    self.add_concept(current_concept, meta=meta, force=True, _ignore_cache=True)
                     self.merge_concept(new_concept, current_concept, [])
                 else:
                     self.add_concept(current_concept, meta=meta, _ignore_cache=True)
@@ -3823,9 +3347,7 @@ class Environment(BaseModel):
             return True
         return False
 
-    def merge_concept(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ):
+    def merge_concept(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         replacements = {}
 
         # exit early if we've run this
@@ -3834,7 +3356,6 @@ class Environment(BaseModel):
                 return
         self.alias_origin_lookup[source.address] = source
         for k, v in self.concepts.items():
-
             if v.address == target.address:
                 v.pseudonyms.add(source.address)
             if v.address == source.address:
@@ -3868,9 +3389,7 @@ class LazyEnvironment(Environment):
         ) or name.startswith("_"):
             return super().__getattribute__(name)
         if not self.loaded:
-            logger.info(
-                f"lazily evaluating load path {self.load_path} to access {name}"
-            )
+            logger.info(f"lazily evaluating load path {self.load_path} to access {name}")
             from trilogy import parse
 
             env = Environment(working_path=str(self.working_path))
@@ -3883,9 +3402,7 @@ class LazyEnvironment(Environment):
         return super().__getattribute__(name)
 
 
-class Comparison(
-    ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel
-):
+class Comparison(ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel):
     left: Union[
         int,
         str,
@@ -3924,38 +3441,20 @@ class Comparison(
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
-            if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
-                self.right
-            ):
-                raise SyntaxError(
-                    f"Cannot use {self.operator.value} with non-null or boolean value {self.right}"
-                )
+            if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(self.right):
+                raise SyntaxError(f"Cannot use {self.operator.value} with non-null or boolean value {self.right}")
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
             right = arg_to_datatype(self.right)
             if not isinstance(self.right, Concept) and not isinstance(right, ListType):
-                raise SyntaxError(
-                    f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}"
-                )
+                raise SyntaxError(f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}")
 
-            elif isinstance(right, ListType) and not is_compatible_datatype(
-                arg_to_datatype(self.left), right.value_data_type
-            ):
-                raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {right} with operator {self.operator} in {str(self)}"
-                )
-            elif isinstance(self.right, Concept) and not is_compatible_datatype(
-                arg_to_datatype(self.left), arg_to_datatype(self.right)
-            ):
-                raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} with operator {self.operator} in {str(self)}"
-                )
+            elif isinstance(right, ListType) and not is_compatible_datatype(arg_to_datatype(self.left), right.value_data_type):
+                raise SyntaxError(f"Cannot compare {arg_to_datatype(self.left)} and {right} with operator {self.operator} in {str(self)}")
+            elif isinstance(self.right, Concept) and not is_compatible_datatype(arg_to_datatype(self.left), arg_to_datatype(self.right)):
+                raise SyntaxError(f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} with operator {self.operator} in {str(self)}")
         else:
-            if not is_compatible_datatype(
-                arg_to_datatype(self.left), arg_to_datatype(self.right)
-            ):
-                raise SyntaxError(
-                    f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} of different types with operator {self.operator} in {str(self)}"
-                )
+            if not is_compatible_datatype(arg_to_datatype(self.left), arg_to_datatype(self.right)):
+                raise SyntaxError(f"Cannot compare {arg_to_datatype(self.left)} and {arg_to_datatype(self.right)} of different types with operator {self.operator} in {str(self)}")
 
     def __add__(self, other):
         if other is None:
@@ -3975,11 +3474,7 @@ class Comparison(
     def __eq__(self, other):
         if not isinstance(other, Comparison):
             return False
-        return (
-            self.left == other.left
-            and self.right == other.right
-            and self.operator == other.operator
-        )
+        return self.left == other.left and self.right == other.right and self.operator == other.operator
 
     def inline_constant(self, constant: Concept):
         assert isinstance(constant.lineage, Function)
@@ -4006,31 +3501,15 @@ class Comparison(
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return self.__class__(
-            left=(
-                self.left.with_merge(source, target, modifiers)
-                if isinstance(self.left, Mergeable)
-                else self.left
-            ),
-            right=(
-                self.right.with_merge(source, target, modifiers)
-                if isinstance(self.right, Mergeable)
-                else self.right
-            ),
+            left=(self.left.with_merge(source, target, modifiers) if isinstance(self.left, Mergeable) else self.left),
+            right=(self.right.with_merge(source, target, modifiers) if isinstance(self.right, Mergeable) else self.right),
             operator=self.operator,
         )
 
     def with_namespace(self, namespace: str):
         return self.__class__(
-            left=(
-                self.left.with_namespace(namespace)
-                if isinstance(self.left, Namespaced)
-                else self.left
-            ),
-            right=(
-                self.right.with_namespace(namespace)
-                if isinstance(self.right, Namespaced)
-                else self.right
-            ),
+            left=(self.left.with_namespace(namespace) if isinstance(self.left, Namespaced) else self.left),
+            right=(self.right.with_namespace(namespace) if isinstance(self.right, Namespaced) else self.right),
             operator=self.operator,
         )
 
@@ -4041,17 +3520,9 @@ class Comparison(
         environment: Environment | None = None,
     ):
         return self.__class__(
-            left=(
-                self.left.with_select_context(grain, conditional, environment)
-                if isinstance(self.left, SelectContext)
-                else self.left
-            ),
+            left=(self.left.with_select_context(grain, conditional, environment) if isinstance(self.left, SelectContext) else self.left),
             # the right side does NOT need to inherit select grain
-            right=(
-                self.right.with_select_context(grain, conditional, environment)
-                if isinstance(self.right, SelectContext)
-                else self.right
-            ),
+            right=(self.right.with_select_context(grain, conditional, environment) if isinstance(self.right, SelectContext) else self.right),
             operator=self.operator,
         )
 
@@ -4060,9 +3531,7 @@ class Comparison(
         output: List[Concept] = []
         if isinstance(self.left, (Concept,)):
             output += [self.left]
-        if isinstance(
-            self.left, (Comparison, SubselectComparison, Conditional, Parenthetical)
-        ):
+        if isinstance(self.left, (Comparison, SubselectComparison, Conditional, Parenthetical)):
             output += self.left.input
         if isinstance(self.left, FilterItem):
             output += self.left.concept_arguments
@@ -4071,9 +3540,7 @@ class Comparison(
 
         if isinstance(self.right, (Concept,)):
             output += [self.right]
-        if isinstance(
-            self.right, (Comparison, SubselectComparison, Conditional, Parenthetical)
-        ):
+        if isinstance(self.right, (Comparison, SubselectComparison, Conditional, Parenthetical)):
             output += self.right.input
         if isinstance(self.right, FilterItem):
             output += self.right.concept_arguments
@@ -4114,16 +3581,11 @@ class Comparison(
 
 
 class SubselectComparison(Comparison):
-
     def __eq__(self, other):
         if not isinstance(other, SubselectComparison):
             return False
 
-        comp = (
-            self.left == other.left
-            and self.right == other.right
-            and self.operator == other.operator
-        )
+        comp = self.left == other.left and self.right == other.right and self.operator == other.operator
         return comp
 
     @property
@@ -4142,11 +3604,7 @@ class SubselectComparison(Comparison):
     ):
         # there's no need to pass the select grain through to a subselect comparison on the right
         return self.__class__(
-            left=(
-                self.left.with_select_context(grain, conditional, environment)
-                if isinstance(self.left, SelectContext)
-                else self.left
-            ),
+            left=(self.left.with_select_context(grain, conditional, environment) if isinstance(self.left, SelectContext) else self.left),
             right=self.right,
             operator=self.operator,
         )
@@ -4186,14 +3644,8 @@ class CaseWhen(Namespaced, SelectContext, BaseModel):
         environment: Environment | None = None,
     ) -> CaseWhen:
         return CaseWhen(
-            comparison=self.comparison.with_select_context(
-                grain, conditional, environment
-            ),
-            expr=(
-                (self.expr.with_select_context(grain, conditional, environment))
-                if isinstance(self.expr, SelectContext)
-                else self.expr
-            ),
+            comparison=self.comparison.with_select_context(grain, conditional, environment),
+            expr=((self.expr.with_select_context(grain, conditional, environment)) if isinstance(self.expr, SelectContext) else self.expr),
         )
 
 
@@ -4238,9 +3690,7 @@ class CaseElse(Namespaced, SelectContext, BaseModel):
         )
 
 
-class Conditional(
-    Mergeable, ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel
-):
+class Conditional(Mergeable, ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel):
     left: Union[
         int,
         str,
@@ -4287,14 +3737,9 @@ class Conditional(
         return f"{str(self.left)} {self.operator.value} {str(self.right)}"
 
     def __eq__(self, other):
-
         if not isinstance(other, Conditional):
             return False
-        return (
-            self.left == other.left
-            and self.right == other.right
-            and self.operator == other.operator
-        )
+        return self.left == other.left and self.right == other.right and self.operator == other.operator
 
     def inline_constant(self, constant: Concept) -> "Conditional":
         assert isinstance(constant.lineage, Function)
@@ -4324,33 +3769,15 @@ class Conditional(
 
     def with_namespace(self, namespace: str) -> "Conditional":
         return Conditional(
-            left=(
-                self.left.with_namespace(namespace)
-                if isinstance(self.left, Namespaced)
-                else self.left
-            ),
-            right=(
-                self.right.with_namespace(namespace)
-                if isinstance(self.right, Namespaced)
-                else self.right
-            ),
+            left=(self.left.with_namespace(namespace) if isinstance(self.left, Namespaced) else self.left),
+            right=(self.right.with_namespace(namespace) if isinstance(self.right, Namespaced) else self.right),
             operator=self.operator,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Conditional":
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]) -> "Conditional":
         return Conditional(
-            left=(
-                self.left.with_merge(source, target, modifiers)
-                if isinstance(self.left, Mergeable)
-                else self.left
-            ),
-            right=(
-                self.right.with_merge(source, target, modifiers)
-                if isinstance(self.right, Mergeable)
-                else self.right
-            ),
+            left=(self.left.with_merge(source, target, modifiers) if isinstance(self.left, Mergeable) else self.left),
+            right=(self.right.with_merge(source, target, modifiers) if isinstance(self.right, Mergeable) else self.right),
             operator=self.operator,
         )
 
@@ -4361,16 +3788,8 @@ class Conditional(
         environment: Environment | None = None,
     ):
         return Conditional(
-            left=(
-                self.left.with_select_context(grain, conditional, environment)
-                if isinstance(self.left, SelectContext)
-                else self.left
-            ),
-            right=(
-                self.right.with_select_context(grain, conditional, environment)
-                if isinstance(self.right, SelectContext)
-                else self.right
-            ),
+            left=(self.left.with_select_context(grain, conditional, environment) if isinstance(self.left, SelectContext) else self.left),
+            right=(self.right.with_select_context(grain, conditional, environment) if isinstance(self.right, SelectContext) else self.right),
             operator=self.operator,
         )
 
@@ -4462,11 +3881,7 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return AggregateWrapper(
             function=self.function.with_merge(source, target, modifiers=modifiers),
-            by=(
-                [c.with_merge(source, target, modifiers) for c in self.by]
-                if self.by
-                else []
-            ),
+            by=([c.with_merge(source, target, modifiers) for c in self.by] if self.by else []),
         )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
@@ -4512,9 +3927,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
         return self.conditional.existence_arguments
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return WhereClause(
-            conditional=self.conditional.with_merge(source, target, modifiers)
-        )
+        return WhereClause(conditional=self.conditional.with_merge(source, target, modifiers))
 
     def with_namespace(self, namespace: str) -> WhereClause:
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
@@ -4525,11 +3938,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
         conditional: Conditional | Comparison | Parenthetical | None,
         environment: Environment | None = None,
     ) -> WhereClause:
-        return WhereClause(
-            conditional=self.conditional.with_select_context(
-                grain, conditional, environment
-            )
-        )
+        return WhereClause(conditional=self.conditional.with_select_context(grain, conditional, environment))
 
     @property
     def grain(self) -> Grain:
@@ -4646,17 +4055,11 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
                 name=name,
                 datatype=orig_concept.datatype,
                 purpose=orig_concept.purpose,
-                lineage=RowsetItem(
-                    content=orig_concept, where=self.select.where_clause, rowset=self
-                ),
+                lineage=RowsetItem(content=orig_concept, where=self.select.where_clause, rowset=self),
                 grain=orig_concept.grain,
                 # TODO: add proper metadata
                 metadata=Metadata(concept_source=ConceptSource.CTE),
-                namespace=(
-                    f"{self.name}.{orig_concept.namespace}"
-                    if orig_concept.namespace != self.namespace
-                    else self.name
-                ),
+                namespace=(f"{self.name}.{orig_concept.namespace}" if orig_concept.namespace != self.namespace else self.name),
                 keys=orig_concept.keys,
             )
             orig[orig_concept.address] = new_concept
@@ -4666,19 +4069,14 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
         for x in output:
             if x.keys:
                 if all([k.address in orig for k in x.keys]):
-                    x.keys = tuple(
-                        [orig[k.address] if k.address in orig else k for k in x.keys]
-                    )
+                    x.keys = tuple([orig[k.address] if k.address in orig else k for k in x.keys])
                 else:
                     # TODO: fix this up
                     x.keys = tuple()
         for x in output:
             if all([c.address in orig for c in x.grain.components_copy]):
-                x.grain = Grain(
-                    components=[orig[c.address] for c in x.grain.components_copy]
-                )
+                x.grain = Grain(components=[orig[c.address] for c in x.grain.components_copy])
             else:
-
                 x.grain = default_grain
         return output
 
@@ -4700,9 +4098,7 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
     where: Optional["WhereClause"] = None
 
     def __repr__(self):
-        return (
-            f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
-        )
+        return f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
 
     def __str__(self):
         return self.__repr__()
@@ -4711,9 +4107,7 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
         return RowsetItem(
             content=self.content.with_merge(source, target, modifiers),
             rowset=self.rowset,
-            where=(
-                self.where.with_merge(source, target, modifiers) if self.where else None
-            ),
+            where=(self.where.with_merge(source, target, modifiers) if self.where else None),
         )
 
     def with_namespace(self, namespace: str) -> "RowsetItem":
@@ -4765,9 +4159,7 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
         return [self.content]
 
 
-class Parenthetical(
-    ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel
-):
+class Parenthetical(ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel):
     content: "Expr"
 
     def __str__(self):
@@ -4784,22 +4176,10 @@ class Parenthetical(
         return f"({str(self.content)})"
 
     def with_namespace(self, namespace: str):
-        return Parenthetical(
-            content=(
-                self.content.with_namespace(namespace)
-                if isinstance(self.content, Namespaced)
-                else self.content
-            )
-        )
+        return Parenthetical(content=(self.content.with_namespace(namespace) if isinstance(self.content, Namespaced) else self.content))
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return Parenthetical(
-            content=(
-                self.content.with_merge(source, target, modifiers)
-                if isinstance(self.content, Mergeable)
-                else self.content
-            )
-        )
+        return Parenthetical(content=(self.content.with_merge(source, target, modifiers) if isinstance(self.content, Mergeable) else self.content))
 
     def with_select_context(
         self,
@@ -4807,22 +4187,10 @@ class Parenthetical(
         conditional: Conditional | Comparison | Parenthetical | None,
         environment: Environment | None = None,
     ):
-        return Parenthetical(
-            content=(
-                self.content.with_select_context(grain, conditional, environment)
-                if isinstance(self.content, SelectContext)
-                else self.content
-            )
-        )
+        return Parenthetical(content=(self.content.with_select_context(grain, conditional, environment) if isinstance(self.content, SelectContext) else self.content))
 
     def inline_constant(self, concept: Concept):
-        return Parenthetical(
-            content=(
-                self.content.inline_constant(concept)
-                if isinstance(self.content, ConstantInlineable)
-                else self.content
-            )
-        )
+        return Parenthetical(content=(self.content.inline_constant(concept) if isinstance(self.content, ConstantInlineable) else self.content))
 
     @property
     def concept_arguments(self) -> List[Concept]:
@@ -4871,9 +4239,7 @@ class TupleWrapper(Generic[VT], tuple):
         # self.type = type
 
     @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
+    def __get_pydantic_core_schema__(cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]) -> core_schema.CoreSchema:
         args = get_args(source_type)
         if args:
             schema = handler(Tuple[args])  # type: ignore
@@ -4904,22 +4270,7 @@ class ShowStatement(BaseModel):
     content: SelectStatement | PersistStatement | ShowCategory
 
 
-Expr = (
-    bool
-    | MagicConstants
-    | int
-    | str
-    | float
-    | list
-    | WindowItem
-    | FilterItem
-    | Concept
-    | Comparison
-    | Conditional
-    | Parenthetical
-    | Function
-    | AggregateWrapper
-)
+Expr = bool | MagicConstants | int | str | float | list | WindowItem | FilterItem | Concept | Comparison | Conditional | Parenthetical | Function | AggregateWrapper
 
 
 Concept.model_rebuild()
@@ -4978,11 +4329,7 @@ def merge_datatypes(
         return DataType.FLOAT
     if set(inputs) == {DataType.INTEGER, DataType.NUMERIC}:
         return DataType.NUMERIC
-    if any(isinstance(x, NumericType) for x in inputs) and all(
-        isinstance(x, NumericType)
-        or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
-        for x in inputs
-    ):
+    if any(isinstance(x, NumericType) for x in inputs) and all(isinstance(x, NumericType) or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC) for x in inputs):
         candidate = next(x for x in inputs if isinstance(x, NumericType))
         return candidate
     return inputs[0]

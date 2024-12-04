@@ -1,16 +1,12 @@
+from datetime import datetime
 from pathlib import Path
 
-from trilogy import Environment
-from trilogy import Executor
-from trilogy import Dialects
-from datetime import datetime
-
+from trilogy import Dialects, Environment, Executor
 
 working_path = Path(__file__).parent
 
 
 def run_query(engine: Executor, start, idx: int):
-
     with open(working_path / f"query{idx:02d}.preql") as f:
         text = f.read()
 
@@ -33,9 +29,7 @@ def run_query(engine: Executor, start, idx: int):
 
 
 if __name__ == "__main__":
-    engine = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=working_path), hooks=[]
-    )
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment(working_path=working_path), hooks=[])
     # TODO: Detect if loaded
     start = datetime.now()
     #     engine.execute_raw_sql('''

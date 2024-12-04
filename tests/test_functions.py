@@ -1,18 +1,19 @@
 # from trilogy.compiler import compile
+from logging import INFO
+
 from pytest import raises
 
+from trilogy.constants import logger
+from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models import DataType, SelectStatement, ListType, Environment
+from trilogy.core.models import DataType, Environment, ListType, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect
-from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
+from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
-from logging import INFO
-from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage, Purpose
 
 logger.setLevel(INFO)
 
@@ -209,10 +210,7 @@ def test_case_function(test_environment):
         test_upper_case
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    assert (
-        test_environment.concepts["category_name"]
-        in test_environment.concepts["test_upper_case"].lineage.concept_arguments
-    )
+    assert test_environment.concepts["category_name"] in test_environment.concepts["test_upper_case"].lineage.concept_arguments
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         compiled = dialect.compile_statement(process_query(test_environment, select))
@@ -230,10 +228,7 @@ def test_case_like_function(test_environment):
         test_like
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    assert (
-        test_environment.concepts["category_name"]
-        in test_environment.concepts["test_like"].lineage.concept_arguments
-    )
+    assert test_environment.concepts["category_name"] in test_environment.concepts["test_like"].lineage.concept_arguments
     select: SelectStatement = parsed[-1]
     for dialect in TEST_DIALECTS:
         compiled = dialect.compile_statement(process_query(test_environment, select))

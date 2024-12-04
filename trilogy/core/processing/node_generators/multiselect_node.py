@@ -1,3 +1,9 @@
+from collections import defaultdict
+from itertools import combinations
+from typing import List
+
+from trilogy.constants import logger
+from trilogy.core.enums import JoinType, Purpose
 from trilogy.core.models import (
     Concept,
     Environment,
@@ -17,13 +23,14 @@ from collections import defaultdict
 from itertools import combinations
 from trilogy.core.enums import Purpose, BooleanOperator
 from trilogy.core.processing.node_generators.common import resolve_join_order
+from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
+from trilogy.core.processing.nodes.base_node import StrategyNode, concept_list_to_grain
+from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
 
-def extra_align_joins(
-    base: MultiSelectStatement, parents: List[StrategyNode]
-) -> List[NodeJoin]:
+def extra_align_joins(base: MultiSelectStatement, parents: List[StrategyNode]) -> List[NodeJoin]:
     node_merge_concept_map = defaultdict(list)
     output = []
     for align in base.align.items:
@@ -36,11 +43,7 @@ def extra_align_joins(
                     node_merge_concept_map[node].append(jc)
 
     for left, right in combinations(node_merge_concept_map.keys(), 2):
-        matched_concepts = [
-            x
-            for x in node_merge_concept_map[left]
-            if x in node_merge_concept_map[right]
-        ]
+        matched_concepts = [x for x in node_merge_concept_map[left] if x in node_merge_concept_map[right]]
         output.append(
             NodeJoin(
                 left_node=left,
@@ -63,9 +66,7 @@ def gen_multiselect_node(
     conditions: WhereClause | None = None,
 ) -> MergeNode | None:
     if not isinstance(concept.lineage, MultiSelectStatement):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}")
         return None
     lineage: MultiSelectStatement = concept.lineage
 
@@ -80,9 +81,7 @@ def gen_multiselect_node(
             conditions=select.where_clause,
         )
         if not snode:
-            logger.info(
-                f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
-            )
+            logger.info(f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}")
             return None
         if select.having_clause:
             if snode.conditions:
@@ -118,14 +117,8 @@ def gen_multiselect_node(
 
     enrichment = set([x.address for x in local_optional])
 
-    rowset_relevant = [
-        x
-        for x in lineage.derived_concepts
-        if x.address == concept.address or x.address in enrichment
-    ]
-    additional_relevant = [
-        x for x in select.output_components if x.address in enrichment
-    ]
+    rowset_relevant = [x for x in lineage.derived_concepts if x.address == concept.address or x.address in enrichment]
+    additional_relevant = [x for x in select.output_components if x.address in enrichment]
     # add in other other concepts
     for item in rowset_relevant:
         node.output_concepts.append(item)
@@ -140,26 +133,16 @@ def gen_multiselect_node(
 
     # assume grain to be output of select
     # but don't include anything aggregate at this point
-    node.resolution_cache.grain = concept_list_to_grain(
-        node.output_concepts, parent_sources=node.resolution_cache.datasources
-    )
+    node.resolution_cache.grain = concept_list_to_grain(node.output_concepts, parent_sources=node.resolution_cache.datasources)
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no enriched required for rowset node; exiting early"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} no enriched required for rowset node; exiting early")
         return node
     if not possible_joins:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node; exiting early"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node; exiting early")
         return node
-    if all(
-        [x.address in [y.address for y in node.output_concepts] for x in local_optional]
-    ):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base rowset node; exiting early"
-        )
+    if all([x.address in [y.address for y in node.output_concepts] for x in local_optional]):
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base rowset node; exiting early")
         return node
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
@@ -171,9 +154,7 @@ def gen_multiselect_node(
         conditions=conditions,
     )
     if not enrich_node:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node")
         return node
 
     return MergeNode(

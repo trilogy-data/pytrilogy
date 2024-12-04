@@ -1,6 +1,6 @@
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models import DataType, EnvironmentConceptDict, Concept
+from trilogy.core.models import Concept, DataType, EnvironmentConceptDict
 from trilogy.parser import parse
 
 
@@ -20,9 +20,7 @@ def test_undefined_concept_query(test_environment):
 
 def test_undefined_concept_dict():
     env = EnvironmentConceptDict()
-    env["order_id"] = Concept(
-        name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
-    )
+    env["order_id"] = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
     try:
         env["zzz"]
     except UndefinedConceptException as e:

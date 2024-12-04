@@ -1,9 +1,11 @@
+from logging import INFO
+from pathlib import Path
+
+import pytest
+
 from trilogy import Dialects, Environment, Executor
 from trilogy.dialect.config import DuckDBConfig
-import pytest
 from trilogy.hooks.query_debugger import DebuggingHook
-from pathlib import Path
-from logging import INFO
 
 working_path = Path(__file__).parent
 

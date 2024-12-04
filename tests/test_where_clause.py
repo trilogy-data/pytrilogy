@@ -1,9 +1,9 @@
 # from trilogy.compiler import compile
-from trilogy.core.models import SelectStatement, Grain, Parenthetical
+from trilogy.core.models import Grain, Parenthetical, SelectStatement
+from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
 from trilogy.parser import parse
-from trilogy.core.processing.utility import is_scalar_condition
 
 
 def test_select_where(test_environment):
@@ -63,9 +63,7 @@ select
     )
     select: SelectStatement = parsed[-1]
 
-    BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
+    BaseDialect().compile_statement(process_query(test_environment, select, hooks=[DebuggingHook()]))
 
 
 def test_select_where_joins(test_environment):
@@ -252,9 +250,7 @@ where
     env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
 
-    query = BaseDialect().compile_statement(
-        process_query(test_environment, select, hooks=[DebuggingHook()])
-    )
+    query = BaseDialect().compile_statement(process_query(test_environment, select, hooks=[DebuggingHook()]))
 
     # check to make sure our subselect is well-formed
     assert "`category_id` not in (select" in query, query

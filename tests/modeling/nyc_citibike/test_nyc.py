@@ -1,5 +1,6 @@
-from trilogy import Environment
 from pathlib import Path
+
+from trilogy import Environment
 from trilogy.core.models import Function
 
 

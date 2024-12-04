@@ -1,11 +1,11 @@
-from pytest import fixture
-
-from trilogy import Environment
-from trilogy.core.env_processor import generate_graph
-from trilogy import Dialects
-from trilogy.hooks.query_debugger import DebuggingHook
 from logging import INFO
 from pathlib import Path
+
+from pytest import fixture
+
+from trilogy import Dialects, Environment
+from trilogy.core.env_processor import generate_graph
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 @fixture(scope="session")
@@ -17,9 +17,7 @@ def test_environment():
 
 @fixture(scope="session")
 def test_executor(test_environment: Environment):
-    yield Dialects.DUCK_DB.default_executor(
-        environment=test_environment, hooks=[DebuggingHook(level=INFO)]
-    )
+    yield Dialects.DUCK_DB.default_executor(environment=test_environment, hooks=[DebuggingHook(level=INFO)])
 
 
 @fixture(scope="session")

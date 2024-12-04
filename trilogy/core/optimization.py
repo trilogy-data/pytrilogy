@@ -1,18 +1,18 @@
+from trilogy.constants import CONFIG, logger
+from trilogy.core.enums import BooleanOperator, PurposeLineage
 from trilogy.core.models import (
     CTE,
-    UnionCTE,
-    SelectStatement,
-    MultiSelectStatement,
     Conditional,
+    MultiSelectStatement,
+    SelectStatement,
+    UnionCTE,
 )
-from trilogy.core.enums import PurposeLineage, BooleanOperator
-from trilogy.constants import logger, CONFIG
 from trilogy.core.optimizations import (
-    OptimizationRule,
     InlineConstant,
+    InlineDatasource,
+    OptimizationRule,
     PredicatePushdown,
     PredicatePushdownRemove,
-    InlineDatasource,
 )
 from trilogy.core.processing.utility import sort_select_output
 
@@ -55,9 +55,7 @@ def reorder_ctes(
             return input
         return [mapping[x] for x in topological_order]
     except nx.NetworkXUnfeasible as e:
-        print(
-            "The graph is not a DAG (contains cycles) and cannot be topologically sorted."
-        )
+        print("The graph is not a DAG (contains cycles) and cannot be topologically sorted.")
         raise e
 
 
@@ -135,18 +133,9 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
         return None
 
     assert isinstance(cte, CTE)
-    derived_concepts = [
-        c
-        for c in cte.source.output_concepts + cte.source.hidden_concepts
-        if c not in cte.source.input_concepts
-    ]
+    derived_concepts = [c for c in cte.source.output_concepts + cte.source.hidden_concepts if c not in cte.source.input_concepts]
 
-    parent_derived_concepts = [
-        c
-        for c in direct_parent.source.output_concepts
-        + direct_parent.source.hidden_concepts
-        if c not in direct_parent.source.input_concepts
-    ]
+    parent_derived_concepts = [c for c in direct_parent.source.output_concepts + direct_parent.source.hidden_concepts if c not in direct_parent.source.input_concepts]
     condition_arguments = cte.condition.row_arguments if cte.condition else []
     for x in derived_concepts:
         if x.derivation == PurposeLineage.WINDOW:
@@ -163,9 +152,7 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
         if x.derivation == PurposeLineage.WINDOW:
             return None
 
-    logger.info(
-        f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}"
-    )
+    logger.info(f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}")
     return direct_parent
 
 
@@ -174,16 +161,11 @@ def optimize_ctes(
     root_cte: CTE | UnionCTE,
     select: SelectStatement | MultiSelectStatement,
 ) -> list[CTE | UnionCTE]:
-
     direct_parent: CTE | UnionCTE | None = root_cte
-    while CONFIG.optimizations.direct_return and (
-        direct_parent := is_direct_return_eligible(root_cte)
-    ):
+    while CONFIG.optimizations.direct_return and (direct_parent := is_direct_return_eligible(root_cte)):
         direct_parent.order_by = root_cte.order_by
         direct_parent.limit = root_cte.limit
-        direct_parent.hidden_concepts = (
-            root_cte.hidden_concepts + direct_parent.hidden_concepts
-        )
+        direct_parent.hidden_concepts = root_cte.hidden_concepts + direct_parent.hidden_concepts
         if root_cte.condition:
             if direct_parent.condition:
                 direct_parent.condition = Conditional(

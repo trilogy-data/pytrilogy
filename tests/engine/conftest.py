@@ -1,16 +1,15 @@
-from os.path import dirname, abspath
+from os.path import abspath, dirname
 from typing import Generator
 
 from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
-from trilogy import Executor, Dialects, parse, Environment
-from trilogy.engine import ExecutionEngine, EngineConnection, EngineResult
-from trilogy.dialect.config import SnowflakeConfig, PrestoConfig, TrinoConfig
-from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy import Dialects, Environment, Executor, parse
+from trilogy.dialect.config import PrestoConfig, SnowflakeConfig, TrinoConfig
 from trilogy.dialect.enums import DialectConfig
-
+from trilogy.engine import EngineConnection, EngineResult, ExecutionEngine
+from trilogy.hooks.query_debugger import DebuggingHook
 
 ENV_PATH = abspath(__file__)
 
@@ -19,9 +18,7 @@ def mock_factory(conf: DialectConfig, config_type, **kwargs):
     from sqlalchemy import create_engine
 
     if not isinstance(conf, config_type):
-        raise TypeError(
-            f"Invalid dialect configuration for type {type(config_type).__name__}"
-        )
+        raise TypeError(f"Invalid dialect configuration for type {type(config_type).__name__}")
     assert conf.connection_string()
     if conf.connect_args:
         return create_engine("duckdb:///:memory:", future=True)
@@ -79,33 +76,19 @@ def duckdb_engine(duckdb_model) -> Generator[Executor, None, None]:
     engine = create_engine("duckdb:///:memory:", future=True)
 
     with engine.connect() as connection:
-        connection.execute(
-            text(
-                "CREATE TABLE items(item VARCHAR, value DECIMAL(10,2), count INTEGER, store_id INTEGER)"
-            )
-        )
+        connection.execute(text("CREATE TABLE items(item VARCHAR, value DECIMAL(10,2), count INTEGER, store_id INTEGER)"))
         connection.commit()
         # insert two items into the table
-        connection.execute(
-            text(
-                "INSERT INTO items VALUES ('jeans', 20.0, 1, 1), ('hammer', 42.2, 2,1 ), ('hammer', 42.2, 2,2 ), ('hammer', 42.2, 2,3 )"
-            )
-        )
+        connection.execute(text("INSERT INTO items VALUES ('jeans', 20.0, 1, 1), ('hammer', 42.2, 2,1 ), ('hammer', 42.2, 2,2 ), ('hammer', 42.2, 2,3 )"))
         connection.commit()
         # validate connection
         connection.execute(text("select 1")).one_or_none()
 
-        connection.execute(
-            text(
-                "CREATE TABLE items_extra_discount(item VARCHAR, value DECIMAL(10,2) )"
-            )
-        )
+        connection.execute(text("CREATE TABLE items_extra_discount(item VARCHAR, value DECIMAL(10,2) )"))
 
         connection.commit()
         # insert extra items
-        connection.execute(
-            text("INSERT INTO items_extra_discount VALUES ('jeans', -10.0)")
-        )
+        connection.execute(text("INSERT INTO items_extra_discount VALUES ('jeans', -10.0)"))
         connection.commit()
         connection.execute(text("select 1")).one_or_none()
 
@@ -201,9 +184,7 @@ class PostgresEngine(ExecutionEngine):
 def postgres_engine(presto_model) -> Generator[Executor, None, None]:
     engine = PostgresEngine()
 
-    executor = Executor(
-        dialect=Dialects.POSTGRES, engine=engine, environment=presto_model
-    )
+    executor = Executor(dialect=Dialects.POSTGRES, engine=engine, environment=presto_model)
     yield executor
 
 
@@ -214,9 +195,7 @@ def snowflake_engine(presto_model) -> Generator[Executor, None, None]:
     with fakesnow.patch():
         executor = Dialects.SNOWFLAKE.default_executor(
             environment=presto_model,
-            conf=SnowflakeConfig(
-                account="account", username="user", password="password"
-            ),
+            conf=SnowflakeConfig(account="account", username="user", password="password"),
         )
         yield executor
 

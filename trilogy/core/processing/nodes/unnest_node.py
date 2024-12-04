@@ -1,12 +1,11 @@
 from typing import List
 
-
 from trilogy.core.models import (
+    Concept,
+    Function,
     QueryDatasource,
     SourceType,
-    Concept,
     UnnestJoin,
-    Function,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 

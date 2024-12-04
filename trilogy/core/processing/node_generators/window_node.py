@@ -1,11 +1,10 @@
 from typing import List
 
-
-from trilogy.core.models import Concept, WindowItem, Environment, WhereClause
-from trilogy.utility import unique
-from trilogy.core.processing.nodes import WindowNode, StrategyNode, History
 from trilogy.constants import logger
+from trilogy.core.models import Concept, Environment, WhereClause, WindowItem
+from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
@@ -68,20 +67,9 @@ def gen_window_node(
         logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable")
         return None
     parent_node.resolve()
-    if not all(
-        [
-            x.address in [y.address for y in parent_node.output_concepts]
-            for x in parent_concepts
-        ]
-    ):
-        missing = [
-            x
-            for x in parent_concepts
-            if x.address not in [y.address for y in parent_node.output_concepts]
-        ]
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable, missing {missing}"
-        )
+    if not all([x.address in [y.address for y in parent_node.output_concepts] for x in parent_concepts]):
+        missing = [x for x in parent_concepts if x.address not in [y.address for y in parent_node.output_concepts]]
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} window node parents unresolvable, missing {missing}")
         raise SyntaxError
     _window_node = WindowNode(
         input_concepts=parent_concepts + targets + non_equivalent_optional,

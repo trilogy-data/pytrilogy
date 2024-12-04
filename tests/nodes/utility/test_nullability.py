@@ -1,11 +1,10 @@
-from trilogy.core.processing.utility import find_nullable_concepts
-from trilogy.core.models import QueryDatasource, BaseJoin, Grain, JoinType, ConceptPair
 from trilogy import parse
 from trilogy.core.enums import Modifier
+from trilogy.core.models import BaseJoin, ConceptPair, Grain, JoinType, QueryDatasource
+from trilogy.core.processing.utility import find_nullable_concepts
 
 
 def test_find_nullable_concepts():
-
     env, _ = parse(
         """
 key order_id int;
@@ -77,11 +76,7 @@ select 1 as customer_id
         right_datasource=product_qds,
         join_type=JoinType.LEFT_OUTER,
         concepts=[],
-        concept_pairs=[
-            ConceptPair(
-                left=product_id, right=product_id, existing_datasource=order_qds
-            )
-        ],
+        concept_pairs=[ConceptPair(left=product_id, right=product_id, existing_datasource=order_qds)],
     )
     source_map = {
         order_id.address: {order_qds},
@@ -89,9 +84,7 @@ select 1 as customer_id
         product_name.address: {product_qds},
     }
     assert join.concept_pairs[0].left in join.left_datasource.nullable_concepts
-    nullable = find_nullable_concepts(
-        source_map=source_map, datasources=[order_qds, product_qds], joins=[join]
-    )
+    nullable = find_nullable_concepts(source_map=source_map, datasources=[order_qds, product_qds], joins=[join])
     assert nullable == [product_id.address, product_name.address], nullable
     order_qds
 
@@ -112,9 +105,7 @@ select 1 as customer_id
         },
     )
 
-    nullable = find_nullable_concepts(
-        source_map=source_map, datasources=[order_qds, customer_qds], joins=[]
-    )
+    nullable = find_nullable_concepts(source_map=source_map, datasources=[order_qds, customer_qds], joins=[])
     assert nullable == [product_id.address], nullable
 
 

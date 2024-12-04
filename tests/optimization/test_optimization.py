@@ -1,3 +1,20 @@
+from trilogy import parse
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    Purpose,
+)
+from trilogy.core.models import (
+    CTE,
+    Comparison,
+    Conditional,
+    DataType,
+    Environment,
+    Function,
+    Grain,
+    QueryDatasource,
+)
 from trilogy.core.optimization import (
     PredicatePushdown,
     PredicatePushdownRemove,
@@ -6,25 +23,6 @@ from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
 )
 from trilogy.core.processing.utility import decompose_condition
-from trilogy.core.models import (
-    CTE,
-    QueryDatasource,
-    Conditional,
-    Environment,
-    Grain,
-    Comparison,
-    Function,
-    DataType,
-)
-
-from trilogy import parse
-
-from trilogy.core.enums import (
-    BooleanOperator,
-    ComparisonOperator,
-    FunctionType,
-    Purpose,
-)
 
 
 def test_is_child_function():
@@ -33,42 +31,12 @@ def test_is_child_function():
         right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
-    assert (
-        is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition
-        )
-        is True
-    )
-    assert (
-        is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition
-        )
-        is True
-    )
-    assert (
-        is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.left
-        )
-        is True
-    )
-    assert (
-        is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.right
-        )
-        is True
-    )
-    assert (
-        is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.right
-        )
-        is False
-    )
-    assert (
-        is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.left
-        )
-        is False
-    )
+    assert is_child_of(Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition) is True
+    assert is_child_of(Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition) is True
+    assert is_child_of(Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.left) is True
+    assert is_child_of(Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.right) is True
+    assert is_child_of(Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.right) is False
+    assert is_child_of(Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.left) is False
 
 
 def test_child_of_complex():
@@ -88,9 +56,7 @@ key year int;
                 right=10,
                 operator=ComparisonOperator.GT,
             ),
-            right=Comparison(
-                left=env.concepts["year"], right=2001, operator=ComparisonOperator.EQ
-            ),
+            right=Comparison(left=env.concepts["year"], right=2001, operator=ComparisonOperator.EQ),
             operator=BooleanOperator.AND,
         ),
         right=Comparison(
@@ -156,9 +122,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
-            left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
-        ),
+        condition=Comparison(left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ),
         grain=Grain(),
         source_map=cte_source_map,
         existence_source_map={},
@@ -169,9 +133,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     assert rule.optimize(cte2, inverse_map) is True
     assert rule.optimize(cte2, inverse_map) is False
     assert rule2.optimize(cte2, inverse_map) is True
-    assert (
-        cte2.condition is None
-    ), f"{cte2.condition}, {parent.condition}, {is_child_of(cte2.condition, parent.condition)}"
+    assert cte2.condition is None, f"{cte2.condition}, {parent.condition}, {is_child_of(cte2.condition, parent.condition)}"
 
 
 def test_invalid_pushdown(test_environment: Environment, test_environment_graph):
@@ -221,9 +183,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
-            left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
-        ),
+        condition=Comparison(left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ),
         grain=Grain(),
         source_map=cte_source_map,
         existence_source_map={},
@@ -237,9 +197,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
     assert cte2.condition is not None
 
 
-def test_invalid_aggregate_pushdown(
-    test_environment: Environment, test_environment_graph
-):
+def test_invalid_aggregate_pushdown(test_environment: Environment, test_environment_graph):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
@@ -294,7 +252,6 @@ def test_invalid_aggregate_pushdown(
 
 
 def test_decomposition_pushdown(test_environment: Environment, test_environment_graph):
-
     category_ds = test_environment.datasources["category"]
     products = test_environment.datasources["products"]
     product_id = test_environment.concepts["product_id"]
@@ -358,12 +315,8 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
         output_columns=[],
         parent_ctes=[parent1, parent2],
         condition=Conditional(
-            left=Comparison(
-                left=product_id, right=product_id, operator=ComparisonOperator.EQ
-            ),
-            right=Comparison(
-                left=category_name, right=category_name, operator=ComparisonOperator.EQ
-            ),
+            left=Comparison(left=product_id, right=product_id, operator=ComparisonOperator.EQ),
+            right=Comparison(left=category_name, right=category_name, operator=ComparisonOperator.EQ),
             operator=BooleanOperator.AND,
         ),
         grain=Grain(),
@@ -383,20 +336,14 @@ def test_decomposition_pushdown(test_environment: Environment, test_environment_
     assert rule.optimize(cte1, inverse_map) is False
     assert parent1.condition == Conditional(
         left=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
-        right=Comparison(
-            left=product_id, right=product_id, operator=ComparisonOperator.EQ
-        ),
+        right=Comparison(left=product_id, right=product_id, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
     assert isinstance(parent2.condition, Comparison)
     assert parent2.condition.left == category_name
     assert parent2.condition.right == category_name
     assert parent2.condition.operator == ComparisonOperator.EQ
-    assert str(parent2.condition) == str(
-        Comparison(
-            left=category_name, right=category_name, operator=ComparisonOperator.EQ
-        )
-    )
+    assert str(parent2.condition) == str(Comparison(left=category_name, right=category_name, operator=ComparisonOperator.EQ))
     # we cannot safely remove this condition
     # as not all parents have both
     assert cte1.condition is not None

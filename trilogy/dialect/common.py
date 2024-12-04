@@ -1,13 +1,14 @@
+from typing import Callable
+
+from trilogy.core.enums import Modifier, UnnestMode
 from trilogy.core.models import (
-    Join,
-    InstantiatedUnnestJoin,
     CTE,
     Concept,
     Function,
+    InstantiatedUnnestJoin,
+    Join,
     RawColumnExpr,
 )
-from trilogy.core.enums import UnnestMode, Modifier
-from typing import Callable
 
 
 def null_wrapper(lval: str, rval: str, modifiers: list[Modifier]) -> str:
@@ -92,9 +93,7 @@ def render_join(
                         render_expr_func,
                         join.inlined_ctes,
                     ),
-                    modifiers=pair.modifiers
-                    + (pair.left.modifiers or [])
-                    + (pair.right.modifiers or []),
+                    modifiers=pair.modifiers + (pair.left.modifiers or []) + (pair.right.modifiers or []),
                 )
                 for pair in join.joinkey_pairs
             ]
