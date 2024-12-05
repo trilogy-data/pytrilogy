@@ -68,6 +68,7 @@ from trilogy.core.models import (
     ColumnAssignment,
     Comment,
     Comparison,
+    UndefinedConcept,
     Concept,
     ConceptDeclarationStatement,
     ConceptDerivation,
@@ -312,8 +313,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def concept_lit(self, meta: Meta, args) -> Concept:
         address = args[0]
-        return self.environment.concepts.__getitem__( address, meta.line)
-
+        return self.environment.concepts.__getitem__(address, meta.line)
 
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
@@ -955,7 +955,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
-        selects:list[SelectStatement] = []
+        selects: list[SelectStatement] = []
         align: AlignClause | None = None
         limit: int | None = None
         order_by: OrderBy | None = None
@@ -974,7 +974,7 @@ class ParseToObjects(Transformer):
 
         assert align
         assert align is not None
-        base_local:SelectStatement = selects[0].local_concepts
+        base_local: SelectStatement = selects[0].local_concepts
         for select in selects[1:]:
             for k, v in select.local_concepts.items():
                 base_local[k] = v
@@ -1020,33 +1020,50 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        for item in select_items:
-            # we don't know the grain of an aggregate at assignment time
-            # so rebuild at this point in the tree
-            # TODO: simplify
-            if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_select_context(
-                    output.grain,
-                    conditional=None,
-                    environment=self.environment,
-                )
-                output.local_concepts[new_concept.address] = new_concept
-                item.content.output = new_concept
-            elif isinstance(item.content, Concept):
-                # Sometimes cached values here don't have the latest info
-                # but we can't just use environment, as it might not have the right grain.
-                item.content = self.environment.concepts[
-                    item.content.address
-                ].with_grain(item.content.grain)
+        for _ in [1,2]:
+            # the first pass will result in all concepts being defined
+            # the second will get grains appropriately
+            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
+            # until after the first pass, and so don't know the grain of a
+            for item in select_items:
+                # we don't know the grain of an aggregate at assignment time
+                # so rebuild at this point in the tree
+                # TODO: simplify
+                if isinstance(item.content, ConceptTransform):
+                    new_concept = item.content.output.with_select_context(
+                        output.local_concepts,
+                        output.grain,
+                        environment=self.environment,
+                    )
+                    output.local_concepts[new_concept.address] = new_concept
+                    item.content.output = new_concept
+                elif isinstance(item.content, UndefinedConcept):
+                    self.environment.concepts.raise_undefined(item.content.address, line_no=item.content.metadata.line_number, file=self.token_address)
+                elif isinstance(item.content, Concept):
+                    # Sometimes cached values here don't have the latest info
+                    # but we can't just use environment, as it might not have the right grain.
+                    item.content = self.environment.concepts[
+                        item.content.address
+                    ].with_grain(item.content.grain)
         if order_by:
             for orderitem in order_by.items:
+                # rehydrate the concept
+                if isinstance(orderitem.expr, UndefinedConcept):
+                    orderitem.expr = orderitem.expr.with_select_context(
+                            output.local_concepts,
+                            output.grain,
+                            environment=self.environment,
+                        )
+
                 if isinstance(orderitem.expr, Concept):
                     if orderitem.expr.purpose == Purpose.METRIC:
                         orderitem.expr = orderitem.expr.with_select_context(
+                            output.local_concepts,
                             output.grain,
-                            conditional=None,
                             environment=self.environment,
                         )
+        if output.having_clause:
+            output.having_clause = output.having_clause.with_select_context(local_concepts=output.local_concepts, grain = output.grain, environment=self.environment)
         output.validate_syntax()
         return output
 
@@ -1958,6 +1975,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         # this will reset fail on missing
         pass_two = parser.hydrate_missing()
         output = [v for v in pass_two if v]
+        environment.concepts.fail_on_missing = True
     except VisitError as e:
         unpack_visit_error(e)
         # this will never be reached

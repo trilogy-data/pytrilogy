@@ -33,8 +33,9 @@ def test_filtering_where_on_derived_aggregate(test_environment):
         )
     except Exception as e:
         exception = True
-        assert str(e).startswith(
-            "Cannot reference an aggregate derived in the select (local.filtered_cst) in the same statement where clause"
+        assert (
+            "in where clause; if this is concept defined in the statement, it must be in the having clause."
+            in str(e)
         )
     assert exception, "should have an exception"
 

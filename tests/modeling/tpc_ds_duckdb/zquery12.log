@@ -1,8 +1,8 @@
 query_id = 12
-parse_time = 0.660556
-exec_time = 0.059781
-comp_time = 0.054827
-gen_length = 3118
+parse_time = 0.246469
+exec_time = 0.11131
+comp_time = 0.121657
+gen_length = 3121
 generated_sql = """
 
 WITH 
@@ -48,7 +48,7 @@ SELECT
     cheerful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     cheerful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     cheerful.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(cheerful.\"itemrevenue\") over (partition by cheerful.\"web_sales_item_class\") as \"_virt_890693256924963\"
+    sum(cheerful.\"itemrevenue\") over (partition by cheerful.\"web_sales_item_class\") as \"_virt_6962611562621196\"
 FROM
     cheerful)
 SELECT
@@ -58,7 +58,7 @@ SELECT
     thoughtful.\"web_sales_item_class\" as \"web_sales_item_class\",
     thoughtful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     thoughtful.\"itemrevenue\" as \"itemrevenue\",
-    thoughtful.\"itemrevenue\" * 100.0 / thoughtful.\"_virt_890693256924963\" as \"revenueratio\"
+    thoughtful.\"itemrevenue\" * 100.0 / thoughtful.\"_virt_6962611562621196\" as \"revenueratio\"
 FROM
     thoughtful
 ORDER BY 
@@ -66,5 +66,5 @@ ORDER BY
     thoughtful.\"web_sales_item_class\" asc,
     thoughtful.\"web_sales_item_name\" asc,
     thoughtful.\"web_sales_item_desc\" asc,
-    thoughtful.\"itemrevenue\" * 100.0 / thoughtful.\"_virt_890693256924963\" asc
+    thoughtful.\"itemrevenue\" * 100.0 / thoughtful.\"_virt_6962611562621196\" asc
 LIMIT (100)"""

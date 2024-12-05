@@ -4,6 +4,7 @@ from trilogy.hooks.query_debugger import DebuggingHook
 
 # from pydantic.functional_validators import merge
 
+
 def test_merge_discovery(test_environment: Environment, test_executor: Executor):
     # test keys
 
@@ -130,7 +131,6 @@ order by
     assert results[0].p1_firstname == "John"
 
 
-
 def test_merge_no_duplication():
     # test keys
 
@@ -168,10 +168,14 @@ merge p2.lastname  into p1.lastname;
 
 """
     )
-    merge = base.merge_concept(base.concepts['p2.firstname'], base.concepts['p1.firstname'], [])
+    merge = base.merge_concept(
+        base.concepts["p2.firstname"], base.concepts["p1.firstname"], []
+    )
     assert not merge
     base_size = base.model_dump_json()
-    for x in range(0,10):
-        merge = base.merge_concept(base.concepts['p2.firstname'], base.concepts['p1.firstname'], [], force=True)
+    for x in range(0, 10):
+        merge = base.merge_concept(
+            base.concepts["p2.firstname"], base.concepts["p1.firstname"], [], force=True
+        )
         new_size = base.model_dump_json()
         assert len(base_size) == len(new_size)

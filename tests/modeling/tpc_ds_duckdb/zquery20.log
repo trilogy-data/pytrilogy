@@ -1,7 +1,7 @@
 query_id = 20
-parse_time = 1.024887
-exec_time = 0.025571
-comp_time = 0.088392
+parse_time = 0.852254
+exec_time = 0.081638
+comp_time = 0.109319
 gen_length = 2721
 generated_sql = """
 
@@ -48,7 +48,7 @@ SELECT
     cheerful.\"cs_item_desc\" as \"cs_item_desc\",
     cheerful.\"cs_item_name\" as \"cs_item_name\",
     cheerful.\"revenue\" as \"revenue\",
-    sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virt_4232581866916624\"
+    sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virt_3473494108936830\"
 FROM
     cheerful)
 SELECT
@@ -58,7 +58,7 @@ SELECT
     thoughtful.\"cs_item_class\" as \"cs_item_class\",
     thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
     thoughtful.\"revenue\" as \"revenue\",
-    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virt_4232581866916624\" as \"revenue_ratio\"
+    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virt_3473494108936830\" as \"revenue_ratio\"
 FROM
     thoughtful
 ORDER BY 
@@ -66,5 +66,5 @@ ORDER BY
     thoughtful.\"cs_item_class\" asc nulls first,
     thoughtful.\"cs_item_name\" asc nulls first,
     thoughtful.\"cs_item_desc\" asc nulls first,
-    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virt_4232581866916624\" asc nulls first
+    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virt_3473494108936830\" asc nulls first
 LIMIT (100)"""

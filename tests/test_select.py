@@ -32,6 +32,7 @@ datasource users (
     address `bigquery-public-data.stackoverflow.users`
 ;
 
+    auto post_count <- count(post_id);
 
     """
     env, parsed = parse(declarations)
@@ -40,7 +41,7 @@ datasource users (
     # a comment
     user_id,
     about_me,
-    count(post_id)->post_count
+    post_count
 ;"""
     env, parse_one = parse(q1, environment=env)
 
@@ -54,7 +55,10 @@ datasource users (
     env, parse_two = parse(q2, environment=env)
 
     select: SelectStatement = parse_two[-1]
-    assert select.grain == Grain(components=[env.concepts["about_me"]])
+    assert (
+        select.grain.components
+        == Grain(components=[env.concepts["about_me"]]).components
+    )
 
 
 def test_double_aggregate():
@@ -149,7 +153,6 @@ def test_having_without_select():
     assert failed
 
 
-
 def test_local_select_concepts():
     q1 = """
 
@@ -170,9 +173,7 @@ select id + 2 as three;
 """
 
     env, parsed = parse(q1)
-    assert 'local.three' not in env.concepts
-
+    assert "local.three" not in env.concepts
 
     result = Dialects.DUCK_DB.default_executor(environment=env).execute_text(q1)[-1]
     assert result.fetchone().three == 3
-

@@ -306,9 +306,10 @@ auto orid <- unnest(list);
 auto orid_2 <-unnest(list_2);
 auto even_orders <- filter orid where (orid % 2) = 0;
 auto filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
+metric f_ord_count <- count(filtered_even_orders);
 
 select 
-    count(filtered_even_orders)->f_ord_count
+    f_ord_count
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
@@ -336,9 +337,11 @@ auto orid <- unnest(list);
 auto orid_2 <-unnest(list_2);
 auto even_orders <- filter orid where (orid % 2) = 0;
 auto filtered_even_orders <- filter orid_2 where 1=1 and orid_2 in even_orders;
+metric f_ord_count <- count(filtered_even_orders);
+metric ord_count <- count(orid_2);
 
 select 
-    count(filtered_even_orders)->f_ord_count
+    f_ord_count
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
@@ -352,6 +355,14 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert results[0].f_ord_count == 3
+    comp = """
+where orid_2 in even_orders
+select
+    ord_count
+;
+"""
+    results = default_duckdb_engine.execute_text(comp)[0].fetchall()
+    assert results[0].ord_count == 3
 
 
 def test_agg_demo(default_duckdb_engine: Executor):

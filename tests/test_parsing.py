@@ -217,8 +217,10 @@ rowset test<- select
     row_number id order by name asc -> name_alphabetical_2
     ;
 
+auto test_name_count <- count(test.name);
+
 select 
-    count( test.name ) -> test_name_count;
+    test_name_count;
 """
     )
     # assert output_purpose == Purpose.METRIC

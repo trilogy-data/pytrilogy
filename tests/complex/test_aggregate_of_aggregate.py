@@ -16,6 +16,8 @@ property user_id.about_me string metadata(description="User provided description
 
 key post_id int;
 metric post_count <-count(post_id);
+metric user_post_count <- count(post_id) by user_id;
+metric avg_user_post_count <-avg(user_post_count) by user_id;
 
 
 datasource posts (
@@ -25,13 +27,6 @@ datasource posts (
     grain (post_id)
     address `bigquery-public-data.stackoverflow.post_history`
 ;
-
-select
-    user_id,
-    count(post_id) -> user_post_count
-;
-
-metric avg_user_post_count <- avg(user_post_count);
 
 
 datasource users (

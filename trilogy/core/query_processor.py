@@ -356,6 +356,9 @@ def get_query_node(
     graph: Optional[ReferenceGraph] = None,
     history: History | None = None,
 ) -> StrategyNode:
+    environment = environment.duplicate()
+    for k, v in statement.local_concepts.items():
+        environment.concepts[k] = v
     graph = graph or generate_graph(environment)
     logger.info(
         f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and output {[str(c) for c in statement.output_components]}"
@@ -403,6 +406,7 @@ def get_query_datasources(
     graph: Optional[ReferenceGraph] = None,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
+
     ds = get_query_node(environment, statement, graph)
     final_qds = ds.resolve()
     if hooks:
@@ -477,9 +481,7 @@ def process_query(
     hooks = hooks or []
     statement.refresh_bindings(environment)
     graph = generate_graph(environment)
-    environment=environment.duplicate()
-    for k, v in statement.local_concepts.items():
-        environment.concepts[k] = v
+
     root_datasource = get_query_datasources(
         environment=environment, graph=graph, statement=statement, hooks=hooks
     )
@@ -519,5 +521,5 @@ def process_query(
         # we no longer do any joins at final level, this should always happen in parent CTEs
         joins=[],
         hidden_columns=[x for x in statement.hidden_components],
-        local_concepts = statement.local_concepts,
+        local_concepts=statement.local_concepts,
     )
