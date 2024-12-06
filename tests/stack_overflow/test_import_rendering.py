@@ -19,11 +19,13 @@ ORDER BY
     user_post_count desc
  limit 10;
 
+ 
+ auto user_badge_count<-count(core.badge_id) by core.user_id;
 
 select
     core.user_id,
     core.display_name,
-    count(core.badge_id) -> user_badge_count
+    user_badge_count
 order by
     user_badge_count desc
  limit 10;

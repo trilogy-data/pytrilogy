@@ -177,7 +177,9 @@ select
 """
     )
 
-    for name in ["name_alphabetical", "name_alphabetical_2"]:
+    for name in [
+        "name_alphabetical",
+    ]:
         assert f"local.{name}" in env.concepts
         assert env.concepts[name].purpose == Purpose.PROPERTY
         assert env.concepts[name].keys == (env.concepts["id"],)

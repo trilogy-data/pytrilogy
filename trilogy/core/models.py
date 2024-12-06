@@ -185,8 +185,8 @@ class SelectContext(ABC):
         self,
         local_concepts: dict[str, Concept],
         grain: Grain,
-        environment: Environment | None = None,
-    ):
+        environment: Environment,
+    ) -> Any:
         raise NotImplementedError
 
 
@@ -457,10 +457,12 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     _address_cache: str | None = None
 
     def __hash__(self):
-        return hash(f'{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}')
-    
+        return hash(
+            f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
+        )
+
     def __repr__(self):
-        base = f'{self.namespace}.{self.address}@{self.grain}'
+        base = f"{self.namespace}.{self.address}@{self.grain}"
         return base
 
     @property
@@ -647,36 +649,43 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Optional["Grain"] = None,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "Concept":
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
-        new_grain = grain or self.grain
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectContext):
             new_lineage = self.lineage.with_select_context(
-                local_concepts=local_concepts, grain=new_grain, environment=environment
+                local_concepts=local_concepts, grain=grain, environment=environment
             )
+        final_grain = self.grain
+
+        if self.is_aggregate and isinstance(new_lineage, Function):
+            new_lineage = AggregateWrapper(function=new_lineage, by=grain.components)
+            final_grain = grain
+
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=new_lineage,
-            grain=new_grain,
+            grain=final_grain,
             namespace=self.namespace,
-            # keys=tuple(
-            #     [
-            #         x.with_select_context(local_concepts, grain, environment)
-            #         for x in self.keys
-            #     ]
-            # ) if self.keys else None,
-            keys=self.keys,
+            keys=(
+                tuple(
+                    [
+                        x.with_select_context(local_concepts, grain, environment)
+                        for x in self.keys
+                    ]
+                )
+                if self.keys
+                else None
+            ),
             modifiers=self.modifiers,
-            pseudonyms=self.pseudonyms,
+            # a select needs to always defer to the environment for pseudonyms
+            # TODO: evaluate if this should be cached
+            pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
@@ -695,7 +704,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             pseudonyms=self.pseudonyms,
         )
 
-    @cached_property
+    @property
     def _with_default_grain(self) -> "Concept":
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
@@ -854,6 +863,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 for x in self.lineage.concept_arguments
             ]
         ):
+
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 
@@ -917,12 +927,8 @@ class Grain(Mergeable, BaseModel, SelectContext):
         return v2
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
-        return self
         if self.nested:
             return self
         return Grain(
@@ -993,7 +999,7 @@ class Grain(Mergeable, BaseModel, SelectContext):
                     base.append(c)
         return set(base)
 
-    @cached_property
+    @property
     def set(self) -> set[str]:
         base = []
         for x in self.components_copy:
@@ -1081,8 +1087,10 @@ class EnvironmentConceptDict(dict):
             return self.__getitem__(key)
         except UndefinedConceptException:
             return default
-        
-    def raise_undefined(self, key:str, line_no: int | None = None, file: Path | None = None):
+
+    def raise_undefined(
+        self, key: str, line_no: int | None = None, file: Path | str | None = None
+    ):
         matches = self._find_similar_concepts(key)
         message = f"Undefined concept: {key}."
         if matches:
@@ -1096,13 +1104,11 @@ class EnvironmentConceptDict(dict):
             raise UndefinedConceptException(f"line: {line_no}: " + message, matches)
         raise UndefinedConceptException(message, matches)
 
-
     def __getitem__(
-        self, key:str, line_no: int | None = None, file: Path | None = None
+        self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConcept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
-
         except KeyError:
             if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
                 return self.__getitem__(key.split(".", 1)[1], line_no)
@@ -1120,7 +1126,8 @@ class EnvironmentConceptDict(dict):
                 )
                 self.undefined[key] = undefined
                 return undefined
-            self.raise_undefined(key, line_no, file)
+        self.raise_undefined(key, line_no, file)
+        raise SyntaxError("Unreachable")
 
     def _find_similar_concepts(self, concept_name: str):
         def strip_local(input: str):
@@ -1271,13 +1278,9 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         return self.output_datatype
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Function:
-
-        return Function(
+        base = Function(
             operator=self.operator,
             arguments=[
                 (
@@ -1295,6 +1298,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             valid_inputs=self.valid_inputs,
             arg_count=self.arg_count,
         )
+        return base
 
     @field_validator("arguments")
     @classmethod
@@ -1502,10 +1506,7 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "WindowItem":
         return WindowItem(
             type=self.type,
@@ -1589,10 +1590,7 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> FilterItem:
         return FilterItem(
             content=self.content.with_select_context(
@@ -1678,10 +1676,7 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         return OrderItem(expr=self.expr.with_namespace(namespace), order=self.order)
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "OrderItem":
         return OrderItem(
             expr=self.expr.with_select_context(
@@ -1733,24 +1728,17 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
     selection: List[SelectItem]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    meta: Metadata = Field(default_factory=lambda: Metadata())
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
 
-    def refresh_bindings(self, environment: Environment):
-        for item in self.selection:
-            if isinstance(item.content, Concept):
-                item.content = environment.concepts[item.content.address].with_grain(
-                    self.grain
-                )
-
-    def validate_syntax(self):
+    def validate_syntax(self, environment: Environment):
         if self.where_clause:
             for x in self.where_clause.concept_arguments:
                 if isinstance(x, UndefinedConcept):
-                    raise UndefinedConceptException(
-                        f"Referencing undefined concept {x.address} in where clause; if this is concept defined in the statement, it must be in the having clause."
+                    environment.concepts.raise_undefined(
+                        x.address, x.metadata.line_number
                     )
         all_in_output = [x.address for x in self.output_components]
         if self.where_clause:
@@ -1926,7 +1914,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         for column in columns:
             column.concept = column.concept.with_grain(new_datasource.grain)
         return new_datasource
-    
+
     @property
     def grain(self) -> "Grain":
         output = []
@@ -1995,9 +1983,6 @@ class CopyStatement(BaseModel):
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
     select: SelectStatement
 
-    def refresh_bindings(self, environment: Environment):
-        self.select.refresh_bindings(environment)
-
 
 class AlignItem(Namespaced, BaseModel):
     alias: str
@@ -2055,23 +2040,17 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
 
-    def refresh_bindings(self, environment: Environment):
-        for select in self.selects:
-            select.refresh_bindings(environment)
-
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
 
-    @computed_field  # type: ignore
-    @cached_property
+    @property
     def arguments(self) -> List[Concept]:
         output = []
         for select in self.selects:
             output += select.input_components
         return unique(output, "address")
 
-    @computed_field  # type: ignore
-    @cached_property
+    @property
     def concept_arguments(self) -> List[Concept]:
         output = []
         for select in self.selects:
@@ -2121,9 +2100,9 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
                 if self.where_clause
                 else None
             ),
-            local_concepts={
-                k: v.with_namespace(namespace) for k, v in self.local_concepts.items()
-            },
+            local_concepts=EnvironmentConceptDict(
+                {k: v.with_namespace(namespace) for k, v in self.local_concepts.items()}
+            ),
         )
 
     @property
@@ -2862,6 +2841,7 @@ class CTE(BaseModel):
 
         if self.condition:
             self.condition = self.condition.inline_constant(concept)
+        
         # if we've entirely removed the need to join to someplace to get the concept
         # drop the join as well.
         for removed_cte in removed:
@@ -3319,17 +3299,15 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
     def with_select_context(
         self,
         local_concepts: dict[str, Concept],
-        grain: Optional["Grain"] = None,
-        environment: Environment | None = None,
+        grain: Grain,
+        environment: Environment,
     ) -> "Concept":
         if self.address in local_concepts:
             rval = local_concepts[self.address]
             rval = rval.with_select_context(local_concepts, grain, environment)
-            
+
             return rval
-        raise SyntaxError(
-            f"Undefined concept {self.address} referenced in select, have only {local_concepts.keys()}"
-        )
+        environment.concepts.raise_undefined(self.address, line_no=self.line_no)
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -4091,10 +4069,7 @@ class Comparison(
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
         return self.__class__(
             left=(
@@ -4193,7 +4168,7 @@ class SubselectComparison(Comparison):
         self,
         local_concepts: dict[str, Concept],
         grain: Grain,
-        environment: Environment | None = None,
+        environment: Environment,
     ):
         # there's no need to pass the select grain through to a subselect comparison on the right
         return self.__class__(
@@ -4235,10 +4210,7 @@ class CaseWhen(Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> CaseWhen:
         return CaseWhen(
             comparison=self.comparison.with_select_context(
@@ -4265,8 +4237,8 @@ class CaseElse(Namespaced, SelectContext, BaseModel):
         self,
         local_concepts: dict[str, Concept],
         grain: Grain,
-        environment: Environment | None = None,
-    ) -> CaseElse:
+        environment: Environment,
+    ):
         return CaseElse(
             discriminant=self.discriminant,
             expr=(
@@ -4409,10 +4381,7 @@ class Conditional(
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
         return Conditional(
             left=(
@@ -4530,10 +4499,7 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> AggregateWrapper:
         if not self.by:
             by = grain.components_copy
@@ -4577,10 +4543,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> WhereClause:
         return self.__class__(
             conditional=self.conditional.with_select_context(
@@ -4618,16 +4581,15 @@ class HavingClause(WhereClause):
         self.conditional.hydrate_missing(concepts)
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> HavingClause:
         return HavingClause(
             conditional=self.conditional.with_select_context(
                 local_concepts, grain, environment
             )
         )
+
+
 class MaterializedDataset(BaseModel):
     address: Address
 
@@ -4874,10 +4836,7 @@ class Parenthetical(
         )
 
     def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment | None = None,
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
         return Parenthetical(
             content=(

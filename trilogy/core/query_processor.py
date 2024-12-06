@@ -479,7 +479,6 @@ def process_query(
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:
     hooks = hooks or []
-    statement.refresh_bindings(environment)
     graph = generate_graph(environment)
 
     root_datasource = get_query_datasources(

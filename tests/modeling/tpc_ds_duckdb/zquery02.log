@@ -1,8 +1,8 @@
 query_id = 2
-parse_time = 9.969861
-exec_time = 0.430864
-comp_time = 0.085561
-gen_length = 9966
+parse_time = 32.04383
+exec_time = 1.067798
+comp_time = 0.299445
+gen_length = 9968
 generated_sql = """
 
 WITH 
@@ -133,13 +133,13 @@ WHERE
 ),
 juicy as (
 SELECT
-    lead(yummy.\"yearly_agg_friday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2297838343032625\",
-    lead(yummy.\"yearly_agg_monday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7718726410668721\",
-    lead(yummy.\"yearly_agg_saturday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_6842580125141833\",
-    lead(yummy.\"yearly_agg_sunday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_9332171206861934\",
-    lead(yummy.\"yearly_agg_thursday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_184260894532376\",
-    lead(yummy.\"yearly_agg_tuesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2077663829221475\",
-    lead(yummy.\"yearly_agg_wednesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8372242316916050\",
+    lead(yummy.\"yearly_agg_friday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_6193053320794901\",
+    lead(yummy.\"yearly_agg_monday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7130145607898357\",
+    lead(yummy.\"yearly_agg_saturday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8034893742859652\",
+    lead(yummy.\"yearly_agg_sunday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8280558569351677\",
+    lead(yummy.\"yearly_agg_thursday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_3540146175412427\",
+    lead(yummy.\"yearly_agg_tuesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_6639291296266475\",
+    lead(yummy.\"yearly_agg_wednesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7069585042880555\",
     yummy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     yummy.\"yearly_agg_friday_sales\" as \"yearly_agg_friday_sales\",
     yummy.\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\",
@@ -154,13 +154,13 @@ vacuous as (
 SELECT
     juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     juicy.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\",
-    round(juicy.\"yearly_agg_friday_sales\" / juicy.\"_virt_2297838343032625\",2) as \"friday_increase\",
-    round(juicy.\"yearly_agg_monday_sales\" / juicy.\"_virt_7718726410668721\",2) as \"monday_increase\",
-    round(juicy.\"yearly_agg_saturday_sales\" / juicy.\"_virt_6842580125141833\",2) as \"saturday_increase\",
-    round(juicy.\"yearly_agg_sunday_sales\" / juicy.\"_virt_9332171206861934\",2) as \"sunday_increase\",
-    round(juicy.\"yearly_agg_thursday_sales\" / juicy.\"_virt_184260894532376\",2) as \"thursday_increase\",
-    round(juicy.\"yearly_agg_tuesday_sales\" / juicy.\"_virt_2077663829221475\",2) as \"tuesday_increase\",
-    round(juicy.\"yearly_agg_wednesday_sales\" / juicy.\"_virt_8372242316916050\",2) as \"wednesday_increase\"
+    round(juicy.\"yearly_agg_friday_sales\" / juicy.\"_virt_6193053320794901\",2) as \"friday_increase\",
+    round(juicy.\"yearly_agg_monday_sales\" / juicy.\"_virt_7130145607898357\",2) as \"monday_increase\",
+    round(juicy.\"yearly_agg_saturday_sales\" / juicy.\"_virt_8034893742859652\",2) as \"saturday_increase\",
+    round(juicy.\"yearly_agg_sunday_sales\" / juicy.\"_virt_8280558569351677\",2) as \"sunday_increase\",
+    round(juicy.\"yearly_agg_thursday_sales\" / juicy.\"_virt_3540146175412427\",2) as \"thursday_increase\",
+    round(juicy.\"yearly_agg_tuesday_sales\" / juicy.\"_virt_6639291296266475\",2) as \"tuesday_increase\",
+    round(juicy.\"yearly_agg_wednesday_sales\" / juicy.\"_virt_7069585042880555\",2) as \"wednesday_increase\"
 FROM
     juicy),
 concerned as (

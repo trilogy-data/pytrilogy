@@ -33,10 +33,7 @@ def test_filtering_where_on_derived_aggregate(test_environment):
         )
     except Exception as e:
         exception = True
-        assert (
-            "in where clause; if this is concept defined in the statement, it must be in the having clause."
-            in str(e)
-        )
+        assert "Undefined concept: local.filtered_cst" in str(e)
     assert exception, "should have an exception"
 
 

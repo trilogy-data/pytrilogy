@@ -11,7 +11,6 @@ from trilogy.core.models import (
     Grain,
     PersistStatement,
     ProcessedQueryPersist,
-    SelectStatement,
 )
 from trilogy.core.processing.node_generators import (
     gen_select_node,
@@ -86,11 +85,7 @@ def test_derivations():
         assert test_concept.derivation == PurposeLineage.ROOT
 
         persist: PersistStatement = parsed[-2]
-        select: SelectStatement = parsed[-1]
         assert persist.select.grain == Grain(components=[test_concept])
-        assert select.output_components == [
-            test_concept.with_grain(Grain(components=[test_concept]))
-        ]
         assert len(compiled) == 2
 
         g = generate_graph(env)

@@ -20,7 +20,7 @@ datasource posts (
 auto user_post_count <- count(post_id) by user_id;
 
 rowset top_users <- select user_id, user_post_count,  user_post_count / total_posts as post_ratio
-where post_ratio > .05;
+having post_ratio > .05;
 
 select
     top_users.user_id,
@@ -49,7 +49,7 @@ datasource posts (
 auto user_post_count <- count(post_id) by user_id;
 
 rowset top_users <- select user_id, user_post_count,  user_post_count / total_posts as post_ratio
-where post_ratio > .05;
+having post_ratio > .05;
 
 select
     top_users.user_id,

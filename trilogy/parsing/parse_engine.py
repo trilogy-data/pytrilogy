@@ -68,7 +68,6 @@ from trilogy.core.models import (
     ColumnAssignment,
     Comment,
     Comparison,
-    UndefinedConcept,
     Concept,
     ConceptDeclarationStatement,
     ConceptDerivation,
@@ -78,6 +77,7 @@ from trilogy.core.models import (
     Datasource,
     DataType,
     Environment,
+    EnvironmentConceptDict,
     FilterItem,
     Function,
     Grain,
@@ -106,6 +106,7 @@ from trilogy.core.models import (
     StructType,
     SubselectComparison,
     TupleWrapper,
+    UndefinedConcept,
     WhereClause,
     Window,
     WindowItem,
@@ -974,7 +975,7 @@ class ParseToObjects(Transformer):
 
         assert align
         assert align is not None
-        base_local: SelectStatement = selects[0].local_concepts
+        base_local: EnvironmentConceptDict = selects[0].local_concepts
         for select in selects[1:]:
             for k, v in select.local_concepts.items():
                 base_local[k] = v
@@ -1020,11 +1021,12 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        for _ in [1,2]:
+        for _ in [1, 2]:
             # the first pass will result in all concepts being defined
             # the second will get grains appropriately
             # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
             # until after the first pass, and so don't know the grain of a
+            nselect = []
             for item in select_items:
                 # we don't know the grain of an aggregate at assignment time
                 # so rebuild at this point in the tree
@@ -1038,22 +1040,30 @@ class ParseToObjects(Transformer):
                     output.local_concepts[new_concept.address] = new_concept
                     item.content.output = new_concept
                 elif isinstance(item.content, UndefinedConcept):
-                    self.environment.concepts.raise_undefined(item.content.address, line_no=item.content.metadata.line_number, file=self.token_address)
+                    self.environment.concepts.raise_undefined(
+                        item.content.address,
+                        line_no=item.content.metadata.line_number,
+                        file=self.token_address,
+                    )
                 elif isinstance(item.content, Concept):
                     # Sometimes cached values here don't have the latest info
                     # but we can't just use environment, as it might not have the right grain.
-                    item.content = self.environment.concepts[
-                        item.content.address
-                    ].with_grain(item.content.grain)
+                    item.content = item.content.with_select_context(
+                        output.local_concepts,
+                        output.grain,
+                        environment=self.environment,
+                    )
+                    output.local_concepts[item.content.address] = item.content
+                nselect.append(item)
         if order_by:
             for orderitem in order_by.items:
                 # rehydrate the concept
                 if isinstance(orderitem.expr, UndefinedConcept):
                     orderitem.expr = orderitem.expr.with_select_context(
-                            output.local_concepts,
-                            output.grain,
-                            environment=self.environment,
-                        )
+                        output.local_concepts,
+                        output.grain,
+                        environment=self.environment,
+                    )
 
                 if isinstance(orderitem.expr, Concept):
                     if orderitem.expr.purpose == Purpose.METRIC:
@@ -1063,8 +1073,12 @@ class ParseToObjects(Transformer):
                             environment=self.environment,
                         )
         if output.having_clause:
-            output.having_clause = output.having_clause.with_select_context(local_concepts=output.local_concepts, grain = output.grain, environment=self.environment)
-        output.validate_syntax()
+            output.having_clause = output.having_clause.with_select_context(
+                local_concepts=output.local_concepts,
+                grain=output.grain,
+                environment=self.environment,
+            )
+        output.validate_syntax(self.environment)
         return output
 
     @v_args(meta=True)

@@ -401,7 +401,9 @@ select
         "local.customer"
     }
 
-    customer_orders_2 = customer_orders.with_select_context(Grain())
+    customer_orders_2 = customer_orders.with_select_context(
+        {}, Grain(), default_duckdb_engine.environment
+    )
     assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x.address for x in customer_orders_2.grain.components]) == {
         "local.customer"
