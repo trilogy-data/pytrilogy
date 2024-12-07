@@ -1128,7 +1128,6 @@ class EnvironmentConceptDict(dict):
                 self.undefined[key] = undefined
                 return undefined
         self.raise_undefined(key, line_no, file)
-        raise SyntaxError("Unreachable")
 
     def _find_similar_concepts(self, concept_name: str):
         def strip_local(input: str):
