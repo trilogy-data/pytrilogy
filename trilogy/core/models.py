@@ -16,6 +16,7 @@ from typing import (
     Generic,
     ItemsView,
     List,
+    Never,
     Optional,
     Sequence,
     Set,
@@ -39,7 +40,7 @@ from pydantic import (
 )
 from pydantic.functional_validators import PlainValidator
 from pydantic_core import core_schema
-from typing import Never
+
 from trilogy.constants import (
     CONFIG,
     DEFAULT_NAMESPACE,
