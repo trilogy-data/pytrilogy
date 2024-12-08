@@ -484,9 +484,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             return True
         return False
 
-    def with_merge(
-        self, source: Self, target: Self, modifiers: List[Modifier]
-    ) -> Self:
+    def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
             new.pseudonyms.add(self.address)
@@ -3290,7 +3288,6 @@ class Join(BaseModel):
 class UndefinedConcept(Concept, Mergeable, Namespaced):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
-    environment: "EnvironmentConceptDict"
     line_no: int | None = None
     datatype: DataType | ListType | StructType | MapType | NumericType = (
         DataType.UNKNOWN
