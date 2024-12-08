@@ -458,8 +458,8 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     pseudonyms: set[str] = Field(default_factory=set)
     _address_cache: str | None = None
 
-    def duplicate(self):
-        return Concept.model_construct(**self.model_dump())
+    def duplicate(self) -> Concept:
+        return self.model_copy(deep=True)
 
     def __hash__(self):
         return hash(
@@ -2237,8 +2237,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
 
-    def duplicate(self):
-        return Datasource.model_construct(self.model_dump())
+    def duplicate(self) -> Datasource:
+        return self.model_copy(deep=True)
 
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
