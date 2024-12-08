@@ -3348,7 +3348,7 @@ class EnvironmentDatasourceDict(dict):
     def items(self) -> ItemsView[str, Datasource]:  # type: ignore
         return super().items()
 
-    def duplicate(self) -> "EnvironmentConceptDict":
+    def duplicate(self) -> "EnvironmentDatasourceDict":
         new = EnvironmentDatasourceDict()
         new.update({k: v.duplicate() for k, v in self.items()})
         return new
