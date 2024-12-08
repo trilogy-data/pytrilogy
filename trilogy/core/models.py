@@ -18,6 +18,7 @@ from typing import (
     List,
     Never,
     Optional,
+    Self,
     Sequence,
     Set,
     Tuple,
@@ -26,7 +27,6 @@ from typing import (
     Union,
     ValuesView,
     get_args,
-    Self,
 )
 
 from lark.tree import Meta
