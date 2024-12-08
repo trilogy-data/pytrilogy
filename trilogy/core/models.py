@@ -458,6 +458,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     pseudonyms: set[str] = Field(default_factory=set)
     _address_cache: str | None = None
 
+    def duplicate(self):
+        return Concept.model_construct(**self.model_dump())
+
     def __hash__(self):
         return hash(
             f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
@@ -1072,6 +1075,13 @@ class EnvironmentConceptDict(dict):
         self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = True
         self.populate_default_concepts()
+
+    def duplicate(self) -> "EnvironmentConceptDict":
+        new = EnvironmentConceptDict()
+        new.update({k: v.duplicate() for k, v in self.items()})
+        new.undefined = self.undefined
+        new.fail_on_missing = self.fail_on_missing
+        return new
 
     def populate_default_concepts(self):
         from trilogy.core.internal import DEFAULT_CONCEPTS
@@ -2227,6 +2237,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
 
+    def duplicate(self):
+        return Datasource.model_construct(self.model_dump())
+
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
@@ -3335,6 +3348,11 @@ class EnvironmentDatasourceDict(dict):
     def items(self) -> ItemsView[str, Datasource]:  # type: ignore
         return super().items()
 
+    def duplicate(self) -> "EnvironmentConceptDict":
+        new = EnvironmentDatasourceDict()
+        new.update({k: v.duplicate() for k, v in self.items()})
+        return new
+
 
 class ImportStatement(HasUUID, BaseModel):
     alias: str
@@ -3399,7 +3417,22 @@ class Environment(BaseModel):
         self.frozen = False
 
     def duplicate(self):
-        return self.model_copy(deep=True)
+        return Environment.model_construct(
+            datasources=self.datasources.duplicate(),
+            concepts=self.concepts.duplicate(),
+            functions=dict(self.functions),
+            data_types=dict(self.data_types),
+            imports=dict(self.imports),
+            namespace=self.namespace,
+            working_path=self.working_path,
+            environment_config=self.environment_config,
+            version=self.version,
+            cte_name_map=dict(self.cte_name_map),
+            materialized_concepts=set(self.materialized_concepts),
+            alias_origin_lookup={
+                k: v.duplicate() for k, v in self.alias_origin_lookup.items()
+            },
+        )
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -3552,9 +3585,6 @@ class Environment(BaseModel):
             self.imports[alias].append(imp_stm)
         # we can't exit early
         # as there may be new concepts
-        print("------------")
-        print("importing")
-        print(alias)
         for k, concept in source.concepts.items():
             # skip internal namespace
             if INTERNAL_NAMESPACE in concept.address:
@@ -3568,7 +3598,6 @@ class Environment(BaseModel):
 
                 k = address_with_namespace(k, alias)
             # set this explicitly, to handle aliasing
-            print(new.address)
             self.concepts[k] = new
 
         for _, datasource in source.datasources.items():

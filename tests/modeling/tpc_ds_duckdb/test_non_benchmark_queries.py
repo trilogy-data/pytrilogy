@@ -57,7 +57,8 @@ import web_sales as web_sales;
     end = datetime.now()
     duration = end - start
     dumped = env.model_dump_json()
-    assert duration.total_seconds() < 2.75, f"{len(dumped)}, {duration}"
+    assert duration.total_seconds() < 1, f"{len(dumped)}, {duration}"
+    # assert duration.total_seconds() < 2.75, f"{len(dumped)}, {duration}"
 
 
 def test_merge_comparison(engine):
