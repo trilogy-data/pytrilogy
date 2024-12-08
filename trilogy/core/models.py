@@ -26,6 +26,7 @@ from typing import (
     Union,
     ValuesView,
     get_args,
+    Self,
 )
 
 from lark.tree import Meta
@@ -483,7 +484,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             return True
         return False
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+    def with_merge(
+        self, source: Self, target: Self, modifiers: List[Modifier]
+    ) -> Self:
         if self.address == source.address:
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
             new.pseudonyms.add(self.address)
@@ -619,7 +622,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     def grain_components(self) -> List["Concept"]:
         return self.grain.components_copy if self.grain else []
 
-    def with_namespace(self, namespace: str) -> "Concept":
+    def with_namespace(self, namespace: str) -> Self:
         if namespace == self.namespace:
             return self
         return self.__class__(
@@ -651,9 +654,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
 
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "Concept":
-        if not all([isinstance(x, Concept) for x in self.keys or []]):
-            raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
+    ) -> Concept:
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectContext):
             new_lineage = self.lineage.with_select_context(
@@ -689,7 +690,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
         )
 
-    def with_grain(self, grain: Optional["Grain"] = None) -> "Concept":
+    def with_grain(self, grain: Optional["Grain"] = None) -> Self:
         if not all([isinstance(x, Concept) for x in self.keys or []]):
             raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
         return self.__class__(
@@ -706,7 +707,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     @property
-    def _with_default_grain(self) -> "Concept":
+    def _with_default_grain(self) -> Self:
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
             grain = Grain(components=[self.with_grain(Grain())], nested=True)
@@ -3308,99 +3309,6 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
 
             return rval
         environment.concepts.raise_undefined(self.address, line_no=self.line_no)
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "UndefinedConcept" | Concept:
-        if self.address == source.address:
-            new = target.with_grain(self.grain.with_merge(source, target, modifiers))
-            new.pseudonyms.add(self.address)
-            return new
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=(
-                self.lineage.with_merge(source, target, modifiers)
-                if self.lineage
-                else None
-            ),
-            grain=self.grain.with_merge(source, target, modifiers),
-            namespace=self.namespace,
-            keys=(
-                tuple(x.with_merge(source, target, modifiers) for x in self.keys)
-                if self.keys
-                else None
-            ),
-            environment=self.environment,
-            line_no=self.line_no,
-        )
-
-    def with_namespace(self, namespace: str) -> "UndefinedConcept":
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=(
-                self.grain.with_namespace(namespace)
-                if self.grain
-                else Grain(components=[])
-            ),
-            namespace=namespace,
-            keys=self.keys,
-            environment=self.environment,
-            line_no=self.line_no,
-        )
-
-    def with_grain(self, grain: Optional["Grain"] = None) -> "UndefinedConcept":
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=self.lineage,
-            grain=grain or Grain(components=[]),
-            namespace=self.namespace,
-            keys=self.keys,
-            environment=self.environment,
-            line_no=self.line_no,
-        )
-
-    def with_default_grain(self) -> "UndefinedConcept":
-        if self.purpose == Purpose.KEY:
-            # we need to make this abstract
-            grain = Grain(components=[self.with_grain(Grain())], nested=True)
-        elif self.purpose == Purpose.PROPERTY:
-            components: List[Concept] = []
-            if self.keys:
-                components = [*self.keys]
-            if self.lineage:
-                for item in self.lineage.arguments:
-                    if isinstance(item, Concept):
-                        if item.keys and not all(c in components for c in item.keys):
-                            components += item.sources
-                        else:
-                            components += item.sources
-            grain = Grain(components=components)
-        elif self.purpose == Purpose.METRIC:
-            grain = Grain()
-        else:
-            grain = self.grain  # type: ignore
-        return self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=self.lineage,
-            grain=grain,
-            keys=self.keys,
-            namespace=self.namespace,
-            environment=self.environment,
-            line_no=self.line_no,
-        )
 
 
 class EnvironmentDatasourceDict(dict):
