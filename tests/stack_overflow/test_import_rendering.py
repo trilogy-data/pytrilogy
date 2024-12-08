@@ -65,15 +65,24 @@ def test_import_violation():
 def test_circular_base():
     env = Environment(working_path=dirname(__file__))
 
+    # first import
+
+    # import posts.c1, with c1.id
+    # which imports c2, as c1.c2, giving c1.c2.id
+    # which imports c1 c, giving c1.c2.c.id
+    # that imports c2, with c2.id
+
     env.add_file_import(path="so_concepts.circular", alias="c1")
     assert env.concepts["c1.id"]
     assert env.concepts["c1.c2.id"]
     validated = False
-    assert len(env.datasources) == 3
+    assert len(env.datasources) == 5
     for n, datasource in env.datasources.items():
         for z in datasource.columns:
             self = z.concept
             if z.concept.namespace != datasource.namespace:
+                continue
+            if z.concept.address not in env.concepts:
                 continue
             other = env.concepts[z.concept.address]
             assert self.name == other.name
@@ -102,6 +111,8 @@ def test_circular():
         for z in datasource.columns:
             self = z.concept
             if z.concept.namespace != datasource.namespace:
+                continue
+            if z.concept.address not in env.concepts:
                 continue
             other = env.concepts[z.concept.address]
             assert self.name == other.name

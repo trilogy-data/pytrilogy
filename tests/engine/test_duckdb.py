@@ -917,3 +917,28 @@ limit 100;
     assert results[0].space_all == 1
     assert results[0].name == "fun"
     assert results[-1].space_all == 5
+
+
+def test_multi_select_mutation():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor()
+
+    queries = exec.parse_text(
+        """
+
+auto x <- 1;
+                    
+select
+    x + 1 -> x_next;
+                    
+select
+    x + 2 -> x_next;
+                    
+"""
+    )
+
+    for idx, x in enumerate(queries):
+        results = exec.execute_query(x).fetchall()
+        assert results[0].x_next == 2 + idx

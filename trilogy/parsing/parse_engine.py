@@ -267,7 +267,6 @@ class ParseToObjects(Transformer):
             if v.pass_count == 2:
                 continue
             v.hydrate_missing()
-        # self.environment.concepts.fail_on_missing = True
         reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
         return reparsed
@@ -491,7 +490,7 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        self.environment.add_concept(concept, meta=meta)
+        self.environment.add_concept(concept, meta=meta, force=True)
         return ConceptDeclarationStatement(concept=concept)
 
     @v_args(meta=True)
@@ -1056,22 +1055,11 @@ class ParseToObjects(Transformer):
                     output.local_concepts[item.content.address] = item.content
                 nselect.append(item)
         if order_by:
-            for orderitem in order_by.items:
-                # rehydrate the concept
-                if isinstance(orderitem.expr, UndefinedConcept):
-                    orderitem.expr = orderitem.expr.with_select_context(
-                        output.local_concepts,
-                        output.grain,
-                        environment=self.environment,
-                    )
-
-                if isinstance(orderitem.expr, Concept):
-                    if orderitem.expr.purpose == Purpose.METRIC:
-                        orderitem.expr = orderitem.expr.with_select_context(
-                            output.local_concepts,
-                            output.grain,
-                            environment=self.environment,
-                        )
+            output.order_by = order_by.with_select_context(
+                local_concepts=output.local_concepts,
+                grain=output.grain,
+                environment=self.environment,
+            )
         if output.having_clause:
             output.having_clause = output.having_clause.with_select_context(
                 local_concepts=output.local_concepts,

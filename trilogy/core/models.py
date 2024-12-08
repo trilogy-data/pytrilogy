@@ -1699,7 +1699,7 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         return self.expr.output
 
 
-class OrderBy(Mergeable, Namespaced, BaseModel):
+class OrderBy(SelectContext, Mergeable, Namespaced, BaseModel):
     items: List[OrderItem]
 
     def with_namespace(self, namespace: str) -> "OrderBy":
@@ -1710,6 +1710,14 @@ class OrderBy(Mergeable, Namespaced, BaseModel):
     ) -> "OrderBy":
         return OrderBy(
             items=[x.with_merge(source, target, modifiers) for x in self.items]
+        )
+
+    def with_select_context(self, local_concepts, grain, environment):
+        return OrderBy(
+            items=[
+                x.with_select_context(local_concepts, grain, environment)
+                for x in self.items
+            ]
         )
 
     @property
@@ -3544,7 +3552,13 @@ class Environment(BaseModel):
             self.imports[alias].append(imp_stm)
         # we can't exit early
         # as there may be new concepts
+        print("------------")
+        print("importing")
+        print(alias)
         for k, concept in source.concepts.items():
+            # skip internal namespace
+            if INTERNAL_NAMESPACE in concept.address:
+                continue
             if same_namespace:
                 new = self.add_concept(concept, _ignore_cache=True)
             else:
@@ -3554,6 +3568,7 @@ class Environment(BaseModel):
 
                 k = address_with_namespace(k, alias)
             # set this explicitly, to handle aliasing
+            print(new.address)
             self.concepts[k] = new
 
         for _, datasource in source.datasources.items():
@@ -3613,6 +3628,7 @@ class Environment(BaseModel):
                 )
                 nparser.set_text(text)
                 nparser.transform(PARSER.parse(text))
+                nparser.hydrate_missing()
 
             except Exception as e:
                 raise ImportError(

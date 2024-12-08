@@ -44,6 +44,7 @@ class Rendering:
     """Control how the SQL is rendered"""
 
     parameters: bool = True
+    concise: bool = False
 
 
 # TODO: support loading from environments
