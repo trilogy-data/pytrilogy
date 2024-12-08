@@ -1120,7 +1120,6 @@ class EnvironmentConceptDict(dict):
                 undefined = UndefinedConcept(
                     name=key,
                     line_no=line_no,
-                    environment=self,
                     datatype=DataType.UNKNOWN,
                     purpose=Purpose.UNKNOWN,
                 )
