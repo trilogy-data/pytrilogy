@@ -583,6 +583,13 @@ class BaseDialect:
         elif isinstance(e, FilterItem):
             return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid)} ELSE NULL END"
         elif isinstance(e, Concept):
+            if (
+                isinstance(e.lineage, Function)
+                and e.lineage.operator == FunctionType.CONSTANT
+                and CONFIG.rendering.parameters is True
+                and e.datatype.data_type != DataType.MAP
+            ):
+                return f":{e.safe_address}"
             if cte:
                 return self.render_concept_sql(
                     e, cte, alias=False, raise_invalid=raise_invalid
@@ -898,7 +905,7 @@ class BaseDialect:
         if CONFIG.strict_mode and INVALID_REFERENCE_STRING(1) in final:
             raise ValueError(
                 f"Invalid reference string found in query: {final}, this should never"
-                " occur. Please report this issue."
+                " occur. Please create a GitHub issue to report this."
             )
         logger.info(f"{LOGGER_PREFIX} Compiled query: {final}")
         return final

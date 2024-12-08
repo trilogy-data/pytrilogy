@@ -16,7 +16,7 @@ rowset sales_by_weekday_year <- select
 
 rowset yearly <- select
     date.year,
-    monday_web_sales / (lag monday_web_sales by date.year asc)  as monday_increase,
+    sales_by_weekday_year.monday_web_sales / (lag sales_by_weekday_year.monday_web_sales by date.year asc)  as monday_increase,
 ;
 
 

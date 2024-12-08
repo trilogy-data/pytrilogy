@@ -160,7 +160,6 @@ def run_adhoc(number: int, text: str | None = None):
     from trilogy import Dialects, Environment
     from trilogy.hooks.query_debugger import DebuggingHook
 
-
     env = Environment(working_path=Path(__file__).parent)
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]

@@ -29,6 +29,7 @@ class Purpose(Enum):
     METRIC = "metric"
     ROWSET = "rowset"
     AUTO = "auto"
+    UNKNOWN = "unknown"
 
     @classmethod
     def _missing_(cls, value):

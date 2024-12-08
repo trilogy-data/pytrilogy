@@ -231,21 +231,23 @@ class Executor(object):
     @execute_query.register
     def _(self, query: ProcessedQuery) -> CursorResult:
         sql = self.generator.compile_statement(query)
-        output = self.execute_raw_sql(sql)
+        output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         return output
 
     @execute_query.register
     def _(self, query: ProcessedQueryPersist) -> CursorResult:
         sql = self.generator.compile_statement(query)
 
-        output = self.execute_raw_sql(sql)
+        output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         self.environment.add_datasource(query.datasource)
         return output
 
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> CursorResult:
         sql = self.generator.compile_statement(query)
-        output: CursorResult = self.execute_raw_sql(sql)
+        output: CursorResult = self.execute_raw_sql(
+            sql, local_concepts=query.local_concepts
+        )
         if query.target_type == IOType.CSV:
             import csv
 
@@ -392,12 +394,20 @@ class Executor(object):
             if persist and isinstance(x, ProcessedQueryPersist):
                 self.environment.add_datasource(x.datasource)
 
-    def _hydrate_param(self, param: str) -> Any:
+    def _hydrate_param(
+        self, param: str, local_concepts: dict[str, Concept] | None = None
+    ) -> Any:
         matched = [
             v
             for v in self.environment.concepts.values()
             if v.safe_address == param or v.address == param
         ]
+        if local_concepts and not matched:
+            matched = [
+                v
+                for v in local_concepts.values()
+                if v.safe_address == param or v.address == param
+            ]
         if not matched:
             raise SyntaxError(f"No concept found for parameter {param}")
 
@@ -421,7 +431,10 @@ class Executor(object):
         return results[0]
 
     def execute_raw_sql(
-        self, command: str, variables: dict | None = None
+        self,
+        command: str,
+        variables: dict | None = None,
+        local_concepts: dict[str, Concept] | None = None,
     ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine"""
@@ -432,7 +445,10 @@ class Executor(object):
         else:
             params = q.compile().params
             if params:
-                final_params = {x: self._hydrate_param(x) for x in params}
+                final_params = {
+                    x: self._hydrate_param(x, local_concepts=local_concepts)
+                    for x in params
+                }
 
         if final_params:
             return self.connection.execute(text(command), final_params)

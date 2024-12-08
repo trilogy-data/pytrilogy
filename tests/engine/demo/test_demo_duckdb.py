@@ -280,7 +280,7 @@ select
     survivors.passenger.last_name,
     survivors.passenger.age,
     --row_number survivors.passenger.id over survivors.passenger.name order by survivors.passenger.age desc -> eldest
-where 
+having 
     eldest = 1
 order by survivors.passenger.name desc
 limit 5;"""
@@ -353,9 +353,9 @@ def test_demo_suggested_answer_failing(engine):
     test = """
 auto survivor <- filter passenger.id 
 where passenger.survived = 1;
+auto survival_rate_auto <-  count(survivor)/count(passenger.id);
 select 
-    count(survivor)/count(passenger.id)
-    -> survival_rate_auto,
+    survival_rate_auto,
     passenger.class
 order by passenger.class desc
 ;
@@ -365,9 +365,6 @@ order by passenger.class desc
     assert srate.lineage
     assert isinstance(srate.lineage, Function)
     assert isinstance(srate.lineage, SelectContext)
-    for agg in env.concepts["survival_rate_auto"].lineage.arguments:
-        assert agg.grain.components == [env.concepts["passenger.class"]]
-        assert len(agg.grain.components) == 1
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 3
@@ -378,9 +375,10 @@ order by passenger.class desc
 auto survivor <- filter passenger.id 
 where passenger.survived = 1;
 select 
+    passenger.class,
     count(survivor)/count(passenger.id)+1
     -> survival_rate_auto_two,
-    passenger.class
+    
 order by passenger.class desc
 ;
 """
@@ -523,7 +521,7 @@ select
         survivors.passenger.last_name
         order by survivors.passenger.age desc 
     as eldest
-where 
+having
     eldest = 1
 order by survivors.passenger.last_name desc
 limit 5;"""

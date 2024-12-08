@@ -37,6 +37,7 @@ def gen_rowset_node(
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivationStatement = lineage.rowset
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
+
     node = get_query_node(environment, select, graph=g, history=history)
 
     if not node:

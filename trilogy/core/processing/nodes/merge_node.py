@@ -36,7 +36,8 @@ def deduplicate_nodes(
     set_map: dict[str, set[str]] = {}
     for k, v in merged.items():
         unique_outputs = [
-            environment.concepts[x.address].address
+            # the concept may be a in a different environment for a rowset.
+            (environment.concepts.get(x.address) or x).address
             for x in v.output_concepts
             if x not in v.partial_concepts
         ]

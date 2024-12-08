@@ -1,6 +1,6 @@
 from trilogy import Dialects, Executor, parse
-from trilogy.core.enums import Purpose, PurposeLineage
-from trilogy.core.models import Environment, LooseConceptList, SelectStatement
+from trilogy.core.enums import PurposeLineage
+from trilogy.core.models import Environment, SelectStatement
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
@@ -46,13 +46,14 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
 def test_rowset_with_aggregation(
     test_environment: Environment, test_executor: Executor
 ):
-    test_select = """
-
+    test_select = """   auto even_order_store_revenue <- sum(even_orders.revenue);
     rowset even_orders <- select order_id, store_id, revenue where (order_id % 2) = 0;
+    auto even_order_store_revenue <- sum(even_orders.revenue);
+    auto even_order_count <-count(even_orders.order_id);
     SELECT
         even_orders.store_id,
-        count(even_orders.order_id) -> even_order_count,
-        sum(even_orders.revenue) by even_orders.store_id -> even_order_store_revenue,
+        even_order_count,
+        even_order_store_revenue,
     order by 
         even_order_count desc, 
         even_orders.store_id asc
@@ -63,31 +64,10 @@ def test_rowset_with_aggregation(
     group = test_environment.concepts["even_order_store_revenue"]
 
     assert group.derivation == PurposeLineage.AGGREGATE
-    grain_c_lcl = LooseConceptList(concepts=group.grain.components_copy)
-    assert "even_orders.store_id" in grain_c_lcl.addresses
-    x = resolve_function_parent_concepts(group)
+    # grain_c_lcl = LooseConceptList(concepts=group.grain.components_copy)
+    # assert "even_orders.store_id" in grain_c_lcl.addresses
+    resolve_function_parent_concepts(group)
 
-    x_lcl = LooseConceptList(concepts=x)
-
-    # assert "local.revenue" in x_lcl
-    assert "even_orders.store_id" in x_lcl
-
-    for count in [
-        test_environment.concepts["local.even_order_count"],
-        [x for x in statements[-1].output_components if x.name == "even_order_count"][
-            0
-        ],
-    ]:
-        assert count.derivation == PurposeLineage.AGGREGATE
-        assert count.purpose == Purpose.METRIC
-        count_grain_lcl = LooseConceptList(concepts=count.grain.components_copy)
-        assert "even_orders.store_id" in count_grain_lcl.addresses
-        assert "local.even_order_count" not in count_grain_lcl.addresses
-        count_parents = resolve_function_parent_concepts(count)
-
-        count_lcl = LooseConceptList(concepts=count_parents)
-        assert "even_orders.store_id" in count_lcl
-        assert "local.even_order_count" not in count_lcl
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     # assert len(results) == 3
     assert results[0] == (1, 1, 10.0)

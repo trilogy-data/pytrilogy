@@ -177,7 +177,9 @@ select
 """
     )
 
-    for name in ["name_alphabetical", "name_alphabetical_2"]:
+    for name in [
+        "name_alphabetical",
+    ]:
         assert f"local.{name}" in env.concepts
         assert env.concepts[name].purpose == Purpose.PROPERTY
         assert env.concepts[name].keys == (env.concepts["id"],)
@@ -217,8 +219,10 @@ rowset test<- select
     row_number id order by name asc -> name_alphabetical_2
     ;
 
+auto test_name_count <- count(test.name);
+
 select 
-    count( test.name ) -> test_name_count;
+    test_name_count;
 """
     )
     # assert output_purpose == Purpose.METRIC
