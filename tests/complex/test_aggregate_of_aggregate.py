@@ -13,25 +13,22 @@ key user_id int metadata(description="the description");
 property user_id.display_name string metadata(description="The display name ");
 property user_id.about_me string metadata(description="User provided description");
 
+key tag_id int;
 
 key post_id int;
 metric post_count <-count(post_id);
+metric user_post_count <- count(post_id) by tag_id;
+metric avg_user_post_count <-avg(user_post_count) by user_id;
 
 
 datasource posts (
     user_id: user_id,
-    id: post_id
+    id: post_id,
+    tag_id: tag_id
     )
     grain (post_id)
     address `bigquery-public-data.stackoverflow.post_history`
 ;
-
-select
-    user_id,
-    count(post_id) -> user_post_count
-;
-
-metric avg_user_post_count <- avg(user_post_count);
 
 
 datasource users (

@@ -15,4 +15,4 @@ rowset sales_by_weekday_year <- select
     sum(web_sales.sales_price) as monday_web_sales
 ;
 
-select monday_web_sales;
+select sales_by_weekday_year.monday_web_sales;

@@ -73,6 +73,4 @@ def test_readme():
     for row in results:
         # get results for first query
         answers = row.fetchall()
-        for x in answers:
-            print(x)
         assert len(answers) == 3

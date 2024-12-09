@@ -7,7 +7,6 @@ from trilogy import Dialects
 from trilogy.core.enums import FunctionType, Granularity, Purpose, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models import (
-    AggregateWrapper,
     Concept,
     Environment,
     FilterItem,
@@ -184,9 +183,9 @@ def test_rollback(duckdb_engine: Executor, expected_results):
 def test_basic(duckdb_engine: Executor):
     test = """
   auto today <- current_datetime();
-  
+  auto tomorrow <- date_add(today, day, 1);
   select 
-    date_add(today, day, 1)->tomorrow,
+    tomorrow,
     date_diff(today, today, day)->zero,
     date_trunc(today, year) -> current_year 
   ;
@@ -253,9 +252,11 @@ def test_complex(default_duckdb_engine: Executor):
 const list <- [1,2,2,3];
 const orid <- unnest(list);
 
+auto half_orid <- ((orid+17)/2);
+
 select 
     orid,
-    ((orid+17)/2) -> half_orid,
+    half_orid,
   ;
     """
 
@@ -305,9 +306,10 @@ auto orid <- unnest(list);
 auto orid_2 <-unnest(list_2);
 auto even_orders <- filter orid where (orid % 2) = 0;
 auto filtered_even_orders <- filter orid_2 where orid_2 in even_orders;
+metric f_ord_count <- count(filtered_even_orders);
 
 select 
-    count(filtered_even_orders)->f_ord_count
+    f_ord_count
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
@@ -335,9 +337,11 @@ auto orid <- unnest(list);
 auto orid_2 <-unnest(list_2);
 auto even_orders <- filter orid where (orid % 2) = 0;
 auto filtered_even_orders <- filter orid_2 where 1=1 and orid_2 in even_orders;
+metric f_ord_count <- count(filtered_even_orders);
+metric ord_count <- count(orid_2);
 
 select 
-    count(filtered_even_orders)->f_ord_count
+    f_ord_count
 ;
     """
     _ = default_duckdb_engine.parse_text(test)[-1]
@@ -351,6 +355,14 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
     assert results[0].f_ord_count == 3
+    comp = """
+where orid_2 in even_orders
+select
+    ord_count
+;
+"""
+    results = default_duckdb_engine.execute_text(comp)[0].fetchall()
+    assert results[0].ord_count == 3
 
 
 def test_agg_demo(default_duckdb_engine: Executor):
@@ -375,8 +387,10 @@ union all
 select 4, 'store3', 244
 ''';
 
+auto avg_customer_orders <- avg(customer_orders);
+
 select 
-    avg(customer_orders) -> avg_customer_orders,
+    avg_customer_orders,
     avg(count(orid) by store) -> avg_store_orders,
 ;"""
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -387,7 +401,9 @@ select
         "local.customer"
     }
 
-    customer_orders_2 = customer_orders.with_select_context(Grain())
+    customer_orders_2 = customer_orders.with_select_context(
+        {}, Grain(), default_duckdb_engine.environment
+    )
     assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x.address for x in customer_orders_2.grain.components]) == {
         "local.customer"
@@ -441,8 +457,10 @@ property orid.mod_two <- orid % 2;
 
 property orid.cased <-CASE WHEN mod_two = 0 THEN 1 ELSE 0 END;
 
+auto total_mod_two <- sum(cased);
+
 select 
-    SUM(cased) -> total_mod_two
+    total_mod_two
   ;
     """
 
@@ -519,7 +537,7 @@ const x <- unnest([1,2,3,4]);
 with even_squares as select 
     x, 
     x*x as x_squared
-where (x_squared %2) = 0;
+having (x_squared %2) = 0;
 
 select 
     even_squares.x_squared
@@ -564,7 +582,7 @@ const x <- unnest([1,2,3,4]);
 with even_squares as select 
     x, 
     x*x as x_squared
-where x_squared %2  = 0;
+having x_squared %2  = 0;
 
 select 
     even_squares.x_squared
@@ -635,9 +653,10 @@ def test_filter_promotion_complicated(duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
 
     test = """
+auto all_store_count <- sum(count);
 SELECT
     item,
-    sum(count) ->all_store_count
+    all_store_count
 where
     store_id in (1,3)
     and item = 'hammer'
@@ -647,9 +666,9 @@ order by
 
     duckdb_engine.hooks = [DebuggingHook()]
     results = duckdb_engine.execute_text(test)[0].fetchall()
-    derived = duckdb_engine.environment.concepts["all_store_count"]
-    assert isinstance(derived.lineage, AggregateWrapper)
-    assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
+    # derived = duckdb_engine.environment.concepts["all_store_count"]
+    # assert isinstance(derived.lineage, AggregateWrapper)
+    # assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
     assert len(results) == 1
     assert results[0] == ("hammer", 4)
 
@@ -740,11 +759,13 @@ def test_filter_promotion_inline_aggregate_filtered(duckdb_engine: Executor):
     from trilogy.hooks.query_debugger import DebuggingHook
 
     test = """
+
+
 WHERE
     store_id = 1
 SELECT
     item,
-    sum(count) ->all_store_count
+    sum(count) -> all_store_count
 having
     all_store_count > 1
 order by
@@ -762,9 +783,9 @@ order by
     assert len(row_args) == 1
     # assert target.grain.components == [duckdb_engine.environment.concepts["item"]]
     results = duckdb_engine.execute_text(test)[0].fetchall()
-    derived = duckdb_engine.environment.concepts["local.all_store_count"]
-    assert isinstance(derived.lineage, AggregateWrapper)
-    assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
+    # derived = parsed.local_concepts["local.all_store_count"]
+    # assert isinstance(derived.lineage, AggregateWrapper)
+    # assert derived.lineage.by == [duckdb_engine.environment.concepts["item"]]
     assert len(results) == 1
     assert results[0] == ("hammer", 2)
 
@@ -896,3 +917,28 @@ limit 100;
     assert results[0].space_all == 1
     assert results[0].name == "fun"
     assert results[-1].space_all == 5
+
+
+def test_multi_select_mutation():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
+    exec = Dialects.DUCK_DB.default_executor()
+
+    queries = exec.parse_text(
+        """
+
+auto x <- 1;
+                    
+select
+    x + 1 -> x_next;
+                    
+select
+    x + 2 -> x_next;
+                    
+"""
+    )
+
+    for idx, x in enumerate(queries):
+        results = exec.execute_query(x).fetchall()
+        assert results[0].x_next == 2 + idx

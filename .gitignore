@@ -22,6 +22,7 @@ AdventureWorksDW2019.bak
 .cache
 .coverage
 
+.coverage
 .preql
 
 .preql_cache.json

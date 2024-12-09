@@ -16,6 +16,7 @@ from lark.tree import Meta
 from pydantic import ValidationError
 
 from trilogy.constants import (
+    CONFIG,
     DEFAULT_NAMESPACE,
     NULL_VALUE,
     MagicConstants,
@@ -77,6 +78,7 @@ from trilogy.core.models import (
     Datasource,
     DataType,
     Environment,
+    EnvironmentConceptDict,
     FilterItem,
     Function,
     Grain,
@@ -105,6 +107,7 @@ from trilogy.core.models import (
     StructType,
     SubselectComparison,
     TupleWrapper,
+    UndefinedConcept,
     WhereClause,
     Window,
     WindowItem,
@@ -265,7 +268,6 @@ class ParseToObjects(Transformer):
             if v.pass_count == 2:
                 continue
             v.hydrate_missing()
-        self.environment.concepts.fail_on_missing = True
         reparsed = self.transform(self.tokens[self.token_address])
         self.environment.concepts.undefined = {}
         return reparsed
@@ -311,7 +313,8 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def concept_lit(self, meta: Meta, args) -> Concept:
-        return self.environment.concepts.__getitem__(args[0], meta.line)
+        address = args[0]
+        return self.environment.concepts.__getitem__(address, meta.line)
 
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
@@ -488,7 +491,7 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
-        self.environment.add_concept(concept, meta=meta)
+        self.environment.add_concept(concept, meta=meta, force=True)
         return ConceptDeclarationStatement(concept=concept)
 
     @v_args(meta=True)
@@ -709,7 +712,6 @@ class ParseToObjects(Transformer):
         else:
             raise SyntaxError("Invalid transformation")
 
-        self.environment.add_concept(concept, meta=meta)
         return ConceptTransform(function=transformation, output=concept)
 
     @v_args(meta=True)
@@ -954,7 +956,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
-        selects = []
+        selects: list[SelectStatement] = []
         align: AlignClause | None = None
         limit: int | None = None
         order_by: OrderBy | None = None
@@ -973,6 +975,10 @@ class ParseToObjects(Transformer):
 
         assert align
         assert align is not None
+        base_local: EnvironmentConceptDict = selects[0].local_concepts
+        for select in selects[1:]:
+            for k, v in select.local_concepts.items():
+                base_local[k] = v
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -981,6 +987,7 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             limit=limit,
             meta=Metadata(line_number=meta.line),
+            local_concepts=base_local,
         )
         for concept in multi.derived_concepts:
             self.environment.add_concept(concept, meta=meta)
@@ -1014,34 +1021,55 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        for item in select_items:
-            # we don't know the grain of an aggregate at assignment time
-            # so rebuild at this point in the tree
-            # TODO: simplify
-            if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_select_context(
-                    output.grain,
-                    conditional=None,
-                    environment=self.environment,
-                )
-                self.environment.add_concept(new_concept, meta=meta)
-                item.content.output = new_concept
-            elif isinstance(item.content, Concept):
-                # Sometimes cached values here don't have the latest info
-                # but we can't just use environment, as it might not have the right grain.
-                item.content = self.environment.concepts[
-                    item.content.address
-                ].with_grain(item.content.grain)
+        for parse_pass in [1, 2]:
+            # the first pass will result in all concepts being defined
+            # the second will get grains appropriately
+            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
+            # until after the first pass, and so don't know the grain of a
+            nselect = []
+            for item in select_items:
+                # we don't know the grain of an aggregate at assignment time
+                # so rebuild at this point in the tree
+                # TODO: simplify
+                if isinstance(item.content, ConceptTransform):
+                    new_concept = item.content.output.with_select_context(
+                        output.local_concepts,
+                        output.grain,
+                        environment=self.environment,
+                    )
+                    output.local_concepts[new_concept.address] = new_concept
+                    item.content.output = new_concept
+                    if parse_pass == 2 and CONFIG.select_as_definition:
+                        self.environment.add_concept(new_concept)
+                elif isinstance(item.content, UndefinedConcept):
+                    self.environment.concepts.raise_undefined(
+                        item.content.address,
+                        line_no=item.content.metadata.line_number,
+                        file=self.token_address,
+                    )
+                elif isinstance(item.content, Concept):
+                    # Sometimes cached values here don't have the latest info
+                    # but we can't just use environment, as it might not have the right grain.
+                    item.content = item.content.with_select_context(
+                        output.local_concepts,
+                        output.grain,
+                        environment=self.environment,
+                    )
+                    output.local_concepts[item.content.address] = item.content
+                nselect.append(item)
         if order_by:
-            for orderitem in order_by.items:
-                if isinstance(orderitem.expr, Concept):
-                    if orderitem.expr.purpose == Purpose.METRIC:
-                        orderitem.expr = orderitem.expr.with_select_context(
-                            output.grain,
-                            conditional=None,
-                            environment=self.environment,
-                        )
-        output.validate_syntax()
+            output.order_by = order_by.with_select_context(
+                local_concepts=output.local_concepts,
+                grain=output.grain,
+                environment=self.environment,
+            )
+        if output.having_clause:
+            output.having_clause = output.having_clause.with_select_context(
+                local_concepts=output.local_concepts,
+                grain=output.grain,
+                environment=self.environment,
+            )
+        output.validate_syntax(self.environment)
         return output
 
     @v_args(meta=True)
@@ -1952,6 +1980,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         # this will reset fail on missing
         pass_two = parser.hydrate_missing()
         output = [v for v in pass_two if v]
+        environment.concepts.fail_on_missing = True
     except VisitError as e:
         unpack_visit_error(e)
         # this will never be reached

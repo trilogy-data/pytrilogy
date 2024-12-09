@@ -1,7 +1,7 @@
 query_id = 2
-parse_time = 9.122169
-exec_time = 0.253463
-comp_time = 0.077361
+parse_time = 6.293222
+exec_time = 0.230308
+comp_time = 0.082973
 gen_length = 9968
 generated_sql = """
 
@@ -133,13 +133,13 @@ WHERE
 ),
 juicy as (
 SELECT
-    lead(yummy.\"yearly_agg_friday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8317486473019164\",
-    lead(yummy.\"yearly_agg_monday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2990192216289784\",
-    lead(yummy.\"yearly_agg_saturday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_4951735593297067\",
-    lead(yummy.\"yearly_agg_sunday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2552001628256980\",
-    lead(yummy.\"yearly_agg_thursday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_9199757088688381\",
-    lead(yummy.\"yearly_agg_tuesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_4220629607647464\",
-    lead(yummy.\"yearly_agg_wednesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8667745416327123\",
+    lead(yummy.\"yearly_agg_friday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_6193053320794901\",
+    lead(yummy.\"yearly_agg_monday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7130145607898357\",
+    lead(yummy.\"yearly_agg_saturday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8034893742859652\",
+    lead(yummy.\"yearly_agg_sunday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8280558569351677\",
+    lead(yummy.\"yearly_agg_thursday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_3540146175412427\",
+    lead(yummy.\"yearly_agg_tuesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_6639291296266475\",
+    lead(yummy.\"yearly_agg_wednesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7069585042880555\",
     yummy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     yummy.\"yearly_agg_friday_sales\" as \"yearly_agg_friday_sales\",
     yummy.\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\",
@@ -154,13 +154,13 @@ vacuous as (
 SELECT
     juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     juicy.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\",
-    round(juicy.\"yearly_agg_friday_sales\" / juicy.\"_virt_8317486473019164\",2) as \"friday_increase\",
-    round(juicy.\"yearly_agg_monday_sales\" / juicy.\"_virt_2990192216289784\",2) as \"monday_increase\",
-    round(juicy.\"yearly_agg_saturday_sales\" / juicy.\"_virt_4951735593297067\",2) as \"saturday_increase\",
-    round(juicy.\"yearly_agg_sunday_sales\" / juicy.\"_virt_2552001628256980\",2) as \"sunday_increase\",
-    round(juicy.\"yearly_agg_thursday_sales\" / juicy.\"_virt_9199757088688381\",2) as \"thursday_increase\",
-    round(juicy.\"yearly_agg_tuesday_sales\" / juicy.\"_virt_4220629607647464\",2) as \"tuesday_increase\",
-    round(juicy.\"yearly_agg_wednesday_sales\" / juicy.\"_virt_8667745416327123\",2) as \"wednesday_increase\"
+    round(juicy.\"yearly_agg_friday_sales\" / juicy.\"_virt_6193053320794901\",2) as \"friday_increase\",
+    round(juicy.\"yearly_agg_monday_sales\" / juicy.\"_virt_7130145607898357\",2) as \"monday_increase\",
+    round(juicy.\"yearly_agg_saturday_sales\" / juicy.\"_virt_8034893742859652\",2) as \"saturday_increase\",
+    round(juicy.\"yearly_agg_sunday_sales\" / juicy.\"_virt_8280558569351677\",2) as \"sunday_increase\",
+    round(juicy.\"yearly_agg_thursday_sales\" / juicy.\"_virt_3540146175412427\",2) as \"thursday_increase\",
+    round(juicy.\"yearly_agg_tuesday_sales\" / juicy.\"_virt_6639291296266475\",2) as \"tuesday_increase\",
+    round(juicy.\"yearly_agg_wednesday_sales\" / juicy.\"_virt_7069585042880555\",2) as \"wednesday_increase\"
 FROM
     juicy),
 concerned as (

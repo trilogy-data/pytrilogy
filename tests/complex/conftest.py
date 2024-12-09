@@ -18,7 +18,10 @@ property post_id.post_text string;
 metric post_count <-count(post_id);
 property post_length <- len(post_text);
 metric avg_post_length_by_post_id <- avg(post_length) by post_id;
-
+metric user_post_count<- count(post_id) by user_id;
+metric avg_user_post_count <- avg(user_post_count);
+property post_id.post_length <- len(post_text);
+property user_id.user_avg_post_length <- avg(post_length) by user_id;
 datasource posts (
     user_id: user_id,
     id: post_id,
@@ -28,14 +31,6 @@ datasource posts (
     address `bigquery-public-data.stackoverflow.post_history`
 ;
 
-property post_length <- len(post_text);
-
-select
-    user_id,
-    count(post_id) -> user_post_count
-;
-
-metric avg_user_post_count <- avg(user_post_count);
 
 
 datasource users (
@@ -48,11 +43,6 @@ datasource users (
 ;
 
 
-select
-    user_id,
-    avg(post_length)-> user_avg_post_length
-;
-    
 select
     avg_user_post_count
 ;

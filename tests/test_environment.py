@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from trilogy import Dialects
 from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models import Environment
@@ -84,3 +85,19 @@ key  order_id int;
             assert x.modifiers == [Modifier.PARTIAL]
             found = True
     assert found
+
+
+def test_environment_select_promotion():
+    x = Dialects.DUCK_DB.default_executor()
+
+    results = x.execute_query(
+        """
+const x <- 6;
+
+select x+2 as y;
+
+select y;            
+                    """
+    ).fetchall()
+
+    assert results[0].y == 8

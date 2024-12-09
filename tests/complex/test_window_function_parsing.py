@@ -22,7 +22,7 @@ property user_id.about_me string metadata(description="User provided description
 key post_id int;
 metric post_count <-count(post_id);
 
-property user_rank <- rank user_id by post_count desc;
+property user_id.user_rank <- rank user_id by post_count desc;
 
 
 datasource posts (

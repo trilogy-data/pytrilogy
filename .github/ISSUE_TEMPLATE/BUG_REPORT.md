@@ -19,7 +19,7 @@ Please describe what you expected would happen.
 
 Please describe what happened instead.
 
-## PreQL Code
+## Trilogy Code
 
 The code that produces the error. 
 

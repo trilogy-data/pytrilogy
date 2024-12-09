@@ -19,10 +19,11 @@ def test_parser():
     x = ParseToObjects(environment=env)
     x.environment.concepts.fail_on_missing = False
     x.set_text(TEXT)
-    tokens = PARSER.parse(TEXT)
-    x.transform(tokens)
+
     failed = False
     try:
+        tokens = PARSER.parse(TEXT)
+        x.transform(tokens)
         x.hydrate_missing()
     except Exception as e:
         failed = True
