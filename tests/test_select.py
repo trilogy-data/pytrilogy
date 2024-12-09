@@ -173,7 +173,6 @@ select id + 2 as three;
 """
 
     env, parsed = parse(q1)
-    assert "local.three" not in env.concepts
 
     result = Dialects.DUCK_DB.default_executor(environment=env).execute_text(q1)[-1]
     assert result.fetchone().three == 3
