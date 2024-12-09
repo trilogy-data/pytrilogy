@@ -16,10 +16,10 @@ from lark.tree import Meta
 from pydantic import ValidationError
 
 from trilogy.constants import (
+    CONFIG,
     DEFAULT_NAMESPACE,
     NULL_VALUE,
     MagicConstants,
-    CONFIG,
 )
 from trilogy.core.enums import (
     BooleanOperator,
