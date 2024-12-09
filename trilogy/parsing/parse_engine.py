@@ -19,6 +19,7 @@ from trilogy.constants import (
     DEFAULT_NAMESPACE,
     NULL_VALUE,
     MagicConstants,
+    CONFIG,
 )
 from trilogy.core.enums import (
     BooleanOperator,
@@ -1020,7 +1021,7 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        for _ in [1, 2]:
+        for parse_pass in [1, 2]:
             # the first pass will result in all concepts being defined
             # the second will get grains appropriately
             # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
@@ -1038,6 +1039,8 @@ class ParseToObjects(Transformer):
                     )
                     output.local_concepts[new_concept.address] = new_concept
                     item.content.output = new_concept
+                    if parse_pass == 2 and CONFIG.select_as_definition:
+                        self.environment.add_concept(new_concept)
                 elif isinstance(item.content, UndefinedConcept):
                     self.environment.concepts.raise_undefined(
                         item.content.address,

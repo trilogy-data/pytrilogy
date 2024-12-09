@@ -57,6 +57,7 @@ class Config:
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)
+    select_as_definition: bool = True
 
     @property
     def show_comments(self) -> bool:
