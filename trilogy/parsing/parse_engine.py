@@ -570,6 +570,7 @@ class ParseToObjects(Transformer):
         for new_concept in output.derived_concepts:
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
+            # output.select.local_concepts[new_concept.address] = new_concept
             self.environment.add_concept(new_concept)
 
         return output

@@ -214,7 +214,7 @@ def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
             x for x in concepts if x.keys and all([key in addresses for key in x.keys])
         ]
     )
-    final = [c for c in concepts if c not in sub_props]
+    final = [c for c in concepts if c.address not in sub_props]
     return unique(final, "address")
 
 

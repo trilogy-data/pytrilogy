@@ -7,7 +7,6 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models import (
     CTE,
     BaseJoin,
@@ -353,13 +352,12 @@ def datasource_to_cte(
 def get_query_node(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
-    graph: Optional[ReferenceGraph] = None,
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()
     for k, v in statement.local_concepts.items():
         environment.concepts[k] = v
-    graph = graph or generate_graph(environment)
+    graph = generate_graph(environment)
     logger.info(
         f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and output {[str(c) for c in statement.output_components]}"
     )
@@ -403,11 +401,10 @@ def get_query_node(
 def get_query_datasources(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
-    graph: Optional[ReferenceGraph] = None,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
 
-    ds = get_query_node(environment, statement, graph)
+    ds = get_query_node(environment, statement)
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:
@@ -479,10 +476,9 @@ def process_query(
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:
     hooks = hooks or []
-    graph = generate_graph(environment)
 
     root_datasource = get_query_datasources(
-        environment=environment, graph=graph, statement=statement, hooks=hooks
+        environment=environment, statement=statement, hooks=hooks
     )
     for hook in hooks:
         hook.process_root_datasource(root_datasource)

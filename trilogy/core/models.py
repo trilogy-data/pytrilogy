@@ -662,11 +662,22 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
         final_grain = self.grain
-
+        keys = (
+            tuple(
+                [
+                    x.with_select_context(local_concepts, grain, environment)
+                    for x in self.keys
+                ]
+            )
+            if self.keys
+            else None
+        )
         if self.is_aggregate and isinstance(new_lineage, Function):
             new_lineage = AggregateWrapper(function=new_lineage, by=grain.components)
             final_grain = grain
-
+            keys = tuple(grain.components)
+        elif self.is_aggregate:
+            keys = tuple(grain.components)
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -675,16 +686,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             lineage=new_lineage,
             grain=final_grain,
             namespace=self.namespace,
-            keys=(
-                tuple(
-                    [
-                        x.with_select_context(local_concepts, grain, environment)
-                        for x in self.keys
-                    ]
-                )
-                if self.keys
-                else None
-            ),
+            keys=keys,
             modifiers=self.modifiers,
             # a select needs to always defer to the environment for pseudonyms
             # TODO: evaluate if this should be cached

@@ -114,9 +114,7 @@ def test_query_datasources(environment: Environment):
         == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
     )
 
-    datasource = get_query_datasources(
-        environment=environment, graph=environment_graph, statement=test
-    )
+    datasource = get_query_datasources(environment=environment, statement=test)
 
     cte = datasource_to_cte(datasource, {})
 
@@ -184,9 +182,7 @@ def test_two_properties(environment: Environment):
         )
     )
 
-    get_query_datasources(
-        environment=environment, graph=environment_graph, statement=test
-    )
+    get_query_datasources(environment=environment, statement=test)
 
 
 @pytest.mark.adventureworks
