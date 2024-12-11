@@ -836,6 +836,7 @@ def _search_concepts(
                     PurposeLineage.ROWSET,
                     PurposeLineage.BASIC,
                     PurposeLineage.MULTISELECT,
+                    PurposeLineage.UNION,
                 ]:
                     skip.add(priority_concept.address)
                 break

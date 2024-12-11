@@ -233,6 +233,27 @@ select my_rowset.x, my_rowset.max_rank;"""
     assert len(results) == 3
 
 
+def test_rowset_join(duckdb_engine: Executor):
+    test = """const x <- unnest([1,2,2,3]);
+const y <- 5;
+auto z <- rank x order by x desc;
+auto w <- rank x order by x asc;
+
+rowset my_rowset <- select x, w, max(z)->max_rank;
+
+select x, my_rowset.max_rank;"""
+    _, parsed_0 = parse_text(test, duckdb_engine.environment)
+    z = duckdb_engine.environment.concepts["z"]
+    x = duckdb_engine.environment.concepts["x"]
+    assert z.grain == Grain(components=[x])
+    assert str(z) == "local.z<local.x>"
+    results = duckdb_engine.execute_text(test)[0].fetchall()
+    assert len(results) == 4
+    for row in results:
+        if row.x == 2:
+            assert row.my_rowset_max_rank == 2
+
+
 def test_default_engine(default_duckdb_engine: Executor):
     test = """
   auto today <- current_datetime();
