@@ -288,6 +288,14 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
+    def unhide_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
+        self.hidden_concepts = [
+            x for x in self.hidden_concepts if x.address not in concepts
+        ]
+        if rebuild:
+            self.rebuild_cache()
+        return self
+
     def remove_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for x in concepts:
             self.hidden_concepts.append(x)

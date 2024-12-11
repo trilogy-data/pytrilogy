@@ -1,7 +1,7 @@
 query_id = 20
-parse_time = 0.35265
-exec_time = 0.041216
-comp_time = 0.0831
+parse_time = 0.694067
+exec_time = 0.039563
+comp_time = 0.094495
 gen_length = 2758
 generated_sql = """
 

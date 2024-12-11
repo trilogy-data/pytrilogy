@@ -239,9 +239,9 @@ const y <- 5;
 auto z <- rank x order by x desc;
 auto w <- rank x order by x asc;
 
-rowset my_rowset <- select x, w, max(z)->max_rank;
+rowset my_rowset <- select x, max(z)->max_rank;
 
-select x, my_rowset.max_rank;"""
+select x, w, my_rowset.max_rank;"""
     _, parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
@@ -423,7 +423,11 @@ select
     }
 
     customer_orders_2 = customer_orders.with_select_context(
-        {}, Grain(), default_duckdb_engine.environment
+        {},
+        Grain(
+            components=[default_duckdb_engine.environment.concepts["local.customer"]]
+        ),
+        default_duckdb_engine.environment,
     )
     assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x.address for x in customer_orders_2.grain.components]) == {
