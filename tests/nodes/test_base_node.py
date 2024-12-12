@@ -14,6 +14,26 @@ def test_base_node_copy():
     assert x.environment == y.environment
 
 
+def test_hide():
+    env = Environment()
+    env.parse(
+        """
+key order_id int;
+property order_id.profit float;"""
+    )
+    x = StrategyNode(
+        input_concepts=[],
+        output_concepts=[env.concepts["order_id"]],
+        environment=env,
+        g=generate_graph(env),
+    )
+
+    x.hide_output_concepts([env.concepts["order_id"]])
+    assert len(x.hidden_concepts) == 1
+    x.unhide_output_concepts([env.concepts["order_id"]])
+    assert len(x.hidden_concepts) == 0
+
+
 def test_get_parent_partial():
     env = Environment()
     env.parse(

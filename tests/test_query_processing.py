@@ -130,9 +130,7 @@ def test_join_aggregate(test_environment: Environment, test_environment_graph):
 
 def test_query_aggregation(test_environment, test_environment_graph):
     select = SelectStatement(selection=[test_environment.concepts["total_revenue"]])
-    datasource = get_query_datasources(
-        environment=test_environment, graph=test_environment_graph, statement=select
-    )
+    datasource = get_query_datasources(environment=test_environment, statement=select)
 
     assert {datasource.identifier} == {"revenue_at_local_order_id_at_abstract"}
     check = datasource
@@ -150,9 +148,7 @@ def test_query_datasources(test_environment, test_environment_graph):
             test_environment.concepts["total_revenue"],
         ]
     )
-    get_query_datasources(
-        environment=test_environment, graph=test_environment_graph, statement=select
-    )
+    get_query_datasources(environment=test_environment, statement=select)
 
 
 def test_full_query(test_environment, test_environment_graph):

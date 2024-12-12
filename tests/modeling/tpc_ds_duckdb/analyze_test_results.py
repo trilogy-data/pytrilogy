@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from os import environ
 from pathlib import Path
 
@@ -9,7 +10,13 @@ import tomllib
 
 # https://github.com/python/cpython/issues/125235#issuecomment-2412948604
 if not environ.get("TCL_LIBRARY"):
-    environ["TCL_LIBRARY"] = r"C:\Program Files\Python313\tcl\tcl8.6"
+    minor = sys.version[1]
+    if minor == 13:
+        environ["TCL_LIBRARY"] = r"C:\Program Files\Python313\tcl\tcl8.6"
+    elif minor == 12:
+        environ["TCL_LIBRARY"] = r"C:\Program Files\Python312\tcl\tcl8.6"
+    else:
+        pass
 
 
 def analyze(show: bool = False):
@@ -24,8 +31,19 @@ def analyze(show: bool = False):
                     print(f"Error loading {filename}")
                     continue
                 results.append(loaded)
+    with open(root / "zquery_timing.log", "r") as f:
+        timing = tomllib.loads(f.read())
+    final_results = []
+    for x in results:
+        if "query_id" not in x:
+            continue
+        q_id = x["query_id"]
+        time_info = timing.get(f"query_{q_id:02d}")
+        if not time_info:
+            continue
+        final_results.append({**x, **time_info})
 
-    df = pd.DataFrame.from_records(results)
+    df = pd.DataFrame.from_records(final_results)
 
     print(df)
 

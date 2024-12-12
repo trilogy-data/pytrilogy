@@ -569,6 +569,8 @@ def validate_stack(
         resolved = node.resolve()
 
         for concept in resolved.output_concepts:
+            if concept in resolved.hidden_concepts:
+                continue
             validate_concept(
                 concept,
                 node,
@@ -836,6 +838,7 @@ def _search_concepts(
                     PurposeLineage.ROWSET,
                     PurposeLineage.BASIC,
                     PurposeLineage.MULTISELECT,
+                    PurposeLineage.UNION,
                 ]:
                     skip.add(priority_concept.address)
                 break

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 import tomli_w
+import tomllib
 
 from trilogy import Environment, Executor
 
@@ -50,15 +51,40 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             tomli_w.dumps(
                 {
                     "query_id": idx,
-                    "parse_time": parse_time.total_seconds(),
-                    "exec_time": exec_time.total_seconds(),
-                    "comp_time": comp_time.total_seconds(),
                     "gen_length": len(query),
                     "generated_sql": query,
                 },
                 multiline_strings=True,
             )
         )
+
+    timing = Path(working_path / "zquery_timing.log")
+
+    if not timing.exists():
+        with open(working_path / "zquery_timing.log", "w") as f:
+            pass
+
+    with open(working_path / "zquery_timing.log", "r+") as f:
+        # seek to 0, as we use append to ensure it exists
+        current = tomllib.loads(f.read())
+        # go back to 0, as we will rewrite the whole thing
+
+        # modify the current dict
+        current[f"query_{idx:02d}"] = {
+            "parse_time": parse_time.total_seconds(),
+            "exec_time": exec_time.total_seconds(),
+            "comp_time": comp_time.total_seconds(),
+        }
+        final = {x: current[x] for x in sorted(list(current.keys()))}
+        # dump it all back
+        f.seek(0)
+        f.write(
+            tomli_w.dumps(
+                final,
+                multiline_strings=True,
+            )
+        )
+        f.truncate()
     return query
 
 

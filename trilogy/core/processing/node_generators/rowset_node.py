@@ -38,7 +38,7 @@ def gen_rowset_node(
     rowset: RowsetDerivationStatement = lineage.rowset
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
 
-    node = get_query_node(environment, select, graph=g, history=history)
+    node = get_query_node(environment, select)
 
     if not node:
         logger.info(
@@ -94,15 +94,22 @@ def gen_rowset_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional found or no optional; exiting early."
         )
-        # node.set_preexisting_conditions(conditions.conditional if conditions else None)
         return node
-
-    possible_joins = concept_to_relevant_joins(node.output_concepts)
+    possible_joins = concept_to_relevant_joins(
+        [x for x in node.output_concepts if x.derivation != PurposeLineage.ROWSET]
+    )
+    logger.info({x.address: x.keys for x in possible_joins})
     if not possible_joins:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
         )
         return node
+    if any(x.derivation == PurposeLineage.ROWSET for x in possible_joins):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} cannot enrich rowset node with rowset concepts; exiting early"
+        )
+        return node
+    logger.info([x.address for x in possible_joins + local_optional])
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=possible_joins + local_optional,
@@ -110,15 +117,28 @@ def gen_rowset_node(
         g=g,
         depth=depth + 1,
         conditions=conditions,
+        history=history,
     )
     if not enrich_node:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate rowset enrichment node for {concept} with optional {local_optional}, returning just rowset node"
         )
         return node
+
+    non_hidden = [
+        x for x in node.output_concepts if x.address not in node.hidden_concepts
+    ]
+    for x in possible_joins:
+        if x.address in node.hidden_concepts:
+            node.unhide_output_concepts([x])
+    non_hidden_enrich = [
+        x
+        for x in enrich_node.output_concepts
+        if x.address not in enrich_node.hidden_concepts
+    ]
     return MergeNode(
-        input_concepts=enrich_node.output_concepts + node.output_concepts,
-        output_concepts=node.output_concepts + local_optional,
+        input_concepts=non_hidden + non_hidden_enrich,
+        output_concepts=non_hidden + local_optional,
         environment=environment,
         g=g,
         depth=depth,
@@ -126,6 +146,6 @@ def gen_rowset_node(
             node,
             enrich_node,
         ],
-        partial_concepts=node.partial_concepts,
+        partial_concepts=node.partial_concepts + enrich_node.partial_concepts,
         preexisting_conditions=conditions.conditional if conditions else None,
     )

@@ -67,6 +67,11 @@ class SelectNode(StrategyNode):
         self.accept_partial = accept_partial
         self.datasource = datasource
 
+    def validate_inputs(self):
+        # we do not need to validate inputs for a select node
+        # as it will be a root
+        return
+
     def resolve_from_provided_datasource(
         self,
     ) -> QueryDatasource:

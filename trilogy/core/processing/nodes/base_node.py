@@ -211,7 +211,21 @@ class StrategyNode:
                 operator=BooleanOperator.AND,
             )
         self.validate_parents()
+        self.validate_inputs()
         self.log = True
+
+    def validate_inputs(self):
+        if not self.parents:
+            return
+        non_hidden = set()
+        for x in self.parents:
+            for z in x.usable_outputs:
+                non_hidden.add(z.address)
+        if not all([x.address in non_hidden for x in self.input_concepts]):
+            missing = [x for x in self.input_concepts if x.address not in non_hidden]
+            raise ValueError(
+                f"Invalid input concepts; {missing} are missing non-hidden parent nodes"
+            )
 
     def add_parents(self, parents: list["StrategyNode"]):
         self.parents += parents
@@ -288,6 +302,14 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
+    def unhide_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
+        self.hidden_concepts = [
+            x for x in self.hidden_concepts if x.address not in concepts
+        ]
+        if rebuild:
+            self.rebuild_cache()
+        return self
+
     def remove_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for x in concepts:
             self.hidden_concepts.append(x)
@@ -298,6 +320,12 @@ class StrategyNode:
         if rebuild:
             self.rebuild_cache()
         return self
+
+    @property
+    def usable_outputs(self) -> list[Concept]:
+        return [
+            x for x in self.output_concepts if x.address not in self.hidden_concepts
+        ]
 
     @property
     def logging_prefix(self) -> str:
