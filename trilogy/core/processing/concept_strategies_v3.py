@@ -569,6 +569,8 @@ def validate_stack(
         resolved = node.resolve()
 
         for concept in resolved.output_concepts:
+            if concept in resolved.hidden_concepts:
+                continue
             validate_concept(
                 concept,
                 node,

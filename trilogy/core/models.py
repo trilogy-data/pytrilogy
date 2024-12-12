@@ -467,7 +467,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def __repr__(self):
-        base = f"{self.namespace}.{self.address}@{self.grain}"
+        base = f"{self.address}@{self.grain}"
         return base
 
     @property
@@ -676,8 +676,10 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             new_lineage = AggregateWrapper(function=new_lineage, by=grain.components)
             final_grain = grain
             keys = tuple(grain.components)
-        elif self.is_aggregate:
-            keys = tuple(grain.components)
+        elif (
+            self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
+        ):
+            keys = tuple(new_lineage.by)
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -2628,7 +2630,7 @@ class QueryDatasource(BaseModel):
                     and CONFIG.validate_missing
                 ):
                     raise SyntaxError(
-                        f"Missing source map for {concept.address} on {key}, have {v}"
+                        f"On query datasource missing source map for {concept.address} on {key}, have {v}"
                     )
         return v
 

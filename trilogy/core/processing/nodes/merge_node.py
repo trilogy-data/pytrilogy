@@ -330,8 +330,9 @@ class MergeNode(StrategyNode):
             force_group = None
 
         qd_joins: List[BaseJoin | UnnestJoin] = [*joins]
+
         source_map = resolve_concept_map(
-            list(merged.values()),
+            final_datasets,
             targets=self.output_concepts,
             inherited_inputs=self.input_concepts + self.existence_concepts,
             full_joins=full_join_concepts,
@@ -339,6 +340,7 @@ class MergeNode(StrategyNode):
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )
+
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=unique(self.output_concepts, "address"),

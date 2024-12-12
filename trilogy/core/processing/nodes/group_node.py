@@ -105,9 +105,9 @@ class GroupNode(StrategyNode):
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} Parent node"
                     f" {[c.address for c in parent.output_concepts[:2]]}... has"
-                    " grain"
+                    " set node grain"
                     f" {parent.grain}"
-                    f" resolved grain {parent.resolve().grain}"
+                    f" and resolved grain {parent.resolve().grain}"
                     f" {type(parent)}"
                 )
             source_type = SourceType.GROUP
@@ -146,7 +146,13 @@ class GroupNode(StrategyNode):
         # inject an additional CTE
         if self.conditions and not is_scalar_condition(self.conditions):
             base.condition = None
-            base.output_concepts = self.output_concepts + self.conditions.row_arguments
+            base.output_concepts = unique(
+                base.output_concepts + self.conditions.row_arguments, "address"
+            )
+            # re-visible any hidden concepts
+            base.hidden_concepts = [
+                x for x in base.hidden_concepts if x not in base.output_concepts
+            ]
             source_map = resolve_concept_map(
                 [base],
                 targets=self.output_concepts,
