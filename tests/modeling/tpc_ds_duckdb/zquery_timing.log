@@ -1,27 +1,27 @@
 [query_01]
-parse_time = 0.872098
-exec_time = 0.036646
-comp_time = 0.102254
+parse_time = 0.835384
+exec_time = 0.03564
+comp_time = 0.102711
 
 [query_02]
-parse_time = 10.62382
-exec_time = 0.222546
-comp_time = 0.073816
+parse_time = 10.429139
+exec_time = 0.22765
+comp_time = 0.075051
 
 [query_03]
-parse_time = 0.675462
-exec_time = 0.031397
-comp_time = 0.032564
+parse_time = 0.663045
+exec_time = 0.031721
+comp_time = 0.034146
 
 [query_06]
-parse_time = 0.463508
-exec_time = 0.035318
-comp_time = 0.039937
+parse_time = 0.441184
+exec_time = 0.036333
+comp_time = 0.040678
 
 [query_07]
-parse_time = 0.680878
-exec_time = 0.137073
-comp_time = 0.094821
+parse_time = 0.713694
+exec_time = 0.127166
+comp_time = 0.100066
 
 [query_08]
 parse_time = 0.745987

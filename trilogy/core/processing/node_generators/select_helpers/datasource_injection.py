@@ -15,7 +15,7 @@ from trilogy.core.models import (
 )
 
 # Define a generic type that ensures start and end are the same type
-T = TypeVar("T", float, int, date, datetime)
+T = TypeVar("T", int, date, datetime)
 
 
 def reduce_expression(
@@ -25,17 +25,17 @@ def reduce_expression(
     lower_check: T
     upper_check: T
 
-    if var.datatype in (DataType.FLOAT,):
+    # if var.datatype in (DataType.FLOAT,):
+    #     lower_check = float("-inf")  # type: ignore
+    #     upper_check = float("inf")  # type: ignore
+    if var.datatype == DataType.INTEGER:
         lower_check = float("-inf")  # type: ignore
         upper_check = float("inf")  # type: ignore
-    elif var.datatype in (DataType.INTEGER,):
-        lower_check = float("-inf")  # type: ignore
-        upper_check = float("inf")  # type: ignore
-    elif var.datatype in (DataType.DATE,):
+    elif var.datatype == DataType.DATE:
         lower_check = date.min  # type: ignore
         upper_check = date.max  # type: ignore
 
-    elif var.datatype in (DataType.DATETIME,):
+    elif var.datatype == DataType.DATETIME:
         lower_check = datetime.min  # type: ignore
         upper_check = datetime.max  # type: ignore
     else:
@@ -43,15 +43,17 @@ def reduce_expression(
 
     ranges: list[Tuple[T, T]] = []
     for op, value in group_tuple:
-        increment: float | int | timedelta
+        increment: int | timedelta
         if isinstance(value, date):
             increment = timedelta(days=1)
         elif isinstance(value, datetime):
             increment = timedelta(seconds=1)
         elif isinstance(value, int):
             increment = 1
-        else:
-            increment = 0.0000001
+        # elif isinstance(value, float):
+        #     value = Decimal(value)
+        #     increment = Decimal(0.0000000001)
+
         if op == ">":
             ranges.append(
                 (
@@ -96,15 +98,15 @@ def simplify_conditions(
     conditions: list[Comparison | Conditional | Parenthetical],
 ) -> bool:
     # Group conditions by variable
-    grouped: dict[
-        Concept, list[tuple[ComparisonOperator, datetime | float | int | date]]
-    ] = defaultdict(list)
+    grouped: dict[Concept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
+        defaultdict(list)
+    )
     for condition in conditions:
         if not isinstance(condition, Comparison):
             return False
         if not isinstance(
-            condition.left, (int, float, date, Function)
-        ) and not isinstance(condition.right, (int, float, date, datetime, Function)):
+            condition.left, (int, date, datetime, Function)
+        ) and not isinstance(condition.right, (int, date, datetime, Function)):
             return False
         if not isinstance(condition.left, Concept) and not isinstance(
             condition.right, Concept
@@ -117,10 +119,10 @@ def simplify_conditions(
             if not comparison.operator == FunctionType.CONSTANT:
                 return False
             first_arg = comparison.arguments[0]
-            if not isinstance(first_arg, (int, float, date, datetime)):
+            if not isinstance(first_arg, (int, date, datetime)):
                 return False
             comparison = first_arg
-        if not isinstance(comparison, (int, float, date, datetime)):
+        if not isinstance(comparison, (int, date, datetime)):
             return False
 
         var = concept
@@ -139,7 +141,7 @@ def is_fully_covered(
     start: T,
     end: T,
     ranges: List[Tuple[T, T]],
-    increment: float | int | timedelta,
+    increment: int | timedelta,
 ):
     """
     Check if the list of range pairs fully covers the set [start, end].
@@ -157,14 +159,21 @@ def is_fully_covered(
 
     # Check for gaps
     current_end = start
+    print(ranges)
     for r_start, r_end in ranges:
+        print(r_start, r_end)
         # If there's a gap between the current range and the previous coverage
+        print(r_start - current_end)
         if (r_start - current_end) > increment:  # type: ignore
+            print("gap")
             return False
+        print("okay")
         # Extend the current coverage
         current_end = max(current_end, r_end)
 
     # If the loop ends and we haven't reached the end, return False
+    print(current_end, end)
+    print(current_end >= end)
     return current_end >= end
 
 

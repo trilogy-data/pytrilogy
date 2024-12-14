@@ -3871,8 +3871,8 @@ class Comparison(
         float,
         list,
         bool,
-        date,
         datetime,
+        date,
         Function,
         Concept,
         "Conditional",
@@ -5015,9 +5015,9 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | Numeric
         return ListType(type=wrapper.type)
     elif isinstance(arg, MapWrapper):
         return MapType(key_type=arg.key_type, value_type=arg.value_type)
-    elif isinstance(arg, date):
-        return DataType.DATE
     elif isinstance(arg, datetime):
         return DataType.DATETIME
+    elif isinstance(arg, date):
+        return DataType.DATE
     else:
         raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

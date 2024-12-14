@@ -1,4 +1,5 @@
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 
 from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
@@ -70,50 +71,72 @@ where order_date > '2024-01-01'::date
     assert z[1].order_id == 2
 
 
+@dataclass
+class ConditionalTest:
+    match: int | float | date | datetime
+    concept: str = "x"
+
+
 def test_conditional_merge():
     env = Environment()
     env.parse(
         """
 key x int;
 key y date;
+key z float;
+key a datetime;
 """
     )
-    left = Comparison(left=env.concepts["x"], right=2, operator=ComparisonOperator.GT)
-    right = Comparison(left=env.concepts["x"], right=2, operator=ComparisonOperator.LTE)
-    conditions = [left, right]
 
-    assert simplify_conditions(conditions)
+    test_cases = [
+        ConditionalTest(2, "x"),
+        ConditionalTest(date(year=2024, month=1, day=1), "y"),
+        ConditionalTest(datetime.now(), "a"),
+    ]
+    for case in test_cases:
+        left = Comparison(
+            left=env.concepts[case.concept],
+            right=case.match,
+            operator=ComparisonOperator.GT,
+        )
+        right = Comparison(
+            left=env.concepts[case.concept],
+            right=case.match,
+            operator=ComparisonOperator.LTE,
+        )
+        conditions = [left, right]
 
-    left = Comparison(left=env.concepts["x"], right=3, operator=ComparisonOperator.GT)
-    right = Comparison(left=env.concepts["x"], right=2, operator=ComparisonOperator.LTE)
-    conditions = [left, right]
+        assert simplify_conditions(conditions)
 
-    assert simplify_conditions(conditions) is False
+        left = Comparison(
+            left=env.concepts[case.concept],
+            right=case.match,
+            operator=ComparisonOperator.GT,
+        )
+        right = Comparison(
+            left=env.concepts[case.concept],
+            right=case.match,
+            operator=ComparisonOperator.LT,
+        )
+        conditions = [left, right]
 
-    left = Comparison(
-        left=env.concepts["y"],
-        right=date(year=2024, month=1, day=1),
-        operator=ComparisonOperator.GT,
-    )
-    right = Comparison(
-        left=env.concepts["y"],
-        right=date(year=2024, month=1, day=1),
-        operator=ComparisonOperator.LTE,
-    )
-    conditions = [left, right]
+        assert not simplify_conditions(conditions)
 
-    assert simplify_conditions(conditions)
+        left = Comparison(
+            left=env.concepts[case.concept],
+            right=case.match,
+            operator=ComparisonOperator.GT,
+        )
+        middle = Comparison(
+            left=env.concepts[case.concept],
+            right=case.match,
+            operator=ComparisonOperator.EQ,
+        )
+        right = Comparison(
+            left=env.concepts[case.concept],
+            right=case.match,
+            operator=ComparisonOperator.LT,
+        )
+        conditions = [left, middle, right]
 
-    left = Comparison(
-        left=env.concepts["y"],
-        right=date(year=2025, month=1, day=1),
-        operator=ComparisonOperator.GT,
-    )
-    right = Comparison(
-        left=env.concepts["y"],
-        right=date(year=2024, month=1, day=1),
-        operator=ComparisonOperator.LTE,
-    )
-    conditions = [left, right]
-
-    assert simplify_conditions(conditions) is False
+        assert simplify_conditions(conditions)
