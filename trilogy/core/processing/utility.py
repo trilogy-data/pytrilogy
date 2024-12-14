@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from logging import Logger
 from typing import Any, Dict, List, Set, Tuple
+from datetime import date, datetime
 
 import networkx as nx
 
@@ -380,6 +381,8 @@ def is_scalar_condition(
         int
         | str
         | float
+        | date
+        | datetime
         | list[Any]
         | WindowItem
         | FilterItem

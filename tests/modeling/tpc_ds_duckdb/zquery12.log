@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 3169
+gen_length = 3151
 generated_sql = """
 
 WITH 
@@ -19,7 +19,7 @@ FROM
     INNER JOIN memory.item as web_sales_item_items on web_sales_web_sales.\"WS_ITEM_SK\" = web_sales_item_items.\"I_ITEM_SK\"
     INNER JOIN memory.date_dim as web_sales_date_date on web_sales_web_sales.\"WS_SOLD_DATE_SK\" = web_sales_date_date.\"D_DATE_SK\"
 WHERE
-    cast(web_sales_date_date.\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(web_sales_date_date.\"D_DATE\" as date) <= cast('1999-03-24' as date) and web_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home')
+    cast(web_sales_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(web_sales_date_date.\"D_DATE\" as date) <= date '1999-03-24' and web_sales_item_items.\"I_CATEGORY\" in ('Sports','Books','Home')
 ),
 cheerful as (
 SELECT

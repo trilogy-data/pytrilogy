@@ -11,7 +11,6 @@ def test_same_join_fails(test_environment: Environment, test_environment_graph):
         input_concepts=[],
         output_concepts=[test_environment.concepts["constant_one"]],
         environment=test_environment,
-        g=test_environment_graph,
         parents=[],
         depth=0,
     )
@@ -20,7 +19,6 @@ def test_same_join_fails(test_environment: Environment, test_environment_graph):
             input_concepts=[],
             output_concepts=[],
             environment=None,
-            g=None,
             parents=[],
             node_joins=[
                 NodeJoin(

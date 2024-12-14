@@ -18,8 +18,8 @@ def simplify_conditions(conditions: list[Comparison]) -> bool:
     Conditions are represented as a list of tuples: ('x', '>', 1), ('x', '<=', 1).
     """
     # Group conditions by variable
-    grouped: dict[str, tuple[ComparisonOperator, str | int | float | date]] = (
-        defaultdict(list)
+    grouped: dict[Concept, tuple[ComparisonOperator, str | int | float | date]] = (
+        defaultdict(tuple)
     )
     for condition in conditions:
         if not isinstance(

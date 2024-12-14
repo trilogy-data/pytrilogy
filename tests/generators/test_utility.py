@@ -2,7 +2,6 @@ from networkx import Graph
 
 from trilogy import parse
 from trilogy.core.enums import JoinType
-from trilogy.core.env_processor import generate_graph
 from trilogy.core.processing.node_generators.common import (
     # resolve_join_order_v2,
     NodeJoin,
@@ -22,7 +21,6 @@ key product_id int;
 property product_id.price float;       
                 """
     )
-    g = generate_graph(env)
     test_case = []
     x = resolve_join_order(test_case)
     assert x == []
@@ -30,7 +28,7 @@ property product_id.price float;
     price = env.concepts["price"]
     product = env.concepts["product_id"]
     left = StrategyNode(
-        input_concepts=[orders], output_concepts=[orders], environment=env, g=g
+        input_concepts=[orders], output_concepts=[orders], environment=env
     )
     right = StrategyNode(
         input_concepts=[orders, product],

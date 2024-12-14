@@ -70,6 +70,5 @@ def gen_union_node(
         input_concepts=[concept] + local_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
-        g=g,
         parents=parents,
     )

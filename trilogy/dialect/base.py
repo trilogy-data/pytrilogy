@@ -457,6 +457,8 @@ class BaseDialect:
             list,
             bool,
             float,
+            date,
+            datetime,
             DataType,
             Function,
             Parenthetical,

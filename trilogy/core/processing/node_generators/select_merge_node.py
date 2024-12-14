@@ -129,7 +129,6 @@ def create_pruned_concept_graph(
         if actual_neighbors:
             relevent_datasets.append(n)
 
-
     # for injecting extra join concepts that are shared between datasets
     # use the original graph, pre-partial pruning
     for n in orig_g.nodes:
