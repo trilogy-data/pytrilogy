@@ -36,14 +36,12 @@ property product_id.price float;
         input_concepts=[orders, product],
         output_concepts=[orders, product],
         environment=env,
-        g=g,
     )
 
     right_two = StrategyNode(
         input_concepts=[product, price],
         output_concepts=[product, price],
         environment=env,
-        g=g,
     )
 
     first_join = NodeJoin(

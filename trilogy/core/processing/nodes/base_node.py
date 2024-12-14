@@ -156,7 +156,6 @@ class StrategyNode:
         input_concepts: List[Concept],
         output_concepts: List[Concept],
         environment: Environment,
-        g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         partial_concepts: List[Concept] | None = None,
@@ -178,7 +177,6 @@ class StrategyNode:
         self.output_lcl = LooseConceptList(concepts=self.output_concepts)
 
         self.environment = environment
-        self.g = g
         self.whole_grain = whole_grain
         self.parents = parents or []
         self.resolution_cache: Optional[QueryDatasource] = None
@@ -399,7 +397,6 @@ class StrategyNode:
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
-            g=self.g,
             whole_grain=self.whole_grain,
             parents=list(self.parents),
             partial_concepts=list(self.partial_concepts),

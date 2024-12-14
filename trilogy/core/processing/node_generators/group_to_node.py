@@ -45,7 +45,6 @@ def gen_group_to_node(
         output_concepts=parent_concepts + [concept],
         input_concepts=parent_concepts,
         environment=environment,
-        g=g,
         parents=parents,
         depth=depth,
     )
@@ -76,7 +75,6 @@ def gen_group_to_node(
         + [x for x in parent_concepts if x.address != concept.address],
         output_concepts=[concept] + local_optional,
         environment=environment,
-        g=g,
         parents=[
             # this node gets the group
             group_node,

@@ -27,7 +27,6 @@ class FilterNode(StrategyNode):
         input_concepts: List[Concept],
         output_concepts: List[Concept],
         environment,
-        g,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
@@ -41,7 +40,6 @@ class FilterNode(StrategyNode):
         super().__init__(
             output_concepts=output_concepts,
             environment=environment,
-            g=g,
             whole_grain=whole_grain,
             parents=parents,
             depth=depth,
@@ -59,7 +57,6 @@ class FilterNode(StrategyNode):
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
-            g=self.g,
             whole_grain=self.whole_grain,
             parents=self.parents,
             depth=self.depth,

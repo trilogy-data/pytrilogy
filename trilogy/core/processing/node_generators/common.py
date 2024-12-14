@@ -130,7 +130,6 @@ def gen_property_enrichment_node(
         ),
         output_concepts=base_node.output_concepts + extra_properties,
         environment=environment,
-        g=g,
         parents=[
             base_node,
         ]
@@ -209,7 +208,6 @@ def gen_enrichment_node(
         input_concepts=unique(join_keys + extra_required + non_hidden, "address"),
         output_concepts=unique(join_keys + extra_required + non_hidden, "address"),
         environment=environment,
-        g=g,
         parents=[enrich_node, base_node],
         force_group=False,
         preexisting_conditions=conditions.conditional if conditions else None,

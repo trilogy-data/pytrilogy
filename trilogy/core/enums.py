@@ -260,6 +260,13 @@ class ComparisonOperator(Enum):
     CONTAINS = "contains"
     ELSE = "else"
 
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        if not isinstance(other, ComparisonOperator):
+            return False
+        return self.value == other.value
+
     @classmethod
     def _missing_(cls, value):
         if not isinstance(value, list) and " " in str(value):

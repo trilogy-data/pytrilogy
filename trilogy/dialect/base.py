@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from jinja2 import Template
@@ -109,6 +110,8 @@ DATATYPE_MAP = {
     DataType.BOOL: "bool",
     DataType.NUMERIC: "numeric",
     DataType.MAP: "map",
+    DataType.DATE: lambda x: f"date('{x.isoformat()}')",
+    DataType.DATETIME: lambda x: f"datetime('{x.isoformat()}')",
 }
 
 
@@ -620,6 +623,10 @@ class BaseDialect:
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"
+        elif isinstance(e, date):
+            return self.DATATYPE_MAP[DataType.DATE](e)
+        elif isinstance(e, datetime):
+            return self.DATATYPE_MAP[DataType.DATETIME](e)
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 

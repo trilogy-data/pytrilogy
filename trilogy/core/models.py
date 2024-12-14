@@ -5,6 +5,7 @@ import hashlib
 import os
 from abc import ABC
 from collections import UserDict, UserList, defaultdict
+from datetime import date, datetime
 from enum import Enum
 from functools import cached_property
 from pathlib import Path
@@ -1264,6 +1265,8 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             int,
             float,
             str,
+            date,
+            datetime,
             MapWrapper[Any, Any],
             DataType,
             ListType,
@@ -3868,6 +3871,8 @@ class Comparison(
         float,
         list,
         bool,
+        date,
+        datetime,
         Function,
         Concept,
         "Conditional",
@@ -3884,6 +3889,8 @@ class Comparison(
         float,
         list,
         bool,
+        date,
+        datetime,
         Concept,
         Function,
         "Conditional",
@@ -5008,5 +5015,9 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | Numeric
         return ListType(type=wrapper.type)
     elif isinstance(arg, MapWrapper):
         return MapType(key_type=arg.key_type, value_type=arg.value_type)
+    elif isinstance(arg, date):
+        return DataType.DATE
+    elif isinstance(arg, datetime):
+        return DataType.DATETIME
     else:
         raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

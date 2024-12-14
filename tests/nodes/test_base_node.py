@@ -25,7 +25,6 @@ property order_id.profit float;"""
         input_concepts=[],
         output_concepts=[env.concepts["order_id"]],
         environment=env,
-        g=generate_graph(env),
     )
 
     x.hide_output_concepts([env.concepts["order_id"]])
@@ -45,12 +44,10 @@ key product_id int;
 property product_id.price float;
               """
     )
-    g = g = generate_graph(env)
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"], env.concepts["product_id"]],
         environment=env,
-        g=g,
         partial_concepts=[env.concepts["order_id"]],
     )
 
@@ -58,7 +55,6 @@ property product_id.price float;
         input_concepts=[],
         output_concepts=[env.concepts["product_id"], env.concepts["price"]],
         environment=env,
-        g=g,
         partial_concepts=[],
     )
 
@@ -72,7 +68,6 @@ property product_id.price float;
         input_concepts=[],
         output_concepts=[env.concepts["order_id"]],
         environment=env,
-        g=g,
         partial_concepts=[],
     )
 

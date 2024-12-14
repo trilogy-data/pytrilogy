@@ -669,6 +669,12 @@ class ParseToObjects(Transformer):
         )
         for column in columns:
             column.concept = column.concept.with_grain(datasource.grain)
+        if datasource.where:
+            for x in datasource.where.concept_arguments:
+                if x.address not in datasource.output_concepts:
+                    raise ValueError(
+                        f"Datasource {name} where condition depends on concept {x.address} that does not exist on the datasource, line {meta.line}."
+                    )
         self.environment.add_datasource(datasource, meta=meta)
         return datasource
 
@@ -1783,6 +1789,33 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fcast(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
+        if isinstance(args[0], str):
+            if args[1] == DataType.DATE:
+                from datetime import date
+
+                processed = date.fromisoformat(args[0])
+            elif args[1] == DataType.DATETIME:
+                from datetime import datetime
+
+                processed = datetime.fromisoformat(args[0])
+            elif args[1] == DataType.TIMESTAMP:
+                from datetime import datetime
+
+                processed = datetime.fromisoformat(args[0])
+            elif args[1] == DataType.INTEGER:
+                processed = int(args[0])
+            elif args[1] == DataType.FLOAT:
+                processed = float(args[0])
+            elif args[1] == DataType.BOOL:
+                processed = args[0].capitalize() == "True"
+            else:
+                raise SyntaxError(f"Invalid cast type {args[1]}")
+            return Function(
+                operator=FunctionType.CONSTANT,
+                output_datatype=args[1],
+                output_purpose=Purpose.CONSTANT,
+                arguments=[processed],
+            )
         output_datatype = args[1]
         return Function(
             operator=FunctionType.CAST,

@@ -3,6 +3,7 @@ from typing import Any, Callable, Mapping
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.models import DataType
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -44,6 +45,12 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.MIN: lambda args: f"{args[0]}",
 }
 
+DATATYPE_MAP = {
+    DataType.DATE: lambda x: f"date '{x.isoformat()}'",
+    DataType.DATETIME: lambda x: f"datetime('{x.isoformat()}')",
+}
+
+
 DUCKDB_TEMPLATE = Template(
     """{%- if output %}
 CREATE OR REPLACE TABLE {{ output.address.location }} AS
@@ -84,6 +91,7 @@ class DuckDBDialect(BaseDialect):
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
+    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, **DATATYPE_MAP}
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT
