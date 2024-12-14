@@ -359,7 +359,6 @@ def generate_node(
             input_concepts=[],
             output_concepts=constant_targets,
             environment=environment,
-            g=g,
             parents=[],
             depth=depth + 1,
         )

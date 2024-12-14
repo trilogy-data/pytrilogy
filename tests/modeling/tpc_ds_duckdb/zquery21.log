@@ -1,5 +1,5 @@
 query_id = 21
-gen_length = 2823
+gen_length = 2827
 generated_sql = """
 
 WITH 
@@ -41,10 +41,10 @@ HAVING
 	WHEN sum(CASE
 	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
-	END) > 0 THEN sum(CASE
+	END) > 0 THEN (sum(CASE
 	WHEN cheerful.\"inventory_date_date\" >= date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
-	END) * 1.0 / sum(CASE
+	END) * 1.0) / sum(CASE
 	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)
@@ -53,10 +53,10 @@ HAVING
 	WHEN sum(CASE
 	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
-	END) > 0 THEN sum(CASE
+	END) > 0 THEN (sum(CASE
 	WHEN cheerful.\"inventory_date_date\" >= date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
-	END) * 1.0 / sum(CASE
+	END) * 1.0) / sum(CASE
 	WHEN cheerful.\"inventory_date_date\" < date '2000-03-11' THEN cheerful.\"inventory_quantity_on_hand\"
 	ELSE 0
 	END)

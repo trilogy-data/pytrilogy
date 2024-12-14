@@ -1,30 +1,110 @@
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from typing import List, Tuple, TypeVar
 
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.models import (
     Comparison,
     Concept,
+    Conditional,
     Datasource,
     DataType,
     Function,
     FunctionType,
+    Parenthetical,
 )
 
+# Define a generic type that ensures start and end are the same type
+T = TypeVar("T", float, int, date, datetime)
 
-def simplify_conditions(conditions: list[Comparison]) -> bool:
-    """
-    Simplify a set of boolean conditions involving number or date inequalities.
-    Conditions are represented as a list of tuples: ('x', '>', 1), ('x', '<=', 1).
-    """
+
+def reduce_expression(
+    var: Concept, group_tuple: list[tuple[ComparisonOperator, T]]
+) -> bool:
+    # Track ranges
+    lower_check: T
+    upper_check: T
+
+    if var.datatype in (DataType.FLOAT,):
+        lower_check = float("-inf")  # type: ignore
+        upper_check = float("inf")  # type: ignore
+    elif var.datatype in (DataType.INTEGER,):
+        lower_check = float("-inf")  # type: ignore
+        upper_check = float("inf")  # type: ignore
+    elif var.datatype in (DataType.DATE,):
+        lower_check = date.min  # type: ignore
+        upper_check = date.max  # type: ignore
+
+    elif var.datatype in (DataType.DATETIME,):
+        lower_check = datetime.min  # type: ignore
+        upper_check = datetime.max  # type: ignore
+    else:
+        raise ValueError(f"Invalid datatype: {var.datatype}")
+
+    ranges: list[Tuple[T, T]] = []
+    for op, value in group_tuple:
+        increment: float | int | timedelta
+        if isinstance(value, date):
+            increment = timedelta(days=1)
+        elif isinstance(value, datetime):
+            increment = timedelta(seconds=1)
+        elif isinstance(value, int):
+            increment = 1
+        else:
+            increment = 0.0000001
+        if op == ">":
+            ranges.append(
+                (
+                    value + increment,
+                    upper_check,
+                )
+            )
+        elif op == ">=":
+            ranges.append(
+                (
+                    value,
+                    upper_check,
+                )
+            )
+        elif op == "<":
+            ranges.append(
+                (
+                    lower_check,
+                    value - increment,
+                )
+            )
+        elif op == "<=":
+            ranges.append(
+                (
+                    lower_check,
+                    value,
+                )
+            )
+        elif op == "=":
+            ranges.append(
+                (
+                    value,
+                    value,
+                )
+            )
+        else:
+            raise ValueError(f"Invalid operator: {op}")
+    return is_fully_covered(lower_check, upper_check, ranges, increment)
+
+
+def simplify_conditions(
+    conditions: list[Comparison | Conditional | Parenthetical],
+) -> bool:
     # Group conditions by variable
-    grouped: dict[Concept, tuple[ComparisonOperator, str | int | float | date]] = (
-        defaultdict(tuple)
-    )
+    grouped: dict[
+        Concept, list[tuple[ComparisonOperator, datetime | float | int | date]]
+    ] = defaultdict(list)
     for condition in conditions:
+        if not isinstance(condition, Comparison):
+            return False
         if not isinstance(
             condition.left, (int, float, date, Function)
-        ) and not isinstance(condition.right, (int, float, date, Function)):
+        ) and not isinstance(condition.right, (int, float, date, datetime, Function)):
             return False
         if not isinstance(condition.left, Concept) and not isinstance(
             condition.right, Concept
@@ -36,53 +116,29 @@ def simplify_conditions(conditions: list[Comparison]) -> bool:
         if isinstance(comparison, Function):
             if not comparison.operator == FunctionType.CONSTANT:
                 return False
-            comparison = comparison.arguments[0]
+            first_arg = comparison.arguments[0]
+            if not isinstance(first_arg, (int, float, date, datetime)):
+                return False
+            comparison = first_arg
+        if not isinstance(comparison, (int, float, date, datetime)):
+            return False
 
         var = concept
         op = condition.operator
         grouped[var].append((op, comparison))
 
     simplified = []
-    for var, var_conditions in grouped.items():
-        # Track ranges
-        if var.datatype in (DataType.INTEGER, DataType.FLOAT):
-            lower_check = float("-inf")
-            upper_check = float("inf")
-            increment = 0.0000001
-        elif var.datatype in (DataType.DATE,):
-            lower_check = date.min
-            upper_check = date.max
-            increment = timedelta(days=1)
-        elif var.datatype in (DataType.DATETIME,):
-            lower_check = date.min
-            upper_check = date.max
-            increment = timedelta(seconds=1)
-
-        ranges = []
-        for op, value in var_conditions:
-            if op == ">":
-                ranges.append([value + increment, upper_check])
-            elif op == ">=":
-                ranges.append([value, upper_check])
-            elif op == "<":
-                ranges.append([lower_check, value - increment])
-            elif op == "<=":
-                ranges.append([lower_check, value])
-            elif op == "=":
-                ranges.append([value, value])
-            else:
-                raise
-
-        simplified.append(is_fully_covered(lower_check, upper_check, ranges, increment))
+    for var, group_tuple in grouped.items():
+        simplified.append(reduce_expression(var, group_tuple))  # type: ignore
 
     # Final simplification
     return True if all(isinstance(s, bool) and s for s in simplified) else False
 
 
 def is_fully_covered(
-    start: float | int | date | datetime,
-    end: float | int | date | datetime,
-    ranges,
+    start: T,
+    end: T,
+    ranges: List[Tuple[T, T]],
     increment: float | int | timedelta,
 ):
     """
@@ -103,9 +159,7 @@ def is_fully_covered(
     current_end = start
     for r_start, r_end in ranges:
         # If there's a gap between the current range and the previous coverage
-        if r_start - current_end > increment:
-            return False
-        if r_start < current_end:
+        if (r_start - current_end) > increment:  # type: ignore
             return False
         # Extend the current coverage
         current_end = max(current_end, r_end)
@@ -124,17 +178,17 @@ def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
             ):
                 candidates.append(x)
 
-    assocs = defaultdict(list[Datasource])
+    assocs: dict[str, list[Datasource]] = defaultdict(list[Datasource])
     for x in candidates:
-
+        if not x.non_partial_for:
+            continue
         if not len(x.non_partial_for.concept_arguments) == 1:
             continue
         merge_key = x.non_partial_for.concept_arguments[0]
         assocs[merge_key.address].append(x)
     final: list[list[Datasource]] = []
     for _, dses in assocs.items():
-        conditions = [c.non_partial_for.conditional for c in dses]
-        print(conditions)
+        conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
         if simplify_conditions(conditions):
             final.append(dses)
     return final

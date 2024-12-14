@@ -38,7 +38,9 @@ def extract_address(node: str):
 def get_graph_partial_nodes(
     g: nx.DiGraph, conditions: WhereClause | None
 ) -> dict[str, list[str]]:
-    datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
+    datasources: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+        g, "datasource"
+    )
     partial: dict[str, list[str]] = {}
     for node in g.nodes:
         if node in datasources:
@@ -57,13 +59,16 @@ def get_graph_partial_nodes(
 
 
 def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
-    datasources: dict[str, Datasource] = nx.get_node_attributes(g, "datasource")
+    datasources: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+        g, "datasource"
+    )
     grain_length: dict[str, int] = {}
     for node in g.nodes:
         if node in datasources:
             lookup = datasources[node]
             if not isinstance(lookup, list):
                 lookup = [lookup]
+            assert isinstance(lookup, list)
             grain_length[node] = sum(len(x.grain.components) for x in lookup)
     return grain_length
 
@@ -90,7 +95,7 @@ def create_pruned_concept_graph(
 
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, Concept] = nx.get_node_attributes(orig_g, "concept")
-    datasources: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+    datasource_map: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
         orig_g, "datasource"
     )
     relevant_concepts_pre = {
@@ -107,13 +112,13 @@ def create_pruned_concept_graph(
         to_remove = []
         for edge in g.edges:
             if (
-                edge[0] in datasources
+                edge[0] in datasource_map
                 and (pnodes := partial.get(edge[0], []))
                 and edge[1] in pnodes
             ):
                 to_remove.append(edge)
             if (
-                edge[1] in datasources
+                edge[1] in datasource_map
                 and (pnodes := partial.get(edge[1], []))
                 and edge[0] in pnodes
             ):
@@ -298,13 +303,23 @@ def create_select_node(
     datasource: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
         g, "datasource"
     )[ds_name]
-    if isinstance(datasource, list):
+    if isinstance(datasource, Datasource):
+        bcandidate, force_group = create_datasource_node(
+            datasource,
+            all_concepts,
+            accept_partial,
+            environment,
+            depth,
+            conditions=conditions,
+        )
+
+    elif isinstance(datasource, list):
         from trilogy.core.processing.nodes.union_node import UnionNode
 
         force_group = False
         parents = []
         for x in datasource:
-            candidate, fg = create_datasource_node(
+            subnode, fg = create_datasource_node(
                 x,
                 all_concepts,
                 accept_partial,
@@ -312,7 +327,7 @@ def create_select_node(
                 depth,
                 conditions=conditions,
             )
-            parents.append(candidate)
+            parents.append(subnode)
             force_group = force_group or fg
         bcandidate = UnionNode(
             output_concepts=all_concepts,
@@ -322,14 +337,7 @@ def create_select_node(
             depth=depth,
         )
     else:
-        bcandidate, force_group = create_datasource_node(
-            datasource,
-            all_concepts,
-            accept_partial,
-            environment,
-            depth,
-            conditions=conditions,
-        )
+        raise ValueError(f"Unknown datasource type {datasource}")
 
     # we need to nest the group node one further
     if force_group is True:
@@ -374,7 +382,7 @@ def gen_select_merge_node(
             non_constant,
             accept_partial=attempt,
             conditions=conditions,
-            datasources=environment.datasources.values(),
+            datasources=list(environment.datasources.values()),
         )
         if pruned_concept_graph:
             logger.info(

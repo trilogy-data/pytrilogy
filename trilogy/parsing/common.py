@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from typing import List, Tuple
 
 from trilogy.constants import (
@@ -37,14 +38,22 @@ def process_function_args(
     args,
     meta: Meta | None,
     environment: Environment,
-):
-    final: List[Concept | Function] = []
+) -> List[Concept | Function | str | int | float | date | datetime]:
+    final: List[Concept | Function | str | int | float | date | datetime] = []
     for arg in args:
         # if a function has an anonymous function argument
         # create an implicit concept
-        while isinstance(arg, Parenthetical):
-            arg = arg.content
-        if isinstance(arg, Function):
+        if isinstance(arg, Parenthetical):
+            processed = process_function_args([arg.content], meta, environment)
+            final.append(
+                Function(
+                    operator=FunctionType.PARENTHETICAL,
+                    arguments=processed,
+                    output_datatype=arg_to_datatype(processed[0]),
+                    output_purpose=function_args_to_output_purpose(processed),
+                )
+            )
+        elif isinstance(arg, Function):
             # if it's not an aggregate function, we can skip the virtual concepts
             # to simplify anonymous function handling
             if (

@@ -28,6 +28,7 @@ SELECT
 ;
 WHERE
     yearly_agg.date.week_seq in relevent_week_seq
+    
 SELECT
     yearly_agg.date.week_seq,
     -- (lead 53 yearly_agg.sunday_sales by yearly_agg.date.week_seq asc) -> filter_flag,

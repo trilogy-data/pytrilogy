@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 9964
+gen_length = 9978
 generated_sql = """
 
 WITH 
@@ -151,13 +151,13 @@ vacuous as (
 SELECT
     juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     juicy.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\",
-    round(juicy.\"yearly_agg_friday_sales\" / juicy.\"_virt_5865867834232167\",2) as \"friday_increase\",
-    round(juicy.\"yearly_agg_monday_sales\" / juicy.\"_virt_4522784937298075\",2) as \"monday_increase\",
-    round(juicy.\"yearly_agg_saturday_sales\" / juicy.\"_virt_7865133583127676\",2) as \"saturday_increase\",
-    round(juicy.\"yearly_agg_sunday_sales\" / juicy.\"_virt_8920813706400139\",2) as \"sunday_increase\",
-    round(juicy.\"yearly_agg_thursday_sales\" / juicy.\"_virt_71859089238999\",2) as \"thursday_increase\",
-    round(juicy.\"yearly_agg_tuesday_sales\" / juicy.\"_virt_4169138899687862\",2) as \"tuesday_increase\",
-    round(juicy.\"yearly_agg_wednesday_sales\" / juicy.\"_virt_3155287386829146\",2) as \"wednesday_increase\"
+    round(juicy.\"yearly_agg_friday_sales\" / (juicy.\"_virt_5865867834232167\"),2) as \"friday_increase\",
+    round(juicy.\"yearly_agg_monday_sales\" / (juicy.\"_virt_4522784937298075\"),2) as \"monday_increase\",
+    round(juicy.\"yearly_agg_saturday_sales\" / (juicy.\"_virt_7865133583127676\"),2) as \"saturday_increase\",
+    round(juicy.\"yearly_agg_sunday_sales\" / (juicy.\"_virt_8920813706400139\"),2) as \"sunday_increase\",
+    round(juicy.\"yearly_agg_thursday_sales\" / (juicy.\"_virt_71859089238999\"),2) as \"thursday_increase\",
+    round(juicy.\"yearly_agg_tuesday_sales\" / (juicy.\"_virt_4169138899687862\"),2) as \"tuesday_increase\",
+    round(juicy.\"yearly_agg_wednesday_sales\" / (juicy.\"_virt_3155287386829146\"),2) as \"wednesday_increase\"
 FROM
     juicy),
 concerned as (

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
+from datetime import date, datetime
 from enum import Enum
 from logging import Logger
 from typing import Any, Dict, List, Set, Tuple
-from datetime import date, datetime
 
 import networkx as nx
 

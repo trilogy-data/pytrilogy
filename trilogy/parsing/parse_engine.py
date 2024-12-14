@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date, datetime
 from os.path import dirname, join
 from pathlib import Path
 from re import IGNORECASE
@@ -1790,17 +1791,12 @@ class ParseToObjects(Transformer):
     def fcast(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
         if isinstance(args[0], str):
+            processed: date | datetime | int | float | bool
             if args[1] == DataType.DATE:
-                from datetime import date
-
                 processed = date.fromisoformat(args[0])
             elif args[1] == DataType.DATETIME:
-                from datetime import datetime
-
                 processed = datetime.fromisoformat(args[0])
             elif args[1] == DataType.TIMESTAMP:
-                from datetime import datetime
-
                 processed = datetime.fromisoformat(args[0])
             elif args[1] == DataType.INTEGER:
                 processed = int(args[0])

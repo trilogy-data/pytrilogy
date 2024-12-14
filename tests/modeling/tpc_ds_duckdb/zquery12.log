@@ -1,5 +1,5 @@
 query_id = 12
-gen_length = 3151
+gen_length = 3155
 generated_sql = """
 
 WITH 
@@ -55,7 +55,7 @@ SELECT
     thoughtful.\"web_sales_item_class\" as \"web_sales_item_class\",
     thoughtful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     thoughtful.\"itemrevenue\" as \"itemrevenue\",
-    thoughtful.\"itemrevenue\" * 100.0 / thoughtful.\"_virt_8569433434177041\" as \"revenueratio\"
+    (thoughtful.\"itemrevenue\" * 100.0) / thoughtful.\"_virt_8569433434177041\" as \"revenueratio\"
 FROM
     thoughtful
 ORDER BY 
@@ -63,5 +63,5 @@ ORDER BY
     thoughtful.\"web_sales_item_class\" asc,
     thoughtful.\"web_sales_item_name\" asc,
     thoughtful.\"web_sales_item_desc\" asc,
-    thoughtful.\"itemrevenue\" * 100.0 / sum(thoughtful.\"itemrevenue\") over (partition by thoughtful.\"web_sales_item_class\") asc
+    (thoughtful.\"itemrevenue\" * 100.0) / sum(thoughtful.\"itemrevenue\") over (partition by thoughtful.\"web_sales_item_class\") asc
 LIMIT (100)"""

@@ -31,6 +31,8 @@ FUNCTION_MAP = {
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
     FunctionType.DATE_DIFF: lambda x: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
     FunctionType.CONCAT: lambda x: f"({' || '.join(x)})",
+    FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
+    FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
@@ -45,10 +47,7 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.MIN: lambda args: f"{args[0]}",
 }
 
-DATATYPE_MAP = {
-    DataType.DATE: lambda x: f"date '{x.isoformat()}'",
-    DataType.DATETIME: lambda x: f"datetime('{x.isoformat()}')",
-}
+DATATYPE_MAP: dict[DataType, str] = {}
 
 
 DUCKDB_TEMPLATE = Template(

@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from typing import Optional
 
 from trilogy.constants import MagicConstants
@@ -16,6 +17,8 @@ from trilogy.core.models import (
     WindowItem,
     arg_to_datatype,
 )
+
+GENERIC_ARGS = Concept | Function | str | int | float | date | datetime
 
 
 def create_function_derived_concept(
@@ -262,7 +265,7 @@ def get_attr_datatype(
     return arg.datatype
 
 
-def AttrAccess(args: list[Concept]):
+def AttrAccess(args: list[GENERIC_ARGS]):
     return Function(
         operator=FunctionType.ATTR_ACCESS,
         arguments=args,
