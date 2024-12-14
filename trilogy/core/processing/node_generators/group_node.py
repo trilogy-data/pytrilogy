@@ -100,7 +100,6 @@ def gen_group_node(
         output_concepts=output_concepts,
         input_concepts=parent_concepts,
         environment=environment,
-        g=g,
         parents=parents,
         depth=depth,
         preexisting_conditions=conditions.conditional if conditions else None,

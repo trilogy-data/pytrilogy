@@ -108,7 +108,6 @@ def gen_multiselect_node(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
         output_concepts=[x for y in base_parents for x in y.output_concepts],
         environment=environment,
-        g=g,
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
@@ -178,7 +177,6 @@ def gen_multiselect_node(
         input_concepts=enrich_node.output_concepts + node.output_concepts,
         output_concepts=node.output_concepts + local_optional,
         environment=environment,
-        g=g,
         depth=depth,
         parents=[
             # this node gets the multiselect

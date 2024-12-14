@@ -46,7 +46,6 @@ def gen_unnest_node(
         input_concepts=arguments + non_equivalent_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
-        g=g,
         parents=([parent] if (arguments or local_optional) else []),
     )
     # we need to sometimes nest an unnest node,
@@ -56,7 +55,6 @@ def gen_unnest_node(
         input_concepts=base.output_concepts,
         output_concepts=base.output_concepts,
         environment=environment,
-        g=g,
         parents=[base],
         preexisting_conditions=conditions.conditional if conditions else None,
     )

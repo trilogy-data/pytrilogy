@@ -15,7 +15,6 @@ def test_group_node(test_environment, test_environment_graph):
         output_concepts=[total_revenue, category],
         input_concepts=[category, revenue],
         environment=test_environment,
-        g=test_environment_graph,
         parents=[
             search_concepts(
                 [category, revenue],

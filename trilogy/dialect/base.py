@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from jinja2 import Template
@@ -102,13 +103,15 @@ WINDOW_FUNCTION_MAP = {
     WindowType.AVG: window_factory("avg", include_concept=True),
 }
 
-DATATYPE_MAP = {
+DATATYPE_MAP: dict[DataType, str] = {
     DataType.STRING: "string",
     DataType.INTEGER: "int",
     DataType.FLOAT: "float",
     DataType.BOOL: "bool",
     DataType.NUMERIC: "numeric",
     DataType.MAP: "map",
+    DataType.DATE: "date",
+    DataType.DATETIME: "datetime",
 }
 
 
@@ -131,6 +134,7 @@ FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x: f"split({x[0]}, {x[1]})",
     FunctionType.IS_NULL: lambda x: f"isnull({x[0]})",
     FunctionType.BOOL: lambda x: f"CASE WHEN {x[0]} THEN TRUE ELSE FALSE END",
+    FunctionType.PARENTHETICAL: lambda x: f"({x[0]})",
     # Complex
     FunctionType.INDEX_ACCESS: lambda x: f"{x[0]}[{x[1]}]",
     FunctionType.MAP_ACCESS: lambda x: f"{x[0]}[{x[1]}][1]",
@@ -138,6 +142,8 @@ FUNCTION_MAP = {
     FunctionType.ATTR_ACCESS: lambda x: f"""{x[0]}.{x[1].replace("'", "")}""",
     FunctionType.STRUCT: lambda x: f"{{{', '.join(struct_arg(x))}}}",
     FunctionType.ARRAY: lambda x: f"[{', '.join(x)}]",
+    FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
+    FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
     # math
     FunctionType.ADD: lambda x: " + ".join(x),
     FunctionType.SUBTRACT: lambda x: " - ".join(x),
@@ -454,6 +460,8 @@ class BaseDialect:
             list,
             bool,
             float,
+            date,
+            datetime,
             DataType,
             Function,
             Parenthetical,
@@ -612,7 +620,7 @@ class BaseDialect:
         elif isinstance(e, list):
             return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])}"
         elif isinstance(e, DataType):
-            return str(e.value)
+            return self.DATATYPE_MAP.get(e, e.value)
         elif isinstance(e, DatePart):
             return str(e.value)
         elif isinstance(e, NumericType):
@@ -620,6 +628,10 @@ class BaseDialect:
         elif isinstance(e, MagicConstants):
             if e == MagicConstants.NULL:
                 return "null"
+        elif isinstance(e, date):
+            return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e)
+        elif isinstance(e, datetime):
+            return self.FUNCTION_MAP[FunctionType.DATETIME_LITERAL](e)
         else:
             raise ValueError(f"Unable to render type {type(e)} {e}")
 

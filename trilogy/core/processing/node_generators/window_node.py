@@ -86,7 +86,6 @@ def gen_window_node(
         input_concepts=parent_concepts + targets + non_equivalent_optional,
         output_concepts=[concept] + parent_concepts + local_optional,
         environment=environment,
-        g=g,
         parents=[
             parent_node,
         ],
@@ -98,7 +97,6 @@ def gen_window_node(
         input_concepts=[concept] + local_optional,
         output_concepts=[concept] + local_optional,
         environment=environment,
-        g=g,
         parents=[_window_node],
         preexisting_conditions=conditions.conditional if conditions else None,
     )

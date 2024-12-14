@@ -3,6 +3,7 @@ from typing import Any, Callable, Mapping
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, UnnestMode, WindowType
+from trilogy.core.models import DataType
 from trilogy.dialect.base import BaseDialect
 
 WINDOW_FUNCTION_MAP: Mapping[WindowType, Callable[[Any, Any, Any], str]] = {}
@@ -30,6 +31,8 @@ FUNCTION_MAP = {
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
     FunctionType.DATE_DIFF: lambda x: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
     FunctionType.CONCAT: lambda x: f"({' || '.join(x)})",
+    FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
+    FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
 }
 
 # if an aggregate function is called on a source that is at the same grain as the aggregate
@@ -43,6 +46,9 @@ FUNCTION_GRAIN_MATCH_MAP = {
     FunctionType.MAX: lambda args: f"{args[0]}",
     FunctionType.MIN: lambda args: f"{args[0]}",
 }
+
+DATATYPE_MAP: dict[DataType, str] = {}
+
 
 DUCKDB_TEMPLATE = Template(
     """{%- if output %}
@@ -84,6 +90,7 @@ class DuckDBDialect(BaseDialect):
         **BaseDialect.FUNCTION_GRAIN_MATCH_MAP,
         **FUNCTION_GRAIN_MATCH_MAP,
     }
+    DATATYPE_MAP = {**BaseDialect.DATATYPE_MAP, **DATATYPE_MAP}
     QUOTE_CHARACTER = '"'
     SQL_TEMPLATE = DUCKDB_TEMPLATE
     UNNEST_MODE = UnnestMode.DIRECT

@@ -14,6 +14,8 @@ from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
+from trilogy import Dialects
+from datetime import date, datetime
 
 logger.setLevel(INFO)
 
@@ -150,6 +152,36 @@ def test_explicit_cast(test_environment):
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
     select: SelectStatement = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(process_query(test_environment, select))
+
+
+def test_literal_cast(test_environment):
+    declarations = """
+select
+    '1'::int -> one,
+    '1'::float -> one_float,
+    '1'::string -> one_string,
+    '2024-01-01'::date -> one_date,
+    '2024-01-01 01:01:01'::datetime -> one_datetime,
+    'true'::bool -> one_bool,
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+
+    select: SelectStatement = parsed[-1]
+    z = (
+        Dialects.DUCK_DB.default_executor(environment=test_environment)
+        .execute_query(parsed[-1])
+        .fetchall()
+    )
+    assert z[0].one == 1
+    assert z[0].one_float == 1.0
+    assert z[0].one_string == "1"
+    assert z[0].one_date == date(year=2024, month=1, day=1)
+    assert z[0].one_datetime == datetime(
+        year=2024, month=1, day=1, hour=1, minute=1, second=1
+    )
+    assert z[0].one_bool == True
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 

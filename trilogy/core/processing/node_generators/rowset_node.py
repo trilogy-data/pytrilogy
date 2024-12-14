@@ -140,7 +140,6 @@ def gen_rowset_node(
         input_concepts=non_hidden + non_hidden_enrich,
         output_concepts=non_hidden + local_optional,
         environment=environment,
-        g=g,
         depth=depth,
         parents=[
             node,

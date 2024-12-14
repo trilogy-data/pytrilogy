@@ -117,7 +117,6 @@ def gen_filter_node(
                 input_concepts=row_parent.output_concepts,
                 output_concepts=[concept] + row_parent.output_concepts,
                 environment=row_parent.environment,
-                g=row_parent.g,
                 parents=[row_parent],
                 depth=row_parent.depth,
                 partial_concepts=row_parent.partial_concepts,
@@ -161,7 +160,6 @@ def gen_filter_node(
             ),
             output_concepts=[concept, immediate_parent] + parent_row_concepts,
             environment=environment,
-            g=g,
             parents=core_parents,
             grain=Grain(
                 components=[immediate_parent] + parent_row_concepts,
@@ -202,7 +200,6 @@ def gen_filter_node(
         ]
         + local_optional,
         environment=environment,
-        g=g,
         parents=[
             # this node fetches only what we need to filter
             filter_node,

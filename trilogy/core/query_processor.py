@@ -391,7 +391,6 @@ def get_query_node(
             input_concepts=ds.output_concepts,
             parents=[ds],
             environment=ds.environment,
-            g=ds.g,
             partial_concepts=ds.partial_concepts,
             conditions=final,
         )

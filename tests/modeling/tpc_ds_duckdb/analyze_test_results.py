@@ -10,7 +10,7 @@ import tomllib
 
 # https://github.com/python/cpython/issues/125235#issuecomment-2412948604
 if not environ.get("TCL_LIBRARY"):
-    minor = sys.version[1]
+    minor = sys.version_info.minor
     if minor == 13:
         environ["TCL_LIBRARY"] = r"C:\Program Files\Python313\tcl\tcl8.6"
     elif minor == 12:

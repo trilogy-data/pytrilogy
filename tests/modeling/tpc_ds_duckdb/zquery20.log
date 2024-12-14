@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2758
+gen_length = 2744
 generated_sql = """
 
 WITH 
@@ -19,7 +19,7 @@ FROM
     INNER JOIN memory.date_dim as cs_sold_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_sold_date_date.\"D_DATE_SK\"
     INNER JOIN memory.item as cs_item_items on cs_catalog_sales.\"CS_ITEM_SK\" = cs_item_items.\"I_ITEM_SK\"
 WHERE
-    cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= cast('1999-02-22' as date) and cast(cs_sold_date_date.\"D_DATE\" as date) <= cast('1999-03-24' as date)
+    cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(cs_sold_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
 cheerful as (
 SELECT
@@ -55,7 +55,7 @@ SELECT
     thoughtful.\"cs_item_class\" as \"cs_item_class\",
     thoughtful.\"cs_item_current_price\" as \"cs_item_current_price\",
     thoughtful.\"revenue\" as \"revenue\",
-    thoughtful.\"revenue\" * 100.0 / thoughtful.\"_virt_7406341505587036\" as \"revenue_ratio\"
+    thoughtful.\"revenue\" * 100.0 / (thoughtful.\"_virt_7406341505587036\") as \"revenue_ratio\"
 FROM
     thoughtful
 ORDER BY 
@@ -63,5 +63,5 @@ ORDER BY
     thoughtful.\"cs_item_class\" asc nulls first,
     thoughtful.\"cs_item_name\" asc nulls first,
     thoughtful.\"cs_item_desc\" asc nulls first,
-    thoughtful.\"revenue\" * 100.0 / sum(thoughtful.\"revenue\") over (partition by thoughtful.\"cs_item_class\") asc nulls first
+    thoughtful.\"revenue\" * 100.0 / (sum(thoughtful.\"revenue\") over (partition by thoughtful.\"cs_item_class\")) asc nulls first
 LIMIT (100)"""

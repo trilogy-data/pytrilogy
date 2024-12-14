@@ -193,7 +193,9 @@
     _math_functions: fmul | fdiv | fadd | fsub | fround | fmod | fabs
     
     //generic
-    fcast: "cast"i "(" expr "as"i data_type ")"
+    _fcast_primary: "cast"i "(" expr "as"i data_type ")"
+    _fcast_alt: expr "::" data_type
+    fcast: _fcast_primary | _fcast_alt
     concat: ("concat"i "(" (expr ",")* expr ")") | (expr "||" expr)
     fcoalesce: "coalesce"i "(" (expr ",")* expr ")"
     fcase_when: "WHEN"i conditional "THEN"i expr

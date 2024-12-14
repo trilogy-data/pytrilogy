@@ -333,7 +333,6 @@ def subgraphs_to_merge_node(
         input_concepts=unique(input_c, "address"),
         output_concepts=[x for x in all_concepts],
         environment=environment,
-        g=g,
         parents=parents,
         depth=depth,
         # conditions=conditions,

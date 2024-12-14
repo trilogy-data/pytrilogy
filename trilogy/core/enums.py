@@ -120,6 +120,8 @@ class FunctionType(Enum):
 
     ALIAS = "alias"
 
+    PARENTHETICAL = "parenthetical"
+
     # Generic
     CASE = "case"
     CAST = "cast"
@@ -135,6 +137,8 @@ class FunctionType(Enum):
     ATTR_ACCESS = "attr_access"
     STRUCT = "struct"
     ARRAY = "array"
+    DATE_LITERAL = "date_literal"
+    DATETIME_LITERAL = "datetime_literal"
 
     # TEXT AND MAYBE MORE
     SPLIT = "split"
@@ -259,6 +263,13 @@ class ComparisonOperator(Enum):
     ILIKE = "ilike"
     CONTAINS = "contains"
     ELSE = "else"
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        if not isinstance(other, ComparisonOperator):
+            return False
+        return self.value == other.value
 
     @classmethod
     def _missing_(cls, value):

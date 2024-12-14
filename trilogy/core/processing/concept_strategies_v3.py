@@ -359,7 +359,6 @@ def generate_node(
             input_concepts=[],
             output_concepts=constant_targets,
             environment=environment,
-            g=g,
             parents=[],
             depth=depth + 1,
         )
@@ -906,7 +905,6 @@ def _search_concepts(
                 input_concepts=non_virtual,
                 output_concepts=non_virtual,
                 environment=environment,
-                g=g,
                 parents=stack,
                 depth=depth,
             )
@@ -987,7 +985,6 @@ def source_query_concepts(
             x for x in root.output_concepts if x.address not in root.hidden_concepts
         ],
         environment=environment,
-        g=g,
         parents=[root],
         partial_concepts=root.partial_concepts,
     )
