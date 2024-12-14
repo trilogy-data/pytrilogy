@@ -1791,7 +1791,7 @@ class ParseToObjects(Transformer):
     def fcast(self, meta, args) -> Function:
         args = process_function_args(args, meta=meta, environment=self.environment)
         if isinstance(args[0], str):
-            processed: date | datetime | int | float | bool
+            processed: date | datetime | int | float | bool | str
             if args[1] == DataType.DATE:
                 processed = date.fromisoformat(args[0])
             elif args[1] == DataType.DATETIME:
@@ -1804,6 +1804,8 @@ class ParseToObjects(Transformer):
                 processed = float(args[0])
             elif args[1] == DataType.BOOL:
                 processed = args[0].capitalize() == "True"
+            elif args[1] == DataType.STRING:
+                processed = args[0]
             else:
                 raise SyntaxError(f"Invalid cast type {args[1]}")
             return Function(

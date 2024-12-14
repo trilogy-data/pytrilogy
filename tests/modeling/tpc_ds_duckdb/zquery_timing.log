@@ -59,21 +59,21 @@ exec_time = 0.020379
 comp_time = 0.018375
 
 [query_24]
-parse_time = 1.684781
-exec_time = 0.234674
-comp_time = 0.197888
+parse_time = 1.725544
+exec_time = 0.245606
+comp_time = 0.199343
 
 [query_25]
-parse_time = 1.393519
-exec_time = 0.121579
-comp_time = 0.035031
+parse_time = 1.451539
+exec_time = 0.129329
+comp_time = 0.035572
 
 [query_26]
-parse_time = 0.599664
-exec_time = 0.089175
-comp_time = 0.073299
+parse_time = 0.558689
+exec_time = 0.088983
+comp_time = 0.074027
 
 [query_30]
-parse_time = 0.446246
-exec_time = 0.071905
-comp_time = 0.047178
+parse_time = 0.452937
+exec_time = 0.071519
+comp_time = 0.048204

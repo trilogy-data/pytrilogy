@@ -154,6 +154,22 @@ def test_explicit_cast(test_environment):
         dialect.compile_statement(process_query(test_environment, select))
 
 
+def test_literal_cast(test_environment):
+    declarations = """
+select
+    '1'::int -> one,
+    '1'::float -> one_float,
+    '1'::string -> one_string,
+    '2024-01-01'::date -> one_date,
+    '2024-01-01 01:01:01'::datetime -> one_datetime,
+    'true'::bool -> one_bool,
+    ;"""
+    env, parsed = parse(declarations, environment=test_environment)
+    select: SelectStatement = parsed[-1]
+    for dialect in TEST_DIALECTS:
+        dialect.compile_statement(process_query(test_environment, select))
+
+
 def test_math_functions(test_environment):
     declarations = """
     
