@@ -409,31 +409,6 @@ class Metadata(BaseModel):
     concept_source: ConceptSource = ConceptSource.MANUAL
 
 
-def lineage_validator(
-    v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
-) -> Union[Function, WindowItem, FilterItem, AggregateWrapper]:
-    if v and not isinstance(v, (Function, WindowItem, FilterItem, AggregateWrapper)):
-        raise ValueError(v)
-    return v
-
-
-def empty_grain() -> Grain:
-    return Grain(components=set())
-
-
-class MultiLineage(BaseModel):
-    lineages: list[
-        Union[
-            Function,
-            WindowItem,
-            FilterItem,
-            AggregateWrapper,
-            RowsetItem,
-            MultiSelectStatement,
-        ]
-    ]
-
-
 class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
@@ -566,8 +541,6 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             pass
         elif isinstance(v, Concept):
             v = Grain(components={v.address})
-        elif isinstance(v, list):
-            v = Grain(components=set())
         elif isinstance(v, dict):
             v = Grain.model_validate(v)
         else:
