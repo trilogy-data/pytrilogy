@@ -9,15 +9,15 @@ from trilogy.core.processing.nodes import GroupNode, MergeNode
 from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
-def test_gen_group_node_parents(test_environment: Environment, test_environment_graph):
+def test_gen_group_node_parents(test_environment: Environment):
     comp = test_environment.concepts["category_top_50_revenue_products"]
     assert comp.derivation == PurposeLineage.AGGREGATE
     assert comp.lineage
     assert test_environment.concepts["category_id"] in comp.lineage.concept_arguments
-    assert comp.grain.components == [test_environment.concepts["category_id"]]
+    assert comp.grain.components == {test_environment.concepts["category_id"].address}
     assert isinstance(comp.lineage, AggregateWrapper)
     assert comp.lineage.by == [test_environment.concepts["category_id"]]
-    parents = resolve_function_parent_concepts(comp)
+    parents = resolve_function_parent_concepts(comp, environment=test_environment)
     # parents should be both the value and the category
     assert len(parents) == 2
     assert test_environment.concepts["category_id"] in parents
@@ -81,7 +81,8 @@ def test_proper_parents(test_environment):
     )
 
     resolved = resolve_function_parent_concepts(
-        function_to_concept(base, name="base_agg", namespace="local"),
+        function_to_concept(base, name="base_agg", namespace="local", environment=test_environment),
+        environment=test_environment,
     )
     assert len(resolved) == 2
     assert test_environment.concepts["category_id"] in resolved
@@ -93,7 +94,8 @@ def test_proper_parents(test_environment):
             ),
             name="agg_to_alt_grain",
             namespace="local",
-        )
+        ),
+        environment=test_environment,
     )
 
     assert len(resolved) == 2

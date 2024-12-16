@@ -79,6 +79,7 @@ def create_pruned_concept_graph(
     datasources: list[Datasource],
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
+    depth:int = 0 
 ) -> nx.DiGraph:
     orig_g = g
     g = g.copy()
@@ -104,6 +105,8 @@ def create_pruned_concept_graph(
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.address in target_addresses
     }
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g)
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     relevent_datasets: list[str] = []
     if not accept_partial:
@@ -159,8 +162,10 @@ def create_pruned_concept_graph(
 
     subgraphs = list(nx.connected_components(g.to_undirected()))
     if not subgraphs:
+        logger.info(f'{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - no subgraphs after node prune')
         return None
     if subgraphs and len(subgraphs) != 1:
+        logger.info(f'{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - subgraphs are split - have {len(subgraphs)} from {subgraphs}')
         return None
     # add back any relevant edges that might have been partially filtered
     relevant = set(relevant_concepts + relevent_datasets)
@@ -169,6 +174,7 @@ def create_pruned_concept_graph(
             g.add_edge(edge[0], edge[1])
     # if we have no ds nodes at all, for non constant, we can't find it
     if not any([n.startswith("ds~") for n in g.nodes]):
+        logger.info(f'{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - No datasource nodes found')
         return None
     return g
 
@@ -383,6 +389,7 @@ def gen_select_merge_node(
             accept_partial=attempt,
             conditions=conditions,
             datasources=list(environment.datasources.values()),
+            depth=depth
         )
         if pruned_concept_graph:
             logger.info(
@@ -392,7 +399,7 @@ def gen_select_merge_node(
 
     if not pruned_concept_graph:
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no covering graph found {attempt}"
+            f"{padding(depth)}{LOGGER_PREFIX} no covering graph found."
         )
         return None
 

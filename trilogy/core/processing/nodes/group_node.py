@@ -18,6 +18,7 @@ from trilogy.core.processing.nodes.base_node import (
     concept_list_to_grain,
     resolve_concept_map,
 )
+from trilogy.parsing.common import concepts_to_grain_concepts
 from trilogy.core.processing.utility import find_nullable_concepts, is_scalar_condition
 from trilogy.utility import unique
 
@@ -64,19 +65,19 @@ class GroupNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
 
-        grain = self.grain or concept_list_to_grain(self.output_concepts, [])
+        target_grain = self.grain or  Grain(components=concepts_to_grain_concepts(self.output_concepts, environment=self.environment))
         comp_grain = Grain()
         for source in parent_sources:
             comp_grain += source.grain
-
+        comp_grain = Grain(components=concepts_to_grain_concepts(comp_grain.components, environment=self.environment))
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if comp_grain == grain and self.force_group is not True:
+        if comp_grain == target_grain and self.force_group is not True:
             # if there is no group by, and inputs equal outputs
             # return the parent
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output"
-                f" grains {comp_grain} and {grain}"
+                f" grains {comp_grain} and {target_grain}"
             )
             if (
                 len(parent_sources) == 1
@@ -94,10 +95,11 @@ class GroupNode(StrategyNode):
             source_type = SourceType.SELECT
         else:
             logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different grain than parents; forcing group"
-                f" upstream grains {[str(source.grain) for source in parent_sources]}"
+                f"{self.logging_prefix}{LOGGER_PREFIX} Group node has different grain than parents; group is required."
+                f" Upstream grains {[str(source.grain) for source in parent_sources]}"
                 f" with final grain {comp_grain} vs"
-                f" target grain {grain}"
+                f" target grain {target_grain}"
+                f" delta: {comp_grain - target_grain}"
             )
             for parent in self.parents:
                 logger.info(
@@ -134,7 +136,7 @@ class GroupNode(StrategyNode):
             source_type=source_type,
             source_map=source_map,
             joins=[],
-            grain=grain,
+            grain=target_grain,
             partial_concepts=self.partial_concepts,
             nullable_concepts=nullable_concepts,
             hidden_concepts=self.hidden_concepts,
@@ -163,7 +165,7 @@ class GroupNode(StrategyNode):
                 source_type=SourceType.SELECT,
                 source_map=source_map,
                 joins=[],
-                grain=grain,
+                grain=target_grain,
                 nullable_concepts=base.nullable_concepts,
                 partial_concepts=self.partial_concepts,
                 condition=self.conditions,

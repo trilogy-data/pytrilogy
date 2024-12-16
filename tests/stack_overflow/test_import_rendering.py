@@ -89,7 +89,7 @@ def test_circular_base():
             assert self.datatype == other.datatype
             assert self.purpose == other.purpose
             assert self.namespace == other.namespace
-            assert self.grain.set == other.grain.set
+            assert self.grain == other.grain
             assert self.grain == other.grain
             assert self.keys == other.keys
             assert z.concept == env.concepts[z.concept.address]
@@ -119,7 +119,7 @@ def test_circular():
             assert self.datatype == other.datatype
             assert self.purpose == other.purpose
             assert self.namespace == other.namespace
-            assert self.grain.set == other.grain.set
+            assert self.grain == other.grain
             assert self.grain == other.grain
             assert self.keys == other.keys
             assert z.concept == env.concepts[z.concept.address]

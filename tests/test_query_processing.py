@@ -1,4 +1,4 @@
-from trilogy.core.models import Environment, Grain, QueryDatasource, SelectStatement
+from trilogy.core.models import Environment, Grain, QueryDatasource, SelectStatement, SourceType
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.query_processor import get_query_datasources, process_query
 
@@ -7,7 +7,7 @@ def test_direct_select(test_environment, test_environment_graph):
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = search_concepts(
-        [product] + product.grain.components_copy,
+        [product] + [test_environment.concepts[c] for c in product.grain.components],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -27,7 +27,7 @@ def test_get_datasource_from_window_function(
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     # assert product_rank.grain.components[0] == test_environment.concepts['name']
     node = search_concepts(
-        [product_rank] + product_rank.grain.components_copy,
+        [product_rank] + [test_environment.concepts[c] for c in product_rank.grain.components],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -38,14 +38,14 @@ def test_get_datasource_from_window_function(
     assert product_rank in datasource.output_concepts
     # assert datasource.grain == product_rank.grain
     assert isinstance(datasource, QueryDatasource)
-    assert datasource.grain.set == product_rank.grain.set
+    assert datasource.grain.components == product_rank.grain.components
 
     product_rank_by_category = test_environment.concepts[
         "product_revenue_rank_by_category"
     ]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = search_concepts(
-        [product_rank_by_category] + product_rank_by_category.grain.components_copy,
+        [product_rank_by_category] + [test_environment.concepts[c] for c in product_rank_by_category.grain.components], 
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -68,7 +68,7 @@ def test_get_datasource_for_filter(
         "product_id",
     }
     datasource = search_concepts(
-        [hi_rev_product] + hi_rev_product.grain.components_copy,
+        [hi_rev_product] + [test_environment.concepts[c] for c in hi_rev_product.grain.components],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -86,7 +86,7 @@ def test_select_output(test_environment, test_environment_graph):
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
 
     datasource = search_concepts(
-        [product] + product.grain.components_copy,
+        [product] + [test_environment.concepts[c] for c in product.grain.components],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -114,18 +114,22 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
 
 
 def test_join_aggregate(test_environment: Environment, test_environment_graph):
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     category_id = test_environment.concepts["category_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = search_concepts(
-        [total_revenue.with_grain(category_id), category_id],
+        [total_revenue.with_grain(Grain(components={'local.category_id'})), category_id],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
+
     ).resolve()
     assert isinstance(datasource, QueryDatasource)
+    assert datasource.source_type == SourceType.GROUP
     assert len(set([datasource.name for datasource in datasource.datasources])) == 1
-    assert datasource.grain.components == [category_id]
+    assert datasource.grain.components == {'local.category_id'}
 
 
 def test_query_aggregation(test_environment, test_environment_graph):

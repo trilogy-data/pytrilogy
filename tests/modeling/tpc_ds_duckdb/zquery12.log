@@ -45,7 +45,7 @@ SELECT
     cheerful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     cheerful.\"web_sales_item_desc\" as \"web_sales_item_desc\",
     cheerful.\"web_sales_item_name\" as \"web_sales_item_name\",
-    sum(cheerful.\"itemrevenue\") over (partition by cheerful.\"web_sales_item_class\") as \"_virt_8569433434177041\"
+    sum(cheerful.\"itemrevenue\") over (partition by cheerful.\"web_sales_item_class\") as \"_virt_7136882332926589\"
 FROM
     cheerful)
 SELECT
@@ -55,7 +55,7 @@ SELECT
     thoughtful.\"web_sales_item_class\" as \"web_sales_item_class\",
     thoughtful.\"web_sales_item_current_price\" as \"web_sales_item_current_price\",
     thoughtful.\"itemrevenue\" as \"itemrevenue\",
-    (thoughtful.\"itemrevenue\" * 100.0) / thoughtful.\"_virt_8569433434177041\" as \"revenueratio\"
+    (thoughtful.\"itemrevenue\" * 100.0) / thoughtful.\"_virt_7136882332926589\" as \"revenueratio\"
 FROM
     thoughtful
 ORDER BY 

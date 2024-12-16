@@ -191,23 +191,23 @@ select
     }
     assert (
         len(
-            Grain(
-                components=[env.concepts["survivors"], env.concepts["passenger.class"]]
+            Grain.from_concepts(
+                [env.concepts["survivors"], env.concepts["passenger.class"]], environment=env
             ).components
         )
         == 1
     )
 
     testc = function_to_concept(
-        parent=env.concepts["ratio"].lineage, name="test", namespace="test"
+        parent=env.concepts["ratio"].lineage, name="test", namespace="test", environment=env
     )
     assert set(x.address for x in testc.keys) == {
         "passenger.class",
     }
 
     assert (
-        LooseConceptList(concepts=env.concepts["survivors"].grain.components).addresses
-        == LooseConceptList(concepts=[env.concepts["passenger.class"]]).addresses
+        env.concepts["survivors"].grain.components
+        == {env.concepts["passenger.class"].address}
     )
     results = executor.execute_text(test)
 

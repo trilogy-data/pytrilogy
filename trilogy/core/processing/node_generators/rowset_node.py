@@ -92,7 +92,7 @@ def gen_rowset_node(
         x.address in node.output_concepts for x in local_optional
     ):
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional found or no optional; exiting early."
+            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
         return node
     possible_joins = concept_to_relevant_joins(

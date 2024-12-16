@@ -13,7 +13,7 @@ SELECT
 
     _, statements = parse(test_select, test_environment)
     select = statements[-1]
-    assert set([x.address for x in select.grain.components]) == {
+    assert select.grain.components == {
         "stores.name",
         "local.aspen_store",
     }

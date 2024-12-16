@@ -84,7 +84,7 @@ def test_environment():
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
 
-    assert product_id.grain.components[0].name == "product_id"
+    assert product_id.grain.components == {"local.product_id"}
 
     category_id = Concept(
         name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY

@@ -20,12 +20,12 @@ from trilogy.core.processing.nodes.merge_node import MergeNode
 from trilogy.utility import unique
 
 
-def resolve_function_parent_concepts(concept: Concept) -> List[Concept]:
+def resolve_function_parent_concepts(concept: Concept, environment:Environment) -> List[Concept]:
     if not isinstance(concept.lineage, (Function, AggregateWrapper)):
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == PurposeLineage.AGGREGATE:
         if not concept.grain.abstract:
-            base = concept.lineage.concept_arguments + concept.grain.components_copy
+            base = concept.lineage.concept_arguments + [environment.concepts[c] for c in concept.grain.components]
             # if the base concept being aggregated is a property with a key
             # keep the key as a parent
         else:
@@ -56,6 +56,7 @@ def resolve_condition_parent_concepts(
 
 def resolve_filter_parent_concepts(
     concept: Concept,
+    environment:Environment,
 ) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
     if not isinstance(concept.lineage, FilterItem):
         raise ValueError(
@@ -70,7 +71,7 @@ def resolve_filter_parent_concepts(
     base_rows += condition_rows
     base_existence += condition_existence
     if direct_parent.grain:
-        base_rows += direct_parent.grain.components_copy
+        base_rows += [environment.concepts[c] for c in direct_parent.grain.components]
     if (
         isinstance(direct_parent, Concept)
         and direct_parent.purpose == Purpose.PROPERTY

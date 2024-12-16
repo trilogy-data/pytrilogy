@@ -368,6 +368,12 @@ def gen_merge_node(
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Was able to resolve graph through weak component resolution - final graph {log_graph}"
             )
+            for flat in log_graph:
+                if set(flat) == set([x.address for x in all_concepts]):
+                    logger.info(
+                        f"{padding(depth)}{LOGGER_PREFIX} expanded concept resolution was identical to search resolution; breaking to avoid recursion error."
+                    )
+                    return None
             return subgraphs_to_merge_node(
                 weak_resolve,
                 depth=depth,

@@ -66,7 +66,7 @@ def test_rowset_with_aggregation(
     assert group.derivation == PurposeLineage.AGGREGATE
     # grain_c_lcl = LooseConceptList(concepts=group.grain.components_copy)
     # assert "even_orders.store_id" in grain_c_lcl.addresses
-    resolve_function_parent_concepts(group)
+    resolve_function_parent_concepts(group, environment=test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     # assert len(results) == 3

@@ -30,6 +30,7 @@ class GraphHook(BaseHook):
         graph: nx.DiGraph,
         target: str | None = None,
         highlight_nodes: list[str] | None = None,
+        remove_isolates: bool = True,
     ):
         from matplotlib import pyplot as plt
 
@@ -38,7 +39,8 @@ class GraphHook(BaseHook):
         for node in nodes:
             if "__preql_internal" in node:
                 graph.remove_node(node)
-        graph.remove_nodes_from(list(nx.isolates(graph)))
+        if remove_isolates:
+            graph.remove_nodes_from(list(nx.isolates(graph)))
         color_map = []
         highlight_nodes = highlight_nodes or []
         for node in graph:

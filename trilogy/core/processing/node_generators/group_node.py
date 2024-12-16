@@ -34,7 +34,7 @@ def gen_group_node(
     # aggregates MUST always group to the proper grain
     # except when the
     parent_concepts: List[Concept] = unique(
-        resolve_function_parent_concepts(concept), "address"
+        resolve_function_parent_concepts(concept, environment=environment), "address"
     )
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
@@ -43,10 +43,8 @@ def gen_group_node(
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
 
-    if concept.grain and len(concept.grain.components_copy) > 0:
-        grain_components = (
-            concept.grain.components_copy if not concept.grain.abstract else []
-        )
+    if concept.grain and len(concept.grain.components) > 0 and not concept.grain.abstract:
+        grain_components = [environment.concepts[c] for c in concept.grain.components]
         parent_concepts += grain_components
         output_concepts += grain_components
         for possible_agg in local_optional:
@@ -54,7 +52,8 @@ def gen_group_node(
                 continue
             if possible_agg.grain and possible_agg.grain == concept.grain:
                 agg_parents: List[Concept] = resolve_function_parent_concepts(
-                    possible_agg
+                    possible_agg,
+                    environment=environment,
                 )
                 if set([x.address for x in agg_parents]).issubset(
                     set([x.address for x in parent_concepts])
@@ -94,7 +93,7 @@ def gen_group_node(
 
     # the keys we group by
     # are what we can use for enrichment
-    group_key_parents = concept.grain.components_copy
+    group_key_parents = [environment.concepts[c] for c in concept.grain.components]
 
     group_node = GroupNode(
         output_concepts=output_concepts,

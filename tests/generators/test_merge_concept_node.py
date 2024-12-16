@@ -78,9 +78,7 @@ address num1;
         x.address for x in env1.concepts["name"].keys
     ]
 
-    assert env1.datasources["num1"].grain.components == [
-        env1.concepts["env2.one"],
-    ], [x.address for x in env1.datasources["num1"].grain.components]
+    assert env1.datasources["num1"].grain.components == {"env2.one"}, [x for x in env1.datasources["num1"].grain.components]
 
     assert env1.concepts["env2.one"].address in [
         y.address for y in env1.datasources["num1"].output_concepts

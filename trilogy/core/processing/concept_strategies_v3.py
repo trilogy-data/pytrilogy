@@ -449,6 +449,7 @@ def generate_node(
             conditions=conditions,
         )
         if not check:
+
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for expanded concepts"
             )
@@ -470,7 +471,7 @@ def generate_node(
                         x
                         for x in ex_resolve.output_concepts
                         if x.address not in [y.address for y in root_targets]
-                        and x not in ex_resolve.grain.components
+                        and x.address not in ex_resolve.grain.components
                     ]
 
                     pseudonyms = [
@@ -917,7 +918,7 @@ def _search_concepts(
                     output, environment, g, where=conditions, history=history
                 )
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning merge node, partial {[c.address for c in output.partial_concepts]}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node partial {[c.address for c in output.partial_concepts]}"
         )
         return output
 

@@ -28,7 +28,7 @@ def gen_filter_node(
     conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
-        resolve_filter_parent_concepts(concept)
+        resolve_filter_parent_concepts(concept, environment)
     )
     if not isinstance(concept.lineage, FilterItem):
         raise SyntaxError('Filter node must have a lineage of type "FilterItem"')

@@ -178,6 +178,7 @@ def setup_richest_environment(env: Environment):
         ),
         name="split_name",
         namespace=namespace,
+        environment=env,
         # keys = (name,)
     )
     last_name = Concept(
@@ -286,6 +287,7 @@ def setup_titanic_distributed(env: Environment):
         ),
         name="split_name",
         namespace=namespace,
+        environment=env,
         # keys = (id,)
     )
     assert split_name.keys == (id,)
@@ -506,7 +508,7 @@ def setup_titanic(env: Environment):
                 ColumnAssignment(alias="embarked", concept=embarked),
                 ColumnAssignment(alias="ticket", concept=ticket),
             ],
-            grain=Grain(components=[id]),
+            grain=Grain(components={id.address}),
         ),
     )
     return env

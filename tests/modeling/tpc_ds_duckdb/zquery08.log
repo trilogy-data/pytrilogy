@@ -1,11 +1,11 @@
 query_id = 8
-gen_length = 3719
+gen_length = 3715
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    CASE WHEN customer_customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customer_customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_7470647693515630\",
+    CASE WHEN customer_customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customer_customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_221882250846823\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
@@ -25,14 +25,14 @@ SELECT
 uneven as (
 SELECT
     abundant.\"customer_zip\" as \"customer_zip\",
-    questionable.\"_virt_7470647693515630\" as \"_virt_7470647693515630\",
+    questionable.\"_virt_221882250846823\" as \"_virt_221882250846823\",
     questionable.\"customer_id\" as \"customer_id\"
 FROM
     abundant
     INNER JOIN questionable on abundant.\"customer_id\" = questionable.\"customer_id\" AND abundant.\"customer_preferred_cust_flag\" = questionable.\"customer_preferred_cust_flag\"),
 yummy as (
 SELECT
-    count(uneven.\"_virt_7470647693515630\") as \"zip_p_count\",
+    count(uneven.\"_virt_221882250846823\") as \"zip_p_count\",
     uneven.\"customer_zip\" as \"customer_zip\"
 FROM
     uneven
@@ -48,7 +48,7 @@ FROM
     INNER JOIN memory.customer_address as customer_customer_address on yummy.\"customer_zip\" = customer_customer_address.\"CA_ZIP\"),
 vacuous as (
 SELECT
-    SUBSTRING(CASE WHEN juicy.\"zip_p_count\" > 10 THEN juicy.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_1342571877656287\"
+    SUBSTRING(CASE WHEN juicy.\"zip_p_count\" > 10 THEN juicy.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4835506132053028\"
 FROM
     juicy),
 concerned as (
@@ -57,7 +57,7 @@ SELECT
 FROM
     cheerful
 WHERE
-    SUBSTRING(cast(cheerful.\"zips_pre\" as string),1,5) in (select vacuous.\"_virt_func_substring_1342571877656287\" from vacuous where vacuous.\"_virt_func_substring_1342571877656287\" is not null)
+    SUBSTRING(cast(cheerful.\"zips_pre\" as string),1,5) in (select vacuous.\"_virt_func_substring_4835506132053028\" from vacuous where vacuous.\"_virt_func_substring_4835506132053028\" is not null)
 ),
 young as (
 SELECT

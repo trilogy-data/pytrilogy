@@ -242,6 +242,7 @@ def test_case_function(test_environment):
         test_upper_case
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
+    
     assert (
         test_environment.concepts["category_name"]
         in test_environment.concepts["test_upper_case"].lineage.concept_arguments
