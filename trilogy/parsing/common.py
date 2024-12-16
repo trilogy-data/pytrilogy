@@ -4,7 +4,13 @@ from typing import List, Tuple
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
-from trilogy.core.enums import FunctionType, Modifier, PurposeLineage, WindowType, Granularity
+from trilogy.core.enums import (
+    FunctionType,
+    Granularity,
+    Modifier,
+    PurposeLineage,
+    WindowType,
+)
 from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
 from trilogy.core.models import (
     AggregateWrapper,
@@ -77,7 +83,7 @@ def process_function_args(
             arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
         ):
             id_hash = string_to_hash(str(arg))
-            concept:Concept = arbitrary_to_concept(
+            concept: Concept = arbitrary_to_concept(
                 arg,
                 name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                 environment=environment,
@@ -139,8 +145,10 @@ def constant_to_concept(
     )
 
 
-def concepts_to_grain_concepts(concepts: List[str | Concept], environment: Environment| None) -> list[Concept]:
-    environment= Environment() if environment is None else environment
+def concepts_to_grain_concepts(
+    concepts: List[str | Concept], environment: Environment | None
+) -> list[Concept]:
+    environment = Environment() if environment is None else environment
     concepts = [
         c if isinstance(c, Concept) else environment.concepts[c] for c in concepts
     ]
@@ -156,7 +164,7 @@ def concepts_to_grain_concepts(concepts: List[str | Concept], environment: Envir
         if sub.granularity == Granularity.SINGLE_ROW:
             continue
         final.append(sub)
-    final = unique(final, 'address')
+    final = unique(final, "address")
     v2 = sorted(final, key=lambda x: x.name)
     return v2
 
@@ -353,7 +361,11 @@ def arbitrary_to_concept(
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
         return function_to_concept(
-            parent, name, metadata=metadata, environment=environment, namespace=namespace
+            parent,
+            name,
+            metadata=metadata,
+            environment=environment,
+            namespace=namespace,
         )
     elif isinstance(parent, ListWrapper):
         if not name:

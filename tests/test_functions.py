@@ -1,8 +1,10 @@
 # from trilogy.compiler import compile
+from datetime import date, datetime
 from logging import INFO
 
 from pytest import raises
 
+from trilogy import Dialects
 from trilogy.constants import logger
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.exceptions import InvalidSyntaxException
@@ -14,8 +16,6 @@ from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
-from trilogy import Dialects
-from datetime import date, datetime
 
 logger.setLevel(INFO)
 
@@ -181,7 +181,7 @@ select
     assert z[0].one_datetime == datetime(
         year=2024, month=1, day=1, hour=1, minute=1, second=1
     )
-    assert z[0].one_bool == True
+    assert z[0].one_bool
     for dialect in TEST_DIALECTS:
         dialect.compile_statement(process_query(test_environment, select))
 
@@ -242,7 +242,7 @@ def test_case_function(test_environment):
         test_upper_case
     ;"""
     env, parsed = parse(declarations, environment=test_environment)
-    
+
     assert (
         test_environment.concepts["category_name"]
         in test_environment.concepts["test_upper_case"].lineage.concept_arguments

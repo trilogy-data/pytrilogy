@@ -136,8 +136,8 @@ def gen_filter_node(
         parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
             expected_output, False
         )
-        parent.grain = Grain(
-            components=(
+        parent.grain = Grain.from_concepts(
+            (
                 list(immediate_parent.keys)
                 if immediate_parent.keys
                 else [immediate_parent]
@@ -161,8 +161,8 @@ def gen_filter_node(
             output_concepts=[concept, immediate_parent] + parent_row_concepts,
             environment=environment,
             parents=core_parents,
-            grain=Grain(
-                components=[immediate_parent] + parent_row_concepts,
+            grain=Grain.from_concepts(
+                [immediate_parent] + parent_row_concepts,
             ),
             preexisting_conditions=conditions.conditional if conditions else None,
         )

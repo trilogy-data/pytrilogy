@@ -12,12 +12,11 @@ from trilogy.core.models import (
     ProcessedQuery,
     SelectItem,
 )
-from trilogy.executor import Executor
-from trilogy.hooks.query_debugger import DebuggingHook
-
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
+from trilogy.executor import Executor
+from trilogy.hooks.query_debugger import DebuggingHook
 
 ENVIRONMENT_CONCEPTS = [
     Concept(
@@ -90,7 +89,6 @@ def test_daily_job():
     assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
-
     for x in case.lineage.concept_arguments:
         test = case.lineage.with_namespace("all_sites")
         for y in test.concept_arguments:
@@ -149,8 +147,6 @@ def test_counts():
 
     assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
-
-
 
     for x in case.lineage.concept_arguments:
         test = case.lineage.with_namespace("all_sites")

@@ -161,7 +161,7 @@ class Renderer:
         final = []
         for arg in arg.components:
             if arg.startswith(DEFAULT_NAMESPACE):
-                final.append(arg.split(".",1)[1])
+                final.append(arg.split(".", 1)[1])
             else:
                 final.append(arg)
         final = sorted(final)

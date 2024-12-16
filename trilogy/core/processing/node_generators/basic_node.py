@@ -66,7 +66,9 @@ def gen_basic_node(
         x for x in local_optional if x not in equivalent_optional
     ]
     all_parents = parent_concepts + non_equivalent_optional
-    logger.info(f'{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]}')
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]}"
+    )
     parent_node: StrategyNode = source_concepts(
         mandatory_list=all_parents,
         environment=environment,

@@ -43,13 +43,24 @@ def gen_group_node(
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
 
-    if concept.grain and len(concept.grain.components) > 0 and not concept.grain.abstract:
+    if (
+        concept.grain
+        and len(concept.grain.components) > 0
+        and not concept.grain.abstract
+    ):
         grain_components = [environment.concepts[c] for c in concept.grain.components]
         parent_concepts += grain_components
         output_concepts += grain_components
         for possible_agg in local_optional:
+
             if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
                 continue
+            logger.info(possible_agg)
+            if possible_agg.grain and possible_agg.grain != concept.grain:
+                logger.info(
+                    f"{padding(depth)}{LOGGER_PREFIX} mismatched equivalent group by with grain {possible_agg.grain} for {concept.address}"
+                )
+
             if possible_agg.grain and possible_agg.grain == concept.grain:
                 agg_parents: List[Concept] = resolve_function_parent_concepts(
                     possible_agg,
@@ -62,12 +73,18 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif Grain(components=agg_parents) == Grain(components=parent_concepts):
+                elif Grain.from_concepts(agg_parents) == Grain.from_concepts(
+                    parent_concepts
+                ):
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
                     parent_concepts += extra
                     output_concepts.append(possible_agg)
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
+                    )
+                else:
+                    logger.info(
+                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {Grain(components=agg_parents)} vs {Grain(components=parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(

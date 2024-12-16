@@ -63,7 +63,7 @@ WHERE
 ),
 abundant as (
 SELECT
-    CASE WHEN questionable.\"web_returns_return_date_year\" = 2002 THEN questionable.\"web_returns_return_amount\" ELSE NULL END as \"_virt_7355623896002829\",
+    CASE WHEN questionable.\"web_returns_return_date_year\" = 2002 THEN questionable.\"web_returns_return_amount\" ELSE NULL END as \"_virt_1372977232752887\",
     questionable.\"web_returns_item_id\" as \"web_returns_item_id\",
     questionable.\"web_returns_return_amount\" as \"web_returns_return_amount\",
     questionable.\"web_returns_return_date_year\" as \"web_returns_return_date_year\",
@@ -72,7 +72,7 @@ FROM
     questionable),
 yummy as (
 SELECT
-    abundant.\"_virt_7355623896002829\" as \"_virt_7355623896002829\",
+    abundant.\"_virt_1372977232752887\" as \"_virt_1372977232752887\",
     abundant.\"web_returns_item_id\" as \"web_returns_item_id\",
     abundant.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\",
     uneven.\"web_returns_customer_id\" as \"web_returns_customer_id\",
@@ -85,7 +85,7 @@ WHERE
 ),
 juicy as (
 SELECT
-    sum(yummy.\"_virt_7355623896002829\") as \"customer_state_returns_2002\",
+    sum(yummy.\"_virt_1372977232752887\") as \"customer_state_returns_2002\",
     yummy.\"web_returns_customer_id\" as \"web_returns_customer_id\",
     yummy.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
@@ -95,7 +95,7 @@ GROUP BY
     yummy.\"web_returns_return_address_state\"),
 concerned as (
 SELECT
-    avg(juicy.\"customer_state_returns_2002\") as \"_virt_9051506806649223\",
+    avg(juicy.\"customer_state_returns_2002\") as \"_virt_7168202961459893\",
     juicy.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
     juicy
@@ -127,7 +127,7 @@ WHERE
 ),
 young as (
 SELECT
-    1.2 * concerned.\"_virt_9051506806649223\" as \"scaled_state_returns_2002\",
+    1.2 * concerned.\"_virt_7168202961459893\" as \"scaled_state_returns_2002\",
     vacuous.\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
     vacuous.\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
     vacuous.\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
@@ -148,7 +148,7 @@ FROM
     vacuous
     INNER JOIN concerned on (vacuous.\"web_returns_return_address_state\" = concerned.\"web_returns_return_address_state\" or (vacuous.\"web_returns_return_address_state\" is null and concerned.\"web_returns_return_address_state\" is null))
 WHERE
-    vacuous.\"customer_state_returns_2002\" > 1.2 * concerned.\"_virt_9051506806649223\" and vacuous.\"web_returns_customer_state\" = 'GA' and vacuous.\"web_returns_return_address_state\" is not null
+    vacuous.\"customer_state_returns_2002\" > 1.2 * concerned.\"_virt_7168202961459893\" and vacuous.\"web_returns_customer_state\" = 'GA' and vacuous.\"web_returns_return_address_state\" is not null
 )
 SELECT
     young.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",

@@ -137,6 +137,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
         output += expr.concept_arguments
     return output
 
+
 def generate_concept_synonyms(concepts: list["Concept"]) -> list[Concept]:
     base = []
     for x in concepts:
@@ -149,6 +150,7 @@ def generate_concept_synonyms(concepts: list["Concept"]) -> list[Concept]:
             for c in x.pseudonyms:
                 base.append(c)
     return base
+
 
 ALL_TYPES = Union[
     "DataType", "MapType", "ListType", "NumericType", "StructType", "Concept"
@@ -561,7 +563,11 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         # this is silly - rethink how we do grains
         values = info.data
         if not v and values.get("purpose", None) == Purpose.KEY:
-            v = Grain(components={f'{values.get("namespace", DEFAULT_NAMESPACE)}.{values["name"]}'})
+            v = Grain(
+                components={
+                    f'{values.get("namespace", DEFAULT_NAMESPACE)}.{values["name"]}'
+                }
+            )
         elif (
             "lineage" in values
             and isinstance(values["lineage"], AggregateWrapper)
@@ -623,8 +629,6 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         elif self.namespace:
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
-
-
 
     def with_namespace(self, namespace: str) -> Self:
         if namespace == self.namespace:
@@ -730,7 +734,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                         else:
                             components += item.sources
             # TODO: set synonyms
-            grain = Grain(components=set([x.address for x in components]), ) #synonym_set=generate_concept_synonyms(components))
+            grain = Grain(
+                components=set([x.address for x in components]),
+            )  # synonym_set=generate_concept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
             grain = Grain()
         elif self.purpose == Purpose.CONSTANT:
@@ -912,6 +918,7 @@ class ConceptRef(BaseModel):
     def hydrate(self, environment: Environment) -> Concept:
         return environment.concepts.__getitem__(self.address, self.line_no)
 
+
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
@@ -926,20 +933,35 @@ class Grain(Namespaced, BaseModel):
         return Grain(components=new_components)
 
     @classmethod
-    def from_concepts(cls, concepts: List[Concept], environment:Environment| None = None, where_clause:WhereClause | None = None) -> "Grain":
+    def from_concepts(
+        cls,
+        concepts: List[Concept],
+        environment: Environment | None = None,
+        where_clause: WhereClause | None = None,
+    ) -> "Grain":
         from trilogy.parsing.common import concepts_to_grain_concepts
 
-        return Grain(components={c.address for c in concepts_to_grain_concepts(concepts, environment=environment)}, where_clause=where_clause)
+        return Grain(
+            components={
+                c.address
+                for c in concepts_to_grain_concepts(concepts, environment=environment)
+            },
+            where_clause=where_clause,
+        )
 
     def with_namespace(self, namespace: str) -> "Grain":
         return Grain(
             components={address_with_namespace(c, namespace) for c in self.components},
-            where_clause=self.where_clause.with_namespace(namespace) if self.where_clause else None,
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
         )
 
     @field_validator("components", mode="before")
     def component_validator(cls, v, info: ValidationInfo):
-        output = set() 
+        output = set()
         if isinstance(v, list):
             for vc in v:
                 if isinstance(vc, Concept):
@@ -951,29 +973,36 @@ class Grain(Namespaced, BaseModel):
         else:
             output = v
         if not isinstance(output, set):
-            raise ValueError(f"Invalid grain component {output}, is not set") 
+            raise ValueError(f"Invalid grain component {output}, is not set")
         if not all(isinstance(x, str) for x in output):
             raise ValueError(f"Invalid component {output}")
         return output
-    
+
     def __add__(self, other: "Grain") -> "Grain":
         where = self.where_clause
         if other.where_clause:
             if not self.where_clause:
                 where = other.where_clause
             elif not other.where_clause == self.where_clause:
-                raise NotImplementedError(f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}")
-        return Grain(components=self.components.union(other.components), where_clause=where)
-    
+                raise NotImplementedError(
+                    f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                )
+        return Grain(
+            components=self.components.union(other.components), where_clause=where
+        )
+
     def __sub__(self, other: "Grain") -> "Grain":
-        return Grain(components=self.components.difference(other.components), where_clause=self.where_clause)
-    
+        return Grain(
+            components=self.components.difference(other.components),
+            where_clause=self.where_clause,
+        )
+
     @property
     def abstract(self):
         return not self.components or all(
             [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
         )
-    
+
     def __eq__(self, other: object):
         if isinstance(other, list):
             if not all([isinstance(c, Concept) for c in other]):
@@ -990,10 +1019,7 @@ class Grain(Namespaced, BaseModel):
 
     def union(self, other: "Grain"):
         addresses = self.components.union(other.components)
-        return Grain(
-            components=addresses,
-            where_clause=self.where_clause
-        )
+        return Grain(components=addresses, where_clause=self.where_clause)
 
     def isdisjoint(self, other: "Grain"):
         return self.components.isdisjoint(other.components)
@@ -1010,12 +1036,13 @@ class Grain(Namespaced, BaseModel):
         if self.where_clause:
             base += f"|{str(self.where_clause)}"
         return base
-    
+
     def __radd__(self, other) -> "Grain":
         if other == 0:
             return self
         else:
             return self.__add__(other)
+
 
 class OldGrain(Mergeable, BaseModel, SelectContext):
     nested: bool = False
@@ -1993,9 +2020,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
 
     @property
     def all_components(self) -> List[Concept]:
-        return (
-            self.input_components + self.output_components
-        )
+        return self.input_components + self.output_components
 
     def to_datasource(
         self,
@@ -2044,8 +2069,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         for column in columns:
             column.concept = column.concept.with_grain(new_datasource.grain)
         return new_datasource
-
-    
 
     def with_namespace(self, namespace: str) -> "SelectStatement":
         return SelectStatement(
@@ -2818,9 +2841,7 @@ class QueryDatasource(BaseModel):
     @property
     def identifier(self) -> str:
         filters = abs(hash(str(self.condition))) if self.condition else ""
-        grain = "_".join(
-            [str(c).replace(".", "_") for c in self.grain.components]
-        )
+        grain = "_".join([str(c).replace(".", "_") for c in self.grain.components])
         return (
             "_join_".join([d.identifier for d in self.datasources])
             + (f"_at_{grain}" if grain else "_at_abstract")

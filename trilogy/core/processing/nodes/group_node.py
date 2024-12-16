@@ -15,11 +15,10 @@ from trilogy.core.models import (
 )
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
-    concept_list_to_grain,
     resolve_concept_map,
 )
-from trilogy.parsing.common import concepts_to_grain_concepts
 from trilogy.core.processing.utility import find_nullable_concepts, is_scalar_condition
+from trilogy.parsing.common import concepts_to_grain_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
@@ -65,11 +64,19 @@ class GroupNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
 
-        target_grain = self.grain or  Grain(components=concepts_to_grain_concepts(self.output_concepts, environment=self.environment))
+        target_grain = self.grain or Grain(
+            components=concepts_to_grain_concepts(
+                self.output_concepts, environment=self.environment
+            )
+        )
         comp_grain = Grain()
         for source in parent_sources:
             comp_grain += source.grain
-        comp_grain = Grain(components=concepts_to_grain_concepts(comp_grain.components, environment=self.environment))
+        comp_grain = Grain(
+            components=concepts_to_grain_concepts(
+                comp_grain.components, environment=self.environment
+            )
+        )
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
         if comp_grain == target_grain and self.force_group is not True:

@@ -8,7 +8,6 @@ from trilogy.core.models import (
     Environment,
     Function,
     Grain,
-    LooseConceptList,
     SelectContext,
 )
 
@@ -192,23 +191,26 @@ select
     assert (
         len(
             Grain.from_concepts(
-                [env.concepts["survivors"], env.concepts["passenger.class"]], environment=env
+                [env.concepts["survivors"], env.concepts["passenger.class"]],
+                environment=env,
             ).components
         )
         == 1
     )
 
     testc = function_to_concept(
-        parent=env.concepts["ratio"].lineage, name="test", namespace="test", environment=env
+        parent=env.concepts["ratio"].lineage,
+        name="test",
+        namespace="test",
+        environment=env,
     )
     assert set(x.address for x in testc.keys) == {
         "passenger.class",
     }
 
-    assert (
-        env.concepts["survivors"].grain.components
-        == {env.concepts["passenger.class"].address}
-    )
+    assert env.concepts["survivors"].grain.components == {
+        env.concepts["passenger.class"].address
+    }
     results = executor.execute_text(test)
 
     for row in results[0]:

@@ -189,7 +189,6 @@ def expr_to_boolean(
     return root
 
 
-
 def unwrap_transformation(
     input: Union[
         FilterItem,
@@ -625,7 +624,9 @@ class ParseToObjects(Transformer):
         return args
 
     def grain_clause(self, args) -> Grain:
-        return Grain(components=set([self.environment.concepts[a].address for a in args[0]]))
+        return Grain(
+            components=set([self.environment.concepts[a].address for a in args[0]])
+        )
 
     def whole_grain_clause(self, args) -> WholeGrainWrapper:
         return WholeGrainWrapper(where=args[0])
@@ -717,7 +718,11 @@ class ParseToObjects(Transformer):
             )
         elif isinstance(transformation, Function):
             concept = function_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata, environment=self.environment
+                transformation,
+                namespace=namespace,
+                name=output,
+                metadata=metadata,
+                environment=self.environment,
             )
         else:
             raise SyntaxError("Invalid transformation")
@@ -773,9 +778,7 @@ class ParseToObjects(Transformer):
         def handle_order_item(x, namespace: str):
             if not isinstance(x, Concept):
                 x = arbitrary_to_concept(
-                    x,
-                    namespace=namespace,
-                    environment=self.environment
+                    x, namespace=namespace, environment=self.environment
                 )
             return x
 
@@ -1031,18 +1034,31 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        for parse_pass in [1, 2,]:
+        for parse_pass in [
+            1,
+            2,
+        ]:
             # the first pass will result in all concepts being defined
             # the second will get grains appropriately
             # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
             # until after the first pass, and so don't know the grain of a
-           
-            
+
             if parse_pass == 1:
-                grain = Grain.from_concepts([x.content for x in output.selection if isinstance(x.content, Concept)], where_clause=output.where_clause)
+                grain = Grain.from_concepts(
+                    [
+                        x.content
+                        for x in output.selection
+                        if isinstance(x.content, Concept)
+                    ],
+                    where_clause=output.where_clause,
+                )
             if parse_pass == 2:
-                grain = Grain.from_concepts(output.output_components, where_clause=output.where_clause)
-            print(f'end pass {parse_pass} grain {grain} from {output.output_components}')
+                grain = Grain.from_concepts(
+                    output.output_components, where_clause=output.where_clause
+                )
+            print(
+                f"end pass {parse_pass} grain {grain} from {output.output_components}"
+            )
             output.grain = grain
             for item in select_items:
                 # we don't know the grain of an aggregate at assignment time
@@ -1236,10 +1252,7 @@ class ParseToObjects(Transformer):
         ):
             right = right.content
         if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
-            right = arbitrary_to_concept(
-                right,
-                environment=self.environment
-            )
+            right = arbitrary_to_concept(right, environment=self.environment)
             self.environment.add_concept(right, meta=meta)
         return SubselectComparison(
             left=args[0],
@@ -1308,10 +1321,7 @@ class ParseToObjects(Transformer):
             elif isinstance(item, WindowType):
                 type = item
             else:
-                concept = arbitrary_to_concept(
-                    item,
-                    environment=self.environment
-                )
+                concept = arbitrary_to_concept(item, environment=self.environment)
                 self.environment.add_concept(concept, meta=meta)
         assert concept
         return WindowItem(

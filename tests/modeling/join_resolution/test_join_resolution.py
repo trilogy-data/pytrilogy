@@ -37,9 +37,7 @@ property store_by_order <- group(store_id) by order_id;
         test_environment.concepts["store_id"],
         test_environment.concepts["wh_id"],
     ]
-    assert grouped.grain.components == {
-        "local.store_id", "local.wh_id"
-    }
+    assert grouped.grain.components == {"local.store_id", "local.wh_id"}
 
     test_select = """
 SELECT

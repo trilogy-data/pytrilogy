@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 12577
+gen_length = 11720
 generated_sql = """
 
 WITH 
@@ -148,32 +148,21 @@ GROUP BY
     yummy.\"store_sales_item_desc\",
     yummy.\"store_sales_item_name\",
     yummy.\"store_sales_store_name\",
-    yummy.\"store_sales_store_text_id\"),
-sparkling as (
+    yummy.\"store_sales_store_text_id\")
 SELECT
-    juicy.\"catalog_sales_profit\" as \"catalog_sales_profit\",
-    juicy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     juicy.\"store_sales_item_name\" as \"store_sales_item_name\",
-    juicy.\"store_sales_store_name\" as \"store_sales_store_name\",
+    juicy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     juicy.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    young.\"store_returns_loss\" as \"store_returns_loss\"
+    juicy.\"store_sales_store_name\" as \"store_sales_store_name\",
+    young.\"store_sales_profit\" as \"store_sales_profit\",
+    young.\"store_returns_loss\" as \"store_returns_loss\",
+    juicy.\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
     juicy
-    INNER JOIN young on (juicy.\"store_sales_item_desc\" = young.\"store_sales_item_desc\" or (juicy.\"store_sales_item_desc\" is null and young.\"store_sales_item_desc\" is null)) AND juicy.\"store_sales_item_name\" = young.\"store_sales_item_name\" AND juicy.\"store_sales_store_name\" = young.\"store_sales_store_name\" AND juicy.\"store_sales_store_text_id\" = young.\"store_sales_store_text_id\")
-SELECT
-    sparkling.\"store_sales_item_name\" as \"store_sales_item_name\",
-    sparkling.\"store_sales_item_desc\" as \"store_sales_item_desc\",
-    sparkling.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    sparkling.\"store_sales_store_name\" as \"store_sales_store_name\",
-    young.\"store_sales_profit\" as \"store_sales_profit\",
-    sparkling.\"store_returns_loss\" as \"store_returns_loss\",
-    sparkling.\"catalog_sales_profit\" as \"catalog_sales_profit\"
-FROM
-    sparkling
-    INNER JOIN young on (sparkling.\"store_sales_item_desc\" = young.\"store_sales_item_desc\" or (sparkling.\"store_sales_item_desc\" is null and young.\"store_sales_item_desc\" is null)) AND sparkling.\"store_sales_item_name\" = young.\"store_sales_item_name\" AND sparkling.\"store_sales_store_name\" = young.\"store_sales_store_name\" AND sparkling.\"store_sales_store_text_id\" = young.\"store_sales_store_text_id\"
+    INNER JOIN young on (juicy.\"store_sales_item_desc\" = young.\"store_sales_item_desc\" or (juicy.\"store_sales_item_desc\" is null and young.\"store_sales_item_desc\" is null)) AND juicy.\"store_sales_item_name\" = young.\"store_sales_item_name\" AND juicy.\"store_sales_store_name\" = young.\"store_sales_store_name\" AND juicy.\"store_sales_store_text_id\" = young.\"store_sales_store_text_id\"
 ORDER BY 
-    sparkling.\"store_sales_item_name\" asc,
-    sparkling.\"store_sales_item_desc\" asc,
-    sparkling.\"store_sales_store_text_id\" asc,
-    sparkling.\"store_sales_store_name\" asc
+    juicy.\"store_sales_item_name\" asc,
+    juicy.\"store_sales_item_desc\" asc,
+    juicy.\"store_sales_store_text_id\" asc,
+    juicy.\"store_sales_store_name\" asc
 LIMIT (100)"""

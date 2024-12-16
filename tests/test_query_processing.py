@@ -1,4 +1,10 @@
-from trilogy.core.models import Environment, Grain, QueryDatasource, SelectStatement, SourceType
+from trilogy.core.models import (
+    Environment,
+    Grain,
+    QueryDatasource,
+    SelectStatement,
+    SourceType,
+)
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.query_processor import get_query_datasources, process_query
 
@@ -27,7 +33,8 @@ def test_get_datasource_from_window_function(
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     # assert product_rank.grain.components[0] == test_environment.concepts['name']
     node = search_concepts(
-        [product_rank] + [test_environment.concepts[c] for c in product_rank.grain.components],
+        [product_rank]
+        + [test_environment.concepts[c] for c in product_rank.grain.components],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -45,7 +52,11 @@ def test_get_datasource_from_window_function(
     ]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = search_concepts(
-        [product_rank_by_category] + [test_environment.concepts[c] for c in product_rank_by_category.grain.components], 
+        [product_rank_by_category]
+        + [
+            test_environment.concepts[c]
+            for c in product_rank_by_category.grain.components
+        ],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -68,7 +79,8 @@ def test_get_datasource_for_filter(
         "product_id",
     }
     datasource = search_concepts(
-        [hi_rev_product] + [test_environment.concepts[c] for c in hi_rev_product.grain.components],
+        [hi_rev_product]
+        + [test_environment.concepts[c] for c in hi_rev_product.grain.components],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
@@ -115,21 +127,24 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
 
 def test_join_aggregate(test_environment: Environment, test_environment_graph):
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     category_id = test_environment.concepts["category_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
     datasource = search_concepts(
-        [total_revenue.with_grain(Grain(components={'local.category_id'})), category_id],
+        [
+            total_revenue.with_grain(Grain(components={"local.category_id"})),
+            category_id,
+        ],
         environment=test_environment,
         g=test_environment_graph,
         depth=0,
-
     ).resolve()
     assert isinstance(datasource, QueryDatasource)
     assert datasource.source_type == SourceType.GROUP
     assert len(set([datasource.name for datasource in datasource.datasources])) == 1
-    assert datasource.grain.components == {'local.category_id'}
+    assert datasource.grain.components == {"local.category_id"}
 
 
 def test_query_aggregation(test_environment, test_environment_graph):

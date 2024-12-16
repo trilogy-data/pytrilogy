@@ -68,7 +68,7 @@ def test_cte_merge(test_environment, test_environment_graph):
 
 
 def test_concept(test_environment, test_environment_graph):
-    test_concept:Concept = list(test_environment.concepts.values())[0]
+    test_concept: Concept = list(test_environment.concepts.values())[0]
     new = test_concept.with_namespace("test")
     assert (
         new.namespace == ("test" + "." + test_concept.namespace)
@@ -137,7 +137,9 @@ def test_grain(test_environment):
     assert z.isdisjoint(x)
     assert z.issubset(y)
 
-    assert z2 == z, f"Property should be removed from grain ({z.components}) vs {z2.components}"
+    assert (
+        z2 == z
+    ), f"Property should be removed from grain ({z.components}) vs {z2.components}"
 
 
 def test_select(test_environment: Environment):

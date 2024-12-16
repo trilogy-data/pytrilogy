@@ -84,7 +84,6 @@ def test_environment():
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
 
-
     category_id = Concept(
         name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )

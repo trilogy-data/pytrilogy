@@ -81,7 +81,9 @@ def test_proper_parents(test_environment):
     )
 
     resolved = resolve_function_parent_concepts(
-        function_to_concept(base, name="base_agg", namespace="local", environment=test_environment),
+        function_to_concept(
+            base, name="base_agg", namespace="local", environment=test_environment
+        ),
         environment=test_environment,
     )
     assert len(resolved) == 2

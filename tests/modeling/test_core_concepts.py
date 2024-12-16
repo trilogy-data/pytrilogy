@@ -166,9 +166,7 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert statement.grain.components == {
-        "local.even_order_id"
-    }
+    assert statement.grain.components == {"local.even_order_id"}
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2
