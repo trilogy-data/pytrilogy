@@ -1,5 +1,5 @@
 query_id = 20
-gen_length = 2800
+gen_length = 2744
 generated_sql = """
 
 WITH 
@@ -13,8 +13,7 @@ SELECT
     cs_item_items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     cs_item_items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
-    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\",
-    cs_sold_date_date.\"D_DATE_SK\" as \"cs_sold_date_id\"
+    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
     INNER JOIN memory.date_dim as cs_sold_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_sold_date_date.\"D_DATE_SK\"

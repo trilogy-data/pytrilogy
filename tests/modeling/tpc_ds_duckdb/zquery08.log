@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3916
+gen_length = 3715
 generated_sql = """
 
 WITH 
@@ -13,7 +13,6 @@ FROM
 abundant as (
 SELECT
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
-    customer_customers.\"C_CURRENT_ADDR_SK\" as \"customer_address_id\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
@@ -70,13 +69,11 @@ GROUP BY
 sparkling as (
 SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
-    store_sales_date_date.\"D_DATE_SK\" as \"store_sales_date_id\",
     store_sales_date_date.\"D_QOY\" as \"store_sales_date_quarter\",
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
-    store_sales_store_store.\"S_STORE_SK\" as \"store_sales_store_id\",
     store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\"
 FROM
     memory.store_sales as store_sales_store_sales

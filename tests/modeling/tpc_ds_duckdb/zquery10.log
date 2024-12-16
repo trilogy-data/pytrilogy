@@ -1,5 +1,5 @@
 query_id = 10
-gen_length = 5972
+gen_length = 5880
 generated_sql = """
 
 WITH 
@@ -56,7 +56,6 @@ young as (
 SELECT
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_demographics_customer_demographics.\"CD_CREDIT_RATING\" as \"customer_demographics_credit_rating\",
-    customer_demographics_customer_demographics.\"CD_DEMO_SK\" as \"customer_demographics_id\",
     customer_demographics_customer_demographics.\"CD_DEP_COLLEGE_COUNT\" as \"customer_demographics_college_dependent_count\",
     customer_demographics_customer_demographics.\"CD_DEP_COUNT\" as \"customer_demographics_dependent_count\",
     customer_demographics_customer_demographics.\"CD_DEP_EMPLOYED_COUNT\" as \"customer_demographics_employed_dependent_count\",

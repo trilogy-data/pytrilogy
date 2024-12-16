@@ -471,7 +471,6 @@ def generate_node(
                         x
                         for x in ex_resolve.output_concepts
                         if x.address not in [y.address for y in root_targets]
-                        and x.address not in ex_resolve.grain.components
                     ]
 
                     pseudonyms = [
@@ -491,6 +490,7 @@ def generate_node(
                     expanded.set_output_concepts(base)
                     # but hide them
                     if pseudonyms:
+                        expanded.add_output_concepts(pseudonyms)
                         logger.info(
                             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Hiding pseudonyms{[c.address for c in pseudonyms]}"
                         )

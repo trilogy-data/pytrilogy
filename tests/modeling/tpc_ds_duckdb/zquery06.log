@@ -1,5 +1,5 @@
 query_id = 6
-gen_length = 4536
+gen_length = 4227
 generated_sql = """
 
 WITH 
@@ -36,11 +36,8 @@ GROUP BY
 questionable as (
 SELECT
     cooperative.\"item_category\" as \"item_category\",
-    cooperative.\"item_id\" as \"item_id\",
-    cooperative.\"store_sales_customer_address_id\" as \"store_sales_customer_address_id\",
     cooperative.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     cooperative.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    cooperative.\"store_sales_date_id\" as \"store_sales_date_id\",
     cooperative.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
     cooperative.\"store_sales_date_year\" as \"store_sales_date_year\",
     cooperative.\"store_sales_item_category\" as \"store_sales_item_category\",
@@ -49,11 +46,8 @@ FROM
     cooperative
 GROUP BY 
     cooperative.\"item_category\",
-    cooperative.\"item_id\",
-    cooperative.\"store_sales_customer_address_id\",
     cooperative.\"store_sales_customer_id\",
     cooperative.\"store_sales_customer_state\",
-    cooperative.\"store_sales_date_id\",
     cooperative.\"store_sales_date_month_of_year\",
     cooperative.\"store_sales_date_year\",
     cooperative.\"store_sales_item_category\",

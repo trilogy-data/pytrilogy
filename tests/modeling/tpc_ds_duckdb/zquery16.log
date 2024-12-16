@@ -1,5 +1,5 @@
 query_id = 16
-gen_length = 5491
+gen_length = 5073
 generated_sql = """
 
 WITH 
@@ -58,15 +58,12 @@ GROUP BY
 concerned as (
 SELECT
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
-    cs_call_center_call_center.\"CC_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
     cs_catalog_sales.\"CS_EXT_SHIP_COST\" as \"cs_extra_ship_cost\",
     cs_catalog_sales.\"CS_ITEM_SK\" as \"cs_item_id\",
     cs_catalog_sales.\"CS_NET_PROFIT\" as \"cs_net_profit\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
-    cs_customer_customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
-    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\",
-    cs_ship_date_date.\"D_DATE_SK\" as \"cs_ship_date_id\"
+    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\"
 FROM
     memory.customer_address as cs_customer_customer_address
     INNER JOIN memory.catalog_sales as cs_catalog_sales on cs_customer_customer_address.\"CA_ADDRESS_SK\" = cs_catalog_sales.\"CS_SHIP_ADDR_SK\"
@@ -79,11 +76,8 @@ juicy as (
 SELECT
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
     cheerful.\"cs_order_number\" as \"cs_order_number\",
-    cs_call_center_call_center.\"CC_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_call_center_call_center.\"CC_COUNTY\" as \"cs_call_center_county\",
-    cs_customer_customer_address.\"CA_ADDRESS_SK\" as \"cs_customer_address_id\",
-    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\",
-    cs_ship_date_date.\"D_DATE_SK\" as \"cs_ship_date_id\"
+    cs_customer_customer_address.\"CA_STATE\" as \"cs_customer_state\"
 FROM
     cheerful
     INNER JOIN memory.customer_address as cs_customer_customer_address on cheerful.\"cs_customer_address_id\" = cs_customer_customer_address.\"CA_ADDRESS_SK\"

@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 12400
+gen_length = 11720
 generated_sql = """
 
 WITH 
@@ -55,14 +55,11 @@ SELECT
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     cast(store_sales_return_date_date.\"D_YEAR\" as int) as \"store_sales_return_date_year\",
-    catalog_sales_date_date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales_date_date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
-    store_sales_date_date.\"D_DATE_SK\" as \"store_sales_date_id\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     store_sales_item_items.\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     store_sales_item_items.\"I_ITEM_ID\" as \"store_sales_item_name\",
     store_sales_item_items.\"I_ITEM_SK\" as \"store_sales_item_id\",
-    store_sales_return_date_date.\"D_DATE_SK\" as \"store_sales_return_date_id\",
     store_sales_return_date_date.\"D_MOY\" as \"store_sales_return_date_month_of_year\",
     store_sales_store_returns.\"SR_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
     store_sales_store_returns.\"SR_NET_LOSS\" as \"store_sales_return_net_loss\",
@@ -70,8 +67,7 @@ SELECT
     store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales_store_store.\"S_STORE_ID\" as \"store_sales_store_text_id\",
-    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
-    store_sales_store_store.\"S_STORE_SK\" as \"store_sales_store_id\"
+    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\"
 FROM
     vacuous
     INNER JOIN memory.store_sales as store_sales_store_sales on vacuous.\"store_sales_customer_id\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" AND vacuous.\"store_sales_item_id\" = store_sales_store_sales.\"SS_ITEM_SK\"
@@ -86,13 +82,11 @@ WHERE
 ),
 yummy as (
 SELECT
-    uneven.\"catalog_sales_date_id\" as \"catalog_sales_date_id\",
     uneven.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
     uneven.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
     uneven.\"catalog_sales_net_profit\" as \"catalog_sales_net_profit\",
     uneven.\"catalog_sales_order_number\" as \"catalog_sales_order_number\",
     uneven.\"store_sales_customer_id\" as \"store_sales_customer_id\",
-    uneven.\"store_sales_date_id\" as \"store_sales_date_id\",
     uneven.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
     uneven.\"store_sales_date_year\" as \"store_sales_date_year\",
     uneven.\"store_sales_is_returned\" as \"store_sales_is_returned\",
@@ -100,10 +94,8 @@ SELECT
     uneven.\"store_sales_item_id\" as \"store_sales_item_id\",
     uneven.\"store_sales_item_name\" as \"store_sales_item_name\",
     uneven.\"store_sales_return_customer_id\" as \"store_sales_return_customer_id\",
-    uneven.\"store_sales_return_date_id\" as \"store_sales_return_date_id\",
     uneven.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
     uneven.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
-    uneven.\"store_sales_store_id\" as \"store_sales_store_id\",
     uneven.\"store_sales_store_name\" as \"store_sales_store_name\",
     uneven.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
 FROM
@@ -112,13 +104,11 @@ WHERE
     uneven.\"store_sales_date_year\" = 2001 and uneven.\"store_sales_date_month_of_year\" = 4 and uneven.\"store_sales_return_date_year\" = 2001 and uneven.\"store_sales_return_date_month_of_year\" >= 4 and uneven.\"store_sales_return_date_month_of_year\" <= 10 and uneven.\"catalog_sales_date_year\" = 2001 and uneven.\"catalog_sales_date_month_of_year\" >= 4 and uneven.\"catalog_sales_date_month_of_year\" <= 10 and uneven.\"store_sales_return_customer_id\" = uneven.\"store_sales_customer_id\" and uneven.\"store_sales_is_returned\"
 
 GROUP BY 
-    uneven.\"catalog_sales_date_id\",
     uneven.\"catalog_sales_date_month_of_year\",
     uneven.\"catalog_sales_date_year\",
     uneven.\"catalog_sales_net_profit\",
     uneven.\"catalog_sales_order_number\",
     uneven.\"store_sales_customer_id\",
-    uneven.\"store_sales_date_id\",
     uneven.\"store_sales_date_month_of_year\",
     uneven.\"store_sales_date_year\",
     uneven.\"store_sales_is_returned\",
@@ -126,10 +116,8 @@ GROUP BY
     uneven.\"store_sales_item_id\",
     uneven.\"store_sales_item_name\",
     uneven.\"store_sales_return_customer_id\",
-    uneven.\"store_sales_return_date_id\",
     uneven.\"store_sales_return_date_month_of_year\",
     uneven.\"store_sales_return_date_year\",
-    uneven.\"store_sales_store_id\",
     uneven.\"store_sales_store_name\",
     uneven.\"store_sales_store_text_id\"),
 young as (

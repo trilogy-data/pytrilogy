@@ -1,5 +1,5 @@
 query_id = 15
-gen_length = 2177
+gen_length = 1907
 generated_sql = """
 
 WITH 
@@ -8,12 +8,9 @@ SELECT
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     catalog_sales_bill_customer_customer_address.\"CA_STATE\" as \"catalog_sales_bill_customer_state\",
     catalog_sales_bill_customer_customer_address.\"CA_ZIP\" as \"catalog_sales_bill_customer_zip\",
-    catalog_sales_bill_customer_customers.\"C_CURRENT_ADDR_SK\" as \"catalog_sales_bill_customer_address_id\",
-    catalog_sales_bill_customer_customers.\"C_CUSTOMER_SK\" as \"catalog_sales_bill_customer_id\",
     catalog_sales_catalog_sales.\"CS_ITEM_SK\" as \"catalog_sales_item_id\",
     catalog_sales_catalog_sales.\"CS_ORDER_NUMBER\" as \"catalog_sales_order_number\",
     catalog_sales_catalog_sales.\"CS_SALES_PRICE\" as \"catalog_sales_sales_price\",
-    catalog_sales_date_date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales_date_date.\"D_QOY\" as \"catalog_sales_date_quarter\"
 FROM
     memory.customer_address as catalog_sales_bill_customer_customer_address
