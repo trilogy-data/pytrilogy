@@ -1,14 +1,9 @@
 query_id = 1
-gen_length = 9687
+gen_length = 2106
 generated_sql = """
 
 WITH 
 cheerful as (
--- Target: Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>. Group: False Source: SourceType.MERGE.
--- Joins: inner join returns_return_date_date on wakeful.returns.return_date.id=returns.return_date.id, inner join returns_store_store on wakeful.returns.store.id=returns.store.id, inner join returns_customer_customers on wakeful.returns.customer.id=returns.customer.id.
--- Source Map: {'returns.store.id': ['returns_store_store'], 'returns.store.state': ['returns_store_store'], 'returns.return_date.year': ['returns_return_date_date'], 'returns.return_date.id': ['returns_return_date_date'], 'returns.customer.id': ['returns_customer_customers'], 'returns.customer.text_id': ['returns_customer_customers'], 'returns.return_amount': ['returns_store_returns'], 'returns.item.id': ['returns_store_returns'], 'returns.store_sales.ticket_number': ['returns_store_returns'], 'returns.store.name': ['returns_store_store'], 'returns.store.tax_percentage': ['returns_store_store'], 'returns.store.zip': ['returns_store_store'], 'returns.store.hours': ['returns_store_store'], 'returns.store.store_manager': ['returns_store_store'], 'returns.store.employees': ['returns_store_store'], 'returns.store.geography_class': ['returns_store_store'], 'returns.store.market': ['returns_store_store'], 'returns.store.county': ['returns_store_store'], 'returns.store.date.id': ['returns_store_store'], 'returns.store.market_manager': ['returns_store_store'], 'returns.store.city': ['returns_store_store'], 'returns.store.text_id': ['returns_store_store'], 'returns.store.market_id': ['returns_store_store'], 'returns.store.floor_space': ['returns_store_store'], 'returns.return_date.quarter': ['returns_return_date_date'], 'returns.return_date.month_of_year': ['returns_return_date_date'], 'returns.return_date.date_string': ['returns_return_date_date'], 'returns.return_date.date': ['returns_return_date_date'], 'returns.return_date.week_seq': ['returns_return_date_date'], 'returns.return_date.day_of_week': ['returns_return_date_date'], 'returns.return_date._date_string': ['returns_return_date_date'], 'returns.return_date._year_string': ['returns_return_date_date'], 'returns.customer.birth_day': ['returns_customer_customers'], 'returns.customer.birth_country': ['returns_customer_customers'], 'returns.customer.birth_month': ['returns_customer_customers'], 'returns.customer.email_address': ['returns_customer_customers'], 'returns.customer.first_name': ['returns_customer_customers'], 'returns.customer.salutation': ['returns_customer_customers'], 'returns.customer.last_review_date': ['returns_customer_customers'], 'returns.customer.demographics.id': ['returns_customer_customers'], 'returns.customer.birth_year': ['returns_customer_customers'], 'returns.customer.preferred_cust_flag': ['returns_customer_customers'], 'returns.customer.login': ['returns_customer_customers'], 'returns.customer.address_id': ['returns_customer_customers'], 'returns.customer.last_name': ['returns_customer_customers'], 'returns.time.id': ['returns_store_returns']}.
--- Output: returns.customer.id@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.customer.text_id@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.item.id@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.return_amount@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.return_date.id@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.return_date.year@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.store.id@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.store.state@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>, returns.store_sales.ticket_number@Grain<returns.customer.id,returns.item.id,returns.return_date.id,returns.store.id,returns.store_sales.ticket_number>.
--- Inputs: returns.customer.id@Grain<returns.customer.id>, returns.customer.text_id@Grain<returns.customer.id>, returns.item.id@Grain<returns.item.id>, returns.return_amount@Grain<returns.item.id,returns.store_sales.ticket_number>, returns.return_date.id@Grain<returns.return_date.id>, returns.return_date.year@Grain<returns.return_date.id>, returns.store.id@Grain<returns.store.id>, returns.store.state@Grain<returns.store.id>, returns.store_sales.ticket_number@Grain<returns.store_sales.ticket_number>.
 SELECT
     cast(returns_return_date_date.\"D_YEAR\" as int) as \"returns_return_date_year\",
     returns_customer_customers.\"C_CUSTOMER_ID\" as \"returns_customer_text_id\",
@@ -28,11 +23,6 @@ WHERE
     returns_store_store.\"S_STATE\" = 'TN' and cast(returns_return_date_date.\"D_YEAR\" as int) = 2000
 ),
 thoughtful as (
--- Target: Grain<returns.customer.text_id,returns.store.id>. Group: True Source: SourceType.GROUP. References: cheerful.
--- Source Map: {'returns.customer.id': ['cheerful'], 'returns.customer.text_id': ['cheerful'], 'returns.item.id': ['cheerful'], 'returns.return_amount': ['cheerful'], 'returns.return_date.id': ['cheerful'], 'returns.return_date.year': ['cheerful'], 'returns.store.id': ['cheerful'], 'returns.store.state': ['cheerful'], 'returns.store_sales.ticket_number': ['cheerful'], 'local.total_returns': []}.
--- Output: local.total_returns@Grain<returns.customer.text_id,returns.store.id>, returns.store.id@Grain<returns.customer.text_id,returns.store.id>, returns.customer.text_id@Grain<returns.customer.text_id,returns.store.id>.
--- Inputs: returns.return_amount@Grain<returns.item.id,returns.store_sales.ticket_number>, returns.store.id@Grain<returns.store.id>, returns.customer.text_id@Grain<returns.customer.id>, returns.store_sales.ticket_number@Grain<returns.store_sales.ticket_number>, returns.item.id@Grain<returns.item.id>.
--- Nullable: local.total_returns@Grain<returns.customer.text_id,returns.store.id>.
 SELECT
     cheerful.\"returns_customer_text_id\" as \"returns_customer_text_id\",
     cheerful.\"returns_store_id\" as \"returns_store_id\",
@@ -43,11 +33,6 @@ GROUP BY
     cheerful.\"returns_customer_text_id\",
     cheerful.\"returns_store_id\"),
 cooperative as (
--- Target: Grain<returns.store.id>. Group: True Source: SourceType.GROUP. References: thoughtful.
--- Source Map: {'local.total_returns': ['thoughtful'], 'returns.store.id': ['thoughtful'], 'returns.customer.text_id': ['thoughtful'], 'local.avg_store_returns': []}.
--- Output: local.avg_store_returns@Grain<returns.store.id>, returns.store.id@Grain<returns.store.id>.
--- Inputs: local.total_returns@Grain<returns.customer.text_id,returns.store.id>, returns.store.id@Grain<returns.store.id>.
--- Nullable: local.avg_store_returns@Grain<returns.store.id>.
 SELECT
     avg(thoughtful.\"total_returns\") as \"avg_store_returns\",
     thoughtful.\"returns_store_id\" as \"returns_store_id\"
@@ -55,13 +40,6 @@ FROM
     thoughtful
 GROUP BY 
     thoughtful.\"returns_store_id\")
--- Target: Grain<returns.customer.text_id,returns.store.id>. Group: False Source: SourceType.MERGE. References: thoughtful, cooperative.
--- Joins: inner join thoughtful on cooperative.returns.store.id=returns.store.id.
--- Source Map: {'local.total_returns': ['thoughtful'], 'returns.store.id': ['thoughtful'], 'returns.customer.text_id': ['thoughtful'], 'local.avg_store_returns': ['cooperative']}.
--- Output: returns.customer.text_id@Grain<returns.customer.text_id,returns.store.id>.
--- Inputs: returns.store.id@Grain<returns.store.id>, returns.customer.text_id@Grain<returns.customer.id>, local.total_returns@Grain<returns.customer.text_id,returns.store.id>, local.avg_store_returns@Grain<returns.store.id>.
--- Hidden: local.total_returns@Grain<returns.customer.text_id,returns.store.id>, returns.store.id@Grain<returns.store.id>, local.avg_store_returns@Grain<returns.store.id>.
--- Nullable: local.total_returns@Grain<returns.customer.text_id,returns.store.id>, local.avg_store_returns@Grain<returns.store.id>.
 SELECT
     thoughtful.\"returns_customer_text_id\" as \"returns_customer_text_id\"
 FROM

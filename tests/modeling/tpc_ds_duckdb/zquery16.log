@@ -1,13 +1,9 @@
 query_id = 16
-gen_length = 19348
+gen_length = 5491
 generated_sql = """
 
 WITH 
 questionable as (
--- Target: Grain<cs.order_number,cs.warehouse.id>. Group: True Source: SourceType.GROUP.
--- Source Map: {'cs.warehouse.id': ['cs_catalog_sales'], 'cs.order_number': ['cs_catalog_sales'], 'cs.extra_sales_price': ['cs_catalog_sales'], 'cs.promotion.id': ['cs_catalog_sales'], 'cs.extra_ship_cost': ['cs_catalog_sales'], 'cs.bill_customer.id': ['cs_catalog_sales'], 'cs.item.id': ['cs_catalog_sales'], 'cs.customer.address_id': ['cs_catalog_sales'], 'cs.time.id': ['cs_catalog_sales'], 'cs.call_center.id': ['cs_catalog_sales'], 'cs.extra_wholesale_cost': ['cs_catalog_sales'], 'cs.net_profit': ['cs_catalog_sales'], 'cs.sold_date.id': ['cs_catalog_sales'], 'cs.ship_date.id': ['cs_catalog_sales'], 'cs.wholesale_cost': ['cs_catalog_sales'], 'cs.list_price': ['cs_catalog_sales'], 'cs.date.id': ['cs_catalog_sales'], 'cs.bill_customer_demographic.id': ['cs_catalog_sales'], 'cs.quantity': ['cs_catalog_sales'], 'cs.sales_price': ['cs_catalog_sales'], 'cs.customer.id': ['cs_catalog_sales'], 'cs.coupon_amt': ['cs_catalog_sales']}.
--- Output: cs.warehouse.id@Grain<cs.order_number,cs.warehouse.id>, cs.order_number@Grain<cs.order_number,cs.warehouse.id>.
--- Inputs: cs.warehouse.id@Grain<cs.warehouse.id>, cs.order_number@Grain<cs.order_number>.
 SELECT
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
     cs_catalog_sales.\"CS_WAREHOUSE_SK\" as \"cs_warehouse_id\"
@@ -17,10 +13,6 @@ GROUP BY
     cs_catalog_sales.\"CS_ORDER_NUMBER\",
     cs_catalog_sales.\"CS_WAREHOUSE_SK\"),
 cooperative as (
--- Target: Grain<cr.order_number>. Group: True Source: SourceType.GROUP.
--- Source Map: {'cr.order_number': ['cr_catalog_returns'], 'cr.date.id': ['cr_catalog_returns'], 'cr.net_loss': ['cr_catalog_returns'], 'cr.time.id': ['cr_catalog_returns'], 'cr.item.id': ['cr_catalog_returns'], 'cr.sales.order_number': ['cr_catalog_returns']}.
--- Output: cr.order_number@Grain<cr.order_number>.
--- Inputs: cr.order_number@Grain<cr.order_number>.
 SELECT
     cr_catalog_returns.\"CR_ORDER_NUMBER\" as \"cr_order_number\"
 FROM
@@ -28,11 +20,6 @@ FROM
 GROUP BY 
     cr_catalog_returns.\"CR_ORDER_NUMBER\"),
 abundant as (
--- Target: Grain<cs.order_number>. Group: True Source: SourceType.GROUP. References: questionable.
--- Source Map: {'cs.warehouse.id': ['questionable'], 'cs.order_number': ['questionable'], 'local._virt_agg_count_1322075060662646': []}.
--- Output: local._virt_agg_count_1322075060662646@Grain<cs.order_number>, cs.order_number@Grain<cs.order_number>.
--- Inputs: cs.warehouse.id@Grain<cs.warehouse.id>, cs.order_number@Grain<cs.order_number>.
--- Nullable: local._virt_agg_count_1322075060662646@Grain<cs.order_number>.
 SELECT
     count(questionable.\"cs_warehouse_id\") as \"_virt_agg_count_1322075060662646\",
     questionable.\"cs_order_number\" as \"cs_order_number\"
@@ -41,19 +28,11 @@ FROM
 GROUP BY 
     questionable.\"cs_order_number\"),
 uneven as (
--- Target: Grain<cs.order_number>. Group: False Source: SourceType.FILTER. References: abundant.
--- Source Map: {'local._virt_agg_count_1322075060662646': ['abundant'], 'cs.order_number': ['abundant'], 'local.multi_warehouse_sales': []}.
--- Output: local.multi_warehouse_sales@Grain<cs.order_number>.
--- Inputs: cs.order_number@Grain<cs.order_number>, local._virt_agg_count_1322075060662646@Grain<cs.order_number>.
 SELECT
     CASE WHEN abundant.\"_virt_agg_count_1322075060662646\" > 1 THEN abundant.\"cs_order_number\" ELSE NULL END as \"multi_warehouse_sales\"
 FROM
     abundant),
 yummy as (
--- Target: Grain<local.multi_warehouse_sales>. Group: True Source: SourceType.GROUP. References: uneven.
--- Source Map: {'local.multi_warehouse_sales': ['uneven']}.
--- Output: local.multi_warehouse_sales@Grain<local.multi_warehouse_sales>.
--- Inputs: local.multi_warehouse_sales@Grain<Abstract>.
 SELECT
     uneven.\"multi_warehouse_sales\" as \"multi_warehouse_sales\"
 FROM
@@ -61,10 +40,6 @@ FROM
 GROUP BY 
     uneven.\"multi_warehouse_sales\"),
 cheerful as (
--- Target: Grain<cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id>. Group: True Source: SourceType.GROUP. References: cooperative, yummy.
--- Source Map: {'cs.ship_date.id': ['cs_catalog_sales'], 'cs.customer.address_id': ['cs_catalog_sales'], 'cs.call_center.id': ['cs_catalog_sales'], 'cs.order_number': ['cs_catalog_sales'], 'cs.extra_sales_price': ['cs_catalog_sales'], 'cs.promotion.id': ['cs_catalog_sales'], 'cs.extra_ship_cost': ['cs_catalog_sales'], 'cs.bill_customer.id': ['cs_catalog_sales'], 'cs.item.id': ['cs_catalog_sales'], 'cs.time.id': ['cs_catalog_sales'], 'cs.extra_wholesale_cost': ['cs_catalog_sales'], 'cs.net_profit': ['cs_catalog_sales'], 'cs.sold_date.id': ['cs_catalog_sales'], 'cs.warehouse.id': ['cs_catalog_sales'], 'cs.wholesale_cost': ['cs_catalog_sales'], 'cs.list_price': ['cs_catalog_sales'], 'cs.date.id': ['cs_catalog_sales'], 'cs.bill_customer_demographic.id': ['cs_catalog_sales'], 'cs.quantity': ['cs_catalog_sales'], 'cs.sales_price': ['cs_catalog_sales'], 'cs.customer.id': ['cs_catalog_sales'], 'cs.coupon_amt': ['cs_catalog_sales'], 'cr.order_number': ['cooperative'], 'local.multi_warehouse_sales': ['yummy']}.
--- Output: cs.ship_date.id@Grain<cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id>, cs.customer.address_id@Grain<cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id>, cs.call_center.id@Grain<cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id>, cs.order_number@Grain<cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id>.
--- Inputs: cs.ship_date.id@Grain<cs.ship_date.id>, cs.customer.address_id@Grain<cs.customer.address_id>, cs.call_center.id@Grain<cs.call_center.id>, cs.order_number@Grain<cs.order_number>.
 SELECT
     cs_catalog_sales.\"CS_CALL_CENTER_SK\" as \"cs_call_center_id\",
     cs_catalog_sales.\"CS_ORDER_NUMBER\" as \"cs_order_number\",
@@ -81,11 +56,6 @@ GROUP BY
     cs_catalog_sales.\"CS_SHIP_ADDR_SK\",
     cs_catalog_sales.\"CS_SHIP_DATE_SK\"),
 concerned as (
--- Target: Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>. Group: False Source: SourceType.MERGE. References: cooperative, yummy.
--- Joins: inner join cs_catalog_sales on highfalutin.cs.customer.address_id=cs.customer.address_id, inner join cs_ship_date_date on wakeful.cs.ship_date.id=cs.ship_date.id, inner join cs_call_center_call_center on wakeful.cs.call_center.id=cs.call_center.id.
--- Source Map: {'cs.ship_date.id': ['cs_ship_date_date'], 'cs.ship_date.date': ['cs_ship_date_date'], 'cs.customer.address_id': ['cs_customer_customer_address'], 'cs.customer.state': ['cs_customer_customer_address'], 'cs.call_center.county': ['cs_call_center_call_center'], 'cs.call_center.id': ['cs_call_center_call_center'], 'cs.extra_ship_cost': ['cs_catalog_sales'], 'cs.item.id': ['cs_catalog_sales'], 'cs.order_number': ['cs_catalog_sales'], 'cr.order_number': ['cooperative'], 'local.multi_warehouse_sales': ['yummy'], 'cs.net_profit': ['cs_catalog_sales'], 'cs.ship_date._date_string': ['cs_ship_date_date'], 'cs.ship_date.week_seq': ['cs_ship_date_date'], 'cs.ship_date.date_string': ['cs_ship_date_date'], 'cs.ship_date.month_of_year': ['cs_ship_date_date'], 'cs.ship_date.day_of_week': ['cs_ship_date_date'], 'cs.ship_date._year_string': ['cs_ship_date_date'], 'cs.ship_date.quarter': ['cs_ship_date_date'], 'cs.ship_date.year': ['cs_ship_date_date'], 'cs.customer.zip': ['cs_customer_customer_address'], 'cs.customer.county': ['cs_customer_customer_address'], 'cs.customer.street': ['cs_customer_customer_address'], 'cs.customer.city': ['cs_customer_customer_address'], 'cs.customer.country': ['cs_customer_customer_address'], 'cs.extra_sales_price': ['cs_catalog_sales'], 'cs.promotion.id': ['cs_catalog_sales'], 'cs.bill_customer.id': ['cs_catalog_sales'], 'cs.time.id': ['cs_catalog_sales'], 'cs.extra_wholesale_cost': ['cs_catalog_sales'], 'cs.sold_date.id': ['cs_catalog_sales'], 'cs.warehouse.id': ['cs_catalog_sales'], 'cs.wholesale_cost': ['cs_catalog_sales'], 'cs.list_price': ['cs_catalog_sales'], 'cs.date.id': ['cs_catalog_sales'], 'cs.bill_customer_demographic.id': ['cs_catalog_sales'], 'cs.quantity': ['cs_catalog_sales'], 'cs.sales_price': ['cs_catalog_sales'], 'cs.customer.id': ['cs_catalog_sales'], 'cs.coupon_amt': ['cs_catalog_sales']}.
--- Output: cs.call_center.county@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.call_center.id@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.customer.address_id@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.customer.state@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.extra_ship_cost@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.item.id@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.order_number@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.ship_date.date@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.ship_date.id@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.net_profit@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.item.id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>.
--- Inputs: cs.call_center.county@Grain<cs.call_center.id>, cs.call_center.id@Grain<cs.call_center.id>, cs.customer.address_id@Grain<cs.customer.address_id>, cs.customer.state@Grain<cs.customer.address_id>, cs.extra_ship_cost@Grain<cs.item.id,cs.order_number>, cs.item.id@Grain<cs.item.id>, cs.order_number@Grain<cs.order_number>, cs.ship_date.date@Grain<cs.ship_date.id>, cs.ship_date.id@Grain<cs.ship_date.id>, cs.net_profit@Grain<cs.item.id,cs.order_number>.
 SELECT
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
     cs_call_center_call_center.\"CC_CALL_CENTER_SK\" as \"cs_call_center_id\",
@@ -106,11 +76,6 @@ WHERE
     cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and cs_catalog_sales.\"CS_ORDER_NUMBER\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and cs_catalog_sales.\"CS_ORDER_NUMBER\" in (select yummy.\"multi_warehouse_sales\" from yummy where yummy.\"multi_warehouse_sales\" is not null)
 ),
 juicy as (
--- Target: Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>. Group: False Source: SourceType.MERGE. References: cheerful, cooperative, yummy.
--- Joins: inner join cs_customer_customer_address on cheerful.cs.customer.address_id=cs.customer.address_id, inner join cs_ship_date_date on cheerful.cs.ship_date.id=cs.ship_date.id, inner join cs_call_center_call_center on cheerful.cs.call_center.id=cs.call_center.id.
--- Source Map: {'cs.ship_date.id': ['cs_ship_date_date'], 'cs.ship_date.date': ['cs_ship_date_date'], 'cs.customer.address_id': ['cs_customer_customer_address'], 'cs.customer.state': ['cs_customer_customer_address'], 'cs.call_center.county': ['cs_call_center_call_center'], 'cs.call_center.id': ['cs_call_center_call_center'], 'cs.order_number': ['cheerful'], 'cr.order_number': ['cooperative'], 'local.multi_warehouse_sales': ['yummy'], 'cs.ship_date._date_string': ['cs_ship_date_date'], 'cs.ship_date.week_seq': ['cs_ship_date_date'], 'cs.ship_date.date_string': ['cs_ship_date_date'], 'cs.ship_date.month_of_year': ['cs_ship_date_date'], 'cs.ship_date.day_of_week': ['cs_ship_date_date'], 'cs.ship_date._year_string': ['cs_ship_date_date'], 'cs.ship_date.quarter': ['cs_ship_date_date'], 'cs.ship_date.year': ['cs_ship_date_date'], 'cs.customer.zip': ['cs_customer_customer_address'], 'cs.customer.county': ['cs_customer_customer_address'], 'cs.customer.street': ['cs_customer_customer_address'], 'cs.customer.city': ['cs_customer_customer_address'], 'cs.customer.country': ['cs_customer_customer_address']}.
--- Output: cs.call_center.county@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.call_center.id@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.customer.address_id@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.customer.state@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.order_number@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.ship_date.date@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>, cs.ship_date.id@Grain<cr.order_number,cs.call_center.id,cs.customer.address_id,cs.order_number,cs.ship_date.id,local.multi_warehouse_sales>.
--- Inputs: cs.call_center.county@Grain<cs.call_center.id>, cs.call_center.id@Grain<cs.call_center.id>, cs.customer.address_id@Grain<cs.customer.address_id>, cs.customer.state@Grain<cs.customer.address_id>, cs.order_number@Grain<cs.order_number>, cs.ship_date.date@Grain<cs.ship_date.id>, cs.ship_date.id@Grain<cs.ship_date.id>.
 SELECT
     cast(cs_ship_date_date.\"D_DATE\" as date) as \"cs_ship_date_date\",
     cheerful.\"cs_order_number\" as \"cs_order_number\",
@@ -128,31 +93,16 @@ WHERE
     cast(cs_ship_date_date.\"D_DATE\" as date) >= date '2002-02-01' and cast(cs_ship_date_date.\"D_DATE\" as date) <= date '2002-04-02' and cs_customer_customer_address.\"CA_STATE\" = 'GA' and cs_call_center_call_center.\"CC_COUNTY\" = 'Williamson County' and cheerful.\"cs_order_number\" not in (select cooperative.\"cr_order_number\" from cooperative where cooperative.\"cr_order_number\" is not null) and cheerful.\"cs_order_number\" in (select yummy.\"multi_warehouse_sales\" from yummy where yummy.\"multi_warehouse_sales\" is not null)
 ),
 young as (
--- Target: Grain<Abstract>. Group: True Source: SourceType.GROUP. References: concerned.
--- Source Map: {'cs.call_center.county': ['concerned'], 'cs.call_center.id': ['concerned'], 'cs.customer.address_id': ['concerned'], 'cs.customer.state': ['concerned'], 'cs.extra_ship_cost': ['concerned'], 'cs.item.id': ['concerned'], 'cs.order_number': ['concerned'], 'cs.ship_date.date': ['concerned'], 'cs.ship_date.id': ['concerned'], 'local.total_shipping_cost': [], 'cs.net_profit': ['concerned'], 'local.total_net_profit': []}.
--- Output: local.total_shipping_cost@Grain<Abstract>, local.total_net_profit@Grain<Abstract>.
--- Inputs: cs.extra_ship_cost@Grain<cs.item.id,cs.order_number>, cs.order_number@Grain<cs.order_number>, cs.item.id@Grain<cs.item.id>, cs.net_profit@Grain<cs.item.id,cs.order_number>.
 SELECT
     sum(concerned.\"cs_extra_ship_cost\") as \"total_shipping_cost\",
     sum(concerned.\"cs_net_profit\") as \"total_net_profit\"
 FROM
     concerned),
 vacuous as (
--- Target: Grain<Abstract>. Group: True Source: SourceType.GROUP. References: juicy.
--- Source Map: {'cs.call_center.county': ['juicy'], 'cs.call_center.id': ['juicy'], 'cs.customer.address_id': ['juicy'], 'cs.customer.state': ['juicy'], 'cs.order_number': ['juicy'], 'cs.ship_date.date': ['juicy'], 'cs.ship_date.id': ['juicy'], 'local.order_count': []}.
--- Output: local.order_count@Grain<Abstract>.
--- Inputs: cs.order_number@Grain<cs.order_number>.
--- Nullable: local.order_count@Grain<Abstract>.
 SELECT
     count(distinct juicy.\"cs_order_number\") as \"order_count\"
 FROM
     juicy)
--- Target: Grain<Abstract>. Group: False Source: SourceType.MERGE. References: vacuous, young.
--- Joins: full JOIN vacuous and young on .
--- Source Map: {'local.order_count': ['vacuous'], 'local.total_shipping_cost': ['young'], 'local.total_net_profit': ['young']}.
--- Output: local.order_count@Grain<Abstract>, local.total_shipping_cost@Grain<Abstract>, local.total_net_profit@Grain<Abstract>.
--- Inputs: local.order_count@Grain<Abstract>, local.total_shipping_cost@Grain<Abstract>, local.total_net_profit@Grain<Abstract>.
--- Nullable: local.order_count@Grain<Abstract>.
 SELECT
     vacuous.\"order_count\" as \"order_count\",
     young.\"total_shipping_cost\" as \"total_shipping_cost\",
