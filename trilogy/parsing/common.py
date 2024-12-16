@@ -4,7 +4,13 @@ from typing import List, Tuple
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
-from trilogy.core.enums import FunctionType, Modifier, PurposeLineage, WindowType
+from trilogy.core.enums import (
+    FunctionType,
+    Granularity,
+    Modifier,
+    PurposeLineage,
+    WindowType,
+)
 from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
 from trilogy.core.models import (
     AggregateWrapper,
@@ -66,7 +72,7 @@ def process_function_args(
             concept = function_to_concept(
                 arg,
                 name=f"{VIRTUAL_CONCEPT_PREFIX}_{arg.operator.value}_{id_hash}",
-                namespace=environment.namespace,
+                environment=environment,
             )
             # to satisfy mypy, concept will always have metadata
             if concept.metadata and meta:
@@ -80,7 +86,7 @@ def process_function_args(
             concept = arbitrary_to_concept(
                 arg,
                 name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
-                namespace=environment.namespace,
+                environment=environment,
             )
             if concept.metadata and meta:
                 concept.metadata.line_number = meta.line
@@ -139,10 +145,39 @@ def constant_to_concept(
     )
 
 
+def concepts_to_grain_concepts(
+    concepts: List[Concept] | List[str] | set[str], environment: Environment | None
+) -> list[Concept]:
+    environment = Environment() if environment is None else environment
+    pconcepts: list[Concept] = [
+        c if isinstance(c, Concept) else environment.concepts[c] for c in concepts
+    ]
+
+    final: List[Concept] = []
+    for sub in pconcepts:
+        if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
+            if any([c.address in pconcepts for c in sub.keys]):
+                continue
+        if sub.purpose in (Purpose.METRIC,):
+            if all([c in pconcepts for c in sub.grain.components]):
+                continue
+        if sub.granularity == Granularity.SINGLE_ROW:
+            continue
+        final.append(sub)
+    final = unique(final, "address")
+    v2 = sorted(final, key=lambda x: x.name)
+    return v2
+
+
 def function_to_concept(
-    parent: Function, name: str, namespace: str, metadata: Metadata | None = None
+    parent: Function,
+    name: str,
+    environment: Environment,
+    namespace: str | None = None,
+    metadata: Metadata | None = None,
 ) -> Concept:
     pkeys: List[Concept] = []
+    namespace = namespace or environment.namespace
     for x in parent.arguments:
         pkeys += [
             x
@@ -162,7 +197,7 @@ def function_to_concept(
             key_grain += [*x.keys]
         else:
             key_grain.append(x)
-    keys = tuple(Grain(components=key_grain).components_copy)
+    keys = tuple(concepts_to_grain_concepts(key_grain, environment))
     if not pkeys:
         purpose = Purpose.CONSTANT
     else:
@@ -256,7 +291,7 @@ def window_item_to_concept(
         lineage=parent,
         metadata=fmetadata,
         # filters are implicitly at the grain of the base item
-        grain=Grain(components=grain),
+        grain=Grain.from_concepts(grain),
         namespace=namespace,
         keys=keys,
         modifiers=modifiers,
@@ -268,9 +303,8 @@ def agg_wrapper_to_concept(
     namespace: str,
     name: str,
     metadata: Metadata | None = None,
-    purpose: Purpose | None = None,
 ) -> Concept:
-    local_purpose, keys = get_purpose_and_keys(
+    _, keys = get_purpose_and_keys(
         Purpose.METRIC, tuple(parent.by) if parent.by else None
     )
     # anything grouped to a grain should be a property
@@ -284,7 +318,7 @@ def agg_wrapper_to_concept(
         purpose=Purpose.METRIC,
         metadata=fmetadata,
         lineage=parent,
-        grain=Grain(components=parent.by) if parent.by else Grain(),
+        grain=Grain.from_concepts(parent.by) if parent.by else Grain(),
         namespace=namespace,
         keys=tuple(parent.by) if parent.by else keys,
         modifiers=modifiers,
@@ -304,15 +338,17 @@ def arbitrary_to_concept(
         | float
         | str
     ),
-    namespace: str,
+    environment: Environment,
+    namespace: str | None = None,
     name: str | None = None,
     metadata: Metadata | None = None,
     purpose: Purpose | None = None,
 ) -> Concept:
+    namespace = namespace or environment.namespace
     if isinstance(parent, AggregateWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
-        return agg_wrapper_to_concept(parent, namespace, name, metadata, purpose)
+        return agg_wrapper_to_concept(parent, namespace, name, metadata)
     elif isinstance(parent, WindowItem):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
@@ -324,7 +360,13 @@ def arbitrary_to_concept(
     elif isinstance(parent, Function):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
-        return function_to_concept(parent, name, namespace, metadata=metadata)
+        return function_to_concept(
+            parent,
+            name,
+            metadata=metadata,
+            environment=environment,
+            namespace=namespace,
+        )
     elif isinstance(parent, ListWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"

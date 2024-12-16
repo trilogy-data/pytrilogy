@@ -12,6 +12,9 @@ from trilogy.core.models import (
     ProcessedQuery,
     SelectItem,
 )
+from trilogy.core.processing.node_generators.common import (
+    resolve_function_parent_concepts,
+)
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -86,17 +89,13 @@ def test_daily_job():
     assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
-    from trilogy.core.processing.node_generators.common import (
-        resolve_function_parent_concepts,
-    )
-
     for x in case.lineage.concept_arguments:
         test = case.lineage.with_namespace("all_sites")
         for y in test.concept_arguments:
             assert y.namespace == "all_sites"
         assert x.namespace == "all_sites", type(case.lineage)
 
-    parents = resolve_function_parent_concepts(case)
+    parents = resolve_function_parent_concepts(case, environment=env)
     for x in parents:
         assert x.namespace == "all_sites"
 
@@ -149,17 +148,13 @@ def test_counts():
     assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
-    from trilogy.core.processing.node_generators.common import (
-        resolve_function_parent_concepts,
-    )
-
     for x in case.lineage.concept_arguments:
         test = case.lineage.with_namespace("all_sites")
         for y in test.concept_arguments:
             assert y.namespace == "all_sites"
         assert x.namespace == "all_sites", type(case.lineage)
 
-    parents = resolve_function_parent_concepts(case)
+    parents = resolve_function_parent_concepts(case, environment=env)
     for x in parents:
         assert x.namespace == "all_sites"
 

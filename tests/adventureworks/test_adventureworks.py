@@ -95,7 +95,8 @@ def test_query_datasources(environment: Environment):
         ]
     )
     customer_datasource = search_concepts(
-        [environment.concepts["internet_sales.order_number"]] + t_grain.components_copy,
+        [environment.concepts["internet_sales.order_number"]]
+        + [environment.concepts[x] for x in t_grain.components],
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -151,7 +152,7 @@ def test_two_properties(environment: Environment):
     # assert a group up to the first name works
     _customer_datasource = search_concepts(
         [environment.concepts["internet_sales.customer.first_name"]]
-        + test.grain.components_copy,
+        + [environment.concepts[x] for x in test.grain.components],
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -163,13 +164,13 @@ def test_two_properties(environment: Environment):
     assert list_to_address(customer_datasource.output_concepts).issuperset(
         list_to_address(
             [environment.concepts["internet_sales.customer.first_name"]]
-            + test.grain.components_copy
+            + [environment.concepts[x] for x in test.grain.components],
         )
     )
 
     order_date_datasource = search_concepts(
         [environment.concepts["internet_sales.dates.order_date"]]
-        + test.grain.components_copy,
+        + [environment.concepts[x] for x in test.grain.components],
         environment=environment,
         g=environment_graph,
         depth=0,
@@ -178,7 +179,7 @@ def test_two_properties(environment: Environment):
     assert list_to_address(order_date_datasource.output_concepts).issuperset(
         list_to_address(
             [environment.concepts["internet_sales.dates.order_date"]]
-            + test.grain.components_copy
+            + [environment.concepts[x] for x in test.grain.components],
         )
     )
 
@@ -207,12 +208,12 @@ def test_grain(environment: Environment):
     assert isinstance(test, SelectNode)
     assert len(test.parents) == 0
     assert (
-        test.grain.set
-        == Grain(components=[environment.concepts["dates.order_key"]]).set
+        test.grain.components
+        == Grain(components=[environment.concepts["dates.order_key"]]).components
     )
     assert (
-        environment.datasources["dates.order_dates"].grain.set
-        == Grain(components=[environment.concepts["dates.order_key"]]).set
+        environment.datasources["dates.order_dates"].grain.components
+        == Grain(components=[environment.concepts["dates.order_key"]]).components
     )
     resolved = test.resolve()
     assert resolved.grain == Grain(components=[environment.concepts["dates.order_key"]])

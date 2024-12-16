@@ -58,7 +58,7 @@ def deduplicate_nodes(
                 og = merged[k1]
                 subset_to = merged[k2]
                 logger.info(
-                    f"{logging_prefix}{LOGGER_PREFIX} extraneous parent node that is subset of another parent node {og.grain.issubset(subset_to.grain)} {og.grain.set} {subset_to.grain.set}"
+                    f"{logging_prefix}{LOGGER_PREFIX} extraneous parent node that is subset of another parent node {og.grain.issubset(subset_to.grain)} {og.grain.components} {subset_to.grain.components}"
                 )
                 merged = {k: v for k, v in merged.items() if k != k1}
                 removed.add(k1)
@@ -197,7 +197,7 @@ class MergeNode(StrategyNode):
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource | Datasource] = sorted(
-            final_datasets, key=lambda x: -len(x.grain.components_copy)
+            final_datasets, key=lambda x: -len(x.grain.components)
         )
 
         logger.info(

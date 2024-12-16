@@ -463,7 +463,7 @@ class ParseToObjects(Transformer):
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
-            grain=Grain(components=parents),
+            grain=Grain(components={x.address for x in parents}),
             namespace=namespace,
             keys=parents,
             modifiers=modifiers,
@@ -530,6 +530,7 @@ class ParseToObjects(Transformer):
                 source_value,
                 name=name,
                 namespace=namespace,
+                environment=self.environment,
                 purpose=purpose,
                 metadata=metadata,
             )
@@ -598,7 +599,7 @@ class ParseToObjects(Transformer):
                 output_purpose=Purpose.CONSTANT,
                 arguments=[constant],
             ),
-            grain=Grain(components=[]),
+            grain=Grain(components=set()),
             namespace=namespace,
         )
         if concept.metadata:
@@ -623,7 +624,9 @@ class ParseToObjects(Transformer):
         return args
 
     def grain_clause(self, args) -> Grain:
-        return Grain(components=[self.environment.concepts[a] for a in args[0]])
+        return Grain(
+            components=set([self.environment.concepts[a].address for a in args[0]])
+        )
 
     def whole_grain_clause(self, args) -> WholeGrainWrapper:
         return WholeGrainWrapper(where=args[0])
@@ -715,7 +718,11 @@ class ParseToObjects(Transformer):
             )
         elif isinstance(transformation, Function):
             concept = function_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
+                transformation,
+                namespace=namespace,
+                name=output,
+                metadata=metadata,
+                environment=self.environment,
             )
         else:
             raise SyntaxError("Invalid transformation")
@@ -771,10 +778,8 @@ class ParseToObjects(Transformer):
         def handle_order_item(x, namespace: str):
             if not isinstance(x, Concept):
                 x = arbitrary_to_concept(
-                    x,
-                    namespace=namespace,
+                    x, namespace=namespace, environment=self.environment
                 )
-                self.environment.add_concept(x)
             return x
 
         return [
@@ -1029,12 +1034,32 @@ class ParseToObjects(Transformer):
             order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        for parse_pass in [1, 2]:
+        for parse_pass in [
+            1,
+            2,
+        ]:
             # the first pass will result in all concepts being defined
             # the second will get grains appropriately
             # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
             # until after the first pass, and so don't know the grain of a
-            nselect = []
+
+            if parse_pass == 1:
+                grain = Grain.from_concepts(
+                    [
+                        x.content
+                        for x in output.selection
+                        if isinstance(x.content, Concept)
+                    ],
+                    where_clause=output.where_clause,
+                )
+            if parse_pass == 2:
+                grain = Grain.from_concepts(
+                    output.output_components, where_clause=output.where_clause
+                )
+            print(
+                f"end pass {parse_pass} grain {grain} from {output.output_components}"
+            )
+            output.grain = grain
             for item in select_items:
                 # we don't know the grain of an aggregate at assignment time
                 # so rebuild at this point in the tree
@@ -1064,7 +1089,7 @@ class ParseToObjects(Transformer):
                         environment=self.environment,
                     )
                     output.local_concepts[item.content.address] = item.content
-                nselect.append(item)
+
         if order_by:
             output.order_by = order_by.with_select_context(
                 local_concepts=output.local_concepts,
@@ -1181,7 +1206,7 @@ class ParseToObjects(Transformer):
         if isinstance(args[0], AggregateWrapper):
             left = arbitrary_to_concept(
                 args[0],
-                namespace=self.environment.namespace,
+                environment=self.environment,
             )
             self.environment.add_concept(left)
         else:
@@ -1189,7 +1214,7 @@ class ParseToObjects(Transformer):
         if isinstance(args[2], AggregateWrapper):
             right = arbitrary_to_concept(
                 args[2],
-                namespace=self.environment.namespace,
+                environment=self.environment,
             )
             self.environment.add_concept(right)
         else:
@@ -1227,10 +1252,7 @@ class ParseToObjects(Transformer):
         ):
             right = right.content
         if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
-            right = arbitrary_to_concept(
-                right,
-                namespace=self.environment.namespace,
-            )
+            right = arbitrary_to_concept(right, environment=self.environment)
             self.environment.add_concept(right, meta=meta)
         return SubselectComparison(
             left=args[0],
@@ -1299,10 +1321,7 @@ class ParseToObjects(Transformer):
             elif isinstance(item, WindowType):
                 type = item
             else:
-                concept = arbitrary_to_concept(
-                    item,
-                    namespace=self.environment.namespace,
-                )
+                concept = arbitrary_to_concept(item, environment=self.environment)
                 self.environment.add_concept(concept, meta=meta)
         assert concept
         return WindowItem(

@@ -36,7 +36,6 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationInfo,
-    ValidatorFunctionWrapHandler,
     computed_field,
     field_validator,
 )
@@ -409,31 +408,6 @@ class Metadata(BaseModel):
     concept_source: ConceptSource = ConceptSource.MANUAL
 
 
-def lineage_validator(
-    v: Any, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
-) -> Union[Function, WindowItem, FilterItem, AggregateWrapper]:
-    if v and not isinstance(v, (Function, WindowItem, FilterItem, AggregateWrapper)):
-        raise ValueError(v)
-    return v
-
-
-def empty_grain() -> Grain:
-    return Grain(components=[])
-
-
-class MultiLineage(BaseModel):
-    lineages: list[
-        Union[
-            Function,
-            WindowItem,
-            FilterItem,
-            AggregateWrapper,
-            RowsetItem,
-            MultiSelectStatement,
-        ]
-    ]
-
-
 class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
@@ -550,28 +524,22 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         values = info.data
         if not v and values.get("purpose", None) == Purpose.KEY:
             v = Grain(
-                components=[
-                    Concept(
-                        namespace=values.get("namespace", DEFAULT_NAMESPACE),
-                        name=values["name"],
-                        datatype=values["datatype"],
-                        purpose=values["purpose"],
-                        grain=Grain(),
-                    )
-                ]
+                components={
+                    f'{values.get("namespace", DEFAULT_NAMESPACE)}.{values["name"]}'
+                }
             )
         elif (
             "lineage" in values
             and isinstance(values["lineage"], AggregateWrapper)
             and values["lineage"].by
         ):
-            v = Grain(components=values["lineage"].by)
+            v = Grain(components={c.address for c in values["lineage"].by})
         elif not v:
-            v = Grain(components=[])
+            v = Grain(components=set())
         elif isinstance(v, Grain):
-            return v
+            pass
         elif isinstance(v, Concept):
-            v = Grain(components=[v])
+            v = Grain(components={v.address})
         elif isinstance(v, dict):
             v = Grain.model_validate(v)
         else:
@@ -594,8 +562,8 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def __str__(self):
-        grain = ",".join([str(c.address) for c in self.grain.components])
-        return f"{self.namespace}.{self.name}<{grain}>"
+        grain = str(self.grain) if self.grain else "Grain<>"
+        return f"{self.namespace}.{self.name}@{grain}"
 
     @cached_property
     def address(self) -> str:
@@ -620,10 +588,6 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
 
-    @property
-    def grain_components(self) -> List["Concept"]:
-        return self.grain.components_copy if self.grain else []
-
     def with_namespace(self, namespace: str) -> Self:
         if namespace == self.namespace:
             return self
@@ -636,7 +600,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             grain=(
                 self.grain.with_namespace(namespace)
                 if self.grain
-                else Grain(components=[])
+                else Grain(components=set())
             ),
             namespace=(
                 namespace + "." + self.namespace
@@ -662,7 +626,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             new_lineage = self.lineage.with_select_context(
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
-        final_grain = self.grain
+        final_grain = self.grain or grain
         keys = (
             tuple(
                 [
@@ -674,9 +638,10 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             else None
         )
         if self.is_aggregate and isinstance(new_lineage, Function):
-            new_lineage = AggregateWrapper(function=new_lineage, by=grain.components)
+            grain_components = [environment.concepts[c] for c in grain.components]
+            new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
-            keys = tuple(grain.components)
+            keys = tuple(grain_components)
         elif (
             self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
         ):
@@ -697,15 +662,13 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
-        if not all([isinstance(x, Concept) for x in self.keys or []]):
-            raise ValueError(f"Invalid keys {self.keys} for concept {self.address}")
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain if grain else Grain(components=[]),
+            grain=grain if grain else Grain(components=set()),
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
@@ -716,7 +679,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     def _with_default_grain(self) -> Self:
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
-            grain = Grain(components=[self.with_grain(Grain())], nested=True)
+            grain = Grain(components={self.address})
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.keys:
@@ -728,12 +691,15 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                             components += item.sources
                         else:
                             components += item.sources
-            grain = Grain(components=components)
+            # TODO: set synonyms
+            grain = Grain(
+                components=set([x.address for x in components]),
+            )  # synonym_set=generate_concept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
             grain = Grain()
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != PurposeLineage.CONSTANT:
-                grain = Grain(components=[self.with_grain(Grain())], nested=True)
+                grain = Grain(components={self.address})
             else:
                 grain = self.grain
         else:
@@ -855,7 +821,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         elif self.derivation == PurposeLineage.AGGREGATE:
             # if it's an aggregate grouped over all rows
             # there is only one row left and it's fine to cross_join
-            if all([x.name == ALL_ROWS_CONCEPT for x in self.grain.components]):
+            if all([x.endswith(ALL_ROWS_CONCEPT) for x in self.grain.components]):
                 return Granularity.SINGLE_ROW
         elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
             return Granularity.SINGLE_ROW
@@ -893,7 +859,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             metadata=self.metadata,
             lineage=FilterItem(content=self, where=WhereClause(conditional=condition)),
             keys=(self.keys if self.purpose == Purpose.PROPERTY else None),
-            grain=self.grain if self.grain else Grain(components=[]),
+            grain=self.grain if self.grain else Grain(components=set()),
             namespace=self.namespace,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
@@ -911,161 +877,123 @@ class ConceptRef(BaseModel):
         return environment.concepts.__getitem__(self.address, self.line_no)
 
 
-class Grain(Mergeable, BaseModel, SelectContext):
-    nested: bool = False
-    components: List[Concept] = Field(default_factory=list, validate_default=True)
-    where_clause: Optional[WhereClause] = Field(default=None)
+class Grain(Namespaced, BaseModel):
+    components: set[str] = Field(default_factory=set)
+    where_clause: Optional["WhereClause"] = None
 
-    @field_validator("components")
-    def component_validator(cls, v, info: ValidationInfo):
-        values = info.data
-        if not values.get("nested", False):
-            v2: List[Concept] = unique(
-                [safe_concept(c).with_default_grain() for c in v], "address"
-            )
-        else:
-            v2 = unique(v, "address")
-        final: List[Concept] = []
-        for sub in v2:
-            if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
-                if all([c in v2 for c in sub.keys]):
-                    continue
-            final.append(sub)
-        v2 = sorted(final, key=lambda x: x.name)
-        return v2
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        new_components = set()
+        for c in self.components:
+            if c == source.address:
+                new_components.add(target.address)
+            else:
+                new_components.add(c)
+        return Grain(components=new_components)
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ):
-        if self.nested:
-            return self
-        return Grain(
-            components=[
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.components
-            ],
-            where_clause=self.where_clause,
-            nested=self.nested,
-        )
-
-    def with_filter(
-        self,
-        condition: "Conditional | Comparison | Parenthetical",
+    @classmethod
+    def from_concepts(
+        cls,
+        concepts: List[Concept],
         environment: Environment | None = None,
+        where_clause: WhereClause | None = None,
     ) -> "Grain":
+        from trilogy.parsing.common import concepts_to_grain_concepts
+
         return Grain(
-            components=[c.with_filter(condition, environment) for c in self.components],
-            nested=self.nested,
+            components={
+                c.address
+                for c in concepts_to_grain_concepts(concepts, environment=environment)
+            },
+            where_clause=where_clause,
         )
-
-    @property
-    def components_copy(self) -> List[Concept]:
-        return [*self.components]
-
-    def __str__(self):
-        if self.abstract:
-            base = "Grain<Abstract>"
-        else:
-            base = "Grain<" + ",".join([c.address for c in self.components]) + ">"
-        if self.where_clause:
-            base += f"|{str(self.where_clause)}"
-        return base
 
     def with_namespace(self, namespace: str) -> "Grain":
         return Grain(
-            components=[c.with_namespace(namespace) for c in self.components],
-            nested=self.nested,
+            components={address_with_namespace(c, namespace) for c in self.components},
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Grain":
+    @field_validator("components", mode="before")
+    def component_validator(cls, v, info: ValidationInfo):
+        output = set()
+        if isinstance(v, list):
+            for vc in v:
+                if isinstance(vc, Concept):
+                    output.add(vc.address)
+                elif isinstance(vc, ConceptRef):
+                    output.add(vc.address)
+                else:
+                    output.add(vc)
+        else:
+            output = v
+        if not isinstance(output, set):
+            raise ValueError(f"Invalid grain component {output}, is not set")
+        if not all(isinstance(x, str) for x in output):
+            raise ValueError(f"Invalid component {output}")
+        return output
+
+    def __add__(self, other: "Grain") -> "Grain":
+        where = self.where_clause
+        if other.where_clause:
+            if not self.where_clause:
+                where = other.where_clause
+            elif not other.where_clause == self.where_clause:
+                raise NotImplementedError(
+                    f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                )
         return Grain(
-            components=[
-                x.with_merge(source, target, modifiers) for x in self.components
-            ],
-            nested=self.nested,
+            components=self.components.union(other.components), where_clause=where
+        )
+
+    def __sub__(self, other: "Grain") -> "Grain":
+        return Grain(
+            components=self.components.difference(other.components),
+            where_clause=self.where_clause,
         )
 
     @property
     def abstract(self):
         return not self.components or all(
-            [c.name == ALL_ROWS_CONCEPT for c in self.components]
+            [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
         )
-
-    @property
-    def synonym_set(self) -> set[str]:
-        base = []
-        for x in self.components_copy:
-            if isinstance(x.lineage, RowsetItem):
-                base.append(x.lineage.content.address)
-                for c in x.lineage.content.pseudonyms:
-                    base.append(c)
-            else:
-                base.append(x.address)
-                for c in x.pseudonyms:
-                    base.append(c)
-        return set(base)
-
-    @property
-    def set(self) -> set[str]:
-        base = []
-        for x in self.components_copy:
-            if isinstance(x.lineage, RowsetItem):
-                base.append(x.lineage.content.address)
-            else:
-                base.append(x.address)
-        return set(base)
 
     def __eq__(self, other: object):
         if isinstance(other, list):
-            return self.set == set([c.address for c in other])
+            if not all([isinstance(c, Concept) for c in other]):
+                return False
+            return self.components == set([c.address for c in other])
         if not isinstance(other, Grain):
             return False
-        if self.set == other.set:
-            return True
-        elif self.synonym_set == other.synonym_set:
+        if self.components == other.components:
             return True
         return False
 
     def issubset(self, other: "Grain"):
-        return self.set.issubset(other.set)
+        return self.components.issubset(other.components)
 
     def union(self, other: "Grain"):
-        addresses = self.set.union(other.set)
-
-        return Grain(
-            components=[c for c in self.components if c.address in addresses]
-            + [c for c in other.components if c.address in addresses]
-        )
+        addresses = self.components.union(other.components)
+        return Grain(components=addresses, where_clause=self.where_clause)
 
     def isdisjoint(self, other: "Grain"):
-        return self.set.isdisjoint(other.set)
+        return self.components.isdisjoint(other.components)
 
     def intersection(self, other: "Grain") -> "Grain":
-        intersection = self.set.intersection(other.set)
-        components = [i for i in self.components if i.address in intersection]
-        return Grain(components=components)
+        intersection = self.components.intersection(other.components)
+        return Grain(components=intersection)
 
-    def __add__(self, other: "Grain") -> "Grain":
-        components: List[Concept] = []
-        for clist in [self.components_copy, other.components_copy]:
-            for component in clist:
-                if component.with_default_grain() in components:
-                    continue
-                components.append(component.with_default_grain())
-        base_components = [c for c in components if c.purpose == Purpose.KEY]
-        for c in components:
-            if c.purpose == Purpose.PROPERTY and not any(
-                [key in base_components for key in (c.keys or [])]
-            ):
-                base_components.append(c)
-            elif (
-                c.purpose == Purpose.CONSTANT
-                and not c.derivation == PurposeLineage.CONSTANT
-            ):
-                base_components.append(c)
-        return Grain(components=base_components)
+    def __str__(self):
+        if self.abstract:
+            base = "Grain<Abstract>"
+        else:
+            base = "Grain<" + ",".join([c for c in sorted(list(self.components))]) + ">"
+        if self.where_clause:
+            base += f"|{str(self.where_clause)}"
+        return base
 
     def __radd__(self, other) -> "Grain":
         if other == 0:
@@ -1755,6 +1683,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
+    grain: Grain = Field(default_factory=Grain)
 
     def validate_syntax(self, environment: Environment):
         if self.where_clause:
@@ -1805,15 +1734,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         from trilogy.parsing.render import render_query
 
         return render_query(self)
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        for nitem in self.selection:
-            if not isinstance(nitem.content, Concept):
-                continue
-            if nitem.content.grain == Grain():
-                if nitem.content.derivation == PurposeLineage.AGGREGATE:
-                    nitem.content = nitem.content.with_grain(self.grain)
 
     @field_validator("selection", mode="before")
     @classmethod
@@ -1886,9 +1806,7 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
 
     @property
     def all_components(self) -> List[Concept]:
-        return (
-            self.input_components + self.output_components + self.grain.components_copy
-        )
+        return self.input_components + self.output_components
 
     def to_datasource(
         self,
@@ -1937,55 +1855,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         for column in columns:
             column.concept = column.concept.with_grain(new_datasource.grain)
         return new_datasource
-
-    @property
-    def grain(self) -> "Grain":
-        output = []
-        for item in self.output_components:
-            if item.purpose == Purpose.KEY:
-                output.append(item)
-        # if self.where_clause:
-        #     for item in self.where_clause.concept_arguments:
-        #         if item.purpose == Purpose.KEY:
-        #             output.append(item)
-        # elif item.purpose == Purpose.PROPERTY and item.grain:
-        #     output += item.grain.components
-        # TODO: handle other grain cases
-        # new if block by design
-        # add back any purpose that is not at the grain
-        # if a query already has the key of the property in the grain
-        # we want to group to that grain and ignore the property, which is a derivation
-        # otherwise, we need to include property as the group by
-        for item in self.output_components:
-            if (
-                item.purpose == Purpose.PROPERTY
-                and item.grain
-                and (
-                    not item.grain.components
-                    or not item.grain.issubset(
-                        Grain(components=unique(output, "address"))
-                    )
-                )
-            ):
-                output.append(item)
-            if (
-                item.purpose == Purpose.CONSTANT
-                and item.derivation != PurposeLineage.CONSTANT
-                and item.grain
-                and (
-                    not item.grain.components
-                    or not item.grain.issubset(
-                        Grain(components=unique(output, "address"))
-                    )
-                )
-            ):
-                output.append(item)
-        # TODO: explore implicit filtering more
-        # if self.where_clause.conditional and self.where_clause_category == SelectFiltering.IMPLICIT:
-        #     output =[x.with_filter(self.where_clause.conditional) for x in output]
-        return Grain(
-            components=unique(output, "address"), where_clause=self.where_clause
-        )
 
     def with_namespace(self, namespace: str) -> "SelectStatement":
         return SelectStatement(
@@ -2203,7 +2072,7 @@ def safe_grain(v) -> Grain:
     elif isinstance(v, Grain):
         return v
     elif not v:
-        return Grain(components=[])
+        return Grain(components=set())
     else:
         raise ValueError(f"Invalid input type to safe_grain {type(v)}")
 
@@ -2235,7 +2104,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     columns: List[ColumnAssignment]
     address: Union[Address, str]
     grain: Grain = Field(
-        default_factory=lambda: Grain(components=[]), validate_default=True
+        default_factory=lambda: Grain(components=set()), validate_default=True
     )
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
@@ -2323,8 +2192,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         grain: Grain = safe_grain(v)
         if not grain.components:
             columns: List[ColumnAssignment] = values.get("columns", [])
-            grain = Grain(
-                components=[
+            grain = Grain.from_concepts(
+                [
                     c.concept.with_grain(Grain())
                     for c in columns
                     if c.concept.purpose == Purpose.KEY
@@ -2758,15 +2627,11 @@ class QueryDatasource(BaseModel):
     @property
     def identifier(self) -> str:
         filters = abs(hash(str(self.condition))) if self.condition else ""
-        grain = "_".join(
-            [str(c.address).replace(".", "_") for c in self.grain.components]
-        )
-        # partial = "_".join([str(c.address).replace(".", "_") for c in self.partial_concepts])
+        grain = "_".join([str(c).replace(".", "_") for c in self.grain.components])
         return (
             "_join_".join([d.identifier for d in self.datasources])
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")
-            # + (f"_partial_{partial}" if partial else "")
         )
 
     def get_alias(
@@ -3105,12 +2970,16 @@ class CTE(BaseModel):
         for cte in self.parent_ctes:
             if address in cte.output_columns:
                 match = [x for x in cte.output_columns if x.address == address].pop()
-                return match
+                if match:
+                    return match
 
         for array in [self.source.input_concepts, self.source.output_concepts]:
             match_list = [x for x in array if x.address == address]
             if match_list:
                 return match_list.pop()
+        match_list = [x for x in self.output_columns if x.address == address]
+        if match_list:
+            return match_list.pop()
         return None
 
     def get_alias(self, concept: Concept, source: str | None = None) -> str:
@@ -3119,8 +2988,10 @@ class CTE(BaseModel):
                 if source and source != cte.name:
                     continue
                 return concept.safe_address
+
         try:
             source = self.source.get_alias(concept, source=source)
+
             if not source:
                 raise ValueError("No source found")
             return source
@@ -3133,7 +3004,8 @@ class CTE(BaseModel):
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == PurposeLineage.ROWSET:
-                return False
+                assert isinstance(c.lineage, RowsetItem)
+                return check_is_not_in_group(c.lineage.content)
             if c.derivation == PurposeLineage.CONSTANT:
                 return False
             if c.purpose == Purpose.METRIC:
@@ -3330,7 +3202,6 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         if self.address in local_concepts:
             rval = local_concepts[self.address]
             rval = rval.with_select_context(local_concepts, grain, environment)
-
             return rval
         environment.concepts.raise_undefined(self.address, line_no=self.line_no)
 
@@ -4462,7 +4333,7 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> AggregateWrapper:
         if not self.by:
-            by = grain.components_copy
+            by = [environment.concepts[c] for c in grain.components]
         else:
             by = [
                 x.with_select_context(local_concepts, grain, environment)
@@ -4510,16 +4381,6 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
                 local_concepts, grain, environment
             )
         )
-
-    @property
-    def grain(self) -> Grain:
-        output = []
-        for item in self.input:
-            if item.purpose == Purpose.KEY:
-                output.append(item)
-            elif item.purpose == Purpose.PROPERTY:
-                output += item.grain.components if item.grain else []
-        return Grain(components=list(set(output)))
 
     @property
     def components(self):
@@ -4656,7 +4517,7 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
             )
             orig[orig_concept.address] = new_concept
             output.append(new_concept)
-        default_grain = Grain(components=[*output])
+        default_grain = Grain.from_concepts([*output])
         # remap everything to the properties of the rowset
         for x in output:
             if x.keys:
@@ -4668,9 +4529,9 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
                     # TODO: fix this up
                     x.keys = tuple()
         for x in output:
-            if all([c.address in orig for c in x.grain.components_copy]):
+            if all([c in orig for c in x.grain.components]):
                 x.grain = Grain(
-                    components=[orig[c.address] for c in x.grain.components_copy]
+                    components={orig[c].address for c in x.grain.components}
                 )
             else:
                 x.grain = default_grain

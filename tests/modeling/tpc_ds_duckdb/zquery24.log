@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 6678
+gen_length = 7136
 generated_sql = """
 
 WITH 
@@ -74,10 +74,22 @@ SELECT
     abundant.\"store_sales_store_name\" as \"su_store_sales_store_name\",
     abundant.\"store_sales_store_state\" as \"su_store_sales_store_state\"
 FROM
-    abundant),
+    abundant
+GROUP BY 
+    abundant.\"net_paid\",
+    abundant.\"store_sales_customer_first_name\",
+    abundant.\"store_sales_customer_last_name\",
+    abundant.\"store_sales_customer_state\",
+    abundant.\"store_sales_item_color\",
+    abundant.\"store_sales_item_current_price\",
+    abundant.\"store_sales_item_manager_id\",
+    abundant.\"store_sales_item_size\",
+    abundant.\"store_sales_item_units\",
+    abundant.\"store_sales_store_name\",
+    abundant.\"store_sales_store_state\"),
 vacuous as (
 SELECT
-    CASE WHEN uneven.\"su_store_sales_item_color\" = 'peach' THEN uneven.\"su_net_paid\" ELSE NULL END as \"_virt_5818638680298942\",
+    CASE WHEN uneven.\"su_store_sales_item_color\" = 'peach' THEN uneven.\"su_net_paid\" ELSE NULL END as \"_virt_9720171099955064\",
     uneven.\"su_net_paid\" as \"su_net_paid\",
     uneven.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     uneven.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
@@ -92,7 +104,7 @@ FROM
     uneven),
 concerned as (
 SELECT
-    sum(vacuous.\"_virt_5818638680298942\") as \"peach_sales\",
+    sum(vacuous.\"_virt_9720171099955064\") as \"peach_sales\",
     vacuous.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     vacuous.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     vacuous.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"

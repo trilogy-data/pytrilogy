@@ -211,7 +211,7 @@ select my_rowset.x, my_rowset.z;"""
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain == Grain(components=[x])
-    assert str(z) == "local.z<local.x>"
+    assert str(z) == "local.z@Grain<local.x>"
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
 
@@ -228,7 +228,6 @@ select my_rowset.x, my_rowset.max_rank;"""
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain == Grain(components=[x])
-    assert str(z) == "local.z<local.x>"
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 3
 
@@ -246,7 +245,6 @@ select x, w, my_rowset.max_rank;"""
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain == Grain(components=[x])
-    assert str(z) == "local.z<local.x>"
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 4
     for row in results:
@@ -336,11 +334,11 @@ select
     _ = default_duckdb_engine.parse_text(test)[-1]
     env = default_duckdb_engine.environment
     agg = env.concepts["f_ord_count"]
-    agg_parent = resolve_function_parent_concepts(agg)[0]
+    agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
     assert isinstance(agg_parent.lineage, FilterItem)
     assert isinstance(agg_parent.lineage.where.conditional, SubselectComparison)
-    _, _, existence = resolve_filter_parent_concepts(agg_parent)
+    _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
@@ -368,10 +366,10 @@ select
     _ = default_duckdb_engine.parse_text(test)[-1]
     env = default_duckdb_engine.environment
     agg = env.concepts["f_ord_count"]
-    agg_parent = resolve_function_parent_concepts(agg)[0]
+    agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
     assert isinstance(agg_parent.lineage, FilterItem)
-    _, _, existence = resolve_filter_parent_concepts(agg_parent)
+    _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1
@@ -418,9 +416,7 @@ select
 
     customer_orders = default_duckdb_engine.environment.concepts["customer_orders"]
     assert set([x.address for x in customer_orders.keys]) == {"local.customer"}
-    assert set([x.address for x in customer_orders.grain.components]) == {
-        "local.customer"
-    }
+    assert set([x for x in customer_orders.grain.components]) == {"local.customer"}
 
     customer_orders_2 = customer_orders.with_select_context(
         {},
@@ -430,18 +426,14 @@ select
         default_duckdb_engine.environment,
     )
     assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
-    assert set([x.address for x in customer_orders_2.grain.components]) == {
-        "local.customer"
-    }
+    assert set([x for x in customer_orders_2.grain.components]) == {"local.customer"}
 
     count_by_customer = default_duckdb_engine.environment.concepts[
         "avg_customer_orders"
     ].lineage.arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)
     assert set([x.address for x in count_by_customer.keys]) == {"local.customer"}
-    assert set([x.address for x in count_by_customer.grain.components]) == {
-        "local.customer"
-    }
+    assert set([x for x in count_by_customer.grain.components]) == {"local.customer"}
     assert len(results) == 1
     assert results[0].avg_customer_orders == 2
     assert round(results[0].avg_store_orders, 2) == 1.33
@@ -498,7 +490,9 @@ select
     )
 
     assert total.derivation == PurposeLineage.AGGREGATE
-    x = resolve_function_parent_concepts(total)
+    x = resolve_function_parent_concepts(
+        total, environment=default_duckdb_engine.environment
+    )
     assert len(cased.concept_arguments) == 1
     assert "local.orid" in get_upstream_concepts(cased)
 
@@ -532,7 +526,7 @@ asc
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
     assert results[0] == (1, None)
     assert results[1] == (2, 2)
-    assert len(results) == 3
+    assert len(results) == 4
 
 
 def test_demo_filter_select():

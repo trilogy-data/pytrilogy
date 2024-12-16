@@ -44,7 +44,7 @@ def gen_basic_node(
     conditions: WhereClause | None = None,
 ):
     depth_prefix = "\t" * depth
-    parent_concepts = resolve_function_parent_concepts(concept)
+    parent_concepts = resolve_function_parent_concepts(concept, environment=environment)
 
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}"
@@ -61,12 +61,16 @@ def gen_basic_node(
             f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has equivalent optional {[x.address for x in equivalent_optional]}"
         )
     for eo in equivalent_optional:
-        parent_concepts += resolve_function_parent_concepts(eo)
+        parent_concepts += resolve_function_parent_concepts(eo, environment=environment)
     non_equivalent_optional = [
         x for x in local_optional if x not in equivalent_optional
     ]
+    all_parents = parent_concepts + non_equivalent_optional
+    logger.info(
+        f"{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]}"
+    )
     parent_node: StrategyNode = source_concepts(
-        mandatory_list=parent_concepts + non_equivalent_optional,
+        mandatory_list=all_parents,
         environment=environment,
         g=g,
         depth=depth + 1,

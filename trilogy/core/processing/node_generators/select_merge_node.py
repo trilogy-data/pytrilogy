@@ -23,9 +23,6 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.nodes.base_node import (
-    concept_list_to_grain,
-)
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
@@ -79,6 +76,7 @@ def create_pruned_concept_graph(
     datasources: list[Datasource],
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
+    depth: int = 0,
 ) -> nx.DiGraph:
     orig_g = g
     g = g.copy()
@@ -104,6 +102,8 @@ def create_pruned_concept_graph(
         # filter out synonyms
         if (x := concepts.get(n, None)) and x.address in target_addresses
     }
+    # from trilogy.hooks.graph_hook import GraphHook
+    # GraphHook().query_graph_built(g)
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     relevent_datasets: list[str] = []
     if not accept_partial:
@@ -159,8 +159,14 @@ def create_pruned_concept_graph(
 
     subgraphs = list(nx.connected_components(g.to_undirected()))
     if not subgraphs:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - no subgraphs after node prune"
+        )
         return None
     if subgraphs and len(subgraphs) != 1:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - subgraphs are split - have {len(subgraphs)} from {subgraphs}"
+        )
         return None
     # add back any relevant edges that might have been partially filtered
     relevant = set(relevant_concepts + relevent_datasets)
@@ -169,6 +175,9 @@ def create_pruned_concept_graph(
             g.add_edge(edge[0], edge[1])
     # if we have no ds nodes at all, for non constant, we can't find it
     if not any([n.startswith("ds~") for n in g.nodes]):
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} cannot resolve root graph - No datasource nodes found"
+        )
         return None
     return g
 
@@ -231,7 +240,7 @@ def create_datasource_node(
     depth: int,
     conditions: WhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
-    target_grain = Grain(components=all_concepts)
+    target_grain = Grain.from_concepts(all_concepts)
     force_group = False
     if not datasource.grain.issubset(target_grain):
         force_group = True
@@ -261,7 +270,7 @@ def create_datasource_node(
             nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
             accept_partial=accept_partial,
             datasource=datasource,
-            grain=Grain(components=all_concepts),
+            grain=Grain.from_concepts(all_concepts),
             conditions=datasource.where.conditional if datasource.where else None,
             preexisting_conditions=(
                 conditions.conditional if partial_is_full and conditions else None
@@ -383,6 +392,7 @@ def gen_select_merge_node(
             accept_partial=attempt,
             conditions=conditions,
             datasources=list(environment.datasources.values()),
+            depth=depth,
         )
         if pruned_concept_graph:
             logger.info(
@@ -391,9 +401,7 @@ def gen_select_merge_node(
             break
 
     if not pruned_concept_graph:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no covering graph found {attempt}"
-        )
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} no covering graph found.")
         return None
 
     sub_nodes = resolve_subgraphs(pruned_concept_graph, conditions)
@@ -446,7 +454,7 @@ def gen_select_merge_node(
         parents=parents,
         preexisting_conditions=preexisting_conditions,
     )
-    target_grain = concept_list_to_grain(all_concepts, [])
+    target_grain = Grain.from_concepts(all_concepts)
     if not base.resolve().grain.issubset(target_grain):
         return GroupNode(
             output_concepts=all_concepts,

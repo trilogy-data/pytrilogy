@@ -15,7 +15,7 @@ def test_key_assignments(test_environment: Environment):
 
     for key in [order_id, store_id, product_id]:
         assert key.purpose == Purpose.KEY
-        assert key.grain.components == [key]
+        assert key.grain.components == {key.address}
     # test_environment.concepts[]
 
 
@@ -30,9 +30,9 @@ def test_property_assignments(test_environment: Environment):
     assert product_name.purpose == Purpose.PROPERTY
 
     assert store_name.keys == (store_id,)
-    assert store_name.grain.components == [store_id]
+    assert store_name.grain.components == {store_id.address}
     assert product_name.keys == (product_id,)
-    assert product_name.grain.components == [product_id]
+    assert product_name.grain.components == {product_id.address}
 
 
 def test_auto_property_assignments(test_environment: Environment):
@@ -50,7 +50,7 @@ def test_auto_property_assignments(test_environment: Environment):
         assert candidate.keys == (
             store_id,
         ), f"keys for {candidate.address}: {candidate.keys} should be store_id"
-        assert {x.address for x in candidate.grain.components} == set(
+        assert {x for x in candidate.grain.components} == set(
             [store_id.address]
         ), f"grain for {candidate.address}: {candidate.keys} should be store_id"
 
@@ -64,7 +64,7 @@ def test_metric_assignments(test_environment: Environment):
     for candidate in [store_order_count, store_order_count_2]:
         assert candidate.purpose == Purpose.METRIC
         assert candidate.keys == (store_id,)
-        assert candidate.grain.components == [store_id]
+        assert candidate.grain.components == {store_id.address}
 
 
 def test_source_outputs(test_environment: Environment, test_executor: Executor):
@@ -132,9 +132,9 @@ SELECT
     statement = statements[-1]
     assert set(statement.grain.components) == set(
         [
-            test_environment.concepts["store_id"],
-            test_environment.concepts["product_id"],
-            test_environment.concepts["order_id"],
+            test_environment.concepts["store_id"].address,
+            test_environment.concepts["product_id"].address,
+            test_environment.concepts["order_id"].address,
         ]
     )
 
@@ -153,7 +153,7 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert set([x.address for x in statement.grain.components]) == {
+    assert statement.grain.components == {
         "local.order_id",
     }
     results = list(test_executor.execute_text(test_select)[0].fetchall())
@@ -166,9 +166,7 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert set([x.address for x in statement.grain.components]) == {
-        "local.even_order_id"
-    }
+    assert statement.grain.components == {"local.even_order_id"}
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2

@@ -5,6 +5,7 @@ from trilogy.core.enums import PurposeLineage
 from trilogy.core.models import (
     Concept,
     Environment,
+    Grain,
     MultiSelectStatement,
     RowsetDerivationStatement,
     RowsetItem,
@@ -12,7 +13,6 @@ from trilogy.core.models import (
     WhereClause,
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
-from trilogy.core.processing.nodes.base_node import concept_list_to_grain
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
@@ -74,7 +74,7 @@ def gen_rowset_node(
     assert node.resolution_cache
     # assume grain to be output of select
     # but don't include anything hidden(the non-rowset concepts)
-    node.grain = concept_list_to_grain(
+    node.grain = Grain.from_concepts(
         [
             x
             for x in node.output_concepts
@@ -83,7 +83,6 @@ def gen_rowset_node(
                 y for y in node.hidden_concepts if y.derivation != PurposeLineage.ROWSET
             ]
         ],
-        parent_sources=node.resolution_cache.datasources,
     )
 
     node.rebuild_cache()
@@ -92,7 +91,7 @@ def gen_rowset_node(
         x.address in node.output_concepts for x in local_optional
     ):
         logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional found or no optional; exiting early."
+            f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
         return node
     possible_joins = concept_to_relevant_joins(
