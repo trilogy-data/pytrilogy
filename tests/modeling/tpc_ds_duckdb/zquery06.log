@@ -1,9 +1,14 @@
 query_id = 6
-gen_length = 4227
+gen_length = 17319
 generated_sql = """
 
 WITH 
 cooperative as (
+-- Target: Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>. Group: False Source: SourceType.MERGE.
+-- Joins: inner join store_sales_item_items on cheerful.item.id=item.id, inner join item_items on cheerful.item.id=item.id, inner join store_sales_date_date on cheerful.store_sales.date.id=store_sales.date.id, inner join store_sales_customer_customers on cheerful.store_sales.customer.id=store_sales.customer.id, inner join store_sales_customer_customer_address on dynamic.store_sales.customer.address_id=store_sales.customer.address_id.
+-- Source Map: {'item.id': ['store_sales_item_items'], 'store_sales.item.category': ['store_sales_item_items'], 'store_sales.item.current_price': ['store_sales_item_items'], 'store_sales.date.year': ['store_sales_date_date'], 'store_sales.date.month_of_year': ['store_sales_date_date'], 'store_sales.date.id': ['store_sales_date_date'], 'store_sales.customer.id': ['store_sales_customer_customers'], 'store_sales.customer.address_id': ['store_sales_customer_customers'], 'store_sales.customer.state': ['store_sales_customer_customer_address'], 'store_sales.ticket_number': ['store_sales_store_sales'], 'item.category': ['item_items'], 'store_sales.item.size': ['store_sales_item_items'], 'store_sales.item.brand_id': ['store_sales_item_items'], 'store_sales.item.manufacturer_id': ['store_sales_item_items'], 'store_sales.item.class': ['store_sales_item_items'], 'store_sales.item.desc': ['store_sales_item_items'], 'store_sales.item.name': ['store_sales_item_items'], 'store_sales.item.id': ['store_sales_item_items'], 'store_sales.item.color': ['store_sales_item_items'], 'store_sales.item.manager_id': ['store_sales_item_items'], 'store_sales.item.units': ['store_sales_item_items'], 'store_sales.item.brand_name': ['store_sales_item_items'], 'store_sales.date._year_string': ['store_sales_date_date'], 'store_sales.date.date_string': ['store_sales_date_date'], 'store_sales.date.date': ['store_sales_date_date'], 'store_sales.date.day_of_week': ['store_sales_date_date'], 'store_sales.date._date_string': ['store_sales_date_date'], 'store_sales.date.week_seq': ['store_sales_date_date'], 'store_sales.date.quarter': ['store_sales_date_date'], 'store_sales.customer.birth_month': ['store_sales_customer_customers'], 'store_sales.customer.login': ['store_sales_customer_customers'], 'store_sales.customer.preferred_cust_flag': ['store_sales_customer_customers'], 'store_sales.customer.birth_day': ['store_sales_customer_customers'], 'store_sales.customer.birth_country': ['store_sales_customer_customers'], 'store_sales.customer.birth_year': ['store_sales_customer_customers'], 'store_sales.customer.demographics.id': ['store_sales_customer_customers'], 'store_sales.customer.text_id': ['store_sales_customer_customers'], 'store_sales.customer.salutation': ['store_sales_customer_customers'], 'store_sales.customer.last_review_date': ['store_sales_customer_customers'], 'store_sales.customer.first_name': ['store_sales_customer_customers'], 'store_sales.customer.email_address': ['store_sales_customer_customers'], 'store_sales.customer.last_name': ['store_sales_customer_customers'], 'store_sales.customer.street': ['store_sales_customer_customer_address'], 'store_sales.customer.zip': ['store_sales_customer_customer_address'], 'store_sales.customer.city': ['store_sales_customer_customer_address'], 'store_sales.customer.county': ['store_sales_customer_customer_address'], 'store_sales.customer.country': ['store_sales_customer_customer_address'], 'store_sales.quantity': ['store_sales_store_sales'], 'store_sales.ext_list_price': ['store_sales_store_sales'], 'store_sales.time.id': ['store_sales_store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales_store_sales'], 'store_sales.promotion.id': ['store_sales_store_sales'], 'store_sales.ext_sales_price': ['store_sales_store_sales'], 'store_sales.net_paid': ['store_sales_store_sales'], 'store_sales.ext_discount_amount': ['store_sales_store_sales'], 'store_sales.net_profit': ['store_sales_store_sales'], 'store_sales.store.id': ['store_sales_store_sales'], 'store_sales.list_price': ['store_sales_store_sales'], 'store_sales.customer_demographic.id': ['store_sales_store_sales'], 'store_sales.coupon_amt': ['store_sales_store_sales'], 'store_sales.sales_price': ['store_sales_store_sales'], 'item.color': ['item_items'], 'item.size': ['item_items'], 'item.units': ['item_items'], 'item.manufacturer_id': ['item_items'], 'item.brand_name': ['item_items'], 'item.name': ['item_items'], 'item.brand_id': ['item_items'], 'item.manager_id': ['item_items'], 'item.desc': ['item_items'], 'item.current_price': ['item_items'], 'item.class': ['item_items']}.
+-- Output: item.category@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, item.id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.customer.address_id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.customer.id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.customer.state@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.date.id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.date.month_of_year@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.date.year@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.item.category@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>, store_sales.item.current_price@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id,store_sales.ticket_number>.
+-- Inputs: item.category@Grain<item.id>, item.id@Grain<item.id>, store_sales.customer.address_id@Grain<store_sales.customer.address_id>, store_sales.customer.id@Grain<store_sales.customer.id>, store_sales.customer.state@Grain<store_sales.customer.address_id>, store_sales.date.id@Grain<store_sales.date.id>, store_sales.date.month_of_year@Grain<store_sales.date.id>, store_sales.date.year@Grain<store_sales.date.id>, store_sales.item.category@Grain<item.id>, store_sales.item.current_price@Grain<item.id>.
 SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     item_items.\"I_CATEGORY\" as \"item_category\",
@@ -26,6 +31,11 @@ WHERE
     cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 1 and store_sales_item_items.\"I_CATEGORY\" is not null
 ),
 abundant as (
+-- Target: Grain<item.category>. Group: True Source: SourceType.GROUP.
+-- Source Map: {'item.id': ['item_items'], 'item.category': ['item_items'], 'item.current_price': ['item_items'], 'local._virt_5085182914776325': [], 'item.color': ['item_items'], 'item.size': ['item_items'], 'item.units': ['item_items'], 'item.manufacturer_id': ['item_items'], 'item.brand_name': ['item_items'], 'item.name': ['item_items'], 'item.brand_id': ['item_items'], 'item.manager_id': ['item_items'], 'item.desc': ['item_items'], 'item.class': ['item_items']}.
+-- Output: local._virt_5085182914776325@Grain<item.category>, item.category@Grain<item.category>.
+-- Inputs: item.current_price@Grain<item.id>, item.category@Grain<item.id>, item.id@Grain<item.id>.
+-- Nullable: local._virt_5085182914776325@Grain<item.category>.
 SELECT
     avg(item_items.\"I_CURRENT_PRICE\") as \"_virt_5085182914776325\",
     item_items.\"I_CATEGORY\" as \"item_category\"
@@ -34,10 +44,17 @@ FROM
 GROUP BY 
     item_items.\"I_CATEGORY\"),
 questionable as (
+-- Target: Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>. Group: True Source: SourceType.GROUP. References: cooperative.
+-- Source Map: {'item.category': ['cooperative'], 'item.id': ['cooperative'], 'store_sales.customer.address_id': ['cooperative'], 'store_sales.customer.id': ['cooperative'], 'store_sales.customer.state': ['cooperative'], 'store_sales.date.id': ['cooperative'], 'store_sales.date.month_of_year': ['cooperative'], 'store_sales.date.year': ['cooperative'], 'store_sales.item.category': ['cooperative'], 'store_sales.item.current_price': ['cooperative']}.
+-- Output: item.category@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, item.id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.address_id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.state@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.date.id@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.date.month_of_year@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.date.year@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.item.category@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.item.current_price@Grain<item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>.
+-- Inputs: item.category@Grain<item.id>, item.id@Grain<item.id>, store_sales.customer.address_id@Grain<store_sales.customer.address_id>, store_sales.customer.id@Grain<store_sales.customer.id>, store_sales.customer.state@Grain<store_sales.customer.address_id>, store_sales.date.id@Grain<store_sales.date.id>, store_sales.date.month_of_year@Grain<store_sales.date.id>, store_sales.date.year@Grain<store_sales.date.id>, store_sales.item.category@Grain<item.id>, store_sales.item.current_price@Grain<item.id>.
 SELECT
     cooperative.\"item_category\" as \"item_category\",
+    cooperative.\"item_id\" as \"item_id\",
+    cooperative.\"store_sales_customer_address_id\" as \"store_sales_customer_address_id\",
     cooperative.\"store_sales_customer_id\" as \"store_sales_customer_id\",
     cooperative.\"store_sales_customer_state\" as \"store_sales_customer_state\",
+    cooperative.\"store_sales_date_id\" as \"store_sales_date_id\",
     cooperative.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
     cooperative.\"store_sales_date_year\" as \"store_sales_date_year\",
     cooperative.\"store_sales_item_category\" as \"store_sales_item_category\",
@@ -46,13 +63,22 @@ FROM
     cooperative
 GROUP BY 
     cooperative.\"item_category\",
+    cooperative.\"item_id\",
+    cooperative.\"store_sales_customer_address_id\",
     cooperative.\"store_sales_customer_id\",
     cooperative.\"store_sales_customer_state\",
+    cooperative.\"store_sales_date_id\",
     cooperative.\"store_sales_date_month_of_year\",
     cooperative.\"store_sales_date_year\",
     cooperative.\"store_sales_item_category\",
     cooperative.\"store_sales_item_current_price\"),
 uneven as (
+-- Target: Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>. Group: False Source: SourceType.MERGE. References: questionable, abundant.
+-- Joins: inner join abundant on questionable.item.category=item.category.
+-- Source Map: {'item.category': ['questionable'], 'item.id': ['questionable'], 'store_sales.customer.address_id': ['questionable'], 'store_sales.customer.id': ['questionable'], 'store_sales.customer.state': ['questionable'], 'store_sales.date.id': ['questionable'], 'store_sales.date.month_of_year': ['questionable'], 'store_sales.date.year': ['questionable'], 'store_sales.item.category': ['questionable'], 'store_sales.item.current_price': ['questionable'], 'local._virt_5085182914776325': ['abundant']}.
+-- Output: item.category@Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.id@Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.date.year@Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.date.month_of_year@Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.item.current_price@Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.item.category@Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, store_sales.customer.state@Grain<item.category,item.id,store_sales.customer.address_id,store_sales.customer.id,store_sales.date.id>, local._virt_5085182914776325@Grain<item.category>.
+-- Inputs: item.category@Grain<item.id>, store_sales.customer.id@Grain<store_sales.customer.id>, store_sales.date.year@Grain<store_sales.date.id>, store_sales.date.month_of_year@Grain<store_sales.date.id>, store_sales.item.current_price@Grain<item.id>, store_sales.item.category@Grain<item.id>, store_sales.customer.state@Grain<store_sales.customer.address_id>, local._virt_5085182914776325@Grain<item.category>.
+-- Nullable: local._virt_5085182914776325@Grain<item.category>.
 SELECT
     abundant.\"_virt_5085182914776325\" as \"_virt_5085182914776325\",
     questionable.\"item_category\" as \"item_category\",
@@ -68,6 +94,11 @@ FROM
 WHERE
     questionable.\"store_sales_date_year\" = 2001 and questionable.\"store_sales_date_month_of_year\" = 1 and questionable.\"store_sales_item_current_price\" > 1.2 * abundant.\"_virt_5085182914776325\" and questionable.\"store_sales_item_category\" is not null
 )
+-- Target: Grain<store_sales.customer.state>. Group: True Source: SourceType.GROUP. References: uneven.
+-- Source Map: {'item.category': ['uneven'], 'store_sales.customer.id': ['uneven'], 'store_sales.date.year': ['uneven'], 'store_sales.date.month_of_year': ['uneven'], 'store_sales.item.current_price': ['uneven'], 'store_sales.item.category': ['uneven'], 'store_sales.customer.state': ['uneven'], 'local._virt_5085182914776325': ['uneven'], 'local.customer_count': []}.
+-- Output: store_sales.customer.state@Grain<store_sales.customer.state>, local.customer_count@Grain<store_sales.customer.state>.
+-- Inputs: store_sales.customer.id@Grain<store_sales.customer.id>, store_sales.customer.state@Grain<store_sales.customer.address_id>.
+-- Nullable: local.customer_count@Grain<store_sales.customer.state>.
 SELECT
     uneven.\"store_sales_customer_state\" as \"store_sales_customer_state\",
     count(uneven.\"store_sales_customer_id\") as \"customer_count\"

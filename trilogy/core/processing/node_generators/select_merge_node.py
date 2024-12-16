@@ -23,9 +23,6 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.nodes.base_node import (
-    concept_list_to_grain,
-)
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
@@ -457,7 +454,7 @@ def gen_select_merge_node(
         parents=parents,
         preexisting_conditions=preexisting_conditions,
     )
-    target_grain = concept_list_to_grain(all_concepts, [])
+    target_grain = Grain.from_concepts(all_concepts)
     if not base.resolve().grain.issubset(target_grain):
         return GroupNode(
             output_concepts=all_concepts,

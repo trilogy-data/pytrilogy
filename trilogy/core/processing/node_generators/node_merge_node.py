@@ -327,11 +327,17 @@ def subgraphs_to_merge_node(
         for y in x.output_concepts:
             input_c.append(y)
     if len(parents) == 1 and enable_early_exit:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} only one parent node, exiting early w/ {[c.address for c in parents[0].output_concepts]}"
+        )
         return parents[0]
-
+    base_output = [x for x in all_concepts]
+    # for x in base_output:
+    #     if x not in input_c:
+    #         input_c.append(x)
     return MergeNode(
         input_concepts=unique(input_c, "address"),
-        output_concepts=[x for x in all_concepts],
+        output_concepts=base_output,
         environment=environment,
         parents=parents,
         depth=depth,

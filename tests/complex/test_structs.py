@@ -32,15 +32,24 @@ SELECT
     assert isinstance(
         executor.environment.concepts["unnest_array"].datatype, StructType
     )
-    b_side = executor.environment.concepts["b"]
-    assert (
-        "unnest_array.b" in executor.environment.concepts["b"].pseudonyms
-    ), b_side.pseudonyms
-    assert (
-        "unnest_array.b"
-        in executor.environment.concepts["local.b"].pseudonyms
-        is not None
-    ), b_side.pseudonyms
+
+    for val in ["a", "b"]:
+        comp = executor.environment.concepts[val]
+        assert (
+            f"unnest_array.{val}" in executor.environment.concepts[val].pseudonyms
+        ), comp
+        assert (
+            f"unnest_array.{val}"
+            in executor.environment.concepts[f"local.{val}"].pseudonyms
+            is not None
+        ), comp
+        assert (
+            f"local.{val}"
+            in executor.environment.alias_origin_lookup[
+                f"unnest_array.{val}"
+            ].pseudonyms
+        )
+
     for x in results[-1].output_columns:
         assert len(list(x.pseudonyms)) == 1, x.pseudonyms
     results = executor.execute_text(

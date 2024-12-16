@@ -64,16 +64,16 @@ class GroupNode(StrategyNode):
             p.resolve() for p in self.parents
         ]
 
-        target_grain = self.grain or Grain(
-            components=concepts_to_grain_concepts(
+        target_grain = self.grain or Grain.from_concepts(
+            concepts_to_grain_concepts(
                 self.output_concepts, environment=self.environment
             )
         )
         comp_grain = Grain()
         for source in parent_sources:
             comp_grain += source.grain
-        comp_grain = Grain(
-            components=concepts_to_grain_concepts(
+        comp_grain = Grain.from_concepts(
+            concepts_to_grain_concepts(
                 comp_grain.components, environment=self.environment
             )
         )

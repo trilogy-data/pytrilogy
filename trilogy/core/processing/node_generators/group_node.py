@@ -84,7 +84,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {Grain(components=agg_parents)} vs {Grain(components=parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {Grain.from_concepts(agg_parents)} vs {Grain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(

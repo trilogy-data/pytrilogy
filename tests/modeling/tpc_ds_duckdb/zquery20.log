@@ -1,9 +1,14 @@
 query_id = 20
-gen_length = 2744
+gen_length = 10850
 generated_sql = """
 
 WITH 
 wakeful as (
+-- Target: Grain<cs.item.id,cs.order_number,cs.sold_date.id>. Group: False Source: SourceType.MERGE.
+-- Joins: inner join cs_sold_date_date on dynamic.cs.sold_date.id=cs.sold_date.id, inner join cs_item_items on dynamic.cs.item.id=cs.item.id.
+-- Source Map: {'cs.item.class': ['cs_item_items'], 'cs.item.desc': ['cs_item_items'], 'cs.item.name': ['cs_item_items'], 'cs.item.id': ['cs_item_items'], 'cs.item.current_price': ['cs_item_items'], 'cs.item.category': ['cs_item_items'], 'cs.sold_date.id': ['cs_sold_date_date'], 'cs.sold_date.date': ['cs_sold_date_date'], 'cs.extra_sales_price': ['cs_catalog_sales'], 'cs.order_number': ['cs_catalog_sales'], 'cs.item.brand_id': ['cs_item_items'], 'cs.item.color': ['cs_item_items'], 'cs.item.size': ['cs_item_items'], 'cs.item.manufacturer_id': ['cs_item_items'], 'cs.item.brand_name': ['cs_item_items'], 'cs.item.manager_id': ['cs_item_items'], 'cs.item.units': ['cs_item_items'], 'cs.sold_date._date_string': ['cs_sold_date_date'], 'cs.sold_date.month_of_year': ['cs_sold_date_date'], 'cs.sold_date.date_string': ['cs_sold_date_date'], 'cs.sold_date.week_seq': ['cs_sold_date_date'], 'cs.sold_date.year': ['cs_sold_date_date'], 'cs.sold_date._year_string': ['cs_sold_date_date'], 'cs.sold_date.day_of_week': ['cs_sold_date_date'], 'cs.sold_date.quarter': ['cs_sold_date_date'], 'cs.promotion.id': ['cs_catalog_sales'], 'cs.extra_ship_cost': ['cs_catalog_sales'], 'cs.bill_customer.id': ['cs_catalog_sales'], 'cs.customer.address_id': ['cs_catalog_sales'], 'cs.time.id': ['cs_catalog_sales'], 'cs.call_center.id': ['cs_catalog_sales'], 'cs.extra_wholesale_cost': ['cs_catalog_sales'], 'cs.net_profit': ['cs_catalog_sales'], 'cs.warehouse.id': ['cs_catalog_sales'], 'cs.ship_date.id': ['cs_catalog_sales'], 'cs.wholesale_cost': ['cs_catalog_sales'], 'cs.list_price': ['cs_catalog_sales'], 'cs.date.id': ['cs_catalog_sales'], 'cs.bill_customer_demographic.id': ['cs_catalog_sales'], 'cs.quantity': ['cs_catalog_sales'], 'cs.sales_price': ['cs_catalog_sales'], 'cs.customer.id': ['cs_catalog_sales'], 'cs.coupon_amt': ['cs_catalog_sales']}.
+-- Output: cs.extra_sales_price@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.item.category@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.item.class@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.item.current_price@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.item.desc@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.item.id@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.item.name@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.order_number@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.sold_date.date@Grain<cs.item.id,cs.order_number,cs.sold_date.id>, cs.sold_date.id@Grain<cs.item.id,cs.order_number,cs.sold_date.id>.
+-- Inputs: cs.extra_sales_price@Grain<cs.item.id,cs.order_number>, cs.item.category@Grain<cs.item.id>, cs.item.class@Grain<cs.item.id>, cs.item.current_price@Grain<cs.item.id>, cs.item.desc@Grain<cs.item.id>, cs.item.id@Grain<cs.item.id>, cs.item.name@Grain<cs.item.id>, cs.order_number@Grain<cs.order_number>, cs.sold_date.date@Grain<cs.sold_date.id>, cs.sold_date.id@Grain<cs.sold_date.id>.
 SELECT
     cast(cs_sold_date_date.\"D_DATE\" as date) as \"cs_sold_date_date\",
     cs_catalog_sales.\"CS_EXT_SALES_PRICE\" as \"cs_extra_sales_price\",
@@ -13,7 +18,8 @@ SELECT
     cs_item_items.\"I_CURRENT_PRICE\" as \"cs_item_current_price\",
     cs_item_items.\"I_ITEM_DESC\" as \"cs_item_desc\",
     cs_item_items.\"I_ITEM_ID\" as \"cs_item_name\",
-    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\"
+    cs_item_items.\"I_ITEM_SK\" as \"cs_item_id\",
+    cs_sold_date_date.\"D_DATE_SK\" as \"cs_sold_date_id\"
 FROM
     memory.catalog_sales as cs_catalog_sales
     INNER JOIN memory.date_dim as cs_sold_date_date on cs_catalog_sales.\"CS_SOLD_DATE_SK\" = cs_sold_date_date.\"D_DATE_SK\"
@@ -22,6 +28,11 @@ WHERE
     cs_item_items.\"I_CATEGORY\" in ('Sports','Books','Home') and cast(cs_sold_date_date.\"D_DATE\" as date) >= date '1999-02-22' and cast(cs_sold_date_date.\"D_DATE\" as date) <= date '1999-03-24'
 ),
 cheerful as (
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>. Group: True Source: SourceType.GROUP. References: wakeful.
+-- Source Map: {'cs.extra_sales_price': ['wakeful'], 'cs.item.category': ['wakeful'], 'cs.item.class': ['wakeful'], 'cs.item.current_price': ['wakeful'], 'cs.item.desc': ['wakeful'], 'cs.item.id': ['wakeful'], 'cs.item.name': ['wakeful'], 'cs.order_number': ['wakeful'], 'cs.sold_date.date': ['wakeful'], 'cs.sold_date.id': ['wakeful'], 'local.revenue': []}.
+-- Output: local.revenue@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.class@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.current_price@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.desc@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.category@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
+-- Inputs: cs.extra_sales_price@Grain<cs.item.id,cs.order_number>, cs.item.class@Grain<cs.item.id>, cs.item.current_price@Grain<cs.item.id>, cs.item.name@Grain<cs.item.id>, cs.item.desc@Grain<cs.item.id>, cs.item.category@Grain<cs.item.id>, cs.order_number@Grain<cs.order_number>, cs.item.id@Grain<cs.item.id>.
+-- Nullable: local.revenue@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>.
 SELECT
     sum(wakeful.\"cs_extra_sales_price\") as \"revenue\",
     wakeful.\"cs_item_category\" as \"cs_item_category\",
@@ -38,6 +49,10 @@ GROUP BY
     wakeful.\"cs_item_desc\",
     wakeful.\"cs_item_name\"),
 thoughtful as (
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local._virt_7406341505587036>. Group: False Source: SourceType.WINDOW. References: cheerful.
+-- Source Map: {'local.revenue': ['cheerful'], 'cs.item.class': ['cheerful'], 'cs.item.current_price': ['cheerful'], 'cs.item.name': ['cheerful'], 'cs.item.desc': ['cheerful'], 'cs.item.category': ['cheerful'], 'local._virt_7406341505587036': []}.
+-- Output: local._virt_7406341505587036@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local._virt_7406341505587036>, cs.item.class@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local._virt_7406341505587036>, local.revenue@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local._virt_7406341505587036>, cs.item.desc@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local._virt_7406341505587036>, cs.item.category@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local._virt_7406341505587036>, cs.item.current_price@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local._virt_7406341505587036>.
+-- Inputs: cs.item.class@Grain<cs.item.id>, local.revenue@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name@Grain<cs.item.id>, cs.item.desc@Grain<cs.item.id>, cs.item.category@Grain<cs.item.id>, cs.item.current_price@Grain<cs.item.id>.
 SELECT
     cheerful.\"cs_item_category\" as \"cs_item_category\",
     cheerful.\"cs_item_class\" as \"cs_item_class\",
@@ -48,6 +63,10 @@ SELECT
     sum(cheerful.\"revenue\") over (partition by cheerful.\"cs_item_class\") as \"_virt_7406341505587036\"
 FROM
     cheerful)
+-- Target: Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue_ratio>. Group: False Source: SourceType.BASIC. References: thoughtful.
+-- Source Map: {'local._virt_7406341505587036': ['thoughtful'], 'cs.item.class': ['thoughtful'], 'local.revenue': ['thoughtful'], 'cs.item.name': ['thoughtful'], 'cs.item.desc': ['thoughtful'], 'cs.item.category': ['thoughtful'], 'cs.item.current_price': ['thoughtful'], 'local.revenue_ratio': []}.
+-- Output: cs.item.name@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue_ratio>, cs.item.desc@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue_ratio>, cs.item.category@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue_ratio>, cs.item.class@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue_ratio>, cs.item.current_price@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue_ratio>, local.revenue@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, local.revenue_ratio@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name,local.revenue_ratio>.
+-- Inputs: local._virt_7406341505587036@Grain<cs.item.class,local.revenue>, local.revenue@Grain<cs.item.category,cs.item.class,cs.item.current_price,cs.item.desc,cs.item.name>, cs.item.name@Grain<cs.item.id>, cs.item.desc@Grain<cs.item.id>, cs.item.category@Grain<cs.item.id>, cs.item.class@Grain<cs.item.id>, cs.item.current_price@Grain<cs.item.id>.
 SELECT
     thoughtful.\"cs_item_name\" as \"cs_item_name\",
     thoughtful.\"cs_item_desc\" as \"cs_item_desc\",

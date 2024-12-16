@@ -8,12 +8,13 @@ from trilogy.core.models import (
     Concept,
     Conditional,
     Environment,
+    Grain,
     MultiSelectStatement,
     WhereClause,
 )
 from trilogy.core.processing.node_generators.common import resolve_join_order
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
-from trilogy.core.processing.nodes.base_node import StrategyNode, concept_list_to_grain
+from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
 LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
@@ -137,8 +138,8 @@ def gen_multiselect_node(
 
     # assume grain to be output of select
     # but don't include anything aggregate at this point
-    node.resolution_cache.grain = concept_list_to_grain(
-        node.output_concepts, parent_sources=node.resolution_cache.datasources
+    node.resolution_cache.grain = Grain.from_concepts(
+        node.output_concepts,
     )
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:

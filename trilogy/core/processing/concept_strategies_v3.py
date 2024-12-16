@@ -479,8 +479,16 @@ def generate_node(
                         for x in extra
                         if any(x.address in y.pseudonyms for y in root_targets)
                     ]
-                    # if we're only connected by a pseudonym, keep those in output
-                    expanded.set_output_concepts(root_targets + pseudonyms)
+                    logger.info(
+                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}"
+                    )
+                    base = [
+                        x for x in ex_resolve.output_concepts if x.address not in extra
+                    ]
+                    for x in root_targets:
+                        if x.address not in base:
+                            base.append(x)
+                    expanded.set_output_concepts(base)
                     # but hide them
                     if pseudonyms:
                         logger.info(
@@ -909,6 +917,7 @@ def _search_concepts(
                 parents=stack,
                 depth=depth,
             )
+
         # ensure we can resolve our final merge
         output.resolve()
         if condition_required and conditions:

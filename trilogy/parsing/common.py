@@ -83,7 +83,7 @@ def process_function_args(
             arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
         ):
             id_hash = string_to_hash(str(arg))
-            concept: Concept = arbitrary_to_concept(
+            concept = arbitrary_to_concept(
                 arg,
                 name=f"{VIRTUAL_CONCEPT_PREFIX}_{id_hash}",
                 environment=environment,
@@ -146,20 +146,20 @@ def constant_to_concept(
 
 
 def concepts_to_grain_concepts(
-    concepts: List[str | Concept], environment: Environment | None
+    concepts: List[Concept] | List[str] | set[str], environment: Environment | None
 ) -> list[Concept]:
     environment = Environment() if environment is None else environment
-    concepts = [
+    pconcepts: list[Concept] = [
         c if isinstance(c, Concept) else environment.concepts[c] for c in concepts
     ]
 
     final: List[Concept] = []
-    for sub in concepts:
+    for sub in pconcepts:
         if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
-            if any([c.address in concepts for c in sub.keys]):
+            if any([c.address in pconcepts for c in sub.keys]):
                 continue
         if sub.purpose in (Purpose.METRIC,):
-            if all([c in concepts for c in sub.grain.components]):
+            if all([c in pconcepts for c in sub.grain.components]):
                 continue
         if sub.granularity == Granularity.SINGLE_ROW:
             continue
@@ -291,7 +291,7 @@ def window_item_to_concept(
         lineage=parent,
         metadata=fmetadata,
         # filters are implicitly at the grain of the base item
-        grain=Grain(components=grain),
+        grain=Grain.from_concepts(grain),
         namespace=namespace,
         keys=keys,
         modifiers=modifiers,
@@ -318,7 +318,7 @@ def agg_wrapper_to_concept(
         purpose=Purpose.METRIC,
         metadata=fmetadata,
         lineage=parent,
-        grain=Grain(components=parent.by) if parent.by else Grain(),
+        grain=Grain.from_concepts(parent.by) if parent.by else Grain(),
         namespace=namespace,
         keys=tuple(parent.by) if parent.by else keys,
         modifiers=modifiers,

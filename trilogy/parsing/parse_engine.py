@@ -463,7 +463,7 @@ class ParseToObjects(Transformer):
             datatype=args[2],
             purpose=args[0],
             metadata=metadata,
-            grain=Grain(components=[x.address for x in parents]),
+            grain=Grain(components={x.address for x in parents}),
             namespace=namespace,
             keys=parents,
             modifiers=modifiers,

@@ -1,9 +1,13 @@
 query_id = 8
-gen_length = 3715
+gen_length = 15914
 generated_sql = """
 
 WITH 
 questionable as (
+-- Target: Grain<customer.id>. Group: False Source: SourceType.FILTER.
+-- Source Map: {'customer.preferred_cust_flag': ['customer_customers'], 'customer.id': ['customer_customers'], 'local._virt_221882250846823': [], 'customer.address_id': ['customer_customers'], 'customer.login': ['customer_customers'], 'customer.first_name': ['customer_customers'], 'customer.demographics.id': ['customer_customers'], 'customer.last_review_date': ['customer_customers'], 'customer.birth_day': ['customer_customers'], 'customer.email_address': ['customer_customers'], 'customer.birth_country': ['customer_customers'], 'customer.birth_year': ['customer_customers'], 'customer.text_id': ['customer_customers'], 'customer.salutation': ['customer_customers'], 'customer.birth_month': ['customer_customers'], 'customer.last_name': ['customer_customers']}.
+-- Output: local._virt_221882250846823@Grain<customer.id>, customer.id@Grain<customer.id>, customer.preferred_cust_flag@Grain<customer.id>.
+-- Inputs: customer.id@Grain<customer.id>, customer.preferred_cust_flag@Grain<customer.id>.
 SELECT
     CASE WHEN customer_customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customer_customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_221882250846823\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
@@ -11,18 +15,34 @@ SELECT
 FROM
     memory.customer as customer_customers),
 abundant as (
+-- Target: Grain<customer.address_id,customer.id>. Group: False Source: SourceType.MERGE.
+-- Joins: inner join customer_customers on thoughtful.customer.address_id=customer.address_id.
+-- Source Map: {'customer.preferred_cust_flag': ['customer_customers'], 'customer.address_id': ['customer_customers'], 'customer.id': ['customer_customers'], 'customer.zip': ['customer_customer_address'], 'customer.login': ['customer_customers'], 'customer.first_name': ['customer_customers'], 'customer.demographics.id': ['customer_customers'], 'customer.last_review_date': ['customer_customers'], 'customer.birth_day': ['customer_customers'], 'customer.email_address': ['customer_customers'], 'customer.birth_country': ['customer_customers'], 'customer.birth_year': ['customer_customers'], 'customer.text_id': ['customer_customers'], 'customer.salutation': ['customer_customers'], 'customer.birth_month': ['customer_customers'], 'customer.last_name': ['customer_customers'], 'customer.street': ['customer_customer_address'], 'customer.city': ['customer_customer_address'], 'customer.county': ['customer_customer_address'], 'customer.country': ['customer_customer_address'], 'customer.state': ['customer_customer_address']}.
+-- Output: customer.address_id@Grain<customer.address_id,customer.id>, customer.id@Grain<customer.address_id,customer.id>, customer.preferred_cust_flag@Grain<customer.address_id,customer.id>, customer.zip@Grain<customer.address_id,customer.id>.
+-- Inputs: customer.address_id@Grain<customer.address_id>, customer.id@Grain<customer.id>, customer.preferred_cust_flag@Grain<customer.id>, customer.zip@Grain<customer.address_id>.
 SELECT
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
+    customer_customers.\"C_CURRENT_ADDR_SK\" as \"customer_address_id\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
     memory.customer_address as customer_customer_address
     INNER JOIN memory.customer as customer_customers on customer_customer_address.\"CA_ADDRESS_SK\" = customer_customers.\"C_CURRENT_ADDR_SK\"),
 cheerful as (
+-- Target: Grain<local.zips_pre>. Group: False Source: SourceType.UNNEST.
+-- Joins: concept_to_unnest=local._virt_7180871482901048@Grain<Abstract> alias='unnest_local_zips_pre'.
+-- Source Map: {'local.zips_pre': []}.
+-- Output: local.zips_pre@Grain<local.zips_pre>.
+-- Inputs: local._virt_7180871482901048@Grain<Abstract>.
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
 ),
 uneven as (
+-- Target: Grain<customer.address_id,customer.id>. Group: False Source: SourceType.MERGE. References: questionable, abundant.
+-- Joins: inner join questionable on abundant.customer.preferred_cust_flag=customer.preferred_cust_flag,abundant.customer.id=customer.id.
+-- Source Map: {'local._virt_221882250846823': ['questionable'], 'customer.id': ['questionable'], 'customer.preferred_cust_flag': ['questionable'], 'customer.address_id': ['abundant'], 'customer.zip': ['abundant']}.
+-- Output: local._virt_221882250846823@Grain<customer.address_id,customer.id>, customer.zip@Grain<customer.address_id,customer.id>, customer.id@Grain<customer.address_id,customer.id>.
+-- Inputs: local._virt_221882250846823@Grain<Abstract>, customer.id@Grain<customer.id>, customer.zip@Grain<customer.address_id>.
 SELECT
     abundant.\"customer_zip\" as \"customer_zip\",
     questionable.\"_virt_221882250846823\" as \"_virt_221882250846823\",
@@ -31,6 +51,11 @@ FROM
     abundant
     INNER JOIN questionable on abundant.\"customer_id\" = questionable.\"customer_id\" AND abundant.\"customer_preferred_cust_flag\" = questionable.\"customer_preferred_cust_flag\"),
 yummy as (
+-- Target: Grain<customer.zip>. Group: True Source: SourceType.GROUP. References: uneven.
+-- Source Map: {'local._virt_221882250846823': ['uneven'], 'customer.zip': ['uneven'], 'customer.id': ['uneven'], 'local.zip_p_count': []}.
+-- Output: local.zip_p_count@Grain<customer.zip>, customer.zip@Grain<customer.zip>.
+-- Inputs: local._virt_221882250846823@Grain<Abstract>, customer.zip@Grain<customer.address_id>, customer.id@Grain<customer.id>.
+-- Nullable: local.zip_p_count@Grain<customer.zip>.
 SELECT
     count(uneven.\"_virt_221882250846823\") as \"zip_p_count\",
     uneven.\"customer_zip\" as \"customer_zip\"
@@ -39,6 +64,12 @@ FROM
 GROUP BY 
     uneven.\"customer_zip\"),
 juicy as (
+-- Target: Grain<customer.address_id,customer.zip>. Group: False Source: SourceType.MERGE. References: yummy.
+-- Joins: inner join customer_customer_address on yummy.customer.zip=customer.zip.
+-- Source Map: {'customer.zip': ['customer_customer_address'], 'customer.address_id': ['customer_customer_address'], 'local.zip_p_count': ['yummy'], 'customer.street': ['customer_customer_address'], 'customer.city': ['customer_customer_address'], 'customer.county': ['customer_customer_address'], 'customer.country': ['customer_customer_address'], 'customer.state': ['customer_customer_address']}.
+-- Output: customer.zip@Grain<customer.address_id,customer.zip>, customer.address_id@Grain<customer.address_id,customer.zip>, local.zip_p_count@Grain<customer.zip>.
+-- Inputs: customer.zip@Grain<customer.address_id>, customer.address_id@Grain<customer.address_id>, local.zip_p_count@Grain<customer.zip>.
+-- Nullable: local.zip_p_count@Grain<customer.zip>.
 SELECT
     customer_customer_address.\"CA_ADDRESS_SK\" as \"customer_address_id\",
     customer_customer_address.\"CA_ZIP\" as \"customer_zip\",
@@ -47,11 +78,21 @@ FROM
     yummy
     INNER JOIN memory.customer_address as customer_customer_address on yummy.\"customer_zip\" = customer_customer_address.\"CA_ZIP\"),
 vacuous as (
+-- Target: Grain<customer.address_id>. Group: False Source: SourceType.BASIC. References: juicy.
+-- Source Map: {'customer.zip': ['juicy'], 'customer.address_id': ['juicy'], 'local.zip_p_count': ['juicy'], 'local._virt_func_substring_4835506132053028': []}.
+-- Output: local._virt_func_substring_4835506132053028@Grain<customer.address_id>.
+-- Inputs: customer.zip@Grain<customer.address_id>, local.zip_p_count@Grain<customer.zip>, customer.address_id@Grain<customer.address_id>.
+-- Hidden: local.p_cust_zip@Grain<customer.address_id>.
 SELECT
     SUBSTRING(CASE WHEN juicy.\"zip_p_count\" > 10 THEN juicy.\"customer_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4835506132053028\"
 FROM
     juicy),
 concerned as (
+-- Target: Grain<local.zips_pre>. Group: False Source: SourceType.BASIC. References: cheerful, vacuous.
+-- Source Map: {'local.zips_pre': ['cheerful'], 'local._virt_func_substring_4835506132053028': ['vacuous'], 'local.final_zips': []}.
+-- Output: local.final_zips@Grain<local.zips_pre>.
+-- Inputs: local.zips_pre@Grain<Abstract>.
+-- Hidden: local._virt_6488147703778464@Grain<Abstract>.
 SELECT
     SUBSTRING(SUBSTRING(cast(cheerful.\"zips_pre\" as string),1,5),1,2) as \"final_zips\"
 FROM
@@ -60,6 +101,10 @@ WHERE
     SUBSTRING(cast(cheerful.\"zips_pre\" as string),1,5) in (select vacuous.\"_virt_func_substring_4835506132053028\" from vacuous where vacuous.\"_virt_func_substring_4835506132053028\" is not null)
 ),
 young as (
+-- Target: Grain<local.final_zips>. Group: True Source: SourceType.GROUP. References: concerned.
+-- Source Map: {'local.final_zips': ['concerned']}.
+-- Output: local.final_zips@Grain<local.final_zips>.
+-- Inputs: local.final_zips@Grain<Abstract>.
 SELECT
     concerned.\"final_zips\" as \"final_zips\"
 FROM
@@ -67,13 +112,20 @@ FROM
 GROUP BY 
     concerned.\"final_zips\"),
 sparkling as (
+-- Target: Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>. Group: False Source: SourceType.MERGE. References: young.
+-- Joins: inner join store_sales_store_store on dynamic.store_sales.store.id=store_sales.store.id, inner join store_sales_date_date on dynamic.store_sales.date.id=store_sales.date.id.
+-- Source Map: {'store_sales.date.year': ['store_sales_date_date'], 'store_sales.date.quarter': ['store_sales_date_date'], 'store_sales.date.id': ['store_sales_date_date'], 'store_sales.store.zip': ['store_sales_store_store'], 'store_sales.store.name': ['store_sales_store_store'], 'store_sales.store.id': ['store_sales_store_store'], 'store_sales.item.id': ['store_sales_store_sales'], 'store_sales.ticket_number': ['store_sales_store_sales'], 'store_sales.net_profit': ['store_sales_store_sales'], 'local.final_zips': ['young'], 'store_sales.date._year_string': ['store_sales_date_date'], 'store_sales.date.date_string': ['store_sales_date_date'], 'store_sales.date.date': ['store_sales_date_date'], 'store_sales.date.day_of_week': ['store_sales_date_date'], 'store_sales.date._date_string': ['store_sales_date_date'], 'store_sales.date.week_seq': ['store_sales_date_date'], 'store_sales.date.month_of_year': ['store_sales_date_date'], 'store_sales.store.employees': ['store_sales_store_store'], 'store_sales.store.market_id': ['store_sales_store_store'], 'store_sales.store.county': ['store_sales_store_store'], 'store_sales.store.geography_class': ['store_sales_store_store'], 'store_sales.store.hours': ['store_sales_store_store'], 'store_sales.store.store_manager': ['store_sales_store_store'], 'store_sales.store.tax_percentage': ['store_sales_store_store'], 'store_sales.store.city': ['store_sales_store_store'], 'store_sales.store.state': ['store_sales_store_store'], 'store_sales.store.date.id': ['store_sales_store_store'], 'store_sales.store.market': ['store_sales_store_store'], 'store_sales.store.text_id': ['store_sales_store_store'], 'store_sales.store.floor_space': ['store_sales_store_store'], 'store_sales.store.market_manager': ['store_sales_store_store'], 'store_sales.coupon_amt': ['store_sales_store_sales'], 'store_sales.ext_discount_amount': ['store_sales_store_sales'], 'store_sales.quantity': ['store_sales_store_sales'], 'store_sales.ext_list_price': ['store_sales_store_sales'], 'store_sales.time.id': ['store_sales_store_sales'], 'store_sales.ext_wholesale_cost': ['store_sales_store_sales'], 'store_sales.sales_price': ['store_sales_store_sales'], 'store_sales.promotion.id': ['store_sales_store_sales'], 'store_sales.list_price': ['store_sales_store_sales'], 'store_sales.net_paid': ['store_sales_store_sales'], 'store_sales.customer_demographic.id': ['store_sales_store_sales'], 'store_sales.customer.id': ['store_sales_store_sales'], 'store_sales.ext_sales_price': ['store_sales_store_sales']}.
+-- Output: store_sales.date.id@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.date.quarter@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.date.year@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.item.id@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.net_profit@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.store.id@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.store.name@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.store.zip@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>, store_sales.ticket_number@Grain<local.final_zips,store_sales.date.id,store_sales.item.id,store_sales.store.id,store_sales.ticket_number>.
+-- Inputs: store_sales.date.id@Grain<store_sales.date.id>, store_sales.date.quarter@Grain<store_sales.date.id>, store_sales.date.year@Grain<store_sales.date.id>, store_sales.item.id@Grain<store_sales.item.id>, store_sales.net_profit@Grain<store_sales.item.id,store_sales.ticket_number>, store_sales.store.id@Grain<store_sales.store.id>, store_sales.store.name@Grain<store_sales.store.id>, store_sales.store.zip@Grain<store_sales.store.id>, store_sales.ticket_number@Grain<store_sales.ticket_number>.
 SELECT
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
+    store_sales_date_date.\"D_DATE_SK\" as \"store_sales_date_id\",
     store_sales_date_date.\"D_QOY\" as \"store_sales_date_quarter\",
     store_sales_store_sales.\"SS_ITEM_SK\" as \"store_sales_item_id\",
     store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store_sales_store_store.\"S_STORE_SK\" as \"store_sales_store_id\",
     store_sales_store_store.\"S_ZIP\" as \"store_sales_store_zip\"
 FROM
     memory.store_sales as store_sales_store_sales
@@ -82,6 +134,11 @@ FROM
 WHERE
     store_sales_date_date.\"D_QOY\" = 2 and cast(store_sales_date_date.\"D_YEAR\" as int) = 1998 and SUBSTRING(store_sales_store_store.\"S_ZIP\",1,2) in (select young.\"final_zips\" from young where young.\"final_zips\" is not null)
 )
+-- Target: Grain<store_sales.store.name>. Group: True Source: SourceType.GROUP. References: sparkling.
+-- Source Map: {'store_sales.date.id': ['sparkling'], 'store_sales.date.quarter': ['sparkling'], 'store_sales.date.year': ['sparkling'], 'store_sales.item.id': ['sparkling'], 'store_sales.net_profit': ['sparkling'], 'store_sales.store.id': ['sparkling'], 'store_sales.store.name': ['sparkling'], 'store_sales.store.zip': ['sparkling'], 'store_sales.ticket_number': ['sparkling'], 'local.store_net_profit': []}.
+-- Output: store_sales.store.name@Grain<store_sales.store.name>, local.store_net_profit@Grain<store_sales.store.name>.
+-- Inputs: store_sales.net_profit@Grain<store_sales.item.id,store_sales.ticket_number>, store_sales.store.name@Grain<store_sales.store.id>, store_sales.ticket_number@Grain<store_sales.ticket_number>, store_sales.item.id@Grain<store_sales.item.id>.
+-- Nullable: local.store_net_profit@Grain<store_sales.store.name>.
 SELECT
     sparkling.\"store_sales_store_name\" as \"store_sales_store_name\",
     sum(sparkling.\"store_sales_net_profit\") as \"store_net_profit\"

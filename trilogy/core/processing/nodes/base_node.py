@@ -1,12 +1,10 @@
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+from typing import List, Optional
 
 from trilogy.core.enums import (
     BooleanOperator,
-    Granularity,
     JoinType,
-    Purpose,
     PurposeLineage,
 )
 from trilogy.core.models import (
@@ -24,31 +22,6 @@ from trilogy.core.models import (
     UnnestJoin,
 )
 from trilogy.utility import unique
-
-
-def concept_list_to_grain(
-    inputs: List[Concept], parent_sources: Sequence[QueryDatasource | Datasource]
-) -> Grain:
-    candidates = [
-        c
-        for c in inputs
-        if c.purpose == Purpose.KEY and c.granularity != Granularity.SINGLE_ROW
-    ]
-    for x in inputs:
-        if x.granularity == Granularity.SINGLE_ROW:
-            continue
-        if x.purpose == Purpose.PROPERTY and not any(
-            [key in candidates for key in (x.keys or [])]
-        ):
-            candidates.append(x)
-        elif x.purpose == Purpose.CONSTANT:
-            candidates.append(x)
-        elif x.purpose == Purpose.METRIC:
-            # metrics that were previously calculated must be included in grain
-            if any([x in parent.output_concepts for parent in parent_sources]):
-                candidates.append(x)
-
-    return Grain(components=candidates)
 
 
 def resolve_concept_map(
@@ -351,11 +324,7 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        grain = (
-            self.grain
-            if self.grain
-            else concept_list_to_grain(self.output_concepts, [])
-        )
+        grain = self.grain if self.grain else Grain.from_concepts(self.output_concepts)
         source_map = resolve_concept_map(
             parent_sources,
             targets=self.output_concepts,

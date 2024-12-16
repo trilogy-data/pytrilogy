@@ -1,14 +1,21 @@
 query_id = 21
-gen_length = 2827
+gen_length = 7447
 generated_sql = """
 
 WITH 
 cheerful as (
+-- Target: Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>. Group: False Source: SourceType.MERGE.
+-- Joins: inner join inventory_warehouse_warehouse on wakeful.inventory.warehouse.id=inventory.warehouse.id, inner join inventory_date_date on wakeful.inventory.date.id=inventory.date.id, inner join inventory_item_items on wakeful.inventory.item.id=inventory.item.id.
+-- Source Map: {'inventory.warehouse.id': ['inventory_warehouse_warehouse'], 'inventory.warehouse.name': ['inventory_warehouse_warehouse'], 'inventory.item.id': ['inventory_item_items'], 'inventory.item.name': ['inventory_item_items'], 'inventory.item.current_price': ['inventory_item_items'], 'inventory.date.date': ['inventory_date_date'], 'inventory.date.id': ['inventory_date_date'], 'inventory.quantity_on_hand': ['inventory_warehouse_inventory'], 'inventory.warehouse.string_id': ['inventory_warehouse_warehouse'], 'inventory.warehouse.square_feet': ['inventory_warehouse_warehouse'], 'inventory.item.manufacturer_id': ['inventory_item_items'], 'inventory.item.color': ['inventory_item_items'], 'inventory.item.desc': ['inventory_item_items'], 'inventory.item.brand_id': ['inventory_item_items'], 'inventory.item.brand_name': ['inventory_item_items'], 'inventory.item.category': ['inventory_item_items'], 'inventory.item.class': ['inventory_item_items'], 'inventory.item.manager_id': ['inventory_item_items'], 'inventory.item.units': ['inventory_item_items'], 'inventory.item.size': ['inventory_item_items'], 'inventory.date.date_string': ['inventory_date_date'], 'inventory.date.month_of_year': ['inventory_date_date'], 'inventory.date.year': ['inventory_date_date'], 'inventory.date.week_seq': ['inventory_date_date'], 'inventory.date.day_of_week': ['inventory_date_date'], 'inventory.date.quarter': ['inventory_date_date'], 'inventory.date._year_string': ['inventory_date_date'], 'inventory.date._date_string': ['inventory_date_date']}.
+-- Output: inventory.date.date@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.date.id@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.item.current_price@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.item.id@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.item.name@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.quantity_on_hand@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.warehouse.id@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>, inventory.warehouse.name@Grain<inventory.date.id,inventory.item.id,inventory.warehouse.id>.
+-- Inputs: inventory.date.date@Grain<inventory.date.id>, inventory.date.id@Grain<inventory.date.id>, inventory.item.current_price@Grain<inventory.item.id>, inventory.item.id@Grain<inventory.item.id>, inventory.item.name@Grain<inventory.item.id>, inventory.quantity_on_hand@Grain<inventory.date.id,inventory.warehouse.id>, inventory.warehouse.id@Grain<inventory.warehouse.id>, inventory.warehouse.name@Grain<inventory.warehouse.id>.
+-- Nullable: inventory.warehouse.id@Grain<inventory.warehouse.id>, inventory.warehouse.name@Grain<inventory.warehouse.id>.
 SELECT
     cast(inventory_date_date.\"D_DATE\" as date) as \"inventory_date_date\",
     inventory_date_date.\"D_DATE_SK\" as \"inventory_date_id\",
     inventory_item_items.\"I_CURRENT_PRICE\" as \"inventory_item_current_price\",
     inventory_item_items.\"I_ITEM_ID\" as \"inventory_item_name\",
+    inventory_item_items.\"I_ITEM_SK\" as \"inventory_item_id\",
     inventory_warehouse_inventory.\"inv_quantity_on_hand\" as \"inventory_quantity_on_hand\",
     inventory_warehouse_warehouse.\"w_warehouse_name\" as \"inventory_warehouse_name\",
     inventory_warehouse_warehouse.\"w_warehouse_sk\" as \"inventory_warehouse_id\"
@@ -20,6 +27,11 @@ FROM
 WHERE
     cast(inventory_date_date.\"D_DATE\" as date) >= date '2000-02-10' and cast(inventory_date_date.\"D_DATE\" as date) <= date '2000-04-10' and inventory_item_items.\"I_CURRENT_PRICE\" >= 0.99 and inventory_item_items.\"I_CURRENT_PRICE\" <= 1.49
 )
+-- Target: Grain<inventory.item.name,inventory.warehouse.name>. Group: True Source: SourceType.GROUP. References: cheerful.
+-- Source Map: {'inventory.date.date': ['cheerful'], 'inventory.date.id': ['cheerful'], 'inventory.item.current_price': ['cheerful'], 'inventory.item.id': ['cheerful'], 'inventory.item.name': ['cheerful'], 'inventory.quantity_on_hand': ['cheerful'], 'inventory.warehouse.id': ['cheerful'], 'inventory.warehouse.name': ['cheerful'], 'local.inv_before': [], 'local.inv_after': []}.
+-- Output: inventory.warehouse.name@Grain<inventory.item.name,inventory.warehouse.name>, inventory.item.name@Grain<inventory.item.name,inventory.warehouse.name>, local.inv_before@Grain<inventory.item.name,inventory.warehouse.name>, local.inv_after@Grain<inventory.item.name,inventory.warehouse.name>.
+-- Inputs: inventory.date.date@Grain<inventory.date.id>, inventory.quantity_on_hand@Grain<inventory.date.id,inventory.warehouse.id>, inventory.item.name@Grain<inventory.item.id>, inventory.warehouse.name@Grain<inventory.warehouse.id>, inventory.date.id@Grain<inventory.date.id>, inventory.warehouse.id@Grain<inventory.warehouse.id>.
+-- Nullable: local.inv_before@Grain<inventory.item.name,inventory.warehouse.name>, inventory.warehouse.name@Grain<inventory.warehouse.id>, local.inv_after@Grain<inventory.item.name,inventory.warehouse.name>.
 SELECT
     cheerful.\"inventory_warehouse_name\" as \"inventory_warehouse_name\",
     cheerful.\"inventory_item_name\" as \"inventory_item_name\",

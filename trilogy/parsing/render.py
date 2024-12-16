@@ -159,11 +159,11 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Grain"):
         final = []
-        for arg in arg.components:
-            if arg.startswith(DEFAULT_NAMESPACE):
-                final.append(arg.split(".", 1)[1])
+        for comp in arg.components:
+            if comp.startswith(DEFAULT_NAMESPACE):
+                final.append(comp.split(".", 1)[1])
             else:
-                final.append(arg)
+                final.append(comp)
         final = sorted(final)
         components = ",".join(x for x in final)
         return f"grain ({components})"
