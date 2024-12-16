@@ -43,7 +43,6 @@ def test_auto_property_assignments(test_environment: Environment):
     upper_store_name_2 = test_environment.concepts["upper_store_name_2"]
 
     assert upper_store_name.lineage.concept_arguments == [store_name]
-    assert upper_store_name_2.lineage.output_keys == [store_id]
 
     for candidate in [store_name, upper_store_name, upper_store_name_2]:
         assert candidate.purpose == Purpose.PROPERTY

@@ -50,7 +50,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             lineage=const_function,
             grain=const_function.output_grain,
             namespace=namespace,
-            keys=(concept,),
+            keys=(concept.address,),
             metadata=Metadata(
                 description=f"Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}",
                 line_number=base_line_number,
@@ -99,7 +99,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             lineage=const_function,
             grain=const_function.output_grain,
             namespace=namespace,
-            keys=(concept,),
+            keys=(concept.address,),
             metadata=Metadata(
                 description=f"Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}",
                 line_number=base_line_number,
@@ -139,7 +139,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             lineage=const_function,
             grain=const_function.output_grain,
             namespace=namespace,
-            keys=(concept,),
+            keys=(concept.address,),
             metadata=Metadata(
                 description=f"Auto-derived. Integer format. The {ftype.value} derived from {concept.name}, {base_description}",
                 line_number=base_line_number,

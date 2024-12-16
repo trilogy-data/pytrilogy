@@ -427,7 +427,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         ]
     ] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    keys: Optional[Tuple["Concept", ...]] = None
+    keys: Optional[Tuple[str, ...]] = None
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
@@ -479,11 +479,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             ),
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
-            keys=(
-                tuple(x.with_merge(source, target, modifiers) for x in self.keys)
-                if self.keys
-                else None
-            ),
+            keys=(x if x != source.address else target.address for x in self.keys),
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
@@ -609,11 +605,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 and self.namespace != namespace
                 else namespace
             ),
-            keys=(
-                tuple([x.with_namespace(namespace) for x in self.keys])
-                if self.keys
-                else None
-            ),
+            keys=tuple([address_with_namespace(x, namespace) for x in self.keys]) if self.keys  else None,
             modifiers=self.modifiers,
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
@@ -628,12 +620,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             )
         final_grain = self.grain or grain
         keys = (
-            tuple(
-                [
-                    x.with_select_context(local_concepts, grain, environment)
-                    for x in self.keys
-                ]
-            )
+            self.keys
             if self.keys
             else None
         )
@@ -641,11 +628,11 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
-            keys = tuple(grain_components)
+            keys = tuple(grain.components)
         elif (
             self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
         ):
-            keys = tuple(new_lineage.by)
+            keys = tuple([x.address for x in new_lineage.by])
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -687,13 +674,10 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             if self.lineage:
                 for item in self.lineage.arguments:
                     if isinstance(item, Concept):
-                        if item.keys and not all(c in components for c in item.keys):
-                            components += item.sources
-                        else:
-                            components += item.sources
+                        components += [x.address for x in item.sources]
             # TODO: set synonyms
             grain = Grain(
-                components=set([x.address for x in components]),
+                components=set([x for x in components]),
             )  # synonym_set=generate_concept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
             grain = Grain()
@@ -1365,17 +1349,6 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             base_grain += input.grain
         return base_grain
 
-    @property
-    def output_keys(self) -> list[Concept]:
-        # aggregates have an abstract grain
-        components = []
-        # scalars have implicit grain of all arguments
-        for input in self.concept_arguments:
-            if input.purpose == Purpose.KEY:
-                components.append(input)
-            elif input.keys:
-                components += input.keys
-        return list(set(components))
 
 
 class ConceptTransform(Namespaced, BaseModel):
@@ -4521,9 +4494,9 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
         # remap everything to the properties of the rowset
         for x in output:
             if x.keys:
-                if all([k.address in orig for k in x.keys]):
+                if all([k in orig for k in x.keys]):
                     x.keys = tuple(
-                        [orig[k.address] if k.address in orig else k for k in x.keys]
+                        [orig[k] if k in orig else k for k in x.keys]
                     )
                 else:
                     # TODO: fix this up

@@ -146,7 +146,8 @@ def gen_filter_node(
                 x
                 for x in local_optional
                 if x.address in [y.address for y in parent.output_concepts]
-            ]
+            ],
+            environment=environment
         )
         parent.rebuild_cache()
         filter_node = parent

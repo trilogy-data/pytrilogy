@@ -465,7 +465,7 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             grain=Grain(components={x.address for x in parents}),
             namespace=namespace,
-            keys=parents,
+            keys=tuple([x.address for x in parents]),
             modifiers=modifiers,
         )
         self.environment.add_concept(concept, meta)
@@ -513,7 +513,7 @@ class ParseToObjects(Transformer):
         # <abc.def,zef.gf>.property pattern
         else:
             keys, name = raw_name
-            namespaces = set([x.namespace for x in keys])
+            namespaces = set([x.rsplit('.',1)[0] for x in keys])
             if not len(namespaces) == 1:
                 namespace = self.environment.namespace or DEFAULT_NAMESPACE
             else:
