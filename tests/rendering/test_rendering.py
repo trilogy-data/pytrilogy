@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from trilogy import Environment
@@ -447,6 +448,43 @@ def test_render_anon(test_environment: Environment):
     )
 
     assert test == "[1, 2, 3, 4]"
+
+
+def test_render_dates():
+
+    now = datetime.now()
+    test = Renderer().to_string(
+        Concept(
+            name=f"{VIRTUAL_CONCEPT_PREFIX}_materialized",
+            purpose=Purpose.CONSTANT,
+            datatype=DataType.INTEGER,
+            lineage=Function(
+                arguments=[now],
+                operator=FunctionType.CONSTANT,
+                output_purpose=Purpose.CONSTANT,
+                output_datatype=DataType.DATETIME,
+            ),
+        )
+    )
+
+    assert test == f"'{now.isoformat()}'::datetime"
+
+    today = date.today()
+    test = Renderer().to_string(
+        Concept(
+            name=f"{VIRTUAL_CONCEPT_PREFIX}_materialized",
+            purpose=Purpose.CONSTANT,
+            datatype=DataType.INTEGER,
+            lineage=Function(
+                arguments=[today],
+                operator=FunctionType.CONSTANT,
+                output_purpose=Purpose.CONSTANT,
+                output_datatype=DataType.DATE,
+            ),
+        )
+    )
+
+    assert test == f"'{today.isoformat()}'::date"
 
 
 def test_render_merge():

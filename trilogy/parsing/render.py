@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import date, datetime
 from functools import singledispatchmethod
 
 from jinja2 import Template
@@ -272,6 +273,14 @@ class Renderer:
     @to_string.register
     def _(self, arg: DataType):
         return arg.value
+
+    @to_string.register
+    def _(self, arg: date):
+        return f"'{arg.isoformat()}'::date"
+
+    @to_string.register
+    def _(self, arg: datetime):
+        return f"'{arg.isoformat()}'::datetime"
 
     @to_string.register
     def _(self, arg: ConceptDerivation):
