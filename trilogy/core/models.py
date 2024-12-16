@@ -1763,15 +1763,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
 
         return render_query(self)
 
-    # def __init__(self, *args, **kwargs) -> None:
-    #     super().__init__(*args, **kwargs)
-    #     for nitem in self.selection:
-    #         if not isinstance(nitem.content, Concept):
-    #             continue
-    #         if nitem.content.grain == Grain():
-    #             if nitem.content.derivation == PurposeLineage.AGGREGATE:
-    #                 nitem.content = nitem.content.with_grain(self.grain)
-
     @field_validator("selection", mode="before")
     @classmethod
     def selection_validation(cls, v):
@@ -4418,16 +4409,6 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
                 local_concepts, grain, environment
             )
         )
-
-    @property
-    def grain(self) -> Grain:
-        output: list[str] = []
-        for item in self.input:
-            if item.purpose == Purpose.KEY:
-                output.append(item.address)
-            elif item.purpose == Purpose.PROPERTY:
-                output += item.grain.components if item.grain else []
-        return Grain(components=set(output))
 
     @property
     def components(self):
