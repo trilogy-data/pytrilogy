@@ -64,9 +64,9 @@ exec_time = 0.198792
 comp_time = 0.214508
 
 [query_25]
-parse_time = 0.718331
-exec_time = 0.150469
-comp_time = 0.100761
+parse_time = 0.712865
+exec_time = 0.122383
+comp_time = 0.095973
 
 [query_26]
 parse_time = 0.34965
