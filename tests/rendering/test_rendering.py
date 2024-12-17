@@ -565,6 +565,27 @@ def test_render_index_access():
     assert test == "user_id[1]"
 
 
+def test_render_parenthetical():
+    test = Renderer().to_string(
+        Function(
+            arguments=[
+                Concept(
+                    name="user_id",
+                    purpose=Purpose.KEY,
+                    datatype=DataType.INTEGER,
+                    lineage=None,
+                ),
+            ],
+            operator=FunctionType.PARENTHETICAL,
+            output_purpose=Purpose.CONSTANT,
+            output_datatype=DataType.ARRAY,
+            arg_count=2,
+        )
+    )
+
+    assert test == "(user_id)"
+
+
 def test_render_import():
     base = Path("/path/to/file.preql")
     test = Renderer().to_string(
@@ -595,40 +616,41 @@ def test_render_datasource():
         datatype=DataType.INTEGER,
         lineage=None,
     )
-    test = Renderer().to_string(
-        Datasource(
-            name="useful_data",
-            columns=[
-                ColumnAssignment(
-                    alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL]
-                )
-            ],
-            address="customers.dim_customers",
-            grain=Grain(components=[user_id]),
-            where=WhereClause(
-                conditional=Conditional(
-                    left=Comparison(
-                        left=user_id,
-                        right=123,
-                        operator=ComparisonOperator.EQ,
-                    ),
-                    right=Comparison(
-                        left=user_id,
-                        right=456,
-                        operator=ComparisonOperator.EQ,
-                    ),
-                    operator=BooleanOperator.OR,
-                ),
-            ),
-            non_partial_for=WhereClause(
-                conditional=Comparison(
+
+    ds = Datasource(
+        name="useful_data",
+        columns=[
+            ColumnAssignment(
+                alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL]
+            )
+        ],
+        address="customers.dim_customers",
+        grain=Grain(components=[user_id]),
+        where=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
                     left=user_id,
                     right=123,
                     operator=ComparisonOperator.EQ,
-                )
+                ),
+                right=Comparison(
+                    left=user_id,
+                    right=456,
+                    operator=ComparisonOperator.EQ,
+                ),
+                operator=BooleanOperator.OR,
             ),
-        )
+        ),
+        non_partial_for=WhereClause(
+            conditional=Comparison(
+                left=user_id,
+                right=123,
+                operator=ComparisonOperator.EQ,
+            )
+        ),
     )
+
+    test = Renderer().to_string(ds)
     assert (
         test
         == """datasource useful_data (
@@ -639,30 +661,29 @@ complete where user_id = 123
 address customers.dim_customers
 where user_id = 123 or user_id = 456;"""
     )
-
-    test = Renderer().to_string(
-        Datasource(
-            name="useful_data",
-            columns=[ColumnAssignment(alias="user_id", concept=user_id)],
-            address=Address(is_query=True, location="SELECT * FROM test"),
-            grain=Grain(components=[user_id]),
-            where=WhereClause(
-                conditional=Conditional(
-                    left=Comparison(
-                        left=user_id,
-                        right=123,
-                        operator=ComparisonOperator.EQ,
-                    ),
-                    right=Comparison(
-                        left=user_id,
-                        right=456,
-                        operator=ComparisonOperator.EQ,
-                    ),
-                    operator=BooleanOperator.OR,
+    ds = Datasource(
+        name="useful_data",
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        address=Address(is_query=True, location="SELECT * FROM test"),
+        grain=Grain(components=[user_id]),
+        where=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
+                    left=user_id,
+                    right=123,
+                    operator=ComparisonOperator.EQ,
                 ),
+                right=Comparison(
+                    left=user_id,
+                    right=456,
+                    operator=ComparisonOperator.EQ,
+                ),
+                operator=BooleanOperator.OR,
             ),
-        )
+        ),
     )
+
+    test = Renderer().to_string(ds)
     assert (
         test
         == """datasource useful_data (
@@ -717,6 +738,38 @@ address memory.date_dim;"""
 grain (id)
 address memory.date_dim;"""
     ), test
+    ds = Datasource(
+        name="useful_data",
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        address=Address(is_query=True, location="SELECT * FROM test"),
+        grain=Grain(components=set()),
+        where=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
+                    left=user_id,
+                    right=123,
+                    operator=ComparisonOperator.EQ,
+                ),
+                right=Comparison(
+                    left=user_id,
+                    right=456,
+                    operator=ComparisonOperator.EQ,
+                ),
+                operator=BooleanOperator.OR,
+            ),
+        ),
+    )
+    ds.grain = Grain()
+    test2 = Renderer().to_string(ds)
+    assert (
+        test2
+        == """datasource useful_data (
+    user_id: user_id
+    )
+
+query '''SELECT * FROM test'''
+where user_id = 123 or user_id = 456;"""
+    )
 
 
 def test_circular_rendering():

@@ -148,7 +148,7 @@ class Renderer:
         base = f"""datasource {arg.name} (
     {assignments}
     )
-{self.to_string(arg.grain)}{non_partial}
+{self.to_string(arg.grain) if arg.grain.components else ''}{non_partial}
 {self.to_string(arg.address)}"""
 
         if arg.where:
@@ -417,6 +417,8 @@ class Renderer:
             return " / ".join(args)
         if arg.operator == FunctionType.MOD:
             return f"{args[0]} % {args[1]}"
+        if arg.operator == FunctionType.PARENTHETICAL:
+            return f"({args[0]})"
 
         inputs = ",".join(args)
 
