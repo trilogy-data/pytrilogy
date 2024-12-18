@@ -4,7 +4,7 @@
 
 pytrilogy is an experimental implementation of the Trilogy language, a higher-level SQL that replaces tables/joins with a lightweight semantic binding layer.
 
-Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want reusability and simplicity with the power and iteratability of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
+Trilogy looks like SQL, but simpler. It's a modern SQL refresh targeted at SQL lovers who want more reusability and composability without losing the expressiveness and iterative value of SQL. It compiles to SQL - making it easy to debug or integrate into existing workflows - and can be run against any supported SQL backend.  
 
 > [!TIP]
 > To get an overview of the language and run interactive examples, head to the [documentation](https://trilogydata.dev/).
@@ -163,11 +163,12 @@ address `bigquery-public-data.usa_names.usa_1910_2013`;
 executor = Dialects.BIGQUERY.default_executor(environment=environment)
 
 results = executor.execute_text(
-'''SELECT
-    name,
-    sum(yearly_name_count) -> name_count 
+'''
 WHERE
     name = 'Elvis'
+SELECT
+    name,
+    sum(yearly_name_count) -> name_count 
 ORDER BY
     name_count desc
 LIMIT 10;
@@ -240,9 +241,11 @@ Please open an issue first to discuss what you would like to change, and then cr
 ## Similar in space
 Trilogy combines two aspects; a semantic layer and a query language. Examples of both are linked below:
 
-Python "semantic layers" are tools for defining data access to a warehouse in a more abstract way.
+"semantic layers" are tools for defining an metadata layer above a SQL/warehouse base to enable higher level abstractions.
 
 - [metricsflow](https://github.com/dbt-labs/metricflow)
+- [cube](https://github.com/cube-js/cube)
+- [zillion](https://github.com/totalhack/zillion)
 
 "Better SQL" has been a popular space. We believe Trilogy takes a different approach then the following,
 but all are worth checking out. Please open PRs/comment for anything missed!
@@ -291,11 +294,14 @@ address <table>;
 Primary acces
 
 ```sql
-select
-    <concept>,
-    <concept>+1 -> <alias>
 WHERE
     <concept> = <value>
+select
+    <concept>,
+    <concept>+1 -> <alias>,
+    ...
+HAVING
+    <alias> = <value2>
 ORDER BY
     <concept> asc|desc
 ;
@@ -307,11 +313,13 @@ Reusable virtual set of rows. Useful for windows, filtering.
 
 ```sql
 with <alias> as
-select
-    <concept>,
-    <concept>+1 -> <alias>
 WHERE
     <concept> = <value>
+select
+    <concept>,
+    <concept>+1 -> <alias>,
+    ...
+
 
 select <alias>.<concept>;
 
@@ -325,6 +333,18 @@ Store output of a query in a warehouse table
 ```sql
 persist <alias> as <table_name> from
 <select>;
+```
+
+#### COPY
+
+Currently supported target types are <CSV>, though backend support may vary.
+
+```sql
+COPY INTO <TARGET_TYPE> '<target_path>' FROM SELECT
+    <concept>, ...
+ORDER BY
+    <concept>, ...
+;
 ```
 
 #### SHOW

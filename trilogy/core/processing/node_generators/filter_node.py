@@ -138,7 +138,7 @@ def gen_filter_node(
         )
         parent.grain = Grain.from_concepts(
             (
-                list(immediate_parent.keys)
+                [environment.concepts[k] for k in immediate_parent.keys]
                 if immediate_parent.keys
                 else [immediate_parent]
             )
@@ -147,7 +147,7 @@ def gen_filter_node(
                 for x in local_optional
                 if x.address in [y.address for y in parent.output_concepts]
             ],
-            environment=environment
+            environment=environment,
         )
         parent.rebuild_cache()
         filter_node = parent

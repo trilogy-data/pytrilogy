@@ -479,12 +479,14 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             ),
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
-            keys=tuple(x if x != source.address else target.address for x in self.keys) if self.keys else None,
+            keys=(
+                set(x if x != source.address else target.address for x in self.keys)
+                if self.keys
+                else None
+            ),
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
-
-
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -596,7 +598,11 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 and self.namespace != namespace
                 else namespace
             ),
-            keys=tuple([address_with_namespace(x, namespace) for x in self.keys]) if self.keys  else None,
+            keys=(
+                set([address_with_namespace(x, namespace) for x in self.keys])
+                if self.keys
+                else None
+            ),
             modifiers=self.modifiers,
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
@@ -610,20 +616,16 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
         final_grain = self.grain or grain
-        keys = (
-            self.keys
-            if self.keys
-            else None
-        )
+        keys = self.keys if self.keys else None
         if self.is_aggregate and isinstance(new_lineage, Function):
             grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
-            keys = tuple(grain.components)
+            keys = set(grain.components)
         elif (
             self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
         ):
-            keys = tuple([x.address for x in new_lineage.by])
+            keys = set([x.address for x in new_lineage.by])
 
         return self.__class__(
             name=self.name,
@@ -1034,8 +1036,8 @@ class EnvironmentConceptDict(dict):
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
-                if '.' in key:
-                    ns, rest = key.rsplit('.',1)
+                if "." in key:
+                    ns, rest = key.rsplit(".", 1)
                 else:
                     ns = DEFAULT_NAMESPACE
                     rest = key
@@ -1046,7 +1048,7 @@ class EnvironmentConceptDict(dict):
                     line_no=line_no,
                     datatype=DataType.UNKNOWN,
                     purpose=Purpose.UNKNOWN,
-                    namespace = ns,
+                    namespace=ns,
                 )
                 self.undefined[key] = undefined
                 return undefined
@@ -1346,7 +1348,6 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         for input in self.concept_arguments:
             base_grain += input.grain
         return base_grain
-
 
 
 class ConceptTransform(Namespaced, BaseModel):
@@ -4492,12 +4493,10 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
         for x in output:
             if x.keys:
                 if all([k in orig for k in x.keys]):
-                    x.keys = tuple(
-                        [orig[k].address if k in orig else k for k in x.keys]
-                    )
+                    x.keys = set([orig[k].address if k in orig else k for k in x.keys])
                 else:
                     # TODO: fix this up
-                    x.keys = tuple()
+                    x.keys = set()
         for x in output:
             if all([c in orig for c in x.grain.components]):
                 x.grain = Grain(

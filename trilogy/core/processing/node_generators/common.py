@@ -26,7 +26,7 @@ def resolve_function_parent_concepts(
     if not isinstance(concept.lineage, (Function, AggregateWrapper)):
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == PurposeLineage.AGGREGATE:
-        base:list[Concept] = []
+        base: list[Concept] = []
         if not concept.grain.abstract:
             base = concept.lineage.concept_arguments + [
                 environment.concepts[c] for c in concept.grain.components
@@ -82,7 +82,7 @@ def resolve_filter_parent_concepts(
         and direct_parent.purpose == Purpose.PROPERTY
         and direct_parent.keys
     ):
-        base_rows += [environment.concepts[c] for c in direct_parent.keys] 
+        base_rows += [environment.concepts[c] for c in direct_parent.keys]
     if concept.lineage.where.existence_arguments:
         return (
             concept.lineage.content,

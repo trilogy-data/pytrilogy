@@ -62,7 +62,9 @@ def test_metric_assignments(test_environment: Environment):
 
     for candidate in [store_order_count, store_order_count_2]:
         assert candidate.purpose == Purpose.METRIC
-        assert candidate.keys == {store_id.address,}
+        assert candidate.keys == {
+            store_id.address,
+        }
         assert candidate.grain.components == {store_id.address}
 
 

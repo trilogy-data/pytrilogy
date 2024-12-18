@@ -98,17 +98,17 @@ class Renderer:
                 if concept.keys:
                     # avoid duplicate declarations
                     # but we need better composite key support
-                    for key in concept.keys[:1]:
-                        properties[key.name].append(concept)
+                    for key in sorted(list(concept.keys))[:1]:
+                        properties[key].append(concept)
                 else:
                     keys.append(concept)
             else:
                 metrics.append(concept)
 
         output_concepts = constants
-        for key in keys:
-            output_concepts += [key]
-            output_concepts += properties.get(key.name, [])
+        for key_concept in keys:
+            output_concepts += [key_concept]
+            output_concepts += properties.get(key_concept.name, [])
         output_concepts += metrics
 
         rendered_concepts = [

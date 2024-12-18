@@ -485,7 +485,7 @@ select
     cased = default_duckdb_engine.environment.concepts["cased"]
     total = default_duckdb_engine.environment.concepts["total_mod_two"]
     assert cased.purpose == Purpose.PROPERTY
-    assert cased.keys == {'local.orid'}
+    assert cased.keys == {"local.orid"}
     assert total.derivation == PurposeLineage.AGGREGATE
     x = resolve_function_parent_concepts(
         total, environment=default_duckdb_engine.environment

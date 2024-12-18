@@ -182,7 +182,7 @@ select
     ]:
         assert f"local.{name}" in env.concepts
         assert env.concepts[name].purpose == Purpose.PROPERTY
-        assert env.concepts[name].keys == (env.concepts["id"],)
+        assert env.concepts[name].keys == {env.concepts["id"].address}
 
 
 def test_purpose_and_derivation():
@@ -200,10 +200,10 @@ select
 
     for name in ["join_id"]:
         assert env.concepts[name].purpose == Purpose.PROPERTY
-        assert env.concepts[name].keys == (
-            env.concepts["id"],
-            env.concepts["other_id"],
-        )
+        assert env.concepts[name].keys == {
+            env.concepts["id"].address,
+            env.concepts["other_id"].address,
+        }
 
 
 def test_output_purpose():

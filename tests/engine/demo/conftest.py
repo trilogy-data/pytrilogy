@@ -248,7 +248,7 @@ def setup_titanic_distributed(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
-        keys=(class_id.address,)
+        keys=(class_id.address,),
     )
     survived = Concept(
         name="survived",
@@ -293,7 +293,9 @@ def setup_titanic_distributed(env: Environment):
         environment=env,
         # keys = (id,)
     )
-    assert split_name.keys == {id.address,}
+    assert split_name.keys == {
+        id.address,
+    }
     last_name = Concept(
         name="last_name",
         namespace=namespace,
@@ -349,7 +351,11 @@ def setup_titanic_distributed(env: Environment):
                 # ColumnAssignment(alias="cabin", concept=cabin),
                 # ColumnAssignment(alias="embarked", concept=embarked),
             ],
-            grain=Grain(components={id.address,}),
+            grain=Grain(
+                components={
+                    id.address,
+                }
+            ),
         ),
     )
 
@@ -365,7 +371,11 @@ def setup_titanic_distributed(env: Environment):
                 ColumnAssignment(alias="cabin", concept=cabin),
                 ColumnAssignment(alias="embarked", concept=embarked),
             ],
-            grain=Grain(components={id.address,}),
+            grain=Grain(
+                components={
+                    id.address,
+                }
+            ),
         ),
     )
 
@@ -423,7 +433,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
-           keys=(id.address,),
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
     fare = Concept(
@@ -447,7 +457,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-          keys=(id.address,),
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
     ticket = Concept(

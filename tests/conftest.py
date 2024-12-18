@@ -65,7 +65,7 @@ def test_environment():
         name="revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.PROPERTY,
-        keys=[order_id],
+        keys={order_id.address},
         grain=Grain(components=[order_id]),
     )
 
@@ -94,7 +94,7 @@ def test_environment():
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
         grain=category_id,
-        keys=[category_id],
+        keys={category_id.address},
     )
 
     category_name_length = Concept(
@@ -108,7 +108,7 @@ def test_environment():
             output_purpose=Purpose.PROPERTY,
             operator=FunctionType.LENGTH,
         ),
-        keys=[category_id],
+        keys={category_id.address},
     )
 
     category_name_length_sum = Concept(
@@ -136,7 +136,7 @@ def test_environment():
             ],
         ),
         grain=product_id,
-        keys=(product_id,),
+        keys={product_id.address},
     )
     product_revenue_rank_by_category = Concept(
         name="product_revenue_rank_by_category",

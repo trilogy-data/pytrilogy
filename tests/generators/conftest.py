@@ -123,7 +123,7 @@ def test_environment():
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
         grain=category_id,
-        keys={category_id.address}
+        keys={category_id.address},
     )
 
     category_name_length = Concept(

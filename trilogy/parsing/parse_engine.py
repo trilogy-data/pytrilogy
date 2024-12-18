@@ -119,7 +119,6 @@ from trilogy.core.models import (
     list_to_wrapper,
     merge_datatypes,
     tuple_to_wrapper,
-    LazyEnvironment
 )
 from trilogy.parsing.common import (
     agg_wrapper_to_concept,
@@ -245,7 +244,9 @@ class ParseToObjects(Transformer):
         self.token_address: Path | str = token_address or SELF_LABEL
         self.parsed: dict[str, ParseToObjects] = parsed if parsed is not None else {}
         self.tokens: dict[Path | str, ParseTree] = tokens if tokens is not None else {}
-        self.text_lookup: dict[Path | str, str] = text_lookup if text_lookup is not None else {}
+        self.text_lookup: dict[Path | str, str] = (
+            text_lookup if text_lookup is not None else {}
+        )
         # we do a second pass to pick up circular dependencies
         # after initial parsing
         self.pass_count = 1
@@ -466,7 +467,7 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             grain=Grain(components={x.address for x in parents}),
             namespace=namespace,
-            keys=tuple([x.address for x in parents]),
+            keys=set([x.address for x in parents]),
             modifiers=modifiers,
         )
         self.environment.add_concept(concept, meta)
@@ -515,7 +516,7 @@ class ParseToObjects(Transformer):
         else:
             keys, name = raw_name
             keys = [x.address for x in keys]
-            namespaces = set([x.rsplit('.',1)[0] for x in keys])
+            namespaces = set([x.rsplit(".", 1)[0] for x in keys])
             if not len(namespaces) == 1:
                 namespace = self.environment.namespace or DEFAULT_NAMESPACE
             else:
@@ -899,7 +900,8 @@ class ParseToObjects(Transformer):
             new_env = nparser.environment
         else:
             try:
-                new_env = Environment(working_path=dirname(target),
+                new_env = Environment(
+                    working_path=dirname(target),
                 )
                 new_env.concepts.fail_on_missing = False
                 self.parsed[self.parse_address] = self
@@ -911,10 +913,12 @@ class ParseToObjects(Transformer):
                     tokens=self.tokens,
                     text_lookup=self.text_lookup,
                 )
-                nparser.transform(raw_tokens)       
+                nparser.transform(raw_tokens)
                 self.parsed[cache_lookup] = nparser
             except Exception as e:
-                raise ImportError(f"Unable to import file {target}, parsing error: {e}") from e
+                raise ImportError(
+                    f"Unable to import file {target}, parsing error: {e}"
+                ) from e
 
         imps = ImportStatement(alias=alias, path=Path(args[0]))
         self.environment.add_import(alias, new_env, imps)
@@ -1025,7 +1029,7 @@ class ParseToObjects(Transformer):
                 having = arg
         if not select_items:
             raise ValueError("Malformed select, missing select items")
-        
+
         output = SelectStatement(
             selection=select_items,
             where_clause=where,
@@ -1997,7 +2001,9 @@ def unpack_visit_error(e: VisitError):
             raise InvalidSyntaxException(
                 str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
             )
-        raise InvalidSyntaxException(str(e.orig_exc)).with_traceback(e.orig_exc.__traceback__)
+        raise InvalidSyntaxException(str(e.orig_exc)).with_traceback(
+            e.orig_exc.__traceback__
+        )
     raise e.orig_exc
 
 
