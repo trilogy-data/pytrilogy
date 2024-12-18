@@ -242,9 +242,11 @@ class ParseToObjects(Transformer):
         self.environment: Environment = environment
         self.parse_address: str = parse_address or SELF_LABEL
         self.token_address: Path | str = token_address or SELF_LABEL
-        self.parsed: dict[str, ParseToObjects] = parsed if parsed else {}
-        self.tokens: dict[Path | str, ParseTree] = tokens or {}
-        self.text_lookup: dict[Path | str, str] = text_lookup or {}
+        self.parsed: dict[str, ParseToObjects] = parsed if parsed is not None else {}
+        self.tokens: dict[Path | str, ParseTree] = tokens if tokens is not None else {}
+        self.text_lookup: dict[Path | str, str] = (
+            text_lookup if text_lookup is not None else {}
+        )
         # we do a second pass to pick up circular dependencies
         # after initial parsing
         self.pass_count = 1
@@ -465,7 +467,7 @@ class ParseToObjects(Transformer):
             metadata=metadata,
             grain=Grain(components={x.address for x in parents}),
             namespace=namespace,
-            keys=parents,
+            keys=set([x.address for x in parents]),
             modifiers=modifiers,
         )
         self.environment.add_concept(concept, meta)
@@ -513,7 +515,8 @@ class ParseToObjects(Transformer):
         # <abc.def,zef.gf>.property pattern
         else:
             keys, name = raw_name
-            namespaces = set([x.namespace for x in keys])
+            keys = [x.address for x in keys]
+            namespaces = set([x.rsplit(".", 1)[0] for x in keys])
             if not len(namespaces) == 1:
                 namespace = self.environment.namespace or DEFAULT_NAMESPACE
             else:
@@ -894,31 +897,31 @@ class ParseToObjects(Transformer):
 
         if cache_lookup in self.parsed:
             nparser = self.parsed[cache_lookup]
+            new_env = nparser.environment
         else:
             try:
                 new_env = Environment(
                     working_path=dirname(target),
                 )
                 new_env.concepts.fail_on_missing = False
+                self.parsed[self.parse_address] = self
                 nparser = ParseToObjects(
                     environment=new_env,
                     parse_address=cache_lookup,
                     token_address=token_lookup,
-                    parsed={**self.parsed, **{self.parse_address: self}},
-                    tokens={**self.tokens, **{token_lookup: raw_tokens}},
-                    text_lookup={**self.text_lookup, **{token_lookup: text}},
+                    parsed=self.parsed,
+                    tokens=self.tokens,
+                    text_lookup=self.text_lookup,
                 )
                 nparser.transform(raw_tokens)
                 self.parsed[cache_lookup] = nparser
-                # add the parsed objects of the import in
-                self.parsed = {**self.parsed, **nparser.parsed}
-                self.tokens = {**self.tokens, **nparser.tokens}
-                self.text_lookup = {**self.text_lookup, **nparser.text_lookup}
             except Exception as e:
-                raise ImportError(f"Unable to import file {target}, parsing error: {e}")
+                raise ImportError(
+                    f"Unable to import file {target}, parsing error: {e}"
+                ) from e
 
         imps = ImportStatement(alias=alias, path=Path(args[0]))
-        self.environment.add_import(alias, nparser.environment, imps)
+        self.environment.add_import(alias, new_env, imps)
         return imps
 
     @v_args(meta=True)
@@ -1026,6 +1029,7 @@ class ParseToObjects(Transformer):
                 having = arg
         if not select_items:
             raise ValueError("Malformed select, missing select items")
+
         output = SelectStatement(
             selection=select_items,
             where_clause=where,
@@ -1056,9 +1060,6 @@ class ParseToObjects(Transformer):
                 grain = Grain.from_concepts(
                     output.output_components, where_clause=output.where_clause
                 )
-            print(
-                f"end pass {parse_pass} grain {grain} from {output.output_components}"
-            )
             output.grain = grain
             for item in select_items:
                 # we don't know the grain of an aggregate at assignment time
@@ -2000,8 +2001,10 @@ def unpack_visit_error(e: VisitError):
             raise InvalidSyntaxException(
                 str(e.orig_exc) + " in " + str(e.rule) + f" Line: {e.obj.meta.line}"
             )
-        raise InvalidSyntaxException(str(e.orig_exc))
-    raise e
+        raise InvalidSyntaxException(str(e.orig_exc)).with_traceback(
+            e.orig_exc.__traceback__
+        )
+    raise e.orig_exc
 
 
 def parse_text_raw(text: str, environment: Optional[Environment] = None):

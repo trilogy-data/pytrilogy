@@ -285,7 +285,7 @@ select
     orid = default_duckdb_engine.environment.concepts["orid"]
     half = default_duckdb_engine.environment.concepts["half_orid"]
     assert orid.address in [x.address for x in half.concept_arguments]
-    assert set([x.address for x in half.keys]) == {
+    assert set([x for x in half.keys]) == {
         "local.orid",
     }
     assert half.lineage.operator == FunctionType.DIVIDE
@@ -415,7 +415,7 @@ select
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
 
     customer_orders = default_duckdb_engine.environment.concepts["customer_orders"]
-    assert set([x.address for x in customer_orders.keys]) == {"local.customer"}
+    assert set([x for x in customer_orders.keys]) == {"local.customer"}
     assert set([x for x in customer_orders.grain.components]) == {"local.customer"}
 
     customer_orders_2 = customer_orders.with_select_context(
@@ -425,14 +425,14 @@ select
         ),
         default_duckdb_engine.environment,
     )
-    assert set([x.address for x in customer_orders_2.keys]) == {"local.customer"}
+    assert set([x for x in customer_orders_2.keys]) == {"local.customer"}
     assert set([x for x in customer_orders_2.grain.components]) == {"local.customer"}
 
     count_by_customer = default_duckdb_engine.environment.concepts[
         "avg_customer_orders"
     ].lineage.arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)
-    assert set([x.address for x in count_by_customer.keys]) == {"local.customer"}
+    assert set([x for x in count_by_customer.keys]) == {"local.customer"}
     assert set([x for x in count_by_customer.grain.components]) == {"local.customer"}
     assert len(results) == 1
     assert results[0].avg_customer_orders == 2
@@ -485,10 +485,7 @@ select
     cased = default_duckdb_engine.environment.concepts["cased"]
     total = default_duckdb_engine.environment.concepts["total_mod_two"]
     assert cased.purpose == Purpose.PROPERTY
-    assert LooseConceptList(concepts=cased.keys) == LooseConceptList(
-        concepts=[default_duckdb_engine.environment.concepts["orid"]]
-    )
-
+    assert cased.keys == {"local.orid"}
     assert total.derivation == PurposeLineage.AGGREGATE
     x = resolve_function_parent_concepts(
         total, environment=default_duckdb_engine.environment

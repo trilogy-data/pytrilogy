@@ -100,7 +100,7 @@ def process_function_args(
 
 def get_purpose_and_keys(
     purpose: Purpose | None, args: Tuple[Concept, ...] | None
-) -> Tuple[Purpose, Tuple[Concept, ...] | None]:
+) -> Tuple[Purpose, set[str] | None]:
     local_purpose = purpose or function_args_to_output_purpose(args)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args)
@@ -109,14 +109,14 @@ def get_purpose_and_keys(
     return local_purpose, keys
 
 
-def concept_list_to_keys(concepts: Tuple[Concept, ...]) -> Tuple[Concept, ...]:
-    final_keys: List[Concept] = []
+def concept_list_to_keys(concepts: Tuple[Concept, ...]) -> set[str]:
+    final_keys: List[str] = []
     for concept in concepts:
         if concept.keys:
-            final_keys += concept_list_to_keys(concept.keys)
+            final_keys += list(concept.keys)
         elif concept.purpose != Purpose.PROPERTY:
-            final_keys.append(concept)
-    return tuple(unique(final_keys, "address"))
+            final_keys.append(concept.address)
+    return set(final_keys)
 
 
 def constant_to_concept(
@@ -156,7 +156,7 @@ def concepts_to_grain_concepts(
     final: List[Concept] = []
     for sub in pconcepts:
         if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
-            if any([c.address in pconcepts for c in sub.keys]):
+            if any([c in pconcepts for c in sub.keys]):
                 continue
         if sub.purpose in (Purpose.METRIC,):
             if all([c in pconcepts for c in sub.grain.components]):
@@ -191,13 +191,13 @@ def function_to_concept(
         # if the function will create more rows, we don't know what grain this is at
         grain = None
     modifiers = get_upstream_modifiers(pkeys)
-    key_grain = []
+    key_grain: list[str] = []
     for x in pkeys:
         if x.keys:
             key_grain += [*x.keys]
         else:
-            key_grain.append(x)
-    keys = tuple(concepts_to_grain_concepts(key_grain, environment))
+            key_grain.append(x.address)
+    keys = set(key_grain)
     if not pkeys:
         purpose = Purpose.CONSTANT
     else:
@@ -248,7 +248,9 @@ def filter_item_to_concept(
         keys=(
             parent.content.keys
             if parent.content.purpose == Purpose.PROPERTY
-            else (parent.content,)
+            else {
+                parent.content.address,
+            }
         ),
         grain=(
             parent.content.grain
@@ -320,7 +322,7 @@ def agg_wrapper_to_concept(
         lineage=parent,
         grain=Grain.from_concepts(parent.by) if parent.by else Grain(),
         namespace=namespace,
-        keys=tuple(parent.by) if parent.by else keys,
+        keys=set([x.address for x in parent.by]) if parent.by else keys,
         modifiers=modifiers,
     )
     return out

@@ -127,7 +127,9 @@ limit 100
     env, parsed = parse(declarations)
     select: SelectStatement = parsed[-1]
 
-    assert env.concepts["rank_derived"].keys == (env.concepts["user_id"],)
+    assert env.concepts["rank_derived"].keys == {
+        env.concepts["user_id"].address,
+    }
     assert concept_to_relevant_joins(
         [env.concepts[x] for x in ["user_id", "rank_derived"]]
     ) == [env.concepts["user_id"]]
@@ -164,7 +166,9 @@ order by x asc;"""
             x.address,
         ]
     )
-    assert z.keys == (x,)
+    assert z.keys == {
+        x.address,
+    }
 
     ds = search_concepts(
         [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0

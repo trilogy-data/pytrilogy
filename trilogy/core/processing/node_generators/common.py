@@ -26,6 +26,7 @@ def resolve_function_parent_concepts(
     if not isinstance(concept.lineage, (Function, AggregateWrapper)):
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == PurposeLineage.AGGREGATE:
+        base: list[Concept] = []
         if not concept.grain.abstract:
             base = concept.lineage.concept_arguments + [
                 environment.concepts[c] for c in concept.grain.components
@@ -41,7 +42,7 @@ def resolve_function_parent_concepts(
             extra_property_grain = concept.lineage.concept_arguments
         for x in extra_property_grain:
             if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
-                base += x.keys
+                base += [environment.concepts[c] for c in x.keys]
         return unique(base, "address")
     # TODO: handle basic lineage chains?
     return unique(concept.lineage.concept_arguments, "address")
@@ -81,7 +82,7 @@ def resolve_filter_parent_concepts(
         and direct_parent.purpose == Purpose.PROPERTY
         and direct_parent.keys
     ):
-        base_rows += direct_parent.keys
+        base_rows += [environment.concepts[c] for c in direct_parent.keys]
     if concept.lineage.where.existence_arguments:
         return (
             concept.lineage.content,
@@ -106,7 +107,7 @@ def gen_property_enrichment_node(
     for x in extra_properties:
         if not x.keys:
             raise SyntaxError(f"Property {x.address} missing keys in lookup")
-        keys = "-".join([y.address for y in x.keys])
+        keys = "-".join([y for y in x.keys])
         required_keys[keys].add(x.address)
     final_nodes = []
     for _k, vs in required_keys.items():

@@ -427,11 +427,14 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         ]
     ] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    keys: Optional[Tuple["Concept", ...]] = None
+    keys: Optional[set[str]] = None
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
     _address_cache: str | None = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
 
     def duplicate(self) -> Concept:
         return self.model_copy(deep=True)
@@ -480,24 +483,13 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
             keys=(
-                tuple(x.with_merge(source, target, modifiers) for x in self.keys)
+                set(x if x != source.address else target.address for x in self.keys)
                 if self.keys
                 else None
             ),
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
-
-    @field_validator("keys", mode="before")
-    @classmethod
-    def keys_validator(cls, v, info: ValidationInfo):
-        if v is None:
-            return v
-        if not isinstance(v, (list, tuple)):
-            raise ValueError(f"Keys must be a list or tuple, got {type(v)}")
-        if isinstance(v, list):
-            return tuple(v)
-        return v
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -610,7 +602,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 else namespace
             ),
             keys=(
-                tuple([x.with_namespace(namespace) for x in self.keys])
+                set([address_with_namespace(x, namespace) for x in self.keys])
                 if self.keys
                 else None
             ),
@@ -627,25 +619,17 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
         final_grain = self.grain or grain
-        keys = (
-            tuple(
-                [
-                    x.with_select_context(local_concepts, grain, environment)
-                    for x in self.keys
-                ]
-            )
-            if self.keys
-            else None
-        )
+        keys = self.keys if self.keys else None
         if self.is_aggregate and isinstance(new_lineage, Function):
             grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
-            keys = tuple(grain_components)
+            keys = set(grain.components)
         elif (
             self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
         ):
-            keys = tuple(new_lineage.by)
+            keys = set([x.address for x in new_lineage.by])
+
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -687,13 +671,10 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             if self.lineage:
                 for item in self.lineage.arguments:
                     if isinstance(item, Concept):
-                        if item.keys and not all(c in components for c in item.keys):
-                            components += item.sources
-                        else:
-                            components += item.sources
+                        components += [x.address for x in item.sources]
             # TODO: set synonyms
             grain = Grain(
-                components=set([x.address for x in components]),
+                components=set([x for x in components]),
             )  # synonym_set=generate_concept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
             grain = Grain()
@@ -1058,13 +1039,19 @@ class EnvironmentConceptDict(dict):
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
+                if "." in key:
+                    ns, rest = key.rsplit(".", 1)
+                else:
+                    ns = DEFAULT_NAMESPACE
+                    rest = key
                 if key in self.undefined:
                     return self.undefined[key]
                 undefined = UndefinedConcept(
-                    name=key,
+                    name=rest,
                     line_no=line_no,
                     datatype=DataType.UNKNOWN,
                     purpose=Purpose.UNKNOWN,
+                    namespace=ns,
                 )
                 self.undefined[key] = undefined
                 return undefined
@@ -1364,18 +1351,6 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         for input in self.concept_arguments:
             base_grain += input.grain
         return base_grain
-
-    @property
-    def output_keys(self) -> list[Concept]:
-        # aggregates have an abstract grain
-        components = []
-        # scalars have implicit grain of all arguments
-        for input in self.concept_arguments:
-            if input.purpose == Purpose.KEY:
-                components.append(input)
-            elif input.keys:
-                components += input.keys
-        return list(set(components))
 
 
 class ConceptTransform(Namespaced, BaseModel):
@@ -3203,7 +3178,9 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
             rval = local_concepts[self.address]
             rval = rval.with_select_context(local_concepts, grain, environment)
             return rval
-        environment.concepts.raise_undefined(self.address, line_no=self.line_no)
+        if environment.concepts.fail_on_missing:
+            environment.concepts.raise_undefined(self.address, line_no=self.line_no)
+        return self
 
 
 class EnvironmentDatasourceDict(dict):
@@ -3336,6 +3313,8 @@ class Environment(BaseModel):
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
+        if isinstance(path, str):
+            path = Path(path)
         with open(path, "r") as f:
             read = f.read()
         return Environment(working_path=Path(path).parent).parse(read)[0]
@@ -3645,11 +3624,6 @@ class Environment(BaseModel):
                     self.merge_concept(new_concept, current_concept, [])
                 else:
                     self.add_concept(current_concept, meta=meta, _ignore_cache=True)
-
-            # else:
-            #     self.add_concept(
-            #         current_concept, meta=meta, _ignore_cache=True
-            #     )
         if not _ignore_cache:
             self.gen_concept_list_caches()
         return datasource
@@ -4521,13 +4495,11 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
         # remap everything to the properties of the rowset
         for x in output:
             if x.keys:
-                if all([k.address in orig for k in x.keys]):
-                    x.keys = tuple(
-                        [orig[k.address] if k.address in orig else k for k in x.keys]
-                    )
+                if all([k in orig for k in x.keys]):
+                    x.keys = set([orig[k].address if k in orig else k for k in x.keys])
                 else:
                     # TODO: fix this up
-                    x.keys = tuple()
+                    x.keys = set()
         for x in output:
             if all([c in orig for c in x.grain.components]):
                 x.grain = Grain(

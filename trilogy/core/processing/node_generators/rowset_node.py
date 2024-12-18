@@ -97,7 +97,6 @@ def gen_rowset_node(
     possible_joins = concept_to_relevant_joins(
         [x for x in node.output_concepts if x.derivation != PurposeLineage.ROWSET]
     )
-    logger.info({x.address: x.keys for x in possible_joins})
     if not possible_joins:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"

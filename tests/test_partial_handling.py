@@ -35,7 +35,9 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        keys=(id,),
+        keys={
+            id.address,
+        },
     )
 
     name = Concept(
@@ -43,7 +45,9 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
-        keys=(id,),
+        keys={
+            id.address,
+        },
     )
 
     pclass = Concept(
@@ -51,21 +55,27 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
-        keys=(id,),
+        keys={
+            id.address,
+        },
     )
     survived = Concept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
-        keys=(id,),
+        keys={
+            id.address,
+        },
     )
     fare = Concept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.FLOAT,
-        keys=(id,),
+        keys={
+            id.address,
+        },
     )
     for x in [id, age, survived, name, pclass, fare]:
         env.add_concept(x)

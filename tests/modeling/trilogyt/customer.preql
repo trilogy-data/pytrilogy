@@ -1,0 +1,29 @@
+import order as order;
+
+key id int;
+property id.first_name string;
+property id.last_name string;
+
+property id.first_order_date <-min(order.date) by id;
+property id.most_recent_order_date <- max(order.date) by id;
+property id.raw_number_of_orders <- count(order.id) by id;
+
+datasource customers_raw (
+    id:id,
+    first_name:first_name,
+    last_name:last_name
+)
+grain (id)
+address `dbt-tutorial.jaffle_shop.customers`
+;
+
+
+persist customers into preqldata.dbt_test.customers_preql from 
+SELECT
+        id,
+        first_name,
+        last_name,
+        first_order_date,
+        most_recent_order_date,
+        coalesce(raw_number_of_orders, 0) -> number_of_orders
+;
