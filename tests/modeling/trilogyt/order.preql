@@ -1,0 +1,13 @@
+import customer as customer;
+key id int;
+property id.date date;
+property id.status string;
+
+datasource orders_raw (
+    id:id,
+    order_date:date,
+    user_id:~customer.id,
+    status:status,
+) 
+grain (id)
+address `dbt-tutorial.jaffle_shop.orders`;

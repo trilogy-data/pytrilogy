@@ -166,8 +166,9 @@ def setup_richest_environment(env: Environment):
         namespace=namespace,
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
-        keys=(name,),
+        keys=(name.address,),
     )
+    env.add_concept(name)
     split_name = function_to_concept(
         Function(
             operator=FunctionType.SPLIT,
@@ -186,7 +187,7 @@ def setup_richest_environment(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=(name,),
+        keys=(name.address,),
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
@@ -218,6 +219,7 @@ def setup_titanic_distributed(env: Environment):
     id = Concept(
         name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
+
     age = Concept(
         name="age",
         namespace=namespace,
@@ -276,7 +278,8 @@ def setup_titanic_distributed(env: Environment):
         datatype=DataType.STRING,
         keys=(id.address,),
     )
-
+    env.add_concept(name)
+    env.add_concept(id)
     split_name = function_to_concept(
         Function(
             operator=FunctionType.SPLIT,
@@ -290,13 +293,13 @@ def setup_titanic_distributed(env: Environment):
         environment=env,
         # keys = (id,)
     )
-    assert split_name.keys == (id,)
+    assert split_name.keys == {id.address,}
     last_name = Concept(
         name="last_name",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=(id,),
+        keys=(id.address,),
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[

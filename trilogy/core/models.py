@@ -427,7 +427,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         ]
     ] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    keys: Optional[Tuple[str, ...]] = None
+    keys: Optional[set[str]] = None
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
@@ -479,21 +479,12 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             ),
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
-            keys=(x if x != source.address else target.address for x in self.keys),
+            keys=tuple(x if x != source.address else target.address for x in self.keys) if self.keys else None,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
 
-    @field_validator("keys", mode="before")
-    @classmethod
-    def keys_validator(cls, v, info: ValidationInfo):
-        if v is None:
-            return v
-        if not isinstance(v, (list, tuple)):
-            raise ValueError(f"Keys must be a list or tuple, got {type(v)}")
-        if isinstance(v, list):
-            return tuple(v)
-        return v
+
 
     @field_validator("namespace", mode="plain")
     @classmethod
@@ -633,6 +624,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
         ):
             keys = tuple([x.address for x in new_lineage.by])
+
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -1042,13 +1034,19 @@ class EnvironmentConceptDict(dict):
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
+                if '.' in key:
+                    ns, rest = key.rsplit('.',1)
+                else:
+                    ns = DEFAULT_NAMESPACE
+                    rest = key
                 if key in self.undefined:
                     return self.undefined[key]
                 undefined = UndefinedConcept(
-                    name=key,
+                    name=rest,
                     line_no=line_no,
                     datatype=DataType.UNKNOWN,
                     purpose=Purpose.UNKNOWN,
+                    namespace = ns,
                 )
                 self.undefined[key] = undefined
                 return undefined
@@ -3176,7 +3174,9 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
             rval = local_concepts[self.address]
             rval = rval.with_select_context(local_concepts, grain, environment)
             return rval
-        environment.concepts.raise_undefined(self.address, line_no=self.line_no)
+        if environment.concepts.fail_on_missing:
+            environment.concepts.raise_undefined(self.address, line_no=self.line_no)
+        return self
 
 
 class EnvironmentDatasourceDict(dict):
@@ -3309,6 +3309,8 @@ class Environment(BaseModel):
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Environment":
+        if isinstance(path, str):
+            path = Path(path)
         with open(path, "r") as f:
             read = f.read()
         return Environment(working_path=Path(path).parent).parse(read)[0]
@@ -3618,11 +3620,6 @@ class Environment(BaseModel):
                     self.merge_concept(new_concept, current_concept, [])
                 else:
                     self.add_concept(current_concept, meta=meta, _ignore_cache=True)
-
-            # else:
-            #     self.add_concept(
-            #         current_concept, meta=meta, _ignore_cache=True
-            #     )
         if not _ignore_cache:
             self.gen_concept_list_caches()
         return datasource
@@ -4496,7 +4493,7 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
             if x.keys:
                 if all([k in orig for k in x.keys]):
                     x.keys = tuple(
-                        [orig[k] if k in orig else k for k in x.keys]
+                        [orig[k].address if k in orig else k for k in x.keys]
                     )
                 else:
                     # TODO: fix this up

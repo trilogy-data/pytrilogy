@@ -110,10 +110,10 @@ def get_purpose_and_keys(
 
 
 def concept_list_to_keys(concepts: Tuple[Concept, ...]) -> Tuple[str, ...]:
-    final_keys: List[Concept] = []
+    final_keys: List[str] = []
     for concept in concepts:
         if concept.keys:
-            final_keys += concept_list_to_keys(concept.keys)
+            final_keys += list(concept.keys)
         elif concept.purpose != Purpose.PROPERTY:
             final_keys.append(concept.address)
     return tuple(sorted(list(set(final_keys))))

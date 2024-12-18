@@ -74,8 +74,8 @@ address num1;
     env1.add_import("env2", env2)
     env1.parse("""merge one into env2.one;""")
     # assert key_candidate.model_dump() == env1.concepts["env2.one"].model_dump()
-    assert env1.concepts["name"].keys == (env1.concepts["env2.one"],), [
-        x.address for x in env1.concepts["name"].keys
+    assert env1.concepts["name"].keys == {env1.concepts["env2.one"].address}, [
+        x for x in env1.concepts["name"].keys
     ]
 
     assert env1.datasources["num1"].grain.components == {"env2.one"}, [

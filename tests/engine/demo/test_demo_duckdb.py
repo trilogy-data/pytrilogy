@@ -22,7 +22,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
         modifiers=[Modifier.NULLABLE],
     )
@@ -32,7 +32,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
 
@@ -41,7 +41,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
     survived = Concept(
@@ -49,7 +49,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
     fare = Concept(
@@ -57,7 +57,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.FLOAT,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
     embarked = Concept(
@@ -65,7 +65,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
     cabin = Concept(
@@ -73,7 +73,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
     ticket = Concept(
@@ -81,7 +81,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=[id],
+        keys=(id.address,),
         grain=Grain(components=[id]),
     )
 
@@ -90,7 +90,7 @@ def setup_titanic(env: Environment):
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
-        keys=(id,),
+        keys=(id.address,),
         lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
@@ -185,7 +185,7 @@ select
     executor.parse_text(test)
     ratio = env.concepts["ratio"]
     assert ratio.purpose == Purpose.PROPERTY
-    assert set(x.address for x in env.concepts["survivors"].keys) == {
+    assert set(x for x in env.concepts["survivors"].keys) == {
         "passenger.class",
     }
     assert (
@@ -204,7 +204,7 @@ select
         namespace="test",
         environment=env,
     )
-    assert set(x.address for x in testc.keys) == {
+    assert set(x for x in testc.keys) == {
         "passenger.class",
     }
 
