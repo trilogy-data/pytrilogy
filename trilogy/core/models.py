@@ -433,6 +433,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     pseudonyms: set[str] = Field(default_factory=set)
     _address_cache: str | None = None
 
+    def __init__(self, **data):
+        super().__init__(**data)
+
     def duplicate(self) -> Concept:
         return self.model_copy(deep=True)
 

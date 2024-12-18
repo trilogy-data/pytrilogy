@@ -248,9 +248,9 @@ def filter_item_to_concept(
         keys=(
             parent.content.keys
             if parent.content.purpose == Purpose.PROPERTY
-            else set(
+            else {
                 parent.content.address,
-            )
+            }
         ),
         grain=(
             parent.content.grain
