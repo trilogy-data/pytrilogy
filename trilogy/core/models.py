@@ -852,7 +852,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
 
 class ConceptRef(BaseModel):
     address: str
-    line_no: int
+    line_no: int | None = None
 
     def hydrate(self, environment: Environment) -> Concept:
         return environment.concepts.__getitem__(self.address, self.line_no)
@@ -3318,6 +3318,10 @@ class Environment(BaseModel):
         with open(path, "r") as f:
             read = f.read()
         return Environment(working_path=Path(path).parent).parse(read)[0]
+
+    @classmethod
+    def from_string(cls, input: str) -> "Environment":
+        return Environment().parse(input)[0]
 
     @classmethod
     def from_cache(cls, path) -> Optional["Environment"]:
