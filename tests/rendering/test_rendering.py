@@ -881,3 +881,34 @@ def test_render_environment():
     rendered = Renderer().to_string(x)
 
     assert rendered == "import a;\nimport b;", rendered
+
+
+def test_render_property(test_environment: Environment):
+
+    env = Environment.from_string(
+        """
+key x int;
+key y int;
+
+property x.x_name string;
+property <x,y>.correlation float;
+property y.y_name string;
+"""
+    )
+    test = Renderer().to_string(
+        ConceptDeclarationStatement(concept=env.concepts["x_name"])
+    )
+
+    assert test == "property x.x_name string;"
+
+    test = Renderer().to_string(
+        ConceptDeclarationStatement(concept=env.concepts["correlation"])
+    )
+
+    assert test == "property <x,y>.correlation float;"
+
+    test = Renderer().to_string(
+        ConceptDeclarationStatement(concept=env.concepts["y_name"])
+    )
+
+    assert test == "property y.y_name string;"

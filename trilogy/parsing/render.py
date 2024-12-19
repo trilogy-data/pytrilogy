@@ -18,6 +18,7 @@ from trilogy.core.models import (
     Concept,
     ConceptDeclarationStatement,
     ConceptDerivation,
+    ConceptRef,
     ConceptTransform,
     Conditional,
     CopyStatement,
@@ -256,8 +257,18 @@ class Renderer:
             namespace = ""
         if not concept.lineage:
             if concept.purpose == Purpose.PROPERTY and concept.keys:
-                keys = ",".join([self.to_string(key) for key in concept.keys])
-                output = f"{concept.purpose.value} <{keys}>.{namespace}{concept.name} {self.to_string(concept.datatype)};"
+                if len(concept.keys) == 1:
+                    output = f"{concept.purpose.value} {self.to_string(ConceptRef(address=list(concept.keys)[0]))}.{namespace}{concept.name} {self.to_string(concept.datatype)};"
+                else:
+                    keys = ",".join(
+                        sorted(
+                            list(
+                                self.to_string(ConceptRef(address=x))
+                                for x in concept.keys
+                            )
+                        )
+                    )
+                    output = f"{concept.purpose.value} <{keys}>.{namespace}{concept.name} {self.to_string(concept.datatype)};"
             else:
                 output = f"{concept.purpose.value} {namespace}{concept.name} {self.to_string(concept.datatype)};"
         else:
@@ -377,7 +388,15 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "FilterItem"):
+
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
+
+    @to_string.register
+    def _(self, arg: "ConceptRef"):
+        ns, base = arg.address.rsplit(".", 1)
+        if ns == DEFAULT_NAMESPACE:
+            return base
+        return arg.address
 
     @to_string.register
     def _(self, arg: "ImportStatement"):
