@@ -1,5 +1,5 @@
 # from trilogy.compiler import compile
-from trilogy import Dialects
+from trilogy import Dialects, Environment
 from trilogy.core.models import Grain, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
@@ -176,3 +176,35 @@ select id + 2 as three;
 
     result = Dialects.DUCK_DB.default_executor(environment=env).execute_text(q1)[-1]
     assert result.fetchone().three == 3
+
+
+def test_select_from_components():
+    env = Environment()
+    q1 = """
+
+key id int;
+property id.class int;
+property id.name string;
+
+select
+    class,
+    upper(id.name)-> upper_name,
+    count(id) ->class_id_count,
+;
+"""
+    env, statements = env.parse(q1)
+
+    select: SelectStatement = statements[-1]
+
+    assert select.grain.components == {"local.class", "local.upper_name"}
+    assert select.local_concepts["local.class_id_count"].grain.components == {
+        "local.class",
+        "local.upper_name",
+    }
+
+    # SelectStatement.from_inputs(
+    #     environment=env,
+    #     selection=[SelectItem(concept=env.concepts["id"]),
+    #                SelectItem(concept=env.concepts["id.class"])],
+    #     input_components=[],
+    # )

@@ -224,9 +224,6 @@ class MergeNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} Final joins is not null {final_joins} but is empty, skipping join generation"
             )
             return []
-
-        for join in joins:
-            logger.info(f"{self.logging_prefix}{LOGGER_PREFIX} final join {str(join)}")
         return joins
 
     def _resolve(self) -> QueryDatasource:

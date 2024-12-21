@@ -17,7 +17,6 @@ from lark.tree import Meta
 from pydantic import ValidationError
 
 from trilogy.constants import (
-    CONFIG,
     DEFAULT_NAMESPACE,
     NULL_VALUE,
     MagicConstants,
@@ -108,7 +107,6 @@ from trilogy.core.models import (
     StructType,
     SubselectComparison,
     TupleWrapper,
-    UndefinedConcept,
     WhereClause,
     Window,
     WindowItem,
@@ -1030,81 +1028,15 @@ class ParseToObjects(Transformer):
         if not select_items:
             raise ValueError("Malformed select, missing select items")
 
-        output = SelectStatement(
+        return SelectStatement.from_inputs(
+            environment=self.environment,
             selection=select_items,
+            order_by=order_by,
             where_clause=where,
             having_clause=having,
             limit=limit,
-            order_by=order_by,
             meta=Metadata(line_number=meta.line),
         )
-        for parse_pass in [
-            1,
-            2,
-        ]:
-            # the first pass will result in all concepts being defined
-            # the second will get grains appropriately
-            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
-            # until after the first pass, and so don't know the grain of a
-
-            if parse_pass == 1:
-                grain = Grain.from_concepts(
-                    [
-                        x.content
-                        for x in output.selection
-                        if isinstance(x.content, Concept)
-                    ],
-                    where_clause=output.where_clause,
-                )
-            if parse_pass == 2:
-                grain = Grain.from_concepts(
-                    output.output_components, where_clause=output.where_clause
-                )
-            output.grain = grain
-            for item in select_items:
-                # we don't know the grain of an aggregate at assignment time
-                # so rebuild at this point in the tree
-                # TODO: simplify
-                if isinstance(item.content, ConceptTransform):
-                    new_concept = item.content.output.with_select_context(
-                        output.local_concepts,
-                        output.grain,
-                        environment=self.environment,
-                    )
-                    output.local_concepts[new_concept.address] = new_concept
-                    item.content.output = new_concept
-                    if parse_pass == 2 and CONFIG.select_as_definition:
-                        self.environment.add_concept(new_concept)
-                elif isinstance(item.content, UndefinedConcept):
-                    self.environment.concepts.raise_undefined(
-                        item.content.address,
-                        line_no=item.content.metadata.line_number,
-                        file=self.token_address,
-                    )
-                elif isinstance(item.content, Concept):
-                    # Sometimes cached values here don't have the latest info
-                    # but we can't just use environment, as it might not have the right grain.
-                    item.content = item.content.with_select_context(
-                        output.local_concepts,
-                        output.grain,
-                        environment=self.environment,
-                    )
-                    output.local_concepts[item.content.address] = item.content
-
-        if order_by:
-            output.order_by = order_by.with_select_context(
-                local_concepts=output.local_concepts,
-                grain=output.grain,
-                environment=self.environment,
-            )
-        if output.having_clause:
-            output.having_clause = output.having_clause.with_select_context(
-                local_concepts=output.local_concepts,
-                grain=output.grain,
-                environment=self.environment,
-            )
-        output.validate_syntax(self.environment)
-        return output
 
     @v_args(meta=True)
     def address(self, meta: Meta, args):

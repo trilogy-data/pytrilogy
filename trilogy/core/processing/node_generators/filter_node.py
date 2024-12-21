@@ -60,7 +60,7 @@ def gen_filter_node(
         g=g,
         depth=depth + 1,
         history=history,
-        # conditions=conditions,
+        conditions=conditions,
     )
 
     flattened_existence = [x for y in parent_existence_concepts for x in y]
@@ -194,6 +194,9 @@ def gen_filter_node(
         history=history,
         conditions=conditions,
     )
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} returning filter node and enrich node with {enrich_node.output_concepts} and {enrich_node.input_concepts}"
+    )
     return MergeNode(
         input_concepts=[concept, immediate_parent] + local_optional,
         output_concepts=[
@@ -206,4 +209,5 @@ def gen_filter_node(
             filter_node,
             enrich_node,
         ],
+        preexisting_conditions=conditions.conditional if conditions else None,
     )

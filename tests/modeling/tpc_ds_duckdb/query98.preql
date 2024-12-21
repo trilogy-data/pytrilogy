@@ -1,0 +1,20 @@
+import store_sales as store_sales;
+
+WHERE 
+    store_sales.item.category in ('Sports', 'Books', 'Home')
+  and store_sales.date.date between '1999-02-22'::date and '1999-03-24'::date
+SELECT
+    store_sales.item.name,
+    store_sales.item.desc,
+    store_sales.item.category,
+    store_sales.item.class,
+    store_sales.item.current_price,
+    sum(store_sales.ext_sales_price) AS item_revenue,
+    sum(store_sales.ext_sales_price) * 100.0000 / (sum(store_sales.ext_sales_price) BY store_sales.item.class) AS revenueratio
+ORDER BY
+    store_sales.item.category asc nulls first,
+    store_sales.item.class asc nulls first,
+    store_sales.item.name asc nulls first,
+    store_sales.item.desc asc nulls first,
+    revenueratio asc nulls first;
+

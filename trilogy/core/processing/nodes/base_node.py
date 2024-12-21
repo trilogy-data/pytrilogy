@@ -210,6 +210,8 @@ class StrategyNode:
         return self
 
     def add_condition(self, condition: Conditional | Comparison | Parenthetical):
+        if self.conditions and condition == self.conditions:
+            return self
         if self.conditions:
             self.conditions = Conditional(
                 left=self.conditions, right=condition, operator=BooleanOperator.AND

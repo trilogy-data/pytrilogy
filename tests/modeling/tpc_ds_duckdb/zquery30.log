@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 12189
+gen_length = 12111
 generated_sql = """
 
 WITH 
@@ -79,7 +79,7 @@ SELECT
     uneven.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
     uneven
-    INNER JOIN abundant on uneven.\"web_returns_item_id\" = abundant.\"web_returns_item_id\" AND uneven.\"web_returns_return_amount\" = abundant.\"web_returns_return_amount\" AND uneven.\"web_returns_return_date_year\" = abundant.\"web_returns_return_date_year\" AND uneven.\"web_returns_web_sales_order_number\" = abundant.\"web_returns_web_sales_order_number\"
+    INNER JOIN abundant on uneven.\"web_returns_item_id\" = abundant.\"web_returns_item_id\" AND uneven.\"web_returns_return_date_year\" = abundant.\"web_returns_return_date_year\" AND uneven.\"web_returns_web_sales_order_number\" = abundant.\"web_returns_web_sales_order_number\"
 WHERE
     uneven.\"web_returns_return_address_state\" is not null
 ),

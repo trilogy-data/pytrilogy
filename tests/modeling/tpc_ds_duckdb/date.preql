@@ -12,6 +12,7 @@ property id.week_seq int;
 property id.month_of_year int;
 property id.quarter int;
 property id.d_week_seq1 int;
+property id.month_seq int;
 
 
 
@@ -23,6 +24,7 @@ datasource date (
     D_DOW: day_of_week,
     D_WEEK_SEQ: week_seq,
     D_MOY: month_of_year,
+    D_MONTH_SEQ: month_seq,
     D_QOY: quarter,
     D_YEAR: _year_string,
     cast(_year_string as int): year
