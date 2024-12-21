@@ -866,6 +866,7 @@ def _search_concepts(
         )
         if complete == ValidationResult.INCOMPLETE_CONDITION:
             cond_dict = {str(node): node.preexisting_conditions for node in stack}
+            logger.error(f"Have {cond_dict} and need {str(conditions)}")
             raise SyntaxError(f"Have {cond_dict} and need {str(conditions)}")
         # early exit if we have a complete stack with one node
         # we can only early exit if we have a complete stack

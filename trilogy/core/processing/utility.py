@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 import networkx as nx
 
+from trilogy.constants import logger
 from trilogy.core.enums import BooleanOperator, FunctionClass, Granularity, Purpose
 from trilogy.core.models import (
     CTE,
@@ -160,6 +161,8 @@ def resolve_join_order_v2(
                 final_join_type = JoinType.LEFT_OUTER
             elif any([x == JoinType.FULL for x in join_types]):
                 final_join_type = JoinType.FULL
+            logger.info("JOIN DEBUG")
+            logger.info(joinkeys)
             output.append(
                 JoinOrderOutput(
                     # left=left_candidate,
@@ -306,11 +309,37 @@ def resolve_instantiated_concept(
     )
 
 
+def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
+    left_keys = set()
+    right_keys = set()
+    for pair in input:
+        if pair.left.purpose == Purpose.KEY:
+            left_keys.add(pair.left.address)
+        if pair.right.purpose == Purpose.KEY:
+            right_keys.add(pair.right.address)
+    final: list[ConceptPair] = []
+    for pair in input:
+        if (
+            pair.left.purpose == Purpose.PROPERTY
+            and pair.left.keys
+            and pair.left.keys.issubset(left_keys)
+        ):
+            continue
+        if (
+            pair.right.purpose == Purpose.PROPERTY
+            and pair.right.keys
+            and pair.right.keys.issubset(right_keys)
+        ):
+            continue
+        final.append(pair)
+    return final
+
+
 def get_node_joins(
     datasources: List[QueryDatasource | Datasource],
     environment: Environment,
     # concepts:List[Concept],
-):
+) -> List[BaseJoin]:
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     ds_node_map: dict[str, QueryDatasource | Datasource] = {}
@@ -337,19 +366,21 @@ def get_node_joins(
             join_type=j.type,
             # preserve empty field for maps
             concepts=[] if not j.keys else None,
-            concept_pairs=[
-                ConceptPair(
-                    left=resolve_instantiated_concept(
-                        concept_map[concept], ds_node_map[k]
-                    ),
-                    right=resolve_instantiated_concept(
-                        concept_map[concept], ds_node_map[j.right]
-                    ),
-                    existing_datasource=ds_node_map[k],
-                )
-                for k, v in j.keys.items()
-                for concept in v
-            ],
+            concept_pairs=reduce_concept_pairs(
+                [
+                    ConceptPair(
+                        left=resolve_instantiated_concept(
+                            concept_map[concept], ds_node_map[k]
+                        ),
+                        right=resolve_instantiated_concept(
+                            concept_map[concept], ds_node_map[j.right]
+                        ),
+                        existing_datasource=ds_node_map[k],
+                    )
+                    for k, v in j.keys.items()
+                    for concept in v
+                ]
+            ),
         )
         for j in joins
     ]

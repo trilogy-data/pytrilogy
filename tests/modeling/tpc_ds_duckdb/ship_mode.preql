@@ -1,0 +1,14 @@
+
+key id int;
+property id.string_id string;
+property id.type string;
+
+
+datasource ship_mode (
+    SM_SHIP_MODE_SK: id,
+    SM_SHIP_MODE_ID: string_id,
+    SM_TYPE: type,
+)
+grain (id)
+address memory.ship_mode
+;

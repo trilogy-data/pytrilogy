@@ -620,7 +620,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             )
         final_grain = self.grain or grain
         keys = self.keys if self.keys else None
-        if self.is_aggregate and isinstance(new_lineage, Function):
+        if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
             grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
@@ -1015,6 +1015,7 @@ class EnvironmentConceptDict(dict):
     def raise_undefined(
         self, key: str, line_no: int | None = None, file: Path | str | None = None
     ) -> Never:
+
         matches = self._find_similar_concepts(key)
         message = f"Undefined concept: {key}."
         if matches:
@@ -1659,6 +1660,96 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
     grain: Grain = Field(default_factory=Grain)
+
+    @classmethod
+    def from_inputs(
+        cls,
+        environment: Environment,
+        selection: List[SelectItem],
+        order_by: OrderBy | None = None,
+        limit: int | None = None,
+        meta: Metadata | None = None,
+        where_clause: WhereClause | None = None,
+        having_clause: HavingClause | None = None,
+    ) -> "SelectStatement":
+
+        output = SelectStatement(
+            selection=selection,
+            where_clause=where_clause,
+            having_clause=having_clause,
+            limit=limit,
+            order_by=order_by,
+            meta=meta or Metadata(),
+        )
+        for parse_pass in [
+            1,
+            2,
+        ]:
+            # the first pass will result in all concepts being defined
+            # the second will get grains appropriately
+            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
+            # until after the first pass, and so don't know the grain of a
+
+            if parse_pass == 1:
+                grain = Grain.from_concepts(
+                    [
+                        x.content
+                        for x in output.selection
+                        if isinstance(x.content, Concept)
+                    ],
+                    where_clause=output.where_clause,
+                )
+            if parse_pass == 2:
+                grain = Grain.from_concepts(
+                    output.output_components, where_clause=output.where_clause
+                )
+            output.grain = grain
+            pass_grain = Grain() if parse_pass == 1 else grain
+            for item in selection:
+                # we don't know the grain of an aggregate at assignment time
+                # so rebuild at this point in the tree
+                # TODO: simplify
+                if isinstance(item.content, ConceptTransform):
+                    new_concept = item.content.output.with_select_context(
+                        output.local_concepts,
+                        # the first pass grain will be incorrect
+                        pass_grain,
+                        environment=environment,
+                    )
+                    output.local_concepts[new_concept.address] = new_concept
+                    item.content.output = new_concept
+                    if parse_pass == 2 and CONFIG.select_as_definition:
+                        environment.add_concept(new_concept)
+                elif isinstance(item.content, UndefinedConcept):
+                    environment.concepts.raise_undefined(
+                        item.content.address,
+                        line_no=item.content.metadata.line_number,
+                        file=environment.env_file_path,
+                    )
+                elif isinstance(item.content, Concept):
+                    # Sometimes cached values here don't have the latest info
+                    # but we can't just use environment, as it might not have the right grain.
+                    item.content = item.content.with_select_context(
+                        output.local_concepts,
+                        pass_grain,
+                        environment=environment,
+                    )
+                    output.local_concepts[item.content.address] = item.content
+
+        if order_by:
+            output.order_by = order_by.with_select_context(
+                local_concepts=output.local_concepts,
+                grain=output.grain,
+                environment=environment,
+            )
+        if output.having_clause:
+            output.having_clause = output.having_clause.with_select_context(
+                local_concepts=output.local_concepts,
+                grain=output.grain,
+                environment=environment,
+            )
+        output.validate_syntax(environment)
+        return output
 
     def validate_syntax(self, environment: Environment):
         if self.where_clause:
@@ -3264,6 +3355,7 @@ class Environment(BaseModel):
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
+    env_file_path: Path | None = None
 
     def freeze(self):
         self.frozen = True
@@ -3317,7 +3409,7 @@ class Environment(BaseModel):
             path = Path(path)
         with open(path, "r") as f:
             read = f.read()
-        return Environment(working_path=Path(path).parent).parse(read)[0]
+        return Environment(working_path=path.parent, env_file_path=path).parse(read)[0]
 
     @classmethod
     def from_string(cls, input: str) -> "Environment":

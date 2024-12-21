@@ -1,5 +1,5 @@
 from trilogy.core.enums import ComparisonOperator, PurposeLineage
-from trilogy.core.models import Comparison, Environment
+from trilogy.core.models import Comparison, Environment, WhereClause
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (
@@ -79,6 +79,8 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        conditions=conditional,
+        conditions=WhereClause(conditional=conditional),
     )
-    assert node.conditions == conditional
+    assert (
+        node.conditions == conditional
+    ), f"{str(node.conditions)} vs {str(conditional)}"

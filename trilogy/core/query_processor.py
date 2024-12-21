@@ -359,7 +359,7 @@ def get_query_node(
         environment.concepts[k] = v
     graph = generate_graph(environment)
     logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and output {[str(c) for c in statement.output_components]}"
+        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and grain {statement.grain}"
     )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")

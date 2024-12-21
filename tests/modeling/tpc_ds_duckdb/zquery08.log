@@ -1,5 +1,5 @@
 query_id = 8
-gen_length = 3715
+gen_length = 3625
 generated_sql = """
 
 WITH 
@@ -29,7 +29,7 @@ SELECT
     questionable.\"customer_id\" as \"customer_id\"
 FROM
     abundant
-    INNER JOIN questionable on abundant.\"customer_id\" = questionable.\"customer_id\" AND abundant.\"customer_preferred_cust_flag\" = questionable.\"customer_preferred_cust_flag\"),
+    INNER JOIN questionable on abundant.\"customer_id\" = questionable.\"customer_id\"),
 yummy as (
 SELECT
     count(uneven.\"_virt_221882250846823\") as \"zip_p_count\",
