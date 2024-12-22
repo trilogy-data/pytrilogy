@@ -500,7 +500,7 @@ def process_query(
     deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
     root_cte.order_by = statement.order_by
     root_cte.limit = statement.limit
-    root_cte.hidden_concepts = [x for x in statement.hidden_components]
+    root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
     return ProcessedQuery(
@@ -514,6 +514,6 @@ def process_query(
         base=root_cte,
         # we no longer do any joins at final level, this should always happen in parent CTEs
         joins=[],
-        hidden_columns=[x for x in statement.hidden_components],
+        hidden_columns=set([x for x in statement.hidden_components]),
         local_concepts=statement.local_concepts,
     )

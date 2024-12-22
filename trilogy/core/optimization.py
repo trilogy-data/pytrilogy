@@ -136,15 +136,12 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
 
     assert isinstance(cte, CTE)
     derived_concepts = [
-        c
-        for c in cte.source.output_concepts + cte.source.hidden_concepts
-        if c not in cte.source.input_concepts
+        c for c in cte.source.output_concepts if c not in cte.source.input_concepts
     ]
 
     parent_derived_concepts = [
         c
         for c in direct_parent.source.output_concepts
-        + direct_parent.source.hidden_concepts
         if c not in direct_parent.source.input_concepts
     ]
     condition_arguments = cte.condition.row_arguments if cte.condition else []
@@ -180,8 +177,8 @@ def optimize_ctes(
     ):
         direct_parent.order_by = root_cte.order_by
         direct_parent.limit = root_cte.limit
-        direct_parent.hidden_concepts = (
-            root_cte.hidden_concepts + direct_parent.hidden_concepts
+        direct_parent.hidden_concepts = root_cte.hidden_concepts.union(
+            direct_parent.hidden_concepts
         )
         if root_cte.condition:
             if direct_parent.condition:

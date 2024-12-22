@@ -48,7 +48,7 @@ class GroupNode(StrategyNode):
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         existence_concepts: List[Concept] | None = None,
-        hidden_concepts: List[Concept] | None = None,
+        hidden_concepts: set[str] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -154,9 +154,9 @@ class GroupNode(StrategyNode):
                 base.output_concepts + self.conditions.row_arguments, "address"
             )
             # re-visible any hidden concepts
-            base.hidden_concepts = [
-                x for x in base.hidden_concepts if x not in base.output_concepts
-            ]
+            base.hidden_concepts = set(
+                [x for x in base.hidden_concepts if x not in base.output_concepts]
+            )
             source_map = resolve_concept_map(
                 [base],
                 targets=self.output_concepts,
@@ -191,5 +191,5 @@ class GroupNode(StrategyNode):
             conditions=self.conditions,
             preexisting_conditions=self.preexisting_conditions,
             existence_concepts=list(self.existence_concepts),
-            hidden_concepts=list(self.hidden_concepts),
+            hidden_concepts=set(self.hidden_concepts),
         )

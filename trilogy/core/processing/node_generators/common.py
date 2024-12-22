@@ -208,7 +208,7 @@ def gen_enrichment_node(
     non_hidden = [
         x
         for x in base_node.output_concepts
-        if x.address not in [y.address for y in base_node.hidden_concepts]
+        if x.address not in base_node.hidden_concepts
     ]
     return MergeNode(
         input_concepts=unique(join_keys + extra_required + non_hidden, "address"),

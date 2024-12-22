@@ -40,9 +40,10 @@ def resolve_concept_map(
         for concept in input.output_concepts:
             if concept.address not in input.non_partial_concept_addresses:
                 continue
-            if isinstance(input, QueryDatasource) and concept.address in [
-                x.address for x in input.hidden_concepts
-            ]:
+            if (
+                isinstance(input, QueryDatasource)
+                and concept.address in input.hidden_concepts
+            ):
                 continue
             if concept.address in full_addresses:
                 concept_map[concept.address].add(input)
@@ -138,7 +139,7 @@ class StrategyNode:
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         force_group: bool | None = None,
         grain: Optional[Grain] = None,
-        hidden_concepts: List[Concept] | None = None,
+        hidden_concepts: set[str] | None = None,
         existence_concepts: List[Concept] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
     ):
@@ -165,7 +166,7 @@ class StrategyNode:
         self.grain = grain
         self.force_group = force_group
         self.tainted = False
-        self.hidden_concepts = hidden_concepts or []
+        self.hidden_concepts = hidden_concepts or set()
         self.existence_concepts = existence_concepts or []
         self.virtual_output_concepts = virtual_output_concepts or []
         self.preexisting_conditions = preexisting_conditions
@@ -281,22 +282,20 @@ class StrategyNode:
 
     def hide_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for x in concepts:
-            self.hidden_concepts.append(x)
+            self.hidden_concepts.add(x.address)
         if rebuild:
             self.rebuild_cache()
         return self
 
     def unhide_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
-        self.hidden_concepts = [
-            x for x in self.hidden_concepts if x.address not in concepts
-        ]
+        self.hidden_concepts = set(x for x in self.hidden_concepts if x not in concepts)
         if rebuild:
             self.rebuild_cache()
         return self
 
     def remove_output_concepts(self, concepts: List[Concept], rebuild: bool = True):
         for x in concepts:
-            self.hidden_concepts.append(x)
+            self.hidden_concepts.add(x.address)
         addresses = [x.address for x in concepts]
         self.output_concepts = [
             x for x in self.output_concepts if x.address not in addresses
@@ -388,7 +387,7 @@ class StrategyNode:
             preexisting_conditions=self.preexisting_conditions,
             force_group=self.force_group,
             grain=self.grain,
-            hidden_concepts=list(self.hidden_concepts),
+            hidden_concepts=set(self.hidden_concepts),
             existence_concepts=list(self.existence_concepts),
             virtual_output_concepts=list(self.virtual_output_concepts),
         )

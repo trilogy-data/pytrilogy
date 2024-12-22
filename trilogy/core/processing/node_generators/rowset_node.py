@@ -47,7 +47,7 @@ def gen_rowset_node(
         return None
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
-    select_hidden = set([x.address for x in select.hidden_components])
+    select_hidden = select.hidden_components
     rowset_hidden = [
         x
         for x in rowset.derived_concepts
@@ -80,7 +80,9 @@ def gen_rowset_node(
             for x in node.output_concepts
             if x.address
             not in [
-                y for y in node.hidden_concepts if y.derivation != PurposeLineage.ROWSET
+                y
+                for y in node.hidden_concepts
+                if environment.concepts[y].derivation != PurposeLineage.ROWSET
             ]
         ],
     )
