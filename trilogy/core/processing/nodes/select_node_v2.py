@@ -45,7 +45,7 @@ class SelectNode(StrategyNode):
         force_group: bool | None = False,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
-        hidden_concepts: List[Concept] | None = None,
+        hidden_concepts: set[str] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,

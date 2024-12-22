@@ -116,7 +116,7 @@ def gen_multiselect_node(
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
-        hidden_concepts=[x for y in base_parents for x in y.hidden_concepts],
+        hidden_concepts=set([x for y in base_parents for x in y.hidden_concepts]),
     )
 
     enrichment = set([x.address for x in local_optional])

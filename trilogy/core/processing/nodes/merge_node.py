@@ -115,7 +115,7 @@ class MergeNode(StrategyNode):
         grain: Grain | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
-        hidden_concepts: List[Concept] | None = None,
+        hidden_concepts: set[str] | None = None,
         virtual_output_concepts: List[Concept] | None = None,
         existence_concepts: List[Concept] | None = None,
     ):
@@ -369,7 +369,7 @@ class MergeNode(StrategyNode):
             conditions=self.conditions,
             preexisting_conditions=self.preexisting_conditions,
             nullable_concepts=list(self.nullable_concepts),
-            hidden_concepts=list(self.hidden_concepts),
+            hidden_concepts=set(self.hidden_concepts),
             virtual_output_concepts=list(self.virtual_output_concepts),
             node_joins=list(self.node_joins) if self.node_joins else None,
             join_concepts=list(self.join_concepts) if self.join_concepts else None,

@@ -347,7 +347,7 @@ def get_node_joins(
         graph.add_node(ds_node, type=NodeType.NODE)
         partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
         for concept in datasource.output_concepts:
-            if concept in datasource.hidden_concepts:
+            if concept.address in datasource.hidden_concepts:
                 continue
             add_node_join_concept(
                 graph=graph,
@@ -567,9 +567,8 @@ def find_nullable_concepts(
 def sort_select_output_processed(
     cte: CTE | UnionCTE, query: ProcessedQuery
 ) -> CTE | UnionCTE:
-    hidden_addresses = [c.address for c in query.hidden_columns]
     output_addresses = [
-        c.address for c in query.output_columns if c.address not in hidden_addresses
+        c.address for c in query.output_columns if c.address not in query.hidden_columns
     ]
 
     mapping = {x.address: x for x in cte.output_columns}
@@ -586,9 +585,10 @@ def sort_select_output(
 ) -> CTE | UnionCTE:
     if isinstance(query, ProcessedQuery):
         return sort_select_output_processed(cte, query)
-    hidden_addresses = [c.address for c in query.hidden_components]
     output_addresses = [
-        c.address for c in query.output_components if c.address not in hidden_addresses
+        c.address
+        for c in query.output_components
+        if c.address not in query.hidden_components
     ]
 
     mapping = {x.address: x for x in cte.output_columns}

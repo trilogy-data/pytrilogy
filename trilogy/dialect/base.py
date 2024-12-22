@@ -660,7 +660,7 @@ class BaseDialect:
                 self.render_concept_sql(c, cte)
                 for c in cte.output_columns
                 if c.address not in [y.address for y in cte.join_derived_concepts]
-                and c.address not in [y.address for y in cte.hidden_concepts]
+                and c.address not in cte.hidden_concepts
             ] + [
                 f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
                 for c in cte.join_derived_concepts
@@ -670,7 +670,7 @@ class BaseDialect:
             select_columns = [
                 self.render_concept_sql(c, cte)
                 for c in cte.output_columns
-                if c.address not in [y.address for y in cte.hidden_concepts]
+                if c.address not in cte.hidden_concepts
             ]
         if auto_sort:
             select_columns = sorted(select_columns, key=lambda x: x)
@@ -886,9 +886,10 @@ class BaseDialect:
         select_columns: Dict[str, str] = {}
         cte_output_map = {}
         selected = set()
-        hidden_addresses = [c.address for c in query.hidden_columns]
         output_addresses = [
-            c.address for c in query.output_columns if c.address not in hidden_addresses
+            c.address
+            for c in query.output_columns
+            if c.address not in query.hidden_columns
         ]
 
         for c in query.base.output_columns:
@@ -897,7 +898,7 @@ class BaseDialect:
                     f"{query.base.name}.{safe_quote(c.safe_address, self.QUOTE_CHARACTER)}"
                 )
                 cte_output_map[c.address] = query.base
-                if c.address not in hidden_addresses:
+                if c.address not in query.hidden_columns:
                     selected.add(c.address)
         if not all([x in selected for x in output_addresses]):
             missing = [x for x in output_addresses if x not in selected]

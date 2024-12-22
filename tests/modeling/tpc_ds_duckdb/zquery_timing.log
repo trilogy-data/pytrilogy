@@ -1,94 +1,94 @@
 [query_01]
-parse_time = 0.243663
-exec_time = 0.038532
-comp_time = 0.107965
+parse_time = 0.239782
+exec_time = 0.043286
+comp_time = 0.117501
 
 [query_02]
-parse_time = 1.768186
-exec_time = 0.203516
-comp_time = 0.076368
+parse_time = 1.710131
+exec_time = 0.203521
+comp_time = 0.075881
 
 [query_03]
-parse_time = 0.147039
-exec_time = 0.034115
-comp_time = 0.034483
+parse_time = 0.138886
+exec_time = 0.033912
+comp_time = 0.034189
 
 [query_06]
-parse_time = 0.186999
-exec_time = 0.036072
-comp_time = 0.04312
+parse_time = 0.190866
+exec_time = 0.036918
+comp_time = 0.045089
 
 [query_07]
-parse_time = 0.3244
-exec_time = 0.143854
-comp_time = 0.108991
+parse_time = 0.345806
+exec_time = 0.143634
+comp_time = 0.101953
 
 [query_08]
-parse_time = 0.229398
-exec_time = 0.052546
-comp_time = 0.04342
+parse_time = 0.242272
+exec_time = 0.052134
+comp_time = 0.043496
 
 [query_10]
-parse_time = 0.615841
-exec_time = 0.238903
-comp_time = 0.31247
+parse_time = 0.58188
+exec_time = 0.245078
+comp_time = 0.394796
 
 [query_12]
-parse_time = 0.076371
-exec_time = 0.084316
-comp_time = 0.064643
+parse_time = 0.077504
+exec_time = 0.079117
+comp_time = 0.064166
 
 [query_15]
-parse_time = 0.131387
-exec_time = 0.187086
-comp_time = 0.160984
+parse_time = 0.125007
+exec_time = 0.182016
+comp_time = 0.150454
 
 [query_16]
-parse_time = 0.377799
-exec_time = 0.169062
-comp_time = 0.019149
+parse_time = 0.357485
+exec_time = 0.176611
+comp_time = 0.017051
 
 [query_20]
-parse_time = 0.134822
-exec_time = 0.042211
-comp_time = 0.089953
+parse_time = 0.150558
+exec_time = 0.043256
+comp_time = 0.104039
 
 [query_21]
-parse_time = 0.048155
-exec_time = 0.024209
-comp_time = 0.024388
+parse_time = 0.055111
+exec_time = 0.023611
+comp_time = 0.019406
 
 [query_24]
-parse_time = 0.626279
-exec_time = 0.196143
-comp_time = 0.201106
+parse_time = 0.590056
+exec_time = 0.23355
+comp_time = 0.23627
 
 [query_25]
-parse_time = 0.478412
-exec_time = 0.132947
-comp_time = 0.041214
+parse_time = 0.458344
+exec_time = 0.128089
+comp_time = 0.035802
 
 [query_26]
-parse_time = 0.281356
-exec_time = 0.088952
-comp_time = 0.072574
+parse_time = 0.279036
+exec_time = 0.092401
+comp_time = 0.072558
 
 [query_30]
-parse_time = 0.231343
-exec_time = 0.079708
-comp_time = 0.050036
+parse_time = 0.230001
+exec_time = 0.079548
+comp_time = 0.052587
 
 [query_97]
-parse_time = 0.395612
-exec_time = 0.243385
-comp_time = 0.065673
+parse_time = 0.363429
+exec_time = 0.23828
+comp_time = 0.07279
 
 [query_98]
-parse_time = 0.416688
-exec_time = 0.291605
-comp_time = 0.173462
+parse_time = 0.425484
+exec_time = 0.327437
+comp_time = 0.169002
 
 [query_99]
-parse_time = 0.227112
-exec_time = 0.34379
-comp_time = 0.058997
+parse_time = 0.220379
+exec_time = 0.3371
+comp_time = 0.055281

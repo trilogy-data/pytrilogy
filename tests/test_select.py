@@ -123,7 +123,7 @@ def test_modifiers():
     ;"""
     env, parsed = parse(q1)
     select: SelectStatement = parsed[-1]
-    assert select.hidden_components == [env.concepts["b"]]
+    assert select.hidden_components == set([env.concepts["b"].address])
     assert select.output_components == [env.concepts["a"], env.concepts["b"]]
     query = process_query(statement=select, environment=env)
 

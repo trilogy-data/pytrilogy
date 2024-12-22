@@ -1870,11 +1870,11 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         return output
 
     @property
-    def hidden_components(self) -> List[Concept]:
-        output = []
+    def hidden_components(self) -> set[str]:
+        output = set()
         for item in self.selection:
             if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
-                output.append(item.output)
+                output.add(item.output.address)
         return output
 
     @property
@@ -2104,10 +2104,10 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
 
     @computed_field  # type: ignore
     @cached_property
-    def hidden_components(self) -> List[Concept]:
-        output = []
+    def hidden_components(self) -> set[str]:
+        output: set[str] = set()
         for select in self.selects:
-            output += select.hidden_components
+            output = output.union(select.hidden_components)
         return output
 
 
@@ -2508,7 +2508,7 @@ class QueryDatasource(BaseModel):
     filter_concepts: List[Concept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
     partial_concepts: List[Concept] = Field(default_factory=list)
-    hidden_concepts: List[Concept] = Field(default_factory=list)
+    hidden_concepts: set[str] = Field(default_factory=set)
     nullable_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
     force_group: bool | None = None
@@ -2660,10 +2660,10 @@ class QueryDatasource(BaseModel):
             final_source_map[k] = set(
                 merged_datasources.get(x.safe_identifier, x) for x in list(v)
             )
-        self_hidden = self.hidden_concepts or []
-        other_hidden = other.hidden_concepts or []
+        self_hidden: set[str] = self.hidden_concepts or set()
+        other_hidden: set[str] = other.hidden_concepts or set()
         # hidden is the minimum overlapping set
-        hidden = [x for x in self_hidden if x.address in other_hidden]
+        hidden = self_hidden.intersection(other_hidden)
         qds = QueryDatasource(
             input_concepts=unique(
                 self.input_concepts + other.input_concepts, "address"
@@ -2761,7 +2761,7 @@ class CTE(BaseModel):
     partial_concepts: List[Concept] = Field(default_factory=list)
     nullable_concepts: List[Concept] = Field(default_factory=list)
     join_derived_concepts: List[Concept] = Field(default_factory=list)
-    hidden_concepts: List[Concept] = Field(default_factory=list)
+    hidden_concepts: set[str] = Field(default_factory=set)
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     base_name_override: Optional[str] = None
@@ -2947,10 +2947,10 @@ class CTE(BaseModel):
                 f" {self.name} {other.name} conditions {self.condition} {other.condition}"
             )
             raise ValueError(error)
-        mutually_hidden = []
+        mutually_hidden = set()
         for concept in self.hidden_concepts:
-            if concept.address in other.hidden_concepts:
-                mutually_hidden.append(concept)
+            if concept in other.hidden_concepts:
+                mutually_hidden.add(concept)
         self.partial_concepts = unique(
             self.partial_concepts + other.partial_concepts, "address"
         )
@@ -3132,7 +3132,7 @@ class UnionCTE(BaseModel):
     operator: str = "UNION ALL"
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    hidden_concepts: list[Concept] = Field(default_factory=list)
+    hidden_concepts: set[str] = Field(default_factory=set)
     partial_concepts: list[Concept] = Field(default_factory=list)
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
 
@@ -4504,7 +4504,7 @@ class ProcessedQuery(BaseModel):
     base: CTE | UnionCTE
     joins: List[Join]
     grain: Grain
-    hidden_columns: List[Concept] = Field(default_factory=list)
+    hidden_columns: set[str] = Field(default_factory=set)
     limit: Optional[int] = None
     where_clause: Optional[WhereClause] = None
     having_clause: Optional[HavingClause] = None
