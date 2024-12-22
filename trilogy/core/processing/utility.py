@@ -347,6 +347,8 @@ def get_node_joins(
         graph.add_node(ds_node, type=NodeType.NODE)
         partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
         for concept in datasource.output_concepts:
+            if concept in datasource.hidden_concepts:
+                continue
             add_node_join_concept(
                 graph=graph,
                 concept=concept,

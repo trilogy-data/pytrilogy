@@ -2189,6 +2189,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     def duplicate(self) -> Datasource:
         return self.model_copy(deep=True)
 
+    @property
+    def hidden_concepts(self) -> List[Concept]:
+        return []
+
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
@@ -2261,17 +2265,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @field_validator("grain", mode="before")
     @classmethod
     def grain_enforcement(cls, v: Grain, info: ValidationInfo):
-        values = info.data
         grain: Grain = safe_grain(v)
-        if not grain.components:
-            columns: List[ColumnAssignment] = values.get("columns", [])
-            grain = Grain.from_concepts(
-                [
-                    c.concept.with_grain(Grain())
-                    for c in columns
-                    if c.concept.purpose == Purpose.KEY
-                ]
-            )
         return grain
 
     def add_column(
@@ -3087,7 +3081,10 @@ class CTE(BaseModel):
             if c.derivation == PurposeLineage.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
                     return True
-                if isinstance(c.lineage, Function) and c.lineage.operator == FunctionType.GROUP:
+                if (
+                    isinstance(c.lineage, Function)
+                    and c.lineage.operator == FunctionType.GROUP
+                ):
                     return check_is_not_in_group(c.lineage.concept_arguments[0])
             return False
 

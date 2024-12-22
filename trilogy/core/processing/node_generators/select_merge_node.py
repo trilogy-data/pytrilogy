@@ -240,9 +240,11 @@ def create_datasource_node(
     depth: int,
     conditions: WhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
-    target_grain = Grain.from_concepts(all_concepts)
+    target_grain = Grain.from_concepts(all_concepts, environment=environment)
     force_group = False
     if not datasource.grain.issubset(target_grain):
+        force_group = True
+    if not datasource.grain.components:
         force_group = True
     partial_concepts = [
         c.concept
@@ -350,6 +352,9 @@ def create_select_node(
 
     # we need to nest the group node one further
     if force_group is True:
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} source requires group before consumption."
+        )
         candidate: StrategyNode = GroupNode(
             output_concepts=all_concepts,
             input_concepts=all_concepts,
@@ -359,8 +364,10 @@ def create_select_node(
             partial_concepts=bcandidate.partial_concepts,
             nullable_concepts=bcandidate.nullable_concepts,
             preexisting_conditions=bcandidate.preexisting_conditions,
+            force_group=force_group,
         )
     else:
+
         candidate = bcandidate
     return candidate
 

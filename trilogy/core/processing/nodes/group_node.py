@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
@@ -22,6 +23,13 @@ from trilogy.parsing.common import concepts_to_grain_concepts
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
+
+
+@dataclass
+class GroupRequiredResponse:
+    target: Grain
+    upstream: Grain
+    required: bool
 
 
 class GroupNode(StrategyNode):
@@ -59,33 +67,44 @@ class GroupNode(StrategyNode):
             hidden_concepts=hidden_concepts,
         )
 
+    @classmethod
+    def check_if_required(
+        cls,
+        downstream_concepts: List[Concept],
+        parents: list[QueryDatasource | Datasource],
+        environment: Environment,
+    ) -> GroupRequiredResponse:
+        target_grain = Grain.from_concepts(
+            concepts_to_grain_concepts(
+                downstream_concepts,
+                environment=environment,
+            )
+        )
+        comp_grain = Grain()
+        for source in parents:
+            comp_grain += source.grain
+        comp_grain = Grain.from_concepts(
+            concepts_to_grain_concepts(comp_grain.components, environment=environment)
+        )
+        # dynamically select if we need to group
+        # because sometimes, we are already at required grain
+        if comp_grain.issubset(target_grain):
+            return GroupRequiredResponse(target_grain, comp_grain, False)
+
+        return GroupRequiredResponse(target_grain, comp_grain, True)
+
     def _resolve(self) -> QueryDatasource:
         parent_sources: List[QueryDatasource | Datasource] = [
             p.resolve() for p in self.parents
         ]
-
-        target_grain = self.grain or Grain.from_concepts(
-            concepts_to_grain_concepts(
-                self.output_concepts, environment=self.environment
-            )
+        grains = self.check_if_required(
+            self.output_concepts, parent_sources, self.environment
         )
-        comp_grain = Grain()
-        for source in parent_sources:
-            comp_grain += source.grain
-        comp_grain = Grain.from_concepts(
-            concepts_to_grain_concepts(
-                comp_grain.components, environment=self.environment
-            )
-        )
+        target_grain = grains.target
+        comp_grain = grains.upstream
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
-        if comp_grain == target_grain and self.force_group is not True:
-            # if there is no group by, and inputs equal outputs
-            # return the parent
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} Grain of group by equals output"
-                f" grains {comp_grain} and {target_grain}"
-            )
+        if not grains.required and self.force_group is not True:
             if (
                 len(parent_sources) == 1
                 and LooseConceptList(concepts=parent_sources[0].output_concepts)
@@ -108,15 +127,6 @@ class GroupNode(StrategyNode):
                 f" target grain {target_grain}"
                 f" delta: {comp_grain - target_grain}"
             )
-            for parent in self.parents:
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} Parent node"
-                    f" {[c.address for c in parent.output_concepts[:2]]}... has"
-                    " set node grain"
-                    f" {parent.grain}"
-                    f" and resolved grain {parent.resolve().grain}"
-                    f" {type(parent)}"
-                )
             source_type = SourceType.GROUP
         source_map = resolve_concept_map(
             parent_sources,

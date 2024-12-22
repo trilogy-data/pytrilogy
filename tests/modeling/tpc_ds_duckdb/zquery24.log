@@ -1,5 +1,5 @@
 query_id = 24
-gen_length = 7136
+gen_length = 5852
 generated_sql = """
 
 WITH 
@@ -36,17 +36,17 @@ WHERE
 ),
 abundant as (
 SELECT
-    questionable.\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",
-    questionable.\"store_sales_customer_last_name\" as \"store_sales_customer_last_name\",
-    questionable.\"store_sales_customer_state\" as \"store_sales_customer_state\",
-    questionable.\"store_sales_item_color\" as \"store_sales_item_color\",
-    questionable.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
-    questionable.\"store_sales_item_manager_id\" as \"store_sales_item_manager_id\",
-    questionable.\"store_sales_item_size\" as \"store_sales_item_size\",
-    questionable.\"store_sales_item_units\" as \"store_sales_item_units\",
-    questionable.\"store_sales_store_name\" as \"store_sales_store_name\",
-    questionable.\"store_sales_store_state\" as \"store_sales_store_state\",
-    sum(questionable.\"store_sales_net_paid\") as \"net_paid\"
+    questionable.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    questionable.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    questionable.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
+    questionable.\"store_sales_item_color\" as \"su_store_sales_item_color\",
+    questionable.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
+    questionable.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
+    questionable.\"store_sales_item_size\" as \"su_store_sales_item_size\",
+    questionable.\"store_sales_item_units\" as \"su_store_sales_item_units\",
+    questionable.\"store_sales_store_name\" as \"su_store_sales_store_name\",
+    questionable.\"store_sales_store_state\" as \"su_store_sales_store_state\",
+    sum(questionable.\"store_sales_net_paid\") as \"su_net_paid\"
 FROM
     questionable
 GROUP BY 
@@ -60,73 +60,46 @@ GROUP BY
     questionable.\"store_sales_item_units\",
     questionable.\"store_sales_store_name\",
     questionable.\"store_sales_store_state\"),
-uneven as (
-SELECT
-    abundant.\"net_paid\" as \"su_net_paid\",
-    abundant.\"store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    abundant.\"store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    abundant.\"store_sales_customer_state\" as \"su_store_sales_customer_state\",
-    abundant.\"store_sales_item_color\" as \"su_store_sales_item_color\",
-    abundant.\"store_sales_item_current_price\" as \"su_store_sales_item_current_price\",
-    abundant.\"store_sales_item_manager_id\" as \"su_store_sales_item_manager_id\",
-    abundant.\"store_sales_item_size\" as \"su_store_sales_item_size\",
-    abundant.\"store_sales_item_units\" as \"su_store_sales_item_units\",
-    abundant.\"store_sales_store_name\" as \"su_store_sales_store_name\",
-    abundant.\"store_sales_store_state\" as \"su_store_sales_store_state\"
-FROM
-    abundant
-GROUP BY 
-    abundant.\"net_paid\",
-    abundant.\"store_sales_customer_first_name\",
-    abundant.\"store_sales_customer_last_name\",
-    abundant.\"store_sales_customer_state\",
-    abundant.\"store_sales_item_color\",
-    abundant.\"store_sales_item_current_price\",
-    abundant.\"store_sales_item_manager_id\",
-    abundant.\"store_sales_item_size\",
-    abundant.\"store_sales_item_units\",
-    abundant.\"store_sales_store_name\",
-    abundant.\"store_sales_store_state\"),
-vacuous as (
-SELECT
-    CASE WHEN uneven.\"su_store_sales_item_color\" = 'peach' THEN uneven.\"su_net_paid\" ELSE NULL END as \"_virt_9720171099955064\",
-    uneven.\"su_net_paid\" as \"su_net_paid\",
-    uneven.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    uneven.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    uneven.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
-FROM
-    uneven),
-yummy as (
-SELECT
-    :__preql_internal_all_rows as \"__preql_internal_all_rows\",
-    uneven.\"su_net_paid\" as \"su_net_paid\"
-FROM
-    uneven),
-concerned as (
-SELECT
-    sum(vacuous.\"_virt_9720171099955064\") as \"peach_sales\",
-    vacuous.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    vacuous.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    vacuous.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
-FROM
-    vacuous
-GROUP BY 
-    vacuous.\"su_store_sales_customer_first_name\",
-    vacuous.\"su_store_sales_customer_last_name\",
-    vacuous.\"su_store_sales_store_name\"),
 juicy as (
 SELECT
-    avg(yummy.\"su_net_paid\") as \"avg_store_customer_sales\"
+    CASE WHEN abundant.\"su_store_sales_item_color\" = 'peach' THEN abundant.\"su_net_paid\" ELSE NULL END as \"_virt_9720171099955064\",
+    abundant.\"su_net_paid\" as \"su_net_paid\",
+    abundant.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    abundant.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    abundant.\"su_store_sales_store_name\" as \"su_store_sales_store_name\"
 FROM
-    yummy)
+    abundant),
+uneven as (
 SELECT
-    concerned.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
-    concerned.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
-    concerned.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    concerned.\"peach_sales\" as \"peach_sales\"
+    :__preql_internal_all_rows as \"__preql_internal_all_rows\",
+    abundant.\"su_net_paid\" as \"su_net_paid\"
 FROM
-    concerned
-    FULL JOIN juicy on 1=1
+    abundant),
+vacuous as (
+SELECT
+    juicy.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    juicy.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    juicy.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    sum(juicy.\"_virt_9720171099955064\") as \"peach_sales\"
+FROM
+    juicy
+GROUP BY 
+    juicy.\"su_store_sales_customer_first_name\",
+    juicy.\"su_store_sales_customer_last_name\",
+    juicy.\"su_store_sales_store_name\"),
+yummy as (
+SELECT
+    avg(uneven.\"su_net_paid\") as \"avg_store_customer_sales\"
+FROM
+    uneven)
+SELECT
+    vacuous.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
+    vacuous.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
+    vacuous.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
+    vacuous.\"peach_sales\" as \"peach_sales\"
+FROM
+    vacuous
+    FULL JOIN yummy on 1=1
 WHERE
-    concerned.\"peach_sales\" > 0.05 * juicy.\"avg_store_customer_sales\"
+    vacuous.\"peach_sales\" > 0.05 * yummy.\"avg_store_customer_sales\"
 """

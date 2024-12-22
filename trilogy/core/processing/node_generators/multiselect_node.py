@@ -135,7 +135,8 @@ def gen_multiselect_node(
     # if select.where_clause:
     #     for item in additional_relevant:
     #         node.partial_concepts.append(item)
-
+    node.grain = Grain.from_concepts(node.output_concepts, environment=environment)
+    node.rebuild_cache()
     # we need a better API for refreshing a nodes QDS
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:
@@ -155,6 +156,7 @@ def gen_multiselect_node(
             f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base rowset node; exiting early"
         )
         return node
+
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=additional_relevant + local_optional,

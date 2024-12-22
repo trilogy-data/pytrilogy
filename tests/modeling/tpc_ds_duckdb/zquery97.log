@@ -53,8 +53,8 @@ WHERE
 ),
 abundant as (
 SELECT
-    coalesce(wakeful.\"customer_id\",questionable.\"customer_id\") as \"merged_customer_id\",
-    coalesce(wakeful.\"item_id\",questionable.\"item_id\") as \"merged_item_id\",
+    coalesce(questionable.\"customer_id\",wakeful.\"customer_id\") as \"merged_customer_id\",
+    coalesce(questionable.\"item_id\",wakeful.\"item_id\") as \"merged_item_id\",
     questionable.\"catalog_sales_bill_customer_id\" as \"merged_catalog_sales_bill_customer_id\",
     questionable.\"catalog_sales_item_id\" as \"merged_catalog_sales_item_id\",
     wakeful.\"store_sales_customer_id\" as \"merged_store_sales_customer_id\",
@@ -63,8 +63,8 @@ FROM
     wakeful
     FULL JOIN questionable on wakeful.\"customer_id\" = questionable.\"customer_id\" AND wakeful.\"item_id\" = questionable.\"item_id\"
 GROUP BY 
-    coalesce(wakeful.\"customer_id\",questionable.\"customer_id\"),
-    coalesce(wakeful.\"item_id\",questionable.\"item_id\"),
+    coalesce(questionable.\"customer_id\",wakeful.\"customer_id\"),
+    coalesce(questionable.\"item_id\",wakeful.\"item_id\"),
     questionable.\"catalog_sales_bill_customer_id\",
     questionable.\"catalog_sales_item_id\",
     wakeful.\"store_sales_customer_id\",

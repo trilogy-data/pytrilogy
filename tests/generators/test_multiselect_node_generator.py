@@ -8,6 +8,7 @@ from trilogy.core.query_processor import datasource_to_cte
 
 def test_multi_select(test_environment: Environment, test_environment_graph):
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     parse(
         """
@@ -54,10 +55,10 @@ ALIGN
     # ensure that we got sources from both parents for our merge key
 
     resolved = gnode.resolve()
-    # assert len(resolved.source_map["local.one_key"]) == 2
+    assert len(resolved.source_map["local.one_key"]) == 0
 
     cte = datasource_to_cte(resolved, {})
-    # assert len(cte.source_map["local.one_key"]) == 2
+    assert len(cte.source_map["local.one_key"]) == 0
 
 
 def test_multi_select_constant(test_environment: Environment, test_environment_graph):

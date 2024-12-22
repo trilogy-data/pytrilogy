@@ -49,7 +49,12 @@ def gen_group_to_node(
         parents=parents,
         depth=depth,
         preexisting_conditions=conditions.conditional if conditions else None,
-        hidden_concepts=[group_arg] if isinstance(group_arg, Concept) else [],
+        hidden_concepts=(
+            [group_arg]
+            if isinstance(group_arg, Concept)
+            and group_arg.address not in local_optional
+            else []
+        ),
     )
 
     # early exit if no optional
