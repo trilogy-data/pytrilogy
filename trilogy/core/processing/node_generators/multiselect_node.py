@@ -69,6 +69,7 @@ def gen_multiselect_node(
     lineage: MultiSelectStatement = concept.lineage
 
     base_parents: List[StrategyNode] = []
+    partial = []
     for select in lineage.selects:
         snode: StrategyNode = source_concepts(
             mandatory_list=select.output_components,
@@ -103,6 +104,9 @@ def gen_multiselect_node(
         for mc in merge_concepts:
             assert mc in snode.resolve().output_concepts
         base_parents.append(snode)
+        if select.where_clause:
+            for item in select.output_components:
+                partial.append(item)
 
     node_joins = extra_align_joins(lineage, base_parents)
     node = MergeNode(
@@ -112,35 +116,27 @@ def gen_multiselect_node(
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
+        hidden_concepts=[x for y in base_parents for x in y.hidden_concepts],
     )
 
     enrichment = set([x.address for x in local_optional])
 
-    rowset_relevant = [
+    multiselect_relevant = [
         x
         for x in lineage.derived_concepts
         if x.address == concept.address or x.address in enrichment
     ]
-    additional_relevant = [
-        x for x in select.output_components if x.address in enrichment
-    ]
+    additional_relevant = [x for x in node.output_concepts if x.address in enrichment]
     # add in other other concepts
-    for item in rowset_relevant:
-        node.output_concepts.append(item)
-    for item in additional_relevant:
-        node.output_concepts.append(item)
-    if select.where_clause:
-        for item in additional_relevant:
-            node.partial_concepts.append(item)
+
+    node.set_output_concepts(multiselect_relevant + additional_relevant)
+
+    # node.add_partial_concepts(partial)
+    # if select.where_clause:
+    #     for item in additional_relevant:
+    #         node.partial_concepts.append(item)
 
     # we need a better API for refreshing a nodes QDS
-    node.resolution_cache = node._resolve()
-
-    # assume grain to be output of select
-    # but don't include anything aggregate at this point
-    node.resolution_cache.grain = Grain.from_concepts(
-        node.output_concepts,
-    )
     possible_joins = concept_to_relevant_joins(additional_relevant)
     if not local_optional:
         logger.info(

@@ -923,9 +923,16 @@ class Grain(Namespaced, BaseModel):
             if not self.where_clause:
                 where = other.where_clause
             elif not other.where_clause == self.where_clause:
-                raise NotImplementedError(
-                    f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                where = WhereClause(
+                    conditional=Conditional(
+                        left=self.where_clause.conditional,
+                        right=other.where_clause.conditional,
+                        operator=BooleanOperator.AND,
+                    )
                 )
+                # raise NotImplementedError(
+                #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                # )
         return Grain(
             components=self.components.union(other.components), where_clause=where
         )
@@ -3073,12 +3080,15 @@ class CTE(BaseModel):
                 assert isinstance(c.lineage, RowsetItem)
                 return check_is_not_in_group(c.lineage.content)
             if c.derivation == PurposeLineage.CONSTANT:
-                return False
+                return True
             if c.purpose == Purpose.METRIC:
                 return True
-            elif c.derivation == PurposeLineage.BASIC and c.lineage:
+
+            if c.derivation == PurposeLineage.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
                     return True
+                if isinstance(c.lineage, Function) and c.lineage.operator == FunctionType.GROUP:
+                    return check_is_not_in_group(c.lineage.concept_arguments[0])
             return False
 
         return (
@@ -3756,6 +3766,7 @@ class Environment(BaseModel):
         for k, v in self.concepts.items():
             if v.address == target.address:
                 v.pseudonyms.add(source.address)
+
             if v.address == source.address:
                 replacements[k] = target
                 v.pseudonyms.add(target.address)

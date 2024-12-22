@@ -1,5 +1,5 @@
 import hashlib
-from typing import Any, Callable, List, Union
+from typing import Callable, List, TypeVar, Union
 
 from trilogy.constants import DEFAULT_NAMESPACE
 
@@ -12,7 +12,10 @@ def string_to_hash(input: str) -> int:
     )
 
 
-def unique(inputs: List, property: Union[str, Callable]) -> List[Any]:
+UniqueArg = TypeVar("UniqueArg")
+
+
+def unique(inputs: List[UniqueArg], property: Union[str, Callable]) -> List[UniqueArg]:
     final = []
     dedupe = set()
     if isinstance(property, str):

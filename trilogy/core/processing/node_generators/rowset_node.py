@@ -103,6 +103,7 @@ def gen_rowset_node(
         )
         return node
     if any(x.derivation == PurposeLineage.ROWSET for x in possible_joins):
+
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot enrich rowset node with rowset concepts; exiting early"
         )

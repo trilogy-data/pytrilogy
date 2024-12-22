@@ -13,6 +13,7 @@ from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.utility import unique
 
 LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
@@ -65,7 +66,9 @@ def gen_basic_node(
     non_equivalent_optional = [
         x for x in local_optional if x not in equivalent_optional
     ]
-    all_parents = parent_concepts + non_equivalent_optional
+    all_parents: list[Concept] = unique(
+        parent_concepts + non_equivalent_optional, "address"
+    )
     logger.info(
         f"{depth_prefix}{LOGGER_PREFIX} Fetching parents {[x.address for x in all_parents]}"
     )

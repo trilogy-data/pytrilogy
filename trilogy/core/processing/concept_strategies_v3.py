@@ -539,11 +539,14 @@ def validate_concept(
             found_addresses.add(concept.address)
             found_map[str(node)].add(concept)
     for v_address in concept.pseudonyms:
+        if v_address in seen:
+            return
         v = environment.concepts[v_address]
-        if v == concept.address:
+        if v.address in seen:
             return
-        if v in seen:
+        if v.address == concept.address:
             return
+
         validate_concept(
             v,
             node,
