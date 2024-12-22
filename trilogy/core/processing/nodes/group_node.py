@@ -9,7 +9,6 @@ from trilogy.core.models import (
     Datasource,
     Environment,
     Grain,
-    LooseConceptList,
     Parenthetical,
     QueryDatasource,
     SourceType,
@@ -105,18 +104,6 @@ class GroupNode(StrategyNode):
         # dynamically select if we need to group
         # because sometimes, we are already at required grain
         if not grains.required and self.force_group is not True:
-            if (
-                len(parent_sources) == 1
-                and LooseConceptList(concepts=parent_sources[0].output_concepts)
-                == self.output_lcl
-            ) and isinstance(parent_sources[0], QueryDatasource):
-                logger.info(
-                    f"{self.logging_prefix}{LOGGER_PREFIX} No group by required as inputs match outputs of parent; returning parent node"
-                )
-                will_return: QueryDatasource = parent_sources[0]
-                if self.conditions:
-                    will_return.condition = self.conditions + will_return.condition
-                return will_return
             # otherwise if no group by, just treat it as a select
             source_type = SourceType.SELECT
         else:
