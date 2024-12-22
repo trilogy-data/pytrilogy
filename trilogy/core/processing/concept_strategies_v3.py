@@ -539,11 +539,14 @@ def validate_concept(
             found_addresses.add(concept.address)
             found_map[str(node)].add(concept)
     for v_address in concept.pseudonyms:
+        if v_address in seen:
+            return
         v = environment.concepts[v_address]
-        if v == concept.address:
+        if v.address in seen:
             return
-        if v in seen:
+        if v.address == concept.address:
             return
+
         validate_concept(
             v,
             node,
@@ -988,17 +991,20 @@ def source_query_concepts(
         raise ValueError(
             f"Could not resolve conections between {error_strings} from environment graph."
         )
-    candidate = GroupNode(
-        output_concepts=[
-            x for x in root.output_concepts if x.address not in root.hidden_concepts
-        ],
-        input_concepts=[
-            x for x in root.output_concepts if x.address not in root.hidden_concepts
-        ],
+    final = [x for x in root.output_concepts if x.address not in root.hidden_concepts]
+    if GroupNode.check_if_required(
+        downstream_concepts=final,
+        parents=[root.resolve()],
         environment=environment,
-        parents=[root],
-        partial_concepts=root.partial_concepts,
-    )
-    if not candidate.resolve().group_required:
-        return root
+    ).required:
+        candidate: StrategyNode = GroupNode(
+            output_concepts=final,
+            input_concepts=final,
+            environment=environment,
+            parents=[root],
+            partial_concepts=root.partial_concepts,
+        )
+    else:
+        candidate = root
+
     return candidate

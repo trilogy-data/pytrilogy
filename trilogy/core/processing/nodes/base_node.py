@@ -192,6 +192,8 @@ class StrategyNode:
         for x in self.parents:
             for z in x.usable_outputs:
                 non_hidden.add(z.address)
+                for psd in z.pseudonyms:
+                    non_hidden.add(psd)
         if not all([x.address in non_hidden for x in self.input_concepts]):
             missing = [x for x in self.input_concepts if x.address not in non_hidden]
             raise ValueError(
@@ -242,6 +244,15 @@ class StrategyNode:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
         self.output_lcl = LooseConceptList(concepts=self.output_concepts)
+        if rebuild:
+            self.rebuild_cache()
+        return self
+
+    def add_partial_concepts(self, concepts: List[Concept], rebuild: bool = True):
+        for concept in concepts:
+            if concept.address not in self.partial_lcl.addresses:
+                self.partial_concepts.append(concept)
+        self.partial_lcl = LooseConceptList(concepts=self.partial_concepts)
         if rebuild:
             self.rebuild_cache()
         return self

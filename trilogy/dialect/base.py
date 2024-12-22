@@ -249,7 +249,9 @@ def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: Concept, quote_char: st
     if isinstance(raw, list) and len(raw) == 1:
         rendered = cte.get_alias(c, raw[0])
         return f"{raw[0]}.{safe_quote(rendered, quote_char)}"
-    return coalesce([f"{x}.{safe_quote(cte.get_alias(c, x), quote_char)}" for x in raw])
+    return coalesce(
+        sorted([f"{x}.{safe_quote(cte.get_alias(c, x), quote_char)}" for x in raw])
+    )
 
 
 class BaseDialect:

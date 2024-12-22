@@ -180,16 +180,17 @@ def test_thirty(engine):
     # assert len(query) < 6000, query
 
 
+def test_ninety_seven(engine):
+    query = run_query(engine, 97)
+    assert len(query) < 4000, query
+
+
 def test_ninety_eight(engine):
     _ = run_query(engine, 98)
-    # size gating
-    # assert len(query) < 6000, query
 
 
 def test_ninety_nine(engine):
     _ = run_query(engine, 99)
-    # size gating
-    # assert len(query) < 6000, query
 
 
 def run_adhoc(number: int, text: str | None = None):

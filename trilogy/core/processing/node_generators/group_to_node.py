@@ -26,6 +26,7 @@ def gen_group_to_node(
     # aggregates MUST always group to the proper grain
     if not isinstance(concept.lineage, Function):
         raise SyntaxError("Group to should have function lineage")
+    group_arg = concept.lineage.arguments[0]
     parent_concepts: List[Concept] = concept.lineage.concept_arguments
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
@@ -47,6 +48,13 @@ def gen_group_to_node(
         environment=environment,
         parents=parents,
         depth=depth,
+        preexisting_conditions=conditions.conditional if conditions else None,
+        hidden_concepts=(
+            [group_arg]
+            if isinstance(group_arg, Concept)
+            and group_arg.address not in local_optional
+            else []
+        ),
     )
 
     # early exit if no optional
@@ -62,6 +70,7 @@ def gen_group_to_node(
         g=g,
         depth=depth + 1,
         history=history,
+        conditions=conditions,
     )
     if not enrich_node:
         logger.info(
@@ -83,4 +92,5 @@ def gen_group_to_node(
         ],
         whole_grain=True,
         depth=depth,
+        preexisting_conditions=conditions.conditional if conditions else None,
     )

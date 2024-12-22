@@ -233,7 +233,16 @@ select my_rowset.x, my_rowset.max_rank;"""
 
 
 def test_rowset_join(duckdb_engine: Executor):
-    test = """const x <- unnest([1,2,2,3]);
+    test = """
+key x int;
+
+datasource x_data (
+x:x)
+query '''
+select unnest([1,2,2,3]) as x
+'''
+;
+    
 const y <- 5;
 auto z <- rank x order by x desc;
 auto w <- rank x order by x asc;
@@ -246,7 +255,7 @@ select x, w, my_rowset.max_rank;"""
     x = duckdb_engine.environment.concepts["x"]
     assert z.grain == Grain(components=[x])
     results = duckdb_engine.execute_text(test)[0].fetchall()
-    assert len(results) == 4
+    assert len(results) == 3
     for row in results:
         if row.x == 2:
             assert row.my_rowset_max_rank == 2

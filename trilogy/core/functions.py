@@ -127,10 +127,11 @@ def Unnest(args: list[Concept]) -> Function:
 
 def Group(args: list[Concept]) -> Function:
     output = args[0]
+    datatype = arg_to_datatype(output)
     return Function(
         operator=FunctionType.GROUP,
         arguments=args,
-        output_datatype=output.datatype,
+        output_datatype=datatype,
         output_purpose=Purpose.PROPERTY,
         arg_count=-1,
     )

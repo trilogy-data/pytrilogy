@@ -923,9 +923,16 @@ class Grain(Namespaced, BaseModel):
             if not self.where_clause:
                 where = other.where_clause
             elif not other.where_clause == self.where_clause:
-                raise NotImplementedError(
-                    f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                where = WhereClause(
+                    conditional=Conditional(
+                        left=self.where_clause.conditional,
+                        right=other.where_clause.conditional,
+                        operator=BooleanOperator.AND,
+                    )
                 )
+                # raise NotImplementedError(
+                #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                # )
         return Grain(
             components=self.components.union(other.components), where_clause=where
         )
@@ -2182,6 +2189,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     def duplicate(self) -> Datasource:
         return self.model_copy(deep=True)
 
+    @property
+    def hidden_concepts(self) -> List[Concept]:
+        return []
+
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
@@ -2254,17 +2265,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @field_validator("grain", mode="before")
     @classmethod
     def grain_enforcement(cls, v: Grain, info: ValidationInfo):
-        values = info.data
         grain: Grain = safe_grain(v)
-        if not grain.components:
-            columns: List[ColumnAssignment] = values.get("columns", [])
-            grain = Grain.from_concepts(
-                [
-                    c.concept.with_grain(Grain())
-                    for c in columns
-                    if c.concept.purpose == Purpose.KEY
-                ]
-            )
         return grain
 
     def add_column(
@@ -3073,12 +3074,18 @@ class CTE(BaseModel):
                 assert isinstance(c.lineage, RowsetItem)
                 return check_is_not_in_group(c.lineage.content)
             if c.derivation == PurposeLineage.CONSTANT:
-                return False
+                return True
             if c.purpose == Purpose.METRIC:
                 return True
-            elif c.derivation == PurposeLineage.BASIC and c.lineage:
+
+            if c.derivation == PurposeLineage.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
                     return True
+                if (
+                    isinstance(c.lineage, Function)
+                    and c.lineage.operator == FunctionType.GROUP
+                ):
+                    return check_is_not_in_group(c.lineage.concept_arguments[0])
             return False
 
         return (
@@ -3756,6 +3763,7 @@ class Environment(BaseModel):
         for k, v in self.concepts.items():
             if v.address == target.address:
                 v.pseudonyms.add(source.address)
+
             if v.address == source.address:
                 replacements[k] = target
                 v.pseudonyms.add(target.address)

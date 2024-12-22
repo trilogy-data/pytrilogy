@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Set, Tuple
 
 import networkx as nx
 
-from trilogy.constants import logger
 from trilogy.core.enums import BooleanOperator, FunctionClass, Granularity, Purpose
 from trilogy.core.models import (
     CTE,
@@ -161,8 +160,6 @@ def resolve_join_order_v2(
                 final_join_type = JoinType.LEFT_OUTER
             elif any([x == JoinType.FULL for x in join_types]):
                 final_join_type = JoinType.FULL
-            logger.info("JOIN DEBUG")
-            logger.info(joinkeys)
             output.append(
                 JoinOrderOutput(
                     # left=left_candidate,
@@ -350,6 +347,8 @@ def get_node_joins(
         graph.add_node(ds_node, type=NodeType.NODE)
         partials[ds_node] = [f"c~{c.address}" for c in datasource.partial_concepts]
         for concept in datasource.output_concepts:
+            if concept in datasource.hidden_concepts:
+                continue
             add_node_join_concept(
                 graph=graph,
                 concept=concept,
