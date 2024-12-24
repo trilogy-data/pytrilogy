@@ -30,6 +30,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_ADD: lambda x: f"date_add({x[0]}, INTERVAL {x[2]} {x[1]})",
     FunctionType.DATE_PART: lambda x: f"date_part('{x[1]}', {x[0]})",
     FunctionType.DATE_DIFF: lambda x: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
+    FunctionType.DAY_OF_WEEK: lambda x: f"dayofweek({x[0]})",
     FunctionType.CONCAT: lambda x: f"({' || '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x: f"date '{x}'",
     FunctionType.DATETIME_LITERAL: lambda x: f"datetime '{x}'",
