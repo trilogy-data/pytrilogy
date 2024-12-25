@@ -64,6 +64,7 @@ from trilogy.core.models import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
+    ConceptRef,
     CaseElse,
     CaseWhen,
     ColumnAssignment,
@@ -703,19 +704,19 @@ class ParseToObjects(Transformer):
 
         if isinstance(transformation, AggregateWrapper):
             concept = agg_wrapper_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
+                transformation, namespace=namespace, name=output, metadata=metadata, environment=self.environment
             )
         elif isinstance(transformation, WindowItem):
             concept = window_item_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
+                transformation, namespace=namespace, name=output, metadata=metadata, environment=self.environment
             )
         elif isinstance(transformation, FilterItem):
             concept = filter_item_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
+                transformation, namespace=namespace, name=output, metadata=metadata, environment=self.environment
             )
         elif isinstance(transformation, CONSTANT_TYPES):
             concept = constant_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
+                transformation, namespace=namespace, name=output, metadata=metadata, environment=self.environment
             )
         elif isinstance(transformation, Function):
             concept = function_to_concept(
@@ -1281,8 +1282,8 @@ class ParseToObjects(Transformer):
             raise ParseError("Expression should have one child only.")
         return args[0]
 
-    def aggregate_over(self, args):
-        return args[0]
+    def aggregate_over(self, args:list[list[Concept]])->set[ConceptRef]:
+        return set(ConceptRef(x.address) for x in args[0])
 
     def aggregate_all(self, args):
         return [self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]]
@@ -1327,7 +1328,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fgroup(self, meta, args):
         if len(args) == 2:
-            fargs = [args[0]] + args[1]
+            fargs = [args[0]] + list(args[1])
         else:
             fargs = [args[0]]
         args = process_function_args(fargs, meta=meta, environment=self.environment)

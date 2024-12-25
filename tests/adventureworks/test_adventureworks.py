@@ -259,7 +259,7 @@ def test_group_to_grain(environment: Environment):
             environment.concepts["internet_sales.order_number"],
         ]
     )
-    assert resolved.grain == expected_grain, [resolved.grain.set, expected_grain.set]
+    assert resolved.grain.components == expected_grain.components, [resolved.grain.components, expected_grain.components]
     assert resolved.force_group is False
     assert resolved.group_required is False
 

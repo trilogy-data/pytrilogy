@@ -64,7 +64,7 @@ GROUP BY
     thoughtful.\"store_sales_item_name\"),
 cooperative as (
 SELECT
-    sum(thoughtful.\"store_sales_ext_sales_price\") as \"_virt_2514983232825452\",
+    sum(thoughtful.\"store_sales_ext_sales_price\") as \"_virt_9218697219837173\",
     thoughtful.\"store_sales_item_class\" as \"store_sales_item_class\"
 FROM
     thoughtful
@@ -77,13 +77,13 @@ SELECT
     cheerful.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",
     cheerful.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     cheerful.\"store_sales_item_name\" as \"store_sales_item_name\",
-    cooperative.\"_virt_2514983232825452\" as \"_virt_2514983232825452\"
+    cooperative.\"_virt_9218697219837173\" as \"_virt_9218697219837173\"
 FROM
     cooperative
     INNER JOIN cheerful on (cooperative.\"store_sales_item_class\" = cheerful.\"store_sales_item_class\" or (cooperative.\"store_sales_item_class\" is null and cheerful.\"store_sales_item_class\" is null))),
 uneven as (
 SELECT
-    abundant.\"_virt_7590831606924933\" * 100.0 / (questionable.\"_virt_2514983232825452\") as \"revenueratio\",
+    abundant.\"_virt_7590831606924933\" * 100.0 / (questionable.\"_virt_9218697219837173\") as \"revenueratio\",
     questionable.\"store_sales_item_category\" as \"store_sales_item_category\",
     questionable.\"store_sales_item_class\" as \"store_sales_item_class\",
     questionable.\"store_sales_item_current_price\" as \"store_sales_item_current_price\",

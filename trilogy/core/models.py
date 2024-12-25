@@ -4,7 +4,7 @@ import difflib
 import hashlib
 import os
 from abc import ABC
-from collections import UserDict, UserList, defaultdict
+from collections import UserDict, UserList, defaultdict, UserString
 from datetime import date, datetime
 from enum import Enum
 from functools import cached_property
@@ -436,6 +436,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     def __init__(self, **data):
         super().__init__(**data)
 
+    def instantiate(self, environment: Environment) -> Concept:
+        return self
+
     def duplicate(self) -> Concept:
         return self.model_copy(deep=True)
 
@@ -621,8 +624,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         final_grain = self.grain or grain
         keys = self.keys if self.keys else None
         if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
-            grain_components = [environment.concepts[c] for c in grain.components]
-            new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
+            new_lineage = AggregateWrapper(function=new_lineage, by=set(ConceptRef(c) for c in grain.components))
             final_grain = grain
             keys = set(grain.components)
         elif (
@@ -850,14 +852,33 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         return new
 
 
-class ConceptRef(BaseModel):
+class ConceptRef(str):
     address: str
     line_no: int | None = None
 
-    def hydrate(self, environment: Environment) -> Concept:
+    def __init__(self, address: str, line_no: int | None = None):
+        self.address = address
+        self.line_no = line_no
+        super().__init__()
+
+    def instantiate(self, environment: Environment) -> Concept:
         return environment.concepts.__getitem__(self.address, self.line_no)
 
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, 
+        # handler: Callable[[Any]],
+        source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
+    ) -> core_schema.CoreSchema:
 
+        return core_schema.with_info_after_validator_function(
+            cls.validate, handler(str), field_name=handler.field_name
+        )
+    
+    @classmethod
+    def validate(cls, v, info:ValidationInfo):
+        return cls(v, )
+    
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
@@ -1202,6 +1223,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             list,
             ListWrapper[Any],
             WindowItem,
+            ConceptRef,
         ]
     ]
 
@@ -4365,7 +4387,7 @@ class Conditional(
 
 class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
     function: Function
-    by: List[Concept] = Field(default_factory=list)
+    by: set[ConceptRef] = Field(default_factory=set)
 
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
@@ -4376,8 +4398,8 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
         return self.function.datatype
 
     @property
-    def concept_arguments(self) -> List[Concept]:
-        return self.function.concept_arguments + self.by
+    def concept_arguments(self) -> List[Concept | ConceptRef]:
+        return self.function.concept_arguments + list(self.by)
 
     @property
     def output_datatype(self):
@@ -4394,29 +4416,22 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return AggregateWrapper(
             function=self.function.with_merge(source, target, modifiers=modifiers),
-            by=(
-                [c.with_merge(source, target, modifiers) for c in self.by]
-                if self.by
-                else []
-            ),
+            by=self.by,
         )
 
     def with_namespace(self, namespace: str) -> "AggregateWrapper":
         return AggregateWrapper(
             function=self.function.with_namespace(namespace),
-            by=[c.with_namespace(namespace) for c in self.by] if self.by else [],
+            by=[address_with_namespace(c,namespace) for c in self.by] if self.by else [],
         )
 
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> AggregateWrapper:
         if not self.by:
-            by = [environment.concepts[c] for c in grain.components]
+            by = [ConceptRef(c) for c in grain.components]
         else:
-            by = [
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.by
-            ]
+            by =self.by
         parent = self.function.with_select_context(local_concepts, grain, environment)
         return AggregateWrapper(function=parent, by=by)
 

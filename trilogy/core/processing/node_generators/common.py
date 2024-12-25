@@ -28,13 +28,13 @@ def resolve_function_parent_concepts(
     if concept.derivation == PurposeLineage.AGGREGATE:
         base: list[Concept] = []
         if not concept.grain.abstract:
-            base = concept.lineage.concept_arguments + [
+            base = [environment.concepts[x.address] for x in concept.lineage.concept_arguments] + [
                 environment.concepts[c] for c in concept.grain.components
             ]
             # if the base concept being aggregated is a property with a key
             # keep the key as a parent
         else:
-            base = concept.lineage.concept_arguments
+            base = [environment.concepts[x.address] for x in concept.lineage.concept_arguments] 
         if isinstance(concept.lineage, AggregateWrapper):
             # for aggregate wrapper, don't include the by
             extra_property_grain = concept.lineage.function.concept_arguments

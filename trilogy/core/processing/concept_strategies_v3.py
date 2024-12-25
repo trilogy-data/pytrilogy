@@ -13,6 +13,8 @@ from trilogy.core.models import (
     RowsetItem,
     UndefinedConcept,
     WhereClause,
+    ConceptRef,
+    Environment
 )
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
@@ -62,23 +64,26 @@ class SearchConceptsType(Protocol):
     ) -> Union[StrategyNode, None]: ...
 
 
-def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
+def get_upstream_concepts(environment:Environment, base: Concept, nested: bool = False) -> set[str]:
     upstream = set()
     if nested:
         upstream.add(base.address)
     if not base.lineage:
         return upstream
     for x in base.lineage.concept_arguments:
+        if isinstance(x, ConceptRef):
+            x = environment.concepts[x.address]
         # if it's derived from any value in a rowset, ALL rowset items are upstream
         if x.derivation == PurposeLineage.ROWSET:
             assert isinstance(x.lineage, RowsetItem)
             for y in x.lineage.rowset.derived_concepts:
-                upstream = upstream.union(get_upstream_concepts(y, nested=True))
-        upstream = upstream.union(get_upstream_concepts(x, nested=True))
+                upstream = upstream.union(get_upstream_concepts(environment, y, nested=True))
+        upstream = upstream.union(get_upstream_concepts(environment, x, nested=True))
     return upstream
 
 
 def get_priority_concept(
+    environment: Environment,
     all_concepts: List[Concept],
     attempted_addresses: set[str],
     found_concepts: set[str],
@@ -139,7 +144,7 @@ def get_priority_concept(
         # get the derived copy first
         # as this will usually resolve cleaner
         for x in priority:
-            if any([x.address in get_upstream_concepts(c) for c in priority]):
+            if any([x.address in get_upstream_concepts(environment, c) for c in priority]):
                 logger.info(
                     f"{depth_to_prefix(depth)}{LOGGER_PREFIX} delaying fetch of {x.address} as parent of another concept"
                 )
@@ -764,6 +769,7 @@ def _search_concepts(
 
     while attempted != all_mandatory:
         priority_concept = get_priority_concept(
+            environment,
             mandatory_list,
             attempted,
             found_concepts=found,
