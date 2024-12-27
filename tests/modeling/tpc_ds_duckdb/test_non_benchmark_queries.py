@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 
 working_path = Path(__file__).parent
 
@@ -32,7 +32,7 @@ limit 10
 
 
 def test_copy_perf():
-    env, imports = Environment(working_path=working_path).parse(
+    env, imports = BoundEnvironment(working_path=working_path).parse(
         """
 import call_center as call_center;
 import catalog_returns as catalog_returns;

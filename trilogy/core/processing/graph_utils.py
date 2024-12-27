@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Dict, List
 
-from trilogy.core.models import Concept
+from trilogy.core.models import BoundConcept
 from trilogy.utility import unique
 
 
@@ -25,7 +25,7 @@ def extract_required_subgraphs(
     return assocs
 
 
-def extract_mandatory_subgraphs(paths: Dict[str, List[str]], g) -> List[List[Concept]]:
+def extract_mandatory_subgraphs(paths: Dict[str, List[str]], g) -> List[List[BoundConcept]]:
     final: list[list[str]] = []
     assocs: defaultdict[str, list] = defaultdict(list)
     for path in paths.values():

@@ -1,12 +1,12 @@
 from pathlib import Path
 
-from trilogy import Dialects, Environment
+from trilogy import Dialects, BoundEnvironment
 from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_complex():
     hooks = [DebuggingHook()]
-    env = Environment(working_path=Path(__file__).parent)
+    env = BoundEnvironment(working_path=Path(__file__).parent)
     engine = Dialects.DUCK_DB.default_executor(environment=env)
     engine.execute_file(Path(__file__).parent / "final_persist.preql")
     r1 = engine.execute_text(
@@ -16,7 +16,7 @@ def test_complex():
         order by generic.split asc, generic.scalar asc;"""
     )[-1]
 
-    env = Environment(working_path=Path(__file__).parent)
+    env = BoundEnvironment(working_path=Path(__file__).parent)
     engine = Dialects.DUCK_DB.default_executor(environment=env, hooks=hooks)
     engine.execute_file(Path(__file__).parent / "optimize.preql")
     r2 = engine.execute_text(
@@ -41,7 +41,7 @@ def test_complex():
 
 
 def test_persist_in_import():
-    env = Environment(
+    env = BoundEnvironment(
         working_path=Path(__file__).parent
     )  # .parse_file(Path(__file__).parent / "query_one.preql")
     engine = Dialects.DUCK_DB.default_executor(environment=env)

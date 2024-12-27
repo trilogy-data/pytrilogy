@@ -1,12 +1,12 @@
 from collections import defaultdict
 
 from trilogy.core.enums import JoinType
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.core.processing.graph_utils import extract_required_subgraphs
 from trilogy.core.processing.nodes import ConstantNode, MergeNode, NodeJoin
 
 
-def test_same_join_fails(test_environment: Environment, test_environment_graph):
+def test_same_join_fails(test_environment: BoundEnvironment, test_environment_graph):
     x = ConstantNode(
         input_concepts=[],
         output_concepts=[test_environment.concepts["constant_one"]],

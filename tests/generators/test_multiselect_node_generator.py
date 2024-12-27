@@ -1,12 +1,12 @@
 from trilogy import parse
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_multiselect_node
 from trilogy.core.query_processor import datasource_to_cte
 
 
-def test_multi_select(test_environment: Environment, test_environment_graph):
+def test_multi_select(test_environment: BoundEnvironment, test_environment_graph):
     from trilogy.hooks.query_debugger import DebuggingHook
 
     DebuggingHook()
@@ -61,7 +61,7 @@ ALIGN
     assert len(cte.source_map["local.one_key"]) == 0
 
 
-def test_multi_select_constant(test_environment: Environment, test_environment_graph):
+def test_multi_select_constant(test_environment: BoundEnvironment, test_environment_graph):
     # from trilogy.core.models import AggregateWrapper
 
     parse(

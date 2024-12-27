@@ -4,10 +4,10 @@ from trilogy.constants import logger
 from trilogy.core.models import (
     BaseJoin,
     Comparison,
-    Concept,
+    BoundConcept,
     Conditional,
     Datasource,
-    Environment,
+    BoundEnvironment,
     Grain,
     JoinType,
     Parenthetical,
@@ -29,7 +29,7 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 def deduplicate_nodes(
     merged: dict[str, QueryDatasource | Datasource],
     logging_prefix: str,
-    environment: Environment,
+    environment: BoundEnvironment,
 ) -> tuple[bool, dict[str, QueryDatasource | Datasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
@@ -75,7 +75,7 @@ def deduplicate_nodes_and_joins(
     joins: List[NodeJoin] | None,
     merged: dict[str, QueryDatasource | Datasource],
     logging_prefix: str,
-    environment: Environment,
+    environment: BoundEnvironment,
 ) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | Datasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
@@ -100,24 +100,24 @@ class MergeNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         node_joins: List[NodeJoin] | None = None,
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
-        partial_concepts: Optional[List[Concept]] = None,
-        nullable_concepts: Optional[List[Concept]] = None,
+        partial_concepts: Optional[List[BoundConcept]] = None,
+        nullable_concepts: Optional[List[BoundConcept]] = None,
         force_group: bool | None = None,
         depth: int = 0,
         grain: Grain | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: set[str] | None = None,
-        virtual_output_concepts: List[Concept] | None = None,
-        existence_concepts: List[Concept] | None = None,
+        virtual_output_concepts: List[BoundConcept] | None = None,
+        existence_concepts: List[BoundConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -193,7 +193,7 @@ class MergeNode(StrategyNode):
         final_joins: List[NodeJoin] | None,
         pregrain: Grain,
         grain: Grain,
-        environment: Environment,
+        environment: BoundEnvironment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
         dataset_list: List[QueryDatasource | Datasource] = sorted(

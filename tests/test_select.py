@@ -1,6 +1,6 @@
 # from trilogy.compiler import compile
-from trilogy import Dialects, Environment
-from trilogy.core.models import Grain, SelectStatement
+from trilogy import Dialects, BoundEnvironment
+from trilogy.core.parse_models import Grain, SelectStatement
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
@@ -179,7 +179,7 @@ select id + 2 as three;
 
 
 def test_select_from_components():
-    env = Environment()
+    env = BoundEnvironment()
     q1 = """
 
 key id int;

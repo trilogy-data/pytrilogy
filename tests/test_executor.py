@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Dialects, Environment, parse
+from trilogy import Dialects, BoundEnvironment, parse
 
 
 def test_file_parsing():
@@ -10,7 +10,7 @@ def test_file_parsing():
 
 
 def test_can_handle_everything():
-    env = Environment(working_path=Path(__file__).parent)
+    env = BoundEnvironment(working_path=Path(__file__).parent)
     env, queries = parse(
         """
 import test_env as test_env;

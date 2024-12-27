@@ -3,20 +3,20 @@ from pathlib import Path
 
 from pytest import fixture
 
-from trilogy import Dialects, Environment
+from trilogy import Dialects, BoundEnvironment
 from trilogy.core.env_processor import generate_graph
 from trilogy.hooks.query_debugger import DebuggingHook
 
 
 @fixture(scope="session")
 def test_environment():
-    env = Environment().from_file(Path(__file__).parent / "orders.preql")
+    env = BoundEnvironment().from_file(Path(__file__).parent / "orders.preql")
 
     yield env
 
 
 @fixture(scope="session")
-def test_executor(test_environment: Environment):
+def test_executor(test_environment: BoundEnvironment):
     yield Dialects.DUCK_DB.default_executor(
         environment=test_environment, hooks=[DebuggingHook(level=INFO)]
     )

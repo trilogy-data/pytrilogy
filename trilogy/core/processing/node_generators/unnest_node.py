@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.models import BoundConcept, Function, WhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
 from trilogy.core.processing.utility import padding
 
@@ -9,8 +9,8 @@ LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 
 
 def gen_unnest_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
     environment,
     g,
     depth: int,

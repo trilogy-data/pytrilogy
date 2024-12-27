@@ -1,6 +1,6 @@
 from pytest import fixture
 
-from trilogy import Environment
+from trilogy import BoundEnvironment
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -14,7 +14,7 @@ from trilogy.core.models import (
     AggregateWrapper,
     ColumnAssignment,
     Comparison,
-    Concept,
+    BoundConcept,
     Datasource,
     DataType,
     FilterItem,
@@ -28,44 +28,44 @@ from trilogy.core.models import (
 
 @fixture(scope="session")
 def test_environment():
-    env = Environment()
-    order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    env = BoundEnvironment()
+    order_id = BoundConcept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
-    order_timestamp = Concept(
+    order_timestamp = BoundConcept(
         name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
     )
 
-    order_count = Concept(
+    order_count = BoundConcept(
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Count([order_id]),
     )
 
-    distinct_order_count = Concept(
+    distinct_order_count = BoundConcept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=CountDistinct([order_id]),
     )
 
-    max_order_id = Concept(
+    max_order_id = BoundConcept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Max([order_id]),
     )
 
-    min_order_id = Concept(
+    min_order_id = BoundConcept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Min([order_id]),
     )
 
-    revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
+    revenue = BoundConcept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
 
-    total_revenue = Concept(
+    total_revenue = BoundConcept(
         name="total_revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.METRIC,
@@ -76,10 +76,10 @@ def test_environment():
             operator=FunctionType.SUM,
         ),
     )
-    product_id = Concept(
+    product_id = BoundConcept(
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    constant_one = Concept(
+    constant_one = BoundConcept(
         name="constant_one",
         datatype=DataType.INTEGER,
         purpose=Purpose.CONSTANT,
@@ -91,7 +91,7 @@ def test_environment():
         ),
     )
 
-    literal_array = Concept(
+    literal_array = BoundConcept(
         name="literal_array",
         datatype=DataType.ARRAY,
         purpose=Purpose.CONSTANT,
@@ -103,7 +103,7 @@ def test_environment():
         ),
     )
 
-    unnest_literal_array = Concept(
+    unnest_literal_array = BoundConcept(
         name="unnest_literal_array",
         datatype=DataType.INTEGER,
         purpose=Purpose.KEY,
@@ -115,10 +115,10 @@ def test_environment():
         ),
     )
 
-    category_id = Concept(
+    category_id = BoundConcept(
         name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    category_name = Concept(
+    category_name = BoundConcept(
         name="category_name",
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
@@ -126,7 +126,7 @@ def test_environment():
         keys={category_id.address},
     )
 
-    category_name_length = Concept(
+    category_name_length = BoundConcept(
         name="category_name_length",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -139,7 +139,7 @@ def test_environment():
         ),
     )
 
-    product_revenue_rank = Concept(
+    product_revenue_rank = BoundConcept(
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -149,7 +149,7 @@ def test_environment():
             order_by=[OrderItem(expr=total_revenue, order="desc")],
         ),
     )
-    product_revenue_rank_by_category = Concept(
+    product_revenue_rank_by_category = BoundConcept(
         name="product_revenue_rank_by_category",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -161,7 +161,7 @@ def test_environment():
         ),
     )
 
-    products_with_revenue_over_50 = Concept(
+    products_with_revenue_over_50 = BoundConcept(
         name="products_with_revenue_over_50",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -178,7 +178,7 @@ def test_environment():
         grain=product_id,
     )
 
-    category_top_50_revenue_products = Concept(
+    category_top_50_revenue_products = BoundConcept(
         name="category_top_50_revenue_products",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
@@ -188,7 +188,7 @@ def test_environment():
         grain=Grain(components=[category_id]),
     )
 
-    category_products = Concept(
+    category_products = BoundConcept(
         name="category_products",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,

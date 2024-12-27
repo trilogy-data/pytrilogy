@@ -1,10 +1,10 @@
 from trilogy.core.models import (
-    Environment,
+    BoundEnvironment,
     Grain,
     QueryDatasource,
-    SelectStatement,
     SourceType,
 )
+from trilogy.core.parse_models import SelectStatement
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.query_processor import get_query_datasources, process_query
 
@@ -26,7 +26,7 @@ def test_direct_select(test_environment, test_environment_graph):
 
 
 def test_get_datasource_from_window_function(
-    test_environment: Environment, test_environment_graph
+    test_environment: BoundEnvironment, test_environment_graph
 ):
     # test without grouping
     product_rank = test_environment.concepts["product_revenue_rank"]
@@ -68,7 +68,7 @@ def test_get_datasource_from_window_function(
 
 
 def test_get_datasource_for_filter(
-    test_environment: Environment, test_environment_graph
+    test_environment: BoundEnvironment, test_environment_graph
 ):
     hi_rev_product = test_environment.concepts["products_with_revenue_over_50"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
@@ -110,7 +110,7 @@ def test_select_output(test_environment, test_environment_graph):
     }
 
 
-def test_basic_aggregate(test_environment: Environment, test_environment_graph):
+def test_basic_aggregate(test_environment: BoundEnvironment, test_environment_graph):
     product = test_environment.concepts["product_id"]
     total_revenue = test_environment.concepts["total_revenue"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
@@ -125,7 +125,7 @@ def test_basic_aggregate(test_environment: Environment, test_environment_graph):
     assert datasource.grain == Grain(components=[product])
 
 
-def test_join_aggregate(test_environment: Environment, test_environment_graph):
+def test_join_aggregate(test_environment: BoundEnvironment, test_environment_graph):
     from trilogy.hooks.query_debugger import DebuggingHook
 
     DebuggingHook()

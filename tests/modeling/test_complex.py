@@ -1,12 +1,13 @@
 from trilogy import Dialects, Executor, parse
 from trilogy.core.enums import PurposeLineage
-from trilogy.core.models import Environment, SelectStatement
+from trilogy.core.models import BoundEnvironment
+from trilogy.core.parse_models import SelectStatement
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 
 
-def test_rowset(test_environment: Environment, test_executor: Executor):
+def test_rowset(test_environment: BoundEnvironment, test_executor: Executor):
     test_select = """
 
     rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
@@ -23,7 +24,7 @@ def test_rowset(test_environment: Environment, test_executor: Executor):
     assert results[1] == (4, 2)
 
 
-def test_rowset_with_addition(test_environment: Environment, test_executor: Executor):
+def test_rowset_with_addition(test_environment: BoundEnvironment, test_executor: Executor):
     test_select = """
 
     rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
@@ -44,7 +45,7 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
 
 
 def test_rowset_with_aggregation(
-    test_environment: Environment, test_executor: Executor
+    test_environment: BoundEnvironment, test_executor: Executor
 ):
     test_select = """   auto even_order_store_revenue <- sum(even_orders.revenue);
     rowset even_orders <- select order_id, store_id, revenue where (order_id % 2) = 0;
@@ -74,7 +75,7 @@ def test_rowset_with_aggregation(
     assert results[1] == (2, 1, 5.0)
 
 
-def test_in_select(test_environment: Environment, test_executor: Executor):
+def test_in_select(test_environment: BoundEnvironment, test_executor: Executor):
     test_select = """
     auto even_stores <- unnest([1,2,3,4]);
 
@@ -100,7 +101,7 @@ def test_in_select(test_environment: Environment, test_executor: Executor):
     assert results[1] == (4,)
 
 
-def test_window_clone(test_environment: Environment, test_executor: Executor):
+def test_window_clone(test_environment: BoundEnvironment, test_executor: Executor):
     test_select = """
     auto nums <- unnest([1,2]);
 
@@ -121,7 +122,7 @@ def test_window_clone(test_environment: Environment, test_executor: Executor):
     assert results[1] == (None, 1)
 
 
-def test_window_alt(test_environment: Environment, test_executor: Executor):
+def test_window_alt(test_environment: BoundEnvironment, test_executor: Executor):
     test_select = """
     auto nums <- unnest([1,2]);
 

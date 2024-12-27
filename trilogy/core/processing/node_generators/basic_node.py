@@ -4,7 +4,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import SourceType
 from trilogy.core.models import (
-    Concept,
+    BoundConcept,
     Function,
     FunctionClass,
     WhereClause,
@@ -19,8 +19,8 @@ LOGGER_PREFIX = "[GEN_BASIC_NODE]"
 
 
 def is_equivalent_basic_function_lineage(
-    x: Concept,
-    y: Concept,
+    x: BoundConcept,
+    y: BoundConcept,
 ):
     if not isinstance(x.lineage, Function) or not isinstance(y.lineage, Function):
         return False
@@ -35,8 +35,8 @@ def is_equivalent_basic_function_lineage(
 
 
 def gen_basic_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
     environment,
     g,
     depth: int,
@@ -66,7 +66,7 @@ def gen_basic_node(
     non_equivalent_optional = [
         x for x in local_optional if x not in equivalent_optional
     ]
-    all_parents: list[Concept] = unique(
+    all_parents: list[BoundConcept] = unique(
         parent_concepts + non_equivalent_optional, "address"
     )
     logger.info(

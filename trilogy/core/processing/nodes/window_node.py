@@ -1,6 +1,6 @@
 from typing import List
 
-from trilogy.core.models import Concept, SourceType
+from trilogy.core.models import BoundConcept, SourceType
 from trilogy.core.processing.nodes.base_node import QueryDatasource, StrategyNode
 
 
@@ -9,8 +9,8 @@ class WindowNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,

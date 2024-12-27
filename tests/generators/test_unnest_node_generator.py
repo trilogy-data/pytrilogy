@@ -1,9 +1,9 @@
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_unnest_node
 
 
-def test_gen_unnest_node_parents(test_environment: Environment, test_environment_graph):
+def test_gen_unnest_node_parents(test_environment: BoundEnvironment, test_environment_graph):
     pass
 
 

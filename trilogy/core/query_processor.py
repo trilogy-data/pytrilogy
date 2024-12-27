@@ -4,37 +4,48 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import BooleanOperator, SourceType
+from trilogy.core.enums import BooleanOperator, SourceType,    SelectFiltering, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
+from trilogy.core.parse_models import (
+    CopyStatement,
+        MultiSelectStatement,
+    PersistStatement,
+        SelectStatement,
+            ConceptRef,
+                ConceptDeclarationStatement,
+                Environment,
+)
 from trilogy.core.models import (
     CTE,
     BaseJoin,
-    Concept,
-    ConceptDeclarationStatement,
+    BoundConcept,
+
     Conditional,
-    CopyStatement,
+
     CTEConceptPair,
     Datasource,
-    Environment,
+    BoundEnvironment,
     InstantiatedUnnestJoin,
     Join,
     MaterializedDataset,
-    MultiSelectStatement,
-    PersistStatement,
+
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     QueryDatasource,
-    SelectStatement,
+
     UnionCTE,
     UnnestJoin,
+    Grain,
+
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
+from trilogy.core.models import BoundEnvironment, EnvironmentConceptDict
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -348,29 +359,77 @@ def datasource_to_cte(
 
     return cte
 
+def set_query_grain(statement:SelectStatement, environment:BoundEnvironment)->Grain:
+    for parse_pass in [
+            1,
+            2,
+        ]:
+            # the first pass will result in all concepts being defined
+            # the second will get grains appropriately
+            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
+            # until after the first pass, and so don't know the grain of a
+
+            if parse_pass == 1:
+                grain = Grain.from_concepts(
+                    [
+                        environment.concepts[x.content.address]
+                        for x in statement.selection
+                        if isinstance(x.content, ConceptRef)
+                    ],
+                    environment=environment,
+                    where_clause=statement.where_clause,
+                )
+                for k, v in environment.concepts.items():
+                    new= v.with_select_context(statement.local_concepts, grain=grain, environment=environment)
+                    environment.concepts[k] = new
+            if parse_pass == 2:
+                grain = Grain.from_concepts(
+                    [x.address for x in statement.output_components], 
+                    where_clause=statement.where_clause,
+                    environment=environment
+                )
+                for k, v in environment.concepts.items():
+                    new= v.with_select_context(statement.local_concepts, grain=grain, environment=environment)
+                    environment.concepts[k] = new
+
+        # if statement.where_clause:   
+        # if statement.having_clause:
+        #     statement.having_clause = statement.having_clause.with_select_context(
+        #         local_concepts=statement.local_concepts,
+        #         grain=statement.grain,
+        #         environment=environment,
+        #     )
+    return grain
+
+def create_statement_environment(
+    statement: SelectStatement | MultiSelectStatement,
+    environment: Environment,
+) -> Tuple[BoundEnvironment, Grain]:
+    new_env = environment.instantiate()
+
+    grain = set_query_grain(statement, new_env)
+
+    return new_env, grain
+
 
 def get_query_node(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: SelectStatement | MultiSelectStatement,
     history: History | None = None,
 ) -> StrategyNode:
-    environment = environment.duplicate()
-    for k, v in statement.local_concepts.items():
-        environment.concepts[k] = v
+
+
     graph = generate_graph(environment)
-    logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and grain {statement.grain}"
-    )
+
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
-    search_concepts: list[Concept] = statement.output_components
-
+    search_concepts: list[BoundConcept] = [environment.concepts[x.address] for x in statement.output_components]
     ods: StrategyNode = source_query_concepts(
         search_concepts,
         environment=environment,
         g=graph,
-        conditions=(statement.where_clause if statement.where_clause else None),
+        conditions=(statement.where_clause.instantiate(environment) if statement.where_clause else None),
         history=history,
     )
     if not ods:
@@ -379,15 +438,15 @@ def get_query_node(
         )
     ds: StrategyNode = ods
     if statement.having_clause:
-        final = statement.having_clause.conditional
+        final = statement.having_clause.conditional.instantiate(environment)
         if ds.conditions:
             final = Conditional(
                 left=ds.conditions,
-                right=statement.having_clause.conditional,
+                right=final,
                 operator=BooleanOperator.AND,
             )
         ds = SelectNode(
-            output_concepts=statement.output_components,
+            output_concepts=search_concepts,
             input_concepts=ds.output_concepts,
             parents=[ds],
             environment=ds.environment,
@@ -398,7 +457,7 @@ def get_query_node(
 
 
 def get_query_datasources(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
@@ -420,7 +479,7 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
 
 
 def process_auto(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: PersistStatement | SelectStatement,
     hooks: List[BaseHook] | None = None,
 ):
@@ -434,7 +493,7 @@ def process_auto(
 
 
 def process_persist(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: PersistStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQueryPersist:
@@ -452,7 +511,7 @@ def process_persist(
 
 
 def process_copy(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: CopyStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedCopyStatement:
@@ -468,16 +527,49 @@ def process_copy(
         target_type=statement.target_type,
     )
 
+def implicit_where_clause_selections(select:SelectStatement, environment:BoundEnvironment) -> SelectFiltering:
+
+    if not select.where_clause:
+        return SelectFiltering.NONE
+    instantiated = select.where_clause.instantiate(environment)
+    filter = set(
+        [
+            str(x.address)
+            for x in instantiated.row_arguments
+            if not x.derivation == PurposeLineage.CONSTANT
+        ]
+    )
+    query_output = set([str(z.address) for z in select.output_components])
+    delta = filter.difference(query_output)
+    if delta:
+        return [
+            x for x in instantiated.row_arguments if str(x.address) in delta
+        ]
+    return SelectFiltering.EXPLICIT
+
+    # @property
+    # def where_clause_category(self) -> SelectFiltering:
+    #     if not self.where_clause:
+    #         return SelectFiltering.NONE
+    #     elif self.implicit_where_clause_selections:
+    #         return SelectFiltering.IMPLICIT
+    #     return SelectFiltering.EXPLICIT
+
 
 def process_query(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:
     hooks = hooks or []
 
-    root_datasource = get_query_datasources(
-        environment=environment, statement=statement, hooks=hooks
+    environment, grain = create_statement_environment(statement, environment)
+    where_clause_category = implicit_where_clause_selections(statement, environment)
+    logger.info(
+        f"{LOGGER_PREFIX} getting source datasource for query with filtering {where_clause_category} with grain {grain}"
+    )
+    root_datasource= get_query_datasources(
+        environment=environment,  statement=statement, hooks=hooks
     )
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
@@ -498,22 +590,18 @@ def process_query(
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
-    root_cte.order_by = statement.order_by
+    root_cte.order_by = statement.order_by.instantiate(environment) if statement.order_by else None
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
+    for k, v in environment.concepts.items():
+        print(type(v))
     return ProcessedQuery(
-        order_by=statement.order_by,
-        grain=statement.grain,
-        limit=statement.limit,
-        where_clause=statement.where_clause,
-        having_clause=statement.having_clause,
-        output_columns=statement.output_components,
+        # where_clause=statement.where_clause.instantiate(environment) if statement.where_clause else None,
+        # having_clause=statement.having_clause.instantiate(environment) if statement.having_clause else None,
+        output_columns=[x.instantiate(environment) for x in statement.output_components],
         ctes=final_ctes,
         base=root_cte,
-        # we no longer do any joins at final level, this should always happen in parent CTEs
-        joins=[],
-        hidden_columns=set([x for x in statement.hidden_components]),
-        local_concepts=statement.local_concepts,
+        local_concepts=environment.concepts,
     )

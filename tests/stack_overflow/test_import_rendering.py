@@ -2,7 +2,7 @@
 from os.path import dirname
 
 from trilogy.core.enums import Modifier
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.parser import parse
 from trilogy.parsing.render import render_environment
 
@@ -45,13 +45,13 @@ import so_concepts.circular_dep as c2;"""
 
 
 def test_select():
-    env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
+    env, parsed = parse(QUERY, environment=BoundEnvironment(working_path=dirname(__file__)))
     rendered = render_environment(env)
     assert rendered.startswith("import concepts.core as core;")
 
 
 def test_import_violation():
-    env = Environment(working_path=dirname(__file__))
+    env = BoundEnvironment(working_path=dirname(__file__))
 
     # dupe additions result in nothing
     env.add_file_import(path="so_concepts.circular", alias="c1")
@@ -63,7 +63,7 @@ def test_import_violation():
 
 
 def test_circular_base():
-    env = Environment(working_path=dirname(__file__))
+    env = BoundEnvironment(working_path=dirname(__file__))
 
     # first import
 
@@ -99,7 +99,7 @@ def test_circular_base():
 
 def test_circular():
     env, parsed = parse(
-        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
+        CIRC_QUERY, environment=BoundEnvironment(working_path=dirname(__file__))
     )
     from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -129,7 +129,7 @@ def test_circular():
 
 def test_partial():
     env, parsed = parse(
-        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
+        CIRC_QUERY, environment=BoundEnvironment(working_path=dirname(__file__))
     )
     # raise ValueError(env.concepts.keys())
     p_candidate = [c for c in env.datasources["c1.posts"].columns if c.alias == "id2"]

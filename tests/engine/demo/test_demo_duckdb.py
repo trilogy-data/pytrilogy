@@ -2,22 +2,22 @@ from trilogy import Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
 from trilogy.core.models import (
     ColumnAssignment,
-    Concept,
+    BoundConcept,
     Datasource,
     DataType,
-    Environment,
+    BoundEnvironment,
     Function,
     Grain,
     SelectContext,
 )
 
 
-def setup_titanic(env: Environment):
+def setup_titanic(env: BoundEnvironment):
     namespace = "passenger"
-    id = Concept(
+    id = BoundConcept(
         name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    age = Concept(
+    age = BoundConcept(
         name="age",
         namespace=namespace,
         datatype=DataType.INTEGER,
@@ -27,7 +27,7 @@ def setup_titanic(env: Environment):
         modifiers=[Modifier.NULLABLE],
     )
 
-    name = Concept(
+    name = BoundConcept(
         name="name",
         namespace=namespace,
         datatype=DataType.STRING,
@@ -36,7 +36,7 @@ def setup_titanic(env: Environment):
         grain=Grain(components=[id]),
     )
 
-    pclass = Concept(
+    pclass = BoundConcept(
         name="class",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -44,7 +44,7 @@ def setup_titanic(env: Environment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    survived = Concept(
+    survived = BoundConcept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -52,7 +52,7 @@ def setup_titanic(env: Environment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    fare = Concept(
+    fare = BoundConcept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -60,7 +60,7 @@ def setup_titanic(env: Environment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    embarked = Concept(
+    embarked = BoundConcept(
         name="embarked",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -68,7 +68,7 @@ def setup_titanic(env: Environment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    cabin = Concept(
+    cabin = BoundConcept(
         name="cabin",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -76,7 +76,7 @@ def setup_titanic(env: Environment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    ticket = Concept(
+    ticket = BoundConcept(
         name="ticket",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -85,7 +85,7 @@ def setup_titanic(env: Environment):
         grain=Grain(components=[id]),
     )
 
-    last_name = Concept(
+    last_name = BoundConcept(
         name="last_name",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -145,7 +145,7 @@ def setup_titanic(env: Environment):
 
 def test_demo_e2e(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -166,7 +166,7 @@ select
 
 def test_demo_aggregates(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -219,7 +219,7 @@ select
 
 def test_demo_filter(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -252,7 +252,7 @@ def test_demo_filter(engine):
 
 def test_demo_const(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -263,7 +263,7 @@ def test_demo_const(engine):
 
 def test_demo_rowset(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """rowset survivors<- select 
@@ -297,7 +297,7 @@ limit 5;"""
 
 def test_demo_duplication(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
@@ -321,7 +321,7 @@ limit 5;"""
 
 def test_demo_suggested_answer(engine):
     executor: Executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """auto survivor <- filter passenger.id 
@@ -349,7 +349,7 @@ order by passenger.decade desc
 
 def test_demo_suggested_answer_failing(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -396,7 +396,7 @@ def test_demo_suggested_answer_failing_intentional(engine):
     But is a good test case - can we resolve
     arbitrary counts in the same query?"""
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -417,7 +417,7 @@ order by passenger.class desc
 
 def test_demo_basic(engine):
     executor = engine
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -454,7 +454,7 @@ ORDER BY
     )
 
 
-def test_merge_basic(engine, base_test_env: Environment):
+def test_merge_basic(engine, base_test_env: BoundEnvironment):
     executor = engine
     executor.environment = base_test_env
 
@@ -475,7 +475,7 @@ where
     assert len(results) == 17
 
 
-def test_merge(base_test_env: Environment, engine):
+def test_merge(base_test_env: BoundEnvironment, engine):
     executor = engine
     executor.environment = base_test_env
     rich_name = base_test_env.concepts["rich_info.full_name"]
@@ -500,7 +500,7 @@ ORDER BY
     assert len(results) == 8
 
 
-def test_demo_rowset_two(base_test_env: Environment, engine):
+def test_demo_rowset_two(base_test_env: BoundEnvironment, engine):
     executor = engine
     executor.environment = base_test_env
     cmd = """with survivors as

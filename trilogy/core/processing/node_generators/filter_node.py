@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
+from trilogy.core.models import BoundConcept, BoundEnvironment, FilterItem, Grain, WhereClause
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
@@ -18,23 +18,22 @@ LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
 
 def gen_filter_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
     conditions: WhereClause | None = None,
 ) -> StrategyNode | None:
+    
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept, environment)
     )
-    if not isinstance(concept.lineage, FilterItem):
-        raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
 
-    optional_included: list[Concept] = []
+    optional_included: list[BoundConcept] = []
 
     for x in local_optional:
         if isinstance(x.lineage, FilterItem):

@@ -3,12 +3,12 @@ from datetime import datetime
 from pathlib import Path
 from pstats import SortKey, Stats
 
-from trilogy import Environment
+from trilogy import BoundEnvironment
 from trilogy.parsing.parse_engine import parse_text, parse_text_raw
 
 
 def parsetest():
-    env = Environment(working_path=Path(__file__).parent)
+    env = BoundEnvironment(working_path=Path(__file__).parent)
     working_path = Path(__file__).parent
 
     with open(working_path / "query12.preql") as f:

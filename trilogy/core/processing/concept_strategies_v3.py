@@ -7,14 +7,13 @@ from trilogy.core.enums import FunctionType, Granularity, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models import (
-    Concept,
-    Environment,
+    BoundConcept,
+    BoundEnvironment,
     Function,
     RowsetItem,
     UndefinedConcept,
     WhereClause,
-    ConceptRef,
-    Environment
+    BoundEnvironment
 )
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
@@ -54,8 +53,8 @@ LOGGER_PREFIX = "[CONCEPT DETAIL]"
 class SearchConceptsType(Protocol):
     def __call__(
         self,
-        mandatory_list: List[Concept],
-        environment: Environment,
+        mandatory_list: List[BoundConcept],
+        environment: BoundEnvironment,
         depth: int,
         g: ReferenceGraph,
         accept_partial: bool = False,
@@ -64,31 +63,30 @@ class SearchConceptsType(Protocol):
     ) -> Union[StrategyNode, None]: ...
 
 
-def get_upstream_concepts(environment:Environment, base: Concept, nested: bool = False) -> set[str]:
+def get_upstream_concepts(environment:BoundEnvironment, base: BoundConcept, nested: bool = False) -> set[str]:
     upstream = set()
     if nested:
         upstream.add(base.address)
     if not base.lineage:
         return upstream
     for x in base.lineage.concept_arguments:
-        if isinstance(x, ConceptRef):
-            x = environment.concepts[x.address]
         # if it's derived from any value in a rowset, ALL rowset items are upstream
         if x.derivation == PurposeLineage.ROWSET:
             assert isinstance(x.lineage, RowsetItem)
-            for y in x.lineage.rowset.derived_concepts:
-                upstream = upstream.union(get_upstream_concepts(environment, y, nested=True))
+            raise NotImplementedError("Rowset items are not yet supported")
+            # for y in x.lineage.rowset.create_derived_concepts(environment, concrete=True):
+            #     upstream = upstream.union(get_upstream_concepts(environment, y, nested=True))
         upstream = upstream.union(get_upstream_concepts(environment, x, nested=True))
     return upstream
 
 
 def get_priority_concept(
-    environment: Environment,
-    all_concepts: List[Concept],
+    environment: BoundEnvironment,
+    all_concepts: List[BoundConcept],
     attempted_addresses: set[str],
     found_concepts: set[str],
     depth: int,
-) -> Concept:
+) -> BoundConcept:
     # optimized search for missing concepts
     pass_one = [
         c
@@ -162,11 +160,11 @@ def get_priority_concept(
 
 
 def generate_candidates_restrictive(
-    priority_concept: Concept,
-    candidates: list[Concept],
+    priority_concept: BoundConcept,
+    candidates: list[BoundConcept],
     exhausted: set[str],
     conditions: WhereClause | None = None,
-) -> List[List[Concept]]:
+) -> List[List[BoundConcept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
         return [[]]
@@ -188,9 +186,9 @@ def generate_candidates_restrictive(
 
 
 def generate_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g: ReferenceGraph,
     depth: int,
     source_concepts: SearchConceptsType,
@@ -515,16 +513,16 @@ def generate_node(
 
 
 def validate_concept(
-    concept: Concept,
+    concept: BoundConcept,
     node: StrategyNode,
     found_addresses: set[str],
     non_partial_addresses: set[str],
     partial_addresses: set[str],
     virtual_addresses: set[str],
-    found_map: dict[str, set[Concept]],
+    found_map: dict[str, set[BoundConcept]],
     accept_partial: bool,
     seen: set[str],
-    environment: Environment,
+    environment: BoundEnvironment,
 ):
     found_map[str(node)].add(concept)
     seen.add(concept.address)
@@ -567,14 +565,14 @@ def validate_concept(
 
 
 def validate_stack(
-    environment: Environment,
+    environment: BoundEnvironment,
     stack: List[StrategyNode],
-    concepts: List[Concept],
-    mandatory_with_filter: List[Concept],
+    concepts: List[BoundConcept],
+    mandatory_with_filter: List[BoundConcept],
     conditions: WhereClause | None = None,
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
-    found_map: dict[str, set[Concept]] = defaultdict(set)
+    found_map: dict[str, set[BoundConcept]] = defaultdict(set)
     found_addresses: set[str] = set()
     non_partial_addresses: set[str] = set()
     partial_addresses: set[str] = set()
@@ -653,7 +651,7 @@ def depth_to_prefix(depth: int) -> str:
 
 def append_existence_check(
     node: StrategyNode,
-    environment: Environment,
+    environment: BoundEnvironment,
     graph: ReferenceGraph,
     where: WhereClause,
     history: History | None = None,
@@ -684,8 +682,8 @@ def append_existence_check(
 
 
 def search_concepts(
-    mandatory_list: List[Concept],
-    environment: Environment,
+    mandatory_list: List[BoundConcept],
+    environment: BoundEnvironment,
     depth: int,
     g: ReferenceGraph,
     accept_partial: bool = False,
@@ -723,8 +721,8 @@ def search_concepts(
 
 
 def _search_concepts(
-    mandatory_list: List[Concept],
-    environment: Environment,
+    mandatory_list: List[BoundConcept],
+    environment: BoundEnvironment,
     depth: int,
     g: ReferenceGraph,
     history: History,
@@ -969,8 +967,8 @@ def _search_concepts(
 
 
 def source_query_concepts(
-    output_concepts: List[Concept],
-    environment: Environment,
+    output_concepts: List[BoundConcept],
+    environment: BoundEnvironment,
     g: Optional[ReferenceGraph] = None,
     conditions: Optional[WhereClause] = None,
     history: Optional[History] = None,

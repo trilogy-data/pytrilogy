@@ -7,9 +7,9 @@ from trilogy.core.models import (
     CTE,
     Datasource,
     QueryDatasource,
-    SelectStatement,
     UnionCTE,
 )
+from trilogy.core.parse_models import SelectStatement
 from trilogy.core.processing.nodes import StrategyNode
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.base_hook import BaseHook
@@ -130,7 +130,7 @@ class DebuggingHook(BaseHook):
 
     def process_select_info(self, select: SelectStatement):
         if self.process_datasources != PrintMode.OFF:
-            print(f"grain: {str(select.grain)}")
+            print(f"grain:")
 
     def process_root_datasource(self, datasource: QueryDatasource):
         if self.process_datasources != PrintMode.OFF:

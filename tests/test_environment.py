@@ -3,14 +3,14 @@ from pathlib import Path
 from trilogy import Dialects
 from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 
 
-def test_environment_serialization(test_environment: Environment):
+def test_environment_serialization(test_environment: BoundEnvironment):
 
     path = test_environment.to_cache()
     print(path)
-    test_environment2 = Environment.from_cache(path)
+    test_environment2 = BoundEnvironment.from_cache(path)
     assert test_environment2
 
     assert test_environment.concepts == test_environment2.concepts
@@ -20,13 +20,13 @@ def test_environment_serialization(test_environment: Environment):
 
 
 def test_environment_from_path():
-    env = Environment.from_file(Path(__file__).parent / "test_env.preql")
+    env = BoundEnvironment.from_file(Path(__file__).parent / "test_env.preql")
 
     assert "local.id" in env.concepts
 
 
 def test_environment_invalid():
-    env = Environment()
+    env = BoundEnvironment()
     env.concepts.fail_on_missing = False
     x = env.concepts["abc"]
     assert x.name == "abc"
@@ -40,8 +40,8 @@ def test_environment_invalid():
 
 
 def test_environment_merge():
-    env1: Environment
-    env1, _ = Environment().parse(
+    env1: BoundEnvironment
+    env1, _ = BoundEnvironment().parse(
         """
 key  order_id int;   
                                 
@@ -52,7 +52,7 @@ key  order_id int;
 """
     )
 
-    env2, _ = Environment().parse(
+    env2, _ = BoundEnvironment().parse(
         """
                                 key order_id int;
                                                                 

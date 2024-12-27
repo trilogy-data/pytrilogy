@@ -2,7 +2,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 if TYPE_CHECKING:
-    from trilogy import Environment, Executor
+    from trilogy import BoundEnvironment, Executor
     from trilogy.hooks.base_hook import BaseHook
 
 from trilogy.constants import logger
@@ -93,24 +93,24 @@ class Dialects(Enum):
 
     def default_executor(
         self,
-        environment: Optional["Environment"] = None,
+        environment: Optional["BoundEnvironment"] = None,
         hooks: List["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
         _engine_factory: Callable | None = None,
     ) -> "Executor":
-        from trilogy import Environment, Executor
+        from trilogy import BoundEnvironment, Executor
 
         if _engine_factory is not None:
             return Executor(
                 engine=self.default_engine(conf=conf, _engine_factory=_engine_factory),
-                environment=environment or Environment(),
+                environment=environment or BoundEnvironment(),
                 dialect=self,
                 hooks=hooks,
             )
 
         return Executor(
             engine=self.default_engine(conf=conf),
-            environment=environment or Environment(),
+            environment=environment or BoundEnvironment(),
             dialect=self,
             hooks=hooks,
         )

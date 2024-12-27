@@ -1,5 +1,5 @@
 from trilogy.core.enums import ComparisonOperator, PurposeLineage
-from trilogy.core.models import Comparison, Environment, WhereClause
+from trilogy.core.models import Comparison, BoundEnvironment, WhereClause
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (
@@ -7,7 +7,7 @@ from trilogy.core.processing.node_generators.common import (
 )
 
 
-def test_gen_filter_node_parents(test_environment: Environment, test_environment_graph):
+def test_gen_filter_node_parents(test_environment: BoundEnvironment, test_environment_graph):
     comp = test_environment.concepts["products_with_revenue_over_50"]
     assert comp.derivation == PurposeLineage.FILTER
 

@@ -5,10 +5,10 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.models import (
     Comparison,
-    Concept,
+    BoundConcept,
     Conditional,
     Datasource,
-    Environment,
+    BoundEnvironment,
     Function,
     Grain,
     Parenthetical,
@@ -31,15 +31,15 @@ class SelectNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
-        environment: Environment,
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
+        environment: BoundEnvironment,
         datasource: Datasource | None = None,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: List[Concept] | None = None,
-        nullable_concepts: List[Concept] | None = None,
+        partial_concepts: List[BoundConcept] | None = None,
+        nullable_concepts: List[BoundConcept] | None = None,
         accept_partial: bool = False,
         grain: Optional[Grain] = None,
         force_group: bool | None = False,
@@ -77,7 +77,7 @@ class SelectNode(StrategyNode):
             raise ValueError("Datasource not provided")
         datasource: Datasource = self.datasource
 
-        all_concepts_final: List[Concept] = unique(self.all_concepts, "address")
+        all_concepts_final: List[BoundConcept] = unique(self.all_concepts, "address")
         source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
         }

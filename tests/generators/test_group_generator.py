@@ -1,5 +1,5 @@
 from trilogy.core.enums import FunctionType, Purpose, PurposeLineage
-from trilogy.core.models import AggregateWrapper, DataType, Environment, Function
+from trilogy.core.models import AggregateWrapper, DataType, BoundEnvironment, Function
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_group_node
 from trilogy.core.processing.node_generators.common import (
@@ -9,7 +9,7 @@ from trilogy.core.processing.nodes import GroupNode, MergeNode
 from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
-def test_gen_group_node_parents(test_environment: Environment):
+def test_gen_group_node_parents(test_environment: BoundEnvironment):
     comp = test_environment.concepts["category_top_50_revenue_products"]
     assert comp.derivation == PurposeLineage.AGGREGATE
     assert comp.lineage
@@ -40,7 +40,7 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
     assert {x.address for x in gnode.output_concepts} == {prod_r.address, prod.address}
 
 
-def test_gen_group_node(test_environment: Environment, test_environment_graph):
+def test_gen_group_node(test_environment: BoundEnvironment, test_environment_graph):
     # from trilogy.core.models import AggregateWrapper
     from trilogy.hooks.query_debugger import DebuggingHook
 

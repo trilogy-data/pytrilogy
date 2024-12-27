@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, Function, WhereClause
+from trilogy.core.models import BoundConcept, BoundEnvironment, Function, WhereClause
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -14,9 +14,9 @@ LOGGER_PREFIX = "[GEN_GROUP_TO_NODE]"
 
 
 def gen_group_to_node(
-    concept: Concept,
+    concept: BoundConcept,
     local_optional,
-    environment: Environment,
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
@@ -27,7 +27,7 @@ def gen_group_to_node(
     if not isinstance(concept.lineage, Function):
         raise SyntaxError("Group to should have function lineage")
     group_arg = concept.lineage.arguments[0]
-    parent_concepts: List[Concept] = concept.lineage.concept_arguments
+    parent_concepts: List[BoundConcept] = concept.lineage.concept_arguments
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} group by node has required parents {[x.address for x in parent_concepts]}"
     )
@@ -51,7 +51,7 @@ def gen_group_to_node(
         preexisting_conditions=conditions.conditional if conditions else None,
         hidden_concepts=set(
             [group_arg.address]
-            if isinstance(group_arg, Concept)
+            if isinstance(group_arg, BoundConcept)
             and group_arg.address not in local_optional
             else []
         ),

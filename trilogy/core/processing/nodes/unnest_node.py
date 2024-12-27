@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.core.models import (
-    Concept,
+    BoundConcept,
     Function,
     QueryDatasource,
     SourceType,
@@ -19,9 +19,9 @@ class UnnestNode(StrategyNode):
 
     def __init__(
         self,
-        unnest_concepts: List[Concept],
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        unnest_concepts: List[BoundConcept],
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,

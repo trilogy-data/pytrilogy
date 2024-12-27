@@ -9,9 +9,9 @@ from trilogy.core.env_processor import (
 )
 from trilogy.core.models import (
     Grain,
-    PersistStatement,
     ProcessedQueryPersist,
 )
+from trilogy.core.parse_models import PersistStatement
 from trilogy.core.processing.node_generators import (
     gen_select_node,
 )

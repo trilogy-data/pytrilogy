@@ -11,6 +11,18 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
+from trilogy.core.parse_models import (
+    CopyStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+    ShowStatement,
+        ConceptDeclarationStatement,
+
+)
 from trilogy.core.models import (
     CTE,
     AggregateWrapper,
@@ -18,13 +30,12 @@ from trilogy.core.models import (
     CaseWhen,
     Comparison,
     CompiledCTE,
-    Concept,
-    ConceptDeclarationStatement,
+    BoundConcept,
+
     Conditional,
-    CopyStatement,
     Datasource,
     DataType,
-    Environment,
+    BoundEnvironment,
     FilterItem,
     Function,
     ImportStatement,
@@ -32,23 +43,16 @@ from trilogy.core.models import (
     ListWrapper,
     MapType,
     MapWrapper,
-    MergeStatementV2,
-    MultiSelectStatement,
     NumericType,
     OrderItem,
     Parenthetical,
-    PersistStatement,
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     RawColumnExpr,
-    RawSQLStatement,
-    RowsetDerivationStatement,
     RowsetItem,
-    SelectStatement,
-    ShowStatement,
     StructType,
     SubselectComparison,
     TupleWrapper,
@@ -237,7 +241,7 @@ def safe_quote(string: str, quote_char: str):
     return ".".join([f"{quote_char}{string}{quote_char}" for string in components])
 
 
-def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: Concept, quote_char: str):
+def safe_get_cte_value(coalesce, cte: CTE | UnionCTE, c: BoundConcept, quote_char: str):
     address = c.address
     raw = cte.source_map.get(address, None)
 
@@ -280,7 +284,7 @@ class BaseDialect:
 
     def render_concept_sql(
         self,
-        c: Concept,
+        c: BoundConcept,
         cte: CTE | UnionCTE,
         alias: bool = True,
         raise_invalid: bool = False,
@@ -310,7 +314,7 @@ class BaseDialect:
         return result
 
     def _render_concept_sql(
-        self, c: Concept, cte: CTE | UnionCTE, raise_invalid: bool = False
+        self, c: BoundConcept, cte: CTE | UnionCTE, raise_invalid: bool = False
     ) -> str:
         # only recurse while it's in sources of the current cte
         logger.debug(
@@ -375,7 +379,7 @@ class BaseDialect:
                 local_matched = [
                     x
                     for x in c.lineage.arguments
-                    if isinstance(x, Concept) and x.address in cte.output_columns
+                    if isinstance(x, BoundConcept) and x.address in cte.output_columns
                 ]
                 if not local_matched:
                     raise SyntaxError(
@@ -393,7 +397,7 @@ class BaseDialect:
                 args = []
                 for arg in c.lineage.arguments:
                     if (
-                        isinstance(arg, Concept)
+                        isinstance(arg, BoundConcept)
                         and arg.lineage
                         and isinstance(arg.lineage, Function)
                         and arg.lineage.operator
@@ -456,7 +460,7 @@ class BaseDialect:
             Conditional,
             Comparison,
             SubselectComparison,
-            Concept,
+            BoundConcept,
             str,
             int,
             list,
@@ -488,7 +492,7 @@ class BaseDialect:
         raise_invalid: bool = False,
     ) -> str:
         if isinstance(e, SubselectComparison):
-            if isinstance(e.right, Concept):
+            if isinstance(e.right, BoundConcept):
                 # we won't always have an existnce map
                 # so fall back to the normal map
                 lookup_cte = cte
@@ -556,7 +560,7 @@ class BaseDialect:
             arguments = []
             for arg in e.arguments:
                 if (
-                    isinstance(arg, Concept)
+                    isinstance(arg, BoundConcept)
                     and arg.lineage
                     and isinstance(arg.lineage, Function)
                     and arg.lineage.operator
@@ -592,7 +596,7 @@ class BaseDialect:
             )
         elif isinstance(e, FilterItem):
             return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid)} ELSE NULL END"
-        elif isinstance(e, Concept):
+        elif isinstance(e, BoundConcept):
             if (
                 isinstance(e.lineage, Function)
                 and e.lineage.operator == FunctionType.CONSTANT
@@ -780,7 +784,7 @@ class BaseDialect:
 
     def generate_queries(
         self,
-        environment: Environment,
+        environment: BoundEnvironment,
         statements: Sequence[
             SelectStatement
             | MultiSelectStatement

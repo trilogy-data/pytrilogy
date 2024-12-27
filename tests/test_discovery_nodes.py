@@ -1,5 +1,5 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.models import Environment, Grain
+from trilogy.core.models import BoundEnvironment, Grain
 from trilogy.core.processing.concept_strategies_v3 import (
     GroupNode,
     search_concepts,
@@ -27,7 +27,7 @@ def test_group_node(test_environment, test_environment_graph):
     group_node.resolve()
 
 
-def test_group_node_property(test_environment: Environment, test_environment_graph):
+def test_group_node_property(test_environment: BoundEnvironment, test_environment_graph):
     sum_name_length = test_environment.concepts["category_name_length_sum"]
 
     group_node = gen_group_node(
@@ -49,7 +49,7 @@ def test_group_node_property(test_environment: Environment, test_environment_gra
     assert final.datasources[0].group_required is False
 
 
-def test_group_node_property_all(test_environment: Environment, test_environment_graph):
+def test_group_node_property_all(test_environment: BoundEnvironment, test_environment_graph):
     sum_name_length = test_environment.concepts["category_name_length_sum"]
     all_rows = test_environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]
     sum_name_length_all_rows = sum_name_length.with_grain(Grain(components=[all_rows]))

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from trilogy import Environment
+from trilogy import BoundEnvironment
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import (
     BooleanOperator,
@@ -10,18 +10,34 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
 )
+
+from trilogy.core.parse_models import (
+    AlignClause,
+    ConceptDeclarationStatement,
+    CopyStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
+    OrderByRef,
+    OrderItemRef,
+    AlignItem,
+    AlignClause,
+    ColumnAssignmentRef,
+)
 from trilogy.core.models import (
     Address,
-    AlignClause,
-    AlignItem,
+    # AlignClause,
     CaseElse,
     CaseWhen,
     ColumnAssignment,
     Comparison,
-    Concept,
-    ConceptDeclarationStatement,
+    BoundConcept,
     Conditional,
-    CopyStatement,
+    # CopyStatement,
     Datasource,
     DataType,
     Function,
@@ -29,18 +45,12 @@ from trilogy.core.models import (
     ImportStatement,
     ListType,
     ListWrapper,
-    MergeStatementV2,
-    MultiSelectStatement,
     NumericType,
     OrderBy,
     Ordering,
     OrderItem,
-    PersistStatement,
+    # PersistStatement,
     Purpose,
-    RawSQLStatement,
-    RowsetDerivationStatement,
-    SelectItem,
-    SelectStatement,
     TupleWrapper,
     WhereClause,
 )
@@ -49,19 +59,19 @@ from trilogy.parsing.render import Renderer, render_environment, render_query
 
 def test_basic_query(test_environment):
     query = SelectStatement(
-        selection=[test_environment.concepts["order_id"]],
+        selection=[SelectItem(content=test_environment.concepts["order_id"].reference)],
         where_clause=None,
-        order_by=OrderBy(
+        order_by=OrderByRef(
             items=[
-                OrderItem(
-                    expr=test_environment.concepts["order_id"],
+                OrderItemRef(
+                    expr=test_environment.concepts["order_id"].reference,
                     order=Ordering.ASCENDING,
                 )
             ]
         ),
     )
 
-    string_query = render_query(query)
+    string_query = render_query(query, test_environment)
     assert (
         string_query
         == """SELECT
@@ -73,7 +83,7 @@ ORDER BY
 
 
 def test_window_over(test_environment):
-    env = Environment()
+    env = BoundEnvironment()
     _, parsed = env.parse(
         """
 key order_id int;
@@ -88,7 +98,7 @@ select max(order_id) by order_id -> test;
 
 """
     )
-    string_query = Renderer().to_string(parsed[-1])
+    string_query = Renderer(env).to_string(parsed[-1])
     assert (
         string_query
         == """SELECT
@@ -189,7 +199,7 @@ def test_environment_rendering(test_environment):
     assert "address tblRevenue" in rendered
 
 
-def test_persist(test_environment: Environment):
+def test_persist(test_environment: BoundEnvironment):
     select = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
@@ -222,7 +232,7 @@ ORDER BY
     )
 
 
-def test_render_select_item(test_environment: Environment):
+def test_render_select_item(test_environment: BoundEnvironment):
     test = Renderer().to_string(
         SelectItem(
             content=test_environment.concepts["order_id"], modifiers=[Modifier.HIDDEN]
@@ -232,13 +242,13 @@ def test_render_select_item(test_environment: Environment):
     assert test == "--order_id"
 
 
-def test_render_concept_declaration(test_environment: Environment):
+def test_render_concept_declaration(test_environment: BoundEnvironment):
     test = Renderer().to_string(
         ConceptDeclarationStatement(concept=test_environment.concepts["order_id"])
     )
 
     assert test == "key order_id int;"
-    env_two = Environment(namespace="test")
+    env_two = BoundEnvironment(namespace="test")
     env_two.parse("""key order_id int;""")
     test = Renderer().to_string(
         ConceptDeclarationStatement(concept=env_two.concepts["test.order_id"])
@@ -247,13 +257,13 @@ def test_render_concept_declaration(test_environment: Environment):
     assert test == "key test.order_id int;"
 
 
-def test_render_list_wrapper(test_environment: Environment):
+def test_render_list_wrapper(test_environment: BoundEnvironment):
     test = Renderer().to_string(ListWrapper([1, 2, 3, 4], type=DataType.INTEGER))
 
     assert test == "[1, 2, 3, 4]"
 
 
-def test_render_constant(test_environment: Environment):
+def test_render_constant(test_environment: BoundEnvironment):
     test = Renderer().to_string(
         Function(
             arguments=[[1, 2, 3, 4]],
@@ -266,7 +276,7 @@ def test_render_constant(test_environment: Environment):
     assert test == "[1, 2, 3, 4]"
 
 
-def test_render_rowset(test_environment: Environment):
+def test_render_rowset(test_environment: BoundEnvironment):
     query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
@@ -295,15 +305,15 @@ ORDER BY
     )
 
 
-def test_render_case(test_environment: Environment):
+def test_render_case(test_environment: BoundEnvironment):
     case_else = CaseElse(
         expr=test_environment.concepts["order_id"],
     )
 
-    test = Renderer().to_string(case_else)
+    test = Renderer(test_environment).to_string(case_else)
     assert test == "ELSE order_id"
 
-    test = Renderer().to_string(case_else)
+    test = Renderer(test_environment).to_string(case_else)
     assert test == "ELSE order_id"
     case_when = CaseWhen(
         expr=test_environment.concepts["order_id"],
@@ -314,17 +324,17 @@ def test_render_case(test_environment: Environment):
         ),
     )
 
-    test = Renderer().to_string(case_when)
+    test = Renderer(test_environment).to_string(case_when)
     assert test == "WHEN order_id = 123 THEN order_id"
 
-    env, parsed = Environment().parse(
+    env, parsed = BoundEnvironment().parse(
         """
 
 key x int;
 auto y <- case when x = 1 then 1 else 2 end;"""
     )
 
-    test = Renderer().to_string(parsed[-1])
+    test = Renderer(test_environment).to_string(parsed[-1])
     assert (
         test
         == """property y <- CASE WHEN x = 1 THEN 1
@@ -334,14 +344,14 @@ END;"""
 
     #  property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
 
-    env, parsed = Environment().parse(
+    env, parsed = BoundEnvironment().parse(
         """
 
 key category_name string;
 auto y <- CASE WHEN category_name like '%abc%' then True else False END;"""
     )
 
-    test = Renderer().to_string(parsed[-1])
+    test = Renderer(test_environment).to_string(parsed[-1])
     assert (
         test
         == """property y <- CASE WHEN like(category_name,'%abc%') = True THEN True
@@ -416,9 +426,9 @@ def test_render_math():
     assert test == "1 / 2 / 3"
 
 
-def test_render_anon(test_environment: Environment):
+def test_render_anon(test_environment: BoundEnvironment):
     test = Renderer().to_string(
-        Concept(
+        BoundConcept(
             name="materialized",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
@@ -434,7 +444,7 @@ def test_render_anon(test_environment: Environment):
     assert test == "materialized"
 
     test = Renderer().to_string(
-        Concept(
+        BoundConcept(
             name=f"{VIRTUAL_CONCEPT_PREFIX}_test",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
@@ -454,7 +464,7 @@ def test_render_dates():
 
     now = datetime.now()
     test = Renderer().to_string(
-        Concept(
+        BoundConcept(
             name=f"{VIRTUAL_CONCEPT_PREFIX}_materialized",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
@@ -471,7 +481,7 @@ def test_render_dates():
 
     today = date.today()
     test = Renderer().to_string(
-        Concept(
+        BoundConcept(
             name=f"{VIRTUAL_CONCEPT_PREFIX}_materialized",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
@@ -491,7 +501,7 @@ def test_render_merge():
     test = Renderer().to_string(
         MergeStatementV2(
             sources=[
-                Concept(
+                BoundConcept(
                     name="materialized",
                     purpose=Purpose.CONSTANT,
                     datatype=DataType.INTEGER,
@@ -504,7 +514,7 @@ def test_render_merge():
                 )
             ],
             targets={
-                "local.materialized": Concept(
+                "local.materialized": BoundConcept(
                     name="materialized",
                     purpose=Purpose.CONSTANT,
                     namespace="test",
@@ -547,7 +557,7 @@ def test_render_index_access():
     test = Renderer().to_string(
         Function(
             arguments=[
-                Concept(
+                BoundConcept(
                     name="user_id",
                     purpose=Purpose.KEY,
                     datatype=DataType.INTEGER,
@@ -569,7 +579,7 @@ def test_render_parenthetical():
     test = Renderer().to_string(
         Function(
             arguments=[
-                Concept(
+                BoundConcept(
                     name="user_id",
                     purpose=Purpose.KEY,
                     datatype=DataType.INTEGER,
@@ -610,7 +620,7 @@ def test_render_import():
 
 
 def test_render_datasource():
-    user_id = Concept(
+    user_id = BoundConcept(
         name="user_id",
         purpose=Purpose.KEY,
         datatype=DataType.INTEGER,
@@ -694,7 +704,7 @@ query '''SELECT * FROM test'''
 where user_id = 123 or user_id = 456;"""
     )
 
-    basic = Environment()
+    basic = BoundEnvironment()
     basic.parse(
         """key id int;
 property id.date_string string;
@@ -773,7 +783,7 @@ where user_id = 123 or user_id = 456;"""
 
 
 def test_circular_rendering():
-    basic = Environment()
+    basic = BoundEnvironment()
 
     _, commands = basic.parse(
         """
@@ -799,7 +809,7 @@ SELECT
 
 
 def test_render_list_type():
-    basic = Environment()
+    basic = BoundEnvironment()
 
     env, commands = basic.parse(
         """
@@ -839,7 +849,7 @@ ORDER BY
 
 
 def test_render_substring_filter():
-    basic = Environment()
+    basic = BoundEnvironment()
 
     env, commands = basic.parse(
         """
@@ -859,7 +869,7 @@ final_zips;
 
     final_zips: ConceptDeclarationStatement = commands[-2]
     assert isinstance(
-        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept
+        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, BoundConcept
     ), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
     rendered = Renderer().to_string(final_zips)
 
@@ -870,7 +880,7 @@ final_zips;
 
 
 def test_render_environment():
-    x = Environment(working_path=Path(__file__).parent)
+    x = BoundEnvironment(working_path=Path(__file__).parent)
     x.parse(
         """import a;
         import b;
@@ -883,9 +893,9 @@ def test_render_environment():
     assert rendered == "import a;\nimport b;", rendered
 
 
-def test_render_property(test_environment: Environment):
+def test_render_property(test_environment: BoundEnvironment):
 
-    env = Environment.from_string(
+    env = BoundEnvironment.from_string(
         """
 key x int;
 key y int;

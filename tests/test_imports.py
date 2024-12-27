@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from trilogy import Environment
+from trilogy import BoundEnvironment
 
 
 def test_multi_environment():
-    basic = Environment()
+    basic = BoundEnvironment()
 
     basic.parse(
         """
@@ -26,7 +26,7 @@ const pi <- 3.14;
 
 
 def test_test_alias_free_import():
-    basic = Environment(working_path=Path(__file__).parent)
+    basic = BoundEnvironment(working_path=Path(__file__).parent)
 
     basic.parse(
         """

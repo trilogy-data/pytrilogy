@@ -3,8 +3,8 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.models import (
     AggregateWrapper,
-    Concept,
-    Environment,
+    BoundConcept,
+    BoundEnvironment,
     Function,
     Grain,
     LooseConceptList,
@@ -22,9 +22,9 @@ LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 
 def gen_group_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
@@ -33,12 +33,18 @@ def gen_group_node(
 ) -> StrategyNode | None:
     # aggregates MUST always group to the proper grain
     # except when the
-    parent_concepts: List[Concept] = unique(
+    parent_concepts: List[BoundConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
+    if not parent_concepts:
+        print(concept.lineage)
+        print(concept.lineage.function)
+        print(concept.lineage.function.arguments[0])
+        print(type(concept.lineage.function.arguments[0]))
+        raise SyntaxError('Group node should have parents')
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
@@ -61,7 +67,7 @@ def gen_group_node(
                 )
 
             if possible_agg.grain and possible_agg.grain == concept.grain:
-                agg_parents: List[Concept] = resolve_function_parent_concepts(
+                agg_parents: List[BoundConcept] = resolve_function_parent_concepts(
                     possible_agg,
                     environment=environment,
                 )

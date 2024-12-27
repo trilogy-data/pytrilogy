@@ -11,7 +11,7 @@ from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
-from trilogy import Dialects, Environment, Executor
+from trilogy import Dialects, BoundEnvironment, Executor
 from trilogy.constants import logger
 
 logger.setLevel(DEBUG)
@@ -94,4 +94,4 @@ def adventureworks_engine(db_must):
 
 @fixture(scope="session")
 def environment():
-    yield Environment(working_path=dirname(ENV_PATH))
+    yield BoundEnvironment(working_path=dirname(ENV_PATH))

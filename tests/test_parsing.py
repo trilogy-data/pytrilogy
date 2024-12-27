@@ -6,12 +6,11 @@ from trilogy.core.models import (
     Comparison,
     Datasource,
     DataType,
-    Environment,
+    BoundEnvironment,
     ProcessedQuery,
-    SelectStatement,
-    ShowStatement,
     TupleWrapper,
 )
+from trilogy.core.parse_models import ComparisonRef, SelectStatement, ShowStatement
 from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
     arg_to_datatype,
@@ -84,32 +83,33 @@ def test_sort():
 
 
 def test_arg_to_datatype():
-    assert arg_to_datatype(1.00) == DataType.FLOAT
-    assert arg_to_datatype("test") == DataType.STRING
+    assert arg_to_datatype(1.00, BoundEnvironment()) == DataType.FLOAT
+    assert arg_to_datatype("test", BoundEnvironment()) == DataType.STRING
 
 
-def test_argument_to_purpose(test_environment: Environment):
-    assert argument_to_purpose(1.00) == Purpose.CONSTANT
-    assert argument_to_purpose("test") == Purpose.CONSTANT
-    assert argument_to_purpose(test_environment.concepts["order_id"]) == Purpose.KEY
+def test_argument_to_purpose(test_environment: BoundEnvironment):
+    assert argument_to_purpose(1.00,test_environment) == Purpose.CONSTANT
+    assert argument_to_purpose("test", test_environment) == Purpose.CONSTANT
+    assert argument_to_purpose(test_environment.concepts["order_id"], test_environment) == Purpose.KEY
     assert (
         function_args_to_output_purpose(
             [
                 "test",
                 1.00,
-            ]
+            ],
+            test_environment
         )
         == Purpose.CONSTANT
     )
     assert (
         function_args_to_output_purpose(
-            ["test", 1.00, test_environment.concepts["order_id"]]
+            ["test", 1.00, test_environment.concepts["order_id"]], test_environment
         )
         == Purpose.PROPERTY
     )
     unnest_env, parsed = parse_text("const random <- unnest([1,2,3,4]);")
     assert (
-        function_args_to_output_purpose([unnest_env.concepts["random"]])
+        function_args_to_output_purpose([unnest_env.concepts["random"]], unnest_env)
         == Purpose.PROPERTY
     )
 
@@ -238,7 +238,7 @@ def test_between():
     left = query.where_clause.conditional.left
     assert isinstance(
         left,
-        Comparison,
+        ComparisonRef,
     ), type(left)
     assert left.operator == ComparisonOperator.GTE
     assert left.right == 3
@@ -246,7 +246,7 @@ def test_between():
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
-        Comparison,
+        ComparisonRef,
     ), type(right)
     assert right.operator == ComparisonOperator.LTE
     assert right.right == 5
@@ -281,7 +281,7 @@ def test_purpose_nesting():
 """
     )
 
-    env2: Environment = Environment()
+    env2: BoundEnvironment = BoundEnvironment()
     env2.add_import("dates", env)
 
     env2, _ = parse_text(

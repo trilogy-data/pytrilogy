@@ -1,17 +1,17 @@
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models import Environment, PersistStatement
+from trilogy.core.models import BoundEnvironment
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
 from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.core.parse_models import PersistStatement
 
-
-def test_gen_select_node_parents(test_environment: Environment):
+def test_gen_select_node_parents(test_environment: BoundEnvironment):
     test_environment.concepts["category_top_50_revenue_products"]
     test_environment.concepts["category_id"]
 
 
 def test_select_nodes():
-    env = Environment()
+    env = BoundEnvironment()
     DebuggingHook()
     env.parse(
         """
@@ -46,7 +46,7 @@ select unnest;
 
 
 def test_materialized_select():
-    env = Environment()
+    env = BoundEnvironment()
     DebuggingHook()
     env.parse(
         """
@@ -92,7 +92,7 @@ address blended;
 
 
 def test_materialized_select_with_filter():
-    env = Environment()
+    env = BoundEnvironment()
     DebuggingHook()
     _, statements = env.parse(
         """

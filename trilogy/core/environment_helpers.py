@@ -2,12 +2,14 @@ from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess
 from trilogy.core.models import (
-    Concept,
+    BoundConcept,
     DataType,
-    Environment,
+    BoundEnvironment,
     Function,
     Metadata,
     StructType,
+    Grain,
+    Function
 )
 from trilogy.parsing.common import Meta, arg_to_datatype, process_function_args
 
@@ -23,7 +25,7 @@ FUNCTION_DESCRIPTION_MAPS = {
 }
 
 
-def generate_date_concepts(concept: Concept, environment: Environment):
+def generate_date_concepts(concept: BoundConcept, environment: BoundEnvironment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -54,15 +56,15 @@ def generate_date_concepts(concept: Concept, environment: Environment):
         namespace = (
             None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         )
-        new_concept = Concept(
+        new_concept = BoundConcept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
-            grain=const_function.output_grain,
+            grain=Grain(components = {concept.address,}),
             namespace=namespace,
             keys=set(
-                concept.address,
+                [concept.address],
             ),
             metadata=Metadata(
                 description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}. ",
@@ -75,7 +77,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
         environment.add_concept(new_concept, add_derived=False)
 
 
-def generate_datetime_concepts(concept: Concept, environment: Environment):
+def generate_datetime_concepts(concept: BoundConcept, environment: BoundEnvironment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -105,15 +107,15 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         namespace = (
             None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         )
-        new_concept = Concept(
+        new_concept = BoundConcept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
-            grain=const_function.output_grain,
+            grain=Grain(components={concept.address,}),
             namespace=namespace,
-            keys=set(
-                concept.address,
+            keys=set([
+                concept.address,],
             ),
             metadata=Metadata(
                 description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}.",
@@ -126,7 +128,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
         environment.add_concept(new_concept, add_derived=False)
 
 
-def generate_key_concepts(concept: Concept, environment: Environment):
+def generate_key_concepts(concept: BoundConcept, environment: BoundEnvironment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -147,12 +149,12 @@ def generate_key_concepts(concept: Concept, environment: Environment):
         namespace = (
             None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
         )
-        new_concept = Concept(
+        new_concept = BoundConcept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
-            grain=const_function.output_grain,
+            grain=Grain(components={concept.address,}),
             namespace=namespace,
             keys={
                 concept.address,
@@ -169,8 +171,8 @@ def generate_key_concepts(concept: Concept, environment: Environment):
 
 
 def generate_related_concepts(
-    concept: Concept,
-    environment: Environment,
+    concept: BoundConcept,
+    environment: BoundEnvironment,
     meta: Meta | None = None,
     add_derived: bool = False,
 ):
@@ -193,7 +195,7 @@ def generate_related_concepts(
             args = process_function_args(
                 [concept, key], meta=meta, environment=environment
             )
-            auto = Concept(
+            auto = BoundConcept(
                 name=key,
                 datatype=arg_to_datatype(value),
                 purpose=Purpose.PROPERTY,
@@ -206,5 +208,5 @@ def generate_related_concepts(
                 lineage=AttrAccess(args),
             )
             environment.add_concept(auto, meta=meta)
-            if isinstance(value, Concept):
+            if isinstance(value, BoundConcept):
                 environment.merge_concept(auto, value, modifiers=[])

@@ -1,9 +1,9 @@
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.core.processing.nodes.base_node import StrategyNode, get_all_parent_partial
 
 
 def test_base_node_copy():
-    env = Environment()
+    env = BoundEnvironment()
     x = StrategyNode(input_concepts=[], output_concepts=[], environment=env)
 
     y = x.copy()
@@ -12,7 +12,7 @@ def test_base_node_copy():
 
 
 def test_hide():
-    env = Environment()
+    env = BoundEnvironment()
     env.parse(
         """
 key order_id int;
@@ -31,7 +31,7 @@ property order_id.profit float;"""
 
 
 def test_partial():
-    env = Environment()
+    env = BoundEnvironment()
     env.parse(
         """
 key order_id int;
@@ -48,7 +48,7 @@ property order_id.profit float;"""
 
 
 def test_get_parent_partial():
-    env = Environment()
+    env = BoundEnvironment()
     env.parse(
         """
 key order_id int;

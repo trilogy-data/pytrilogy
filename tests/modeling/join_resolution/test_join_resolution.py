@@ -3,10 +3,10 @@ import pytest
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
-from trilogy.core.models import Environment, Grain
+from trilogy.core.models import BoundEnvironment, Grain
 
 
-def test_ambiguous_error(test_environment: Environment, test_executor: Executor):
+def test_ambiguous_error(test_environment: BoundEnvironment, test_executor: Executor):
     # test keys
     test_select = """
 SELECT
@@ -22,7 +22,7 @@ SELECT
 
 
 def test_ambiguous_error_with_forced_join(
-    test_environment: Environment, test_executor: Executor
+    test_environment: BoundEnvironment, test_executor: Executor
 ):
     # check we can resolve it
     test_select = """
@@ -53,7 +53,7 @@ SELECT
 
 
 def test_ambiguous_error_with_forced_join_order(
-    test_environment: Environment, test_executor: Executor
+    test_environment: BoundEnvironment, test_executor: Executor
 ):
     # check we can resolve it
     test_select = """

@@ -1,6 +1,7 @@
 from trilogy import Dialects
 from trilogy.core.enums import Granularity, Purpose, PurposeLineage
-from trilogy.core.models import SelectStatement, WindowItem
+from trilogy.core.models import  WindowItem,  Grain
+from trilogy.core.parse_models import SelectStatement, WindowItemRef
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
@@ -58,10 +59,10 @@ limit 100
     env, parsed = parse(declarations)
     select: SelectStatement = parsed[-1]
 
-    assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
+    assert isinstance(env.concepts["user_rank"].lineage, WindowItemRef)
 
     ds = search_concepts(
-        [env.concepts["post_count"], env.concepts["user_id"]],
+        [env.concepts["local.post_count"].with_grain(Grain(components={'local.user_id'})), env.concepts["user_id"]],
         environment=env,
         g=generate_graph(env),
         depth=0,
@@ -157,7 +158,7 @@ order by x asc;"""
     env, parsed = parse(declarations)
     select: SelectStatement = parsed[-1]
     x = env.concepts["x"]
-    assert x.granularity == Granularity.MULTI_ROW
+    assert x.granularity(env) == Granularity.MULTI_ROW
 
     z = env.concepts["z"]
     assert z.purpose == Purpose.PROPERTY

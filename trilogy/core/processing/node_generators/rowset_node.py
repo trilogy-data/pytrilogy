@@ -3,14 +3,17 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.models import (
-    Concept,
-    Environment,
+    BoundConcept,
+    BoundEnvironment,
     Grain,
+
+    RowsetItem,
+    WhereClause,
+)
+from trilogy.core.parse_models import (
     MultiSelectStatement,
     RowsetDerivationStatement,
-    RowsetItem,
-    SelectStatement,
-    WhereClause,
+    SelectStatement
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -19,9 +22,9 @@ LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
 
 def gen_rowset_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
@@ -36,6 +39,7 @@ def gen_rowset_node(
         )
     lineage: RowsetItem = concept.lineage
     rowset: RowsetDerivationStatement = lineage.rowset
+    derived = rowset.create_derived_concepts(environment, concrete=True)
     select: SelectStatement | MultiSelectStatement = lineage.rowset.select
 
     node = get_query_node(environment, select)
@@ -46,11 +50,11 @@ def gen_rowset_node(
         )
         return None
     enrichment = set([x.address for x in local_optional])
-    rowset_relevant = [x for x in rowset.derived_concepts]
+    rowset_relevant = [x for x in derived]
     select_hidden = select.hidden_components
     rowset_hidden = [
         x
-        for x in rowset.derived_concepts
+        for x in derived
         if isinstance(x.lineage, RowsetItem)
         and x.lineage.content.address in select_hidden
     ]

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Environment
+from trilogy import BoundEnvironment
 from trilogy.parsing.parse_engine import PARSER, ParseToObjects
 
 parent = Path(__file__).parent
@@ -13,7 +13,7 @@ TEXT_LOOKUP = {}
 def infinite_parsing():
     text = open(parent / "order.preql").read()
     parser = ParseToObjects(
-        Environment(working_path=parent),
+        BoundEnvironment(working_path=parent),
         tokens=TOKENS,
         text_lookup=TEXT_LOOKUP,
         parsed=PARSED,
@@ -34,5 +34,5 @@ def test_infinite_parsing():
 
 
 def test_parsing_recursion():
-    Environment().from_file(Path(__file__).parent / "customer.preql")
-    Environment().from_file(Path(__file__).parent / "order.preql")
+    BoundEnvironment().from_file(Path(__file__).parent / "customer.preql")
+    BoundEnvironment().from_file(Path(__file__).parent / "order.preql")

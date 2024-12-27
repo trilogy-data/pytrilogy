@@ -2,14 +2,14 @@ from logging import INFO
 
 from pytest import fixture
 
-from trilogy import Dialects, Environment, parse
+from trilogy import Dialects, BoundEnvironment, parse
 from trilogy.core.env_processor import generate_graph
 from trilogy.hooks.query_debugger import DebuggingHook
 
 
 @fixture(scope="session")
 def test_environment():
-    env = Environment()
+    env = BoundEnvironment()
     test_declaration = """
 key order_id int;
 key store_id int;
@@ -135,7 +135,7 @@ where
 
 
 @fixture(scope="session")
-def test_executor(test_environment: Environment):
+def test_executor(test_environment: BoundEnvironment):
     yield Dialects.DUCK_DB.default_executor(
         environment=test_environment, hooks=[DebuggingHook(level=INFO)]
     )

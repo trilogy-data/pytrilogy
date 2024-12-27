@@ -5,13 +5,13 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import BooleanOperator, JoinType, Purpose
 from trilogy.core.models import (
-    Concept,
+    BoundConcept,
     Conditional,
-    Environment,
+    BoundEnvironment,
     Grain,
-    MultiSelectStatement,
     WhereClause,
 )
+from trilogy.core.parse_models import MultiSelectStatement
 from trilogy.core.processing.node_generators.common import resolve_join_order
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -52,9 +52,9 @@ def extra_align_joins(
 
 
 def gen_multiselect_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,

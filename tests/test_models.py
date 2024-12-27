@@ -8,19 +8,19 @@ from trilogy.core.models import (
     AggregateWrapper,
     BaseJoin,
     Comparison,
-    Concept,
+    BoundConcept,
     Conditional,
     CTEConceptPair,
     DataType,
-    Environment,
+    BoundEnvironment,
     Grain,
     Join,
     QueryDatasource,
     RowsetItem,
-    SelectStatement,
     TupleWrapper,
     UndefinedConcept,
 )
+from trilogy.core.parse_models import SelectStatement
 
 
 def test_cte_merge(test_environment, test_environment_graph):
@@ -68,7 +68,7 @@ def test_cte_merge(test_environment, test_environment_graph):
 
 
 def test_concept(test_environment, test_environment_graph):
-    test_concept: Concept = list(test_environment.concepts.values())[0]
+    test_concept: BoundConcept = list(test_environment.concepts.values())[0]
     new = test_concept.with_namespace("test")
     assert (
         new.namespace == ("test" + "." + test_concept.namespace)
@@ -78,7 +78,7 @@ def test_concept(test_environment, test_environment_graph):
 
 
 def test_concept_filter(test_environment, test_environment_graph):
-    test_concept: Concept = list(test_environment.concepts.values())[0]
+    test_concept: BoundConcept = list(test_environment.concepts.values())[0]
     new = test_concept.with_filter(
         Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
     )
@@ -142,7 +142,7 @@ def test_grain(test_environment):
     ), f"Property should be removed from grain ({z.components}) vs {z2.components}"
 
 
-def test_select(test_environment: Environment):
+def test_select(test_environment: BoundEnvironment):
     oid = test_environment.concepts["order_id"]
     pid = test_environment.concepts["product_id"]
     cid = test_environment.concepts["category_id"]
@@ -157,7 +157,7 @@ def test_select(test_environment: Environment):
     assert ds.grain.components == Grain(components=[oid, pid, cid]).components
 
 
-def test_undefined(test_environment: Environment):
+def test_undefined(test_environment: BoundEnvironment):
     x = UndefinedConcept(
         name="test",
         datatype="int",
@@ -176,7 +176,7 @@ def test_undefined(test_environment: Environment):
     assert z.grain == Grain()
 
 
-def test_base_join(test_environment: Environment):
+def test_base_join(test_environment: BoundEnvironment):
     exc: SyntaxError | None = None
     try:
         BaseJoin(
@@ -210,7 +210,7 @@ def test_comparison():
         assert isinstance(exc, SyntaxError)
 
 
-def test_join(test_environment: Environment):
+def test_join(test_environment: BoundEnvironment):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     output_map = {
@@ -265,7 +265,7 @@ def test_join(test_environment: Environment):
 
 
 def test_concept_address_in_check():
-    target = Concept(
+    target = BoundConcept(
         name="test",
         datatype="int",
         purpose=Purpose.CONSTANT,

@@ -5,21 +5,20 @@ from trilogy import Dialects, parse
 from trilogy.core.enums import Granularity, Purpose
 from trilogy.core.functions import CurrentDatetime
 from trilogy.core.models import (
-    Concept,
+    BoundConcept,
     DataType,
-    Environment,
+    BoundEnvironment,
     Function,
     ProcessedQuery,
-    SelectItem,
 )
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
-
+from trilogy.core.parse_models import SelectItem
 ENVIRONMENT_CONCEPTS = [
-    Concept(
+    BoundConcept(
         name="static",
         namespace="local",
         datatype=DataType.DATETIME,
@@ -29,7 +28,7 @@ ENVIRONMENT_CONCEPTS = [
 ]
 
 
-def enrich_environment(env: Environment):
+def enrich_environment(env: BoundEnvironment):
     for concept in ENVIRONMENT_CONCEPTS:
         env.add_concept(concept)
     return env
@@ -40,7 +39,7 @@ def test_sane_rendering():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
+        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
     local_static = env.concepts["local.static"]
@@ -78,7 +77,7 @@ def test_daily_job():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
+        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
     local_static = env.concepts["local.static"]
@@ -113,7 +112,7 @@ def test_rolling_analytics():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
+        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
     )
 
     engine: Executor = Dialects.DUCK_DB.default_executor(
@@ -137,7 +136,7 @@ def test_counts():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=Environment(working_path=Path(__file__).parent)
+        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
     local_static = env.concepts["local.static"]

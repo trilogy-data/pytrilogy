@@ -7,6 +7,10 @@ from typing import Any, Dict, List, Set, Tuple
 import networkx as nx
 
 from trilogy.core.enums import BooleanOperator, FunctionClass, Granularity, Purpose
+from trilogy.core.parse_models import (
+    MultiSelectStatement,
+    SelectStatement,)
+
 from trilogy.core.models import (
     CTE,
     AggregateWrapper,
@@ -14,13 +18,13 @@ from trilogy.core.models import (
     CaseElse,
     CaseWhen,
     Comparison,
-    Concept,
+    BoundConcept,
     ConceptPair,
     Conditional,
     Datasource,
     DataType,
     DatePart,
-    Environment,
+    BoundEnvironment,
     FilterItem,
     Function,
     JoinType,
@@ -30,12 +34,12 @@ from trilogy.core.models import (
     MagicConstants,
     MapType,
     MapWrapper,
-    MultiSelectStatement,
+    # MultiSelectStatement,
     NumericType,
     Parenthetical,
     ProcessedQuery,
     QueryDatasource,
-    SelectStatement,
+    # SelectStatement,
     SubselectComparison,
     TupleWrapper,
     UnionCTE,
@@ -208,7 +212,7 @@ def resolve_join_order_v2(
     return output
 
 
-def concept_to_relevant_joins(concepts: list[Concept]) -> List[Concept]:
+def concept_to_relevant_joins(concepts: list[BoundConcept]) -> List[BoundConcept]:
     addresses = LooseConceptList(concepts=concepts)
     sub_props = LooseConceptList(
         concepts=[
@@ -233,7 +237,7 @@ def create_log_lambda(prefix: str, depth: int, logger: Logger):
 
 
 def calculate_graph_relevance(
-    g: nx.DiGraph, subset_nodes: set[str], concepts: set[Concept]
+    g: nx.DiGraph, subset_nodes: set[str], concepts: set[BoundConcept]
 ) -> int:
     """Calculate the relevance of each node in a graph
     Relevance is used to prune irrelevant nodes from the graph
@@ -268,10 +272,10 @@ def calculate_graph_relevance(
 
 def add_node_join_concept(
     graph: nx.DiGraph,
-    concept: Concept,
-    concept_map: dict[str, Concept],
+    concept: BoundConcept,
+    concept_map: dict[str, BoundConcept],
     ds_node: str,
-    environment: Environment,
+    environment: BoundEnvironment,
 ):
     name = f"c~{concept.address}"
     graph.add_node(name, type=NodeType.CONCEPT)
@@ -294,8 +298,8 @@ def add_node_join_concept(
 
 
 def resolve_instantiated_concept(
-    concept: Concept, datasource: QueryDatasource | Datasource
-) -> Concept:
+    concept: BoundConcept, datasource: QueryDatasource | Datasource
+) -> BoundConcept:
     if concept.address in datasource.output_concepts:
         return concept
     for k in concept.pseudonyms:
@@ -334,13 +338,13 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
 
 def get_node_joins(
     datasources: List[QueryDatasource | Datasource],
-    environment: Environment,
+    environment: BoundEnvironment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
     ds_node_map: dict[str, QueryDatasource | Datasource] = {}
-    concept_map: dict[str, Concept] = {}
+    concept_map: dict[str, BoundConcept] = {}
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
         ds_node_map[ds_node] = datasource
@@ -386,7 +390,7 @@ def get_node_joins(
 
 
 def get_disconnected_components(
-    concept_map: Dict[str, Set[Concept]]
+    concept_map: Dict[str, Set[BoundConcept]]
 ) -> Tuple[int, List]:
     """Find if any of the datasources are not linked"""
     import networkx as nx
@@ -416,7 +420,7 @@ def is_scalar_condition(
         | list[Any]
         | WindowItem
         | FilterItem
-        | Concept
+        | BoundConcept
         | Comparison
         | Conditional
         | Parenthetical
@@ -448,7 +452,7 @@ def is_scalar_condition(
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
         return all([is_scalar_condition(x, materialized) for x in element.arguments])
-    elif isinstance(element, Concept):
+    elif isinstance(element, BoundConcept):
         if materialized and element.address in materialized:
             return True
         if element.lineage and isinstance(element.lineage, AggregateWrapper):

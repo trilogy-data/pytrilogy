@@ -1,11 +1,11 @@
 from trilogy import parse
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.dialect.base import BaseDialect
 
 
 def test_merge_concepts():
-    env1 = Environment()
-    env2 = Environment()
+    env1 = BoundEnvironment()
+    env2 = BoundEnvironment()
     for env in [env1, env2]:
         parse(
             """
@@ -41,8 +41,8 @@ def query_to_lines(query):
 
 
 def test_merge_concept_remapping():
-    env1 = Environment()
-    env2 = Environment()
+    env1 = BoundEnvironment()
+    env2 = BoundEnvironment()
     parse(
         """
 key one int;

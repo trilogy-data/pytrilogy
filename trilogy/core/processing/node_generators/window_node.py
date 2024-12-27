@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, WhereClause, WindowItem
+from trilogy.core.models import BoundConcept, BoundEnvironment, WhereClause, WindowItem
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -10,8 +10,8 @@ LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
 
 def resolve_window_parent_concepts(
-    concept: Concept, environment: Environment
-) -> tuple[Concept, List[Concept]]:
+    concept: BoundConcept, environment: BoundEnvironment
+) -> tuple[BoundConcept, List[BoundConcept]]:
     if not isinstance(concept.lineage, WindowItem):
         raise ValueError
     base = []
@@ -24,14 +24,14 @@ def resolve_window_parent_concepts(
             # that is grouped by a window
             # need to figure out how to resolve this
             # base += [environment.concepts[item.expr.output.address]]
-            base += [item.expr.output]
+            base += [item.expr]
     return concept.lineage.content, unique(base, "address")
 
 
 def gen_window_node(
-    concept: Concept,
-    local_optional: list[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: list[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,

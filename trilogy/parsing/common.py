@@ -14,9 +14,9 @@ from trilogy.core.enums import (
 from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
 from trilogy.core.models import (
     AggregateWrapper,
-    Concept,
+    BoundConcept as FullConcept,
     DataType,
-    Environment,
+    BoundEnvironment,
     FilterItem,
     Function,
     FunctionClass,
@@ -28,15 +28,23 @@ from trilogy.core.models import (
     Parenthetical,
     Purpose,
     WindowItem,
-    ConceptRef
+
+)
+from trilogy.core.parse_models import (
+        ConceptRef,
+    FunctionRef,
+    AggregateWrapperRef,
+    FilterItemRef,
+    WindowItemRef,
+    ParentheticalRef,
+    Concept,
 )
 from trilogy.utility import string_to_hash, unique
 
 
-def get_upstream_modifiers(keys: List[Concept | ConceptRef], environment:Environment) -> list[Modifier]:
+def get_upstream_modifiers(keys: List[Concept], environment:BoundEnvironment) -> list[Modifier]:
     modifiers = set()
     for pkey in keys:
-        pkey = pkey.instantiate(environment)
         if pkey.modifiers:
             modifiers.update(pkey.modifiers)
     return list(modifiers)
@@ -45,23 +53,23 @@ def get_upstream_modifiers(keys: List[Concept | ConceptRef], environment:Environ
 def process_function_args(
     args,
     meta: Meta | None,
-    environment: Environment,
-) -> List[Concept |ConceptRef | Function | str | int | float | date | datetime]:
-    final: List[Concept | Function | str | int | float | date | datetime] = []
+    environment: BoundEnvironment,
+) -> List[ConceptRef | FunctionRef | str | int | float | date | datetime]:
+    final: List[ConceptRef | FunctionRef | str | int | float | date | datetime] = []
     for arg in args:
         # if a function has an anonymous function argument
         # create an implicit concept
-        if isinstance(arg, Parenthetical):
+        if isinstance(arg, ParentheticalRef):
             processed = process_function_args([arg.content], meta, environment)
             final.append(
-                Function(
+                FunctionRef(
                     operator=FunctionType.PARENTHETICAL,
                     arguments=processed,
-                    output_datatype=arg_to_datatype(processed[0]),
-                    output_purpose=function_args_to_output_purpose(processed),
+                    output_datatype=arg_to_datatype(processed[0], environment),
+                    output_purpose=function_args_to_output_purpose(processed, environment),
                 )
             )
-        elif isinstance(arg, Function):
+        elif isinstance(arg, FunctionRef):
             # if it's not an aggregate function, we can skip the virtual concepts
             # to simplify anonymous function handling
             if (
@@ -80,9 +88,9 @@ def process_function_args(
             if concept.metadata and meta:
                 concept.metadata.line_number = meta.line
             environment.add_concept(concept, meta=meta)
-            final.append(concept)
+            final.append(concept.reference)
         elif isinstance(
-            arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
+            arg, (FilterItemRef, WindowItemRef, AggregateWrapperRef, ListWrapper, MapWrapper)
         ):
             id_hash = string_to_hash(str(arg))
             concept = arbitrary_to_concept(
@@ -93,18 +101,19 @@ def process_function_args(
             if concept.metadata and meta:
                 concept.metadata.line_number = meta.line
             environment.add_concept(concept, meta=meta)
-            final.append(concept)
+            final.append(concept.reference)
         elif isinstance(arg, ConceptRef):
-            final.append(environment.concepts[arg])
+            final.append(arg)
         else:
             final.append(arg)
     return final
 
 
 def get_purpose_and_keys(
+        environment: BoundEnvironment,
     purpose: Purpose | None, args: Tuple[Concept, ...] | None
 ) -> Tuple[Purpose, set[str] | None]:
-    local_purpose = purpose or function_args_to_output_purpose(args)
+    local_purpose = purpose or function_args_to_output_purpose(args, environment)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args)
     else:
@@ -126,13 +135,13 @@ def constant_to_concept(
     parent: ListWrapper | MapWrapper | list | int | float | str,
     name: str,
     namespace: str,
-    environment: Environment,
+    environment: BoundEnvironment,
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
-    const_function: Function = Function(
+    const_function: FunctionRef = FunctionRef(
         operator=FunctionType.CONSTANT,
-        output_datatype=arg_to_datatype(parent),
+        output_datatype=arg_to_datatype(parent, environment),
         output_purpose=Purpose.CONSTANT,
         arguments=[parent],
     )
@@ -143,18 +152,18 @@ def constant_to_concept(
         datatype=const_function.output_datatype,
         purpose=Purpose.CONSTANT,
         lineage=const_function,
-        grain=const_function.output_grain,
+        grain=Grain(),
         namespace=namespace,
         metadata=fmetadata,
     )
 
 
 def concepts_to_grain_concepts(
-    concepts: List[Concept] | List[str] | set[str], environment: Environment | None
+    concepts: List[Concept] | List[str] | set[str], environment: BoundEnvironment | None
 ) -> list[Concept]:
-    environment = Environment() if environment is None else environment
+    environment = BoundEnvironment() if environment is None else environment
     pconcepts: list[Concept] = [
-        c if isinstance(c, Concept) else environment.concepts[c] for c in concepts
+        c if isinstance(c, (Concept, FullConcept)) else environment.concepts[c] for c in concepts
     ]
 
     final: List[Concept] = []
@@ -174,18 +183,19 @@ def concepts_to_grain_concepts(
 
 
 def function_to_concept(
-    parent: Function,
+    parent: FunctionRef,
     name: str,
-    environment: Environment,
+    environment: BoundEnvironment,
     namespace: str | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
-    for x in parent.arguments:
+    concrete = parent.instantiate(environment)
+    for x in concrete.arguments:
         pkeys += [
             x
-            for x in parent.concept_arguments
+            for x in concrete.concept_arguments
             if not x.derivation == PurposeLineage.CONSTANT
         ]
     grain: Grain | None = Grain()
@@ -233,33 +243,34 @@ def function_to_concept(
 
 
 def filter_item_to_concept(
-    parent: FilterItem,
+    parent: FilterItemRef,
     name: str,
     namespace: str,
-    environment:Environment,
+    environment:BoundEnvironment,
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    modifiers = get_upstream_modifiers(parent.content.concept_arguments, environment=environment)
+    concrete = parent.instantiate(environment)
+    modifiers = get_upstream_modifiers(concrete.content.concept_arguments, environment=environment)
     return Concept(
         name=name,
-        datatype=parent.content.datatype,
+        datatype=concrete.content.datatype,
         purpose=Purpose.PROPERTY,
         lineage=parent,
         metadata=fmetadata,
         namespace=namespace,
         # filtered copies cannot inherit keys
         keys=(
-            parent.content.keys
-            if parent.content.purpose == Purpose.PROPERTY
+            concrete.content.keys
+            if concrete.content.purpose == Purpose.PROPERTY
             else {
-                parent.content.address,
+                concrete.content.address,
             }
         ),
         grain=(
-            parent.content.grain
-            if parent.content.purpose == Purpose.PROPERTY
+            concrete.content.grain
+            if concrete.content.purpose == Purpose.PROPERTY
             else Grain()
         ),
         modifiers=modifiers,
@@ -267,23 +278,24 @@ def filter_item_to_concept(
 
 
 def window_item_to_concept(
-    parent: WindowItem,
+    parent: WindowItemRef,
     name: str,
     namespace: str,
-    environment: Environment,
+    environment: BoundEnvironment,
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    local_purpose, keys = get_purpose_and_keys(purpose, (parent.content,))
-    if parent.order_by:
-        grain = parent.over + [parent.content.output]
-        for item in parent.order_by:
-            grain += [item.expr.output]
+    concrete = parent.instantiate(environment)
+    local_purpose, keys = get_purpose_and_keys(environment, purpose, (concrete.content,))
+    if concrete.order_by:
+        grain = concrete.over + [concrete.content.output]
+        for item in concrete.order_by:
+            grain += [item.expr]
     else:
-        grain = parent.over + [parent.content.output]
-    modifiers = get_upstream_modifiers(parent.content.concept_arguments, environment=environment)
-    datatype = parent.content.datatype
+        grain = concrete.over + [concrete.content.output]
+    modifiers = get_upstream_modifiers(concrete.content.concept_arguments, environment=environment)
+    datatype = concrete.content.datatype
     if parent.type in (
         WindowType.RANK,
         WindowType.ROW_NUMBER,
@@ -305,39 +317,33 @@ def window_item_to_concept(
         modifiers=modifiers,
     )
 
-def materialize_concepts(concepts:list[Concept | ConceptRef], environment:Environment)->list[Concept]:
-    output = []
-    for concept in concepts:
-        if isinstance(concept, ConceptRef):
-            output.append(environment.concepts[concept])
-        else:
-            output.append(concept)
-    return output
 
 def agg_wrapper_to_concept(
-    parent: AggregateWrapper,
+    parent: AggregateWrapperRef,
     namespace: str,
     name: str,
     metadata: Metadata | None = None,
-    environment: Environment | None = None,
+    environment: BoundEnvironment | None = None,
 ) -> Concept:
+    concrete = parent.instantiate(environment)
     _, keys = get_purpose_and_keys(
-        Purpose.METRIC, tuple(environment.concepts[x] for x in parent.by) if parent.by else None
+        environment,
+        Purpose.METRIC, tuple(x for x in concrete.by) if parent.by else None
     )
     # anything grouped to a grain should be a property
     # at that grain
     fmetadata = metadata or Metadata()
-    aggfunction = parent.function
-    modifiers = get_upstream_modifiers(parent.concept_arguments, environment=environment)
+    aggfunction = concrete.function
+    modifiers = get_upstream_modifiers(concrete.concept_arguments, environment=environment)
     out = Concept(
         name=name,
         datatype=aggfunction.output_datatype,
         purpose=Purpose.METRIC,
         metadata=fmetadata,
         lineage=parent,
-        grain=Grain(components=[x.address for x in parent.by]) if parent.by else Grain(),
+        grain=Grain(components=[x.address for x in concrete.by]) if concrete.by else Grain(),
         namespace=namespace,
-        keys=set([x.address for x in parent.by]) if parent.by else keys,
+        keys=set([x.address for x in concrete.by]) if concrete.by else keys,
         modifiers=modifiers,
     )
     return out
@@ -345,36 +351,36 @@ def agg_wrapper_to_concept(
 
 def arbitrary_to_concept(
     parent: (
-        AggregateWrapper
-        | WindowItem
-        | FilterItem
-        | Function
+        AggregateWrapperRef
+        | WindowItemRef
+        | FilterItemRef
+        | FunctionRef
         | ListWrapper
         | MapWrapper
         | int
         | float
         | str
     ),
-    environment: Environment,
+    environment: BoundEnvironment,
     namespace: str | None = None,
     name: str | None = None,
     metadata: Metadata | None = None,
     purpose: Purpose | None = None,
 ) -> Concept:
     namespace = namespace or environment.namespace
-    if isinstance(parent, AggregateWrapper):
+    if isinstance(parent, AggregateWrapperRef):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
         return agg_wrapper_to_concept(parent, namespace, name, environment=environment, metadata=metadata)
-    elif isinstance(parent, WindowItem):
+    elif isinstance(parent, WindowItemRef):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
         return window_item_to_concept(parent, name, namespace, environment=environment, purpose=purpose, metadata=metadata)
-    elif isinstance(parent, FilterItem):
+    elif isinstance(parent, FilterItemRef):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
         return filter_item_to_concept(parent, name, namespace, environment=environment, purpose =purpose, metadata=metadata)
-    elif isinstance(parent, Function):
+    elif isinstance(parent, FunctionRef):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
         return function_to_concept(
@@ -389,6 +395,8 @@ def arbitrary_to_concept(
             name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
         return constant_to_concept(parent, name, namespace, purpose, metadata)
     else:
-        if not name:
-            name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
-        return constant_to_concept(parent, name, namespace, purpose, metadata)
+        raise SyntaxError(f"Unknown type {type(parent)}")
+    # else:
+    #     if not name:
+    #         name = f"{VIRTUAL_CONCEPT_PREFIX}_{string_to_hash(str(parent))}"
+    #     return constant_to_concept(parent, name, namespace, purpose, metadata)

@@ -5,7 +5,7 @@ from typing import List, Tuple, TypeVar
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.models import (
     Comparison,
-    Concept,
+    BoundConcept,
     Conditional,
     Datasource,
     DataType,
@@ -19,7 +19,7 @@ T = TypeVar("T", int, date, datetime)
 
 
 def reduce_expression(
-    var: Concept, group_tuple: list[tuple[ComparisonOperator, T]]
+    var: BoundConcept, group_tuple: list[tuple[ComparisonOperator, T]]
 ) -> bool:
     # Track ranges
     lower_check: T
@@ -98,7 +98,7 @@ def simplify_conditions(
     conditions: list[Comparison | Conditional | Parenthetical],
 ) -> bool:
     # Group conditions by variable
-    grouped: dict[Concept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
+    grouped: dict[BoundConcept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
         defaultdict(list)
     )
     for condition in conditions:
@@ -108,13 +108,13 @@ def simplify_conditions(
             condition.left, (int, date, datetime, Function)
         ) and not isinstance(condition.right, (int, date, datetime, Function)):
             return False
-        if not isinstance(condition.left, Concept) and not isinstance(
-            condition.right, Concept
+        if not isinstance(condition.left, BoundConcept) and not isinstance(
+            condition.right, BoundConcept
         ):
             return False
         vars = [condition.left, condition.right]
-        concept = [x for x in vars if isinstance(x, Concept)][0]
-        comparison = [x for x in vars if not isinstance(x, Concept)][0]
+        concept = [x for x in vars if isinstance(x, BoundConcept)][0]
+        comparison = [x for x in vars if not isinstance(x, BoundConcept)][0]
         if isinstance(comparison, Function):
             if not comparison.operator == FunctionType.CONSTANT:
                 return False
@@ -177,7 +177,7 @@ def is_fully_covered(
     return current_end >= end
 
 
-def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
+def get_union_sources(datasources: list[Datasource], concepts: list[BoundConcept]):
     candidates: list[Datasource] = []
     for x in datasources:
         if all([c.address in x.output_concepts for c in concepts]):

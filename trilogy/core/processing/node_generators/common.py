@@ -4,12 +4,13 @@ from typing import Callable, List, Tuple
 from trilogy.core.enums import Purpose, PurposeLineage
 from trilogy.core.models import (
     AggregateWrapper,
-    Concept,
-    Environment,
+    BoundConcept,
+    BoundEnvironment,
     FilterItem,
     Function,
     LooseConceptList,
     WhereClause,
+    Reference,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -21,36 +22,39 @@ from trilogy.utility import unique
 
 
 def resolve_function_parent_concepts(
-    concept: Concept, environment: Environment
-) -> List[Concept]:
-    if not isinstance(concept.lineage, (Function, AggregateWrapper)):
-        raise ValueError(f"Concept {concept} lineage is not function or aggregate")
+    concept: BoundConcept, environment: BoundEnvironment
+) -> List[BoundConcept]:
+    
+    if isinstance(concept.lineage, Reference):
+        concrete_lineage = concept.lineage.instantiate(environment)
+    else:
+        concrete_lineage = concept.lineage
     if concept.derivation == PurposeLineage.AGGREGATE:
-        base: list[Concept] = []
+        base: list[BoundConcept] = []
         if not concept.grain.abstract:
-            base = [environment.concepts[x.address] for x in concept.lineage.concept_arguments] + [
+            base = [environment.concepts[x.address] for x in concrete_lineage.concept_arguments] + [
                 environment.concepts[c] for c in concept.grain.components
             ]
             # if the base concept being aggregated is a property with a key
             # keep the key as a parent
         else:
-            base = [environment.concepts[x.address] for x in concept.lineage.concept_arguments] 
-        if isinstance(concept.lineage, AggregateWrapper):
+            base = [environment.concepts[x.address] for x in concrete_lineage.concept_arguments] 
+        if isinstance(concrete_lineage, AggregateWrapper):
             # for aggregate wrapper, don't include the by
-            extra_property_grain = concept.lineage.function.concept_arguments
+            extra_property_grain = concrete_lineage.function.concept_arguments
         else:
-            extra_property_grain = concept.lineage.concept_arguments
+            extra_property_grain = concrete_lineage.concept_arguments
         for x in extra_property_grain:
-            if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+            if isinstance(x, BoundConcept) and x.purpose == Purpose.PROPERTY and x.keys:
                 base += [environment.concepts[c] for c in x.keys]
         return unique(base, "address")
     # TODO: handle basic lineage chains?
-    return unique(concept.lineage.concept_arguments, "address")
+    return unique(concrete_lineage.concept_arguments, "address")
 
 
 def resolve_condition_parent_concepts(
     condition: WhereClause,
-) -> Tuple[List[Concept], List[Tuple[Concept, ...]]]:
+) -> Tuple[List[BoundConcept], List[Tuple[BoundConcept, ...]]]:
     base_existence = []
     base_rows = []
     base_rows += condition.row_arguments
@@ -60,42 +64,47 @@ def resolve_condition_parent_concepts(
 
 
 def resolve_filter_parent_concepts(
-    concept: Concept,
-    environment: Environment,
-) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
-    if not isinstance(concept.lineage, FilterItem):
+    concept: BoundConcept,
+    environment: BoundEnvironment,
+) -> Tuple[BoundConcept, List[BoundConcept], List[Tuple[BoundConcept, ...]]]:
+    if isinstance(concept.lineage, Reference):
+
+        concrete_lineage = concept.lineage.instantiate(environment)
+    else:
+        concrete_lineage = concept.lineage
+    if not isinstance(concrete_lineage, FilterItem):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )
-    direct_parent = concept.lineage.content
+    direct_parent = concrete_lineage.content
     base_existence = []
     base_rows = [direct_parent]
     condition_rows, condition_existence = resolve_condition_parent_concepts(
-        concept.lineage.where
+        concrete_lineage.where
     )
     base_rows += condition_rows
     base_existence += condition_existence
     if direct_parent.grain:
         base_rows += [environment.concepts[c] for c in direct_parent.grain.components]
     if (
-        isinstance(direct_parent, Concept)
+        isinstance(direct_parent, BoundConcept)
         and direct_parent.purpose == Purpose.PROPERTY
         and direct_parent.keys
     ):
         base_rows += [environment.concepts[c] for c in direct_parent.keys]
-    if concept.lineage.where.existence_arguments:
+    if concrete_lineage.where.existence_arguments:
         return (
-            concept.lineage.content,
+            concrete_lineage.content,
             unique(base_rows, "address"),
             base_existence,
         )
-    return concept.lineage.content, unique(base_rows, "address"), []
+    return concrete_lineage.content, unique(base_rows, "address"), []
 
 
 def gen_property_enrichment_node(
     base_node: StrategyNode,
-    extra_properties: list[Concept],
-    environment: Environment,
+    extra_properties: list[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
@@ -146,9 +155,9 @@ def gen_property_enrichment_node(
 
 def gen_enrichment_node(
     base_node: StrategyNode,
-    join_keys: List[Concept],
-    local_optional: list[Concept],
-    environment: Environment,
+    join_keys: List[BoundConcept],
+    local_optional: list[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,

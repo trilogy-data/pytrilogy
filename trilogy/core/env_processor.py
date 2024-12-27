@@ -3,19 +3,17 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models import Concept, Datasource, Environment, ConceptRef
+from trilogy.core.models import BoundConcept, Datasource, BoundEnvironment
 
 
 def add_concept(
-    concept: Concept, g: ReferenceGraph, concept_mapping: dict[str, Concept]
+    concept: BoundConcept, g: ReferenceGraph, concept_mapping: dict[str, BoundConcept]
 ):
     g.add_node(concept)
     # if we have sources, recursively add them
     node_name = concept_to_node(concept)
     if concept.concept_arguments:
         for source in concept.concept_arguments:
-            if isinstance(source, ConceptRef):
-                source = concept_mapping[source.address]
             generic = source.with_default_grain()
             add_concept(generic, g, concept_mapping)
 
@@ -37,7 +35,7 @@ def add_concept(
 
 
 def generate_adhoc_graph(
-    concepts: list[Concept],
+    concepts: list[BoundConcept],
     datasources: list[Datasource],
     restrict_to_listed: bool = False,
 ) -> ReferenceGraph:
@@ -68,7 +66,7 @@ def generate_adhoc_graph(
 
 
 def generate_graph(
-    environment: Environment,
+    environment: BoundEnvironment,
 ) -> ReferenceGraph:
     return generate_adhoc_graph(
         list(environment.concepts.values())

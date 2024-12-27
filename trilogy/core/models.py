@@ -87,7 +87,10 @@ LOGGER_PREFIX = "[MODELS]"
 KT = TypeVar("KT")
 VT = TypeVar("VT")
 LT = TypeVar("LT")
+class Reference(ABC):
 
+    def instantiate(self, environment: BoundEnvironment):
+        raise NotImplementedError
 
 def is_compatible_datatype(left, right):
     # for unknown types, we can't make any assumptions
@@ -116,11 +119,10 @@ def address_with_namespace(address: str, namespace: str) -> str:
     return f"{namespace}.{address}"
 
 
-def get_concept_arguments(expr) -> List["Concept"]:
+def get_concept_arguments(expr) -> List["BoundConcept"]:
     output = []
-    if isinstance(expr, Concept):
+    if isinstance(expr, BoundConcept):
         output += [expr]
-
     elif isinstance(
         expr,
         (
@@ -137,63 +139,43 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
+
 ALL_TYPES = Union[
-    "DataType", "MapType", "ListType", "NumericType", "StructType", "Concept"
+    "DataType", "MapType", "ListType", "NumericType", "StructType", "BoundConcept"
 ]
-
-NAMESPACED_TYPES = Union[
-    "WindowItem",
-    "FilterItem",
-    "Conditional",
-    "Comparison",
-    "Concept",
-    "CaseWhen",
-    "CaseElse",
-    "Function",
-    "AggregateWrapper",
-    "Parenthetical",
-]
-
 
 class Namespaced(ABC):
     def with_namespace(self, namespace: str):
         raise NotImplementedError
 
 
-class Mergeable(ABC):
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        raise NotImplementedError
-
-    def hydrate_missing(self, concepts: EnvironmentConceptDict):
-        return self
-
 
 class ConceptArgs(ABC):
     @property
-    def concept_arguments(self) -> List["Concept"]:
+    def concept_arguments(self) -> List["BoundConcept"]:
         raise NotImplementedError
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["BoundConcept", ...]]:
         return []
 
     @property
-    def row_arguments(self) -> List["Concept"]:
+    def row_arguments(self) -> List["BoundConcept"]:
         return self.concept_arguments
 
 
 class SelectContext(ABC):
     def with_select_context(
         self,
-        local_concepts: dict[str, Concept],
+        local_concepts: dict[str, BoundConcept],
         grain: Grain,
-        environment: Environment,
+        environment: BoundEnvironment,
     ) -> Any:
         raise NotImplementedError
 
 
 class ConstantInlineable(ABC):
-    def inline_concept(self, concept: Concept):
+    def inline_concept(self, concept: BoundConcept):
         raise NotImplementedError
 
 
@@ -202,41 +184,6 @@ class HasUUID(ABC):
     def uuid(self) -> str:
         return hashlib.md5(str(self).encode()).hexdigest()
 
-
-class SelectTypeMixin(BaseModel):
-    where_clause: Union["WhereClause", None] = Field(default=None)
-    having_clause: Union["HavingClause", None] = Field(default=None)
-
-    @property
-    def output_components(self) -> List[Concept]:
-        raise NotImplementedError
-
-    @property
-    def implicit_where_clause_selections(self) -> List[Concept]:
-        if not self.where_clause:
-            return []
-        filter = set(
-            [
-                str(x.address)
-                for x in self.where_clause.row_arguments
-                if not x.derivation == PurposeLineage.CONSTANT
-            ]
-        )
-        query_output = set([str(z.address) for z in self.output_components])
-        delta = filter.difference(query_output)
-        if delta:
-            return [
-                x for x in self.where_clause.row_arguments if str(x.address) in delta
-            ]
-        return []
-
-    @property
-    def where_clause_category(self) -> SelectFiltering:
-        if not self.where_clause:
-            return SelectFiltering.NONE
-        elif self.implicit_where_clause_selections:
-            return SelectFiltering.IMPLICIT
-        return SelectFiltering.EXPLICIT
 
 
 class DataType(Enum):
@@ -301,7 +248,7 @@ class ListType(BaseModel):
     def value_data_type(
         self,
     ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.type, Concept):
+        if isinstance(self.type, BoundConcept):
             return self.type.datatype
         return self.type
 
@@ -322,7 +269,7 @@ class MapType(BaseModel):
     def value_data_type(
         self,
     ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.value_type, Concept):
+        if isinstance(self.value_type, BoundConcept):
             return self.value_type.datatype
         return self.value_type
 
@@ -330,14 +277,14 @@ class MapType(BaseModel):
     def key_data_type(
         self,
     ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.key_type, Concept):
+        if isinstance(self.key_type, BoundConcept):
             return self.key_type.datatype
         return self.key_type
 
 
 class StructType(BaseModel):
     fields: List[ALL_TYPES]
-    fields_map: Dict[str, Concept | int | float | str]
+    fields_map: Dict[str, BoundConcept | int | float | str]
 
     @property
     def data_type(self):
@@ -368,7 +315,7 @@ class ListWrapper(Generic[VT], UserList):
 
     @classmethod
     def validate(cls, v):
-        return cls(v, type=arg_to_datatype(v[0]))
+        return cls(v, type=arg_to_datatype(v[0], None))
 
 
 class MapWrapper(Generic[KT, VT], UserDict):
@@ -408,7 +355,7 @@ class Metadata(BaseModel):
     concept_source: ConceptSource = ConceptSource.MANUAL
 
 
-class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
+class BoundConcept(Namespaced, SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
@@ -416,30 +363,31 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         default_factory=lambda: Metadata(description=None, line_number=None),
         validate_default=True,
     )
-    lineage: Optional[
-        Union[
+    lineage: Optional[Union[
+            RowsetItem,
+            # MultiSelectStatement,
             Function,
             WindowItem,
             FilterItem,
-            AggregateWrapper,
-            RowsetItem,
-            MultiSelectStatement,
-        ]
-    ] = None
+            AggregateWrapper
+            ]] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    keys: Optional[set[str]] = None
+    keys: Optional[set[str]] = Field(default_factory = set)
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
-    _address_cache: str | None = None
+
 
     def __init__(self, **data):
         super().__init__(**data)
 
-    def instantiate(self, environment: Environment) -> Concept:
-        return self
 
-    def duplicate(self) -> Concept:
+    @property
+    def reference(self):
+        from trilogy.core.parse_models import ConceptRef
+        return ConceptRef(address=self.address, line_no=self.metadata.line_number)
+
+    def duplicate(self) -> BoundConcept:
         return self.model_copy(deep=True)
 
     def __hash__(self):
@@ -478,11 +426,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
-            lineage=(
-                self.lineage.with_merge(source, target, modifiers)
-                if self.lineage
-                else None
-            ),
+            lineage=self.lineage,
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
             keys=(
@@ -533,7 +477,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             v = Grain(components=set())
         elif isinstance(v, Grain):
             pass
-        elif isinstance(v, Concept):
+        elif isinstance(v, BoundConcept):
             v = Grain(components={v.address})
         elif isinstance(v, dict):
             v = Grain.model_validate(v)
@@ -545,7 +489,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         if isinstance(other, str):
             if self.address == other:
                 return True
-        if not isinstance(other, Concept):
+        if not isinstance(other, BoundConcept):
             return False
         return (
             self.name == other.name
@@ -572,16 +516,14 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             pass
 
     @property
-    def output(self) -> "Concept":
+    def output(self) -> "BoundConcept":
         return self
 
     @property
     def safe_address(self) -> str:
         if self.namespace == DEFAULT_NAMESPACE:
             return self.name.replace(".", "_")
-        elif self.namespace:
-            return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
-        return self.name.replace(".", "_")
+        return self.address.replace(".", "_")
 
     def with_namespace(self, namespace: str) -> Self:
         if namespace == self.namespace:
@@ -614,22 +556,19 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> Concept:
-        new_lineage = self.lineage
-        if isinstance(self.lineage, SelectContext):
-            new_lineage = self.lineage.with_select_context(
-                local_concepts=local_concepts, grain=grain, environment=environment
-            )
+        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
+    ) -> BoundConcept:
+        new_lineage = self.lineage.instantiate(environment) if isinstance(self.lineage, Reference) else self.lineage
         final_grain = self.grain or grain
         keys = self.keys if self.keys else None
         if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
-            new_lineage = AggregateWrapper(function=new_lineage, by=set(ConceptRef(c) for c in grain.components))
+            new_lineage = AggregateWrapper(function=new_lineage, by=set(environment.concepts[c] for c in grain.components))
             final_grain = grain
-            keys = set(grain.components)
+            keys = grain.components
         elif (
-            self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
+            self.is_aggregate and isinstance(new_lineage, AggregateWrapper) and not new_lineage.by
         ):
+            new_lineage.by = set(environment.concepts[c] for c in grain.components)
             keys = set([x.address for x in new_lineage.by])
 
         return self.__class__(
@@ -647,9 +586,9 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
         )
 
-    def with_grain(self, grain: Optional["Grain"] = None) -> Self:
+    def with_grain(self, grain: Optional["Grain"] = None, name:str| None = None) -> Self:
         return self.__class__(
-            name=self.name,
+            name=name or self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
@@ -672,7 +611,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                 components = [*self.keys]
             if self.lineage:
                 for item in self.lineage.arguments:
-                    if isinstance(item, Concept):
+                    if isinstance(item, BoundConcept):
                         components += [x.address for x in item.sources]
             # TODO: set synonyms
             grain = Grain(
@@ -700,13 +639,13 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             pseudonyms=self.pseudonyms,
         )
 
-    def with_default_grain(self) -> "Concept":
+    def with_default_grain(self) -> "BoundConcept":
         return self._with_default_grain
 
     @property
-    def sources(self) -> List["Concept"]:
+    def sources(self) -> List["BoundConcept"]:
         if self.lineage:
-            output: List[Concept] = []
+            output: List[BoundConcept] = []
 
             def get_sources(
                 expr: Union[
@@ -715,12 +654,12 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                     FilterItem,
                     AggregateWrapper,
                     RowsetItem,
-                    MultiSelectStatement,
+                    # MultiSelectStatement,
                 ],
-                output: List[Concept],
+                output: List[BoundConcept],
             ):
                 for item in expr.arguments:
-                    if isinstance(item, Concept):
+                    if isinstance(item, BoundConcept):
                         if item.address == self.address:
                             raise SyntaxError(
                                 f"Concept {self.address} references itself"
@@ -735,7 +674,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         return []
 
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> List[BoundConcept]:
         return self.lineage.concept_arguments if self.lineage else []
 
     @property
@@ -752,8 +691,8 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             return PurposeLineage.AGGREGATE
         elif self.lineage and isinstance(self.lineage, RowsetItem):
             return PurposeLineage.ROWSET
-        elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
-            return PurposeLineage.MULTISELECT
+        # elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
+        #     return PurposeLineage.MULTISELECT
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -827,15 +766,15 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     def with_filter(
         self,
         condition: "Conditional | Comparison | Parenthetical",
-        environment: Environment | None = None,
-    ) -> "Concept":
+        environment: BoundEnvironment | None = None,
+    ) -> "BoundConcept":
         from trilogy.utility import string_to_hash
 
         if self.lineage and isinstance(self.lineage, FilterItem):
             if self.lineage.where.conditional == condition:
                 return self
         hash = string_to_hash(self.name + str(condition))
-        new = Concept(
+        new = BoundConcept(
             name=f"{self.name}_filter_{hash}",
             datatype=self.datatype,
             purpose=self.purpose,
@@ -851,39 +790,12 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             environment.add_concept(new)
         return new
 
-
-class ConceptRef(str):
-    address: str
-    line_no: int | None = None
-
-    def __init__(self, address: str, line_no: int | None = None):
-        self.address = address
-        self.line_no = line_no
-        super().__init__()
-
-    def instantiate(self, environment: Environment) -> Concept:
-        return environment.concepts.__getitem__(self.address, self.line_no)
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, 
-        # handler: Callable[[Any]],
-        source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-
-        return core_schema.with_info_after_validator_function(
-            cls.validate, handler(str), field_name=handler.field_name
-        )
-    
-    @classmethod
-    def validate(cls, v, info:ValidationInfo):
-        return cls(v, )
     
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+    def with_merge(self, source: BoundConcept, target: BoundConcept, modifiers: List[Modifier]):
         new_components = set()
         for c in self.components:
             if c == source.address:
@@ -891,12 +803,13 @@ class Grain(Namespaced, BaseModel):
             else:
                 new_components.add(c)
         return Grain(components=new_components)
+    
 
     @classmethod
     def from_concepts(
         cls,
-        concepts: List[Concept],
-        environment: Environment | None = None,
+        concepts: List[BoundConcept],
+        environment: BoundEnvironment | None = None,
         where_clause: WhereClause | None = None,
     ) -> "Grain":
         from trilogy.parsing.common import concepts_to_grain_concepts
@@ -924,9 +837,7 @@ class Grain(Namespaced, BaseModel):
         output = set()
         if isinstance(v, list):
             for vc in v:
-                if isinstance(vc, Concept):
-                    output.add(vc.address)
-                elif isinstance(vc, ConceptRef):
+                if isinstance(vc, BoundConcept):
                     output.add(vc.address)
                 else:
                     output.add(vc)
@@ -972,7 +883,7 @@ class Grain(Namespaced, BaseModel):
 
     def __eq__(self, other: object):
         if isinstance(other, list):
-            if not all([isinstance(c, Concept) for c in other]):
+            if not all([isinstance(c, BoundConcept) for c in other]):
                 return False
             return self.components == set([c.address for c in other])
         if not isinstance(other, Grain):
@@ -1016,7 +927,6 @@ class EnvironmentConceptDict(dict):
         super().__init__(self, *args, **kwargs)
         self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = True
-        self.populate_default_concepts()
 
     def duplicate(self) -> "EnvironmentConceptDict":
         new = EnvironmentConceptDict()
@@ -1025,16 +935,10 @@ class EnvironmentConceptDict(dict):
         new.fail_on_missing = self.fail_on_missing
         return new
 
-    def populate_default_concepts(self):
-        from trilogy.core.internal import DEFAULT_CONCEPTS
-
-        for concept in DEFAULT_CONCEPTS.values():
-            self[concept.address] = concept
-
-    def values(self) -> ValuesView[Concept]:  # type: ignore
+    def values(self) -> ValuesView[BoundConcept]:  # type: ignore
         return super().values()
 
-    def get(self, key: str, default: Concept | None = None) -> Concept | None:  # type: ignore
+    def get(self, key: str, default: BoundConcept | None = None) -> BoundConcept | None:  # type: ignore
         try:
             return self.__getitem__(key)
         except UndefinedConceptException:
@@ -1045,7 +949,7 @@ class EnvironmentConceptDict(dict):
     ) -> Never:
 
         matches = self._find_similar_concepts(key)
-        message = f"Undefined concept: {key}."
+        message = f"Undefined concept: '{key}'."
         if matches:
             message += f" Suggestions: {matches}"
 
@@ -1059,12 +963,10 @@ class EnvironmentConceptDict(dict):
 
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
-    ) -> Concept | UndefinedConcept:
+    ) -> BoundConcept | UndefinedConcept:
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
-            if "." in key and key.split(".", 1)[0] == DEFAULT_NAMESPACE:
-                return self.__getitem__(key.split(".", 1)[1], line_no)
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
             if not self.fail_on_missing:
@@ -1097,48 +999,9 @@ class EnvironmentConceptDict(dict):
         )
         return matches
 
-    def items(self) -> ItemsView[str, Concept]:  # type: ignore
+    def items(self) -> ItemsView[str, BoundConcept]:  # type: ignore
         return super().items()
 
-
-class RawColumnExpr(BaseModel):
-    text: str
-
-
-class ColumnAssignment(BaseModel):
-    alias: str | RawColumnExpr | Function
-    concept: Concept
-    modifiers: List[Modifier] = Field(default_factory=list)
-
-    @property
-    def is_complete(self) -> bool:
-        return Modifier.PARTIAL not in self.modifiers
-
-    @property
-    def is_nullable(self) -> bool:
-        return Modifier.NULLABLE in self.modifiers
-
-    def with_namespace(self, namespace: str) -> "ColumnAssignment":
-        return ColumnAssignment(
-            alias=(
-                self.alias.with_namespace(namespace)
-                if isinstance(self.alias, Function)
-                else self.alias
-            ),
-            concept=self.concept.with_namespace(namespace),
-            modifiers=self.modifiers,
-        )
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "ColumnAssignment":
-        return ColumnAssignment(
-            alias=self.alias,
-            concept=self.concept.with_merge(source, target, modifiers),
-            modifiers=(
-                modifiers if self.concept.address == source.address else self.modifiers
-            ),
-        )
 
 
 class Statement(BaseModel):
@@ -1146,7 +1009,7 @@ class Statement(BaseModel):
 
 
 class LooseConceptList(BaseModel):
-    concepts: List[Concept]
+    concepts: List[BoundConcept]
 
     @cached_property
     def addresses(self) -> set[str]:
@@ -1175,7 +1038,7 @@ class LooseConceptList(BaseModel):
     def __contains__(self, other):
         if isinstance(other, str):
             return other in self.addresses
-        if not isinstance(other, Concept):
+        if not isinstance(other, BoundConcept):
             return False
         return other.address in self.addresses
 
@@ -1189,8 +1052,7 @@ class LooseConceptList(BaseModel):
             return False
         return self.addresses.isdisjoint(other.addresses)
 
-
-class Function(Mergeable, Namespaced, SelectContext, BaseModel):
+class Function( Namespaced, SelectContext, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1203,7 +1065,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
     ] = None
     arguments: Sequence[
         Union[
-            Concept,
+            BoundConcept,
             "AggregateWrapper",
             "Function",
             int,
@@ -1223,9 +1085,9 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             list,
             ListWrapper[Any],
             WindowItem,
-            ConceptRef,
         ]
     ]
+
 
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
@@ -1238,7 +1100,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         return self.output_datatype
 
     def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
+        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
     ) -> Function:
         base = Function(
             operator=self.operator,
@@ -1287,7 +1149,7 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             return v
         for idx, arg in enumerate(v):
             if (
-                isinstance(arg, Concept)
+                isinstance(arg, BoundConcept)
                 and arg.datatype.data_type not in valid_inputs[idx]
             ):
                 if arg.datatype != DataType.UNKNOWN:
@@ -1342,30 +1204,8 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
             arg_count=self.arg_count,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Function":
-        return Function(
-            operator=self.operator,
-            arguments=[
-                (
-                    c.with_merge(source, target, modifiers)
-                    if isinstance(
-                        c,
-                        Mergeable,
-                    )
-                    else c
-                )
-                for c in self.arguments
-            ],
-            output_datatype=self.output_datatype,
-            output_purpose=self.output_purpose,
-            valid_inputs=self.valid_inputs,
-            arg_count=self.arg_count,
-        )
-
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> List[BoundConcept]:
         base = []
         for arg in self.arguments:
             base += get_concept_arguments(arg)
@@ -1383,30 +1223,6 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         return base_grain
 
 
-class ConceptTransform(Namespaced, BaseModel):
-    function: Function | FilterItem | WindowItem | AggregateWrapper
-    output: Concept
-    modifiers: List[Modifier] = Field(default_factory=list)
-
-    @property
-    def input(self) -> List[Concept]:
-        return [v for v in self.function.arguments if isinstance(v, Concept)]
-
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return ConceptTransform(
-            function=self.function.with_merge(source, target, modifiers),
-            output=self.output.with_merge(source, target, modifiers),
-            modifiers=self.modifiers + modifiers,
-        )
-
-    def with_namespace(self, namespace: str) -> "ConceptTransform":
-        return ConceptTransform(
-            function=self.function.with_namespace(namespace),
-            output=self.output.with_namespace(namespace),
-            modifiers=self.modifiers,
-        )
-
-
 class Window(BaseModel):
     count: int
     window_order: WindowOrder
@@ -1416,90 +1232,47 @@ class Window(BaseModel):
 
 
 class WindowItemOver(BaseModel):
-    contents: List[Concept]
+    contents: List[BoundConcept]
+
+
 
 
 class WindowItemOrder(BaseModel):
     contents: List["OrderItem"]
 
-
-class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
+class WindowItem(Namespaced, BaseModel):
     type: WindowType
-    content: Concept
+    content: BoundConcept
     order_by: List["OrderItem"]
-    over: List["Concept"] = Field(default_factory=list)
+    over: List["BoundConcept"] = Field(default_factory=list)
     index: Optional[int] = None
 
     def __repr__(self) -> str:
         return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "WindowItem":
-        return WindowItem(
-            type=self.type,
-            content=self.content.with_merge(source, target, modifiers),
-            over=[x.with_merge(source, target, modifiers) for x in self.over],
-            order_by=[x.with_merge(source, target, modifiers) for x in self.order_by],
-            index=self.index,
-        )
-
-    def with_namespace(self, namespace: str) -> "WindowItem":
-        return WindowItem(
-            type=self.type,
-            content=self.content.with_namespace(namespace),
-            over=[x.with_namespace(namespace) for x in self.over],
-            order_by=[x.with_namespace(namespace) for x in self.order_by],
-            index=self.index,
-        )
-
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "WindowItem":
-        return WindowItem(
-            type=self.type,
-            content=self.content.with_select_context(
-                local_concepts, grain, environment
-            ),
-            over=[
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.over
-            ],
-            order_by=[
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.order_by
-            ],
-            index=self.index,
-        )
-
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> List[BoundConcept]:
         return self.arguments
 
     @property
-    def arguments(self) -> List[Concept]:
+    def arguments(self) -> List[BoundConcept]:
         output = [self.content]
         for order in self.order_by:
-            output += [order.output]
+            output += [order.expr]
         for item in self.over:
             output += [item]
         return output
 
     @property
-    def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
+    def output(self) -> BoundConcept:
         return self.content
 
     @output.setter
     def output(self, value):
-        if isinstance(self.content, ConceptTransform):
-            self.content.output = value
-        else:
-            self.content = value
+        self.content = value
 
     @property
-    def input(self) -> List[Concept]:
+    def input(self) -> List[BoundConcept]:
         base = self.content.input
         for v in self.order_by:
             base += v.input
@@ -1516,58 +1289,31 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
         return Purpose.PROPERTY
 
 
-class FilterItem(Namespaced, SelectContext, BaseModel):
-    content: Concept
+
+class FilterItem( BaseModel):
+    content: BoundConcept
     where: "WhereClause"
 
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "FilterItem":
-        return FilterItem(
-            content=source.with_merge(source, target, modifiers),
-            where=self.where.with_merge(source, target, modifiers),
-        )
-
-    def with_namespace(self, namespace: str) -> "FilterItem":
-        return FilterItem(
-            content=self.content.with_namespace(namespace),
-            where=self.where.with_namespace(namespace),
-        )
-
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> FilterItem:
-        return FilterItem(
-            content=self.content.with_select_context(
-                local_concepts, grain, environment
-            ),
-            where=self.where.with_select_context(local_concepts, grain, environment),
-        )
-
     @property
-    def arguments(self) -> List[Concept]:
+    def arguments(self) -> List[BoundConcept]:
         output = [self.content]
         output += self.where.input
         return output
 
     @property
-    def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
+    def output(self) -> BoundConcept:
+
         return self.content
 
     @output.setter
     def output(self, value):
-        if isinstance(self.content, ConceptTransform):
-            self.content.output = value
-        else:
-            self.content = value
+        self.content = value
 
     @property
-    def input(self) -> List[Concept]:
+    def input(self) -> List[BoundConcept]:
         base = self.content.input
         base += self.where.input
         return base
@@ -1585,552 +1331,14 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
         return [self.content] + self.where.concept_arguments
 
 
-class SelectItem(Mergeable, Namespaced, BaseModel):
-    content: Union[Concept, ConceptTransform]
-    modifiers: List[Modifier] = Field(default_factory=list)
 
-    @property
-    def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
-        elif isinstance(self.content, WindowItem):
-            return self.content.output
-        return self.content
-
-    @property
-    def input(self) -> List[Concept]:
-        return self.content.input
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SelectItem":
-        return SelectItem(
-            content=self.content.with_merge(source, target, modifiers),
-            modifiers=modifiers,
-        )
-
-    def with_namespace(self, namespace: str) -> "SelectItem":
-        return SelectItem(
-            content=self.content.with_namespace(namespace),
-            modifiers=self.modifiers,
-        )
-
-
-class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
-    expr: Concept
+class OrderItem(BaseModel):
+    expr: BoundConcept
     order: Ordering
 
-    def with_namespace(self, namespace: str) -> "OrderItem":
-        return OrderItem(expr=self.expr.with_namespace(namespace), order=self.order)
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> "OrderItem":
-        return OrderItem(
-            expr=self.expr.with_select_context(
-                local_concepts, grain, environment=environment
-            ),
-            order=self.order,
-        )
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "OrderItem":
-        return OrderItem(
-            expr=source.with_merge(source, target, modifiers), order=self.order
-        )
-
-    @property
-    def input(self):
-        return self.expr.input
-
-    @property
-    def output(self):
-        return self.expr.output
-
-
-class OrderBy(SelectContext, Mergeable, Namespaced, BaseModel):
+class OrderBy(BaseModel):
     items: List[OrderItem]
-
-    def with_namespace(self, namespace: str) -> "OrderBy":
-        return OrderBy(items=[x.with_namespace(namespace) for x in self.items])
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "OrderBy":
-        return OrderBy(
-            items=[x.with_merge(source, target, modifiers) for x in self.items]
-        )
-
-    def with_select_context(self, local_concepts, grain, environment):
-        return OrderBy(
-            items=[
-                x.with_select_context(local_concepts, grain, environment)
-                for x in self.items
-            ]
-        )
-
-    @property
-    def concept_arguments(self):
-        return [x.expr for x in self.items]
-
-
-class RawSQLStatement(BaseModel):
-    text: str
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-
-
-class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel):
-    selection: List[SelectItem]
-    order_by: Optional[OrderBy] = None
-    limit: Optional[int] = None
-    meta: Metadata = Field(default_factory=lambda: Metadata())
-    local_concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
-    grain: Grain = Field(default_factory=Grain)
-
-    @classmethod
-    def from_inputs(
-        cls,
-        environment: Environment,
-        selection: List[SelectItem],
-        order_by: OrderBy | None = None,
-        limit: int | None = None,
-        meta: Metadata | None = None,
-        where_clause: WhereClause | None = None,
-        having_clause: HavingClause | None = None,
-    ) -> "SelectStatement":
-
-        output = SelectStatement(
-            selection=selection,
-            where_clause=where_clause,
-            having_clause=having_clause,
-            limit=limit,
-            order_by=order_by,
-            meta=meta or Metadata(),
-        )
-        for parse_pass in [
-            1,
-            2,
-        ]:
-            # the first pass will result in all concepts being defined
-            # the second will get grains appropriately
-            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
-            # until after the first pass, and so don't know the grain of a
-
-            if parse_pass == 1:
-                grain = Grain.from_concepts(
-                    [
-                        x.content
-                        for x in output.selection
-                        if isinstance(x.content, Concept)
-                    ],
-                    where_clause=output.where_clause,
-                )
-            if parse_pass == 2:
-                grain = Grain.from_concepts(
-                    output.output_components, where_clause=output.where_clause
-                )
-            output.grain = grain
-            pass_grain = Grain() if parse_pass == 1 else grain
-            for item in selection:
-                # we don't know the grain of an aggregate at assignment time
-                # so rebuild at this point in the tree
-                # TODO: simplify
-                if isinstance(item.content, ConceptTransform):
-                    new_concept = item.content.output.with_select_context(
-                        output.local_concepts,
-                        # the first pass grain will be incorrect
-                        pass_grain,
-                        environment=environment,
-                    )
-                    output.local_concepts[new_concept.address] = new_concept
-                    item.content.output = new_concept
-                    if parse_pass == 2 and CONFIG.select_as_definition:
-                        environment.add_concept(new_concept)
-                elif isinstance(item.content, UndefinedConcept):
-                    environment.concepts.raise_undefined(
-                        item.content.address,
-                        line_no=item.content.metadata.line_number,
-                        file=environment.env_file_path,
-                    )
-                elif isinstance(item.content, Concept):
-                    # Sometimes cached values here don't have the latest info
-                    # but we can't just use environment, as it might not have the right grain.
-                    item.content = item.content.with_select_context(
-                        output.local_concepts,
-                        pass_grain,
-                        environment=environment,
-                    )
-                    output.local_concepts[item.content.address] = item.content
-
-        if order_by:
-            output.order_by = order_by.with_select_context(
-                local_concepts=output.local_concepts,
-                grain=output.grain,
-                environment=environment,
-            )
-        if output.having_clause:
-            output.having_clause = output.having_clause.with_select_context(
-                local_concepts=output.local_concepts,
-                grain=output.grain,
-                environment=environment,
-            )
-        output.validate_syntax(environment)
-        return output
-
-    def validate_syntax(self, environment: Environment):
-        if self.where_clause:
-            for x in self.where_clause.concept_arguments:
-                if isinstance(x, UndefinedConcept):
-                    environment.concepts.raise_undefined(
-                        x.address, x.metadata.line_number
-                    )
-        all_in_output = [x.address for x in self.output_components]
-        if self.where_clause:
-            for concept in self.where_clause.concept_arguments:
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, Function)
-                    and concept.lineage.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
-
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, AggregateWrapper)
-                    and concept.lineage.function.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
-        if self.having_clause:
-            self.having_clause.hydrate_missing(self.local_concepts)
-            for concept in self.having_clause.concept_arguments:
-                if concept.address not in [x.address for x in self.output_components]:
-                    raise SyntaxError(
-                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
-                    )
-        if self.order_by:
-            for concept in self.order_by.concept_arguments:
-                if concept.address not in all_in_output:
-                    raise SyntaxError(
-                        f"Cannot order by a column that is not in the output projection; {self.meta.line_number}"
-                    )
-
-    def __str__(self):
-        from trilogy.parsing.render import render_query
-
-        return render_query(self)
-
-    @field_validator("selection", mode="before")
-    @classmethod
-    def selection_validation(cls, v):
-        new = []
-        for item in v:
-            if isinstance(item, (Concept, ConceptTransform)):
-                new.append(SelectItem(content=item))
-            else:
-                new.append(item)
-        return new
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SelectStatement":
-        return SelectStatement(
-            selection=[x.with_merge(source, target, modifiers) for x in self.selection],
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
-            limit=self.limit,
-        )
-
-    @property
-    def locally_derived(self) -> set[str]:
-        locally_derived: set[str] = set()
-        for item in self.selection:
-            if isinstance(item.content, ConceptTransform):
-                locally_derived.add(item.content.output.address)
-        return locally_derived
-
-    @property
-    def input_components(self) -> List[Concept]:
-        output = set()
-        output_list = []
-        for item in self.selection:
-            for concept in item.input:
-                if concept.name in output:
-                    continue
-                output.add(concept.name)
-                output_list.append(concept)
-        if self.where_clause:
-            for concept in self.where_clause.input:
-                if concept.name in output:
-                    continue
-                output.add(concept.name)
-                output_list.append(concept)
-
-        return output_list
-
-    @property
-    def output_components(self) -> List[Concept]:
-        output = []
-        for item in self.selection:
-            if isinstance(item, Concept):
-                output.append(item)
-            else:
-                output.append(item.output)
-        return output
-
-    @property
-    def hidden_components(self) -> set[str]:
-        output = set()
-        for item in self.selection:
-            if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
-                output.add(item.output.address)
-        return output
-
-    @property
-    def all_components(self) -> List[Concept]:
-        return self.input_components + self.output_components
-
-    def to_datasource(
-        self,
-        namespace: str,
-        name: str,
-        address: Address,
-        grain: Grain | None = None,
-    ) -> Datasource:
-        if self.where_clause or self.having_clause:
-            modifiers = [Modifier.PARTIAL]
-        else:
-            modifiers = []
-        columns = [
-            # TODO: replace hardcoded replacement here
-            # if the concept is a locally derived concept, it cannot ever be partial
-            # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
-            ColumnAssignment(
-                alias=(
-                    c.name.replace(".", "_")
-                    if c.namespace == DEFAULT_NAMESPACE
-                    else c.address.replace(".", "_")
-                ),
-                concept=c,
-                modifiers=modifiers if c.address not in self.locally_derived else [],
-            )
-            for c in self.output_components
-        ]
-
-        condition = None
-        if self.where_clause:
-            condition = self.where_clause.conditional
-        if self.having_clause:
-            if condition:
-                condition = self.having_clause.conditional + condition
-            else:
-                condition = self.having_clause.conditional
-
-        new_datasource = Datasource(
-            name=name,
-            address=address,
-            grain=grain or self.grain,
-            columns=columns,
-            namespace=namespace,
-            non_partial_for=WhereClause(conditional=condition) if condition else None,
-        )
-        for column in columns:
-            column.concept = column.concept.with_grain(new_datasource.grain)
-        return new_datasource
-
-    def with_namespace(self, namespace: str) -> "SelectStatement":
-        return SelectStatement(
-            selection=[c.with_namespace(namespace) for c in self.selection],
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
-            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
-            limit=self.limit,
-        )
-
-
-class CopyStatement(BaseModel):
-    target: str
-    target_type: IOType
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-    select: SelectStatement
-
-
-class AlignItem(Namespaced, BaseModel):
-    alias: str
-    concepts: List[Concept]
-    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-
-    @computed_field  # type: ignore
-    @cached_property
-    def concepts_lcl(self) -> LooseConceptList:
-        return LooseConceptList(concepts=self.concepts)
-
-    def with_namespace(self, namespace: str) -> "AlignItem":
-        return AlignItem(
-            alias=self.alias,
-            concepts=[c.with_namespace(namespace) for c in self.concepts],
-            namespace=namespace,
-        )
-
-    def gen_concept(self, parent: MultiSelectStatement):
-        datatypes = set([c.datatype for c in self.concepts])
-        purposes = set([c.purpose for c in self.concepts])
-        if len(datatypes) > 1:
-            raise InvalidSyntaxException(
-                f"Datatypes do not align for merged statements {self.alias}, have {datatypes}"
-            )
-        if len(purposes) > 1:
-            purpose = Purpose.KEY
-        else:
-            purpose = list(purposes)[0]
-        new = Concept(
-            name=self.alias,
-            datatype=datatypes.pop(),
-            purpose=purpose,
-            lineage=parent,
-            namespace=parent.namespace,
-        )
-        return new
-
-
-class AlignClause(Namespaced, BaseModel):
-    items: List[AlignItem]
-
-    def with_namespace(self, namespace: str) -> "AlignClause":
-        return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
-
-
-class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, BaseModel):
-    selects: List[SelectStatement]
-    align: AlignClause
-    namespace: str
-    order_by: Optional[OrderBy] = None
-    limit: Optional[int] = None
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-    local_concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
-
-    def __repr__(self):
-        return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
-
-    @property
-    def arguments(self) -> List[Concept]:
-        output = []
-        for select in self.selects:
-            output += select.input_components
-        return unique(output, "address")
-
-    @property
-    def concept_arguments(self) -> List[Concept]:
-        output = []
-        for select in self.selects:
-            output += select.input_components
-        if self.where_clause:
-            output += self.where_clause.concept_arguments
-        return unique(output, "address")
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "MultiSelectStatement":
-        new = MultiSelectStatement(
-            selects=[s.with_merge(source, target, modifiers) for s in self.selects],
-            align=self.align,
-            namespace=self.namespace,
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
-            limit=self.limit,
-            meta=self.meta,
-            where_clause=(
-                self.where_clause.with_merge(source, target, modifiers)
-                if self.where_clause
-                else None
-            ),
-        )
-        return new
-
-    def get_merge_concept(self, check: Concept):
-        for item in self.align.items:
-            if check in item.concepts_lcl:
-                return item.gen_concept(self)
-        return None
-
-    def with_namespace(self, namespace: str) -> "MultiSelectStatement":
-        return MultiSelectStatement(
-            selects=[c.with_namespace(namespace) for c in self.selects],
-            align=self.align.with_namespace(namespace),
-            namespace=namespace,
-            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
-            limit=self.limit,
-            meta=self.meta,
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
-            local_concepts=EnvironmentConceptDict(
-                {k: v.with_namespace(namespace) for k, v in self.local_concepts.items()}
-            ),
-        )
-
-    @property
-    def grain(self):
-        base = Grain()
-        for select in self.selects:
-            base += select.grain
-        return base
-
-    @computed_field  # type: ignore
-    @cached_property
-    def derived_concepts(self) -> List[Concept]:
-        output = []
-        for item in self.align.items:
-            output.append(item.gen_concept(self))
-        return output
-
-    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
-        for x in self.align.items:
-            if concept.name == x.alias:
-                for c in x.concepts:
-                    if c.address in cte.output_lcl:
-                        return c
-        raise SyntaxError(
-            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
-        )
-
-    @property
-    def output_components(self) -> List[Concept]:
-        output = self.derived_concepts
-        for select in self.selects:
-            output += select.output_components
-        return unique(output, "address")
-
-    @computed_field  # type: ignore
-    @cached_property
-    def hidden_components(self) -> set[str]:
-        output: set[str] = set()
-        for select in self.selects:
-            output = output.union(select.hidden_components)
-        return output
 
 
 class Address(BaseModel):
@@ -2143,22 +1351,12 @@ class Query(BaseModel):
     text: str
 
 
-def safe_concept(v: Union[Dict, Concept]) -> Concept:
+def safe_concept(v: Union[Dict, BoundConcept]) -> BoundConcept:
     if isinstance(v, dict):
-        return Concept.model_validate(v)
+        return BoundConcept.model_validate(v)
     return v
 
 
-class GrainWindow(BaseModel):
-    window: Window
-    sort_concepts: List[Concept]
-
-    def __str__(self):
-        return (
-            "GrainWindow<"
-            + ",".join([c.address for c in self.sort_concepts])
-            + f":{str(self.window)}>"
-        )
 
 
 def safe_grain(v) -> Grain:
@@ -2173,25 +1371,35 @@ def safe_grain(v) -> Grain:
 
 
 class DatasourceMetadata(BaseModel):
-    freshness_concept: Concept | None
-    partition_fields: List[Concept] = Field(default_factory=list)
+    freshness_concept: BoundConcept | None
+    partition_fields: List[BoundConcept] = Field(default_factory=list)
     line_no: int | None = None
 
 
-class MergeStatementV2(HasUUID, Namespaced, BaseModel):
-    sources: list[Concept]
-    targets: dict[str, Concept]
-    source_wildcard: str | None = None
-    target_wildcard: str | None = None
+
+class RawColumnExpr(BaseModel):
+    text: str
+
+
+class ColumnAssignment(BaseModel):
+    alias: str | RawColumnExpr | Function
+    concept: BoundConcept
     modifiers: List[Modifier] = Field(default_factory=list)
 
-    def with_namespace(self, namespace: str) -> "MergeStatementV2":
-        new = MergeStatementV2(
-            sources=[x.with_namespace(namespace) for x in self.sources],
-            targets={k: v.with_namespace(namespace) for k, v in self.targets.items()},
-            modifiers=self.modifiers,
-        )
-        return new
+    @property
+    def is_complete(self) -> bool:
+        return Modifier.PARTIAL not in self.modifiers
+
+    @property
+    def is_nullable(self) -> bool:
+        return Modifier.NULLABLE in self.modifiers
+
+    def with_grain(self, grain:Grain):
+        self.concept = self.concept.with_grain(grain)
+        return self
+
+
+
 
 
 class Datasource(HasUUID, Namespaced, BaseModel):
@@ -2212,11 +1420,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return self.model_copy(deep=True)
 
     @property
-    def hidden_concepts(self) -> List[Concept]:
+    def hidden_concepts(self) -> List[BoundConcept]:
         return []
 
     def merge_concept(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
+        self, source: BoundConcept, target: BoundConcept, modifiers: List[Modifier]
     ):
         original = [c for c in self.columns if c.concept.address == source.address]
         early_exit_check = [
@@ -2292,7 +1500,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
     def add_column(
         self,
-        concept: Concept,
+        concept: BoundConcept,
         alias: str | RawColumnExpr | Function,
         modifiers: List[Modifier] | None = None,
     ):
@@ -2332,7 +1540,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         )
 
     @property
-    def concepts(self) -> List[Concept]:
+    def concepts(self) -> List[BoundConcept]:
         return [c.concept for c in self.columns]
 
     @property
@@ -2340,23 +1548,23 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         return False
 
     @property
-    def full_concepts(self) -> List[Concept]:
+    def full_concepts(self) -> List[BoundConcept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
 
     @property
-    def nullable_concepts(self) -> List[Concept]:
+    def nullable_concepts(self) -> List[BoundConcept]:
         return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
 
     @property
-    def output_concepts(self) -> List[Concept]:
+    def output_concepts(self) -> List[BoundConcept]:
         return self.concepts
 
     @property
-    def partial_concepts(self) -> List[Concept]:
+    def partial_concepts(self) -> List[BoundConcept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
 
     def get_alias(
-        self, concept: Concept, use_raw_name: bool = True, force_alias: bool = False
+        self, concept: BoundConcept, use_raw_name: bool = True, force_alias: bool = False
     ) -> Optional[str | RawColumnExpr] | Function:
         # 2022-01-22
         # this logic needs to be refined.
@@ -2381,7 +1589,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
 
 class UnnestJoin(BaseModel):
-    concepts: list[Concept]
+    concepts: list[BoundConcept]
     parent: Function
     alias: str = "unnest"
     rendering_required: bool = True
@@ -2395,13 +1603,13 @@ class UnnestJoin(BaseModel):
 
 
 class InstantiatedUnnestJoin(BaseModel):
-    concept_to_unnest: Concept
+    concept_to_unnest: BoundConcept
     alias: str = "unnest"
 
 
 class ConceptPair(BaseModel):
-    left: Concept
-    right: Concept
+    left: BoundConcept
+    right: BoundConcept
     existing_datasource: Union[Datasource, "QueryDatasource"]
     modifiers: List[Modifier] = Field(default_factory=list)
 
@@ -2421,7 +1629,7 @@ class CTEConceptPair(ConceptPair):
 class BaseJoin(BaseModel):
     right_datasource: Union[Datasource, "QueryDatasource"]
     join_type: JoinType
-    concepts: Optional[List[Concept]] = None
+    concepts: Optional[List[BoundConcept]] = None
     left_datasource: Optional[Union[Datasource, "QueryDatasource"]] = None
     concept_pairs: list[ConceptPair] | None = None
 
@@ -2494,7 +1702,7 @@ class BaseJoin(BaseModel):
         return str(self)
 
     @property
-    def input_concepts(self) -> List[Concept]:
+    def input_concepts(self) -> List[BoundConcept]:
         base = []
         if self.concept_pairs:
             for pair in self.concept_pairs:
@@ -2516,8 +1724,8 @@ class BaseJoin(BaseModel):
 
 
 class QueryDatasource(BaseModel):
-    input_concepts: List[Concept]
-    output_concepts: List[Concept]
+    input_concepts: List[BoundConcept]
+    output_concepts: List[BoundConcept]
     datasources: List[Union[Datasource, "QueryDatasource"]]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
 
@@ -2527,12 +1735,12 @@ class QueryDatasource(BaseModel):
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
         default=None
     )
-    filter_concepts: List[Concept] = Field(default_factory=list)
+    filter_concepts: List[BoundConcept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
-    partial_concepts: List[Concept] = Field(default_factory=list)
+    partial_concepts: List[BoundConcept] = Field(default_factory=list)
     hidden_concepts: set[str] = Field(default_factory=set)
-    nullable_concepts: List[Concept] = Field(default_factory=list)
-    join_derived_concepts: List[Concept] = Field(default_factory=list)
+    nullable_concepts: List[BoundConcept] = Field(default_factory=list)
+    join_derived_concepts: List[BoundConcept] = Field(default_factory=list)
     force_group: bool | None = None
     existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(
         default_factory=dict
@@ -2583,7 +1791,7 @@ class QueryDatasource(BaseModel):
         for key in ("input_concepts", "output_concepts"):
             if not values.get(key):
                 continue
-            concept: Concept
+            concept: BoundConcept
             for concept in values[key]:
                 if (
                     concept.address not in v
@@ -2725,7 +1933,7 @@ class QueryDatasource(BaseModel):
 
     def get_alias(
         self,
-        concept: Concept,
+        concept: BoundConcept,
         use_raw_name: bool = False,
         force_alias: bool = False,
         source: str | None = None,
@@ -2771,7 +1979,7 @@ class Comment(BaseModel):
 class CTE(BaseModel):
     name: str
     source: "QueryDatasource"
-    output_columns: List[Concept]
+    output_columns: List[BoundConcept]
     source_map: Dict[str, list[str]]
     grain: Grain
     base: bool = False
@@ -2780,9 +1988,9 @@ class CTE(BaseModel):
     parent_ctes: List[Union["CTE", "UnionCTE"]] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
-    partial_concepts: List[Concept] = Field(default_factory=list)
-    nullable_concepts: List[Concept] = Field(default_factory=list)
-    join_derived_concepts: List[Concept] = Field(default_factory=list)
+    partial_concepts: List[BoundConcept] = Field(default_factory=list)
+    nullable_concepts: List[BoundConcept] = Field(default_factory=list)
+    join_derived_concepts: List[BoundConcept] = Field(default_factory=list)
     hidden_concepts: set[str] = Field(default_factory=set)
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -2806,7 +2014,7 @@ class CTE(BaseModel):
     def validate_output_columns(cls, v):
         return unique(v, "address")
 
-    def inline_constant(self, concept: Concept):
+    def inline_constant(self, concept: BoundConcept):
         if not concept.derivation == PurposeLineage.CONSTANT:
             return False
         if not isinstance(concept.lineage, Function):
@@ -3055,7 +2263,7 @@ class CTE(BaseModel):
             return self.parent_ctes[0].name
         return self.name
 
-    def get_concept(self, address: str) -> Concept | None:
+    def get_concept(self, address: str) -> BoundConcept | None:
         for cte in self.parent_ctes:
             if address in cte.output_columns:
                 match = [x for x in cte.output_columns if x.address == address].pop()
@@ -3071,7 +2279,7 @@ class CTE(BaseModel):
             return match_list.pop()
         return None
 
-    def get_alias(self, concept: Concept, source: str | None = None) -> str:
+    def get_alias(self, concept: BoundConcept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
             if concept.address in cte.output_columns:
                 if source and source != cte.name:
@@ -3088,8 +2296,8 @@ class CTE(BaseModel):
             return f"INVALID_ALIAS: {str(e)}"
 
     @property
-    def group_concepts(self) -> List[Concept]:
-        def check_is_not_in_group(c: Concept):
+    def group_concepts(self) -> List[BoundConcept]:
+        def check_is_not_in_group(c: BoundConcept):
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == PurposeLineage.ROWSET:
@@ -3140,7 +2348,7 @@ class CTE(BaseModel):
         return True
 
     @property
-    def sourced_concepts(self) -> List[Concept]:
+    def sourced_concepts(self) -> List[BoundConcept]:
         return [c for c in self.output_columns if c.address in self.source_map]
 
 
@@ -3149,13 +2357,13 @@ class UnionCTE(BaseModel):
     source: QueryDatasource
     parent_ctes: list[CTE | UnionCTE]
     internal_ctes: list[CTE | UnionCTE]
-    output_columns: List[Concept]
+    output_columns: List[BoundConcept]
     grain: Grain
     operator: str = "UNION ALL"
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     hidden_concepts: set[str] = Field(default_factory=set)
-    partial_concepts: list[Concept] = Field(default_factory=list)
+    partial_concepts: list[BoundConcept] = Field(default_factory=list)
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
 
     @computed_field  # type: ignore
@@ -3163,7 +2371,7 @@ class UnionCTE(BaseModel):
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_columns)
 
-    def get_alias(self, concept: Concept, source: str | None = None) -> str:
+    def get_alias(self, concept: BoundConcept, source: str | None = None) -> str:
         for cte in self.parent_ctes:
             if concept.address in cte.output_columns:
                 if source and source != cte.name:
@@ -3171,7 +2379,7 @@ class UnionCTE(BaseModel):
                 return concept.safe_address
         return "INVALID_ALIAS"
 
-    def get_concept(self, address: str) -> Concept | None:
+    def get_concept(self, address: str) -> BoundConcept | None:
         for cte in self.internal_ctes:
             if address in cte.output_columns:
                 match = [x for x in cte.output_columns if x.address == address].pop()
@@ -3227,7 +2435,7 @@ class CompiledCTE(BaseModel):
 
 
 class JoinKey(BaseModel):
-    concept: Concept
+    concept: BoundConcept
 
     def __str__(self):
         return str(self.concept)
@@ -3279,7 +2487,7 @@ class Join(BaseModel):
         return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
 
 
-class UndefinedConcept(Concept, Mergeable, Namespaced):
+class UndefinedConcept(BoundConcept,Namespaced):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     name: str
     line_no: int | None = None
@@ -3290,10 +2498,10 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
 
     def with_select_context(
         self,
-        local_concepts: dict[str, Concept],
+        local_concepts: dict[str, BoundConcept],
         grain: Grain,
-        environment: Environment,
-    ) -> "Concept":
+        environment: BoundEnvironment,
+    ) -> "BoundConcept":
         if self.address in local_concepts:
             rval = local_concepts[self.address]
             rval = rval.with_select_context(local_concepts, grain, environment)
@@ -3346,7 +2554,7 @@ def validate_concepts(v) -> EnvironmentConceptDict:
         return v
     elif isinstance(v, dict):
         return EnvironmentConceptDict(
-            **{x: Concept.model_validate(y) for x, y in v.items()}
+            **{x: BoundConcept.model_validate(y) for x, y in v.items()}
         )
     raise ValueError
 
@@ -3361,7 +2569,7 @@ def validate_datasources(v) -> EnvironmentDatasourceDict:
     raise ValueError
 
 
-class Environment(BaseModel):
+class BoundEnvironment(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
 
     concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
@@ -3381,7 +2589,7 @@ class Environment(BaseModel):
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
     materialized_concepts: set[str] = Field(default_factory=set)
-    alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
+    alias_origin_lookup: Dict[str, BoundConcept] = Field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | None = None
@@ -3393,7 +2601,7 @@ class Environment(BaseModel):
         self.frozen = False
 
     def duplicate(self):
-        return Environment.model_construct(
+        return BoundEnvironment.model_construct(
             datasources=self.datasources.duplicate(),
             concepts=self.concepts.duplicate(),
             functions=dict(self.functions),
@@ -3412,19 +2620,20 @@ class Environment(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        concept = Concept(
-            name="_env_working_path",
-            namespace=self.namespace,
-            lineage=Function(
-                operator=FunctionType.CONSTANT,
-                arguments=[str(self.working_path)],
-                output_datatype=DataType.STRING,
-                output_purpose=Purpose.CONSTANT,
-            ),
-            datatype=DataType.STRING,
-            purpose=Purpose.CONSTANT,
-        )
-        self.add_concept(concept)
+        # concept = Concept(
+        #     name="_env_working_path",
+        #     namespace=self.namespace,
+        #     lineage=Function(
+        #         operator=FunctionType.CONSTANT,
+        #         arguments=[str(self.working_path)],
+        #         output_datatype=DataType.STRING,
+        #         output_purpose=Purpose.CONSTANT,
+        #         output_grain = Grain(),
+        #     ),
+        #     datatype=DataType.STRING,
+        #     purpose=Purpose.CONSTANT,
+        # )
+        # self.add_concept(concept)
 
     # def freeze(self):
     #     self.frozen = True
@@ -3433,19 +2642,19 @@ class Environment(BaseModel):
     #     self.frozen = False
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "Environment":
+    def from_file(cls, path: str | Path) -> "BoundEnvironment":
         if isinstance(path, str):
             path = Path(path)
         with open(path, "r") as f:
             read = f.read()
-        return Environment(working_path=path.parent, env_file_path=path).parse(read)[0]
+        return BoundEnvironment(working_path=path.parent, env_file_path=path).parse(read)[0]
 
     @classmethod
-    def from_string(cls, input: str) -> "Environment":
-        return Environment().parse(input)[0]
+    def from_string(cls, input: str) -> "BoundEnvironment":
+        return BoundEnvironment().parse(input)[0]
 
     @classmethod
-    def from_cache(cls, path) -> Optional["Environment"]:
+    def from_cache(cls, path) -> Optional["BoundEnvironment"]:
         with open(path, "r") as f:
             read = f.read()
         base = cls.model_validate_json(read)
@@ -3481,9 +2690,9 @@ class Environment(BaseModel):
             ],
         )
 
-    def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
+    def validate_concept(self, new_concept: BoundConcept, meta: Meta | None = None):
         lookup = new_concept.address
-        existing: Concept = self.concepts.get(lookup)  # type: ignore
+        existing: BoundConcept = self.concepts.get(lookup)  # type: ignore
         if not existing:
             return
 
@@ -3544,7 +2753,7 @@ class Environment(BaseModel):
         )
 
     def add_import(
-        self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
+        self, alias: str, source: BoundEnvironment, imp_stm: ImportStatement | None = None
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
@@ -3601,7 +2810,7 @@ class Environment(BaseModel):
         return self
 
     def add_file_import(
-        self, path: str | Path, alias: str, env: Environment | None = None
+        self, path: str | Path, alias: str, env: BoundEnvironment | None = None
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
@@ -3626,12 +2835,12 @@ class Environment(BaseModel):
             try:
                 with open(target, "r", encoding="utf-8") as f:
                     text = f.read()
-                nenv = Environment(
+                nenv = BoundEnvironment(
                     working_path=target.parent,
                 )
                 nenv.concepts.fail_on_missing = False
                 nparser = ParseToObjects(
-                    environment=Environment(
+                    environment=BoundEnvironment(
                         working_path=target.parent,
                     ),
                     parse_address=parse_address,
@@ -3652,39 +2861,40 @@ class Environment(BaseModel):
 
     def parse(
         self, input: str, namespace: str | None = None, persist: bool = False
-    ) -> Tuple[Environment, list]:
-        from trilogy import parse
-        from trilogy.core.query_processor import process_persist
+    ) -> Tuple[BoundEnvironment, list]:
+        raise NotImplementedError
+        # from trilogy import parse
+        # from trilogy.core.query_processor import process_persist
 
-        if namespace:
-            new = Environment()
-            _, queries = new.parse(input)
-            self.add_import(namespace, new)
-            return self, queries
-        _, queries = parse(input, self)
-        generatable = [
-            x
-            for x in queries
-            if isinstance(
-                x,
-                (
-                    SelectStatement,
-                    PersistStatement,
-                    MultiSelectStatement,
-                    ShowStatement,
-                ),
-            )
-        ]
-        while generatable:
-            t = generatable.pop(0)
-            if isinstance(t, PersistStatement) and persist:
-                processed = process_persist(self, t)
-                self.add_datasource(processed.datasource)
-        return self, queries
+        # if namespace:
+        #     new = Environment()
+        #     _, queries = new.parse(input)
+        #     self.add_import(namespace, new)
+        #     return self, queries
+        # _, queries = parse(input, self)
+        # generatable = [
+        #     x
+        #     for x in queries
+        #     if isinstance(
+        #         x,
+        #         (
+        #             SelectStatement,
+        #             PersistStatement,
+        #             MultiSelectStatement,
+        #             ShowStatement,
+        #         ),
+        #     )
+        # ]
+        # while generatable:
+        #     t = generatable.pop(0)
+        #     if isinstance(t, PersistStatement) and persist:
+        #         processed = process_persist(self, t)
+        #         self.add_datasource(processed.datasource)
+        # return self, queries
 
     def add_concept(
         self,
-        concept: Concept,
+        concept: BoundConcept,
         meta: Meta | None = None,
         force: bool = False,
         add_derived: bool = True,
@@ -3768,8 +2978,8 @@ class Environment(BaseModel):
 
     def merge_concept(
         self,
-        source: Concept,
-        target: Concept,
+        source: BoundConcept,
+        target: BoundConcept,
         modifiers: List[Modifier],
         force: bool = False,
     ) -> bool:
@@ -3800,7 +3010,7 @@ class Environment(BaseModel):
         return True
 
 
-class LazyEnvironment(Environment):
+class LazyEnvironment(BoundEnvironment):
     """Variant of environment to defer parsing of a path
     until relevant attributes accessed."""
 
@@ -3823,7 +3033,7 @@ class LazyEnvironment(Environment):
             )
             from trilogy import parse
 
-            env = Environment(working_path=str(self.working_path))
+            env = BoundEnvironment(working_path=str(self.working_path))
             with open(self.load_path, "r") as f:
                 parse(f.read(), env)
             self.loaded = True
@@ -3833,8 +3043,9 @@ class LazyEnvironment(Environment):
         return super().__getattribute__(name)
 
 
+
 class Comparison(
-    ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel
+    ConceptArgs,  Namespaced, ConstantInlineable, SelectContext, BaseModel
 ):
     left: Union[
         int,
@@ -3845,7 +3056,7 @@ class Comparison(
         datetime,
         date,
         Function,
-        Concept,
+        BoundConcept,
         "Conditional",
         DataType,
         "Comparison",
@@ -3862,7 +3073,7 @@ class Comparison(
         bool,
         date,
         datetime,
-        Concept,
+        BoundConcept,
         Function,
         "Conditional",
         DataType,
@@ -3880,14 +3091,12 @@ class Comparison(
             self.left = concepts[self.left.address]
         if isinstance(self.right, UndefinedConcept) and self.right.address in concepts:
             self.right = concepts[self.right.address]
-        if isinstance(self.left, Mergeable):
-            self.left.hydrate_missing(concepts)
-        if isinstance(self.right, Mergeable):
-            self.right.hydrate_missing(concepts)
         return self
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+    
+    def validate(self, environment: BoundEnvironment):
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
             if self.right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
                 self.right
@@ -3897,7 +3106,7 @@ class Comparison(
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
             right = arg_to_datatype(self.right)
-            if not isinstance(self.right, Concept) and not isinstance(right, ListType):
+            if not isinstance(self.right, BoundConcept) and not isinstance(right, ListType):
                 raise SyntaxError(
                     f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}"
                 )
@@ -3908,7 +3117,7 @@ class Comparison(
                 raise SyntaxError(
                     f"Cannot compare {arg_to_datatype(self.left)} and {right} with operator {self.operator} in {str(self)}"
                 )
-            elif isinstance(self.right, Concept) and not is_compatible_datatype(
+            elif isinstance(self.right, BoundConcept) and not is_compatible_datatype(
                 arg_to_datatype(self.left), arg_to_datatype(self.right)
             ):
                 raise SyntaxError(
@@ -3946,7 +3155,7 @@ class Comparison(
             and self.operator == other.operator
         )
 
-    def inline_constant(self, constant: Concept):
+    def inline_constant(self, constant: BoundConcept):
         assert isinstance(constant.lineage, Function)
         new_val = constant.lineage.arguments[0]
         if isinstance(self.left, ConstantInlineable):
@@ -3969,20 +3178,6 @@ class Comparison(
             operator=self.operator,
         )
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return self.__class__(
-            left=(
-                self.left.with_merge(source, target, modifiers)
-                if isinstance(self.left, Mergeable)
-                else self.left
-            ),
-            right=(
-                self.right.with_merge(source, target, modifiers)
-                if isinstance(self.right, Mergeable)
-                else self.right
-            ),
-            operator=self.operator,
-        )
 
     def with_namespace(self, namespace: str):
         return self.__class__(
@@ -4000,7 +3195,7 @@ class Comparison(
         )
 
     def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
+        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
     ):
         return self.__class__(
             left=(
@@ -4018,9 +3213,9 @@ class Comparison(
         )
 
     @property
-    def input(self) -> List[Concept]:
-        output: List[Concept] = []
-        if isinstance(self.left, (Concept,)):
+    def input(self) -> List[BoundConcept]:
+        output: List[BoundConcept] = []
+        if isinstance(self.left, (BoundConcept,)):
             output += [self.left]
         if isinstance(
             self.left, (Comparison, SubselectComparison, Conditional, Parenthetical)
@@ -4031,7 +3226,7 @@ class Comparison(
         if isinstance(self.left, Function):
             output += self.left.concept_arguments
 
-        if isinstance(self.right, (Concept,)):
+        if isinstance(self.right, (BoundConcept,)):
             output += [self.right]
         if isinstance(
             self.right, (Comparison, SubselectComparison, Conditional, Parenthetical)
@@ -4044,7 +3239,7 @@ class Comparison(
         return output
 
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> List[BoundConcept]:
         """Return concepts directly referenced in where clause"""
         output = []
         output += get_concept_arguments(self.left)
@@ -4052,7 +3247,7 @@ class Comparison(
         return output
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[BoundConcept]:
         output = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.row_arguments
@@ -4065,9 +3260,9 @@ class Comparison(
         return output
 
     @property
-    def existence_arguments(self) -> List[Tuple[Concept, ...]]:
+    def existence_arguments(self) -> List[Tuple[BoundConcept, ...]]:
         """Return concepts directly referenced in where clause"""
-        output: List[Tuple[Concept, ...]] = []
+        output: List[Tuple[BoundConcept, ...]] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, ConceptArgs):
@@ -4088,32 +3283,16 @@ class SubselectComparison(Comparison):
         return comp
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[BoundConcept]:
         return get_concept_arguments(self.left)
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["BoundConcept", ...]]:
         return [tuple(get_concept_arguments(self.right))]
 
-    def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment,
-    ):
-        # there's no need to pass the select grain through to a subselect comparison on the right
-        return self.__class__(
-            left=(
-                self.left.with_select_context(local_concepts, grain, environment)
-                if isinstance(self.left, SelectContext)
-                else self.left
-            ),
-            right=self.right,
-            operator=self.operator,
-        )
 
 
-class CaseWhen(Namespaced, SelectContext, BaseModel):
+class CaseWhen( BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
@@ -4127,35 +3306,8 @@ class CaseWhen(Namespaced, SelectContext, BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
 
-    def with_namespace(self, namespace: str) -> CaseWhen:
-        return CaseWhen(
-            comparison=self.comparison.with_namespace(namespace),
-            expr=(
-                self.expr.with_namespace(namespace)
-                if isinstance(
-                    self.expr,
-                    Namespaced,
-                )
-                else self.expr
-            ),
-        )
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> CaseWhen:
-        return CaseWhen(
-            comparison=self.comparison.with_select_context(
-                local_concepts, grain, environment
-            ),
-            expr=(
-                (self.expr.with_select_context(local_concepts, grain, environment))
-                if isinstance(self.expr, SelectContext)
-                else self.expr
-            ),
-        )
-
-
-class CaseElse(Namespaced, SelectContext, BaseModel):
+class CaseElse( BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -4164,40 +3316,9 @@ class CaseElse(Namespaced, SelectContext, BaseModel):
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
 
-    def with_select_context(
-        self,
-        local_concepts: dict[str, Concept],
-        grain: Grain,
-        environment: Environment,
-    ):
-        return CaseElse(
-            discriminant=self.discriminant,
-            expr=(
-                self.expr.with_select_context(local_concepts, grain, environment)
-                if isinstance(
-                    self.expr,
-                    SelectContext,
-                )
-                else self.expr
-            ),
-        )
-
-    def with_namespace(self, namespace: str) -> CaseElse:
-        return CaseElse(
-            discriminant=self.discriminant,
-            expr=(
-                self.expr.with_namespace(namespace)
-                if isinstance(
-                    self.expr,
-                    Namespaced,
-                )
-                else self.expr
-            ),
-        )
-
 
 class Conditional(
-    Mergeable, ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel
+    ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel
 ):
     left: Union[
         int,
@@ -4206,7 +3327,7 @@ class Conditional(
         list,
         bool,
         MagicConstants,
-        Concept,
+        BoundConcept,
         Comparison,
         "Conditional",
         "Parenthetical",
@@ -4220,7 +3341,7 @@ class Conditional(
         list,
         bool,
         MagicConstants,
-        Concept,
+        BoundConcept,
         Comparison,
         "Conditional",
         "Parenthetical",
@@ -4253,7 +3374,7 @@ class Conditional(
             and self.operator == other.operator
         )
 
-    def inline_constant(self, constant: Concept) -> "Conditional":
+    def inline_constant(self, constant: BoundConcept) -> "Conditional":
         assert isinstance(constant.lineage, Function)
         new_val = constant.lineage.arguments[0]
         if isinstance(self.left, ConstantInlineable):
@@ -4294,47 +3415,13 @@ class Conditional(
             operator=self.operator,
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "Conditional":
-        return Conditional(
-            left=(
-                self.left.with_merge(source, target, modifiers)
-                if isinstance(self.left, Mergeable)
-                else self.left
-            ),
-            right=(
-                self.right.with_merge(source, target, modifiers)
-                if isinstance(self.right, Mergeable)
-                else self.right
-            ),
-            operator=self.operator,
-        )
-
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ):
-        return Conditional(
-            left=(
-                self.left.with_select_context(local_concepts, grain, environment)
-                if isinstance(self.left, SelectContext)
-                else self.left
-            ),
-            right=(
-                self.right.with_select_context(local_concepts, grain, environment)
-                if isinstance(self.right, SelectContext)
-                else self.right
-            ),
-            operator=self.operator,
-        )
-
     @property
-    def input(self) -> List[Concept]:
+    def input(self) -> List[BoundConcept]:
         """Return concepts directly referenced in where clause"""
         output = []
 
         for x in (self.left, self.right):
-            if isinstance(x, Concept):
+            if isinstance(x, BoundConcept):
                 output += x.input
             elif isinstance(x, (Comparison, Conditional)):
                 output += x.input
@@ -4343,7 +3430,7 @@ class Conditional(
         return output
 
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> List[BoundConcept]:
         """Return concepts directly referenced in where clause"""
         output = []
         output += get_concept_arguments(self.left)
@@ -4351,7 +3438,7 @@ class Conditional(
         return output
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[BoundConcept]:
         output = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.row_arguments
@@ -4364,7 +3451,7 @@ class Conditional(
         return output
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["BoundConcept", ...]]:
         output = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
@@ -4385,9 +3472,10 @@ class Conditional(
         return chunks
 
 
-class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
+
+class AggregateWrapper(SelectContext, BaseModel):
     function: Function
-    by: set[ConceptRef] = Field(default_factory=set)
+    by: set[BoundConcept] = Field(default_factory=set)
 
     def __str__(self):
         grain_str = [str(c) for c in self.by] if self.by else "abstract"
@@ -4398,7 +3486,7 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
         return self.function.datatype
 
     @property
-    def concept_arguments(self) -> List[Concept | ConceptRef]:
+    def concept_arguments(self) -> List[BoundConcept]:
         return self.function.concept_arguments + list(self.by)
 
     @property
@@ -4413,52 +3501,32 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
     def arguments(self):
         return self.function.arguments
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return AggregateWrapper(
-            function=self.function.with_merge(source, target, modifiers=modifiers),
-            by=self.by,
-        )
-
-    def with_namespace(self, namespace: str) -> "AggregateWrapper":
-        return AggregateWrapper(
-            function=self.function.with_namespace(namespace),
-            by=[address_with_namespace(c,namespace) for c in self.by] if self.by else [],
-        )
-
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> AggregateWrapper:
-        if not self.by:
-            by = [ConceptRef(c) for c in grain.components]
-        else:
-            by =self.by
-        parent = self.function.with_select_context(local_concepts, grain, environment)
-        return AggregateWrapper(function=parent, by=by)
 
 
-class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
+
+class WhereClause(ConceptArgs, Namespaced, SelectContext, BaseModel):
     conditional: Union[SubselectComparison, Comparison, Conditional, "Parenthetical"]
 
     def __repr__(self):
         return str(self.conditional)
 
     @property
-    def input(self) -> List[Concept]:
+    def input(self) -> List[BoundConcept]:
         return self.conditional.input
 
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> List[BoundConcept]:
         return self.conditional.concept_arguments
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[BoundConcept]:
         return self.conditional.row_arguments
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["BoundConcept", ...]]:
         return self.conditional.existence_arguments
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+    def with_merge(self, source: BoundConcept, target: BoundConcept, modifiers: List[Modifier]):
         return WhereClause(
             conditional=self.conditional.with_merge(source, target, modifiers)
         )
@@ -4467,7 +3535,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
 
     def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
+        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
     ) -> WhereClause:
         return self.__class__(
             conditional=self.conditional.with_select_context(
@@ -4494,15 +3562,6 @@ class HavingClause(WhereClause):
     def hydrate_missing(self, concepts: EnvironmentConceptDict):
         self.conditional.hydrate_missing(concepts)
 
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> HavingClause:
-        return HavingClause(
-            conditional=self.conditional.with_select_context(
-                local_concepts, grain, environment
-            )
-        )
-
 
 class MaterializedDataset(BaseModel):
     address: Address
@@ -4514,21 +3573,28 @@ class MaterializedDataset(BaseModel):
 
 
 class ProcessedQuery(BaseModel):
-    output_columns: List[Concept]
+    output_columns: List[BoundConcept]
     ctes: List[CTE | UnionCTE]
     base: CTE | UnionCTE
-    joins: List[Join]
-    grain: Grain
-    hidden_columns: set[str] = Field(default_factory=set)
-    limit: Optional[int] = None
-    where_clause: Optional[WhereClause] = None
-    having_clause: Optional[HavingClause] = None
-    order_by: Optional[OrderBy] = None
+    # these are just for metadata
+    # where_clause: Optional[WhereClause] = None
+    # having_clause: Optional[HavingClause] = None
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
 
-
+    @property
+    def order_by(self):
+        return self.base.order_by
+    
+    @property
+    def limit(self):
+        return self.base.limit
+    
+    @property
+    def hidden_columns(self):
+        return self.base.hidden_concepts
+    
 class PersistQueryMixin(BaseModel):
     output_to: MaterializedDataset
     datasource: Datasource
@@ -4550,8 +3616,8 @@ class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
 
 
 class ProcessedShowStatement(BaseModel):
-    output_columns: List[Concept]
-    output_values: List[Union[Concept, Datasource, ProcessedQuery]]
+    output_columns: List[BoundConcept]
+    output_values: List[Union[BoundConcept, Datasource, ProcessedQuery]]
 
 
 class ProcessedRawSQLStatement(BaseModel):
@@ -4562,87 +3628,13 @@ class Limit(BaseModel):
     count: int
 
 
-class ConceptDeclarationStatement(HasUUID, BaseModel):
-    concept: Concept
 
 
-class ConceptDerivation(BaseModel):
-    concept: Concept
 
 
-class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
-    name: str
-    select: SelectStatement | MultiSelectStatement
-    namespace: str
-
-    def __repr__(self):
-        return f"RowsetDerivation<{str(self.select)}>"
-
-    def __str__(self):
-        return self.__repr__()
-
-    @property
-    def derived_concepts(self) -> List[Concept]:
-        output: list[Concept] = []
-        orig: dict[str, Concept] = {}
-        for orig_concept in self.select.output_components:
-            name = orig_concept.name
-            if isinstance(orig_concept.lineage, FilterItem):
-                if orig_concept.lineage.where == self.select.where_clause:
-                    name = orig_concept.lineage.content.name
-
-            new_concept = Concept(
-                name=name,
-                datatype=orig_concept.datatype,
-                purpose=orig_concept.purpose,
-                lineage=RowsetItem(
-                    content=orig_concept, where=self.select.where_clause, rowset=self
-                ),
-                grain=orig_concept.grain,
-                # TODO: add proper metadata
-                metadata=Metadata(concept_source=ConceptSource.CTE),
-                namespace=(
-                    f"{self.name}.{orig_concept.namespace}"
-                    if orig_concept.namespace != self.namespace
-                    else self.name
-                ),
-                keys=orig_concept.keys,
-            )
-            orig[orig_concept.address] = new_concept
-            output.append(new_concept)
-        default_grain = Grain.from_concepts([*output])
-        # remap everything to the properties of the rowset
-        for x in output:
-            if x.keys:
-                if all([k in orig for k in x.keys]):
-                    x.keys = set([orig[k].address if k in orig else k for k in x.keys])
-                else:
-                    # TODO: fix this up
-                    x.keys = set()
-        for x in output:
-            if all([c in orig for c in x.grain.components]):
-                x.grain = Grain(
-                    components={orig[c].address for c in x.grain.components}
-                )
-            else:
-                x.grain = default_grain
-        return output
-
-    @property
-    def arguments(self) -> List[Concept]:
-        return self.select.output_components
-
-    def with_namespace(self, namespace: str) -> "RowsetDerivationStatement":
-        return RowsetDerivationStatement(
-            name=self.name,
-            select=self.select.with_namespace(namespace),
-            namespace=namespace,
-        )
-
-
-class RowsetItem(Mergeable, Namespaced, BaseModel):
-    content: Concept
-    rowset: RowsetDerivationStatement
+class RowsetItem( Namespaced, BaseModel):
+    content: BoundConcept
+    # rowset: RowsetDerivationStatement
     where: Optional["WhereClause"] = None
 
     def __repr__(self):
@@ -4652,45 +3644,24 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
 
     def __str__(self):
         return self.__repr__()
-
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return RowsetItem(
-            content=self.content.with_merge(source, target, modifiers),
-            rowset=self.rowset,
-            where=(
-                self.where.with_merge(source, target, modifiers) if self.where else None
-            ),
-        )
-
-    def with_namespace(self, namespace: str) -> "RowsetItem":
-        return RowsetItem(
-            content=self.content.with_namespace(namespace),
-            where=self.where.with_namespace(namespace) if self.where else None,
-            rowset=self.rowset.with_namespace(namespace),
-        )
-
+    
     @property
-    def arguments(self) -> List[Concept]:
+    def arguments(self) -> List[BoundConcept]:
         output = [self.content]
         if self.where:
             output += self.where.input
         return output
 
     @property
-    def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
+    def output(self) -> BoundConcept:
         return self.content
 
     @output.setter
     def output(self, value):
-        if isinstance(self.content, ConceptTransform):
-            self.content.output = value
-        else:
-            self.content = value
+        self.content = value
 
     @property
-    def input(self) -> List[Concept]:
+    def input(self) -> List[BoundConcept]:
         base = self.content.input
         if self.where:
             base += self.where.input
@@ -4710,9 +3681,8 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
             return [self.content] + self.where.concept_arguments
         return [self.content]
 
-
 class Parenthetical(
-    ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel
+    ConceptArgs, Namespaced, ConstantInlineable, SelectContext, BaseModel
 ):
     content: "Expr"
 
@@ -4738,17 +3708,10 @@ class Parenthetical(
             )
         )
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return Parenthetical(
-            content=(
-                self.content.with_merge(source, target, modifiers)
-                if isinstance(self.content, Mergeable)
-                else self.content
-            )
-        )
+
 
     def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
+        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
     ):
         return Parenthetical(
             content=(
@@ -4758,7 +3721,7 @@ class Parenthetical(
             )
         )
 
-    def inline_constant(self, concept: Concept):
+    def inline_constant(self, concept: BoundConcept):
         return Parenthetical(
             content=(
                 self.content.inline_constant(concept)
@@ -4768,23 +3731,23 @@ class Parenthetical(
         )
 
     @property
-    def concept_arguments(self) -> List[Concept]:
-        base: List[Concept] = []
+    def concept_arguments(self) -> List[BoundConcept]:
+        base: List[BoundConcept] = []
         x = self.content
         if hasattr(x, "concept_arguments"):
             base += x.concept_arguments
-        elif isinstance(x, Concept):
+        elif isinstance(x, BoundConcept):
             base.append(x)
         return base
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> List[BoundConcept]:
         if isinstance(self.content, ConceptArgs):
             return self.content.row_arguments
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> list[tuple["BoundConcept", ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
         return []
@@ -4810,7 +3773,9 @@ class TupleWrapper(Generic[VT], tuple):
         return (self.val, self.type)
 
     def __new__(cls, val, type: DataType, **kwargs):
-        return super().__new__(cls, tuple(val))
+        base = super().__new__(cls, tuple(val))
+        setattr(base, 'type', type)
+        return base
         # self.type = type
 
     @classmethod
@@ -4826,25 +3791,8 @@ class TupleWrapper(Generic[VT], tuple):
 
     @classmethod
     def validate(cls, v):
-        return cls(v, type=arg_to_datatype(v[0]))
+        return cls(v, type=DataType.INTEGER)
 
-
-class PersistStatement(HasUUID, BaseModel):
-    datasource: Datasource
-    select: SelectStatement
-    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
-
-    @property
-    def identifier(self):
-        return self.datasource.identifier
-
-    @property
-    def address(self):
-        return self.datasource.address
-
-
-class ShowStatement(BaseModel):
-    content: SelectStatement | PersistStatement | ShowCategory
 
 
 Expr = (
@@ -4856,7 +3804,7 @@ Expr = (
     | list
     | WindowItem
     | FilterItem
-    | Concept
+    | BoundConcept
     | Comparison
     | Conditional
     | Parenthetical
@@ -4865,7 +3813,7 @@ Expr = (
 )
 
 
-Concept.model_rebuild()
+BoundConcept.model_rebuild()
 Grain.model_rebuild()
 WindowItem.model_rebuild()
 WindowItemOrder.model_rebuild()
@@ -4877,7 +3825,7 @@ WhereClause.model_rebuild()
 ImportStatement.model_rebuild()
 CaseWhen.model_rebuild()
 CaseElse.model_rebuild()
-SelectStatement.model_rebuild()
+
 CTE.model_rebuild()
 BaseJoin.model_rebuild()
 QueryDatasource.model_rebuild()
@@ -4889,14 +3837,14 @@ Function.model_rebuild()
 Grain.model_rebuild()
 
 
-def list_to_wrapper(args):
-    types = [arg_to_datatype(arg) for arg in args]
+def list_to_wrapper(args, environment:BoundEnvironment):
+    types = [arg_to_datatype(arg, environment=environment) for arg in args]
     assert len(set(types)) == 1
     return ListWrapper(args, type=types[0])
 
 
-def tuple_to_wrapper(args):
-    types = [arg_to_datatype(arg) for arg in args]
+def tuple_to_wrapper(args, environment:BoundEnvironment):
+    types = [arg_to_datatype(arg, environment=environment) for arg in args]
     assert len(set(types)) == 1
     return TupleWrapper(args, type=types[0])
 
@@ -4931,14 +3879,16 @@ def merge_datatypes(
     return inputs[0]
 
 
-def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | NumericType:
+def arg_to_datatype(arg, environment:BoundEnvironment) -> DataType | ListType | StructType | MapType | NumericType:
+    if isinstance(arg, Reference):
+        return arg_to_datatype(arg.instantiate(environment), environment)
     if isinstance(arg, Function):
         return arg.output_datatype
     elif isinstance(arg, MagicConstants):
         if arg == MagicConstants.NULL:
             return DataType.NULL
         raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
-    elif isinstance(arg, Concept):
+    elif isinstance(arg, BoundConcept):
         return arg.datatype
     elif isinstance(arg, bool):
         return DataType.BOOL

@@ -2,7 +2,7 @@ from typing import List
 
 from trilogy.core.models import (
     Comparison,
-    Concept,
+    BoundConcept,
     Conditional,
     Grain,
     Parenthetical,
@@ -24,18 +24,18 @@ class FilterNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
-        partial_concepts: List[Concept] | None = None,
+        partial_concepts: List[BoundConcept] | None = None,
         force_group: bool | None = False,
         grain: Grain | None = None,
-        existence_concepts: List[Concept] | None = None,
+        existence_concepts: List[BoundConcept] | None = None,
     ):
         super().__init__(
             output_concepts=output_concepts,

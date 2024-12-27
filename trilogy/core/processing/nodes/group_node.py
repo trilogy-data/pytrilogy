@@ -4,10 +4,10 @@ from typing import List, Optional
 from trilogy.constants import logger
 from trilogy.core.models import (
     Comparison,
-    Concept,
+    BoundConcept,
     Conditional,
     Datasource,
-    Environment,
+    BoundEnvironment,
     Grain,
     Parenthetical,
     QueryDatasource,
@@ -36,18 +36,18 @@ class GroupNode(StrategyNode):
 
     def __init__(
         self,
-        output_concepts: List[Concept],
-        input_concepts: List[Concept],
-        environment: Environment,
+        output_concepts: List[BoundConcept],
+        input_concepts: List[BoundConcept],
+        environment: BoundEnvironment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: Optional[List[Concept]] = None,
-        nullable_concepts: Optional[List[Concept]] = None,
+        partial_concepts: Optional[List[BoundConcept]] = None,
+        nullable_concepts: Optional[List[BoundConcept]] = None,
         force_group: bool | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
-        existence_concepts: List[Concept] | None = None,
+        existence_concepts: List[BoundConcept] | None = None,
         hidden_concepts: set[str] | None = None,
     ):
         super().__init__(
@@ -69,9 +69,9 @@ class GroupNode(StrategyNode):
     @classmethod
     def check_if_required(
         cls,
-        downstream_concepts: List[Concept],
+        downstream_concepts: List[BoundConcept],
         parents: list[QueryDatasource | Datasource],
-        environment: Environment,
+        environment: BoundEnvironment,
     ) -> GroupRequiredResponse:
         target_grain = Grain.from_concepts(
             concepts_to_grain_concepts(

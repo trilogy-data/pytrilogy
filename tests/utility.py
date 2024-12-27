@@ -1,6 +1,6 @@
 from logging import INFO
 
-from trilogy.core.models import Concept, Environment
+from trilogy.core.models import BoundConcept, BoundEnvironment
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.group_node import GroupNode
@@ -15,7 +15,7 @@ def get_parents(node: StrategyNode):
 
 
 def validate_shape(
-    input: list[Concept], environment: Environment, g, levels, error: str | None = None
+    input: list[BoundConcept], environment: BoundEnvironment, g, levels, error: str | None = None
 ):
     """test that our query resolves to the expected CTES"""
     base: GroupNode = source_query_concepts(input, environment, g)

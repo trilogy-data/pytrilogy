@@ -1,6 +1,6 @@
 from pytest import raises
 
-from trilogy import Environment
+from trilogy import BoundEnvironment
 from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.parsing.parse_engine import PARSER, ParseToObjects, unpack_visit_error
 
@@ -15,7 +15,7 @@ select
 
 
 def test_parser():
-    env = Environment()
+    env = BoundEnvironment()
     x = ParseToObjects(environment=env)
     x.environment.concepts.fail_on_missing = False
     x.set_text(TEXT)

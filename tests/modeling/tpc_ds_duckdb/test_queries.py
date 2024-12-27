@@ -5,13 +5,13 @@ import pytest
 import tomli_w
 import tomllib
 
-from trilogy import Environment, Executor
+from trilogy import BoundEnvironment, Executor
 
 working_path = Path(__file__).parent
 
 
 def run_query(engine: Executor, idx: int, sql_override: bool = False):
-    engine.environment = Environment(working_path=working_path)
+    engine.environment = BoundEnvironment(working_path=working_path)
     with open(working_path / f"query{idx:02d}.preql") as f:
         text = f.read()
 
@@ -196,10 +196,10 @@ def test_ninety_nine(engine):
 def run_adhoc(number: int, text: str | None = None):
     from logging import INFO
 
-    from trilogy import Dialects, Environment
+    from trilogy import Dialects, BoundEnvironment
     from trilogy.hooks.query_debugger import DebuggingHook
 
-    env = Environment(working_path=Path(__file__).parent)
+    env = BoundEnvironment(working_path=Path(__file__).parent)
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )

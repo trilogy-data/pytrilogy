@@ -7,15 +7,14 @@ from trilogy import Dialects
 from trilogy.core.enums import FunctionType, Granularity, Purpose, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models import (
-    Concept,
-    Environment,
+    BoundConcept,
+    BoundEnvironment,
     FilterItem,
     Grain,
     LooseConceptList,
-    SelectStatement,
-    ShowStatement,
     SubselectComparison,
 )
+from trilogy.core.parse_models import SelectStatement, ShowStatement
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -112,7 +111,7 @@ def test_constants(duckdb_engine: Executor, expected_results):
         duckdb_engine.environment.concepts["usd_conversion"].granularity
         == Granularity.SINGLE_ROW
     )
-    parent_arg: Concept = [
+    parent_arg: BoundConcept = [
         x for x in scaled_metric.lineage.arguments if x.name == "total_count"
     ][0]
     assert len(parent_arg.lineage.arguments[0].grain.components) == 2
@@ -699,7 +698,7 @@ order by
 
 
 def test_filtered_datasource():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=BoundEnvironment())
 
     test = """key orid int;
 key store string;
@@ -736,7 +735,7 @@ select
 
 
 def test_cte_filter_promotion():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=BoundEnvironment())
     test = """key orid int;
 key store string;
 key customer int;
@@ -816,7 +815,7 @@ order by
 
 
 def test_duckdb_load():
-    env = Environment(working_path=Path(__file__).parent)
+    env = BoundEnvironment(working_path=Path(__file__).parent)
     exec = Dialects.DUCK_DB.default_executor(environment=env)
 
     results = exec.execute_query(

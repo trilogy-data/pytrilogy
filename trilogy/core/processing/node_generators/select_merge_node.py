@@ -6,9 +6,9 @@ from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.graph_models import concept_to_node
 from trilogy.core.models import (
-    Concept,
+    BoundConcept,
     Datasource,
-    Environment,
+    BoundEnvironment,
     Grain,
     LooseConceptList,
     WhereClause,
@@ -72,7 +72,7 @@ def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
 
 def create_pruned_concept_graph(
     g: nx.DiGraph,
-    all_concepts: List[Concept],
+    all_concepts: List[BoundConcept],
     datasources: list[Datasource],
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
@@ -84,7 +84,7 @@ def create_pruned_concept_graph(
     union_options = get_union_sources(datasources, all_concepts)
     for ds_list in union_options:
         node_address = "ds~" + "-".join([x.name for x in ds_list])
-        common: set[Concept] = set.intersection(
+        common: set[BoundConcept] = set.intersection(
             *[set(x.output_concepts) for x in ds_list]
         )
         g.add_node(node_address, datasource=ds_list)
@@ -92,7 +92,7 @@ def create_pruned_concept_graph(
             g.add_edge(node_address, concept_to_node(c))
 
     target_addresses = set([c.address for c in all_concepts])
-    concepts: dict[str, Concept] = nx.get_node_attributes(orig_g, "concept")
+    concepts: dict[str, BoundConcept] = nx.get_node_attributes(orig_g, "concept")
     datasource_map: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
         orig_g, "datasource"
     )
@@ -191,7 +191,7 @@ def resolve_subgraphs(
     }
     partial_map = get_graph_partial_nodes(g, conditions)
     grain_length = get_graph_grain_length(g)
-    concepts: dict[str, Concept] = nx.get_node_attributes(g, "concept")
+    concepts: dict[str, BoundConcept] = nx.get_node_attributes(g, "concept")
     non_partial_map = {
         ds: [concepts[c].address for c in subgraphs[ds] if c not in partial_map[ds]]
         for ds in datasources
@@ -234,9 +234,9 @@ def resolve_subgraphs(
 
 def create_datasource_node(
     datasource: Datasource,
-    all_concepts: List[Concept],
+    all_concepts: List[BoundConcept],
     accept_partial: bool,
-    environment: Environment,
+    environment: BoundEnvironment,
     depth: int,
     conditions: WhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
@@ -287,7 +287,7 @@ def create_select_node(
     subgraph: list[str],
     accept_partial: bool,
     g,
-    environment: Environment,
+    environment: BoundEnvironment,
     depth: int,
     conditions: WhereClause | None = None,
 ) -> StrategyNode:
@@ -373,9 +373,9 @@ def create_select_node(
 
 
 def gen_select_merge_node(
-    all_concepts: List[Concept],
+    all_concepts: List[BoundConcept],
     g: nx.DiGraph,
-    environment: Environment,
+    environment: BoundEnvironment,
     depth: int,
     accept_partial: bool = False,
     conditions: WhereClause | None = None,

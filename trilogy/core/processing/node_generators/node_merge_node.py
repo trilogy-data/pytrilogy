@@ -7,7 +7,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models import Concept, Conditional, Environment, WhereClause
+from trilogy.core.models import BoundConcept, Conditional, BoundEnvironment, WhereClause
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -33,7 +33,7 @@ def extract_address(node: str):
     return node.split("~")[1].split("@")[0]
 
 
-def extract_concept(node: str, env: Environment):
+def extract_concept(node: str, env: BoundEnvironment):
     if node in env.alias_origin_lookup:
         return env.alias_origin_lookup[node]
     return env.concepts[node]
@@ -76,7 +76,7 @@ def extract_ds_components(g: nx.DiGraph, nodelist: list[str]) -> list[list[str]]
 def determine_induced_minimal_nodes(
     G: nx.DiGraph,
     nodelist: list[str],
-    environment: Environment,
+    environment: BoundEnvironment,
     filter_downstream: bool,
     accept_partial: bool = False,
 ) -> nx.DiGraph | None:
@@ -86,7 +86,7 @@ def determine_induced_minimal_nodes(
 
     for node in G.nodes:
         if concepts.get(node):
-            lookup: Concept = concepts[node]
+            lookup: BoundConcept = concepts[node]
             if lookup.derivation in (PurposeLineage.CONSTANT,):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
@@ -147,7 +147,7 @@ def determine_induced_minimal_nodes(
 
 
 def detect_ambiguity_and_raise(
-    all_concepts: list[Concept], reduced_concept_sets: list[set[str]]
+    all_concepts: list[BoundConcept], reduced_concept_sets: list[set[str]]
 ) -> None:
     final_candidates: list[set[str]] = []
     common: set[str] = set()
@@ -167,7 +167,7 @@ def detect_ambiguity_and_raise(
         )
 
 
-def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
+def has_synonym(concept: BoundConcept, others: list[list[BoundConcept]]) -> bool:
     return any(
         c.address in concept.pseudonyms or concept.address in c.pseudonyms
         for sublist in others
@@ -175,7 +175,7 @@ def has_synonym(concept: Concept, others: list[list[Concept]]) -> bool:
     )
 
 
-def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Concept]]:
+def filter_relevant_subgraphs(subgraphs: list[list[BoundConcept]]) -> list[list[BoundConcept]]:
     return [
         subgraph
         for subgraph in subgraphs
@@ -188,12 +188,12 @@ def filter_relevant_subgraphs(subgraphs: list[list[Concept]]) -> list[list[Conce
 
 
 def resolve_weak_components(
-    all_concepts: List[Concept],
-    environment: Environment,
+    all_concepts: List[BoundConcept],
+    environment: BoundEnvironment,
     environment_graph: nx.DiGraph,
     filter_downstream: bool = True,
     accept_partial: bool = False,
-) -> list[list[Concept]] | None:
+) -> list[list[BoundConcept]] | None:
     break_flag = False
     found = []
     search_graph = environment_graph.copy()
@@ -264,7 +264,7 @@ def resolve_weak_components(
     # take our first one as the actual graph
     g = found[0]
 
-    subgraphs: list[list[Concept]] = []
+    subgraphs: list[list[BoundConcept]] = []
     # components = nx.strongly_connected_components(g)
     node_list = [x for x in g.nodes if x.startswith("c~")]
     components = extract_ds_components(g, node_list)
@@ -285,9 +285,9 @@ def resolve_weak_components(
 
 
 def subgraphs_to_merge_node(
-    concept_subgraphs: list[list[Concept]],
+    concept_subgraphs: list[list[BoundConcept]],
     depth: int,
-    all_concepts: List[Concept],
+    all_concepts: List[BoundConcept],
     environment,
     g,
     source_concepts,
@@ -349,9 +349,9 @@ def subgraphs_to_merge_node(
 
 
 def gen_merge_node(
-    all_concepts: List[Concept],
+    all_concepts: List[BoundConcept],
     g: nx.DiGraph,
-    environment: Environment,
+    environment: BoundEnvironment,
     depth: int,
     source_concepts,
     accept_partial: bool = False,

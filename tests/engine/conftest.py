@@ -5,7 +5,7 @@ from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
-from trilogy import Dialects, Environment, Executor, parse
+from trilogy import Dialects, BoundEnvironment, Executor, parse
 from trilogy.dialect.config import PrestoConfig, SnowflakeConfig, TrinoConfig
 from trilogy.dialect.enums import DialectConfig
 from trilogy.engine import EngineConnection, EngineResult, ExecutionEngine
@@ -29,7 +29,7 @@ def mock_factory(conf: DialectConfig, config_type, **kwargs):
 
 @fixture(scope="session")
 def environment():
-    yield Environment(working_path=dirname(ENV_PATH))
+    yield BoundEnvironment(working_path=dirname(ENV_PATH))
 
 
 @fixture(scope="session")

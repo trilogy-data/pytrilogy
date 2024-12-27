@@ -1,11 +1,11 @@
 from trilogy import Dialects, Executor
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.hooks.query_debugger import DebuggingHook
 
 # from pydantic.functional_validators import merge
 
 
-def test_merge_discovery(test_environment: Environment, test_executor: Executor):
+def test_merge_discovery(test_environment: BoundEnvironment, test_executor: Executor):
     # test keys
 
     test_select = """
@@ -25,9 +25,9 @@ where
 def v_grain():
     # test keys
 
-    base = Environment()
+    base = BoundEnvironment()
 
-    imports = Environment()
+    imports = BoundEnvironment()
 
     imports.parse(
         """
@@ -73,9 +73,9 @@ select
 def test_merge_grain_two():
     # test keys
 
-    base = Environment()
+    base = BoundEnvironment()
 
-    imports = Environment()
+    imports = BoundEnvironment()
 
     imports.parse(
         """
@@ -134,9 +134,9 @@ order by
 def test_merge_no_duplication():
     # test keys
 
-    base = Environment()
+    base = BoundEnvironment()
 
-    imports = Environment()
+    imports = BoundEnvironment()
 
     imports.parse(
         """

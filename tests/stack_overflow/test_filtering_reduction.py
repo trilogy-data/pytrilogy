@@ -1,9 +1,10 @@
 from os.path import dirname
 
-from trilogy.core.models import Environment, SelectStatement
+from trilogy.core.models import BoundEnvironment
 from trilogy.core.query_processor import process_query
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse
+from trilogy.core.parse_models import SelectStatement
 
 
 def test_filtering_reduction():
@@ -27,7 +28,7 @@ order by
     ;"""
     env, parsed = parse(
         QUERY,
-        environment=Environment(working_path=dirname(__file__)),
+        environment=BoundEnvironment(working_path=dirname(__file__)),
     )
     select: SelectStatement = parsed[-1]
     # for item in select.selection:
@@ -54,6 +55,6 @@ order
     by answer.comment_count desc
 limit 10
     ;"""
-    env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
+    env, parsed = parse(QUERY, environment=BoundEnvironment(working_path=dirname(__file__)))
     select: SelectStatement = parsed[-1]
     process_query(statement=select, environment=env)

@@ -29,6 +29,7 @@
     constant_derivation: CONST IDENTIFIER "<-" (literal | _constant_functions)
 
     concept_nullable_modifier: "?"
+    
     concept:  (concept_declaration | concept_derivation | concept_property_declaration | constant_derivation)
     
     //concept property

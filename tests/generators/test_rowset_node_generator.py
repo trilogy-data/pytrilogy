@@ -1,11 +1,11 @@
-from trilogy import Environment
+from trilogy import BoundEnvironment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_rowset_node
 from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_gen_rowset_node_with_filter(
-    test_environment: Environment, test_environment_graph
+    test_environment: BoundEnvironment, test_environment_graph
 ):
     DebuggingHook()
     test_environment.parse(
@@ -37,7 +37,7 @@ where rev_sum>5;
 
 
 def test_gen_rowset_node_group_parent(
-    test_environment: Environment, test_environment_graph
+    test_environment: BoundEnvironment, test_environment_graph
 ):
     DebuggingHook()
     test_environment.parse(
@@ -68,7 +68,7 @@ where rev_sum>2;
 
 
 def test_gen_rowset_node_merge_parent(
-    test_environment: Environment, test_environment_graph
+    test_environment: BoundEnvironment, test_environment_graph
 ):
     DebuggingHook()
     test_environment.parse(

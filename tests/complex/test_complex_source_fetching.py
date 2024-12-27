@@ -7,11 +7,11 @@ import re
 from trilogy.core.enums import Purpose
 from trilogy.core.models import (
     Datasource,
-    Environment,
+    BoundEnvironment,
     Grain,
     QueryDatasource,
-    SelectStatement,
 )
+from trilogy.core.parse_models import SelectStatement
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
@@ -20,8 +20,8 @@ from trilogy.core.query_processor import datasource_to_cte, process_query
 from trilogy.dialect.sql_server import SqlServerDialect
 
 
-def test_aggregate_of_property_function(stackoverflow_environment: Environment) -> None:
-    env: Environment = stackoverflow_environment
+def test_aggregate_of_property_function(stackoverflow_environment: BoundEnvironment) -> None:
+    env: BoundEnvironment = stackoverflow_environment
     avg_user_post_count = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_user_post_count, user_id])
@@ -41,7 +41,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
     generator.compile_statement(query)
 
 
-def test_aggregate_to_grain(stackoverflow_environment: Environment):
+def test_aggregate_to_grain(stackoverflow_environment: BoundEnvironment):
     env = stackoverflow_environment
     avg_post_length = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]

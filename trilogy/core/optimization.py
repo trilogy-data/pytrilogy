@@ -3,9 +3,11 @@ from trilogy.core.enums import BooleanOperator, PurposeLineage
 from trilogy.core.models import (
     CTE,
     Conditional,
-    MultiSelectStatement,
-    SelectStatement,
     UnionCTE,
+)
+from trilogy.core.parse_models import (
+    MultiSelectStatement,
+    SelectStatement
 )
 from trilogy.core.optimizations import (
     InlineConstant,

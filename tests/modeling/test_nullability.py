@@ -1,8 +1,8 @@
 from trilogy import Executor
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 
 
-def test_statement_grains(test_environment: Environment, test_executor: Executor):
+def test_statement_grains(test_environment: BoundEnvironment, test_executor: Executor):
     # test keys
     test_select = """
 SELECT

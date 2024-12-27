@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Dialects, Environment, parse
+from trilogy import Dialects, BoundEnvironment, parse
 from trilogy.hooks.query_debugger import DebuggingHook
 
 working_path = Path(__file__).parent
@@ -8,7 +8,7 @@ test = working_path / "store.preql"
 
 
 def test_one():
-    env = Environment(working_path=working_path)
+    env = BoundEnvironment(working_path=working_path)
     with open(test) as f:
         text = f.read()
         env, queries = parse(text, env)
@@ -78,7 +78,7 @@ limit 100;"""
 
 
 def test_three():
-    env = Environment(working_path=working_path)
+    env = BoundEnvironment(working_path=working_path)
     with open(working_path / "query3.preql") as f:
         text = f.read()
         env, queries = parse(text, env)
@@ -95,7 +95,7 @@ def test_three():
 
 
 def test_three_alt():
-    env = Environment(working_path=working_path)
+    env = BoundEnvironment(working_path=working_path)
     with open(working_path / "query3_alt.preql") as f:
         text = f.read()
         env, queries = parse(text, env)

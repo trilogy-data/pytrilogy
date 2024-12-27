@@ -2,8 +2,8 @@ from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models import (
-    Concept,
-    Environment,
+    BoundConcept,
+    BoundEnvironment,
     LooseConceptList,
     WhereClause,
 )
@@ -19,9 +19,9 @@ LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 
 
 def gen_select_node(
-    concept: Concept,
-    local_optional: list[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: list[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     accept_partial: bool = False,

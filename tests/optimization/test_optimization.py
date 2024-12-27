@@ -10,7 +10,7 @@ from trilogy.core.models import (
     Comparison,
     Conditional,
     DataType,
-    Environment,
+    BoundEnvironment,
     Function,
     Grain,
     QueryDatasource,
@@ -121,7 +121,7 @@ def test_decomposition_function():
     ]
 
 
-def test_basic_pushdown(test_environment: Environment, test_environment_graph):
+def test_basic_pushdown(test_environment: BoundEnvironment, test_environment_graph):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
@@ -172,7 +172,7 @@ def test_basic_pushdown(test_environment: Environment, test_environment_graph):
     ), f"{cte2.condition}, {parent.condition}, {is_child_of(cte2.condition, parent.condition)}"
 
 
-def test_invalid_pushdown(test_environment: Environment, test_environment_graph):
+def test_invalid_pushdown(test_environment: BoundEnvironment, test_environment_graph):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     cte_source_map = {outputs[0].address: [datasource.name]}
@@ -236,7 +236,7 @@ def test_invalid_pushdown(test_environment: Environment, test_environment_graph)
 
 
 def test_invalid_aggregate_pushdown(
-    test_environment: Environment, test_environment_graph
+    test_environment: BoundEnvironment, test_environment_graph
 ):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
@@ -291,7 +291,7 @@ def test_invalid_aggregate_pushdown(
     assert cte2.condition is not None
 
 
-def test_decomposition_pushdown(test_environment: Environment, test_environment_graph):
+def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environment_graph):
     category_ds = test_environment.datasources["category"]
     products = test_environment.datasources["products"]
     product_id = test_environment.concepts["product_id"]

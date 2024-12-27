@@ -1,7 +1,7 @@
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.models import (
     CTE,
-    Concept,
+    BoundConcept,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule
@@ -14,7 +14,7 @@ class InlineConstant(OptimizationRule):
         if isinstance(cte, UnionCTE):
             return any(self.optimize(x, inverse_map) for x in cte.internal_ctes)
 
-        to_inline: list[Concept] = []
+        to_inline: list[BoundConcept] = []
         for x in cte.source.input_concepts:
             if x.address not in cte.source_map:
                 continue

@@ -1,5 +1,5 @@
 from trilogy.core.env_processor import concept_to_node, generate_graph
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
@@ -7,7 +7,7 @@ from trilogy.core.processing.node_generators.node_merge_node import (
 )
 
 
-def test_demo_merge(normalized_engine, test_env: Environment):
+def test_demo_merge(normalized_engine, test_env: BoundEnvironment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     concepts = set(list(normalized_engine.environment.concepts.keys()))
@@ -33,7 +33,7 @@ and passenger.last_name is not null;
     assert len(results) == 8
 
 
-def test_demo_merge_rowset(normalized_engine, test_env: Environment):
+def test_demo_merge_rowset(normalized_engine, test_env: BoundEnvironment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     concepts = set(list(normalized_engine.environment.concepts.keys()))
@@ -64,7 +64,7 @@ select
     assert len(results) == 8
 
 
-def test_merged_env_behavior(normalized_engine, test_env: Environment):
+def test_merged_env_behavior(normalized_engine, test_env: BoundEnvironment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     test_pre = """
@@ -89,7 +89,7 @@ merge rich_info.last_name into ~passenger.last_name;
     assert found
 
 
-def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environment):
+def test_demo_merge_rowset_with_condition(normalized_engine, test_env: BoundEnvironment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     concepts = set(list(normalized_engine.environment.concepts.keys()))
@@ -149,7 +149,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
     assert mn
 
 
-def test_demo_merge_rowset_e2e(normalized_engine, test_env: Environment):
+def test_demo_merge_rowset_e2e(normalized_engine, test_env: BoundEnvironment):
     # assert test_env.concept_links[test_env.concepts["passenger.last_name"]][0] == test_env.concepts["rich_info.last_name"]
     from logging import DEBUG
 

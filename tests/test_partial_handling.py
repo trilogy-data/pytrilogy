@@ -5,10 +5,10 @@ from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
 from trilogy.core.models import (
     ColumnAssignment,
-    Concept,
+    BoundConcept,
     Datasource,
     DataType,
-    Environment,
+    BoundEnvironment,
 )
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import (
@@ -25,12 +25,12 @@ def setup_engine() -> Executor:
     return output
 
 
-def setup_titanic(env: Environment):
+def setup_titanic(env: BoundEnvironment):
     namespace = "passenger"
-    id = Concept(
+    id = BoundConcept(
         name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    age = Concept(
+    age = BoundConcept(
         name="age",
         namespace=namespace,
         datatype=DataType.INTEGER,
@@ -40,7 +40,7 @@ def setup_titanic(env: Environment):
         },
     )
 
-    name = Concept(
+    name = BoundConcept(
         name="name",
         namespace=namespace,
         datatype=DataType.STRING,
@@ -50,7 +50,7 @@ def setup_titanic(env: Environment):
         },
     )
 
-    pclass = Concept(
+    pclass = BoundConcept(
         name="passenger_class",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -59,7 +59,7 @@ def setup_titanic(env: Environment):
             id.address,
         },
     )
-    survived = Concept(
+    survived = BoundConcept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -68,7 +68,7 @@ def setup_titanic(env: Environment):
             id.address,
         },
     )
-    fare = Concept(
+    fare = BoundConcept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -103,7 +103,7 @@ def test_partial_assignment():
     CTE that has the full concept, not a partially filtered copy"""
 
     executor = setup_engine()
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     executor.hooks = [DebuggingHook()]
@@ -140,7 +140,7 @@ def test_partial_assignment():
 
 def test_filter_query():
     executor = setup_engine()
-    env = Environment()
+    env = BoundEnvironment()
     setup_titanic(env)
     executor.environment = env
     executor.hooks = [DebuggingHook()]

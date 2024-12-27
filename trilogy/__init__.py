@@ -1,5 +1,6 @@
 from trilogy.constants import CONFIG
-from trilogy.core.models import Environment
+from trilogy.core.models import BoundEnvironment
+from trilogy.core.parse_models import Environment
 from trilogy.dialect.enums import Dialects
 from trilogy.executor import Executor
 from trilogy.parser import parse
