@@ -1,7 +1,7 @@
 from abc import ABC
 
 from trilogy.constants import logger
-from trilogy.core.models import CTE, UnionCTE
+from trilogy.core.execute_models import CTE, UnionCTE
 
 
 class OptimizationRule(ABC):

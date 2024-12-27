@@ -1,6 +1,6 @@
 from typing import List
 
-from trilogy.core.models import BoundConcept, SourceType
+from trilogy.core.execute_models import BoundConcept, SourceType
 from trilogy.core.processing.nodes.base_node import QueryDatasource, StrategyNode
 
 

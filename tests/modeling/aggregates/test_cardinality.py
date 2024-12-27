@@ -1,5 +1,5 @@
 from trilogy import Executor, parse
-from trilogy.core.models import BoundEnvironment, Grain
+from trilogy.core.execute_models import BoundEnvironment, Grain
 
 
 def test_key_fetch_cardinality(test_environment: BoundEnvironment, test_executor: Executor):

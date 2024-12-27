@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Dict, List
 
-from trilogy.core.models import BoundConcept
+from trilogy.core.execute_models import BoundConcept
 from trilogy.utility import unique
 
 

@@ -1,5 +1,5 @@
 from trilogy.core.enums import PurposeLineage
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     BoundConcept,
     UnionCTE,

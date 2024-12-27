@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from trilogy import BoundEnvironment
-from trilogy.core.models import Function
+from trilogy.core.execute_models import Function
 
 
 def test_datasource_func_namespace():

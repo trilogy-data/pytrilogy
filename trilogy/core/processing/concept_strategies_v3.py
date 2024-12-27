@@ -6,7 +6,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Granularity, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
     Function,

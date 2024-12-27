@@ -1,6 +1,6 @@
 from trilogy import Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     ColumnAssignment,
     BoundConcept,
     Datasource,

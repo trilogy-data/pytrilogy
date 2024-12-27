@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Callable, List, Tuple
 
 from trilogy.core.enums import Purpose, PurposeLineage
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     AggregateWrapper,
     BoundConcept,
     BoundEnvironment,

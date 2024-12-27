@@ -6,7 +6,7 @@ from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Modifier, Purpose
-from trilogy.core.parse_models import (AlignClause,
+from trilogy.core.author_models import (AlignClause,
                                        AlignItem,
                                        FunctionRef,
                                        ConceptDeclarationStatement,
@@ -25,7 +25,7 @@ from trilogy.core.parse_models import (AlignClause,
                                        SelectItem,
                                        ConceptRef,
                                        SelectStatement)
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Address,
     AggregateWrapper,
     CaseElse,

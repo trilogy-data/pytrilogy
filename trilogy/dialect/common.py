@@ -1,7 +1,7 @@
 from typing import Callable
 
 from trilogy.core.enums import Modifier, UnnestMode
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     BoundConcept,
     Function,

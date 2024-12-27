@@ -2,7 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
     Grain,
@@ -10,7 +10,7 @@ from trilogy.core.models import (
     RowsetItem,
     WhereClause,
 )
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     MultiSelectStatement,
     RowsetDerivationStatement,
     SelectStatement

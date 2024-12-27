@@ -1,6 +1,6 @@
 import pytest
 
-from trilogy.core.models import Parenthetical
+from trilogy.core.execute_models import Parenthetical
 from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
     parse_text,

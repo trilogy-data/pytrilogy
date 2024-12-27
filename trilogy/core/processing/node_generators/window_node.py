@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import BoundConcept, BoundEnvironment, WhereClause, WindowItem
+from trilogy.core.execute_models import BoundConcept, BoundEnvironment, WhereClause, WindowItem
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique

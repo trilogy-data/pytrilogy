@@ -1,4 +1,4 @@
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     BooleanOperator,
     Comparison,

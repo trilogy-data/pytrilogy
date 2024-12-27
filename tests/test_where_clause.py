@@ -1,6 +1,6 @@
 # from trilogy.compiler import compile
-from trilogy.core.models import Grain, Parenthetical
-from trilogy.core.parse_models import SelectStatement
+from trilogy.core.execute_models import Grain, Parenthetical
+from trilogy.core.author_models import SelectStatement
 from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect

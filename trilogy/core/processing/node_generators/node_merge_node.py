@@ -7,7 +7,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models import BoundConcept, Conditional, BoundEnvironment, WhereClause
+from trilogy.core.execute_models import BoundConcept, Conditional, BoundEnvironment, WhereClause
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique

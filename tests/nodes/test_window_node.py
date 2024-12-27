@@ -1,4 +1,4 @@
-from trilogy.core.models import BoundEnvironment
+from trilogy.core.execute_models import BoundEnvironment
 from trilogy.core.processing.nodes.window_node import WindowNode
 
 

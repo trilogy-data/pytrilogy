@@ -11,7 +11,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     CopyStatement,
     MergeStatementV2,
     MultiSelectStatement,
@@ -23,7 +23,7 @@ from trilogy.core.parse_models import (
         ConceptDeclarationStatement,
 
 )
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     AggregateWrapper,
     CaseElse,

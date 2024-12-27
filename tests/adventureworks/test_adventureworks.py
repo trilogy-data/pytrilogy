@@ -5,8 +5,8 @@ import pytest
 
 from trilogy import Executor
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.parse_models import SelectStatement
-from trilogy.core.models import (
+from trilogy.core.author_models import SelectStatement
+from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
     Grain,

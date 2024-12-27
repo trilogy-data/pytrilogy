@@ -1,9 +1,9 @@
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     QueryDatasource,
     UnionCTE,
 )
-from trilogy.core.parse_models import MultiSelectStatement, PersistStatement, RowsetDerivationStatement, SelectStatement
+from trilogy.core.author_models import MultiSelectStatement, PersistStatement, RowsetDerivationStatement, SelectStatement
 from trilogy.core.processing.nodes import StrategyNode
 
 

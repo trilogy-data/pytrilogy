@@ -8,7 +8,7 @@ from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
 from trilogy.core.enums import Granularity, IOType
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
 
     Datasource,
@@ -24,7 +24,7 @@ from trilogy.core.models import (
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
 )
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     CopyStatement,
     MergeStatementV2,
     MultiSelectStatement,

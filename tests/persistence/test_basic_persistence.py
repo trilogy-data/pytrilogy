@@ -7,11 +7,11 @@ from trilogy.core.env_processor import (
     datasource_to_node,
     generate_graph,
 )
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Grain,
     ProcessedQueryPersist,
 )
-from trilogy.core.parse_models import PersistStatement
+from trilogy.core.author_models import PersistStatement
 from trilogy.core.processing.node_generators import (
     gen_select_node,
 )

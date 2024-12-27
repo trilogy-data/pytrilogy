@@ -2,7 +2,7 @@ from pathlib import Path
 
 from trilogy import Dialects, parse
 from trilogy.core.enums import Purpose
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BooleanOperator,
     Comparison,
     ComparisonOperator,

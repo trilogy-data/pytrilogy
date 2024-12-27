@@ -5,7 +5,7 @@ import networkx as nx
 from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     Datasource,
     BoundEnvironment,

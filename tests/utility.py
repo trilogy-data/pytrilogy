@@ -1,6 +1,6 @@
 from logging import INFO
 
-from trilogy.core.models import BoundConcept, BoundEnvironment
+from trilogy.core.execute_models import BoundConcept, BoundEnvironment
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.group_node import GroupNode

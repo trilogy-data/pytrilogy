@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Comparison,
     BoundConcept,
     Conditional,

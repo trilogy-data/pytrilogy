@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
 
 from trilogy.core.enums import ComparisonOperator
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Comparison,
     BoundConcept,
     Conditional,

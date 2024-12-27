@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     Reference,
     DatasourceMetadata,
@@ -288,6 +288,18 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
     # grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
+
+    @property
+    def granularity(self):
+        if not self.lineage:
+            return Granularity.MULTI_ROW
+        if isinstance(self.lineage, FunctionRef):
+            if self.lineage.operator == FunctionType.CONSTANT:
+                return Granularity.SINGLE_ROW
+        if isinstance(self.lineage, AggregateWrapperRef):
+            if self.lineage.by and all(x.name == ALL_ROWS_CONCEPT for x in self.lineage.by):
+                return Granularity.SINGLE_ROW
+        return Granularity.MULTI_ROW
 
     @cached_property
     def address(self) -> str:

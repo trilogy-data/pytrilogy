@@ -1,5 +1,5 @@
 from trilogy.core.enums import FunctionType, Purpose, PurposeLineage
-from trilogy.core.models import AggregateWrapper, DataType, BoundEnvironment, Function
+from trilogy.core.execute_models import AggregateWrapper, DataType, BoundEnvironment, Function
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_group_node
 from trilogy.core.processing.node_generators.common import (

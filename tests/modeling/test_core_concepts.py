@@ -3,7 +3,7 @@ import pytest
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models import BoundEnvironment
+from trilogy.core.execute_models import BoundEnvironment
 from trilogy.core.processing.node_generators import gen_select_node
 
 

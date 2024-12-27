@@ -7,7 +7,7 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, SourceType,    SelectFiltering, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     CopyStatement,
         MultiSelectStatement,
     PersistStatement,
@@ -16,7 +16,7 @@ from trilogy.core.parse_models import (
                 ConceptDeclarationStatement,
                 Environment,
 )
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     BaseJoin,
     BoundConcept,
@@ -45,7 +45,7 @@ from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
-from trilogy.core.models import BoundEnvironment, EnvironmentConceptDict
+from trilogy.core.execute_models import BoundEnvironment, EnvironmentConceptDict
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -403,10 +403,12 @@ def set_query_grain(statement:SelectStatement, environment:BoundEnvironment)->Gr
 
 def create_statement_environment(
     statement: SelectStatement | MultiSelectStatement,
-    environment: Environment,
+    environment: Environment | BoundEnvironment,
 ) -> Tuple[BoundEnvironment, Grain]:
-    new_env = environment.instantiate()
-
+    if isinstance(environment, Environment):
+        new_env = environment.instantiate()
+    else:
+        new_env = environment
     grain = set_query_grain(statement, new_env)
 
     return new_env, grain
@@ -557,7 +559,7 @@ def implicit_where_clause_selections(select:SelectStatement, environment:BoundEn
 
 
 def process_query(
-    environment: BoundEnvironment,
+    environment: Environment | BoundEnvironment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:

@@ -1,10 +1,10 @@
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundEnvironment,
     Grain,
     QueryDatasource,
     SourceType,
 )
-from trilogy.core.parse_models import SelectStatement
+from trilogy.core.author_models import SelectStatement
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.query_processor import get_query_datasources, process_query
 

@@ -1,5 +1,5 @@
 from trilogy import parse
-from trilogy.core.models import CTE, Grain, QueryDatasource
+from trilogy.core.execute_models import CTE, Grain, QueryDatasource
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.common import render_join_concept
 

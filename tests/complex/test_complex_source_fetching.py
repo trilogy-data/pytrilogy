@@ -5,13 +5,13 @@
 import re
 
 from trilogy.core.enums import Purpose
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Datasource,
     BoundEnvironment,
     Grain,
     QueryDatasource,
 )
-from trilogy.core.parse_models import SelectStatement
+from trilogy.core.author_models import SelectStatement
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,

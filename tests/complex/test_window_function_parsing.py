@@ -1,7 +1,7 @@
 from trilogy import Dialects
 from trilogy.core.enums import Granularity, Purpose, PurposeLineage
-from trilogy.core.models import  WindowItem,  Grain
-from trilogy.core.parse_models import SelectStatement, WindowItemRef
+from trilogy.core.execute_models import  WindowItem,  Grain
+from trilogy.core.author_models import SelectStatement, WindowItemRef
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,

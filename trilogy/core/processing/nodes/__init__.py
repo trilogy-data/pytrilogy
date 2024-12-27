@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from trilogy.core.models import BoundConcept, BoundEnvironment, WhereClause
+from trilogy.core.execute_models import BoundConcept, BoundEnvironment, WhereClause
 
 from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode

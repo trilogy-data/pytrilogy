@@ -11,7 +11,7 @@ from trilogy.core.enums import (
     Modifier,
 )
 
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     AlignClause,
     ConceptDeclarationStatement,
     CopyStatement,
@@ -28,7 +28,7 @@ from trilogy.core.parse_models import (
     AlignClause,
     ColumnAssignmentRef,
 )
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Address,
     # AlignClause,
     CaseElse,

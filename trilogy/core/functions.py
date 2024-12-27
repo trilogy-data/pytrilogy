@@ -4,7 +4,7 @@ from typing import Optional
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import DatePart, FunctionType, Granularity, Purpose
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     DataType,
     ListType,
@@ -20,7 +20,7 @@ from trilogy.core.models import (
     Reference
 )
 
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     AggregateWrapperRef,
     FunctionRef,
     WindowItemRef,

@@ -1,11 +1,11 @@
 from trilogy.constants import CONFIG, logger
 from trilogy.core.enums import BooleanOperator, PurposeLineage
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     Conditional,
     UnionCTE,
 )
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     MultiSelectStatement,
     SelectStatement
 )

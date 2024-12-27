@@ -1,6 +1,6 @@
 from typing import List
 
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     Function,
     QueryDatasource,

@@ -11,7 +11,7 @@ from trilogy.core.enums import (
 from trilogy.core.functions import Count, CountDistinct, Max, Min
 
 # from trilogy.compiler import compile
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     ColumnAssignment,
     Comparison,
     BoundConcept,

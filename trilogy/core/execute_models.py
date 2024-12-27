@@ -384,7 +384,7 @@ class BoundConcept(Namespaced, SelectContext, BaseModel):
 
     @property
     def reference(self):
-        from trilogy.core.parse_models import ConceptRef
+        from trilogy.core.author_models import ConceptRef
         return ConceptRef(address=self.address, line_no=self.metadata.line_number)
 
     def duplicate(self) -> BoundConcept:

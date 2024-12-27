@@ -3,7 +3,7 @@ from typing import List, Optional
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Purpose, PurposeLineage
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Comparison,
     BoundConcept,
     Conditional,

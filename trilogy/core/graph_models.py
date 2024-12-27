@@ -1,6 +1,6 @@
 import networkx as nx
 
-from trilogy.core.models import BoundConcept, Datasource
+from trilogy.core.execute_models import BoundConcept, Datasource
 
 
 def concept_to_node(input: BoundConcept) -> str:

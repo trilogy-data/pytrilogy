@@ -1,9 +1,9 @@
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models import BoundEnvironment
+from trilogy.core.execute_models import BoundEnvironment
 from trilogy.core.processing.node_generators import gen_select_node
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
 from trilogy.hooks.query_debugger import DebuggingHook
-from trilogy.core.parse_models import PersistStatement
+from trilogy.core.author_models import PersistStatement
 
 def test_gen_select_node_parents(test_environment: BoundEnvironment):
     test_environment.concepts["category_top_50_revenue_products"]

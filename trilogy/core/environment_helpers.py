@@ -1,7 +1,7 @@
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     DataType,
     BoundEnvironment,

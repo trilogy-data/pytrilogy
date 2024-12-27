@@ -1,7 +1,7 @@
 from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.exceptions import NoDatasourceException
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
     LooseConceptList,

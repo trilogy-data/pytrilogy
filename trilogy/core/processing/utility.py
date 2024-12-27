@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Set, Tuple
 import networkx as nx
 
 from trilogy.core.enums import BooleanOperator, FunctionClass, Granularity, Purpose
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     MultiSelectStatement,
     SelectStatement,)
 
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
     AggregateWrapper,
     BaseJoin,

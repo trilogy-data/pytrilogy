@@ -7,7 +7,7 @@ from trilogy.core.enums import (
     JoinType,
     PurposeLineage,
 )
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     Comparison,
     BoundConcept,
     ConceptPair,

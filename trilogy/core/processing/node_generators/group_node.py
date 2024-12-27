@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     AggregateWrapper,
     BoundConcept,
     BoundEnvironment,

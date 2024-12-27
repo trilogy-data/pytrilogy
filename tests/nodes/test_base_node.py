@@ -1,4 +1,4 @@
-from trilogy.core.models import BoundEnvironment
+from trilogy.core.execute_models import BoundEnvironment
 from trilogy.core.processing.nodes.base_node import StrategyNode, get_all_parent_partial
 
 

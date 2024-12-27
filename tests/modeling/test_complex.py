@@ -1,7 +1,7 @@
 from trilogy import Dialects, Executor, parse
 from trilogy.core.enums import PurposeLineage
-from trilogy.core.models import BoundEnvironment
-from trilogy.core.parse_models import SelectStatement
+from trilogy.core.execute_models import BoundEnvironment
+from trilogy.core.author_models import SelectStatement
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )

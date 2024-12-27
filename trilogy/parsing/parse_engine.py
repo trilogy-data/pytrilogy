@@ -59,7 +59,7 @@ from trilogy.core.functions import (
     function_args_to_output_purpose,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
     AggregateWrapperRef,
     ComparisonRef,
     ConditionalRef,
@@ -103,7 +103,7 @@ from trilogy.core.parse_models import (
     ConceptDeclarationStatement,
     ConceptDerivation,
 )
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
 
     Reference,
 

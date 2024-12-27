@@ -4,7 +4,7 @@ from pathlib import Path
 from trilogy import Dialects, parse
 from trilogy.core.enums import Granularity, Purpose
 from trilogy.core.functions import CurrentDatetime
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BoundConcept,
     DataType,
     BoundEnvironment,
@@ -16,7 +16,7 @@ from trilogy.core.processing.node_generators.common import (
 )
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
-from trilogy.core.parse_models import SelectItem
+from trilogy.core.author_models import SelectItem
 ENVIRONMENT_CONCEPTS = [
     BoundConcept(
         name="static",

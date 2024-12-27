@@ -12,7 +12,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     AggregateWrapper,
     BoundConcept as FullConcept,
     DataType,
@@ -30,7 +30,7 @@ from trilogy.core.models import (
     WindowItem,
 
 )
-from trilogy.core.parse_models import (
+from trilogy.core.author_models import (
         ConceptRef,
     FunctionRef,
     AggregateWrapperRef,
@@ -163,8 +163,14 @@ def concepts_to_grain_concepts(
 ) -> list[Concept]:
     environment = BoundEnvironment() if environment is None else environment
     pconcepts: list[Concept] = [
-        c if isinstance(c, (Concept, FullConcept)) else environment.concepts[c] for c in concepts
     ]
+    for x in concepts:
+        if isinstance(x, ConceptRef):
+            pconcepts.append(environment.concepts[x.address])
+        elif isinstance(x, str):
+            pconcepts.append(environment.concepts[x])
+        else:
+            pconcepts.append(x)
 
     final: List[Concept] = []
     for sub in pconcepts:

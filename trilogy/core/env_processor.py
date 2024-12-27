@@ -3,7 +3,7 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models import BoundConcept, Datasource, BoundEnvironment
+from trilogy.core.execute_models import BoundConcept, Datasource, BoundEnvironment
 
 
 def add_concept(

@@ -1,5 +1,5 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.models import BoundEnvironment, Grain
+from trilogy.core.execute_models import BoundEnvironment, Grain
 from trilogy.core.processing.concept_strategies_v3 import (
     GroupNode,
     search_concepts,

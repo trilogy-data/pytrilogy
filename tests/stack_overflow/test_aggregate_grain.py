@@ -1,8 +1,8 @@
 # from trilogy.compiler import compile
 from os.path import dirname
 
-from trilogy.core.parse_models import SelectStatement
-from trilogy.core.models import BoundEnvironment, Grain
+from trilogy.core.author_models import SelectStatement
+from trilogy.core.execute_models import BoundEnvironment, Grain
 from trilogy.parser import parse
 
 QUERY = """import concepts.core as core;
