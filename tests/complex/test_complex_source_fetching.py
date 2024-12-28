@@ -11,6 +11,7 @@ from trilogy.core.execute_models import (
     Grain,
     QueryDatasource,
 )
+from trilogy.core.author_models import Environment
 from trilogy.core.author_models import SelectStatement
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
@@ -20,19 +21,18 @@ from trilogy.core.query_processor import datasource_to_cte, process_query
 from trilogy.dialect.sql_server import SqlServerDialect
 
 
-def test_aggregate_of_property_function(stackoverflow_environment: BoundEnvironment) -> None:
-    env: BoundEnvironment = stackoverflow_environment
+def test_aggregate_of_property_function(stackoverflow_environment: Environment) -> None:
+    env: Environment = stackoverflow_environment
     avg_user_post_count = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_user_post_count, user_id])
 
     query = process_query(statement=select, environment=env)
     generator = SqlServerDialect()
-    # raise SyntaxError(generator.compile_statement(query))
     for cte in query.ctes:
         found = False
         if avg_user_post_count.address in [z.address for z in cte.output_columns]:
-            rendered = generator.render_concept_sql(avg_user_post_count, cte)
+            rendered = generator.render_concept_sql(avg_user_post_count.instantiate(env), cte)
             '"post_length") as "user_avg_post_length"' in rendered
             found = True
         if found:
@@ -41,7 +41,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: BoundEnvironm
     generator.compile_statement(query)
 
 
-def test_aggregate_to_grain(stackoverflow_environment: BoundEnvironment):
+def test_aggregate_to_grain(stackoverflow_environment: Environment):
     env = stackoverflow_environment
     avg_post_length = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
@@ -51,8 +51,8 @@ def test_aggregate_to_grain(stackoverflow_environment: BoundEnvironment):
     generator = SqlServerDialect()
     for cte in query.ctes:
         found = False
-        if avg_post_length in cte.output_columns:
-            rendered = generator.render_concept_sql(avg_post_length, cte)
+        if avg_post_length.address in cte.output_columns:
+            rendered = generator.render_concept_sql(avg_post_length.instantiate(env), cte)
 
             assert re.search(
                 r'avg\([0-9A-z\_]+\."post_length"\) as "user_avg_post_length"',
@@ -64,8 +64,8 @@ def test_aggregate_to_grain(stackoverflow_environment: BoundEnvironment):
     assert found
 
 
-def test_aggregate_of_aggregate(stackoverflow_environment):
-    env = stackoverflow_environment
+def test_aggregate_of_aggregate(stackoverflow_environment:Environment):
+    env = stackoverflow_environment.instantiate()
     post_id = env.concepts["post_id"]
     avg_user_post_count = env.concepts["avg_user_post_count"]
     user_post_count = env.concepts["user_post_count"]

@@ -305,6 +305,11 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 
+    def __hash__(self):
+        return hash(
+            f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
+        )
+    
     @property
     def reference(self):
         return ConceptRef(address=self.address)
@@ -1301,7 +1306,9 @@ class SelectStatement(HasUUID, Namespaced, SelectTypeMixin, BaseModel):
     def selection_validation(cls, v):
         new = []
         for item in v:
-            if isinstance(item, (Concept, ConceptTransform)):
+            if isinstance(item, (Concept, BoundConcept)):
+                new.append(SelectItem(content = ConceptRef(address=item.address)))
+            elif isinstance(item, ConceptTransform):
                 new.append(SelectItem(content=item))
             else:
                 new.append(item)

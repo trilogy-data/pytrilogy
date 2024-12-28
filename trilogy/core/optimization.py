@@ -57,7 +57,7 @@ def reorder_ctes(
             return input
         return [mapping[x] for x in topological_order]
     except nx.NetworkXUnfeasible as e:
-        print(
+        logger.error(
             "The graph is not a DAG (contains cycles) and cannot be topologically sorted."
         )
         raise e

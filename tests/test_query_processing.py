@@ -26,7 +26,7 @@ def test_direct_select(test_environment, test_environment_graph):
 
 
 def test_get_datasource_from_window_function(
-    test_environment: BoundEnvironment, test_environment_graph
+    test_environment: BoundEnvironment, test_environment_`graph
 ):
     # test without grouping
     product_rank = test_environment.concepts["product_revenue_rank"]

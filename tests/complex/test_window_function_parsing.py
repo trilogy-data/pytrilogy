@@ -57,9 +57,10 @@ limit 100
 
     """
     env, parsed = parse(declarations)
+    env = env.instantiate()
     select: SelectStatement = parsed[-1]
 
-    assert isinstance(env.concepts["user_rank"].lineage, WindowItemRef)
+    assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
 
     ds = search_concepts(
         [env.concepts["local.post_count"].with_grain(Grain(components={'local.user_id'})), env.concepts["user_id"]],
@@ -126,6 +127,7 @@ limit 100
 
     """
     env, parsed = parse(declarations)
+    env = env.instantiate()
     select: SelectStatement = parsed[-1]
 
     assert env.concepts["rank_derived"].keys == {

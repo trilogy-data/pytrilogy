@@ -363,12 +363,12 @@ def set_query_grain(statement:SelectStatement, environment:BoundEnvironment)->Gr
     for parse_pass in [
             1,
             2,
-        ]:
+        ]:  
             # the first pass will result in all concepts being defined
             # the second will get grains appropriately
             # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
             # until after the first pass, and so don't know the grain of a
-
+            where = statement.where_clause.instantiate(environment) if statement.where_clause else None
             if parse_pass == 1:
                 grain = Grain.from_concepts(
                     [
@@ -377,7 +377,7 @@ def set_query_grain(statement:SelectStatement, environment:BoundEnvironment)->Gr
                         if isinstance(x.content, ConceptRef)
                     ],
                     environment=environment,
-                    where_clause=statement.where_clause,
+                    where_clause=where
                 )
                 for k, v in environment.concepts.items():
                     new= v.with_select_context(statement.local_concepts, grain=grain, environment=environment)
@@ -385,7 +385,7 @@ def set_query_grain(statement:SelectStatement, environment:BoundEnvironment)->Gr
             if parse_pass == 2:
                 grain = Grain.from_concepts(
                     [x.address for x in statement.output_components], 
-                    where_clause=statement.where_clause,
+                    where_clause=where,
                     environment=environment
                 )
                 for k, v in environment.concepts.items():
@@ -597,8 +597,6 @@ def process_query(
     root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
-    for k, v in environment.concepts.items():
-        print(type(v))
     return ProcessedQuery(
         # where_clause=statement.where_clause.instantiate(environment) if statement.where_clause else None,
         # having_clause=statement.having_clause.instantiate(environment) if statement.having_clause else None,

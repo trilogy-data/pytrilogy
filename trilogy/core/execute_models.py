@@ -834,10 +834,11 @@ class Grain(Namespaced, BaseModel):
 
     @field_validator("components", mode="before")
     def component_validator(cls, v, info: ValidationInfo):
+        from trilogy.core.author_models import ConceptRef, Concept
         output = set()
         if isinstance(v, list):
             for vc in v:
-                if isinstance(vc, BoundConcept):
+                if isinstance(vc, (BoundConcept, Concept, ConceptRef)):
                     output.add(vc.address)
                 else:
                     output.add(vc)

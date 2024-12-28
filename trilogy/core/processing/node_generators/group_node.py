@@ -40,10 +40,6 @@ def gen_group_node(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
     if not parent_concepts:
-        print(concept.lineage)
-        print(concept.lineage.function)
-        print(concept.lineage.function.arguments[0])
-        print(type(concept.lineage.function.arguments[0]))
         raise SyntaxError('Group node should have parents')
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
