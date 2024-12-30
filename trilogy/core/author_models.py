@@ -16,6 +16,7 @@ from trilogy.core.execute_models import (
     SelectContext,
     Metadata,
     HasUUID,
+    safe_grain,
     # Environment,
     # EnvironmentConceptDict,
     address_with_namespace,
@@ -272,6 +273,7 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
         default_factory=lambda: Metadata(description=None, line_number=None),
         validate_default=True,
     )
+    grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     lineage: Optional[
         Union[
             RowsetItemRef,
@@ -282,13 +284,56 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
             AggregateWrapperRef,
         ]
     ] = None
-    grain: Optional[Grain] = None
+
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[set[str]] = Field(default_factory=set)
     # grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
 
+
+    def with_grain(self, grain: Optional["Grain"] = None, name:str| None = None) -> Self:
+        return self.__class__(
+            name=name or self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=self.lineage,
+            grain=grain if grain else Grain(components=set()),
+            namespace=self.namespace,
+            keys=self.keys,
+            modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
+        )
+    
+    @field_validator("grain", mode="before")
+    @classmethod
+    def parse_grain(cls, v, info: ValidationInfo) -> Grain:
+        values = info.data
+        if not v and values.get("purpose", None) == Purpose.KEY:
+            v = Grain(
+                components={
+                    f'{values.get("namespace", DEFAULT_NAMESPACE)}.{values["name"]}'
+                }
+            )
+        elif (
+            "lineage" in values
+            and isinstance(values["lineage"], AggregateWrapperRef)
+            and values["lineage"].by
+        ):
+            v = Grain(components={c.address for c in values["lineage"].by})
+        elif not v:
+            v = Grain(components=set())
+        elif isinstance(v, Grain):
+            pass
+        elif isinstance(v, Concept):
+            v = Grain(components={v.address})
+        elif isinstance(v, dict):
+            v = Grain.model_validate(v)
+        else:
+            raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
+        return v
+    
     @property
     def granularity(self):
         if not self.lineage:
@@ -360,11 +405,27 @@ class ConceptRef(Namespaced, Reference, BaseModel):
     address: str
     line_no: int | None = None
 
+    @classmethod
+    def parse(cls, v):
+        if isinstance(v, ConceptRef):
+            return v
+        elif isinstance(v, str):
+            return ConceptRef(address=v)
+        elif isinstance(v, Concept):
+            return v.reference
+        else:
+            raise ValueError(f"Invalid concept reference {v}")
+
     def __hash__(self):
         return hash(self.address)
 
     def __init__(self, **data):
         super().__init__(**data)
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.address == other
+        return self.address == other.address
 
     @property
     def namespace(self) -> str:
@@ -392,6 +453,14 @@ class ConceptRef(Namespaced, Reference, BaseModel):
 class OrderItemRef(Reference, Namespaced, BaseModel):
     expr: ConceptRef
     order: Ordering
+
+    @field_validator("expr", mode="before")
+    def validate_expr(cls, v, values):
+        if isinstance(v, str):
+            return ConceptRef(address=v)
+        elif isinstance(v, Concept):
+            return v.reference
+        return v
 
     def with_namespace(self, namespace: str) -> "OrderItemRef":
         return OrderItemRef(expr=self.expr.with_namespace(namespace), order=self.order)
@@ -477,6 +546,17 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
     concept: ConceptRef
     modifiers: List[Modifier] = Field(default_factory=list)
 
+    @field_validator("concept", mode="before")
+    def validate_concept(cls, v, values):
+        return ConceptRef.parse(v)
+
+    def with_merge(self, source:Concept, target:Concept, modifiers:List[Modifier]) -> "ColumnAssignmentRef":
+        return ColumnAssignmentRef(
+            alias = self.alias,
+            concept = target.reference if self.concept.address == source.address else self.concept,
+            modifiers = modifiers if self.concept.address == source.address else self.modifiers
+        )
+
     @property
     def is_complete(self) -> bool:
         return Modifier.PARTIAL not in self.modifiers
@@ -521,7 +601,7 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
     columns: List[ColumnAssignmentRef]
     address: Union[Address, str]
     grain: Grain = Field(
-        default_factory=lambda: Grain(components=set()), validate_default=True
+        default_factory=lambda: Grain(components=set())
     )
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
@@ -529,6 +609,12 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
     )
     where: Optional[WhereClauseRef] = None
     non_partial_for: Optional[WhereClauseRef] = None
+
+    @field_validator("grain", mode="before")
+    @classmethod
+    def grain_enforcement(cls, v: Grain, info: ValidationInfo):
+        grain: Grain = safe_grain(v)
+        return grain
 
     def instantiate(self, environment:Environment)-> Datasource:
         return Datasource(
@@ -545,12 +631,9 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
     def duplicate(self) -> Datasource:
         return self.model_copy(deep=True)
 
-    @property
-    def hidden_concepts(self) -> List[BoundConcept]:
-        return []
 
     def merge_concept(
-        self, source: BoundConcept, target: BoundConcept, modifiers: List[Modifier]
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
     ):
         original = [c for c in self.columns if c.concept.address == source.address]
         early_exit_check = [
@@ -575,32 +658,20 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
 
         self.add_column(target, original[0].alias, modifiers)
 
-    @property
+    @cached_property
     def identifier(self) -> str:
         if not self.namespace or self.namespace == DEFAULT_NAMESPACE:
             return self.name
         return f"{self.namespace}.{self.name}"
 
-    @property
+    @cached_property
     def safe_identifier(self) -> str:
         return self.identifier.replace(".", "_")
-
-    @property
-    def condition(self):
-        return None
 
     @property
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
 
-    @property
-    def can_be_inlined(self) -> bool:
-        if isinstance(self.address, Address) and self.address.is_query:
-            return False
-        # for x in self.columns:
-        #     if not isinstance(x.alias, str):
-        #         return False
-        return True
 
     @property
     def non_partial_concept_addresses(self) -> set[str]:
@@ -621,7 +692,7 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
 
     def add_column(
         self,
-        concept: BoundConcept,
+        concept: ConceptRef,
         alias: str | RawColumnExpr | Function,
         modifiers: List[Modifier] | None = None,
     ):
@@ -863,8 +934,22 @@ class WindowItemRef(Reference, Namespaced, BaseModel):
     type: WindowType
     content: ConceptRef
     order_by: List["OrderItemRef"]
-    over: List["ConceptRef"]
+    over: List["ConceptRef"] = Field(default_factory=list)
     index: Optional[int] = None
+
+    @field_validator("content", mode="before")
+    def validate_content(cls, v, values):
+
+        return ConceptRef.parse(v)
+    
+    @field_validator("over", mode="before")
+    def validate_over(cls, v, values):
+        if not isinstance(v, list):
+            raise ValueError(f"Expected list, got {v}")
+        final = []
+        for x in v:
+            final.append(ConceptRef.parse(x))
+        return final
 
     @property
     def arguments(self):
@@ -906,6 +991,10 @@ class WindowItemRef(Reference, Namespaced, BaseModel):
 class FilterItemRef(Reference, Namespaced, BaseModel):
     content: ConceptRef
     where: "WhereClauseRef"
+
+    @field_validator("content", mode="before")
+    def validate_content(cls, v, values):
+        return ConceptRef.parse(v)
 
     @property
     def arguments(self):

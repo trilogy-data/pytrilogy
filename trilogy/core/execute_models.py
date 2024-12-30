@@ -355,7 +355,7 @@ class Metadata(BaseModel):
     concept_source: ConceptSource = ConceptSource.MANUAL
 
 
-class BoundConcept(Namespaced, SelectContext, BaseModel):
+class BoundConcept(SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
@@ -378,10 +378,6 @@ class BoundConcept(Namespaced, SelectContext, BaseModel):
     pseudonyms: set[str] = Field(default_factory=set)
 
 
-    def __init__(self, **data):
-        super().__init__(**data)
-
-
     @property
     def reference(self):
         from trilogy.core.author_models import ConceptRef
@@ -392,7 +388,7 @@ class BoundConcept(Namespaced, SelectContext, BaseModel):
 
     def __hash__(self):
         return hash(
-            f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
+            f"{self.address}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {str(self.grain)} + {str(self.keys)}"
         )
 
     def __repr__(self):

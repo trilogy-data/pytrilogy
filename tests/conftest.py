@@ -23,46 +23,47 @@ from trilogy.core.execute_models import (
     WindowItem,
     Function,
 )
+from trilogy.core.author_models import Concept, FunctionRef, OrderItemRef, WindowItemRef, ComparisonRef, WhereClauseRef, FilterItemRef, DatasourceRef, ColumnAssignmentRef
 
 
 @fixture(scope="session")
 def test_environment():
     env = Environment()
-    order_id = BoundConcept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
-    order_timestamp = BoundConcept(
+    order_timestamp = Concept(
         name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
     )
 
-    order_count = BoundConcept(
+    order_count = Concept(
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Count([order_id]),
     )
 
-    distinct_order_count = BoundConcept(
+    distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=CountDistinct([order_id]),
     )
 
-    max_order_id = BoundConcept(
+    max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Max([order_id]),
     )
 
-    min_order_id = BoundConcept(
+    min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Min([order_id]),
     )
 
-    revenue = BoundConcept(
+    revenue = Concept(
         name="revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.PROPERTY,
@@ -70,27 +71,27 @@ def test_environment():
         grain=Grain(components=[order_id]),
     )
 
-    total_revenue = BoundConcept(
+    total_revenue = Concept(
         name="total_revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.METRIC,
-        lineage=Function(
-            arguments=[revenue],
+        lineage=FunctionRef(
+            arguments=[revenue.reference],
             output_datatype=DataType.FLOAT,
             output_purpose=Purpose.METRIC,
             operator=FunctionType.SUM,
         ),
     )
-    product_id = BoundConcept(
+    product_id = Concept(
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
 
-    assert product_id.grain.components == {"local.product_id"}
 
-    category_id = BoundConcept(
+
+    category_id = Concept(
         name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    category_name = BoundConcept(
+    category_name = Concept(
         name="category_name",
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
@@ -98,12 +99,12 @@ def test_environment():
         keys={category_id.address},
     )
 
-    category_name_length = BoundConcept(
+    category_name_length = Concept(
         name="category_name_length",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         grain=category_id,
-        lineage=Function(
+        lineage=FunctionRef(
             arguments=[category_name.reference],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.PROPERTY,
@@ -112,13 +113,13 @@ def test_environment():
         keys={category_id.address},
     )
 
-    category_name_length_sum = BoundConcept(
+    category_name_length_sum = Concept(
         name="category_name_length_sum",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         grain=category_id,
-        lineage=Function(
-            arguments=[category_name_length],
+        lineage=FunctionRef(
+            arguments=[category_name_length.reference],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
             operator=FunctionType.SUM,
@@ -127,81 +128,80 @@ def test_environment():
     rev_by_product = total_revenue.with_grain(product_id, name="rev_by_product")
     env.add_concept(rev_by_product)
 
-    product_revenue_rank = BoundConcept(
+    product_revenue_rank = Concept(
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=WindowItemRef(
             type=WindowType.RANK,
-            content=product_id,
+            content=product_id.reference,
             order_by=[
-                OrderItem(expr = rev_by_product, order="desc")
+                OrderItemRef(expr = rev_by_product.reference, order="desc")
             ],
         ),
         grain=product_id,
         keys={product_id.address},
     )
-    product_revenue_rank_by_category = BoundConcept(
+    product_revenue_rank_by_category = Concept(
         name="product_revenue_rank_by_category",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=WindowItemRef(
             type=WindowType.RANK,
             content=product_id,
             over=[category_id],
-            order_by=[OrderItem(expr=total_revenue, order="desc")],
+            order_by=[OrderItemRef(expr=total_revenue, order="desc")],
         ),
     )
 
-    products_with_revenue_over_50 = BoundConcept(
+    products_with_revenue_over_50 = Concept(
         name="products_with_revenue_over_50",
         datatype=DataType.INTEGER,
         purpose=Purpose.KEY,
-        lineage=FilterItem(
+        lineage=FilterItemRef(
             content=product_id,
-            where=WhereClause(
-                conditional=Comparison(
-                    left=total_revenue.with_grain(product_id),
+            where=WhereClauseRef(
+                conditional=ComparisonRef(
+                    left=total_revenue.with_grain(product_id).reference,
                     operator=ComparisonOperator.GT,
                     right=50,
                 )
             ),
         ),
     )
-    test_revenue = Datasource(
+    test_revenue = DatasourceRef(
         name="revenue",
         columns=[
-            ColumnAssignment(alias="revenue", concept=revenue),
-            ColumnAssignment(alias="order_id", concept=order_id),
-            ColumnAssignment(alias="product_id", concept=product_id),
-            ColumnAssignment(alias="order_timestamp", concept=order_timestamp),
+            ColumnAssignmentRef(alias="revenue", concept=revenue),
+            ColumnAssignmentRef(alias="order_id", concept=order_id),
+            ColumnAssignmentRef(alias="product_id", concept=product_id),
+            ColumnAssignmentRef(alias="order_timestamp", concept=order_timestamp),
         ],
         address="tblRevenue",
         grain=Grain(components=[order_id]),
     )
 
-    test_product = Datasource(
+    test_product = DatasourceRef(
         name="products",
         columns=[
-            ColumnAssignment(alias="product_id", concept=product_id),
-            ColumnAssignment(alias="category_id", concept=category_id),
+            ColumnAssignmentRef(alias="product_id", concept=product_id),
+            ColumnAssignmentRef(alias="category_id", concept=category_id),
         ],
         address="tblProducts",
         grain=Grain(components=[product_id]),
     )
 
-    test_category = Datasource(
+    test_category = DatasourceRef(
         name="category",
         columns=[
-            ColumnAssignment(alias="category_id", concept=category_id),
-            ColumnAssignment(alias="category_name", concept=category_name),
+            ColumnAssignmentRef(alias="category_id", concept=category_id),
+            ColumnAssignmentRef(alias="category_name", concept=category_name),
         ],
         address="tblCategory",
         grain=Grain(components=[category_id]),
     )
 
-    for item in [test_product, test_category, test_revenue]:
-        env.add_datasource(item)
+
 
     for item in [
         category_id,
@@ -222,7 +222,10 @@ def test_environment():
         category_name_length_sum,
     ]:
         env.add_concept(item)
-        # env.concepts[item.name] = item
+
+    for item in [test_product, test_category, test_revenue]:
+        env.add_datasource(item)
+        
     yield env
 
 

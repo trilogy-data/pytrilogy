@@ -436,7 +436,7 @@ class ParseToObjects(Transformer):
         return args
 
     @v_args(meta=True)
-    def column_assignment(self, meta: Meta, args):
+    def column_assignment(self, meta: Meta, args: list[str]) -> ColumnAssignmentRef:
         # TODO -> deal with conceptual modifiers
         modifiers = []
         alias = args[0]
@@ -445,6 +445,9 @@ class ParseToObjects(Transformer):
         if len(concept_list) > 1:
             modifiers += concept_list[:-1]
         concept = concept_list[-1]
+        # set namespace
+        if '.' not in concept:
+            concept = f"{self.environment.namespace}.{concept}"
         return ColumnAssignmentRef(alias=alias, modifiers=modifiers, concept=ConceptRef(address=concept))
 
     def _TERMINATOR(self, args):
