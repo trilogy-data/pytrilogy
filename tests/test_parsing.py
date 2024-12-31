@@ -1,7 +1,7 @@
 from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
-from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
+from trilogy.core.core_models import arg_to_purpose, args_to_output_purpose
 from trilogy.core.execute_models import (
     Comparison,
     Datasource,
@@ -87,12 +87,12 @@ def test_arg_to_datatype():
     assert arg_to_datatype("test", BoundEnvironment()) == DataType.STRING
 
 
-def test_argument_to_purpose(test_environment: BoundEnvironment):
-    assert argument_to_purpose(1.00,test_environment) == Purpose.CONSTANT
-    assert argument_to_purpose("test", test_environment) == Purpose.CONSTANT
-    assert argument_to_purpose(test_environment.concepts["order_id"], test_environment) == Purpose.KEY
+def test_arg_to_purpose(test_environment: BoundEnvironment):
+    assert arg_to_purpose(1.00,test_environment) == Purpose.CONSTANT
+    assert arg_to_purpose("test", test_environment) == Purpose.CONSTANT
+    assert arg_to_purpose(test_environment.concepts["order_id"], test_environment) == Purpose.KEY
     assert (
-        function_args_to_output_purpose(
+        args_to_output_purpose(
             [
                 "test",
                 1.00,
@@ -102,14 +102,14 @@ def test_argument_to_purpose(test_environment: BoundEnvironment):
         == Purpose.CONSTANT
     )
     assert (
-        function_args_to_output_purpose(
+        args_to_output_purpose(
             ["test", 1.00, test_environment.concepts["order_id"]], test_environment
         )
         == Purpose.PROPERTY
     )
     unnest_env, parsed = parse_text("const random <- unnest([1,2,3,4]);")
     assert (
-        function_args_to_output_purpose([unnest_env.concepts["random"]], unnest_env)
+        args_to_output_purpose([unnest_env.concepts["random"]], unnest_env)
         == Purpose.PROPERTY
     )
 

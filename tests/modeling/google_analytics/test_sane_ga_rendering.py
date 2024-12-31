@@ -14,11 +14,13 @@ from trilogy.core.execute_models import (
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
+from trilogy.core.author_models import Environment, Concept
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.core.author_models import SelectItem
+
 ENVIRONMENT_CONCEPTS = [
-    BoundConcept(
+    Concept(
         name="static",
         namespace="local",
         datatype=DataType.DATETIME,
@@ -28,7 +30,7 @@ ENVIRONMENT_CONCEPTS = [
 ]
 
 
-def enrich_environment(env: BoundEnvironment):
+def enrich_environment(env: Environment):
     for concept in ENVIRONMENT_CONCEPTS:
         env.add_concept(concept)
     return env

@@ -367,8 +367,8 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: OrderByRef):
-        return self.to_string(arg.instantiate(self.environment)
-                              )
+        return ",\n".join([self.to_string(c) for c in arg.items])
+
     @to_string.register
     def _(self, arg: OrderBy):
         return ",\n".join([self.to_string(c) for c in arg.items])

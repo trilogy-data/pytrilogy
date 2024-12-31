@@ -1,5 +1,18 @@
 from __future__ import annotations
 
+from trilogy.core.core_models import (
+    MapWrapper,
+    ListWrapper,
+    ListType,
+    StructType,
+    MapType,
+    NumericType,
+    DataType,
+    merge_datatypes,
+    TupleWrapper,
+        arg_to_datatype,
+        TypedSentinal
+)
 
 from trilogy.core.execute_models import (
     BoundConcept,
@@ -17,23 +30,13 @@ from trilogy.core.execute_models import (
     Metadata,
     HasUUID,
     safe_grain,
-    # Environment,
-    # EnvironmentConceptDict,
     address_with_namespace,
-        merge_datatypes,
-    TupleWrapper,
+
     OrderItem,
     Function,
     OrderBy,
     CaseWhen,
     CaseElse,
-    MapWrapper,
-    DataType,
-    ListWrapper,
-    ListType,
-    StructType,
-    MapType,
-    NumericType,
     DatePart,
     Parenthetical,
     WindowItem,
@@ -52,8 +55,8 @@ from trilogy.core.execute_models import (
     ImportStatement,
     validate_datasources,
     UndefinedConcept,
-    arg_to_datatype,
-    BoundEnvironment
+
+    BoundEnvironment,
 )
 from pydantic import BaseModel
 from typing import List
@@ -61,9 +64,7 @@ from abc import ABC
 from trilogy.core.constants import CONSTANT_DATASET
 
 import difflib
-import hashlib
 import os
-from abc import ABC
 from collections import UserDict, UserList, defaultdict, UserString
 from datetime import date, datetime
 from enum import Enum
@@ -143,7 +144,6 @@ from trilogy.core.exceptions import (
 from trilogy.utility import unique
 
 
-
 def get_concept_ref_arguments(expr: ExprRef):
     output = []
     if isinstance(expr, ConceptRef) and isinstance(expr, Reference):
@@ -192,7 +192,9 @@ class FunctionRef(Reference, Namespaced, BaseModel):
             ListWrapper[Any],
         ]
     ]
-    output_datatype: DataType | ListType | StructType | MapType | NumericType | None = None
+    output_datatype: DataType | ListType | StructType | MapType | NumericType | None = (
+        None
+    )
     output_purpose: Purpose | None = None
     arg_count: int = Field(default=1)
     valid_inputs: Optional[
@@ -218,11 +220,8 @@ class FunctionRef(Reference, Namespaced, BaseModel):
             function_to_concept,
             process_function_args,
             window_item_to_concept,
-            function_args_to_output_purpose,
+            args_to_output_purpose
         )
-
-        from trilogy.core.functions import function_args_to_output_purpose
-        
         args = [
             c.instantiate(environment) if isinstance(c, Reference) else c
             for c in self.arguments
@@ -230,11 +229,13 @@ class FunctionRef(Reference, Namespaced, BaseModel):
         output_datatype = self.output_datatype
         output_purpose = self.output_purpose
         # args = process_function_args(self.arguments, meta=None, environment=environment)
-        
+
         if not output_datatype:
-            output_datatype = merge_datatypes([arg_to_datatype(x, environment) for x in args])
+            output_datatype = merge_datatypes(
+                [arg_to_datatype(x, environment) for x in args]
+            )
         if not output_purpose:
-            output_purpose = function_args_to_output_purpose(args, environment)  
+            output_purpose = args_to_output_purpose(args, environment)
         return Function(
             operator=self.operator,
             arguments=args,
@@ -265,7 +266,7 @@ class FunctionRef(Reference, Namespaced, BaseModel):
         )
 
 
-class Concept(Reference, Namespaced, SelectContext, BaseModel):
+class Concept(Reference,  Namespaced, SelectContext, TypedSentinal, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType | None
     purpose: Purpose
@@ -291,8 +292,17 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
 
-
-    def with_grain(self, grain: Optional["Grain"] = None, name:str| None = None) -> Self:
+    @property
+    def datatype(self):
+        return self.dict()['datatype']
+    
+    @datatype.getter
+    def datatype(self):
+        return self.datatype
+    
+    def with_grain(
+        self, grain: Optional["Grain"] = None, name: str | None = None
+    ) -> Self:
         return self.__class__(
             name=name or self.name,
             datatype=self.datatype,
@@ -305,7 +315,7 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
-    
+
     @field_validator("grain", mode="before")
     @classmethod
     def parse_grain(cls, v, info: ValidationInfo) -> Grain:
@@ -333,7 +343,7 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
         else:
             raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
         return v
-    
+
     @property
     def granularity(self):
         if not self.lineage:
@@ -342,7 +352,9 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
             if self.lineage.operator == FunctionType.CONSTANT:
                 return Granularity.SINGLE_ROW
         if isinstance(self.lineage, AggregateWrapperRef):
-            if self.lineage.by and all(x.name == ALL_ROWS_CONCEPT for x in self.lineage.by):
+            if self.lineage.by and all(
+                x.name == ALL_ROWS_CONCEPT for x in self.lineage.by
+            ):
                 return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
 
@@ -354,11 +366,11 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
         return hash(
             f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
         )
-    
+
     @property
     def reference(self):
         return ConceptRef(address=self.address)
-    
+
     @property
     def safe_address(self) -> str:
         if self.namespace == DEFAULT_NAMESPACE:
@@ -366,7 +378,11 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
         return self.address.replace(".", "_")
 
     def instantiate(self, environment: Environment) -> BoundConcept:
-        lineage =self.lineage.instantiate(environment) if isinstance(self.lineage, Reference) else self.lineage
+        lineage = (
+            self.lineage.instantiate(environment)
+            if isinstance(self.lineage, Reference)
+            else self.lineage
+        )
         output_datatype = self.datatype
         output_purpose = self.purpose
         if not self.datatype and isinstance(lineage, Function):
@@ -378,7 +394,7 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
             datatype=output_datatype,
             purpose=output_purpose,
             metadata=self.metadata,
-            lineage = lineage,
+            lineage=lineage,
             namespace=self.namespace,
             keys=self.keys,
             grain=self.grain,
@@ -386,20 +402,57 @@ class Concept(Reference, Namespaced, SelectContext, BaseModel):
             pseudonyms=self.pseudonyms,
         )
 
-    # def with_select_context(self, environment: Environment) -> BoundConcept:
-    #     return BoundConcept(
-    #         name=self.name,
-    #         datatype=self.datatype,
-    #         purpose=self.purpose,
-    #         metadata=self.metadata,
-    #         lineage=self.lineage.instantiate(environment),
-    #         namespace=self.namespace,
-    #         keys=self.keys,
-    #         grain=self.grain,
-    #         modifiers=self.modifiers,
-    #         pseudonyms=self.pseudonyms,
-    #     )
+    @property
+    def derivation(self) -> PurposeLineage:
+        if self.lineage and isinstance(self.lineage, WindowItemRef):
+            return PurposeLineage.WINDOW
+        elif self.lineage and isinstance(self.lineage, FilterItemRef):
+            return PurposeLineage.FILTER
+        elif self.lineage and isinstance(self.lineage, AggregateWrapperRef):
+            return PurposeLineage.AGGREGATE
+        elif self.lineage and isinstance(self.lineage, RowsetItemRef):
+            return PurposeLineage.ROWSET
+        # elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
+        #     return PurposeLineage.MULTISELECT
+        elif (
+            self.lineage
+            and isinstance(self.lineage, FunctionRef)
+            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        ):
+            return PurposeLineage.AGGREGATE
+        elif (
+            self.lineage
+            and isinstance(self.lineage, FunctionRef)
+            and self.lineage.operator == FunctionType.UNNEST
+        ):
+            return PurposeLineage.UNNEST
+        elif (
+            self.lineage
+            and isinstance(self.lineage, FunctionRef)
+            and self.lineage.operator == FunctionType.UNION
+        ):
+            return PurposeLineage.UNION
+        elif (
+            self.lineage
+            and isinstance(self.lineage, FunctionRef)
+            and self.lineage.operator in FunctionClass.SINGLE_ROW.value
+        ):
+            return PurposeLineage.CONSTANT
 
+        elif self.lineage and isinstance(self.lineage, FunctionRef):
+            if not self.lineage.concept_arguments:
+                return PurposeLineage.CONSTANT
+            # elif all(
+            #     [
+            #         x.derivation == PurposeLineage.CONSTANT
+            #         for x in self.lineage.concept_arguments
+            #     ]
+            # ):
+            #     return PurposeLineage.CONSTANT
+            return PurposeLineage.BASIC
+        elif self.purpose == Purpose.CONSTANT:
+            return PurposeLineage.CONSTANT
+        return PurposeLineage.ROOT
 
 class ConceptRef(Namespaced, Reference, BaseModel):
     address: str
@@ -536,7 +589,6 @@ class CaseElseRef(Reference, Namespaced, BaseModel):
         )
 
 
-
 class RawColumnExpr(BaseModel):
     text: str
 
@@ -550,11 +602,19 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
     def validate_concept(cls, v, values):
         return ConceptRef.parse(v)
 
-    def with_merge(self, source:Concept, target:Concept, modifiers:List[Modifier]) -> "ColumnAssignmentRef":
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "ColumnAssignmentRef":
         return ColumnAssignmentRef(
-            alias = self.alias,
-            concept = target.reference if self.concept.address == source.address else self.concept,
-            modifiers = modifiers if self.concept.address == source.address else self.modifiers
+            alias=self.alias,
+            concept=(
+                target.reference
+                if self.concept.address == source.address
+                else self.concept
+            ),
+            modifiers=(
+                modifiers if self.concept.address == source.address else self.modifiers
+            ),
         )
 
     @property
@@ -575,12 +635,16 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
             concept=self.concept.with_namespace(namespace),
             modifiers=self.modifiers,
         )
-    
-    def instantiate(self, environment:Environment):
+
+    def instantiate(self, environment: Environment):
         return ColumnAssignment(
-            alias = self.alias.instantiate(Environment) if isinstance(self.alias, Reference) else self.alias,
-            concept = self.concept.instantiate(environment),
-            modifiers = self.modifiers
+            alias=(
+                self.alias.instantiate(Environment)
+                if isinstance(self.alias, Reference)
+                else self.alias
+            ),
+            concept=self.concept.instantiate(environment),
+            modifiers=self.modifiers,
         )
 
     # def with_merge(
@@ -595,14 +659,11 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
     #     )
 
 
-
 class DatasourceRef(HasUUID, Namespaced, BaseModel):
     name: str
     columns: List[ColumnAssignmentRef]
     address: Union[Address, str]
-    grain: Grain = Field(
-        default_factory=lambda: Grain(components=set())
-    )
+    grain: Grain = Field(default_factory=lambda: Grain(components=set()))
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
         default_factory=lambda: DatasourceMetadata(freshness_concept=None)
@@ -616,21 +677,26 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
         grain: Grain = safe_grain(v)
         return grain
 
-    def instantiate(self, environment:Environment)-> Datasource:
+    def instantiate(self, environment: Environment) -> Datasource:
         return Datasource(
             name=self.name,
-            columns = [x.instantiate(environment).with_grain(self.grain) for x in self.columns],
-            address = self.address,
-            grain = self.grain,
-            namespace = self.namespace,
-            metadata = self.metadata,
-            where = self.where.instantiate(environment) if self.where else None,
-            non_partial_for = self.non_partial_for.instantiate(environment) if self.non_partial_for else None
+            columns=[
+                x.instantiate(environment).with_grain(self.grain) for x in self.columns
+            ],
+            address=self.address,
+            grain=self.grain,
+            namespace=self.namespace,
+            metadata=self.metadata,
+            where=self.where.instantiate(environment) if self.where else None,
+            non_partial_for=(
+                self.non_partial_for.instantiate(environment)
+                if self.non_partial_for
+                else None
+            ),
         )
 
     def duplicate(self) -> Datasource:
         return self.model_copy(deep=True)
-
 
     def merge_concept(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -672,7 +738,6 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
     def output_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.output_concepts)
 
-
     @property
     def non_partial_concept_addresses(self) -> set[str]:
         return set([c.address for c in self.full_concepts])
@@ -689,7 +754,6 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
             v = Address(location=v)
         return v
 
-
     def add_column(
         self,
         concept: ConceptRef,
@@ -699,8 +763,6 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
         self.columns.append(
             ColumnAssignmentRef(alias=alias, concept=concept, modifiers=modifiers or [])
         )
-
-
 
     def __repr__(self):
         return f"Datasource<{self.identifier}@<{self.grain}>"
@@ -729,7 +791,6 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
     @property
     def concepts(self) -> List[BoundConcept]:
         return [c.concept for c in self.columns]
-
 
     @property
     def full_concepts(self) -> List[BoundConcept]:
@@ -941,7 +1002,7 @@ class WindowItemRef(Reference, Namespaced, BaseModel):
     def validate_content(cls, v, values):
 
         return ConceptRef.parse(v)
-    
+
     @field_validator("over", mode="before")
     def validate_over(cls, v, values):
         if not isinstance(v, list):
@@ -967,7 +1028,7 @@ class WindowItemRef(Reference, Namespaced, BaseModel):
             base += get_concept_ref_arguments(order.expr)
         for item in self.over:
             base += get_concept_ref_arguments(item)
-        return
+        return base
 
     def with_namespace(self, namespace: str) -> "WindowItemRef":
         return WindowItemRef(
@@ -1059,6 +1120,16 @@ class ComparisonRef(Reference, Namespaced, BaseModel):
     ]
     operator: ComparisonOperator
 
+    @field_validator("left", mode="before")
+    def validate_left(cls, v, values):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
+    @field_validator("right", mode="before")
+    def validate_right(cls, v, values):
+        if isinstance(v, Concept):
+            return v.reference
+        return v
     @property
     def concept_arguments(self) -> List[ConceptRef]:
         return get_concept_ref_arguments(self.left) + get_concept_ref_arguments(
@@ -1396,8 +1467,10 @@ class SelectStatement(HasUUID, Namespaced, SelectTypeMixin, BaseModel):
         new = []
         for item in v:
             if isinstance(item, (Concept, BoundConcept)):
-                new.append(SelectItem(content = ConceptRef(address=item.address)))
+                new.append(SelectItem(content=ConceptRef(address=item.address)))
             elif isinstance(item, ConceptTransform):
+                new.append(SelectItem(content=item))
+            elif isinstance(item, ConceptRef):
                 new.append(SelectItem(content=item))
             else:
                 new.append(item)
@@ -1613,7 +1686,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Namespaced, BaseModel):
 
 class AlignItem(Namespaced, BaseModel):
     alias: str
-    concepts: List[Concept]
+    concepts: List[ConceptRef]
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
 
     @computed_field  # type: ignore
@@ -1628,9 +1701,9 @@ class AlignItem(Namespaced, BaseModel):
             namespace=namespace,
         )
 
-    def gen_concept(self, parent: MultiSelectStatement):
-        datatypes = set([c.datatype for c in self.concepts])
-        purposes = set([c.purpose for c in self.concepts])
+    def gen_concept(self, parent: MultiSelectStatement, environment:Environment):
+        datatypes = set([environment.concepts[c].datatype for c in self.concepts])
+        purposes = set([environment.concepts[c].purpose for c in self.concepts])
         if len(datatypes) > 1:
             raise InvalidSyntaxException(
                 f"Datatypes do not align for merged statements {self.alias}, have {datatypes}"
@@ -1675,7 +1748,6 @@ class MergeStatementV2(HasUUID, Namespaced, BaseModel):
             modifiers=self.modifiers,
         )
         return new
-
 
 
 class PersistStatement(HasUUID, BaseModel):
@@ -1785,7 +1857,6 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
 SelectStatement.model_rebuild()
 
 
-
 class EnvironmentDatasourceDict(dict):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(self, *args, **kwargs)
@@ -1810,7 +1881,6 @@ class EnvironmentDatasourceDict(dict):
         new = EnvironmentDatasourceDict()
         new.update({k: v.duplicate() for k, v in self.items()})
         return new
-
 
 
 class Environment(BaseModel):
@@ -1838,19 +1908,19 @@ class Environment(BaseModel):
     frozen: bool = False
     env_file_path: Path | None = None
 
-    def instantiate(self)->BoundEnvironment:
+    def instantiate(self) -> BoundEnvironment:
         env = BoundEnvironment()
         for k, v in self.concepts.items():
             env.concepts[k] = v.instantiate(self)
         for k, v in self.datasources.items():
             env.datasources[k] = v.instantiate(self)
-        env.alias_origin_lookup = {k:v.instantiate(self) for k, v in self.alias_origin_lookup.items()}
+        env.alias_origin_lookup = {
+            k: v.instantiate(self) for k, v in self.alias_origin_lookup.items()
+        }
         env.cte_name_map = self.cte_name_map
-
 
         env.gen_concept_list_caches()
         return env
-
 
     def freeze(self):
         self.frozen = True
@@ -2120,35 +2190,35 @@ class Environment(BaseModel):
     def parse(
         self, input: str, namespace: str | None = None, persist: bool = False
     ) -> Tuple[Environment, list]:
-        raise NotImplementedError
-        # from trilogy import parse
-        # from trilogy.core.query_processor import process_persist
 
-        # if namespace:
-        #     new = Environment()
-        #     _, queries = new.parse(input)
-        #     self.add_import(namespace, new)
-        #     return self, queries
-        # _, queries = parse(input, self)
-        # generatable = [
-        #     x
-        #     for x in queries
-        #     if isinstance(
-        #         x,
-        #         (
-        #             SelectStatement,
-        #             PersistStatement,
-        #             MultiSelectStatement,
-        #             ShowStatement,
-        #         ),
-        #     )
-        # ]
-        # while generatable:
-        #     t = generatable.pop(0)
-        #     if isinstance(t, PersistStatement) and persist:
-        #         processed = process_persist(self, t)
-        #         self.add_datasource(processed.datasource)
-        # return self, queries
+        from trilogy import parse
+        from trilogy.core.query_processor import process_persist
+
+        if namespace:
+            new = Environment()
+            _, queries = new.parse(input)
+            self.add_import(namespace, new)
+            return self, queries
+        _, queries = parse(input, self)
+        generatable = [
+            x
+            for x in queries
+            if isinstance(
+                x,
+                (
+                    SelectStatement,
+                    PersistStatement,
+                    MultiSelectStatement,
+                    ShowStatement,
+                ),
+            )
+        ]
+        while generatable:
+            t = generatable.pop(0)
+            if isinstance(t, PersistStatement) and persist:
+                processed = process_persist(self, t)
+                self.add_datasource(processed.datasource)
+        return self, queries
 
     def add_concept(
         self,
@@ -2269,3 +2339,36 @@ class Environment(BaseModel):
             if source.address in ds.output_lcl:
                 ds.merge_concept(source, target, modifiers=modifiers)
         return True
+
+
+class LazyEnvironment(Environment):
+    """Variant of environment to defer parsing of a path
+    until relevant attributes accessed."""
+
+    load_path: Path
+    loaded: bool = False
+
+    def __getattribute__(self, name):
+        if name in (
+            "load_path",
+            "loaded",
+            "working_path",
+            "model_config",
+            "model_fields",
+            "model_post_init",
+        ) or name.startswith("_"):
+            return super().__getattribute__(name)
+        if not self.loaded:
+            logger.info(
+                f"lazily evaluating load path {self.load_path} to access {name}"
+            )
+            from trilogy import parse
+
+            env = Environment(working_path=str(self.working_path))
+            with open(self.load_path, "r") as f:
+                parse(f.read(), env)
+            self.loaded = True
+            self.datasources = env.datasources
+            self.concepts = env.concepts
+            self.imports = env.imports
+        return super().__getattribute__(name)

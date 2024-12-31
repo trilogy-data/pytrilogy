@@ -3,7 +3,9 @@ from datetime import date, datetime
 
 from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
-from trilogy.core.execute_models import Comparison, BoundEnvironment
+# from trilogy.core.execute_models import Comparison
+from trilogy.core.author_models import Environment, ComparisonRef
+from trilogy.core.execute_models import Comparison
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
     simplify_conditions,
@@ -78,7 +80,7 @@ class ConditionalTest:
 
 
 def test_conditional_merge():
-    env = BoundEnvironment()
+    env = Environment()
     env.parse(
         """
 key x int;
@@ -94,12 +96,12 @@ key a datetime;
         ConditionalTest(datetime.now(), "a"),
     ]
     for case in test_cases:
-        left = Comparison(
+        left = ComparisonRef(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = Comparison(
+        right = ComparisonRef(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LTE,

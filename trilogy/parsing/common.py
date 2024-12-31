@@ -11,7 +11,8 @@ from trilogy.core.enums import (
     PurposeLineage,
     WindowType,
 )
-from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
+# from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
+from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
     AggregateWrapper,
     BoundConcept as FullConcept,
@@ -38,11 +39,12 @@ from trilogy.core.author_models import (
     WindowItemRef,
     ParentheticalRef,
     Concept,
+    Environment,
 )
 from trilogy.utility import string_to_hash, unique
 
 
-def get_upstream_modifiers(keys: List[Concept], environment:BoundEnvironment) -> list[Modifier]:
+def get_upstream_modifiers(keys: List[Concept], environment:Environment) -> list[Modifier]:
     modifiers = set()
     for pkey in keys:
         if pkey.modifiers:
@@ -53,13 +55,15 @@ def get_upstream_modifiers(keys: List[Concept], environment:BoundEnvironment) ->
 def process_function_args(
     args,
     meta: Meta | None,
-    environment: BoundEnvironment,
+    environment: Environment,
 ) -> List[ConceptRef | FunctionRef | str | int | float | date | datetime]:
     final: List[ConceptRef | FunctionRef | str | int | float | date | datetime] = []
     for arg in args:
         # if a function has an anonymous function argument
         # create an implicit concept
-        if isinstance(arg, ParentheticalRef):
+        if isinstance(arg, ConceptRef):
+            final.append(environment.concepts[arg.address])
+        elif isinstance(arg, ParentheticalRef):
             processed = process_function_args([arg.content], meta, environment)
             final.append(
                 FunctionRef(
@@ -110,10 +114,10 @@ def process_function_args(
 
 
 def get_purpose_and_keys(
-        environment: BoundEnvironment,
+        environment: Environment,
     purpose: Purpose | None, args: Tuple[Concept, ...] | None
 ) -> Tuple[Purpose, set[str] | None]:
-    local_purpose = purpose or function_args_to_output_purpose(args, environment)
+    local_purpose = purpose or args_to_output_purpose(args)
     if local_purpose in (Purpose.PROPERTY, Purpose.METRIC) and args:
         keys = concept_list_to_keys(args)
     else:
@@ -135,13 +139,13 @@ def constant_to_concept(
     parent: ListWrapper | MapWrapper | list | int | float | str,
     name: str,
     namespace: str,
-    environment: BoundEnvironment,
+    environment: Environment,
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     const_function: FunctionRef = FunctionRef(
         operator=FunctionType.CONSTANT,
-        output_datatype=arg_to_datatype(parent, environment),
+        output_datatype=arg_to_datatype(parent),
         output_purpose=Purpose.CONSTANT,
         arguments=[parent],
     )
@@ -159,9 +163,9 @@ def constant_to_concept(
 
 
 def concepts_to_grain_concepts(
-    concepts: List[Concept] | List[str] | set[str], environment: BoundEnvironment | None
+    concepts: List[Concept] | List[str] | set[str], environment: Environment | None
 ) -> list[Concept]:
-    environment = BoundEnvironment() if environment is None else environment
+    environment = Environment() if environment is None else environment
     pconcepts: list[Concept] = [
     ]
     for x in concepts:
@@ -191,7 +195,7 @@ def concepts_to_grain_concepts(
 def function_to_concept(
     parent: FunctionRef,
     name: str,
-    environment: BoundEnvironment,
+    environment: Environment,
     namespace: str | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:

@@ -49,6 +49,16 @@ from trilogy.constants import (
     MagicConstants,
     logger,
 )
+from trilogy.core.core_models import (DataType, Metadata,     MapWrapper,
+    ListWrapper,
+    ListType,
+    StructType,
+    MapType,
+    arg_to_datatype,
+    arg_to_purpose,
+    NumericType,
+    TupleWrapper,
+    is_compatible_datatype)
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
     CONSTANT_DATASET,
@@ -84,27 +94,11 @@ from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS]"
 
-KT = TypeVar("KT")
-VT = TypeVar("VT")
-LT = TypeVar("LT")
 class Reference(ABC):
 
     def instantiate(self, environment: BoundEnvironment):
         raise NotImplementedError
 
-def is_compatible_datatype(left, right):
-    # for unknown types, we can't make any assumptions
-    if right == DataType.UNKNOWN or left == DataType.UNKNOWN:
-        return True
-    if left == right:
-        return True
-    if {left, right} == {DataType.NUMERIC, DataType.FLOAT}:
-        return True
-    if {left, right} == {DataType.NUMERIC, DataType.INTEGER}:
-        return True
-    if {left, right} == {DataType.FLOAT, DataType.INTEGER}:
-        return True
-    return False
 
 
 def get_version():
@@ -139,10 +133,6 @@ def get_concept_arguments(expr) -> List["BoundConcept"]:
     return output
 
 
-
-ALL_TYPES = Union[
-    "DataType", "MapType", "ListType", "NumericType", "StructType", "BoundConcept"
-]
 
 class Namespaced(ABC):
     def with_namespace(self, namespace: str):
@@ -186,173 +176,6 @@ class HasUUID(ABC):
 
 
 
-class DataType(Enum):
-    # PRIMITIVES
-    STRING = "string"
-    BOOL = "bool"
-    MAP = "map"
-    LIST = "list"
-    NUMBER = "number"
-    FLOAT = "float"
-    NUMERIC = "numeric"
-    INTEGER = "int"
-    BIGINT = "bigint"
-    DATE = "date"
-    DATETIME = "datetime"
-    TIMESTAMP = "timestamp"
-    ARRAY = "array"
-    DATE_PART = "date_part"
-    STRUCT = "struct"
-    NULL = "null"
-
-    # GRANULAR
-    UNIX_SECONDS = "unix_seconds"
-
-    # PARSING
-    UNKNOWN = "unknown"
-
-    @property
-    def data_type(self):
-        return self
-
-
-class NumericType(BaseModel):
-    precision: int = 20
-    scale: int = 5
-
-    @property
-    def data_type(self):
-        return DataType.NUMERIC
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-
-class ListType(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    type: ALL_TYPES
-
-    def __str__(self) -> str:
-        return f"ListType<{self.type}>"
-
-    @property
-    def data_type(self):
-        return DataType.LIST
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-    @property
-    def value_data_type(
-        self,
-    ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.type, BoundConcept):
-            return self.type.datatype
-        return self.type
-
-
-class MapType(BaseModel):
-    key_type: DataType
-    value_type: ALL_TYPES
-
-    @property
-    def data_type(self):
-        return DataType.MAP
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-    @property
-    def value_data_type(
-        self,
-    ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.value_type, BoundConcept):
-            return self.value_type.datatype
-        return self.value_type
-
-    @property
-    def key_data_type(
-        self,
-    ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.key_type, BoundConcept):
-            return self.key_type.datatype
-        return self.key_type
-
-
-class StructType(BaseModel):
-    fields: List[ALL_TYPES]
-    fields_map: Dict[str, BoundConcept | int | float | str]
-
-    @property
-    def data_type(self):
-        return DataType.STRUCT
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-
-class ListWrapper(Generic[VT], UserList):
-    """Used to distinguish parsed list objects from other lists"""
-
-    def __init__(self, *args, type: DataType, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.type = type
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-        if args:
-            schema = handler(List[args])  # type: ignore
-        else:
-            schema = handler(List)
-        return core_schema.no_info_after_validator_function(cls.validate, schema)
-
-    @classmethod
-    def validate(cls, v):
-        return cls(v, type=arg_to_datatype(v[0], None))
-
-
-class MapWrapper(Generic[KT, VT], UserDict):
-    """Used to distinguish parsed map objects from other dicts"""
-
-    def __init__(self, *args, key_type: DataType, value_type: DataType, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.key_type = key_type
-        self.value_type = value_type
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-        if args:
-            schema = handler(Dict[args])  # type: ignore
-        else:
-            schema = handler(Dict)
-        return core_schema.no_info_after_validator_function(cls.validate, schema)
-
-    @classmethod
-    def validate(cls, v):
-        return cls(
-            v,
-            key_type=arg_to_datatype(list(v.keys()).pop()),
-            value_type=arg_to_datatype(list(v.values()).pop()),
-        )
-
-
-class Metadata(BaseModel):
-    """Metadata container object.
-    TODO: support arbitrary tags"""
-
-    description: Optional[str] = None
-    line_number: Optional[int] = None
-    concept_source: ConceptSource = ConceptSource.MANUAL
 
 
 class BoundConcept(SelectContext, BaseModel):
@@ -1091,7 +914,10 @@ class Function( Namespaced, SelectContext, BaseModel):
 
     def __str__(self):
         return self.__repr__()
-
+    @property
+    def purpose(self):
+        return self.output_purpose
+    
     @property
     def datatype(self):
         return self.output_datatype
@@ -1243,6 +1069,22 @@ class WindowItem(Namespaced, BaseModel):
     order_by: List["OrderItem"]
     over: List["BoundConcept"] = Field(default_factory=list)
     index: Optional[int] = None
+
+
+    @property
+    def datatype(self):
+        if self.type in (WindowType.RANK, WindowType.ROW_NUMBER):
+            return DataType.INTEGER
+        return self.content.datatype
+    
+    @property
+    def purpose(self):
+        return Purpose.PROPERTY
+    
+    @property
+    def granularity(self):
+        return self.content.granularity
+        
 
     def __repr__(self) -> str:
         return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
@@ -2650,25 +2492,6 @@ class BoundEnvironment(BaseModel):
     def from_string(cls, input: str) -> "BoundEnvironment":
         return BoundEnvironment().parse(input)[0]
 
-    @classmethod
-    def from_cache(cls, path) -> Optional["BoundEnvironment"]:
-        with open(path, "r") as f:
-            read = f.read()
-        base = cls.model_validate_json(read)
-        version = get_version()
-        if base.version != version:
-            return None
-        return base
-
-    def to_cache(self, path: Optional[str | Path] = None) -> Path:
-        if not path:
-            ppath = Path(self.working_path) / ENV_CACHE_NAME
-        else:
-            ppath = Path(path)
-        with open(ppath, "w") as f:
-            f.write(self.model_dump_json())
-        return ppath
-
     def gen_concept_list_caches(self) -> None:
         concrete_addresses = set()
         for datasource in self.datasources.values():
@@ -2749,295 +2572,9 @@ class BoundEnvironment(BaseModel):
             f"Assignment to concept '{lookup}'  is a duplicate declaration;"
         )
 
-    def add_import(
-        self, alias: str, source: BoundEnvironment, imp_stm: ImportStatement | None = None
-    ):
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot add imports")
-        exists = False
-        existing = self.imports[alias]
-        if imp_stm:
-            if any(
-                [x.path == imp_stm.path and x.alias == imp_stm.alias for x in existing]
-            ):
-                exists = True
-        else:
-            if any(
-                [x.path == source.working_path and x.alias == alias for x in existing]
-            ):
-                exists = True
-            imp_stm = ImportStatement(alias=alias, path=Path(source.working_path))
-        same_namespace = alias == self.namespace
-
-        if not exists:
-            self.imports[alias].append(imp_stm)
-        # we can't exit early
-        # as there may be new concepts
-        for k, concept in source.concepts.items():
-            # skip internal namespace
-            if INTERNAL_NAMESPACE in concept.address:
-                continue
-            if same_namespace:
-                new = self.add_concept(concept, _ignore_cache=True)
-            else:
-                new = self.add_concept(
-                    concept.with_namespace(alias), _ignore_cache=True
-                )
-
-                k = address_with_namespace(k, alias)
-            # set this explicitly, to handle aliasing
-            self.concepts[k] = new
-
-        for _, datasource in source.datasources.items():
-            if same_namespace:
-                self.add_datasource(datasource, _ignore_cache=True)
-            else:
-                self.add_datasource(
-                    datasource.with_namespace(alias), _ignore_cache=True
-                )
-        for key, val in source.alias_origin_lookup.items():
-            if same_namespace:
-                self.alias_origin_lookup[key] = val
-            else:
-                self.alias_origin_lookup[address_with_namespace(key, alias)] = (
-                    val.with_namespace(alias)
-                )
-
-        self.gen_concept_list_caches()
-        return self
-
-    def add_file_import(
-        self, path: str | Path, alias: str, env: BoundEnvironment | None = None
-    ):
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot add imports")
-        from trilogy.parsing.parse_engine import (
-            PARSER,
-            ParseToObjects,
-            gen_cache_lookup,
-        )
-
-        if isinstance(path, str):
-            if path.endswith(".preql"):
-                path = path.rsplit(".", 1)[0]
-            if "." not in path:
-                target = Path(self.working_path, path)
-            else:
-                target = Path(self.working_path, *path.split("."))
-            target = target.with_suffix(".preql")
-        else:
-            target = path
-        if not env:
-            parse_address = gen_cache_lookup(str(target), alias, str(self.working_path))
-            try:
-                with open(target, "r", encoding="utf-8") as f:
-                    text = f.read()
-                nenv = BoundEnvironment(
-                    working_path=target.parent,
-                )
-                nenv.concepts.fail_on_missing = False
-                nparser = ParseToObjects(
-                    environment=BoundEnvironment(
-                        working_path=target.parent,
-                    ),
-                    parse_address=parse_address,
-                    token_address=target,
-                )
-                nparser.set_text(text)
-                nparser.transform(PARSER.parse(text))
-                nparser.hydrate_missing()
-
-            except Exception as e:
-                raise ImportError(
-                    f"Unable to import file {target.parent}, parsing error: {e}"
-                )
-            env = nparser.environment
-        imps = ImportStatement(alias=alias, path=target)
-        self.add_import(alias, source=env, imp_stm=imps)
-        return imps
-
-    def parse(
-        self, input: str, namespace: str | None = None, persist: bool = False
-    ) -> Tuple[BoundEnvironment, list]:
-        raise NotImplementedError
-        # from trilogy import parse
-        # from trilogy.core.query_processor import process_persist
-
-        # if namespace:
-        #     new = Environment()
-        #     _, queries = new.parse(input)
-        #     self.add_import(namespace, new)
-        #     return self, queries
-        # _, queries = parse(input, self)
-        # generatable = [
-        #     x
-        #     for x in queries
-        #     if isinstance(
-        #         x,
-        #         (
-        #             SelectStatement,
-        #             PersistStatement,
-        #             MultiSelectStatement,
-        #             ShowStatement,
-        #         ),
-        #     )
-        # ]
-        # while generatable:
-        #     t = generatable.pop(0)
-        #     if isinstance(t, PersistStatement) and persist:
-        #         processed = process_persist(self, t)
-        #         self.add_datasource(processed.datasource)
-        # return self, queries
-
-    def add_concept(
-        self,
-        concept: BoundConcept,
-        meta: Meta | None = None,
-        force: bool = False,
-        add_derived: bool = True,
-        _ignore_cache: bool = False,
-    ):
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot add concepts")
-        if not force:
-            existing = self.validate_concept(concept, meta=meta)
-            if existing:
-                concept = existing
-        self.concepts[concept.address] = concept
-        from trilogy.core.environment_helpers import generate_related_concepts
-
-        generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
-        if not _ignore_cache:
-            self.gen_concept_list_caches()
-        return concept
-
-    def add_datasource(
-        self,
-        datasource: Datasource,
-        meta: Meta | None = None,
-        _ignore_cache: bool = False,
-    ):
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot add datasource")
-        self.datasources[datasource.identifier] = datasource
-
-        eligible_to_promote_roots = datasource.non_partial_for is None
-        # mark this as canonical source
-        for current_concept in datasource.output_concepts:
-            if not eligible_to_promote_roots:
-                continue
-
-            current_derivation = current_concept.derivation
-            # TODO: refine this section;
-            # too hacky for maintainability
-            if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
-                persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
-                # override the current concept source to reflect that it's now coming from a datasource
-                if (
-                    current_concept.metadata.concept_source
-                    != ConceptSource.PERSIST_STATEMENT
-                ):
-                    new_concept = current_concept.model_copy(deep=True)
-                    new_concept.set_name(persisted)
-                    self.add_concept(
-                        new_concept, meta=meta, force=True, _ignore_cache=True
-                    )
-                    current_concept.metadata.concept_source = (
-                        ConceptSource.PERSIST_STATEMENT
-                    )
-                    # remove the associated lineage
-                    # to make this a root for discovery purposes
-                    # as it now "exists" in a table
-                    current_concept.lineage = None
-                    current_concept = current_concept.with_default_grain()
-                    self.add_concept(
-                        current_concept, meta=meta, force=True, _ignore_cache=True
-                    )
-                    self.merge_concept(new_concept, current_concept, [])
-                else:
-                    self.add_concept(current_concept, meta=meta, _ignore_cache=True)
-        if not _ignore_cache:
-            self.gen_concept_list_caches()
-        return datasource
-
-    def delete_datasource(
-        self,
-        address: str,
-        meta: Meta | None = None,
-    ) -> bool:
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot delete datsources")
-        if address in self.datasources:
-            del self.datasources[address]
-            self.gen_concept_list_caches()
-            return True
-        return False
-
-    def merge_concept(
-        self,
-        source: BoundConcept,
-        target: BoundConcept,
-        modifiers: List[Modifier],
-        force: bool = False,
-    ) -> bool:
-        if self.frozen:
-            raise ValueError("Environment is frozen, cannot merge concepts")
-        replacements = {}
-
-        # exit early if we've run this
-        if source.address in self.alias_origin_lookup and not force:
-            if self.concepts[source.address] == target:
-                return False
-        self.alias_origin_lookup[source.address] = source
-        for k, v in self.concepts.items():
-            if v.address == target.address:
-                v.pseudonyms.add(source.address)
-
-            if v.address == source.address:
-                replacements[k] = target
-                v.pseudonyms.add(target.address)
-            # we need to update keys and grains of all concepts
-            else:
-                replacements[k] = v.with_merge(source, target, modifiers)
-        self.concepts.update(replacements)
-
-        for k, ds in self.datasources.items():
-            if source.address in ds.output_lcl:
-                ds.merge_concept(source, target, modifiers=modifiers)
-        return True
+   
 
 
-class LazyEnvironment(BoundEnvironment):
-    """Variant of environment to defer parsing of a path
-    until relevant attributes accessed."""
-
-    load_path: Path
-    loaded: bool = False
-
-    def __getattribute__(self, name):
-        if name in (
-            "load_path",
-            "loaded",
-            "working_path",
-            "model_config",
-            "model_fields",
-            "model_post_init",
-        ) or name.startswith("_"):
-            return super().__getattribute__(name)
-        if not self.loaded:
-            logger.info(
-                f"lazily evaluating load path {self.load_path} to access {name}"
-            )
-            from trilogy import parse
-
-            env = BoundEnvironment(working_path=str(self.working_path))
-            with open(self.load_path, "r") as f:
-                parse(f.read(), env)
-            self.loaded = True
-            self.datasources = env.datasources
-            self.concepts = env.concepts
-            self.imports = env.imports
-        return super().__getattribute__(name)
 
 
 
@@ -3480,7 +3017,14 @@ class AggregateWrapper(SelectContext, BaseModel):
 
     @property
     def datatype(self):
-        return self.function.datatype
+        return self.function.output_datatype
+    
+    @property
+    def purpose(self):
+        base = self.function.purpose
+        if self.by and base == Purpose.METRIC:
+            return Purpose.PROPERTY
+        return base
 
     @property
     def concept_arguments(self) -> List[BoundConcept]:
@@ -3683,6 +3227,14 @@ class Parenthetical(
 ):
     content: "Expr"
 
+    @property
+    def datatype(self):
+        return arg_to_datatype(self.content)
+    
+    @property
+    def purpose(self):
+        return arg_to_purpose(self.content)
+    
     def __str__(self):
         return self.__repr__()
 
@@ -3758,38 +3310,6 @@ class Parenthetical(
         return base
 
 
-class TupleWrapper(Generic[VT], tuple):
-    """Used to distinguish parsed tuple objects from other tuples"""
-
-    def __init__(self, val, type: DataType, **kwargs):
-        super().__init__()
-        self.type = type
-        self.val = val
-
-    def __getnewargs__(self):
-        return (self.val, self.type)
-
-    def __new__(cls, val, type: DataType, **kwargs):
-        base = super().__new__(cls, tuple(val))
-        setattr(base, 'type', type)
-        return base
-        # self.type = type
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-        if args:
-            schema = handler(Tuple[args])  # type: ignore
-        else:
-            schema = handler(Tuple)
-        return core_schema.no_info_after_validator_function(cls.validate, schema)
-
-    @classmethod
-    def validate(cls, v):
-        return cls(v, type=DataType.INTEGER)
-
 
 
 Expr = (
@@ -3833,90 +3353,3 @@ UndefinedConcept.model_rebuild()
 Function.model_rebuild()
 Grain.model_rebuild()
 
-
-def list_to_wrapper(args, environment:BoundEnvironment):
-    types = [arg_to_datatype(arg, environment=environment) for arg in args]
-    assert len(set(types)) == 1
-    return ListWrapper(args, type=types[0])
-
-
-def tuple_to_wrapper(args, environment:BoundEnvironment):
-    types = [arg_to_datatype(arg, environment=environment) for arg in args]
-    assert len(set(types)) == 1
-    return TupleWrapper(args, type=types[0])
-
-
-def dict_to_map_wrapper(arg):
-    key_types = [arg_to_datatype(arg) for arg in arg.keys()]
-
-    value_types = [arg_to_datatype(arg) for arg in arg.values()]
-    assert len(set(key_types)) == 1
-    assert len(set(key_types)) == 1
-    return MapWrapper(arg, key_type=key_types[0], value_type=value_types[0])
-
-
-def merge_datatypes(
-    inputs: list[DataType | ListType | StructType | MapType | NumericType],
-) -> DataType | ListType | StructType | MapType | NumericType:
-    """This is a temporary hack for doing between
-    allowable datatype transformation matrix"""
-    if len(inputs) == 1:
-        return inputs[0]
-    if set(inputs) == {DataType.INTEGER, DataType.FLOAT}:
-        return DataType.FLOAT
-    if set(inputs) == {DataType.INTEGER, DataType.NUMERIC}:
-        return DataType.NUMERIC
-    if any(isinstance(x, NumericType) for x in inputs) and all(
-        isinstance(x, NumericType)
-        or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
-        for x in inputs
-    ):
-        candidate = next(x for x in inputs if isinstance(x, NumericType))
-        return candidate
-    return inputs[0]
-
-
-def arg_to_datatype(arg, environment:BoundEnvironment) -> DataType | ListType | StructType | MapType | NumericType:
-    if isinstance(arg, Reference):
-        return arg_to_datatype(arg.instantiate(environment), environment)
-    if isinstance(arg, Function):
-        return arg.output_datatype
-    elif isinstance(arg, MagicConstants):
-        if arg == MagicConstants.NULL:
-            return DataType.NULL
-        raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
-    elif isinstance(arg, BoundConcept):
-        return arg.datatype
-    elif isinstance(arg, bool):
-        return DataType.BOOL
-    elif isinstance(arg, int):
-        return DataType.INTEGER
-    elif isinstance(arg, str):
-        return DataType.STRING
-    elif isinstance(arg, float):
-        return DataType.FLOAT
-    elif isinstance(arg, NumericType):
-        return arg
-    elif isinstance(arg, ListWrapper):
-        return ListType(type=arg.type)
-    elif isinstance(arg, AggregateWrapper):
-        return arg.function.output_datatype
-    elif isinstance(arg, Parenthetical):
-        return arg_to_datatype(arg.content)
-    elif isinstance(arg, TupleWrapper):
-        return ListType(type=arg.type)
-    elif isinstance(arg, WindowItem):
-        if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
-            return DataType.INTEGER
-        return arg_to_datatype(arg.content)
-    elif isinstance(arg, list):
-        wrapper = list_to_wrapper(arg)
-        return ListType(type=wrapper.type)
-    elif isinstance(arg, MapWrapper):
-        return MapType(key_type=arg.key_type, value_type=arg.value_type)
-    elif isinstance(arg, datetime):
-        return DataType.DATETIME
-    elif isinstance(arg, date):
-        return DataType.DATE
-    else:
-        raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

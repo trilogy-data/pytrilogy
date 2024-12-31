@@ -1,6 +1,6 @@
 from trilogy import Dialects
 from trilogy.core.enums import Granularity, Purpose, PurposeLineage
-from trilogy.core.execute_models import  WindowItem,  Grain
+from trilogy.core.execute_models import WindowItem, Grain
 from trilogy.core.author_models import SelectStatement, WindowItemRef
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
@@ -63,7 +63,12 @@ limit 100
     assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
 
     ds = search_concepts(
-        [env.concepts["local.post_count"].with_grain(Grain(components={'local.user_id'})), env.concepts["user_id"]],
+        [
+            env.concepts["local.post_count"].with_grain(
+                Grain(components={"local.user_id"})
+            ),
+            env.concepts["user_id"],
+        ],
         environment=env,
         g=generate_graph(env),
         depth=0,
@@ -160,10 +165,11 @@ order by x asc;"""
     env, parsed = parse(declarations)
     select: SelectStatement = parsed[-1]
     x = env.concepts["x"]
-    assert x.granularity(env) == Granularity.MULTI_ROW
+    assert x.granularity == Granularity.MULTI_ROW
 
     z = env.concepts["z"]
     assert z.purpose == Purpose.PROPERTY
+    assert z.derivation == PurposeLineage.WINDOW
     assert set([x.address for x in z.lineage.concept_arguments]) == set(
         [
             x.address,
@@ -172,13 +178,20 @@ order by x asc;"""
     assert z.keys == {
         x.address,
     }
-
+    materialized_env = env.instantiate()
+    mat_x =materialized_env.concepts[x.address] 
     ds = search_concepts(
-        [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0
+        [
+            materialized_env.concepts[z.address].with_grain(mat_x),
+            mat_x,
+        ],
+        environment=materialized_env,
+        g=generate_graph(materialized_env),
+        depth=0,
     ).resolve()
 
-    assert x in ds.output_concepts
-    assert z in ds.output_concepts
+    assert x.address in ds.output_concepts
+    assert z.address in ds.output_concepts
 
     assert x.derivation == PurposeLineage.UNNEST
     assert z.derivation != PurposeLineage.CONSTANT

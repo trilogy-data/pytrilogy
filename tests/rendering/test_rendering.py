@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from trilogy import BoundEnvironment
+from trilogy import Environment
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import (
     BooleanOperator,
@@ -23,6 +23,8 @@ from trilogy.core.author_models import (
     SelectItem,
     SelectStatement,
     OrderByRef,
+    OrderBy,
+    OrderItem,
     OrderItemRef,
     AlignItem,
     AlignClause,
@@ -48,7 +50,6 @@ from trilogy.core.execute_models import (
     NumericType,
     OrderBy,
     Ordering,
-    OrderItem,
     # PersistStatement,
     Purpose,
     TupleWrapper,
@@ -83,7 +84,7 @@ ORDER BY
 
 
 def test_window_over(test_environment):
-    env = BoundEnvironment()
+    env = Environment()
     _, parsed = env.parse(
         """
 key order_id int;
@@ -111,32 +112,32 @@ def test_multi_select(test_environment):
         namespace=DEFAULT_NAMESPACE,
         selects=[
             SelectStatement(
-                selection=[test_environment.concepts["order_id"]],
+                selection=[test_environment.concepts["order_id"].reference],
                 where_clause=None,
             ),
             SelectStatement(
-                selection=[test_environment.concepts["order_id"]],
+                selection=[test_environment.concepts["order_id"].reference],
                 where_clause=None,
             ),
         ],
         align=AlignClause(
             items=[
                 AlignItem(
-                    alias="merge", concepts=[test_environment.concepts["order_id"]]
+                    alias="merge", concepts=[test_environment.concepts["order_id"].reference]
                 )
             ]
         ),
-        order_by=OrderBy(
+        order_by=OrderByRef(
             items=[
-                OrderItem(
-                    expr=test_environment.concepts["order_id"],
+                OrderItemRef(
+                    expr=test_environment.concepts["order_id"].reference,
                     order=Ordering.ASCENDING,
                 )
             ]
         ),
     )
 
-    string_query = render_query(query)
+    string_query = render_query(query, test_environment)
     assert (
         string_query
         == """SELECT
@@ -170,15 +171,15 @@ def test_full_query(test_environment):
                 operator=BooleanOperator.OR,
             ),
         ),
-        order_by=OrderBy(
+        order_by=OrderByRef(
             items=[
-                OrderItem(
+                OrderItemRef(
                     expr=test_environment.concepts["order_id"],
                     order=Ordering.ASCENDING,
                 )
             ]
-        ),
-    )
+        ))
+    
 
     string_query = render_query(query)
     assert (
@@ -199,13 +200,13 @@ def test_environment_rendering(test_environment):
     assert "address tblRevenue" in rendered
 
 
-def test_persist(test_environment: BoundEnvironment):
+def test_persist(test_environment: Environment):
     select = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
-        order_by=OrderBy(
+        order_by=OrderByRef(
             items=[
-                OrderItem(
+                OrderItemRef(
                     expr=test_environment.concepts["order_id"],
                     order=Ordering.ASCENDING,
                 )
@@ -232,7 +233,7 @@ ORDER BY
     )
 
 
-def test_render_select_item(test_environment: BoundEnvironment):
+def test_render_select_item(test_environment: Environment):
     test = Renderer().to_string(
         SelectItem(
             content=test_environment.concepts["order_id"], modifiers=[Modifier.HIDDEN]
@@ -242,13 +243,13 @@ def test_render_select_item(test_environment: BoundEnvironment):
     assert test == "--order_id"
 
 
-def test_render_concept_declaration(test_environment: BoundEnvironment):
+def test_render_concept_declaration(test_environment: Environment):
     test = Renderer().to_string(
         ConceptDeclarationStatement(concept=test_environment.concepts["order_id"])
     )
 
     assert test == "key order_id int;"
-    env_two = BoundEnvironment(namespace="test")
+    env_two = Environment(namespace="test")
     env_two.parse("""key order_id int;""")
     test = Renderer().to_string(
         ConceptDeclarationStatement(concept=env_two.concepts["test.order_id"])
@@ -257,13 +258,13 @@ def test_render_concept_declaration(test_environment: BoundEnvironment):
     assert test == "key test.order_id int;"
 
 
-def test_render_list_wrapper(test_environment: BoundEnvironment):
+def test_render_list_wrapper(test_environment: Environment):
     test = Renderer().to_string(ListWrapper([1, 2, 3, 4], type=DataType.INTEGER))
 
     assert test == "[1, 2, 3, 4]"
 
 
-def test_render_constant(test_environment: BoundEnvironment):
+def test_render_constant(test_environment: Environment):
     test = Renderer().to_string(
         Function(
             arguments=[[1, 2, 3, 4]],
@@ -276,13 +277,13 @@ def test_render_constant(test_environment: BoundEnvironment):
     assert test == "[1, 2, 3, 4]"
 
 
-def test_render_rowset(test_environment: BoundEnvironment):
+def test_render_rowset(test_environment: Environment):
     query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
-        order_by=OrderBy(
+        order_by=OrderByRef(
             items=[
-                OrderItem(
+                OrderItemRef(
                     expr=test_environment.concepts["order_id"],
                     order=Ordering.ASCENDING,
                 )
@@ -305,7 +306,7 @@ ORDER BY
     )
 
 
-def test_render_case(test_environment: BoundEnvironment):
+def test_render_case(test_environment: Environment):
     case_else = CaseElse(
         expr=test_environment.concepts["order_id"],
     )
@@ -327,7 +328,7 @@ def test_render_case(test_environment: BoundEnvironment):
     test = Renderer(test_environment).to_string(case_when)
     assert test == "WHEN order_id = 123 THEN order_id"
 
-    env, parsed = BoundEnvironment().parse(
+    env, parsed = Environment().parse(
         """
 
 key x int;
@@ -344,7 +345,7 @@ END;"""
 
     #  property test_like <- CASE WHEN category_name like '%abc%' then True else False END;
 
-    env, parsed = BoundEnvironment().parse(
+    env, parsed = Environment().parse(
         """
 
 key category_name string;
@@ -426,7 +427,7 @@ def test_render_math():
     assert test == "1 / 2 / 3"
 
 
-def test_render_anon(test_environment: BoundEnvironment):
+def test_render_anon(test_environment: Environment):
     test = Renderer().to_string(
         BoundConcept(
             name="materialized",
@@ -704,7 +705,7 @@ query '''SELECT * FROM test'''
 where user_id = 123 or user_id = 456;"""
     )
 
-    basic = BoundEnvironment()
+    basic = Environment()
     basic.parse(
         """key id int;
 property id.date_string string;
@@ -783,7 +784,7 @@ where user_id = 123 or user_id = 456;"""
 
 
 def test_circular_rendering():
-    basic = BoundEnvironment()
+    basic = Environment()
 
     _, commands = basic.parse(
         """
@@ -809,7 +810,7 @@ SELECT
 
 
 def test_render_list_type():
-    basic = BoundEnvironment()
+    basic = Environment()
 
     env, commands = basic.parse(
         """
@@ -827,9 +828,9 @@ def test_render_copy_statement(test_environment):
     select = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
         where_clause=None,
-        order_by=OrderBy(
+        order_by=OrderByRef(
             items=[
-                OrderItem(
+                OrderItemRef(
                     expr=test_environment.concepts["order_id"],
                     order=Ordering.ASCENDING,
                 )
@@ -849,7 +850,7 @@ ORDER BY
 
 
 def test_render_substring_filter():
-    basic = BoundEnvironment()
+    basic = Environment()
 
     env, commands = basic.parse(
         """
@@ -880,7 +881,7 @@ final_zips;
 
 
 def test_render_environment():
-    x = BoundEnvironment(working_path=Path(__file__).parent)
+    x = Environment(working_path=Path(__file__).parent)
     x.parse(
         """import a;
         import b;
@@ -893,9 +894,9 @@ def test_render_environment():
     assert rendered == "import a;\nimport b;", rendered
 
 
-def test_render_property(test_environment: BoundEnvironment):
+def test_render_property(test_environment: Environment):
 
-    env = BoundEnvironment.from_string(
+    env = Environment.from_string(
         """
 key x int;
 key y int;

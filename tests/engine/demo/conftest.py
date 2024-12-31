@@ -9,19 +9,22 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
+from trilogy.core.functions import FunctionFactory, create_function_derived_concept
+from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
     ColumnAssignment,
     BoundConcept,
     Datasource,
     DataType,
-    BoundEnvironment,
     Function,
     Grain,
     Metadata,
 )
+from trilogy.core.author_models import Concept, FunctionRef, ColumnAssignmentRef, DatasourceRef
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.common import function_to_concept
+from trilogy import Environment
+from trilogy.authoring import create_function_derived_concept
 
 
 def create_passenger_dimension(exec: Executor, name: str):
@@ -120,48 +123,15 @@ def setup_engine(debug_flag: bool = True) -> Executor:
     return output
 
 
-def create_function_derived_concept(
-    name: str,
-    namespace: str,
-    operator: FunctionType,
-    arguments: list[BoundConcept],
-    output_type: Optional[DataType] = None,
-    output_purpose: Optional[Purpose] = None,
-    metadata: Optional[Metadata] = None,
-) -> BoundConcept:
-    purpose = (
-        function_args_to_output_purpose(arguments)
-        if output_purpose is None
-        else output_purpose
-    )
-    output_type = (
-        arg_to_datatype(arguments[0]).data_type if output_type is None else output_type
-    )
-    return BoundConcept(
-        name=name,
-        namespace=namespace,
-        datatype=output_type,
-        purpose=purpose,
-        lineage=Function(
-            operator=operator,
-            arguments=arguments,
-            output_datatype=output_type,
-            output_purpose=purpose,
-            arg_count=len(arguments),
-        ),
-        metadata=metadata,
-    )
-
-
-def setup_richest_environment(env: BoundEnvironment):
+def setup_richest_environment(env: Environment):
     namespace = None
-    name = BoundConcept(
+    name = Concept(
         name="full_name",
         namespace=namespace,
         datatype=DataType.STRING,
         purpose=Purpose.KEY,
     )
-    money = BoundConcept(
+    money = Concept(
         name="net_worth_1918_dollars",
         namespace=namespace,
         datatype=DataType.STRING,
@@ -169,58 +139,39 @@ def setup_richest_environment(env: BoundEnvironment):
         keys=(name.address,),
     )
     env.add_concept(name)
-    split_name = function_to_concept(
-        Function(
-            operator=FunctionType.SPLIT,
-            arguments=[name, " "],
-            output_datatype=DataType.ARRAY,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
-        name="split_name",
-        namespace=namespace,
+    split_name = create_function_derived_concept(
+        "split_name", namespace, FunctionType.SPLIT, [name, ","], environment=env
+    )
+    last_name = create_function_derived_concept(
+        "last_name",
+        namespace,
+        FunctionType.INDEX_ACCESS,
+        [split_name, -1],
         environment=env,
-        # keys = (name,)
     )
-    last_name = BoundConcept(
-        name="last_name",
-        namespace=namespace,
-        purpose=Purpose.PROPERTY,
-        datatype=DataType.STRING,
-        keys=(name.address,),
-        lineage=Function(
-            operator=FunctionType.INDEX_ACCESS,
-            arguments=[
-                split_name,
-                -1,
-            ],
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
-    )
+
     for x in [name, money, last_name, split_name]:
         env.add_concept(x)
 
     env.add_datasource(
-        Datasource(
+        DatasourceRef(
             name="rich_info",
             address="rich_info",
             columns=[
-                ColumnAssignment(alias="Name", concept=name),
-                ColumnAssignment(alias="Net Worth 1918 Dollars", concept=money),
+                ColumnAssignmentRef(alias="Name", concept=name),
+                ColumnAssignmentRef(alias="Net Worth 1918 Dollars", concept=money),
             ],
         )
     )
 
 
-def setup_titanic_distributed(env: BoundEnvironment):
+def setup_titanic_distributed(env: Environment):
     namespace = "passenger"
-    id = BoundConcept(
+    id = Concept(
         name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
 
-    age = BoundConcept(
+    age = Concept(
         name="age",
         namespace=namespace,
         datatype=DataType.INTEGER,
@@ -229,49 +180,49 @@ def setup_titanic_distributed(env: BoundEnvironment):
         modifiers=[Modifier.NULLABLE],
     )
 
-    name = BoundConcept(
+    name = Concept(
         name="name",
         namespace=namespace,
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
         keys=(id.address,),
     )
-    class_id = BoundConcept(
+    class_id = Concept(
         name="_class_id",
         namespace=namespace,
         purpose=Purpose.KEY,
         datatype=DataType.INTEGER,
         # keys=[id],
     )
-    pclass = BoundConcept(
+    pclass = Concept(
         name="class",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=(class_id.address,),
     )
-    survived = BoundConcept(
+    survived = Concept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=(id.address,),
     )
-    fare = BoundConcept(
+    fare = Concept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.FLOAT,
         keys=(id.address,),
     )
-    embarked = BoundConcept(
+    embarked = Concept(
         name="embarked",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=(id.address,),
     )
-    cabin = BoundConcept(
+    cabin = Concept(
         name="cabin",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -280,29 +231,20 @@ def setup_titanic_distributed(env: BoundEnvironment):
     )
     env.add_concept(name)
     env.add_concept(id)
-    split_name = function_to_concept(
-        Function(
-            operator=FunctionType.SPLIT,
-            arguments=[name, ","],
-            output_datatype=DataType.ARRAY,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
-        name="split_name",
-        namespace=namespace,
-        environment=env,
-        # keys = (id,)
+    split_name = create_function_derived_concept(
+        "split_name", namespace, FunctionType.SPLIT, [name, ","], environment=env
     )
+
     assert split_name.keys == {
         id.address,
     }
-    last_name = BoundConcept(
+    last_name = Concept(
         name="last_name",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        lineage=Function(
+        lineage=FunctionRef(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
                 split_name,
@@ -312,13 +254,6 @@ def setup_titanic_distributed(env: BoundEnvironment):
             output_purpose=Purpose.PROPERTY,
             arg_count=2,
         ),
-    )
-    survived_count = create_function_derived_concept(
-        "survived_count",
-        namespace,
-        FunctionType.SUM,
-        [survived],
-        output_purpose=Purpose.METRIC,
     )
 
     for x in [
@@ -330,26 +265,29 @@ def setup_titanic_distributed(env: BoundEnvironment):
         fare,
         cabin,
         embarked,
-        survived_count,
         last_name,
         class_id,
     ]:
         env.add_concept(x)
+    survived_count = create_function_derived_concept(
+        "survived_count", namespace, FunctionType.SUM, [survived], environment=env
+    )
+    env.add_concept(survived_count)
 
     env.add_datasource(
-        Datasource(
+        DatasourceRef(
             name="dim_passenger",
             address="dim_passenger",
             columns=[
-                ColumnAssignment(alias="id", concept=id),
-                ColumnAssignment(alias="age", concept=age),
-                ColumnAssignment(alias="name", concept=name),
-                ColumnAssignment(alias="last_name", concept=last_name),
-                # ColumnAssignment(alias="pclass", concept=pclass),
-                # ColumnAssignment(alias="name", concept=name),
-                # ColumnAssignment(alias="fare", concept=fare),
-                # ColumnAssignment(alias="cabin", concept=cabin),
-                # ColumnAssignment(alias="embarked", concept=embarked),
+                ColumnAssignmentRef(alias="id", concept=id),
+                ColumnAssignmentRef(alias="age", concept=age),
+                ColumnAssignmentRef(alias="name", concept=name),
+                ColumnAssignmentRef(alias="last_name", concept=last_name),
+                # ColumnAssignmentRef(alias="pclass", concept=pclass),
+                # ColumnAssignmentRef(alias="name", concept=name),
+                # ColumnAssignmentRef(alias="fare", concept=fare),
+                # ColumnAssignmentRef(alias="cabin", concept=cabin),
+                # ColumnAssignmentRef(alias="embarked", concept=embarked),
             ],
             grain=Grain(
                 components={
@@ -360,16 +298,16 @@ def setup_titanic_distributed(env: BoundEnvironment):
     )
 
     env.add_datasource(
-        Datasource(
+        DatasourceRef(
             name="fact_titanic",
             address="fact_titanic",
             columns=[
-                ColumnAssignment(alias="passengerid", concept=id),
-                ColumnAssignment(alias="survived", concept=survived),
-                ColumnAssignment(alias="class_id", concept=class_id),
-                ColumnAssignment(alias="fare", concept=fare),
-                ColumnAssignment(alias="cabin", concept=cabin),
-                ColumnAssignment(alias="embarked", concept=embarked),
+                ColumnAssignmentRef(alias="passengerid", concept=id),
+                ColumnAssignmentRef(alias="survived", concept=survived),
+                ColumnAssignmentRef(alias="class_id", concept=class_id),
+                ColumnAssignmentRef(alias="fare", concept=fare),
+                ColumnAssignmentRef(alias="cabin", concept=cabin),
+                ColumnAssignmentRef(alias="embarked", concept=embarked),
             ],
             grain=Grain(
                 components={
@@ -380,15 +318,15 @@ def setup_titanic_distributed(env: BoundEnvironment):
     )
 
     env.add_datasource(
-        Datasource(
+        DatasourceRef(
             name="dim_class",
             address="dim_class",
             columns=[
-                ColumnAssignment(alias="id", concept=class_id),
-                ColumnAssignment(alias="class", concept=pclass),
-                # ColumnAssignment(alias="fare", concept=fare),
-                # ColumnAssignment(alias="cabin", concept=cabin),
-                # ColumnAssignment(alias="embarked", concept=embarked),
+                ColumnAssignmentRef(alias="id", concept=class_id),
+                ColumnAssignmentRef(alias="class", concept=pclass),
+                # ColumnAssignmentRef(alias="fare", concept=fare),
+                # ColumnAssignmentRef(alias="cabin", concept=cabin),
+                # ColumnAssignmentRef(alias="embarked", concept=embarked),
             ],
             grain=Grain(components={class_id.address}),
         ),
@@ -396,12 +334,12 @@ def setup_titanic_distributed(env: BoundEnvironment):
     return env
 
 
-def setup_titanic(env: BoundEnvironment):
+def setup_titanic(env: Environment):
     namespace = "passenger"
-    id = BoundConcept(
+    id = Concept(
         name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    age = BoundConcept(
+    age = Concept(
         name="age",
         namespace=namespace,
         datatype=DataType.INTEGER,
@@ -411,7 +349,7 @@ def setup_titanic(env: BoundEnvironment):
         modifiers=[Modifier.NULLABLE],
     )
 
-    name = BoundConcept(
+    name = Concept(
         name="name",
         namespace=namespace,
         datatype=DataType.STRING,
@@ -420,7 +358,7 @@ def setup_titanic(env: BoundEnvironment):
         grain=Grain(components=[id]),
     )
 
-    pclass = BoundConcept(
+    pclass = Concept(
         name="class",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -428,7 +366,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    survived = BoundConcept(
+    survived = Concept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -436,7 +374,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    fare = BoundConcept(
+    fare = Concept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -444,7 +382,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    embarked = BoundConcept(
+    embarked = Concept(
         name="embarked",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -452,7 +390,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    cabin = BoundConcept(
+    cabin = Concept(
         name="cabin",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -460,7 +398,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    ticket = BoundConcept(
+    ticket = Concept(
         name="ticket",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -469,16 +407,16 @@ def setup_titanic(env: BoundEnvironment):
         grain=Grain(components=[id]),
     )
 
-    last_name = BoundConcept(
+    last_name = Concept(
         name="last_name",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        lineage=Function(
+        lineage=FunctionRef(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                Function(
+                FunctionRef(
                     operator=FunctionType.SPLIT,
                     arguments=[name, ","],
                     output_datatype=DataType.ARRAY,
@@ -507,19 +445,19 @@ def setup_titanic(env: BoundEnvironment):
         env.add_concept(x)
     assert name in last_name.sources
     env.add_datasource(
-        Datasource(
+        DatasourceRef(
             name="raw_data",
             address="raw_titanic",
             columns=[
-                ColumnAssignment(alias="passengerid", concept=id),
-                ColumnAssignment(alias="age", concept=age),
-                ColumnAssignment(alias="survived", concept=survived),
-                ColumnAssignment(alias="pclass", concept=pclass),
-                ColumnAssignment(alias="name", concept=name),
-                ColumnAssignment(alias="fare", concept=fare),
-                ColumnAssignment(alias="cabin", concept=cabin),
-                ColumnAssignment(alias="embarked", concept=embarked),
-                ColumnAssignment(alias="ticket", concept=ticket),
+                ColumnAssignmentRef(alias="passengerid", concept=id),
+                ColumnAssignmentRef(alias="age", concept=age),
+                ColumnAssignmentRef(alias="survived", concept=survived),
+                ColumnAssignmentRef(alias="pclass", concept=pclass),
+                ColumnAssignmentRef(alias="name", concept=name),
+                ColumnAssignmentRef(alias="fare", concept=fare),
+                ColumnAssignmentRef(alias="cabin", concept=cabin),
+                ColumnAssignmentRef(alias="embarked", concept=embarked),
+                ColumnAssignmentRef(alias="ticket", concept=ticket),
             ],
             grain=Grain(components={id.address}),
         ),
@@ -541,9 +479,9 @@ def engine():
 
 @fixture
 def base_test_env():
-    env = BoundEnvironment()
+    env = Environment()
     env = setup_titanic(env)
-    rich_env = BoundEnvironment()
+    rich_env = Environment()
     setup_richest_environment(rich_env)
     env.add_import("rich_info", rich_env)
     yield env
@@ -551,9 +489,9 @@ def base_test_env():
 
 @fixture
 def test_env():
-    env = BoundEnvironment()
+    env = Environment()
     env = setup_titanic_distributed(env)
-    rich_env = BoundEnvironment()
+    rich_env = Environment()
     setup_richest_environment(rich_env)
     env.add_import("rich_info", rich_env)
     yield env

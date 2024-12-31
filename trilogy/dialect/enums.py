@@ -93,24 +93,24 @@ class Dialects(Enum):
 
     def default_executor(
         self,
-        environment: Optional["BoundEnvironment"] = None,
+        environment: Optional["Environment"] = None,
         hooks: List["BaseHook"] | None = None,
         conf: DialectConfig | None = None,
         _engine_factory: Callable | None = None,
     ) -> "Executor":
-        from trilogy import BoundEnvironment, Executor
+        from trilogy import Environment, Executor
 
         if _engine_factory is not None:
             return Executor(
                 engine=self.default_engine(conf=conf, _engine_factory=_engine_factory),
-                environment=environment or BoundEnvironment(),
+                environment=environment or Environment(),
                 dialect=self,
                 hooks=hooks,
             )
 
         return Executor(
             engine=self.default_engine(conf=conf),
-            environment=environment or BoundEnvironment(),
+            environment=environment or Environment(),
             dialect=self,
             hooks=hooks,
         )

@@ -5,9 +5,10 @@ from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     gen_merge_node,
 )
+from trilogy import Environment
 
 
-def test_demo_merge(normalized_engine, test_env: BoundEnvironment):
+def test_demo_merge(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env
     concepts = set(list(normalized_engine.environment.concepts.keys()))

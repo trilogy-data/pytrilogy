@@ -21,12 +21,12 @@ LOGGER_PREFIX = "[GEN_MULTISELECT_NODE]"
 
 
 def extra_align_joins(
-    base: MultiSelectStatement, parents: List[StrategyNode]
+    base: MultiSelectStatement, parents: List[StrategyNode], environment: BoundEnvironment
 ) -> List[NodeJoin]:
     node_merge_concept_map = defaultdict(list)
     output = []
     for align in base.align.items:
-        jc = align.gen_concept(base)
+        jc = align.gen_concept(base, environment)
         if jc.purpose == Purpose.CONSTANT:
             continue
         for node in parents:
@@ -108,7 +108,7 @@ def gen_multiselect_node(
             for item in select.output_components:
                 partial.append(item)
 
-    node_joins = extra_align_joins(lineage, base_parents)
+    node_joins = extra_align_joins(lineage, base_parents, environment=environment)
     node = MergeNode(
         input_concepts=[x for y in base_parents for x in y.output_concepts],
         output_concepts=[x for y in base_parents for x in y.output_concepts],
