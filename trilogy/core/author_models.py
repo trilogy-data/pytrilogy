@@ -37,6 +37,7 @@ from trilogy.core.execute_models import (
     OrderBy,
     CaseWhen,
     CaseElse,
+    BoundMultiSelectStatement,
     DatePart,
     Parenthetical,
     WindowItem,
@@ -1640,7 +1641,23 @@ class MultiSelectStatement(HasUUID, Reference, SelectTypeMixin, Namespaced, Base
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
     
-    def instantiate(self, environment:Environment)
+    def instantiate(self, environment:Environment):
+        return BoundMultiSelectStatement(
+            selects=[x.instantiate(environment) for x in self.selects],
+            align=self.align.instantiate(environment),
+            namespace=self.namespace,
+            order_by=self.order_by.instantiate(environment) if self.order_by else None,
+            limit=self.limit,
+            meta=self.meta,
+            where_clause=(
+                self.where_clause.instantiate(environment)
+                if self.where_clause
+                else None
+            ),
+            local_concepts=EnvironmentConceptDict(
+                {k: v.instantiate(environment) for k, v in self.local_concepts.items()}
+            ),
+        )
 
     @property
     def arguments(self) -> List[ConceptRef]:
