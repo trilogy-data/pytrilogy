@@ -375,17 +375,17 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def struct_type(self, meta: Meta, args) -> StructType:
         final: list[
-            DataType | MapType | ListType | NumericType | StructType | BoundConcept
+            DataType | MapType | ListType | NumericType | StructType | Concept
         ] = []
         for arg in args:
             new = self.environment.concepts.__getitem__(  # type: ignore
                 key=arg, line_no=meta.line
             )
-            final.append(new)
+            final.append(new.reference)
 
         return StructType(
             fields=final,
-            fields_map={x.name: x for x in final if isinstance(x, BoundConcept)},
+            fields_map={x.name: x for x in final if isinstance(x, Concept)},
         )
 
     def list_type(self, args) -> ListType:
@@ -983,7 +983,7 @@ class ParseToObjects(Transformer):
         return AlignItem(
             alias=args[0],
             namespace=self.environment.namespace,
-            concepts=[self.environment.concepts[arg] for arg in args[1:]],
+            concepts=[self.environment.concepts[arg].reference for arg in args[1:]],
         )
 
     @v_args(meta=True)
@@ -1025,7 +1025,7 @@ class ParseToObjects(Transformer):
             meta=Metadata(line_number=meta.line),
             local_concepts=base_local,
         )
-        for concept in multi.derived_concepts:
+        for concept in multi.generate_derived_concepts(self.environment):
             self.environment.add_concept(concept, meta=meta)
         return multi
 

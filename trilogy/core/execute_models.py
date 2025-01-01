@@ -58,6 +58,9 @@ from trilogy.core.core_models import (DataType, Metadata,     MapWrapper,
     arg_to_purpose,
     NumericType,
     TupleWrapper,
+    Namespaced,
+    Reference,
+    address_with_namespace,
     is_compatible_datatype)
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
@@ -94,12 +97,6 @@ from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS]"
 
-class Reference(ABC):
-
-    def instantiate(self, environment: BoundEnvironment):
-        raise NotImplementedError
-
-
 
 def get_version():
     from trilogy import __version__
@@ -107,10 +104,6 @@ def get_version():
     return __version__
 
 
-def address_with_namespace(address: str, namespace: str) -> str:
-    if address.split(".", 1)[0] == DEFAULT_NAMESPACE:
-        return f"{namespace}.{address.split('.',1)[1]}"
-    return f"{namespace}.{address}"
 
 
 def get_concept_arguments(expr) -> List["BoundConcept"]:
@@ -131,13 +124,6 @@ def get_concept_arguments(expr) -> List["BoundConcept"]:
     ):
         output += expr.concept_arguments
     return output
-
-
-
-class Namespaced(ABC):
-    def with_namespace(self, namespace: str):
-        raise NotImplementedError
-
 
 
 class ConceptArgs(ABC):
@@ -175,6 +161,40 @@ class HasUUID(ABC):
         return hashlib.md5(str(self).encode()).hexdigest()
 
 
+class SelectTypeMixin(BaseModel):
+    where_clause: Union["WhereClause", None] = Field(default=None)
+    having_clause: Union["HavingClause", None] = Field(default=None)
+
+    @property
+    def output_components(self) -> List[BoundConcept]:
+        raise NotImplementedError
+
+    @property
+    def implicit_where_clause_selections(self) -> List[BoundConcept]:
+        if not self.where_clause:
+            return []
+        filter = set(
+            [
+                str(x.address)
+                for x in self.where_clause.row_arguments
+                if not x.derivation == PurposeLineage.CONSTANT
+            ]
+        )
+        query_output = set([str(z.address) for z in self.output_components])
+        delta = filter.difference(query_output)
+        if delta:
+            return [
+                x for x in self.where_clause.row_arguments if str(x.address) in delta
+            ]
+        return []
+
+    @property
+    def where_clause_category(self) -> SelectFiltering:
+        if not self.where_clause:
+            return SelectFiltering.NONE
+        elif self.implicit_where_clause_selections:
+            return SelectFiltering.IMPLICIT
+        return SelectFiltering.EXPLICIT
 
 
 
@@ -327,12 +347,7 @@ class BoundConcept(SelectContext, BaseModel):
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 
-    def set_name(self, name: str):
-        self.name = name
-        try:
-            del self.address
-        except AttributeError:
-            pass
+
 
     @property
     def output(self) -> "BoundConcept":
@@ -2279,6 +2294,309 @@ class JoinKey(BaseModel):
     def __str__(self):
         return str(self.concept)
 
+class AlignItem(Namespaced, BaseModel):
+    alias: str
+    concepts: List[BoundConcept]
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+
+    @computed_field  # type: ignore
+    @cached_property
+    def concepts_lcl(self) -> LooseConceptList:
+        return LooseConceptList(concepts=self.concepts)
+
+
+
+class AlignClause(Namespaced, Reference, BaseModel):
+    items: List[AlignItem]
+
+class BoundSelectItem(BaseModel):
+    content: Union[BoundConcept, BoundConceptTransform]
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    @property
+    def output(self) -> BoundConcept:
+        if isinstance(self.content, BoundConceptTransform):
+            return self.content.output
+        elif isinstance(self.content, WindowItem):
+            return self.content.output
+        return self.content
+
+    @property
+    def input(self) -> List[BoundConcept]:
+        return self.content.input
+
+    def with_namespace(self, namespace: str) -> "BoundSelectItem":
+        return BoundSelectItem(
+            content=self.content.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
+    
+class BoundConceptTransform(BaseModel):
+    function: Function | FilterItem | WindowItem | AggregateWrapper
+    output: BoundConcept
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    @property
+    def input(self) -> List[BoundConcept]:
+        return [v for v in self.function.arguments if isinstance(v, BoundConcept)]
+
+class BoundSelectStatement(HasUUID,  SelectTypeMixin, BaseModel):
+    selection: List[BoundSelectItem]
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+    meta: Metadata = Field(default_factory=lambda: Metadata())
+    local_concepts: Annotated[
+        EnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=EnvironmentConceptDict)
+
+
+    def validate_syntax(self, environment: Environment):
+        return True
+        if self.where_clause:
+            for x in self.where_clause.concept_arguments:
+                if x.address not in environment.concepts:
+
+                    environment.concepts.raise_undefined(
+                        x.address, x.metadata.line_number
+                    )
+        all_in_output = [x.address for x in self.output_components]
+        if self.where_clause:
+            for concept in self.where_clause.concept_arguments:
+                if (
+                    concept.lineage
+                    and isinstance(concept.lineage, Function)
+                    and concept.lineage.operator
+                    in FunctionClass.AGGREGATE_FUNCTIONS.value
+                ):
+                    if concept.address in self.locally_derived:
+                        raise SyntaxError(
+                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                        )
+
+                if (
+                    concept.lineage
+                    and isinstance(concept.lineage, AggregateWrapper)
+                    and concept.lineage.function.operator
+                    in FunctionClass.AGGREGATE_FUNCTIONS.value
+                ):
+                    if concept.address in self.locally_derived:
+                        raise SyntaxError(
+                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
+                        )
+        if self.having_clause:
+            self.having_clause.hydrate_missing(self.local_concepts)
+            for concept in self.having_clause.concept_arguments:
+                if concept.address not in [x.address for x in self.output_components]:
+                    raise SyntaxError(
+                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
+                    )
+        if self.order_by:
+            for concept in self.order_by.concept_arguments:
+                if concept.address not in all_in_output:
+                    raise SyntaxError(
+                        f"Cannot order by a column {concept.address} that is not in the output projection; {self.meta.line_number}"
+                    )
+
+    def __str__(self):
+        from trilogy.parsing.render import render_query
+
+        output = ", ".join([str(x) for x in self.selection])
+        return f"SelectStatement<{output}> where {self.where_clause} having {self.having_clause} order by {self.order_by} limit {self.limit}"
+
+
+    @property
+    def locally_derived(self) -> set[str]:
+        locally_derived: set[str] = set()
+        for item in self.selection:
+            if isinstance(item.content, BoundConceptTransform):
+                locally_derived.add(item.content.output.address)
+        return locally_derived
+
+    @property
+    def input_components(self) -> List[BoundConcept]:
+        output = set()
+        output_list = []
+        for item in self.selection:
+            for concept in item.input:
+                if concept.name in output:
+                    continue
+                output.add(concept.name)
+                output_list.append(concept)
+        if self.where_clause:
+            for concept in self.where_clause.input:
+                if concept.name in output:
+                    continue
+                output.add(concept.name)
+                output_list.append(concept)
+
+        return output_list
+
+    @property
+    def output_components(self) -> List[BoundConcept]:
+        output = []
+        for item in self.selection:
+            if isinstance(item, BoundConcept):
+                output.append(item)
+            else:
+                output.append(item.output)
+        return output
+
+    @property
+    def hidden_components(self) -> set[str]:
+        output = set()
+        for item in self.selection:
+            if isinstance(item, BoundSelectItem) and Modifier.HIDDEN in item.modifiers:
+                output.add(item.output.address)
+        return output
+
+    @property
+    def all_components(self) -> List[BoundConcept]:
+        return self.input_components + self.output_components
+
+    def to_datasource(
+        self,
+        namespace: str,
+        name: str,
+        address: Address,
+        environment: BoundEnvironment,
+        grain: Grain | None = None,
+    ) -> Datasource:
+        raise NotImplementedError
+        # if self.where_clause or self.having_clause:
+        #     modifiers = [Modifier.PARTIAL]
+        # else:
+        #     modifiers = []
+        # columns = [
+        #     # TODO: replace hardcoded replacement here
+        #     # if the concept is a locally derived concept, it cannot ever be partial
+        #     # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
+
+        #     ColumnAssignment(
+        #         alias=(
+        #             c.name.replace(".", "_")
+        #             if c.namespace == DEFAULT_NAMESPACE
+        #             else c.address.replace(".", "_")
+        #         ),
+        #         concept=environment.concepts[c.address],
+        #         modifiers=modifiers if c.address not in self.locally_derived else [],
+        #     )
+        #     for c in self.output_components
+        # ]
+
+        # condition = None
+        # if self.where_clause:
+        #     condition = self.where_clause.conditional
+        # if self.having_clause:
+        #     if condition:
+        #         condition = self.having_clause.conditional + condition
+        #     else:
+        #         condition = self.having_clause.conditional
+
+        # new_datasource = Datasource(
+        #     name=name,
+        #     address=address,
+        #     grain=grain or self.grain,
+        #     columns=columns,
+        #     namespace=namespace,
+        #     non_partial_for=WhereClauseRef(conditional=condition) if condition else None,
+        # )
+        # for column in columns:
+        #     column.concept = column.concept.with_grain(new_datasource.grain)
+        # return new_datasource
+
+
+class BoundMultiSelectStatement(HasUUID, SelectTypeMixin, Namespaced, BaseModel):
+    selects: List[BoundSelectStatement]
+    align: AlignClause
+    namespace: str
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+    meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
+    local_concepts: Annotated[
+        EnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=EnvironmentConceptDict)
+
+    def __repr__(self):
+        return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
+
+    @property
+    def arguments(self) -> List[BoundSelectStatement]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        return unique(output, "address")
+
+    @property
+    def concept_arguments(self) -> List[ConceptRef]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        if self.where_clause:
+            output += self.where_clause.concept_arguments
+        return unique(output, "address")
+
+    def get_merge_concept(self, check: Concept):
+        for item in self.align.items:
+            if check in item.concepts_lcl:
+                return item.gen_concept(self)
+        return None
+
+    def with_namespace(self, namespace: str) -> "MultiSelectStatement":
+        return MultiSelectStatement(
+            selects=[c.with_namespace(namespace) for c in self.selects],
+            align=self.align.with_namespace(namespace),
+            namespace=namespace,
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            limit=self.limit,
+            meta=self.meta,
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
+            local_concepts=EnvironmentConceptDict(
+                {k: v.with_namespace(namespace) for k, v in self.local_concepts.items()}
+            ),
+        )
+
+    def generate_derived_concepts(self, environment: Environment)-> List[ConceptRef]:
+        output:list[ConceptRef] = []
+        for item in self.align.items:
+            output.append(item.gen_concept(self, environment))
+        return output
+
+    @computed_field  # type: ignore
+    @cached_property
+    def derived_concepts(self) -> List[ConceptRef]:
+        output = []
+        for item in self.align.items:
+            output.append(item.gen_concept(self))
+        return output
+
+    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
+        for x in self.align.items:
+            if concept.name == x.alias:
+                for c in x.concepts:
+                    if c.address in cte.output_lcl:
+                        return c
+        raise SyntaxError(
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        )
+
+    @property
+    def output_components(self) -> List[ConceptRef]:
+        output = self.derived_concepts
+        for select in self.selects:
+            output += select.output_components
+        return unique(output, "address")
+
+    @computed_field  # type: ignore
+    @cached_property
+    def hidden_components(self) -> set[str]:
+        output: set[str] = set()
+        for select in self.selects:
+            output = output.union(select.hidden_components)
+        return output
 
 class Join(BaseModel):
     right_cte: CTE

@@ -659,14 +659,15 @@ class FunctionFactory:
         output_purpose = config.output_purpose
         output_type = config.output_type
         arg_count = config.arg_count
-        if config.output_type_function:
-            output_type = config.output_type_function(args)
+
         if args:
             if not self.environment:
                 raise ValueError("Environment required for function creation with args")
             full_args = process_function_args(args, environment=self.environment, meta=meta)
         else:
             full_args = []
+        if config.output_type_function:
+            output_type = config.output_type_function(full_args)
         if not output_type:
             output_type = merge_datatypes([arg_to_datatype(x) for x in full_args])
         if not output_purpose:

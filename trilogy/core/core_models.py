@@ -30,7 +30,8 @@ from typing import (
     ValuesView,
     get_args,
         runtime_checkable,
-    Protocol
+    Protocol,
+    TYPE_CHECKING
 )
 
 from lark.tree import Meta
@@ -86,17 +87,89 @@ from trilogy.core.exceptions import (
 from trilogy.utility import unique
 
 
+if TYPE_CHECKING:
+    from trilogy.core.author_models import Environment, Concept
+    from trilogy.core.execute_models import BoundEnvironment
 
 KT = TypeVar("KT")
 VT = TypeVar("VT")
 LT = TypeVar("LT")
 
+# Abstravt Base Classes
+class Reference(ABC):
+
+    def instantiate(self, environment: BoundEnvironment):
+        raise NotImplementedError
+
+class Namespaced(ABC):
+    def with_namespace(self, namespace: str):
+        raise NotImplementedError
 
 class Addressable(ABC):
 
     @cached_property
     def address(self):
         raise NotImplemented
+    
+class Concrete(ABC):
+
+    @property
+    def reference(self):
+        raise NotImplemented
+
+def address_with_namespace(address: str, namespace: str) -> str:
+    if address.split(".", 1)[0] == DEFAULT_NAMESPACE:
+        return f"{namespace}.{address.split('.',1)[1]}"
+    return f"{namespace}.{address}"
+
+
+class ConceptRef(Namespaced, Reference, BaseModel):
+    address: str
+    line_no: int | None = None
+
+    @classmethod
+    def parse(cls, v):
+        if isinstance(v, ConceptRef):
+            return v
+        elif isinstance(v, str):
+            return ConceptRef(address=v)
+        elif isinstance(v, Concrete):
+            return v.reference
+        else:
+            raise ValueError(f"Invalid concept reference {v}")
+
+    def __hash__(self):
+        return hash(self.address)
+
+    def __init__(self, **data):
+        super().__init__(**data)
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.address == other
+        return self.address == other.address
+
+    @property
+    def namespace(self) -> str:
+        if "." in self.address:
+            return self.address.rsplit(".", 1)[0]
+        return DEFAULT_NAMESPACE
+
+    @property
+    def name(self) -> str:
+        return self.address.split(".")[-1]
+
+    def instantiate(self, environment: "Environment") -> "Concept":
+        base = environment.concepts.__getitem__(self.address, self.line_no)
+        if isinstance(base, Reference):
+            base = base.instantiate(environment)
+        return base
+
+    def with_namespace(self, namespace: str) -> "ConceptRef":
+        return ConceptRef(
+            address=address_with_namespace(self.address, namespace),
+            line_no=self.line_no,
+        )
 
 
 @runtime_checkable
@@ -329,7 +402,7 @@ def is_compatible_datatype(left, right):
 
 
 ALL_TYPES = Union[
-    "DataType", "MapType", "ListType", "NumericType", "StructType", "BoundConcept"
+    "DataType", "MapType", "ListType", "NumericType", "StructType", "ConceptRef"
 ]
 
 

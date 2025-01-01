@@ -142,6 +142,7 @@ def setup_richest_environment(env: Environment):
     split_name = create_function_derived_concept(
         "split_name", namespace, FunctionType.SPLIT, [name, ","], environment=env
     )
+    env.add_concept(split_name)
     last_name = create_function_derived_concept(
         "last_name",
         namespace,
@@ -150,7 +151,7 @@ def setup_richest_environment(env: Environment):
         environment=env,
     )
 
-    for x in [name, money, last_name, split_name]:
+    for x in [money, last_name,]:
         env.add_concept(x)
 
     env.add_datasource(
