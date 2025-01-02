@@ -100,7 +100,8 @@ from trilogy.core.author_models import (
     ConceptDeclarationStatement,
     ConceptDerivation,
     AlignItemRef,
-    AlignClauseRef
+    AlignClauseRef,
+    RowsetDerivationStatement,
 )
 from trilogy.core.execute_models import (
     Reference,
@@ -206,10 +207,9 @@ def parse_concept_reference(
 
 def expr_to_boolean(
     root,
-    environment: Environment,
 ) -> Union[ComparisonRef, SubselectComparisonRef, ConditionalRef]:
     if not isinstance(root, (ComparisonRef, SubselectComparisonRef, ConditionalRef)):
-        if arg_to_datatype(root, environment) == DataType.BOOL:
+        if arg_to_datatype(root) == DataType.BOOL:
             root = ComparisonRef(left=root, right=True, operator=ComparisonOperator.EQ)
         else:
             root = ComparisonRef(
@@ -602,24 +602,24 @@ class ParseToObjects(Transformer):
             " transform"
         )
 
-    # @v_args(meta=True)
-    # def rowset_derivation_statement(
-    #     self, meta: Meta, args
-    # ) -> RowsetDerivationStatement:
-    #     name = args[0]
-    #     select: SelectStatement | MultiSelectStatement = args[1]
-    #     output = RowsetDerivationStatement(
-    #         name=name,
-    #         select=select,
-    #         namespace=self.environment.namespace or DEFAULT_NAMESPACE,
-    #     )
-    #     for new_concept in output.create_derived_concepts(self.environment):
-    #         if new_concept.metadata:
-    #             new_concept.metadata.line_number = meta.line
-    #         # output.select.local_concepts[new_concept.address] = new_concept
-    #         self.environment.add_concept(new_concept)
+    @v_args(meta=True)
+    def rowset_derivation_statement(
+        self, meta: Meta, args
+    ) -> RowsetDerivationStatement:
+        name = args[0]
+        select: SelectStatement | MultiSelectStatement = args[1]
+        output = RowsetDerivationStatement(
+            name=name,
+            select=select,
+            namespace=self.environment.namespace or DEFAULT_NAMESPACE,
+        )
+        for new_concept in output.create_derived_concepts(self.environment):
+            if new_concept.metadata:
+                new_concept.metadata.line_number = meta.line
+            # output.select.local_concepts[new_concept.address] = new_concept
+            self.environment.add_concept(new_concept)
 
-    #     return output
+        return output
 
     @v_args(meta=True)
     def constant_derivation(self, meta: Meta, args) -> BoundConcept:
@@ -1075,12 +1075,12 @@ class ParseToObjects(Transformer):
 
     def where(self, args):
         root = args[0]
-        root = expr_to_boolean(root, self.environment)
+        root = expr_to_boolean(root,)
         return WhereClauseRef(conditional=root)
 
     def having(self, args):
         root = args[0]
-        root = expr_to_boolean(root, self.environment)
+        root = expr_to_boolean(root,)
         return HavingClauseRef(conditional=root)
 
     @v_args(meta=True)
@@ -1555,7 +1555,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fcase_when(self, meta, args) -> CaseWhen:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        root = expr_to_boolean(args[0], self.environment)
+        root = expr_to_boolean(args[0],)
         return CaseWhenRef(comparison=root, expr=args[1])
 
     @v_args(meta=True)

@@ -9,10 +9,12 @@ from trilogy.core.execute_models import (
 
     RowsetItem,
     WhereClause,
+    BoundRowsetDerivationStatement,
+    BoundMultiSelectStatement,
+    BoundSelectStatement,
 )
 from trilogy.core.author_models import (
     MultiSelectStatement,
-    RowsetDerivationStatement,
     SelectStatement
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
@@ -38,9 +40,9 @@ def gen_rowset_node(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
         )
     lineage: RowsetItem = concept.lineage
-    rowset: RowsetDerivationStatement = lineage.rowset
-    derived = rowset.create_derived_concepts(environment, concrete=True)
-    select: SelectStatement | MultiSelectStatement = lineage.rowset.select
+    rowset: BoundRowsetDerivationStatement = lineage.rowset
+    derived = [environment.concepts[x] for x in rowset.derived_concepts]
+    select: BoundSelectStatement | BoundMultiSelectStatement = lineage.rowset.select
 
     node = get_query_node(environment, select)
 

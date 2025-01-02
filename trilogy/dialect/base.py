@@ -21,6 +21,7 @@ from trilogy.core.author_models import (
     SelectStatement,
     ShowStatement,
         ConceptDeclarationStatement,
+        Environment,
 
 )
 from trilogy.core.execute_models import (
@@ -784,7 +785,7 @@ class BaseDialect:
 
     def generate_queries(
         self,
-        environment: BoundEnvironment,
+        environment: Environment,
         statements: Sequence[
             SelectStatement
             | MultiSelectStatement
@@ -846,7 +847,7 @@ class BaseDialect:
                             output_columns=[
                                 environment.concepts[
                                     DEFAULT_CONCEPTS["query_text"].address
-                                ]
+                                ].instantiate(environment)
                             ],
                             output_values=[
                                 process_query(

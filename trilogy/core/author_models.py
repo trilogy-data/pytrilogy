@@ -61,7 +61,8 @@ from trilogy.core.execute_models import (
     BoundEnvironment,
     BoundEnvironmentConceptDict,
     AlignClause,
-    AlignItem
+    AlignItem,
+    BoundRowsetDerivationStatement
 )
 from pydantic import BaseModel
 from typing import List
@@ -237,13 +238,6 @@ class FunctionRef(Reference, Namespaced, BaseModel):
 
     def instantiate(self, environment: Environment) -> Function:
         from trilogy.parsing.common import (
-            agg_wrapper_to_concept,
-            arbitrary_to_concept,
-            constant_to_concept,
-            filter_item_to_concept,
-            function_to_concept,
-            process_function_args,
-            window_item_to_concept,
             args_to_output_purpose,
         )
 
@@ -295,6 +289,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
+    
     metadata: Metadata = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
         validate_default=True,
@@ -310,7 +305,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             AggregateWrapperRef,
         ]
     ] = None
-
+    granularity: Granularity = Granularity.MULTI_ROW
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[set[str]] = Field(default_factory=set)
     # grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
@@ -398,24 +393,18 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
         return v
 
-    @property
-    def granularity(self):
-        if not self.lineage:
-            return Granularity.MULTI_ROW
-        if isinstance(self.lineage, FunctionRef):
-            if self.lineage.operator == FunctionType.CONSTANT:
-                return Granularity.SINGLE_ROW
-        if isinstance(self.lineage, AggregateWrapperRef):
-            if self.lineage.by and all(
-                x.name == ALL_ROWS_CONCEPT for x in self.lineage.by
-            ):
-                return Granularity.SINGLE_ROW
-        return Granularity.MULTI_ROW
 
     @cached_property
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
-
+    
+    def __repr__(self):
+        return str(self)
+    
+    def __str__(self):
+        grain = str(self.grain) if self.grain else "Grain<>"
+        return f"{self.namespace}.{self.name}@{grain}"
+    
     def __hash__(self):
         return hash(
             f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
@@ -454,6 +443,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             grain=self.grain,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
+            granularity=self.granularity
         )
     
     def with_namespace(self, namespace: str) -> Self:
@@ -973,6 +963,7 @@ class RowsetItemRef(Reference, Namespaced, BaseModel):
     content: ConceptRef
     rowset: RowsetDerivationStatement
     where: Optional[WhereClauseRef] = None
+    
 
     @property
     def arguments(self) -> List[ConceptRef]:
@@ -992,7 +983,7 @@ class RowsetItemRef(Reference, Namespaced, BaseModel):
         return RowsetItem(
             content=self.content.instantiate(environment),
             where=self.where.instantiate(environment) if self.where else None,
-            rowset=self.rowset,
+            rowset=self.rowset.instantiate(environment),
         )
 
 
@@ -1297,6 +1288,7 @@ class EnvironmentConceptDict(dict):
                     datatype=DataType.UNKNOWN,
                     purpose=Purpose.UNKNOWN,
                     namespace=ns,
+                    granularity = Granularity.MULTI_ROW
                 )
                 self.undefined[key] = undefined
                 return undefined
@@ -1890,6 +1882,14 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
 
     def __str__(self):
         return self.__repr__()
+
+    def instantiate(self, environment: Environment) -> BoundRowsetDerivationStatement:
+        return BoundRowsetDerivationStatement(
+            name=self.name,
+            select=self.select.instantiate(environment),
+            namespace=self.namespace,
+            derived_concepts = set([x.address for x in self.create_derived_concepts(environment)])
+        )
 
     def create_derived_concepts(
         self, environment: Environment, concrete: bool = False

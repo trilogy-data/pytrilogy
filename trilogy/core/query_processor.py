@@ -8,6 +8,7 @@ from trilogy.core.enums import BooleanOperator, SourceType,    SelectFiltering, 
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.author_models import (
+    Reference,
     CopyStatement,
         MultiSelectStatement,
     PersistStatement,
@@ -29,7 +30,7 @@ from trilogy.core.execute_models import (
     InstantiatedUnnestJoin,
     Join,
     MaterializedDataset,
-
+    BoundMultiSelectStatement,
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
@@ -422,12 +423,14 @@ def create_statement_environment(
 
 def get_query_node(
     environment: BoundEnvironment,
-    statement: SelectStatement | MultiSelectStatement,
+    statement: BoundSelectStatement | BoundMultiSelectStatement | SelectStatement | MultiSelectStatement,
     history: History | None = None,
 ) -> StrategyNode:
 
 
     graph = generate_graph(environment)
+    if isinstance(statement, Reference):
+        statement = statement.instantiate(environment)
 
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
@@ -437,7 +440,7 @@ def get_query_node(
         search_concepts,
         environment=environment,
         g=graph,
-        conditions=(statement.where_clause.instantiate(environment) if statement.where_clause else None),
+        conditions=(statement.where_clause if statement.where_clause else None),
         history=history,
     )
     if not ods:
@@ -446,7 +449,7 @@ def get_query_node(
         )
     ds: StrategyNode = ods
     if statement.having_clause:
-        final = statement.having_clause.conditional.instantiate(environment)
+        final = statement.having_clause.conditional
         if ds.conditions:
             final = Conditional(
                 left=ds.conditions,

@@ -192,6 +192,7 @@ def test_basic(duckdb_engine: Executor):
   ;
     """
     duckdb_engine.parse_text(test)
+    assert duckdb_engine.environment.concepts["today"].granularity == Granularity.SINGLE_ROW
     assert (
         duckdb_engine.environment.concepts["tomorrow"].granularity
         == Granularity.SINGLE_ROW
@@ -211,7 +212,7 @@ select my_rowset.x, my_rowset.z;"""
     _, parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
-    assert z.grain == Grain(components=[x])
+    assert z.grain.components == Grain(components=set([x.address])).components
     assert str(z) == "local.z@Grain<local.x>"
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1

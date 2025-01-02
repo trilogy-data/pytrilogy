@@ -73,7 +73,7 @@ class FunctionConfig:
 
 def get_unnest_output_type(args: list[Any]) -> DataType:
     output = arg_to_datatype(args[0])
-    if isinstance(output, (ListType)):
+    if isinstance(output, (ListType,)):
         output = output.value_data_type
     else:
         output = DataType.STRING
@@ -657,10 +657,6 @@ class FunctionFactory:
         self,
         args: list[Any],
         operator: FunctionType,
-        # valid_inputs: dict | None = None,
-        # output_purpose: Purpose | None = None,
-        # output_type: DataType | None = None,
-        # arg_count: int | None = 1,
         meta: Meta | None = None,
     ):
         if operator not in FUNCTION_REGISTRY:
@@ -717,7 +713,6 @@ def create_function_derived_concept(
         args=arguments,
         operator=operator,
     )
-
     return function_to_concept(
         parent=function,
         name=name,

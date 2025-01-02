@@ -452,7 +452,7 @@ def merge_datatypes(
 def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | NumericType:
     if isinstance(arg, DataType):
         return arg
-    elif isinstance(arg, Typed):
+    elif isinstance(arg, TypedSentinal):
         return arg.datatype
     elif isinstance(arg, MagicConstants):
         if arg == MagicConstants.NULL:
@@ -487,7 +487,7 @@ def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | Numeric
 
 
 def arg_to_purpose(arg) -> Purpose:
-    if isinstance(arg, Typed):
+    if isinstance(arg, (TypedSentinal,)):
         return arg.purpose
     # elif isinstance(arg, WindowItem):
     #     return Purpose.PROPERTY

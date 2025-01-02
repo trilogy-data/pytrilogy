@@ -73,9 +73,8 @@ def get_upstream_concepts(environment:BoundEnvironment, base: BoundConcept, nest
         # if it's derived from any value in a rowset, ALL rowset items are upstream
         if x.derivation == PurposeLineage.ROWSET:
             assert isinstance(x.lineage, RowsetItem)
-            raise NotImplementedError("Rowset items are not yet supported")
-            # for y in x.lineage.rowset.create_derived_concepts(environment, concrete=True):
-            #     upstream = upstream.union(get_upstream_concepts(environment, y, nested=True))
+            for y in x.lineage.rowset.derived_concepts:
+                upstream = upstream.union(get_upstream_concepts(environment, environment.concepts[y], nested=True))
         upstream = upstream.union(get_upstream_concepts(environment, x, nested=True))
     return upstream
 

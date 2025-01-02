@@ -61,6 +61,7 @@ from trilogy.core.core_models import (DataType, Metadata,     MapWrapper,
     Namespaced,
     Reference,
     address_with_namespace,
+    TypedSentinal,
     is_compatible_datatype)
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
@@ -202,6 +203,7 @@ class BoundConcept(SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
+    granularity: Granularity
     metadata: Metadata = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
         validate_default=True,
@@ -418,6 +420,7 @@ class BoundConcept(SelectContext, BaseModel):
             # a select needs to always defer to the environment for pseudonyms
             # TODO: evaluate if this should be cached
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
+            granularity =self.granularity,
         )
 
     def with_grain(self, grain: Optional["Grain"] = None, name:str| None = None) -> Self:
@@ -432,6 +435,7 @@ class BoundConcept(SelectContext, BaseModel):
             keys=self.keys,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
+            granularity=self.granularity,
         )
 
     @property
@@ -471,6 +475,7 @@ class BoundConcept(SelectContext, BaseModel):
             namespace=self.namespace,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
+            granularity=self.granularity,
         )
 
     def with_default_grain(self) -> "BoundConcept":
@@ -567,35 +572,35 @@ class BoundConcept(SelectContext, BaseModel):
             return PurposeLineage.CONSTANT
         return PurposeLineage.ROOT
 
-    @property
-    def granularity(self) -> Granularity:
-        """ "used to determine if concepts need to be included in grain
-        calculations"""
-        if self.derivation == PurposeLineage.CONSTANT:
-            # constants are a single row
-            return Granularity.SINGLE_ROW
-        elif self.derivation == PurposeLineage.AGGREGATE:
-            # if it's an aggregate grouped over all rows
-            # there is only one row left and it's fine to cross_join
-            if all([x.endswith(ALL_ROWS_CONCEPT) for x in self.grain.components]):
-                return Granularity.SINGLE_ROW
-        elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
-            return Granularity.SINGLE_ROW
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
-        ):
-            return Granularity.MULTI_ROW
-        elif self.lineage and all(
-            [
-                x.granularity == Granularity.SINGLE_ROW
-                for x in self.lineage.concept_arguments
-            ]
-        ):
+    # @property
+    # def granularity(self) -> Granularity:
+    #     """ "used to determine if concepts need to be included in grain
+    #     calculations"""
+    #     if self.derivation == PurposeLineage.CONSTANT:
+    #         # constants are a single row
+    #         return Granularity.SINGLE_ROW
+    #     elif self.derivation == PurposeLineage.AGGREGATE:
+    #         # if it's an aggregate grouped over all rows
+    #         # there is only one row left and it's fine to cross_join
+    #         if all([x.endswith(ALL_ROWS_CONCEPT) for x in self.grain.components]):
+    #             return Granularity.SINGLE_ROW
+    #     elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
+    #         return Granularity.SINGLE_ROW
+    #     elif (
+    #         self.lineage
+    #         and isinstance(self.lineage, Function)
+    #         and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
+    #     ):
+    #         return Granularity.MULTI_ROW
+    #     elif self.lineage and all(
+    #         [
+    #             x.granularity == Granularity.SINGLE_ROW
+    #             for x in self.lineage.concept_arguments
+    #         ]
+    #     ):
 
-            return Granularity.SINGLE_ROW
-        return Granularity.MULTI_ROW
+    #         return Granularity.SINGLE_ROW
+    #     return Granularity.MULTI_ROW
 
     def with_filter(
         self,
@@ -887,7 +892,7 @@ class LooseConceptList(BaseModel):
             return False
         return self.addresses.isdisjoint(other.addresses)
 
-class Function( Namespaced, SelectContext, BaseModel):
+class Function( Namespaced, TypedSentinal, SelectContext, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -929,6 +934,7 @@ class Function( Namespaced, SelectContext, BaseModel):
 
     def __str__(self):
         return self.__repr__()
+    
     @property
     def purpose(self):
         return self.output_purpose
@@ -3458,17 +3464,21 @@ class Limit(BaseModel):
 
 
 
-
+class BoundRowsetDerivationStatement(BaseModel):
+    name:str
+    namespace:str
+    select: BoundSelectStatement
+    derived_concepts: set[str]
 
 
 class RowsetItem( Namespaced, BaseModel):
     content: BoundConcept
-    # rowset: RowsetDerivationStatement
+    rowset: BoundRowsetDerivationStatement
     where: Optional["WhereClause"] = None
 
     def __repr__(self):
         return (
-            f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
+            f"<Rowset: {str(self.content)} where {str(self.where)}>"
         )
 
     def __str__(self):
