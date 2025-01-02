@@ -1,6 +1,6 @@
 from pytest import fixture
 
-from trilogy import BoundEnvironment
+from trilogy import Environment
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -10,58 +10,51 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
 from trilogy.core.execute_models import (
-    ColumnAssignment,
-    Comparison,
-    BoundConcept,
     Datasource,
     DataType,
-    FilterItem,
-    Function,
-    Grain,
-    OrderItem,
-    WhereClause,
-    WindowItem,
 )
+
+from trilogy.core.author_models import Concept, FunctionRef, OrderItemRef, WindowItemRef, ComparisonRef, WhereClauseRef, FilterItemRef, DatasourceRef, ColumnAssignment, Grain
 
 
 @fixture(scope="session")
 def test_environment():
-    env = BoundEnvironment()
-    order_id = BoundConcept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    env = Environment()
+    order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
-    order_timestamp = BoundConcept(
+    order_timestamp = Concept(
         name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
     )
 
-    order_count = BoundConcept(
+    order_count = Concept(
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Count([order_id]),
+        lineage=Count([order_id], env),
     )
 
-    distinct_order_count = BoundConcept(
+    distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=CountDistinct([order_id]),
+        lineage=CountDistinct([order_id], env),
     )
 
-    max_order_id = BoundConcept(
+    max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Max([order_id]),
+        lineage=Max([order_id], env),
     )
 
-    min_order_id = BoundConcept(
+    min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Min([order_id]),
+        lineage=Min([order_id],env),
     )
 
-    revenue = BoundConcept(
+    revenue = Concept(
         name="revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.PROPERTY,
@@ -69,25 +62,25 @@ def test_environment():
         grain=Grain(components=[order_id]),
     )
 
-    total_revenue = BoundConcept(
+    total_revenue = Concept(
         name="total_revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.METRIC,
-        lineage=Function(
-            arguments=[revenue],
+        lineage=FunctionRef(
+            arguments=[revenue.reference],
             output_datatype=DataType.FLOAT,
             output_purpose=Purpose.METRIC,
             operator=FunctionType.SUM,
         ),
     )
-    product_id = BoundConcept(
+    product_id = Concept(
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
 
-    category_id = BoundConcept(
+    category_id = Concept(
         name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    category_name = BoundConcept(
+    category_name = Concept(
         name="category_name",
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
@@ -95,13 +88,13 @@ def test_environment():
         keys={category_id.address},
     )
 
-    category_name_length = BoundConcept(
+    category_name_length = Concept(
         name="category_name_length",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         grain=category_id,
-        lineage=Function(
-            arguments=[category_name],
+        lineage=FunctionRef(
+            arguments=[category_name.reference],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.PROPERTY,
             operator=FunctionType.LENGTH,
@@ -109,52 +102,52 @@ def test_environment():
         keys={category_id.address},
     )
 
-    category_name_length_sum = BoundConcept(
+    category_name_length_sum = Concept(
         name="category_name_length_sum",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         grain=category_id,
-        lineage=Function(
-            arguments=[category_name_length],
+        lineage=FunctionRef(
+            arguments=[category_name_length.reference],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
             operator=FunctionType.SUM,
         ),
     )
 
-    product_revenue_rank = BoundConcept(
+    product_revenue_rank = Concept(
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=WindowItemRef(
             type=WindowType.RANK,
             content=product_id,
             order_by=[
-                OrderItem(expr=total_revenue.with_grain(product_id), order="desc")
+                OrderItemRef(expr=total_revenue.with_grain(product_id).reference, order="desc")
             ],
         ),
         grain=product_id,
     )
-    product_revenue_rank_by_category = BoundConcept(
+    product_revenue_rank_by_category = Concept(
         name="product_revenue_rank_by_category",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=WindowItemRef(
             type=WindowType.RANK,
             content=product_id,
             over=[category_id],
-            order_by=[OrderItem(expr=total_revenue, order="desc")],
+            order_by=[OrderItemRef(expr=total_revenue, order="desc")],
         ),
     )
 
-    products_with_revenue_over_50 = BoundConcept(
+    products_with_revenue_over_50 = Concept(
         name="products_with_revenue_over_50",
         datatype=DataType.INTEGER,
         purpose=Purpose.KEY,
-        lineage=FilterItem(
+        lineage=FilterItemRef(
             content=product_id,
-            where=WhereClause(
-                conditional=Comparison(
+            where=WhereClauseRef(
+                conditional=ComparisonRef(
                     left=total_revenue.with_grain(product_id),
                     operator=ComparisonOperator.GT,
                     right=50,

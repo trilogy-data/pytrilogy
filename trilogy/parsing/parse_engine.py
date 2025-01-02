@@ -63,7 +63,7 @@ from trilogy.core.author_models import (
     FilterItemRef,
     FunctionRef,
     Reference,
-    ColumnAssignmentRef,
+    ColumnAssignment,
     DatasourceRef,
     SubselectComparisonRef,
     WindowItemRef,
@@ -101,6 +101,7 @@ from trilogy.core.author_models import (
     ConceptDerivation,
     AlignItemRef,
     AlignClauseRef,
+    Grain,
     RowsetDerivationStatement,
 )
 from trilogy.core.execute_models import (
@@ -109,7 +110,7 @@ from trilogy.core.execute_models import (
     AggregateWrapper,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
+    BoundColumnAssignment,
     Comment,
     Comparison,
     BoundConcept,
@@ -119,7 +120,6 @@ from trilogy.core.execute_models import (
     # Environment,
     BoundEnvironmentConceptDict,
     FilterItem,
-    Grain,
     HavingClause,
     ImportStatement,
     Limit,
@@ -426,7 +426,7 @@ class ParseToObjects(Transformer):
         return args
 
     @v_args(meta=True)
-    def column_assignment(self, meta: Meta, args: list[str]) -> ColumnAssignmentRef:
+    def column_assignment(self, meta: Meta, args: list[str]) -> ColumnAssignment:
         # TODO -> deal with conceptual modifiers
         modifiers = []
         alias = args[0]
@@ -438,7 +438,7 @@ class ParseToObjects(Transformer):
         # set namespace
         if "." not in concept:
             concept = f"{self.environment.namespace}.{concept}"
-        return ColumnAssignmentRef(
+        return ColumnAssignment(
             alias=alias, modifiers=modifiers, concept=ConceptRef(address=concept)
         )
 
@@ -686,7 +686,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def datasource(self, meta: Meta, args):
         name = args[0]
-        columns: List[ColumnAssignmentRef] = args[1]
+        columns: List[ColumnAssignment] = args[1]
         grain: Optional[Grain] = None
         address: Optional[Address] = None
         where: Optional[WhereClauseRef] = None
@@ -1168,7 +1168,9 @@ class ParseToObjects(Transformer):
             right = right.reference
         else:
             right = args[2]
-        return ComparisonRef(left=left, right=right, operator=args[1])
+        x = ComparisonRef(left=left, right=right, operator=args[1])
+        x.validate(self.environment)
+        return x
 
     def between_comparison(self, args) -> ConditionalRef:
         left_bound = args[1]

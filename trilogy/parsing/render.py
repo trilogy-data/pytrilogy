@@ -30,7 +30,7 @@ from trilogy.core.execute_models import (
     AggregateWrapper,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
+    BoundColumnAssignment,
     Comparison,
     BoundConcept,
     Conditional,
@@ -243,7 +243,7 @@ class Renderer:
         return arg.value
 
     @to_string.register
-    def _(self, arg: "ColumnAssignment"):
+    def _(self, arg: "BoundColumnAssignment"):
         if arg.modifiers:
             modifiers = "".join(
                 [self.to_string(modifier) for modifier in arg.modifiers]

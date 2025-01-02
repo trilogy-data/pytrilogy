@@ -20,7 +20,7 @@ from trilogy.core.execute_models import (
     FilterItem,
     Function,
     FunctionClass,
-    Grain,
+
     ListWrapper,
     MapWrapper,
     Meta,
@@ -32,6 +32,7 @@ from trilogy.core.execute_models import (
 )
 from trilogy.core.author_models import (
         ConceptRef,
+        Grain,
     FunctionRef,
     AggregateWrapperRef,
     FilterItemRef,

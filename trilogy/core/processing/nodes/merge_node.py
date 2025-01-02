@@ -8,7 +8,7 @@ from trilogy.core.execute_models import (
     Conditional,
     Datasource,
     BoundEnvironment,
-    Grain,
+    BoundGrain,
     JoinType,
     Parenthetical,
     QueryDatasource,
@@ -112,7 +112,7 @@ class MergeNode(StrategyNode):
         nullable_concepts: Optional[List[BoundConcept]] = None,
         force_group: bool | None = None,
         depth: int = 0,
-        grain: Grain | None = None,
+        grain: BoundGrain | None = None,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         hidden_concepts: set[str] | None = None,
@@ -191,8 +191,8 @@ class MergeNode(StrategyNode):
         self,
         final_datasets,
         final_joins: List[NodeJoin] | None,
-        pregrain: Grain,
-        grain: Grain,
+        pregrain: BoundGrain,
+        grain: BoundGrain,
         environment: BoundEnvironment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
@@ -288,7 +288,7 @@ class MergeNode(StrategyNode):
                 )
                 return dataset
 
-        pregrain = Grain()
+        pregrain = BoundGrain()
         for source in final_datasets:
             pregrain += source.grain
 

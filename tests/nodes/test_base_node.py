@@ -1,9 +1,9 @@
-from trilogy.core.execute_models import BoundEnvironment
+from trilogy import Environment
 from trilogy.core.processing.nodes.base_node import StrategyNode, get_all_parent_partial
 
 
 def test_base_node_copy():
-    env = BoundEnvironment()
+    env = Environment()
     x = StrategyNode(input_concepts=[], output_concepts=[], environment=env)
 
     y = x.copy()
@@ -12,12 +12,13 @@ def test_base_node_copy():
 
 
 def test_hide():
-    env = BoundEnvironment()
+    env = Environment()
     env.parse(
         """
 key order_id int;
 property order_id.profit float;"""
     )
+    env = env.instantiate()
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"]],
@@ -31,12 +32,13 @@ property order_id.profit float;"""
 
 
 def test_partial():
-    env = BoundEnvironment()
+    env = Environment()
     env.parse(
         """
 key order_id int;
 property order_id.profit float;"""
     )
+    env = env.instantiate()
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"]],
@@ -48,7 +50,7 @@ property order_id.profit float;"""
 
 
 def test_get_parent_partial():
-    env = BoundEnvironment()
+    env = Environment()
     env.parse(
         """
 key order_id int;
@@ -58,6 +60,7 @@ key product_id int;
 property product_id.price float;
               """
     )
+    env = env.instantiate()
     x = StrategyNode(
         input_concepts=[],
         output_concepts=[env.concepts["order_id"], env.concepts["product_id"]],

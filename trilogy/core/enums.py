@@ -54,6 +54,7 @@ class PurposeLineage(Enum):
 class Granularity(Enum):
     SINGLE_ROW = "single_row"
     MULTI_ROW = "multi_row"
+    ALL_ROWS = "all_rows"
 
 
 class Modifier(Enum):

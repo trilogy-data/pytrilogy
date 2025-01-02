@@ -11,7 +11,6 @@ from trilogy.core.execute_models import (
     BoundEnvironment,
     Function,
     RowsetItem,
-    UndefinedConcept,
     WhereClause,
     BoundEnvironment
 )
@@ -730,9 +729,6 @@ def _search_concepts(
 ) -> StrategyNode | None:
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
-    for x in mandatory_list:
-        if isinstance(x, UndefinedConcept):
-            raise SyntaxError(f"Undefined concept {x.address}")
     all_mandatory = set(c.address for c in mandatory_list)
 
     must_evaluate_condition_on_this_level_not_push_down = False

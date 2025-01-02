@@ -19,6 +19,7 @@ address x_source;
         """
     )
     x = BaseDialect()
+    env = env.instantiate()
     concept = env.concepts["x"]
     y_concept = env.concepts["y"]
     ds = env.datasources["x_source"]

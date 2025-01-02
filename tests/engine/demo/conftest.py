@@ -12,7 +12,7 @@ from trilogy.core.enums import FunctionType, Modifier, Purpose
 from trilogy.core.functions import FunctionFactory, create_function_derived_concept
 from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
-    ColumnAssignment,
+    BoundColumnAssignment,
     BoundConcept,
     Datasource,
     DataType,
@@ -20,7 +20,7 @@ from trilogy.core.execute_models import (
     Grain,
     Metadata,
 )
-from trilogy.core.author_models import Concept, FunctionRef, ColumnAssignmentRef, DatasourceRef
+from trilogy.core.author_models import Concept, FunctionRef, ColumnAssignment, DatasourceRef
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.common import function_to_concept
 from trilogy import Environment
@@ -159,8 +159,8 @@ def setup_richest_environment(env: Environment):
             name="rich_info",
             address="rich_info",
             columns=[
-                ColumnAssignmentRef(alias="Name", concept=name),
-                ColumnAssignmentRef(alias="Net Worth 1918 Dollars", concept=money),
+                ColumnAssignment(alias="Name", concept=name),
+                ColumnAssignment(alias="Net Worth 1918 Dollars", concept=money),
             ],
         )
     )
@@ -280,10 +280,10 @@ def setup_titanic_distributed(env: Environment):
             name="dim_passenger",
             address="dim_passenger",
             columns=[
-                ColumnAssignmentRef(alias="id", concept=id),
-                ColumnAssignmentRef(alias="age", concept=age),
-                ColumnAssignmentRef(alias="name", concept=name),
-                ColumnAssignmentRef(alias="last_name", concept=last_name),
+                ColumnAssignment(alias="id", concept=id),
+                ColumnAssignment(alias="age", concept=age),
+                ColumnAssignment(alias="name", concept=name),
+                ColumnAssignment(alias="last_name", concept=last_name),
                 # ColumnAssignmentRef(alias="pclass", concept=pclass),
                 # ColumnAssignmentRef(alias="name", concept=name),
                 # ColumnAssignmentRef(alias="fare", concept=fare),
@@ -303,12 +303,12 @@ def setup_titanic_distributed(env: Environment):
             name="fact_titanic",
             address="fact_titanic",
             columns=[
-                ColumnAssignmentRef(alias="passengerid", concept=id),
-                ColumnAssignmentRef(alias="survived", concept=survived),
-                ColumnAssignmentRef(alias="class_id", concept=class_id),
-                ColumnAssignmentRef(alias="fare", concept=fare),
-                ColumnAssignmentRef(alias="cabin", concept=cabin),
-                ColumnAssignmentRef(alias="embarked", concept=embarked),
+                ColumnAssignment(alias="passengerid", concept=id),
+                ColumnAssignment(alias="survived", concept=survived),
+                ColumnAssignment(alias="class_id", concept=class_id),
+                ColumnAssignment(alias="fare", concept=fare),
+                ColumnAssignment(alias="cabin", concept=cabin),
+                ColumnAssignment(alias="embarked", concept=embarked),
             ],
             grain=Grain(
                 components={
@@ -323,8 +323,8 @@ def setup_titanic_distributed(env: Environment):
             name="dim_class",
             address="dim_class",
             columns=[
-                ColumnAssignmentRef(alias="id", concept=class_id),
-                ColumnAssignmentRef(alias="class", concept=pclass),
+                ColumnAssignment(alias="id", concept=class_id),
+                ColumnAssignment(alias="class", concept=pclass),
                 # ColumnAssignmentRef(alias="fare", concept=fare),
                 # ColumnAssignmentRef(alias="cabin", concept=cabin),
                 # ColumnAssignmentRef(alias="embarked", concept=embarked),
@@ -450,15 +450,15 @@ def setup_titanic(env: Environment):
             name="raw_data",
             address="raw_titanic",
             columns=[
-                ColumnAssignmentRef(alias="passengerid", concept=id),
-                ColumnAssignmentRef(alias="age", concept=age),
-                ColumnAssignmentRef(alias="survived", concept=survived),
-                ColumnAssignmentRef(alias="pclass", concept=pclass),
-                ColumnAssignmentRef(alias="name", concept=name),
-                ColumnAssignmentRef(alias="fare", concept=fare),
-                ColumnAssignmentRef(alias="cabin", concept=cabin),
-                ColumnAssignmentRef(alias="embarked", concept=embarked),
-                ColumnAssignmentRef(alias="ticket", concept=ticket),
+                ColumnAssignment(alias="passengerid", concept=id),
+                ColumnAssignment(alias="age", concept=age),
+                ColumnAssignment(alias="survived", concept=survived),
+                ColumnAssignment(alias="pclass", concept=pclass),
+                ColumnAssignment(alias="name", concept=name),
+                ColumnAssignment(alias="fare", concept=fare),
+                ColumnAssignment(alias="cabin", concept=cabin),
+                ColumnAssignment(alias="embarked", concept=embarked),
+                ColumnAssignment(alias="ticket", concept=ticket),
             ],
             grain=Grain(components={id.address}),
         ),

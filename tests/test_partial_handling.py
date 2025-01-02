@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
 from trilogy.core.execute_models import (
-    ColumnAssignment,
+    BoundColumnAssignment,
     BoundConcept,
     Datasource,
     DataType,
@@ -85,12 +85,12 @@ def setup_titanic(env: BoundEnvironment):
             name="raw_data",
             address="raw_titanic",
             columns=[
-                ColumnAssignment(alias="passengerid", concept=id),
-                ColumnAssignment(alias="age", concept=age),
-                ColumnAssignment(alias="survived", concept=survived),
-                ColumnAssignment(alias="pclass", concept=pclass),
-                ColumnAssignment(alias="name", concept=name),
-                ColumnAssignment(alias="fare", concept=fare),
+                BoundColumnAssignment(alias="passengerid", concept=id),
+                BoundColumnAssignment(alias="age", concept=age),
+                BoundColumnAssignment(alias="survived", concept=survived),
+                BoundColumnAssignment(alias="pclass", concept=pclass),
+                BoundColumnAssignment(alias="name", concept=name),
+                BoundColumnAssignment(alias="fare", concept=fare),
             ],
         ),
     )

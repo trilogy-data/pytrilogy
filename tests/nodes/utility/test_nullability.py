@@ -45,6 +45,7 @@ select 1 as customer_id
 
           """
     )
+    env = env.instantiate()
     order_id = env.concepts["order_id"]
     product_id = env.concepts["product_id"]
     product_name = env.concepts["product_name"]

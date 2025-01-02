@@ -9,7 +9,7 @@ from trilogy.core.execute_models import (
     BoundConcept,
     Datasource,
     BoundEnvironment,
-    Grain,
+    BoundGrain,
     LooseConceptList,
     WhereClause,
 )
@@ -240,7 +240,7 @@ def create_datasource_node(
     depth: int,
     conditions: WhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
-    target_grain = Grain.from_concepts(all_concepts, environment=environment)
+    target_grain = BoundGrain.from_concepts(all_concepts, environment=environment)
     force_group = False
     if not datasource.grain.issubset(target_grain):
         force_group = True
@@ -272,7 +272,7 @@ def create_datasource_node(
             nullable_concepts=[c for c in all_concepts if c in nullable_lcl],
             accept_partial=accept_partial,
             datasource=datasource,
-            grain=Grain.from_concepts(all_concepts),
+            grain=BoundGrain.from_concepts(all_concepts),
             conditions=datasource.where.conditional if datasource.where else None,
             preexisting_conditions=(
                 conditions.conditional if partial_is_full and conditions else None
@@ -461,7 +461,7 @@ def gen_select_merge_node(
         parents=parents,
         preexisting_conditions=preexisting_conditions,
     )
-    target_grain = Grain.from_concepts(all_concepts)
+    target_grain = BoundGrain.from_concepts(all_concepts)
     if not base.resolve().grain.issubset(target_grain):
         return GroupNode(
             output_concepts=all_concepts,

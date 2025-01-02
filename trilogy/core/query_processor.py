@@ -4,24 +4,29 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import BooleanOperator, SourceType,    SelectFiltering, PurposeLineage
+from trilogy.core.enums import (
+    BooleanOperator,
+    SourceType,
+    SelectFiltering,
+    PurposeLineage,
+)
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.author_models import (
     Reference,
     CopyStatement,
-        MultiSelectStatement,
+    MultiSelectStatement,
     PersistStatement,
-        SelectStatement,
-            ConceptRef,
-                ConceptDeclarationStatement,
-                Environment,
+    SelectStatement,
+    ConceptRef,
+    ConceptDeclarationStatement,
+    Environment,
+    Grain,
 )
 from trilogy.core.execute_models import (
     CTE,
     BaseJoin,
     BoundConcept,
-
     Conditional,
     BoundSelectStatement,
     CTEConceptPair,
@@ -35,11 +40,8 @@ from trilogy.core.execute_models import (
     ProcessedQuery,
     ProcessedQueryPersist,
     QueryDatasource,
-
     UnionCTE,
     UnnestJoin,
-    Grain,
-
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
@@ -360,47 +362,55 @@ def datasource_to_cte(
 
     return cte
 
-def set_query_grain(statement:BoundSelectStatement, environment:BoundEnvironment)->Grain:
-    for parse_pass in [
-            1,
-            2,
-        ]:  
-            # the first pass will result in all concepts being defined
-            # the second will get grains appropriately
-            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
-            # until after the first pass, and so don't know the grain of a
-            where = statement.where_clause if statement.where_clause else None
-            if parse_pass == 1:
-                grain = Grain.from_concepts(
-                    [
-                        environment.concepts[x.content.address]
-                        for x in statement.selection
-                        if isinstance(x.content, ConceptRef)
-                    ],
-                    environment=environment,
-                    where_clause=where
-                )
-                for k, v in environment.concepts.items():
-                    new= v.with_select_context(statement.local_concepts, grain=grain, environment=environment)
-                    environment.concepts[k] = new
-            if parse_pass == 2:
-                grain = Grain.from_concepts(
-                    [x.address for x in statement.output_components], 
-                    where_clause=where,
-                    environment=environment
-                )
-                for k, v in environment.concepts.items():
-                    new= v.with_select_context(statement.local_concepts, grain=grain, environment=environment)
-                    environment.concepts[k] = new
 
-        # if statement.where_clause:   
-        # if statement.having_clause:
-        #     statement.having_clause = statement.having_clause.with_select_context(
-        #         local_concepts=statement.local_concepts,
-        #         grain=statement.grain,
-        #         environment=environment,
-        #     )
+def set_query_grain(
+    statement: BoundSelectStatement, environment: BoundEnvironment
+) -> Grain:
+    for parse_pass in [
+        1,
+        2,
+    ]:
+        # the first pass will result in all concepts being defined
+        # the second will get grains appropriately
+        # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
+        # until after the first pass, and so don't know the grain of a
+        where = statement.where_clause if statement.where_clause else None
+        if parse_pass == 1:
+            grain = Grain.from_concepts(
+                [
+                    environment.concepts[x.content.address]
+                    for x in statement.selection
+                    if isinstance(x.content, ConceptRef)
+                ],
+                environment=environment,
+                where_clause=where,
+            )
+            for k, v in environment.concepts.items():
+                new = v.with_select_context(
+                    statement.local_concepts, grain=grain, environment=environment
+                )
+                environment.concepts[k] = new
+        if parse_pass == 2:
+            grain = Grain.from_concepts(
+                [x.address for x in statement.output_components],
+                where_clause=where,
+                environment=environment,
+            )
+            for k, v in environment.concepts.items():
+                new = v.with_select_context(
+                    statement.local_concepts, grain=grain, environment=environment
+                )
+                environment.concepts[k] = new
+
+    # if statement.where_clause:
+    # if statement.having_clause:
+    #     statement.having_clause = statement.having_clause.with_select_context(
+    #         local_concepts=statement.local_concepts,
+    #         grain=statement.grain,
+    #         environment=environment,
+    #     )
     return grain
+
 
 def create_statement_environment(
     statement: SelectStatement | MultiSelectStatement,
@@ -423,10 +433,14 @@ def create_statement_environment(
 
 def get_query_node(
     environment: BoundEnvironment,
-    statement: BoundSelectStatement | BoundMultiSelectStatement | SelectStatement | MultiSelectStatement,
+    statement: (
+        BoundSelectStatement
+        | BoundMultiSelectStatement
+        | SelectStatement
+        | MultiSelectStatement
+    ),
     history: History | None = None,
 ) -> StrategyNode:
-
 
     graph = generate_graph(environment)
     if isinstance(statement, Reference):
@@ -435,7 +449,9 @@ def get_query_node(
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
-    search_concepts: list[BoundConcept] = [environment.concepts[x.address] for x in statement.output_components]
+    search_concepts: list[BoundConcept] = [
+        environment.concepts[x.address] for x in statement.output_components
+    ]
     ods: StrategyNode = source_query_concepts(
         search_concepts,
         environment=environment,
@@ -547,11 +563,9 @@ def process_query(
     hooks = hooks or []
 
     environment = create_statement_environment(statement, environment)
-    logger.info(
-        f"{LOGGER_PREFIX} query environment instantiated."
-    )
-    root_datasource= get_query_datasources(
-        environment=environment,  statement=statement, hooks=hooks
+    logger.info(f"{LOGGER_PREFIX} query environment instantiated.")
+    root_datasource = get_query_datasources(
+        environment=environment, statement=statement, hooks=hooks
     )
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
@@ -572,7 +586,9 @@ def process_query(
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
-    root_cte.order_by = statement.order_by.instantiate(environment) if statement.order_by else None
+    root_cte.order_by = (
+        statement.order_by.instantiate(environment) if statement.order_by else None
+    )
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
@@ -580,7 +596,9 @@ def process_query(
     return ProcessedQuery(
         # where_clause=statement.where_clause.instantiate(environment) if statement.where_clause else None,
         # having_clause=statement.having_clause.instantiate(environment) if statement.having_clause else None,
-        output_columns=[x.instantiate(environment) for x in statement.output_components],
+        output_columns=[
+            x.instantiate(environment) for x in statement.output_components
+        ],
         ctes=final_ctes,
         base=root_cte,
         local_concepts=environment.concepts,

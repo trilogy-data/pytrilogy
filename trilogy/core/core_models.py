@@ -122,6 +122,8 @@ def address_with_namespace(address: str, namespace: str) -> str:
         return f"{namespace}.{address.split('.',1)[1]}"
     return f"{namespace}.{address}"
 
+class RawColumnExpr(BaseModel):
+    text: str
 
 class ConceptRef(Namespaced, Reference, BaseModel):
     address: str

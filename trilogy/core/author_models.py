@@ -16,16 +16,18 @@ from trilogy.core.core_models import (
     Namespaced,
     Concrete,
     ConceptRef,
+    RawColumnExpr,
+    is_compatible_datatype,
 )
 
 from trilogy.core.execute_models import (
     BoundConcept,
     DatasourceMetadata,
-    ColumnAssignment,
+    BoundColumnAssignment,
     BoundSelectStatement,
     BoundSelectItem,
     BoundConceptTransform,
-    Grain,
+    BoundGrain,
     CTE,
     UnionCTE,
     LooseConceptList,
@@ -33,7 +35,6 @@ from trilogy.core.execute_models import (
     SelectContext,
     Metadata,
     HasUUID,
-    safe_grain,
     address_with_namespace,
     OrderItem,
     Function,
@@ -57,7 +58,6 @@ from trilogy.core.execute_models import (
     EnvironmentOptions,
     get_version,
     ImportStatement,
-    UndefinedConcept,
     BoundEnvironment,
     BoundEnvironmentConceptDict,
     AlignClause,
@@ -149,6 +149,20 @@ from trilogy.core.exceptions import (
 )
 from trilogy.utility import unique
 
+
+
+def safe_grain(v) -> Grain:
+    if isinstance(v, dict):
+        return Grain.model_validate(v)
+    elif isinstance(v, Grain):
+        return v
+    elif not v:
+        return Grain(components=set())
+    else:
+        raise ValueError(f"Invalid input type to safe_grain {type(v)}")
+
+
+
 def validate_concepts(v) -> EnvironmentConceptDict:
     if isinstance(v, EnvironmentConceptDict):
         return v
@@ -187,6 +201,142 @@ def get_concept_ref_arguments(expr: ExprRef):
     ):
         output += expr.concept_arguments
     return output
+class Grain(Namespaced, Reference, BaseModel):
+    components: set[str] = Field(default_factory=set)
+    where_clause: Optional["WhereClauseRef"] = None
+
+    def with_merge(self, source: BoundConcept, target: BoundConcept, modifiers: List[Modifier]):
+        new_components = set()
+        for c in self.components:
+            if c == source.address:
+                new_components.add(target.address)
+            else:
+                new_components.add(c)
+        return Grain(components=new_components)
+    
+    def instantiate(self, environment:Environment):
+        return BoundGrain(
+            components=self.components,
+            where_clause=self.where_clause.instantiate(environment) if self.where_clause else None,
+            # abstract = True if not self.components or all(environment.concepts[c].grain in (Granularity.SINGLE_ROW, Granularity.ALL_ROWS) for c in self.components)
+        )
+
+    @classmethod
+    def from_concepts(
+        cls,
+        concepts: List[BoundConcept],
+        environment: BoundEnvironment | None = None,
+        where_clause: WhereClause | None = None,
+    ) -> "Grain":
+        from trilogy.parsing.common import concepts_to_grain_concepts
+
+        return Grain(
+            components={
+                c.address
+                for c in concepts_to_grain_concepts(concepts, environment=environment)
+            },
+            where_clause=where_clause,
+        )
+
+    def with_namespace(self, namespace: str) -> "Grain":
+        return Grain(
+            components={address_with_namespace(c, namespace) for c in self.components},
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
+        )
+
+    @field_validator("components", mode="before")
+    def component_validator(cls, v, info: ValidationInfo):
+        from trilogy.core.author_models import ConceptRef, Concept
+        output = set()
+        if isinstance(v, list):
+            for vc in v:
+                if isinstance(vc, (BoundConcept, Concept, ConceptRef)):
+                    output.add(vc.address)
+                else:
+                    output.add(vc)
+        else:
+            output = v
+        if not isinstance(output, set):
+            raise ValueError(f"Invalid grain component {output}, is not set")
+        if not all(isinstance(x, str) for x in output):
+            raise ValueError(f"Invalid component {output}")
+        return output
+
+    def __add__(self, other: "Grain") -> "Grain":
+        where = self.where_clause
+        if other.where_clause:
+            if not self.where_clause:
+                where = other.where_clause
+            elif not other.where_clause == self.where_clause:
+                where = WhereClause(
+                    conditional=Conditional(
+                        left=self.where_clause.conditional,
+                        right=other.where_clause.conditional,
+                        operator=BooleanOperator.AND,
+                    )
+                )
+                # raise NotImplementedError(
+                #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
+                # )
+        return Grain(
+            components=self.components.union(other.components), where_clause=where
+        )
+
+    def __sub__(self, other: "Grain") -> "Grain":
+        return Grain(
+            components=self.components.difference(other.components),
+            where_clause=self.where_clause,
+        )
+
+    @property
+    def abstract(self):
+        return not self.components or all(
+            [c.endswith(ALL_ROWS_CONCEPT) for c in self.components]
+        )
+
+    def __eq__(self, other: object):
+        if isinstance(other, list):
+            if not all([isinstance(c, BoundConcept) for c in other]):
+                return False
+            return self.components == set([c.address for c in other])
+        if not isinstance(other, Grain):
+            return False
+        if self.components == other.components:
+            return True
+        return False
+
+    def issubset(self, other: "Grain"):
+        return self.components.issubset(other.components)
+
+    def union(self, other: "Grain"):
+        addresses = self.components.union(other.components)
+        return Grain(components=addresses, where_clause=self.where_clause)
+
+    def isdisjoint(self, other: "Grain"):
+        return self.components.isdisjoint(other.components)
+
+    def intersection(self, other: "Grain") -> "Grain":
+        intersection = self.components.intersection(other.components)
+        return Grain(components=intersection)
+
+    def __str__(self):
+        if self.abstract:
+            base = "Grain<Abstract>"
+        else:
+            base = "Grain<" + ",".join([c for c in sorted(list(self.components))]) + ">"
+        if self.where_clause:
+            base += f"|{str(self.where_clause)}"
+        return base
+
+    def __radd__(self, other) -> "Grain":
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 
 
 class FunctionRef(Reference, Namespaced, BaseModel):
@@ -311,6 +461,9 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
     # grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
+
+    def duplicate(self) -> Concept:
+        return self.model_copy(deep=True)
 
     def set_name(self, name: str):
         self.name = name
@@ -440,7 +593,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             lineage=lineage,
             namespace=self.namespace,
             keys=self.keys,
-            grain=self.grain,
+            grain=self.grain.instantiate(environment),
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
             granularity=self.granularity
@@ -615,11 +768,7 @@ class CaseElseRef(Reference, Namespaced, BaseModel):
         )
 
 
-class RawColumnExpr(BaseModel):
-    text: str
-
-
-class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
+class ColumnAssignment(Reference, Namespaced, BaseModel):
     alias: str | RawColumnExpr | FunctionRef
     concept: ConceptRef
     modifiers: List[Modifier] = Field(default_factory=list)
@@ -630,8 +779,8 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "ColumnAssignmentRef":
-        return ColumnAssignmentRef(
+    ) -> "ColumnAssignment":
+        return ColumnAssignment(
             alias=self.alias,
             concept=(
                 target.reference
@@ -651,8 +800,8 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
 
-    def with_namespace(self, namespace: str) -> "ColumnAssignmentRef":
-        return ColumnAssignmentRef(
+    def with_namespace(self, namespace: str) -> "ColumnAssignment":
+        return ColumnAssignment(
             alias=(
                 self.alias.with_namespace(namespace)
                 if isinstance(self.alias, Function)
@@ -663,9 +812,9 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
         )
 
     def instantiate(self, environment: Environment):
-        return ColumnAssignment(
+        return BoundColumnAssignment(
             alias=(
-                self.alias.instantiate(Environment)
+                self.alias.instantiate(environment)
                 if isinstance(self.alias, Reference)
                 else self.alias
             ),
@@ -687,7 +836,7 @@ class ColumnAssignmentRef(Reference, Namespaced, BaseModel):
 
 class DatasourceRef(HasUUID, Namespaced, BaseModel):
     name: str
-    columns: List[ColumnAssignmentRef]
+    columns: List[ColumnAssignment]
     address: Union[Address, str]
     grain: Grain = Field(default_factory=lambda: Grain(components=set()))
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -710,7 +859,7 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
                 x.instantiate(environment).with_grain(self.grain) for x in self.columns
             ],
             address=self.address,
-            grain=self.grain,
+            grain=self.grain.instantiate(environment),
             namespace=self.namespace,
             metadata=self.metadata,
             where=self.where.instantiate(environment) if self.where else None,
@@ -784,7 +933,7 @@ class DatasourceRef(HasUUID, Namespaced, BaseModel):
         modifiers: List[Modifier] | None = None,
     ):
         self.columns.append(
-            ColumnAssignmentRef(alias=alias, concept=concept, modifiers=modifiers or [])
+            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or [])
         )
 
     def __repr__(self):
@@ -1144,6 +1293,49 @@ class ComparisonRef(Reference, Namespaced, BaseModel):
     ]
     operator: ComparisonOperator
 
+    def validate(self, environment:Environment):
+        left = self.left
+        if isinstance(left, ConceptRef):
+            left = environment.concepts[left.address]
+        right = self.right
+        if isinstance(right, ConceptRef):
+            right = environment.concepts[right.address]
+        if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+            if right != MagicConstants.NULL and DataType.BOOL != arg_to_datatype(
+                right
+            ):
+                raise SyntaxError(
+                    f"Cannot use {self.operator.value} with non-null or boolean value {right}"
+                )
+        elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
+            right = arg_to_datatype(right)
+            if not isinstance(right, BoundConcept) and not isinstance(right, ListType):
+                raise SyntaxError(
+                    f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}"
+                )
+
+            elif isinstance(right, ListType) and not is_compatible_datatype(
+                arg_to_datatype(left), right.value_data_type
+            ):
+                raise SyntaxError(
+                    f"Cannot compare {arg_to_datatype(left)} and {right} with operator {self.operator} in {str(self)}"
+                )
+            elif isinstance(right, BoundConcept) and not is_compatible_datatype(
+                arg_to_datatype(left), arg_to_datatype(right)
+            ):
+                raise SyntaxError(
+                    f"Cannot compare {arg_to_datatype(left)} and {arg_to_datatype(right)} with operator {self.operator} in {str(self)}"
+                )
+        else:
+            if not is_compatible_datatype(
+                arg_to_datatype(left), arg_to_datatype(right)
+            ):
+                raise SyntaxError(
+                    f"Cannot compare {arg_to_datatype(left)} and {arg_to_datatype(right)} of different types with operator {self.operator} in {str(self)}"
+                )
+
+
+
     @field_validator("left", mode="before")
     def validate_left(cls, v, values):
         if isinstance(v, Concept):
@@ -1217,6 +1409,15 @@ class ConceptDeclarationStatement(HasUUID, BaseModel):
 
 class ConceptDerivation(BaseModel):
     concept: Concept
+
+class UndefinedConcept(Concept,Namespaced):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    name: str
+    line_no: int | None = None
+    datatype: DataType | ListType | StructType | MapType | NumericType = (
+        DataType.UNKNOWN
+    )
+    purpose: Purpose = Purpose.UNKNOWN
 
 
 class EnvironmentConceptDict(dict):
@@ -1595,27 +1796,26 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
         environment: Environment,
         grain: Grain | None = None,
     ) -> DatasourceRef:
-        raise NotImplementedError
-        # if self.where_clause or self.having_clause:
-        #     modifiers = [Modifier.PARTIAL]
-        # else:
-        #     modifiers = []
-        # columns = [
-        #     # TODO: replace hardcoded replacement here
-        #     # if the concept is a locally derived concept, it cannot ever be partial
-        #     # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
+        if self.where_clause or self.having_clause:
+            modifiers = [Modifier.PARTIAL]
+        else:
+            modifiers = []
+        columns = [
+            # TODO: replace hardcoded replacement here
+            # if the concept is a locally derived concept, it cannot ever be partial
+            # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
 
-        #     ColumnAssignment(
-        #         alias=(
-        #             c.name.replace(".", "_")
-        #             if c.namespace == DEFAULT_NAMESPACE
-        #             else c.address.replace(".", "_")
-        #         ),
-        #         concept=environment.concepts[c.address],
-        #         modifiers=modifiers if c.address not in self.locally_derived else [],
-        #     )
-        #     for c in self.output_components
-        # ]
+            ColumnAssignmentRef(
+                alias=(
+                    c.name.replace(".", "_")
+                    if c.namespace == DEFAULT_NAMESPACE
+                    else c.address.replace(".", "_")
+                ),
+                concept=environment.concepts[c.address],
+                modifiers=modifiers if c.address not in self.locally_derived else [],
+            )
+            for c in self.output_components
+        ]
 
         # condition = None
         # if self.where_clause:
@@ -2320,6 +2520,7 @@ class Environment(BaseModel):
         meta: Meta | None = None,
         force: bool = False,
         add_derived: bool = True,
+        _ignore_cache: bool = False,
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add concepts")

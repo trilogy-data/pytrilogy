@@ -721,109 +721,109 @@ def create_function_derived_concept(
     )
 
 
-def Unnest(args: list[BoundConcept], environment: BoundEnvironment) -> FunctionRef:
+def Unnest(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args,
         operator=FunctionType.UNNEST,
     )
 
 
-def Group(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def Group(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args,
         operator=FunctionType.GROUP,
     )
 
 
-def Count(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def Count(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def CountDistinct(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def CountDistinct(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def Max(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def Max(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def Min(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def Min(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def Split(args: list[ConceptRef], environment: BoundEnvironment) -> Function:
+def Split(args: list[ConceptRef], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.SPLIT
     )
 
 
-def IndexAccess(args: list[BoundConcept], environment: BoundEnvironment) -> FunctionRef:
+def IndexAccess(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.INDEX_ACCESS
     )
 
 
-def MapAccess(args: list[BoundConcept], environment: BoundEnvironment):
+def MapAccess(args: list[BoundConcept], environment: Environment):
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.MAP_ACCESS
     )
 
 
-def AttrAccess(args: list[GENERIC_ARGS], environment: BoundEnvironment):
+def AttrAccess(args: list[GENERIC_ARGS], environment: Environment):
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.ATTR_ACCESS
     )
 
 
-def Abs(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def Abs(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.ABS
     )
 
 
-def Coalesce(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def Coalesce(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COALESCE
     )
 
 
 def CurrentDate(
-    args: list[BoundConcept], environment: BoundEnvironment | None = None
-) -> Function:
+    args: list[BoundConcept], environment: Environment | None = None
+) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.CURRENT_DATE
     )
 
 
 def CurrentDatetime(
-    args: list[BoundConcept], environment: BoundEnvironment | None = None
-) -> Function:
+    args: list[BoundConcept], environment: Environment | None = None
+) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.CURRENT_DATETIME
     )
 
 
-def Bool(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def Bool(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.BOOL
     )
 
 
-def StrPos(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def StrPos(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.STRPOS
     )
 
 
-def SubString(args: list[BoundConcept], environment: BoundEnvironment) -> Function:
+def SubString(args: list[BoundConcept], environment: Environment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.STRPOS
     )

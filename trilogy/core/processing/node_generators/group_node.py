@@ -6,7 +6,7 @@ from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
     Function,
-    Grain,
+    BoundGrain,
     LooseConceptList,
     WhereClause,
 )
@@ -74,7 +74,7 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif Grain.from_concepts(agg_parents) == Grain.from_concepts(
+                elif BoundGrain.from_concepts(agg_parents) == BoundGrain.from_concepts(
                     parent_concepts
                 ):
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
@@ -85,7 +85,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {Grain.from_concepts(agg_parents)} vs {Grain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {BoundGrain.from_concepts(agg_parents)} vs {BoundGrain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(

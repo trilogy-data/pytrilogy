@@ -14,7 +14,7 @@ from trilogy.core.execute_models import (
     Conditional,
     Datasource,
     BoundEnvironment,
-    Grain,
+    BoundGrain,
     LooseConceptList,
     Parenthetical,
     QueryDatasource,
@@ -138,7 +138,7 @@ class StrategyNode:
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         force_group: bool | None = None,
-        grain: Optional[Grain] = None,
+        grain: Optional[BoundGrain] = None,
         hidden_concepts: set[str] | None = None,
         existence_concepts: List[BoundConcept] | None = None,
         virtual_output_concepts: List[BoundConcept] | None = None,
@@ -336,7 +336,7 @@ class StrategyNode:
             p.resolve() for p in self.parents
         ]
 
-        grain = self.grain if self.grain else Grain.from_concepts(self.output_concepts)
+        grain = self.grain if self.grain else BoundGrain.from_concepts(self.output_concepts)
         source_map = resolve_concept_map(
             parent_sources,
             targets=self.output_concepts,

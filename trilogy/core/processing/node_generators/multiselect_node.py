@@ -8,7 +8,7 @@ from trilogy.core.execute_models import (
     BoundConcept,
     Conditional,
     BoundEnvironment,
-    Grain,
+    BoundGrain,
     WhereClause,
 )
 from trilogy.core.author_models import MultiSelectStatement
@@ -135,7 +135,7 @@ def gen_multiselect_node(
     # if select.where_clause:
     #     for item in additional_relevant:
     #         node.partial_concepts.append(item)
-    node.grain = Grain.from_concepts(node.output_concepts, environment=environment)
+    node.grain = BoundGrain.from_concepts(node.output_concepts, environment=environment)
     node.rebuild_cache()
     # we need a better API for refreshing a nodes QDS
     possible_joins = concept_to_relevant_joins(additional_relevant)

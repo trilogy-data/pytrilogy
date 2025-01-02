@@ -4,7 +4,7 @@ from trilogy.core.execute_models import (
     Comparison,
     BoundConcept,
     Conditional,
-    Grain,
+    BoundGrain,
     Parenthetical,
     SourceType,
 )
@@ -34,7 +34,7 @@ class FilterNode(StrategyNode):
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
         partial_concepts: List[BoundConcept] | None = None,
         force_group: bool | None = False,
-        grain: Grain | None = None,
+        grain: BoundGrain | None = None,
         existence_concepts: List[BoundConcept] | None = None,
     ):
         super().__init__(

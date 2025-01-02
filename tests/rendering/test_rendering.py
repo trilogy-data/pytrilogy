@@ -28,14 +28,14 @@ from trilogy.core.author_models import (
     OrderItemRef,
     AlignItem,
     AlignClause,
-    ColumnAssignmentRef,
+    ColumnAssignment,
 )
 from trilogy.core.execute_models import (
     Address,
     # AlignClause,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
+    BoundColumnAssignment,
     Comparison,
     BoundConcept,
     Conditional,
@@ -631,7 +631,7 @@ def test_render_datasource():
     ds = Datasource(
         name="useful_data",
         columns=[
-            ColumnAssignment(
+            BoundColumnAssignment(
                 alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL]
             )
         ],
@@ -674,7 +674,7 @@ where user_id = 123 or user_id = 456;"""
     )
     ds = Datasource(
         name="useful_data",
-        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        columns=[BoundColumnAssignment(alias="user_id", concept=user_id)],
         address=Address(is_query=True, location="SELECT * FROM test"),
         grain=Grain(components=[user_id]),
         where=WhereClause(
@@ -751,7 +751,7 @@ address memory.date_dim;"""
     ), test
     ds = Datasource(
         name="useful_data",
-        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
+        columns=[BoundColumnAssignment(alias="user_id", concept=user_id)],
         address=Address(is_query=True, location="SELECT * FROM test"),
         grain=Grain(components=set()),
         where=WhereClause(

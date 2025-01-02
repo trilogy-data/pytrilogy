@@ -12,7 +12,7 @@ from trilogy.core.functions import Count, CountDistinct, Max, Min
 
 # from trilogy.compiler import compile
 from trilogy.core.execute_models import (
-    ColumnAssignment,
+    BoundColumnAssignment,
     Comparison,
     BoundConcept,
     Datasource,
@@ -167,10 +167,10 @@ def gen_environment():
     test_revenue = Datasource(
         name="revenue",
         columns=[
-            ColumnAssignment(alias="revenue", concept=revenue),
-            ColumnAssignment(alias="order_id", concept=order_id),
-            ColumnAssignment(alias="product_id", concept=product_id),
-            ColumnAssignment(alias="order_timestamp", concept=order_timestamp),
+            BoundColumnAssignment(alias="revenue", concept=revenue),
+            BoundColumnAssignment(alias="order_id", concept=order_id),
+            BoundColumnAssignment(alias="product_id", concept=product_id),
+            BoundColumnAssignment(alias="order_timestamp", concept=order_timestamp),
         ],
         address="tblRevenue",
         grain=Grain(components=[order_id]),
@@ -179,8 +179,8 @@ def gen_environment():
     test_product = Datasource(
         name="products",
         columns=[
-            ColumnAssignment(alias="product_id", concept=product_id),
-            ColumnAssignment(alias="category_id", concept=category_id),
+            BoundColumnAssignment(alias="product_id", concept=product_id),
+            BoundColumnAssignment(alias="category_id", concept=category_id),
         ],
         address="tblProducts",
         grain=Grain(components=[product_id]),
@@ -189,8 +189,8 @@ def gen_environment():
     test_category = Datasource(
         name="category",
         columns=[
-            ColumnAssignment(alias="category_id", concept=category_id),
-            ColumnAssignment(alias="category_name", concept=category_name),
+            BoundColumnAssignment(alias="category_id", concept=category_id),
+            BoundColumnAssignment(alias="category_name", concept=category_name),
         ],
         address="tblCategory",
         grain=Grain(components=[category_id]),

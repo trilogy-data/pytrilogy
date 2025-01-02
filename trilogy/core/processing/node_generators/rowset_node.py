@@ -5,7 +5,7 @@ from trilogy.core.enums import PurposeLineage
 from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
-    Grain,
+    BoundGrain,
 
     RowsetItem,
     WhereClause,
@@ -80,7 +80,7 @@ def gen_rowset_node(
     assert node.resolution_cache
     # assume grain to be output of select
     # but don't include anything hidden(the non-rowset concepts)
-    node.grain = Grain.from_concepts(
+    node.grain = BoundGrain.from_concepts(
         [
             x
             for x in node.output_concepts

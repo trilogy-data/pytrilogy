@@ -10,7 +10,7 @@ from trilogy.core.execute_models import (
     Datasource,
     BoundEnvironment,
     Function,
-    Grain,
+    BoundGrain,
     Parenthetical,
     QueryDatasource,
     SourceType,
@@ -41,7 +41,7 @@ class SelectNode(StrategyNode):
         partial_concepts: List[BoundConcept] | None = None,
         nullable_concepts: List[BoundConcept] | None = None,
         accept_partial: bool = False,
-        grain: Optional[Grain] = None,
+        grain: Optional[BoundGrain] = None,
         force_group: bool | None = False,
         conditions: Conditional | Comparison | Parenthetical | None = None,
         preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
@@ -109,7 +109,7 @@ class SelectNode(StrategyNode):
         if self.force_group is False:
             grain = datasource.grain
         else:
-            grain = self.grain or Grain()
+            grain = self.grain or BoundGrain()
         return QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=all_concepts_final,

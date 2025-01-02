@@ -8,7 +8,7 @@ from trilogy.core.execute_models import (
     Conditional,
     Datasource,
     BoundEnvironment,
-    Grain,
+    BoundGrain,
     Parenthetical,
     QueryDatasource,
     SourceType,
@@ -26,8 +26,8 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
 @dataclass
 class GroupRequiredResponse:
-    target: Grain
-    upstream: Grain
+    target: BoundGrain
+    upstream: BoundGrain
     required: bool
 
 
@@ -73,16 +73,16 @@ class GroupNode(StrategyNode):
         parents: list[QueryDatasource | Datasource],
         environment: BoundEnvironment,
     ) -> GroupRequiredResponse:
-        target_grain = Grain.from_concepts(
+        target_grain = BoundGrain.from_concepts(
             concepts_to_grain_concepts(
                 downstream_concepts,
                 environment=environment,
             )
         )
-        comp_grain = Grain()
+        comp_grain = BoundGrain()
         for source in parents:
             comp_grain += source.grain
-        comp_grain = Grain.from_concepts(
+        comp_grain = BoundGrain.from_concepts(
             concepts_to_grain_concepts(comp_grain.components, environment=environment)
         )
         # dynamically select if we need to group

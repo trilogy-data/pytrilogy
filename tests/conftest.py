@@ -10,20 +10,20 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
 from trilogy.core.execute_models import (
-    ColumnAssignment,
+    BoundColumnAssignment,
     Comparison,
     BoundConcept,
     Datasource,
     DataType,
     FilterItem,
     Function,
-    Grain,
+
     OrderItem,
     WhereClause,
     WindowItem,
     Function,
 )
-from trilogy.core.author_models import Concept, FunctionRef, OrderItemRef, WindowItemRef, ComparisonRef, WhereClauseRef, FilterItemRef, DatasourceRef, ColumnAssignmentRef
+from trilogy.core.author_models import Concept, FunctionRef, OrderItemRef, WindowItemRef, ComparisonRef, WhereClauseRef, FilterItemRef, DatasourceRef, ColumnAssignment, Grain
 
 
 @fixture(scope="session")
@@ -172,10 +172,10 @@ def test_environment():
     test_revenue = DatasourceRef(
         name="revenue",
         columns=[
-            ColumnAssignmentRef(alias="revenue", concept=revenue),
-            ColumnAssignmentRef(alias="order_id", concept=order_id),
-            ColumnAssignmentRef(alias="product_id", concept=product_id),
-            ColumnAssignmentRef(alias="order_timestamp", concept=order_timestamp),
+            ColumnAssignment(alias="revenue", concept=revenue),
+            ColumnAssignment(alias="order_id", concept=order_id),
+            ColumnAssignment(alias="product_id", concept=product_id),
+            ColumnAssignment(alias="order_timestamp", concept=order_timestamp),
         ],
         address="tblRevenue",
         grain=Grain(components=[order_id]),
@@ -184,8 +184,8 @@ def test_environment():
     test_product = DatasourceRef(
         name="products",
         columns=[
-            ColumnAssignmentRef(alias="product_id", concept=product_id),
-            ColumnAssignmentRef(alias="category_id", concept=category_id),
+            ColumnAssignment(alias="product_id", concept=product_id),
+            ColumnAssignment(alias="category_id", concept=category_id),
         ],
         address="tblProducts",
         grain=Grain(components=[product_id]),
@@ -194,8 +194,8 @@ def test_environment():
     test_category = DatasourceRef(
         name="category",
         columns=[
-            ColumnAssignmentRef(alias="category_id", concept=category_id),
-            ColumnAssignmentRef(alias="category_name", concept=category_name),
+            ColumnAssignment(alias="category_id", concept=category_id),
+            ColumnAssignment(alias="category_name", concept=category_name),
         ],
         address="tblCategory",
         grain=Grain(components=[category_id]),
@@ -225,7 +225,7 @@ def test_environment():
 
     for item in [test_product, test_category, test_revenue]:
         env.add_datasource(item)
-        
+
     yield env
 
 

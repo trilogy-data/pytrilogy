@@ -50,6 +50,7 @@ from trilogy.constants import (
     logger,
 )
 from trilogy.core.core_models import (DataType, Metadata,     MapWrapper,
+                                      RawColumnExpr,
     ListWrapper,
     ListType,
     StructType,
@@ -145,7 +146,7 @@ class SelectContext(ABC):
     def with_select_context(
         self,
         local_concepts: dict[str, BoundConcept],
-        grain: Grain,
+        grain: BoundGrain,
         environment: BoundEnvironment,
     ) -> Any:
         raise NotImplementedError
@@ -203,7 +204,7 @@ class BoundConcept(SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
-    granularity: Granularity
+    granularity: Granularity = Granularity.MULTI_ROW
     metadata: Metadata = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
         validate_default=True,
@@ -218,7 +219,7 @@ class BoundConcept(SelectContext, BaseModel):
             ]] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     keys: Optional[set[str]] = Field(default_factory = set)
-    grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
+    grain: "BoundGrain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
 
@@ -297,34 +298,7 @@ class BoundConcept(SelectContext, BaseModel):
             raise ValueError("Cannot set purpose to AUTO")
         return v
 
-    @field_validator("grain", mode="before")
-    @classmethod
-    def parse_grain(cls, v, info: ValidationInfo) -> Grain:
-        # this is silly - rethink how we do grains
-        values = info.data
-        if not v and values.get("purpose", None) == Purpose.KEY:
-            v = Grain(
-                components={
-                    f'{values.get("namespace", DEFAULT_NAMESPACE)}.{values["name"]}'
-                }
-            )
-        elif (
-            "lineage" in values
-            and isinstance(values["lineage"], AggregateWrapper)
-            and values["lineage"].by
-        ):
-            v = Grain(components={c.address for c in values["lineage"].by})
-        elif not v:
-            v = Grain(components=set())
-        elif isinstance(v, Grain):
-            pass
-        elif isinstance(v, BoundConcept):
-            v = Grain(components={v.address})
-        elif isinstance(v, dict):
-            v = Grain.model_validate(v)
-        else:
-            raise SyntaxError(f"Invalid grain {v} for concept {values['name']}")
-        return v
+   
 
     def __eq__(self, other: object):
         if isinstance(other, str):
@@ -373,7 +347,7 @@ class BoundConcept(SelectContext, BaseModel):
             grain=(
                 self.grain.with_namespace(namespace)
                 if self.grain
-                else Grain(components=set())
+                else BoundGrain(components=set())
             ),
             namespace=(
                 namespace + "." + self.namespace
@@ -392,7 +366,7 @@ class BoundConcept(SelectContext, BaseModel):
         )
 
     def with_select_context(
-        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
+        self, local_concepts: dict[str, BoundConcept], grain: BoundGrain, environment: BoundEnvironment
     ) -> BoundConcept:
         new_lineage = self.lineage.instantiate(environment) if isinstance(self.lineage, Reference) else self.lineage
         final_grain = self.grain or grain
@@ -423,14 +397,14 @@ class BoundConcept(SelectContext, BaseModel):
             granularity =self.granularity,
         )
 
-    def with_grain(self, grain: Optional["Grain"] = None, name:str| None = None) -> Self:
+    def with_grain(self, grain: Optional["BoundGrain"] = None, name:str| None = None) -> Self:
         return self.__class__(
             name=name or self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
-            grain=grain if grain else Grain(components=set()),
+            grain=grain if grain else BoundGrain(components=set()),
             namespace=self.namespace,
             keys=self.keys,
             modifiers=self.modifiers,
@@ -442,7 +416,7 @@ class BoundConcept(SelectContext, BaseModel):
     def _with_default_grain(self) -> Self:
         if self.purpose == Purpose.KEY:
             # we need to make this abstract
-            grain = Grain(components={self.address})
+            grain = BoundGrain(components={self.address})
         elif self.purpose == Purpose.PROPERTY:
             components = []
             if self.keys:
@@ -452,14 +426,14 @@ class BoundConcept(SelectContext, BaseModel):
                     if isinstance(item, BoundConcept):
                         components += [x.address for x in item.sources]
             # TODO: set synonyms
-            grain = Grain(
+            grain = BoundGrain(
                 components=set([x for x in components]),
             )  # synonym_set=generate_concept_synonyms(components))
         elif self.purpose == Purpose.METRIC:
-            grain = Grain()
+            grain = BoundGrain()
         elif self.purpose == Purpose.CONSTANT:
             if self.derivation != PurposeLineage.CONSTANT:
-                grain = Grain(components={self.address})
+                grain = BoundGrain(components={self.address})
             else:
                 grain = self.grain
         else:
@@ -620,7 +594,7 @@ class BoundConcept(SelectContext, BaseModel):
             metadata=self.metadata,
             lineage=FilterItem(content=self, where=WhereClause(conditional=condition)),
             keys=(self.keys if self.purpose == Purpose.PROPERTY else None),
-            grain=self.grain if self.grain else Grain(components=set()),
+            grain=self.grain if self.grain else BoundGrain(components=set()),
             namespace=self.namespace,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
@@ -630,19 +604,9 @@ class BoundConcept(SelectContext, BaseModel):
         return new
 
     
-class Grain(Namespaced, BaseModel):
+class BoundGrain(BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
-
-    def with_merge(self, source: BoundConcept, target: BoundConcept, modifiers: List[Modifier]):
-        new_components = set()
-        for c in self.components:
-            if c == source.address:
-                new_components.add(target.address)
-            else:
-                new_components.add(c)
-        return Grain(components=new_components)
-    
 
     @classmethod
     def from_concepts(
@@ -650,10 +614,10 @@ class Grain(Namespaced, BaseModel):
         concepts: List[BoundConcept],
         environment: BoundEnvironment | None = None,
         where_clause: WhereClause | None = None,
-    ) -> "Grain":
+    ) -> "BoundGrain":
         from trilogy.parsing.common import concepts_to_grain_concepts
 
-        return Grain(
+        return BoundGrain(
             components={
                 c.address
                 for c in concepts_to_grain_concepts(concepts, environment=environment)
@@ -661,35 +625,7 @@ class Grain(Namespaced, BaseModel):
             where_clause=where_clause,
         )
 
-    def with_namespace(self, namespace: str) -> "Grain":
-        return Grain(
-            components={address_with_namespace(c, namespace) for c in self.components},
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
-        )
-
-    @field_validator("components", mode="before")
-    def component_validator(cls, v, info: ValidationInfo):
-        from trilogy.core.author_models import ConceptRef, Concept
-        output = set()
-        if isinstance(v, list):
-            for vc in v:
-                if isinstance(vc, (BoundConcept, Concept, ConceptRef)):
-                    output.add(vc.address)
-                else:
-                    output.add(vc)
-        else:
-            output = v
-        if not isinstance(output, set):
-            raise ValueError(f"Invalid grain component {output}, is not set")
-        if not all(isinstance(x, str) for x in output):
-            raise ValueError(f"Invalid component {output}")
-        return output
-
-    def __add__(self, other: "Grain") -> "Grain":
+    def __add__(self, other: "BoundGrain") -> "BoundGrain":
         where = self.where_clause
         if other.where_clause:
             if not self.where_clause:
@@ -705,12 +641,12 @@ class Grain(Namespaced, BaseModel):
                 # raise NotImplementedError(
                 #     f"Cannot merge grains with where clauses, self {self.where_clause} other {other.where_clause}"
                 # )
-        return Grain(
+        return BoundGrain(
             components=self.components.union(other.components), where_clause=where
         )
 
-    def __sub__(self, other: "Grain") -> "Grain":
-        return Grain(
+    def __sub__(self, other: "BoundGrain") -> "BoundGrain":
+        return BoundGrain(
             components=self.components.difference(other.components),
             where_clause=self.where_clause,
         )
@@ -726,25 +662,25 @@ class Grain(Namespaced, BaseModel):
             if not all([isinstance(c, BoundConcept) for c in other]):
                 return False
             return self.components == set([c.address for c in other])
-        if not isinstance(other, Grain):
+        if not isinstance(other, BoundGrain):
             return False
         if self.components == other.components:
             return True
         return False
 
-    def issubset(self, other: "Grain"):
+    def issubset(self, other: "BoundGrain"):
         return self.components.issubset(other.components)
 
-    def union(self, other: "Grain"):
+    def union(self, other: "BoundGrain"):
         addresses = self.components.union(other.components)
-        return Grain(components=addresses, where_clause=self.where_clause)
+        return BoundGrain(components=addresses, where_clause=self.where_clause)
 
-    def isdisjoint(self, other: "Grain"):
+    def isdisjoint(self, other: "BoundGrain"):
         return self.components.isdisjoint(other.components)
 
-    def intersection(self, other: "Grain") -> "Grain":
+    def intersection(self, other: "BoundGrain") -> "BoundGrain":
         intersection = self.components.intersection(other.components)
-        return Grain(components=intersection)
+        return BoundGrain(components=intersection)
 
     def __str__(self):
         if self.abstract:
@@ -755,7 +691,7 @@ class Grain(Namespaced, BaseModel):
             base += f"|{str(self.where_clause)}"
         return base
 
-    def __radd__(self, other) -> "Grain":
+    def __radd__(self, other) -> "BoundGrain":
         if other == 0:
             return self
         else:
@@ -765,7 +701,6 @@ class Grain(Namespaced, BaseModel):
 class BoundEnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = True
 
     def duplicate(self) -> "BoundEnvironmentConceptDict":
@@ -803,29 +738,12 @@ class BoundEnvironmentConceptDict(dict):
 
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
-    ) -> BoundConcept | UndefinedConcept:
+    ) -> BoundConcept:
         try:
             return super(BoundEnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
-            if not self.fail_on_missing:
-                if "." in key:
-                    ns, rest = key.rsplit(".", 1)
-                else:
-                    ns = DEFAULT_NAMESPACE
-                    rest = key
-                if key in self.undefined:
-                    return self.undefined[key]
-                undefined = UndefinedConcept(
-                    name=rest,
-                    line_no=line_no,
-                    datatype=DataType.UNKNOWN,
-                    purpose=Purpose.UNKNOWN,
-                    namespace=ns,
-                )
-                self.undefined[key] = undefined
-                return undefined
         self.raise_undefined(key, line_no, file)
 
     def _find_similar_concepts(self, concept_name: str):
@@ -944,7 +862,7 @@ class Function( Namespaced, TypedSentinal, SelectContext, BaseModel):
         return self.output_datatype
 
     def with_select_context(
-        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
+        self, local_concepts: dict[str, BoundConcept], grain: BoundGrain, environment: BoundEnvironment
     ) -> Function:
         base = Function(
             operator=self.operator,
@@ -1058,7 +976,7 @@ class Function( Namespaced, TypedSentinal, SelectContext, BaseModel):
     @property
     def output_grain(self):
         # aggregates have an abstract grain
-        base_grain = Grain(components=[])
+        base_grain = BoundGrain(components=[])
         if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return base_grain
         # scalars have implicit grain of all arguments
@@ -1219,13 +1137,13 @@ def safe_concept(v: Union[Dict, BoundConcept]) -> BoundConcept:
 
 
 
-def safe_grain(v) -> Grain:
+def safe_grain(v) -> BoundGrain:
     if isinstance(v, dict):
-        return Grain.model_validate(v)
-    elif isinstance(v, Grain):
+        return BoundGrain.model_validate(v)
+    elif isinstance(v, BoundGrain):
         return v
     elif not v:
-        return Grain(components=set())
+        return BoundGrain(components=set())
     else:
         raise ValueError(f"Invalid input type to safe_grain {type(v)}")
 
@@ -1237,11 +1155,10 @@ class DatasourceMetadata(BaseModel):
 
 
 
-class RawColumnExpr(BaseModel):
-    text: str
 
 
-class ColumnAssignment(BaseModel):
+
+class BoundColumnAssignment(BaseModel):
     alias: str | RawColumnExpr | Function
     concept: BoundConcept
     modifiers: List[Modifier] = Field(default_factory=list)
@@ -1254,7 +1171,7 @@ class ColumnAssignment(BaseModel):
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
 
-    def with_grain(self, grain:Grain):
+    def with_grain(self, grain:BoundGrain):
         self.concept = self.concept.with_grain(grain)
         return self
 
@@ -1264,10 +1181,10 @@ class ColumnAssignment(BaseModel):
 
 class Datasource(HasUUID, Namespaced, BaseModel):
     name: str
-    columns: List[ColumnAssignment]
+    columns: List[BoundColumnAssignment]
     address: Union[Address, str]
-    grain: Grain = Field(
-        default_factory=lambda: Grain(components=set()), validate_default=True
+    grain: BoundGrain = Field(
+        default_factory=lambda: BoundGrain(components=set()), validate_default=True
     )
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: DatasourceMetadata = Field(
@@ -1354,8 +1271,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
     @field_validator("grain", mode="before")
     @classmethod
-    def grain_enforcement(cls, v: Grain, info: ValidationInfo):
-        grain: Grain = safe_grain(v)
+    def grain_enforcement(cls, v: BoundGrain, info: ValidationInfo):
+        grain: BoundGrain = safe_grain(v)
         return grain
 
     def add_column(
@@ -1365,7 +1282,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         modifiers: List[Modifier] | None = None,
     ):
         self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or [])
+            BoundColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or [])
         )
 
     def __add__(self, other):
@@ -1589,7 +1506,7 @@ class QueryDatasource(BaseModel):
     datasources: List[Union[Datasource, "QueryDatasource"]]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
 
-    grain: Grain
+    grain: BoundGrain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
     condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
@@ -1841,7 +1758,7 @@ class CTE(BaseModel):
     source: "QueryDatasource"
     output_columns: List[BoundConcept]
     source_map: Dict[str, list[str]]
-    grain: Grain
+    grain: BoundGrain
     base: bool = False
     group_to_grain: bool = False
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
@@ -2218,7 +2135,7 @@ class UnionCTE(BaseModel):
     parent_ctes: list[CTE | UnionCTE]
     internal_ctes: list[CTE | UnionCTE]
     output_columns: List[BoundConcept]
-    grain: Grain
+    grain: BoundGrain
     operator: str = "UNION ALL"
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -2465,7 +2382,7 @@ class BoundSelectStatement(HasUUID,  SelectTypeMixin, BaseModel):
         name: str,
         address: Address,
         environment: BoundEnvironment,
-        grain: Grain | None = None,
+        grain: BoundGrain | None = None,
     ) -> Datasource:
         raise NotImplementedError
         # if self.where_clause or self.having_clause:
@@ -2620,28 +2537,6 @@ class Join(BaseModel):
         return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in self.joinkey_pairs])}"
 
 
-class UndefinedConcept(BoundConcept,Namespaced):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    name: str
-    line_no: int | None = None
-    datatype: DataType | ListType | StructType | MapType | NumericType = (
-        DataType.UNKNOWN
-    )
-    purpose: Purpose = Purpose.UNKNOWN
-
-    def with_select_context(
-        self,
-        local_concepts: dict[str, BoundConcept],
-        grain: Grain,
-        environment: BoundEnvironment,
-    ) -> "BoundConcept":
-        if self.address in local_concepts:
-            rval = local_concepts[self.address]
-            rval = rval.with_select_context(local_concepts, grain, environment)
-            return rval
-        if environment.concepts.fail_on_missing:
-            environment.concepts.raise_undefined(self.address, line_no=self.line_no)
-        return self
 
 
 class EnvironmentDatasourceDict(dict):
@@ -2761,7 +2656,7 @@ class BoundEnvironment(BaseModel):
         #         arguments=[str(self.working_path)],
         #         output_datatype=DataType.STRING,
         #         output_purpose=Purpose.CONSTANT,
-        #         output_grain = Grain(),
+        #         output_grain = BoundGrain),
         #     ),
         #     datatype=DataType.STRING,
         #     purpose=Purpose.CONSTANT,
@@ -2914,12 +2809,7 @@ class Comparison(
     ]
     operator: ComparisonOperator
 
-    def hydrate_missing(self, concepts: BoundEnvironmentConceptDict):
-        if isinstance(self.left, UndefinedConcept) and self.left.address in concepts:
-            self.left = concepts[self.left.address]
-        if isinstance(self.right, UndefinedConcept) and self.right.address in concepts:
-            self.right = concepts[self.right.address]
-        return self
+
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -3023,7 +2913,7 @@ class Comparison(
         )
 
     def with_select_context(
-        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
+        self, local_concepts: dict[str, BoundConcept], grain: BoundGrain, environment: BoundEnvironment
     ):
         return self.__class__(
             left=(
@@ -3370,7 +3260,7 @@ class WhereClause(ConceptArgs, Namespaced, SelectContext, BaseModel):
         return WhereClause(conditional=self.conditional.with_namespace(namespace))
 
     def with_select_context(
-        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
+        self, local_concepts: dict[str, BoundConcept], grain: BoundGrain, environment: BoundEnvironment
     ) -> WhereClause:
         return self.__class__(
             conditional=self.conditional.with_select_context(
@@ -3558,7 +3448,7 @@ class Parenthetical(
 
 
     def with_select_context(
-        self, local_concepts: dict[str, BoundConcept], grain: Grain, environment: BoundEnvironment
+        self, local_concepts: dict[str, BoundConcept], grain: BoundGrain, environment: BoundEnvironment
     ):
         return Parenthetical(
             content=(
@@ -3630,7 +3520,7 @@ Expr = (
 
 BoundConcept.model_rebuild()
 BoundMultiSelectStatement.model_rebuild()
-Grain.model_rebuild()
+
 WindowItem.model_rebuild()
 WindowItemOrder.model_rebuild()
 FilterItem.model_rebuild()
@@ -3648,7 +3538,7 @@ QueryDatasource.model_rebuild()
 ProcessedQuery.model_rebuild()
 ProcessedQueryPersist.model_rebuild()
 InstantiatedUnnestJoin.model_rebuild()
-UndefinedConcept.model_rebuild()
+
 Function.model_rebuild()
-Grain.model_rebuild()
+BoundGrain.model_rebuild()
 

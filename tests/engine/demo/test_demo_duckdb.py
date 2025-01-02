@@ -1,7 +1,7 @@
 from trilogy import Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
 from trilogy.core.execute_models import (
-    ColumnAssignment,
+    BoundColumnAssignment,
     BoundConcept,
     Datasource,
     DataType,
@@ -127,15 +127,15 @@ def setup_titanic(env: BoundEnvironment):
             name="raw_data",
             address="raw_titanic",
             columns=[
-                ColumnAssignment(alias="passengerid", concept=id),
-                ColumnAssignment(alias="age", concept=age),
-                ColumnAssignment(alias="survived", concept=survived),
-                ColumnAssignment(alias="pclass", concept=pclass),
-                ColumnAssignment(alias="name", concept=name),
-                ColumnAssignment(alias="fare", concept=fare),
-                ColumnAssignment(alias="cabin", concept=cabin),
-                ColumnAssignment(alias="embarked", concept=embarked),
-                ColumnAssignment(alias="ticket", concept=ticket),
+                BoundColumnAssignment(alias="passengerid", concept=id),
+                BoundColumnAssignment(alias="age", concept=age),
+                BoundColumnAssignment(alias="survived", concept=survived),
+                BoundColumnAssignment(alias="pclass", concept=pclass),
+                BoundColumnAssignment(alias="name", concept=name),
+                BoundColumnAssignment(alias="fare", concept=fare),
+                BoundColumnAssignment(alias="cabin", concept=cabin),
+                BoundColumnAssignment(alias="embarked", concept=embarked),
+                BoundColumnAssignment(alias="ticket", concept=ticket),
             ],
             grain=Grain(components=[id]),
         ),
