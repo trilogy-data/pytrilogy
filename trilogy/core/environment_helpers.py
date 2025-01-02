@@ -2,15 +2,14 @@ from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess
 from trilogy.core.execute_models import (
-    BoundConcept,
     DataType,
-    BoundEnvironment,
     Function,
     Metadata,
     StructType,
     Grain,
     Function
 )
+from trilogy.core.author_models import Environment, Concept, FunctionRef
 from trilogy.parsing.common import Meta, arg_to_datatype, process_function_args
 
 FUNCTION_DESCRIPTION_MAPS = {
@@ -25,7 +24,7 @@ FUNCTION_DESCRIPTION_MAPS = {
 }
 
 
-def generate_date_concepts(concept: BoundConcept, environment: BoundEnvironment):
+def generate_date_concepts(concept: Concept, environment: Environment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -47,22 +46,19 @@ def generate_date_concepts(concept: BoundConcept, environment: BoundEnvironment)
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        const_function: Function = Function(
+        const_function: Function = FunctionRef(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
-            arguments=[concept],
+            arguments=[concept.reference],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
-        new_concept = BoundConcept(
+        new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
             grain=Grain(components = {concept.address,}),
-            namespace=namespace,
+            namespace=concept.namespace,
             keys=set(
                 [concept.address],
             ),
@@ -77,7 +73,7 @@ def generate_date_concepts(concept: BoundConcept, environment: BoundEnvironment)
         environment.add_concept(new_concept, add_derived=False)
 
 
-def generate_datetime_concepts(concept: BoundConcept, environment: BoundEnvironment):
+def generate_datetime_concepts(concept: Concept, environment: Environment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -98,22 +94,20 @@ def generate_datetime_concepts(concept: BoundConcept, environment: BoundEnvironm
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        const_function: Function = Function(
+        const_function: Function = FunctionRef(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
-            arguments=[concept],
+            arguments=[concept.reference],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
-        new_concept = BoundConcept(
+
+        new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
             grain=Grain(components={concept.address,}),
-            namespace=namespace,
+            namespace=concept.namespace,
             keys=set([
                 concept.address,],
             ),
@@ -128,7 +122,7 @@ def generate_datetime_concepts(concept: BoundConcept, environment: BoundEnvironm
         environment.add_concept(new_concept, add_derived=False)
 
 
-def generate_key_concepts(concept: BoundConcept, environment: BoundEnvironment):
+def generate_key_concepts(concept: Concept, environment: Environment):
     if concept.metadata and concept.metadata.description:
         base_description = concept.metadata.description
     else:
@@ -140,22 +134,20 @@ def generate_key_concepts(concept: BoundConcept, environment: BoundEnvironment):
     for ftype in [FunctionType.COUNT]:
         fname = ftype.name.lower()
         default_type = Purpose.METRIC
-        const_function: Function = Function(
+        const_function: Function = FunctionRef(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
-            arguments=[concept],
+            arguments=[concept.reference],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
-        new_concept = BoundConcept(
+
+        new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
             grain=Grain(components={concept.address,}),
-            namespace=namespace,
+            namespace=concept.namespace,
             keys={
                 concept.address,
             },
@@ -171,11 +163,12 @@ def generate_key_concepts(concept: BoundConcept, environment: BoundEnvironment):
 
 
 def generate_related_concepts(
-    concept: BoundConcept,
-    environment: BoundEnvironment,
+    concept: Concept,
+    environment: Environment,
     meta: Meta | None = None,
     add_derived: bool = False,
 ):
+
     """Auto populate common derived concepts on types"""
     if concept.purpose == Purpose.KEY and add_derived:
         generate_key_concepts(concept, environment)
@@ -195,7 +188,7 @@ def generate_related_concepts(
             args = process_function_args(
                 [concept, key], meta=meta, environment=environment
             )
-            auto = BoundConcept(
+            auto = Concept(
                 name=key,
                 datatype=arg_to_datatype(value),
                 purpose=Purpose.PROPERTY,
@@ -208,5 +201,5 @@ def generate_related_concepts(
                 lineage=AttrAccess(args),
             )
             environment.add_concept(auto, meta=meta)
-            if isinstance(value, BoundConcept):
+            if isinstance(value, Concept):
                 environment.merge_concept(auto, value, modifiers=[])

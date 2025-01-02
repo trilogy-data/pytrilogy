@@ -4,6 +4,7 @@ from trilogy.core.graph_models import (
     datasource_to_node,
 )
 from trilogy.core.execute_models import BoundConcept, Datasource, BoundEnvironment
+from trilogy.core.author_models import Environment
 
 
 def add_concept(
@@ -68,6 +69,8 @@ def generate_adhoc_graph(
 def generate_graph(
     environment: BoundEnvironment,
 ) -> ReferenceGraph:
+    if isinstance(environment, Environment):
+        environment = environment.instantiate()
     return generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),

@@ -22,6 +22,9 @@ from trilogy.core.execute_models import (
     BoundConcept,
     DatasourceMetadata,
     ColumnAssignment,
+    BoundSelectStatement,
+    BoundSelectItem,
+    BoundConceptTransform,
     Grain,
     CTE,
     UnionCTE,
@@ -56,6 +59,7 @@ from trilogy.core.execute_models import (
     ImportStatement,
     UndefinedConcept,
     BoundEnvironment,
+    BoundEnvironmentConceptDict,
     AlignClause,
     AlignItem
 )
@@ -289,7 +293,7 @@ class FunctionRef(Reference, Namespaced, BaseModel):
 
 class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, BaseModel):
     name: str
-    datatype: DataType | ListType | StructType | MapType | NumericType | None
+    datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
     metadata: Metadata = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
@@ -299,7 +303,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
     lineage: Optional[
         Union[
             RowsetItemRef,
-            MultiSelectStatementRef,
+            MultiSelectStatement,
             FunctionRef,
             WindowItemRef,
             FilterItemRef,
@@ -492,8 +496,8 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             return PurposeLineage.AGGREGATE
         elif self.lineage and isinstance(self.lineage, RowsetItemRef):
             return PurposeLineage.ROWSET
-        # elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
-        #     return PurposeLineage.MULTISELECT
+        elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
+            return PurposeLineage.MULTISELECT
         elif (
             self.lineage
             and isinstance(self.lineage, FunctionRef)
@@ -1226,10 +1230,11 @@ class ConceptDerivation(BaseModel):
 
 class EnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs) -> None:
-        super().__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = True
         self.populate_default_concepts()
+
 
     def duplicate(self) -> "EnvironmentConceptDict":
         new = EnvironmentConceptDict()
@@ -1312,10 +1317,17 @@ class EnvironmentConceptDict(dict):
         return super().items()
 
 
-class ConceptTransform(Namespaced, BaseModel):
+class ConceptTransform(Namespaced, Reference, BaseModel):
     function: FunctionRef | FilterItemRef | WindowItemRef | AggregateWrapperRef
     output: ConceptRef
     modifiers: List[Modifier] = Field(default_factory=list)
+
+    def instantiate(self, environment)->BoundConceptTransform:
+        return BoundConceptTransform(
+            function=self.function.instantiate(environment),
+            output=self.output.instantiate(environment),
+            modifiers=self.modifiers,
+        )
 
     @property
     def input(self) -> List[ConceptRef]:
@@ -1329,9 +1341,19 @@ class ConceptTransform(Namespaced, BaseModel):
         )
 
 
-class SelectItem(Namespaced, BaseModel):
+class SelectItem(Namespaced, Reference, BaseModel):
     content: Union[ConceptRef, ConceptTransform]
     modifiers: List[Modifier] = Field(default_factory=list)
+
+    def instantiate(self, environment: Environment) -> SelectItem:
+        return BoundSelectItem(
+            content=(
+                self.content.instantiate(environment)
+                if isinstance(self.content, Reference)
+                else self.content
+            ),
+            modifiers=self.modifiers,
+        )
 
     @property
     def output(self) -> Concept:
@@ -1406,7 +1428,7 @@ class SelectTypeMixin(BaseModel):
         return SelectFiltering.EXPLICIT
 
 
-class SelectStatement(HasUUID, Namespaced, SelectTypeMixin, BaseModel):
+class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
     order_by: Optional[OrderByRef] = None
     limit: Optional[int] = None
@@ -1414,6 +1436,23 @@ class SelectStatement(HasUUID, Namespaced, SelectTypeMixin, BaseModel):
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
+
+    def instantiate(self, environment: Environment) -> BoundSelectStatement:
+        return BoundSelectStatement(
+            selection=[x.instantiate(environment) for x in self.selection],
+            where_clause=self.where_clause.instantiate(environment)
+            if self.where_clause
+            else None,
+            having_clause=self.having_clause.instantiate(environment)
+            if self.having_clause
+            else None,
+            order_by=self.order_by.instantiate(environment) if self.order_by else None,
+            limit=self.limit,
+            meta=self.meta,
+            local_concepts=BoundEnvironmentConceptDict(
+                {k: v.instantiate(environment) for k, v in self.local_concepts.items()}
+            ),
+        )
 
     @classmethod
     def from_inputs(
@@ -1629,7 +1668,7 @@ class CopyStatement(BaseModel):
 
 class MultiSelectStatement(HasUUID, Reference, SelectTypeMixin, Namespaced, BaseModel):
     selects: List[SelectStatement]
-    align: AlignClause
+    align: AlignClauseRef
     namespace: str
     order_by: Optional[OrderByRef] = None
     limit: Optional[int] = None
@@ -1654,9 +1693,12 @@ class MultiSelectStatement(HasUUID, Reference, SelectTypeMixin, Namespaced, Base
                 if self.where_clause
                 else None
             ),
-            local_concepts=EnvironmentConceptDict(
+            local_concepts=BoundEnvironmentConceptDict(
                 {k: v.instantiate(environment) for k, v in self.local_concepts.items()}
             ),
+            # these need to be address references to avoid circular instantiation
+            # TODO: find a better way
+            derived_concepts = set([x.address for x in self.generate_derived_concepts(environment)])
         )
 
     @property
@@ -1697,6 +1739,7 @@ class MultiSelectStatement(HasUUID, Reference, SelectTypeMixin, Namespaced, Base
             local_concepts=EnvironmentConceptDict(
                 {k: v.with_namespace(namespace) for k, v in self.local_concepts.items()}
             ),
+
         )
 
     def generate_derived_concepts(self, environment: Environment)-> List[ConceptRef]:
@@ -1710,7 +1753,7 @@ class MultiSelectStatement(HasUUID, Reference, SelectTypeMixin, Namespaced, Base
     def derived_concepts(self) -> List[ConceptRef]:
         output = []
         for item in self.align.items:
-            output.append(item.gen_concept(self))
+            output.append(item.concept_reference)
         return output
 
     def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
@@ -1739,7 +1782,7 @@ class MultiSelectStatement(HasUUID, Reference, SelectTypeMixin, Namespaced, Base
         return output
 
 
-class AlignItemRef(Namespaced, BaseModel):
+class AlignItemRef(Namespaced, Reference, BaseModel):
     alias: str
     concepts: List[ConceptRef]
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -1752,6 +1795,7 @@ class AlignItemRef(Namespaced, BaseModel):
     def instantiate(self, environment: Environment):
         return AlignItem(
             alias=self.alias,
+            aligned_concept = environment.concepts[f'{self.namespace}.{self.alias}'],
             concepts=[c.instantiate(environment) for c in self.concepts],
             namespace=self.namespace,
         )
@@ -1762,6 +1806,10 @@ class AlignItemRef(Namespaced, BaseModel):
             concepts=[c.with_namespace(namespace) for c in self.concepts],
             namespace=namespace,
         )
+    
+    @property
+    def concept_reference(self) -> ConceptRef:
+        return ConceptRef(address=f"{self.namespace}.{self.alias}")
 
     def gen_concept(self, parent: MultiSelectStatement, environment: Environment):
         datatypes = set([environment.concepts[c].datatype for c in self.concepts])
@@ -1779,7 +1827,7 @@ class AlignItemRef(Namespaced, BaseModel):
             datatype=datatypes.pop(),
             purpose=purpose,
             lineage=parent,
-            namespace=parent.namespace,
+            namespace=self.namespace,
         )
         return new
 
@@ -2064,23 +2112,6 @@ class Environment(BaseModel):
             f.write(self.model_dump_json())
         return ppath
 
-    def gen_concept_list_caches(self) -> None:
-        concrete_addresses = set()
-        for datasource in self.datasources.values():
-            for concept in datasource.output_concepts:
-                concrete_addresses.add(concept.address)
-        self.materialized_concepts = set(
-            [
-                c.address
-                for c in self.concepts.values()
-                if c.address in concrete_addresses
-            ]
-            + [
-                c.address
-                for c in self.alias_origin_lookup.values()
-                if c.address in concrete_addresses
-            ],
-        )
 
     def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
         lookup = new_concept.address
@@ -2198,7 +2229,6 @@ class Environment(BaseModel):
                     val.with_namespace(alias)
                 )
 
-        self.gen_concept_list_caches()
         return self
 
     def add_file_import(
@@ -2290,7 +2320,6 @@ class Environment(BaseModel):
         meta: Meta | None = None,
         force: bool = False,
         add_derived: bool = True,
-        _ignore_cache: bool = False,
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add concepts")
@@ -2300,11 +2329,7 @@ class Environment(BaseModel):
                 concept = existing
         self.concepts[concept.address] = concept
         from trilogy.core.environment_helpers import generate_related_concepts
-
-        # generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
-        # TODO: reenable
-        if not _ignore_cache:
-            self.gen_concept_list_caches()
+        generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
         return concept
 
     def add_datasource(
@@ -2353,8 +2378,7 @@ class Environment(BaseModel):
                     self.merge_concept(new_concept, current_concept, [])
                 else:
                     self.add_concept(current_concept, meta=meta, _ignore_cache=True)
-        if not _ignore_cache:
-            self.gen_concept_list_caches()
+
         return datasource
 
     def delete_datasource(
@@ -2366,7 +2390,6 @@ class Environment(BaseModel):
             raise ValueError("Environment is frozen, cannot delete datsources")
         if address in self.datasources:
             del self.datasources[address]
-            self.gen_concept_list_caches()
             return True
         return False
 

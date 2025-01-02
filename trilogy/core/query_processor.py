@@ -22,7 +22,7 @@ from trilogy.core.execute_models import (
     BoundConcept,
 
     Conditional,
-
+    BoundSelectStatement,
     CTEConceptPair,
     Datasource,
     BoundEnvironment,
@@ -45,7 +45,7 @@ from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
-from trilogy.core.execute_models import BoundEnvironment, EnvironmentConceptDict
+from trilogy.core.execute_models import BoundEnvironment, BoundEnvironmentConceptDict
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -359,7 +359,7 @@ def datasource_to_cte(
 
     return cte
 
-def set_query_grain(statement:SelectStatement, environment:BoundEnvironment)->Grain:
+def set_query_grain(statement:BoundSelectStatement, environment:BoundEnvironment)->Grain:
     for parse_pass in [
             1,
             2,
@@ -368,7 +368,7 @@ def set_query_grain(statement:SelectStatement, environment:BoundEnvironment)->Gr
             # the second will get grains appropriately
             # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
             # until after the first pass, and so don't know the grain of a
-            where = statement.where_clause.instantiate(environment) if statement.where_clause else None
+            where = statement.where_clause if statement.where_clause else None
             if parse_pass == 1:
                 grain = Grain.from_concepts(
                     [
@@ -409,9 +409,15 @@ def create_statement_environment(
         new_env = environment.instantiate()
     else:
         new_env = environment
-    grain = set_query_grain(statement, new_env)
+    statements = []
+    if isinstance(statement, MultiSelectStatement):
+        statements = statement.selects
+    else:
+        statements = [statement]
+    for statement in statements:
+        grain = set_query_grain(statement.instantiate(environment), new_env)
 
-    return new_env, grain
+    return new_env
 
 
 def get_query_node(
@@ -529,34 +535,6 @@ def process_copy(
         target_type=statement.target_type,
     )
 
-def implicit_where_clause_selections(select:SelectStatement, environment:BoundEnvironment) -> SelectFiltering:
-
-    if not select.where_clause:
-        return SelectFiltering.NONE
-    instantiated = select.where_clause.instantiate(environment)
-    filter = set(
-        [
-            str(x.address)
-            for x in instantiated.row_arguments
-            if not x.derivation == PurposeLineage.CONSTANT
-        ]
-    )
-    query_output = set([str(z.address) for z in select.output_components])
-    delta = filter.difference(query_output)
-    if delta:
-        return [
-            x for x in instantiated.row_arguments if str(x.address) in delta
-        ]
-    return SelectFiltering.EXPLICIT
-
-    # @property
-    # def where_clause_category(self) -> SelectFiltering:
-    #     if not self.where_clause:
-    #         return SelectFiltering.NONE
-    #     elif self.implicit_where_clause_selections:
-    #         return SelectFiltering.IMPLICIT
-    #     return SelectFiltering.EXPLICIT
-
 
 def process_query(
     environment: Environment | BoundEnvironment,
@@ -565,10 +543,9 @@ def process_query(
 ) -> ProcessedQuery:
     hooks = hooks or []
 
-    environment, grain = create_statement_environment(statement, environment)
-    where_clause_category = implicit_where_clause_selections(statement, environment)
+    environment = create_statement_environment(statement, environment)
     logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with filtering {where_clause_category} with grain {grain}"
+        f"{LOGGER_PREFIX} query environment instantiated."
     )
     root_datasource= get_query_datasources(
         environment=environment,  statement=statement, hooks=hooks

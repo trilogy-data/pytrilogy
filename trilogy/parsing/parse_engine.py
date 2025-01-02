@@ -99,6 +99,8 @@ from trilogy.core.author_models import (
     Environment,
     ConceptDeclarationStatement,
     ConceptDerivation,
+    AlignItemRef,
+    AlignClauseRef
 )
 from trilogy.core.execute_models import (
     Reference,
@@ -114,7 +116,7 @@ from trilogy.core.execute_models import (
     Datasource,
     DataType,
     # Environment,
-    EnvironmentConceptDict,
+    BoundEnvironmentConceptDict,
     FilterItem,
     Grain,
     HavingClause,
@@ -253,7 +255,7 @@ def unwrap_transformation(
     else:
         return FunctionRef(
             operator=FunctionType.CONSTANT,
-            output_datatype=arg_to_datatype(input, environment),
+            output_datatype=arg_to_datatype(input),
             output_purpose=Purpose.CONSTANT,
             arguments=[input],
         )
@@ -566,6 +568,7 @@ class ParseToObjects(Transformer):
             source_value,
             (FilterItemRef, WindowItemRef, AggregateWrapperRef, FunctionRef),
         ):
+
             concept = arbitrary_to_concept(
                 source_value,
                 name=name,
@@ -629,6 +632,7 @@ class ParseToObjects(Transformer):
         lookup, namespace, name, parent = parse_concept_reference(
             name, self.environment
         )
+
         datatype = arg_to_datatype(constant, self.environment)
         concept = BoundConcept(
             name=name,
@@ -646,7 +650,6 @@ class ParseToObjects(Transformer):
         )
         if concept.metadata:
             concept.metadata.line_number = meta.line
-
         return concept
 
     @v_args(meta=True)
@@ -980,7 +983,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:
-        return AlignItem(
+        return AlignItemRef(
             alias=args[0],
             namespace=self.environment.namespace,
             concepts=[self.environment.concepts[arg].reference for arg in args[1:]],
@@ -988,30 +991,30 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def align_clause(self, meta: Meta, args) -> AlignClause:
-        return AlignClause(items=args)
+        return AlignClauseRef(items=args)
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
         selects: list[SelectStatement] = []
-        align: AlignClause | None = None
+        align: AlignClauseRef | None = None
         limit: int | None = None
-        order_by: OrderBy | None = None
-        where: WhereClause | None = None
+        order_by: OrderByRef | None = None
+        where: WhereClauseRef | None = None
         for arg in args:
             if isinstance(arg, SelectStatement):
                 selects.append(arg)
             elif isinstance(arg, Limit):
                 limit = arg.count
-            elif isinstance(arg, OrderBy):
+            elif isinstance(arg, OrderByRef):
                 order_by = arg
-            elif isinstance(arg, WhereClause):
+            elif isinstance(arg, WhereClauseRef):
                 where = arg
-            elif isinstance(arg, AlignClause):
+            elif isinstance(arg, AlignClauseRef):
                 align = arg
 
         assert align
         assert align is not None
-        base_local: EnvironmentConceptDict = selects[0].local_concepts
+        base_local: BoundEnvironmentConceptDict = selects[0].local_concepts
         for select in selects[1:]:
             for k, v in select.local_concepts.items():
                 base_local[k] = v

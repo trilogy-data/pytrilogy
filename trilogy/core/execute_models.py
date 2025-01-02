@@ -162,8 +162,8 @@ class HasUUID(ABC):
 
 
 class SelectTypeMixin(BaseModel):
-    where_clause: Union["WhereClause", None] = Field(default=None)
-    having_clause: Union["HavingClause", None] = Field(default=None)
+    where_clause: Union[WhereClause, None] = Field(default=None)
+    having_clause: Union[HavingClause, None] = Field(default=None)
 
     @property
     def output_components(self) -> List[BoundConcept]:
@@ -208,7 +208,7 @@ class BoundConcept(SelectContext, BaseModel):
     )
     lineage: Optional[Union[
             RowsetItem,
-            # MultiSelectStatement,
+            BoundMultiSelectStatement,
             Function,
             WindowItem,
             FilterItem,
@@ -757,14 +757,14 @@ class Grain(Namespaced, BaseModel):
             return self.__add__(other)
 
 
-class EnvironmentConceptDict(dict):
+class BoundEnvironmentConceptDict(dict):
     def __init__(self, *args, **kwargs) -> None:
-        super().__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.undefined: dict[str, UndefinedConcept] = {}
         self.fail_on_missing: bool = True
 
-    def duplicate(self) -> "EnvironmentConceptDict":
-        new = EnvironmentConceptDict()
+    def duplicate(self) -> "BoundEnvironmentConceptDict":
+        new = BoundEnvironmentConceptDict()
         new.update({k: v.duplicate() for k, v in self.items()})
         new.undefined = self.undefined
         new.fail_on_missing = self.fail_on_missing
@@ -800,7 +800,7 @@ class EnvironmentConceptDict(dict):
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> BoundConcept | UndefinedConcept:
         try:
-            return super(EnvironmentConceptDict, self).__getitem__(key)
+            return super(BoundEnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
             if DEFAULT_NAMESPACE + "." + key in self:
                 return self.__getitem__(DEFAULT_NAMESPACE + "." + key, line_no)
@@ -2346,11 +2346,11 @@ class BoundSelectStatement(HasUUID,  SelectTypeMixin, BaseModel):
     limit: Optional[int] = None
     meta: Metadata = Field(default_factory=lambda: Metadata())
     local_concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
+        BoundEnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=BoundEnvironmentConceptDict)
 
 
-    def validate_syntax(self, environment: Environment):
+    def validate_syntax(self, environment: BoundEnvironment):
         return True
         if self.where_clause:
             for x in self.where_clause.concept_arguments:
@@ -2505,29 +2505,30 @@ class BoundSelectStatement(HasUUID,  SelectTypeMixin, BaseModel):
         # return new_datasource
 
 
-class BoundMultiSelectStatement(HasUUID, SelectTypeMixin, Namespaced, BaseModel):
+class BoundMultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     selects: List[BoundSelectStatement]
     align: AlignClause
     namespace: str
+    derived_concepts: set[str]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
     local_concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
+        BoundEnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=BoundEnvironmentConceptDict)
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
 
     @property
-    def arguments(self) -> List[BoundSelectStatement]:
+    def arguments(self) -> List[BoundConcept]:
         output = []
         for select in self.selects:
             output += select.input_components
         return unique(output, "address")
 
     @property
-    def concept_arguments(self) -> List[ConceptRef]:
+    def concept_arguments(self) -> List[BoundConcept]:
         output = []
         for select in self.selects:
             output += select.input_components
@@ -2535,45 +2536,14 @@ class BoundMultiSelectStatement(HasUUID, SelectTypeMixin, Namespaced, BaseModel)
             output += self.where_clause.concept_arguments
         return unique(output, "address")
 
-    def get_merge_concept(self, check: Concept):
+    def get_merge_concept(self, check: BoundConcept):
         for item in self.align.items:
             if check in item.concepts_lcl:
                 return item.gen_concept(self)
         return None
 
-    def with_namespace(self, namespace: str) -> "MultiSelectStatement":
-        return MultiSelectStatement(
-            selects=[c.with_namespace(namespace) for c in self.selects],
-            align=self.align.with_namespace(namespace),
-            namespace=namespace,
-            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
-            limit=self.limit,
-            meta=self.meta,
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
-            local_concepts=EnvironmentConceptDict(
-                {k: v.with_namespace(namespace) for k, v in self.local_concepts.items()}
-            ),
-        )
 
-    def generate_derived_concepts(self, environment: Environment)-> List[ConceptRef]:
-        output:list[ConceptRef] = []
-        for item in self.align.items:
-            output.append(item.gen_concept(self, environment))
-        return output
-
-    @computed_field  # type: ignore
-    @cached_property
-    def derived_concepts(self) -> List[ConceptRef]:
-        output = []
-        for item in self.align.items:
-            output.append(item.gen_concept(self))
-        return output
-
-    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
+    def find_source(self, concept: BoundConcept, cte: CTE | UnionCTE) ->BoundConcept:
         for x in self.align.items:
             if concept.name == x.alias:
                 for c in x.concepts:
@@ -2584,7 +2554,7 @@ class BoundMultiSelectStatement(HasUUID, SelectTypeMixin, Namespaced, BaseModel)
         )
 
     @property
-    def output_components(self) -> List[ConceptRef]:
+    def output_components(self) -> List[BoundConcept]:
         output = self.derived_concepts
         for select in self.selects:
             output += select.output_components
@@ -2706,11 +2676,11 @@ class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
 
 
-def validate_concepts(v) -> EnvironmentConceptDict:
-    if isinstance(v, EnvironmentConceptDict):
+def validate_concepts(v) -> BoundEnvironmentConceptDict:
+    if isinstance(v, BoundEnvironmentConceptDict):
         return v
     elif isinstance(v, dict):
-        return EnvironmentConceptDict(
+        return BoundEnvironmentConceptDict(
             **{x: BoundConcept.model_validate(y) for x, y in v.items()}
         )
     raise ValueError
@@ -2729,8 +2699,8 @@ def validate_datasources(v) -> EnvironmentDatasourceDict:
 class BoundEnvironment(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
 
-    concepts: Annotated[EnvironmentConceptDict, PlainValidator(validate_concepts)] = (
-        Field(default_factory=EnvironmentConceptDict)
+    concepts: Annotated[BoundEnvironmentConceptDict, PlainValidator(validate_concepts)] = (
+        Field(default_factory=BoundEnvironmentConceptDict)
     )
     datasources: Annotated[
         EnvironmentDatasourceDict, PlainValidator(validate_datasources)
@@ -2938,7 +2908,7 @@ class Comparison(
     ]
     operator: ComparisonOperator
 
-    def hydrate_missing(self, concepts: EnvironmentConceptDict):
+    def hydrate_missing(self, concepts: BoundEnvironmentConceptDict):
         if isinstance(self.left, UndefinedConcept) and self.left.address in concepts:
             self.left = concepts[self.left.address]
         if isinstance(self.right, UndefinedConcept) and self.right.address in concepts:
@@ -3418,7 +3388,7 @@ class WhereClause(ConceptArgs, Namespaced, SelectContext, BaseModel):
 class HavingClause(WhereClause):
     pass
 
-    def hydrate_missing(self, concepts: EnvironmentConceptDict):
+    def hydrate_missing(self, concepts: BoundEnvironmentConceptDict):
         self.conditional.hydrate_missing(concepts)
 
 
@@ -3439,8 +3409,8 @@ class ProcessedQuery(BaseModel):
     # where_clause: Optional[WhereClause] = None
     # having_clause: Optional[HavingClause] = None
     local_concepts: Annotated[
-        EnvironmentConceptDict, PlainValidator(validate_concepts)
-    ] = Field(default_factory=EnvironmentConceptDict)
+        BoundEnvironmentConceptDict, PlainValidator(validate_concepts)
+    ] = Field(default_factory=BoundEnvironmentConceptDict)
 
     @property
     def order_by(self):
@@ -3649,6 +3619,7 @@ Expr = (
 
 
 BoundConcept.model_rebuild()
+BoundMultiSelectStatement.model_rebuild()
 Grain.model_rebuild()
 WindowItem.model_rebuild()
 WindowItemOrder.model_rebuild()

@@ -9,7 +9,6 @@ from trilogy.core.execute_models import (
     BoundConcept,
     DataType,
     ListType,
-
     MapType,
     NumericType,
     Parenthetical,
@@ -113,6 +112,13 @@ def get_attr_datatype(
         return arg_to_datatype(datatype.fields_map[lookup])
     return datatype
 
+
+def get_cast_output_type(
+    args: list[Any],
+) -> DataType:
+    return args[1]
+
+
 def validate_case_output(
     args: list[Any],
 ) -> DataType:
@@ -129,7 +135,10 @@ def validate_case_output(
         )
     return datatypes.pop()
 
-def create_struct_output(args: list[Any],) -> StructType:
+
+def create_struct_output(
+    args: list[Any],
+) -> StructType:
     zipped = dict(zip(args[::2], args[1::2]))
     types = [arg_to_datatype(x) for x in args[1::2]]
     return StructType(fields=types, fields_map=zipped)
@@ -138,7 +147,7 @@ def create_struct_output(args: list[Any],) -> StructType:
 def get_date_trunc_output(
     args: list[Any],
 ):
-    target:DatePart = args[1]
+    target: DatePart = args[1]
     if target == DatePart.YEAR:
         return DataType.DATE
     elif target == DatePart.MONTH:
@@ -153,6 +162,7 @@ def get_date_trunc_output(
         return DataType.DATETIME
     else:
         raise InvalidSyntaxException(f"Date truncation not supported for {target}")
+
 
 FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.UNNEST: FunctionConfig(
@@ -323,25 +333,25 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.DATE: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.DATE,
         arg_count=1,
     ),
     FunctionType.DATE_TRUNCATE: FunctionConfig(
         valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {DataType.DATE_PART},
-            ],
+            {
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            {DataType.DATE_PART},
+        ],
         output_purpose=Purpose.PROPERTY,
         # output_type=DataType.DATE,
         output_type_function=get_date_trunc_output,
@@ -349,170 +359,170 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.DATE_PART: FunctionConfig(
         valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {DataType.DATE_PART},
-            ],
+            {
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            {DataType.DATE_PART},
+        ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=2,
     ),
     FunctionType.DATE_ADD: FunctionConfig(
         valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {DataType.DATE_PART},
-                {DataType.INTEGER},
-            ],
+            {
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            {DataType.DATE_PART},
+            {DataType.INTEGER},
+        ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.DATE,
         arg_count=3,
     ),
     FunctionType.DATE_DIFF: FunctionConfig(
         valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {DataType.DATE_PART},
-            ],
+            {
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            {
+                DataType.DATE,
+                DataType.TIMESTAMP,
+                DataType.DATETIME,
+                DataType.STRING,
+            },
+            {DataType.DATE_PART},
+        ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=3,
     ),
     FunctionType.DATETIME: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.DATETIME,
         arg_count=1,
     ),
     FunctionType.TIMESTAMP: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.TIMESTAMP,
         arg_count=1,
     ),
     FunctionType.SECOND: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.MINUTE: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.HOUR: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.DAY: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.WEEK: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.MONTH: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.QUARTER: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.YEAR: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.DAY_OF_WEEK: FunctionConfig(
         valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
+            DataType.DATE,
+            DataType.TIMESTAMP,
+            DataType.DATETIME,
+            DataType.STRING,
+        },
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
@@ -543,18 +553,18 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.MOD: FunctionConfig(
         valid_inputs=[
-                {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-                {DataType.INTEGER},
-            ],
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            {DataType.INTEGER},
+        ],
         output_purpose=Purpose.METRIC,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.ROUND: FunctionConfig(
         valid_inputs=[
-                {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-                {DataType.INTEGER},
-            ],
+            {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
+            {DataType.INTEGER},
+        ],
         output_purpose=Purpose.METRIC,
         output_type=DataType.INTEGER,
         arg_count=2,
@@ -565,12 +575,13 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.CASE: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
-        output_type_function= validate_case_output,
+        output_type_function=validate_case_output,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.CAST: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=2,
+        output_type_function=get_cast_output_type,
     ),
     FunctionType.CONCAT: FunctionConfig(
         valid_inputs={DataType.STRING},
@@ -590,12 +601,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.STRUCT: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
-        output_type_function = create_struct_output
+        output_type_function=create_struct_output,
     ),
     FunctionType.ARRAY: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
-        output_type=ListType(type=DataType.STRING)
+        output_type=ListType(type=DataType.STRING),
     ),
     FunctionType.LENGTH: FunctionConfig(
         valid_inputs={DataType.STRING, DataType.ARRAY, DataType.MAP},
@@ -639,7 +650,7 @@ for k in FunctionType.__members__.values():
 
 
 class FunctionFactory:
-    def __init__(self, environment:Environment | None = None):
+    def __init__(self, environment: Environment | None = None):
         self.environment = environment
 
     def create_function(
@@ -663,7 +674,9 @@ class FunctionFactory:
         if args:
             if not self.environment:
                 raise ValueError("Environment required for function creation with args")
-            full_args = process_function_args(args, environment=self.environment, meta=meta)
+            full_args = process_function_args(
+                args, environment=self.environment, meta=meta
+            )
         else:
             full_args = []
         if config.output_type_function:
@@ -699,17 +712,19 @@ def create_function_derived_concept(
     environment: Environment,
 ) -> Concept:
     from trilogy.parsing.common import function_to_concept
+
     function = FunctionFactory(environment).create_function(
         args=arguments,
         operator=operator,
     )
-    
+
     return function_to_concept(
         parent=function,
         name=name,
         namespace=namespace,
         environment=environment,
     )
+
 
 def Unnest(args: list[BoundConcept], environment: BoundEnvironment) -> FunctionRef:
     return FunctionFactory(environment).create_function(
@@ -785,14 +800,16 @@ def Coalesce(args: list[BoundConcept], environment: BoundEnvironment) -> Functio
     )
 
 
-def CurrentDate(args: list[BoundConcept], environment: BoundEnvironment|None = None) -> Function:
+def CurrentDate(
+    args: list[BoundConcept], environment: BoundEnvironment | None = None
+) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.CURRENT_DATE
     )
 
 
 def CurrentDatetime(
-    args: list[BoundConcept], environment: BoundEnvironment |None = None
+    args: list[BoundConcept], environment: BoundEnvironment | None = None
 ) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.CURRENT_DATETIME
