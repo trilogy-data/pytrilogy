@@ -7,15 +7,11 @@ from trilogy import Dialects
 from trilogy.core.enums import FunctionType, Granularity, Purpose, PurposeLineage
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.execute_models import (
-    BoundConcept,
-    BoundEnvironment,
-    BoundFilterItem,
-    Grain,
+
     LooseConceptList,
-    BoundSubselectComparison,
 )
-from trilogy.core.core_models import DataType
-from trilogy.core.author_models import SelectStatement, ShowStatement
+from trilogy.core.common_models import DataType
+from trilogy.authoring import     Environment, SelectStatement, ShowStatement, Grain, SubselectComparison, FilterItem, Concept
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -113,7 +109,7 @@ def test_constants(duckdb_engine: Executor, expected_results):
         duckdb_engine.environment.concepts["usd_conversion"].granularity
         == Granularity.SINGLE_ROW
     )
-    # parent_arg: BoundConcept = [
+    # parent_arg: Concept = [
     #     x for x in scaled_metric.lineage.arguments if x.name == "total_count"
     # ][0]
     # assert len(parent_arg.lineage.arguments[0].grain.components) == 2
@@ -347,8 +343,8 @@ select
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, BoundFilterItem)
-    assert isinstance(agg_parent.lineage.where.conditional, BoundSubselectComparison)
+    assert isinstance(agg_parent.lineage, FilterItem)
+    assert isinstance(agg_parent.lineage.where.conditional, SubselectComparison)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -379,7 +375,7 @@ select
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, BoundFilterItem)
+    assert isinstance(agg_parent.lineage, FilterItem)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -701,7 +697,7 @@ order by
 
 
 def test_filtered_datasource():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=BoundEnvironment())
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
 
     test = """key orid int;
 key store string;
@@ -738,7 +734,7 @@ select
 
 
 def test_cte_filter_promotion():
-    executor: Executor = Dialects.DUCK_DB.default_executor(environment=BoundEnvironment())
+    executor: Executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     test = """key orid int;
 key store string;
 key customer int;
@@ -818,7 +814,7 @@ order by
 
 
 def test_duckdb_load():
-    env = BoundEnvironment(working_path=Path(__file__).parent)
+    env = Environment(working_path=Path(__file__).parent)
     exec = Dialects.DUCK_DB.default_executor(environment=env)
 
     results = exec.execute_query(

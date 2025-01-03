@@ -10,20 +10,9 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
 from trilogy.core.execute_models import (
-    BoundColumnAssignment,
-    BoundComparison,
-    BoundConcept,
-    BoundDatasource,
     DataType,
-    BoundFilterItem,
-    BoundFunction,
-
-    BoundOrderItem,
-    BoundWhereClause,
-    BoundWindowItem,
-    BoundFunction,
 )
-from trilogy.core.author_models import Concept, Function, OrderItem, WindowItem, Comparison, WhereClause, FilterItem, Datasource, ColumnAssignment, Grain
+from trilogy.authoring import Concept, Function, OrderItem, WindowItem, Comparison, WhereClause, FilterItem, Datasource, ColumnAssignment, Grain
 
 
 @fixture(scope="session")

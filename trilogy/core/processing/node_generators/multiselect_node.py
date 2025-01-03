@@ -10,6 +10,7 @@ from trilogy.core.execute_models import (
     BoundEnvironment,
     BoundGrain,
     BoundWhereClause,
+    BoundMultiSelectLineage
 )
 from trilogy.core.author_models import MultiSelectStatement
 from trilogy.core.processing.node_generators.common import resolve_join_order
@@ -61,26 +62,17 @@ def gen_multiselect_node(
     history: History | None = None,
     conditions: BoundWhereClause | None = None,
 ) -> MergeNode | None:
-    if not isinstance(concept.lineage, MultiSelectStatement):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
-        )
-        return None
-    lineage: MultiSelectStatement = concept.lineage
+    from trilogy.core.query_processor import get_query_node
+    if not isinstance(concept.lineage,  BoundMultiSelectLineage):
+        raise SyntaxError(f"Cannot generate multiselect node for non-multiselect concept lineage {concept.lineage}")
+    lineage:  BoundMultiSelectLineage = concept.lineage
 
     base_parents: List[StrategyNode] = []
     partial = []
     for select in lineage.selects:
-        snode: StrategyNode = source_concepts(
-            mandatory_list=select.output_components,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            history=history,
-            conditions=select.where_clause,
-        )
+        snode = get_query_node(environment, select)
         if not snode:
-            logger.info(
+            raise ValueError(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
             )
             return None
@@ -95,8 +87,9 @@ def gen_multiselect_node(
                 snode.conditions = select.having_clause.conditional
         merge_concepts = []
         for x in [*snode.output_concepts]:
-            merge = lineage.get_merge_concept(x)
-            if merge:
+            merge_name = lineage.get_merge_concept(x, environment)
+            if merge_name:
+                merge = environment.concepts[merge_name]
                 snode.output_concepts.append(merge)
                 merge_concepts.append(merge)
         # clear cache so QPS

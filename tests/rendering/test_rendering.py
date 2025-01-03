@@ -29,6 +29,7 @@ from trilogy.core.author_models import (
     AlignItem,
     BoundAlignClause,
     ColumnAssignment,
+       Grain,
 )
 from trilogy.core.execute_models import (
     Address,
@@ -43,7 +44,7 @@ from trilogy.core.execute_models import (
     BoundDatasource,
     DataType,
     BoundFunction,
-    Grain,
+ 
     ImportStatement,
     ListType,
     ListWrapper,

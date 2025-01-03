@@ -1,7 +1,7 @@
 from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
-from trilogy.core.core_models import arg_to_purpose, args_to_output_purpose
+from trilogy.core.common_models import arg_to_purpose, args_to_output_purpose
 from trilogy.core.execute_models import (
     BoundComparison,
     BoundDatasource,

@@ -120,6 +120,10 @@ class Concrete(ABC):
 def address_with_namespace(address: str, namespace: str) -> str:
     if address.split(".", 1)[0] == DEFAULT_NAMESPACE:
         return f"{namespace}.{address.split('.',1)[1]}"
+    if '.' in address:
+        current = address.rsplit(".", 1)[0]
+        if current == namespace:
+            return address
     return f"{namespace}.{address}"
 
 class RawColumnExpr(BaseModel):

@@ -12,7 +12,7 @@ from trilogy.core.execute_models import (
     DataType,
     BoundEnvironment,
     BoundFunction,
-    Grain,
+    BoundGrain,
     QueryDatasource,
 )
 from trilogy.core.optimization import (
@@ -131,13 +131,13 @@ def test_basic_pushdown(test_environment: BoundEnvironment, test_environment_gra
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
         output_columns=[],
         parent_ctes=[],
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map=cte_source_map,
         existence_source_map={},
     )
@@ -148,7 +148,7 @@ def test_basic_pushdown(test_environment: BoundEnvironment, test_environment_gra
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[parent.source],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
@@ -157,7 +157,7 @@ def test_basic_pushdown(test_environment: BoundEnvironment, test_environment_gra
         condition=BoundComparison(
             left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
         ),
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map=cte_source_map,
         existence_source_map={},
     )
@@ -182,12 +182,12 @@ def test_invalid_pushdown(test_environment: BoundEnvironment, test_environment_g
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
         output_columns=[],
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map=cte_source_map,
     )
     cte1 = CTE(
@@ -196,13 +196,13 @@ def test_invalid_pushdown(test_environment: BoundEnvironment, test_environment_g
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
         output_columns=[],
         parent_ctes=[parent],
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map=cte_source_map,
         existence_source_map={},
     )
@@ -213,7 +213,7 @@ def test_invalid_pushdown(test_environment: BoundEnvironment, test_environment_g
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
@@ -222,7 +222,7 @@ def test_invalid_pushdown(test_environment: BoundEnvironment, test_environment_g
         condition=BoundComparison(
             left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
         ),
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map=cte_source_map,
         existence_source_map={},
     )
@@ -247,12 +247,12 @@ def test_invalid_aggregate_pushdown(
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
         output_columns=[],
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map=cte_source_map,
     )
 
@@ -262,7 +262,7 @@ def test_invalid_aggregate_pushdown(
             input_concepts=[outputs[0]],
             output_concepts=[outputs[0]],
             datasources=[datasource],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={outputs[0].address: {datasource}},
         ),
@@ -278,7 +278,7 @@ def test_invalid_aggregate_pushdown(
             right=12,
             operator=ComparisonOperator.EQ,
         ),
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map=cte_source_map,
         existence_source_map={},
     )
@@ -303,7 +303,7 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
             input_concepts=[product_id, category_id],
             output_concepts=[product_id, category_id],
             datasources=[products],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={
                 product_id.address: {products},
@@ -312,7 +312,7 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
         ),
         output_columns=[],
         condition=BoundComparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map={
             product_id.address: [products.name],
             category_id.address: [products.name],
@@ -324,7 +324,7 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
             input_concepts=[category_id, category_name],
             output_concepts=[category_id, category_name],
             datasources=[category_ds],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={
                 category_id.address: {category_ds},
@@ -332,7 +332,7 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
             },
         ),
         output_columns=[],
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map={
             category_id.address: [category_ds.name],
             category_name.address: [category_ds.name],
@@ -344,7 +344,7 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
             input_concepts=[product_id, category_id, category_name],
             output_concepts=[product_id, category_name],
             datasources=[parent2.source, parent1.source],
-            grain=Grain(),
+            grain=BoundGrain(),
             joins=[],
             source_map={
                 product_id.address: {parent1.source},
@@ -363,7 +363,7 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
             ),
             operator=BooleanOperator.AND,
         ),
-        grain=Grain(),
+        grain=BoundGrain(),
         source_map={
             product_id.address: [parent1.name],
             category_name.address: [parent2.name],

@@ -2,7 +2,7 @@
 from os.path import dirname
 
 from trilogy.core.enums import Modifier
-from trilogy.core.execute_models import BoundEnvironment
+from trilogy.authoring import Environment
 from trilogy.parser import parse
 from trilogy.parsing.render import render_environment
 
@@ -17,7 +17,7 @@ select
     avg(core.post_length)-> user_avg_post_length
 ORDER BY
     user_post_count desc
- limit 10;
+ limit 10;st
 
  
  auto user_badge_count<-count(core.badge_id) by core.user_id;
@@ -45,13 +45,13 @@ import so_concepts.circular_dep as c2;"""
 
 
 def test_select():
-    env, parsed = parse(QUERY, environment=BoundEnvironment(working_path=dirname(__file__)))
+    env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     rendered = render_environment(env)
     assert rendered.startswith("import concepts.core as core;")
 
 
 def test_import_violation():
-    env = BoundEnvironment(working_path=dirname(__file__))
+    env = Environment(working_path=dirname(__file__))
 
     # dupe additions result in nothing
     env.add_file_import(path="so_concepts.circular", alias="c1")
@@ -63,7 +63,7 @@ def test_import_violation():
 
 
 def test_circular_base():
-    env = BoundEnvironment(working_path=dirname(__file__))
+    env = Environment(working_path=dirname(__file__))
 
     # first import
 
@@ -99,11 +99,8 @@ def test_circular_base():
 
 def test_circular():
     env, parsed = parse(
-        CIRC_QUERY, environment=BoundEnvironment(working_path=dirname(__file__))
+        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
     )
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
     assert env.concepts["c1.id"]
     assert env.concepts["c2.id"]
     validated = False
@@ -129,7 +126,7 @@ def test_circular():
 
 def test_partial():
     env, parsed = parse(
-        CIRC_QUERY, environment=BoundEnvironment(working_path=dirname(__file__))
+        CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
     )
     # raise ValueError(env.concepts.keys())
     p_candidate = [c for c in env.datasources["c1.posts"].columns if c.alias == "id2"]

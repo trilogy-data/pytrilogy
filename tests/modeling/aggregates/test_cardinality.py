@@ -1,8 +1,8 @@
 from trilogy import Executor, parse
-from trilogy.core.execute_models import BoundEnvironment, Grain
+from trilogy.authoring import Environment, Grain
 
 
-def test_key_fetch_cardinality(test_environment: BoundEnvironment, test_executor: Executor):
+def test_key_fetch_cardinality(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 auto aspen_store <- filter stores.name where stores.name = 'aspen';
@@ -20,7 +20,7 @@ SELECT
     assert ("aspen", "aspen") in results
 
 
-def test_key_count_cardinality(test_environment: BoundEnvironment, test_executor: Executor):
+def test_key_count_cardinality(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 SELECT
@@ -36,7 +36,7 @@ SELECT
 
 
 def test_filtered_key_count_cardinality(
-    test_environment: BoundEnvironment, test_executor: Executor
+    test_environment: Environment, test_executor: Executor
 ):
     # test keys
     test_select = """
@@ -57,7 +57,7 @@ SELECT
     assert results[0] == (3, 2)
 
 
-def test_aggregates(test_environment: BoundEnvironment, test_executor: Executor):
+def test_aggregates(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 SELECT
@@ -72,7 +72,7 @@ SELECT
     assert results[0] == (7,)
 
 
-def test_computed(test_environment: BoundEnvironment, test_executor: Executor):
+def test_computed(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 SELECT

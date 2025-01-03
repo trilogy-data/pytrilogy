@@ -1,13 +1,13 @@
 from trilogy import Dialects
 from trilogy.core.enums import Granularity, Purpose, PurposeLineage
-from trilogy.core.execute_models import BoundWindowItem, Grain
-from trilogy.core.author_models import SelectStatement, WindowItem
+from trilogy.core.author_models import SelectStatement, WindowItem, Grain
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from trilogy.core.query_processor import get_query_datasources, process_query
+from trilogy.core.execute_models import BoundGrain
 from trilogy.dialect import duckdb
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
@@ -57,15 +57,14 @@ limit 100
 
     """
     env, parsed = parse(declarations)
+    assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
     env = env.instantiate()
     select: SelectStatement = parsed[-1]
-
-    assert isinstance(env.concepts["user_rank"].lineage, BoundWindowItem)
 
     ds = search_concepts(
         [
             env.concepts["local.post_count"].with_grain(
-                Grain(components={"local.user_id"})
+                BoundGrain(components={"local.user_id"})
             ),
             env.concepts["user_id"],
         ],
@@ -132,16 +131,18 @@ limit 100
 
     """
     env, parsed = parse(declarations)
+    assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)   
+    assert env.concepts["rank_derived"].keys == {
+            env.concepts["user_id"].address,
+        } 
     env = env.instantiate()
     select: SelectStatement = parsed[-1]
 
-    assert env.concepts["rank_derived"].keys == {
-        env.concepts["user_id"].address,
-    }
+    
     assert concept_to_relevant_joins(
         [env.concepts[x] for x in ["user_id", "rank_derived"]]
     ) == [env.concepts["user_id"]]
-    assert isinstance(env.concepts["user_country_rank"].lineage, BoundWindowItem)
+    
 
     get_query_datasources(environment=env, statement=select)
     # raise ValueError
@@ -182,7 +183,7 @@ order by x asc;"""
     mat_x =materialized_env.concepts[x.address] 
     ds = search_concepts(
         [
-            materialized_env.concepts[z.address].with_grain(mat_x),
+            materialized_env.concepts[z.address].with_grain(BoundGrain(components=set([mat_x.address]))),
             mat_x,
         ],
         environment=materialized_env,

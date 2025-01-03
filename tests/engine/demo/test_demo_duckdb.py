@@ -1,23 +1,22 @@
 from trilogy import Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.execute_models import (
-    BoundColumnAssignment,
-    BoundConcept,
-    BoundDatasource,
+from trilogy.authoring import (
+    ColumnAssignment,
+    Concept,
+    Datasource,
     DataType,
-    BoundEnvironment,
-    BoundFunction,
+    Environment,
+    Function,
     Grain,
-    SelectContext,
 )
 
 
-def setup_titanic(env: BoundEnvironment):
+def setup_titanic(env: Environment):
     namespace = "passenger"
-    id = BoundConcept(
+    id = Concept(
         name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    age = BoundConcept(
+    age = Concept(
         name="age",
         namespace=namespace,
         datatype=DataType.INTEGER,
@@ -27,7 +26,7 @@ def setup_titanic(env: BoundEnvironment):
         modifiers=[Modifier.NULLABLE],
     )
 
-    name = BoundConcept(
+    name = Concept(
         name="name",
         namespace=namespace,
         datatype=DataType.STRING,
@@ -36,7 +35,7 @@ def setup_titanic(env: BoundEnvironment):
         grain=Grain(components=[id]),
     )
 
-    pclass = BoundConcept(
+    pclass = Concept(
         name="class",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -44,7 +43,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    survived = BoundConcept(
+    survived = Concept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -52,7 +51,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    fare = BoundConcept(
+    fare = Concept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -60,7 +59,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    embarked = BoundConcept(
+    embarked = Concept(
         name="embarked",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -68,7 +67,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    cabin = BoundConcept(
+    cabin = Concept(
         name="cabin",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -76,7 +75,7 @@ def setup_titanic(env: BoundEnvironment):
         keys=(id.address,),
         grain=Grain(components=[id]),
     )
-    ticket = BoundConcept(
+    ticket = Concept(
         name="ticket",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -85,16 +84,16 @@ def setup_titanic(env: BoundEnvironment):
         grain=Grain(components=[id]),
     )
 
-    last_name = BoundConcept(
+    last_name = Concept(
         name="last_name",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        lineage=BoundFunction(
+        lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                BoundFunction(
+                Function(
                     operator=FunctionType.SPLIT,
                     arguments=[name, ","],
                     output_datatype=DataType.ARRAY,
@@ -123,19 +122,19 @@ def setup_titanic(env: BoundEnvironment):
         env.add_concept(x)
 
     env.add_datasource(
-        BoundDatasource(
+        Datasource(
             name="raw_data",
             address="raw_titanic",
             columns=[
-                BoundColumnAssignment(alias="passengerid", concept=id),
-                BoundColumnAssignment(alias="age", concept=age),
-                BoundColumnAssignment(alias="survived", concept=survived),
-                BoundColumnAssignment(alias="pclass", concept=pclass),
-                BoundColumnAssignment(alias="name", concept=name),
-                BoundColumnAssignment(alias="fare", concept=fare),
-                BoundColumnAssignment(alias="cabin", concept=cabin),
-                BoundColumnAssignment(alias="embarked", concept=embarked),
-                BoundColumnAssignment(alias="ticket", concept=ticket),
+                ColumnAssignment(alias="passengerid", concept=id),
+                ColumnAssignment(alias="age", concept=age),
+                ColumnAssignment(alias="survived", concept=survived),
+                ColumnAssignment(alias="pclass", concept=pclass),
+                ColumnAssignment(alias="name", concept=name),
+                ColumnAssignment(alias="fare", concept=fare),
+                ColumnAssignment(alias="cabin", concept=cabin),
+                ColumnAssignment(alias="embarked", concept=embarked),
+                ColumnAssignment(alias="ticket", concept=ticket),
             ],
             grain=Grain(components=[id]),
         ),
@@ -145,7 +144,7 @@ def setup_titanic(env: BoundEnvironment):
 
 def test_demo_e2e(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -166,7 +165,7 @@ select
 
 def test_demo_aggregates(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -219,7 +218,7 @@ select
 
 def test_demo_filter(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -252,7 +251,7 @@ def test_demo_filter(engine):
 
 def test_demo_const(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -263,7 +262,7 @@ def test_demo_const(engine):
 
 def test_demo_rowset(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """rowset survivors<- select 
@@ -297,7 +296,7 @@ limit 5;"""
 
 def test_demo_duplication(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
@@ -321,7 +320,7 @@ limit 5;"""
 
 def test_demo_suggested_answer(engine):
     executor: Executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """auto survivor <- filter passenger.id 
@@ -349,7 +348,7 @@ order by passenger.decade desc
 
 def test_demo_suggested_answer_failing(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -365,8 +364,7 @@ order by passenger.class desc
     env.parse(test)
     srate = env.concepts["survival_rate_auto"]
     assert srate.lineage
-    assert isinstance(srate.lineage, BoundFunction)
-    assert isinstance(srate.lineage, SelectContext)
+    assert isinstance(srate.lineage, Function)
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 3
@@ -396,7 +394,7 @@ def test_demo_suggested_answer_failing_intentional(engine):
     But is a good test case - can we resolve
     arbitrary counts in the same query?"""
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -417,7 +415,7 @@ order by passenger.class desc
 
 def test_demo_basic(engine):
     executor = engine
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     test = """
@@ -454,7 +452,7 @@ ORDER BY
     )
 
 
-def test_merge_basic(engine, base_test_env: BoundEnvironment):
+def test_merge_basic(engine, base_test_env: Environment):
     executor = engine
     executor.environment = base_test_env
 
@@ -475,7 +473,7 @@ where
     assert len(results) == 17
 
 
-def test_merge(base_test_env: BoundEnvironment, engine):
+def test_merge(base_test_env: Environment, engine):
     executor = engine
     executor.environment = base_test_env
     rich_name = base_test_env.concepts["rich_info.full_name"]
@@ -500,7 +498,7 @@ ORDER BY
     assert len(results) == 8
 
 
-def test_demo_rowset_two(base_test_env: BoundEnvironment, engine):
+def test_demo_rowset_two(base_test_env: Environment, engine):
     executor = engine
     executor.environment = base_test_env
     cmd = """with survivors as

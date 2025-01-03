@@ -24,7 +24,6 @@ from trilogy.utility import unique
 def resolve_function_parent_concepts(
     concept: BoundConcept, environment: BoundEnvironment
 ) -> List[BoundConcept]:
-    print(concept.derivation)
     if concept.derivation == PurposeLineage.AGGREGATE:
         base: list[BoundConcept] = []
         if not concept.grain.abstract:

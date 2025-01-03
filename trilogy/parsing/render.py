@@ -24,6 +24,7 @@ from trilogy.core.author_models import (BoundAlignClause,
                                        RowsetDerivationStatement,
                                        SelectItem,
                                        ConceptRef,
+                                       Grain,
                                        SelectStatement)
 from trilogy.core.execute_models import (
     Address,
@@ -39,7 +40,6 @@ from trilogy.core.execute_models import (
     BoundEnvironment,
     BoundFilterItem,
     BoundFunction,
-    Grain,
     ImportStatement,
     ListType,
     ListWrapper,

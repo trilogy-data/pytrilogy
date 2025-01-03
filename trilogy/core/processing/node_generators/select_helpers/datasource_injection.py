@@ -13,13 +13,14 @@ from trilogy.core.execute_models import (
     FunctionType,
     BoundParenthetical,
 )
+from trilogy.core.author_models import Comparison, Conditional, Parenthetical, Function, Concept, ConceptRef
 
 # Define a generic type that ensures start and end are the same type
 T = TypeVar("T", int, date, datetime)
 
 
 def reduce_expression(
-    var: BoundConcept, group_tuple: list[tuple[ComparisonOperator, T]]
+    var: BoundConcept | Concept, group_tuple: list[tuple[ComparisonOperator, T]]
 ) -> bool:
     # Track ranges
     lower_check: T
@@ -95,27 +96,28 @@ def reduce_expression(
 
 
 def simplify_conditions(
-    conditions: list[BoundComparison | BoundConditional | BoundParenthetical],
+    conditions: list[BoundComparison | BoundConditional | BoundParenthetical | Comparison | Conditional | Parenthetical],
 ) -> bool:
     # Group conditions by variable
     grouped: dict[BoundConcept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
         defaultdict(list)
     )
     for condition in conditions:
-        if not isinstance(condition, BoundComparison):
+        if not isinstance(condition, (Comparison, BoundComparison)):
             return False
         if not isinstance(
-            condition.left, (int, date, datetime, BoundFunction)
-        ) and not isinstance(condition.right, (int, date, datetime, BoundFunction)):
+            condition.left, (int, date, datetime, BoundFunction, Function)
+        ) and not isinstance(condition.right, (int, date, datetime, BoundFunction, Function)):
             return False
-        if not isinstance(condition.left, BoundConcept) and not isinstance(
-            condition.right, BoundConcept
+        if not isinstance(condition.left, (BoundConcept, Concept,)) and not isinstance(
+            condition.right, (BoundConcept, Concept)
         ):
             return False
         vars = [condition.left, condition.right]
-        concept = [x for x in vars if isinstance(x, BoundConcept)][0]
-        comparison = [x for x in vars if not isinstance(x, BoundConcept)][0]
-        if isinstance(comparison, BoundFunction):
+        concept = [x for x in vars if isinstance(x, (BoundConcept, Concept))][0]
+        comparison = [x for x in vars if not isinstance(x, (BoundConcept, Concept))][0]
+        if isinstance(comparison, (BoundFunction, Function)):
+          
             if not comparison.operator == FunctionType.CONSTANT:
                 return False
             first_arg = comparison.arguments[0]
@@ -190,6 +192,7 @@ def get_union_sources(datasources: list[BoundDatasource], concepts: list[BoundCo
     final: list[list[BoundDatasource]] = []
     for _, dses in assocs.items():
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
+
         if simplify_conditions(conditions):
             final.append(dses)
     return final

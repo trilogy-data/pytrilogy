@@ -117,7 +117,7 @@ from trilogy.core.execute_models import (
     Metadata,
 
 )
-from trilogy.core.core_models import (
+from trilogy.core.common_models import (
         NumericType,
             Limit,
     dict_to_map_wrapper,
@@ -1289,7 +1289,7 @@ class ParseToObjects(Transformer):
         return set(args[0])
 
     def aggregate_all(self, args):
-        return [self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]]
+        return [ConceptRef(address = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}")]
 
     def aggregate_functions(self, args):
         if len(args) == 2:
@@ -1504,7 +1504,7 @@ class ParseToObjects(Transformer):
                 processed = args[0]
             else:
                 raise SyntaxError(f"Invalid cast type {args[1]}")
-            self.function_factory.create_function(
+            return self.function_factory.create_function(
                 [processed], FunctionType.CONSTANT, meta
             )
         return self.function_factory.create_function(args, FunctionType.CAST, meta)

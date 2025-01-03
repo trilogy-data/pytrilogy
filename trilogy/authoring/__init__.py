@@ -1,6 +1,5 @@
 from trilogy.core.author_models import (
     Concept,
-    Grain,
     Comparison,
     Datasource,
     AggregateWrapper,
@@ -11,8 +10,15 @@ from trilogy.core.author_models import (
     OrderItem,
     WindowItem,
     Environment,
+    SelectStatement,
+    PersistStatement,
+    MultiSelectStatement,
+    ShowStatement,
+    Grain,
+    Parenthetical,
+    SubselectComparison,
 )
-from trilogy.core.core_models import DataType, Purpose
+from trilogy.core.common_models import DataType, Purpose
 from trilogy.core.functions import create_function_derived_concept
 
 
@@ -25,6 +31,7 @@ __all__ = [
     "Datasource",
     "AggregateWrapper",
     "Function",
+    "Parenthetical",
     "WhereClause",
     "ColumnAssignment",
     "FilterItem",
@@ -32,4 +39,8 @@ __all__ = [
     "WindowItem",
     "DataType",
     "Purpose",
+    "SelectStatement",
+    "PersistStatement",
+    "MultiSelectStatement",
+    "ShowStatement",
 ]

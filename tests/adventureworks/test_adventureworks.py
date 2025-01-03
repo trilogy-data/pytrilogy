@@ -5,11 +5,8 @@ import pytest
 
 from trilogy import Executor
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.author_models import SelectStatement
+from trilogy.core.author_models import SelectStatement, Grain, Concept, Environment
 from trilogy.core.execute_models import (
-    BoundConcept,
-    BoundEnvironment,
-    Grain,
     ProcessedQuery,
     ProcessedQueryPersist,
     QueryDatasource,
@@ -22,7 +19,7 @@ from trilogy.parser import parse
 
 
 @pytest.mark.adventureworks
-def test_parsing(environment: BoundEnvironment):
+def test_parsing(environment: Environment):
     with open(
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -32,7 +29,7 @@ def test_parsing(environment: BoundEnvironment):
 
 
 @pytest.mark.adventureworks_execution
-def test_finance_queries(adventureworks_engine: Executor, environment: BoundEnvironment):
+def test_finance_queries(adventureworks_engine: Executor, environment: Environment):
     with open(
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -50,7 +47,7 @@ def test_finance_queries(adventureworks_engine: Executor, environment: BoundEnvi
 
 
 @pytest.mark.adventureworks
-def test_query_datasources(environment: BoundEnvironment):
+def test_query_datasources(environment: Environment):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -134,12 +131,12 @@ def recurse_datasource(parent: QueryDatasource, depth=0):
             recurse_datasource(x, depth + 1)
 
 
-def list_to_address(clist: list[BoundConcept]) -> set[str]:
+def list_to_address(clist: list[Concept]) -> set[str]:
     return set([c.address for c in clist])
 
 
 @pytest.mark.adventureworks
-def test_two_properties(environment: BoundEnvironment):
+def test_two_properties(environment: Environment):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"
     ) as f:
@@ -187,7 +184,7 @@ def test_two_properties(environment: BoundEnvironment):
 
 
 @pytest.mark.adventureworks
-def test_grain(environment: BoundEnvironment):
+def test_grain(environment: Environment):
     from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
     with open(
@@ -222,7 +219,7 @@ def test_grain(environment: BoundEnvironment):
 
 
 @pytest.mark.adventureworks
-def test_group_to_grain(environment: BoundEnvironment):
+def test_group_to_grain(environment: Environment):
     from trilogy.core.processing.concept_strategies_v3 import search_concepts
 
     with open(
@@ -265,7 +262,7 @@ def test_group_to_grain(environment: BoundEnvironment):
 
 
 @pytest.mark.adventureworks
-def test_two_properties_query(environment: BoundEnvironment):
+def test_two_properties_query(environment: Environment):
     from trilogy.core.processing.concept_strategies_v3 import search_concepts
     from trilogy.core.processing.node_generators import gen_group_node
 
@@ -301,7 +298,7 @@ def test_two_properties_query(environment: BoundEnvironment):
 
 @pytest.mark.adventureworks_execution
 def test_online_sales_queries(
-    adventureworks_engine: Executor, environment: BoundEnvironment
+    adventureworks_engine: Executor, environment: Environment
 ):
     with open(
         join(dirname(__file__), "online_sales_queries.preql"), "r", encoding="utf-8"

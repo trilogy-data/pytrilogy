@@ -11,7 +11,7 @@ from trilogy.core.enums import (
     PurposeLineage,
     WindowType,
 )
-from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
+from trilogy.core.common_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
     BoundAggregateWrapper,
     BoundConcept,
@@ -64,9 +64,7 @@ def process_function_args(
         if isinstance(arg, ConceptRef):
             final.append(environment.concepts[arg.address])
         elif isinstance(arg, Parenthetical):
-            print(arg.content)
             processed = process_function_args([arg.content], meta, environment) 
-            print(processed)
             final.append(
                 Function(
                     operator=FunctionType.PARENTHETICAL,
@@ -82,7 +80,7 @@ def process_function_args(
                 arg.operator not in FunctionClass.AGGREGATE_FUNCTIONS.value
                 and arg.operator != FunctionType.UNNEST
             ):
-                final.append(arg.instantiate(environment))
+                final.append(arg)
                 continue
             id_hash = string_to_hash(str(arg))
             concept = function_to_concept(
@@ -204,12 +202,12 @@ def function_to_concept(
 ) -> Concept:
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
-    concrete = parent.instantiate(environment) if isinstance(parent, Function) else parent
-    for x in concrete.arguments:
-        pkeys += [
-            x
-            for x in concrete.concept_arguments
-        ]
+    concrete_concepts = [environment.concepts[x.address] for x in parent.concept_arguments]
+    pkeys += [
+        x
+        for x in concrete_concepts
+        if not x.derivation == PurposeLineage.CONSTANT
+    ]
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
@@ -273,27 +271,27 @@ def filter_item_to_concept(
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    concrete = parent.instantiate(environment)
-    modifiers = get_upstream_modifiers(concrete.content.concept_arguments, environment=environment)
-    granularity = Granularity.SINGLE_ROW if concrete.content.grain == Granularity.SINGLE_ROW else Granularity.MULTI_ROW
+    concrete_content = environment.concepts[parent.content.address]
+    modifiers = get_upstream_modifiers(concrete_content.concept_arguments, environment=environment)
+    granularity = Granularity.SINGLE_ROW if concrete_content.granularity == Granularity.SINGLE_ROW else Granularity.MULTI_ROW
     return Concept(
         name=name,
-        datatype=concrete.content.datatype,
+        datatype=concrete_content.datatype,
         purpose=Purpose.PROPERTY,
         lineage=parent,
         metadata=fmetadata,
         namespace=namespace,
         # filtered copies cannot inherit keys
         keys=(
-            concrete.content.keys
-            if concrete.content.purpose == Purpose.PROPERTY
+            concrete_content.keys
+            if concrete_content.purpose == Purpose.PROPERTY
             else {
-                concrete.content.address,
+                concrete_content.address,
             }
         ),
         grain=(
-            concrete.content.grain
-            if concrete.content.purpose == Purpose.PROPERTY
+            concrete_content.grain
+            if concrete_content.purpose == Purpose.PROPERTY
             else Grain()
         ),
         modifiers=modifiers,
@@ -305,21 +303,22 @@ def window_item_to_concept(
     parent: WindowItem,
     name: str,
     namespace: str,
-    environment: BoundEnvironment,
+    environment: Environment,
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
     fmetadata = metadata or Metadata()
-    concrete = parent.instantiate(environment)
-    local_purpose, keys = get_purpose_and_keys(environment, purpose, (concrete.content,))
-    if concrete.order_by:
-        grain = concrete.over + [concrete.content.output]
-        for item in concrete.order_by:
-            grain += [item.expr]
-    else:
-        grain = concrete.over + [concrete.content.output]
-    modifiers = get_upstream_modifiers(concrete.content.concept_arguments, environment=environment)
-    datatype = concrete.content.datatype
+    print(parent.content)
+    concrete_over = [environment.concepts[x.address] for x in parent.over]
+    concrete_content = environment.concepts[parent.content.address]
+    print(concrete_content)
+    local_purpose, keys = get_purpose_and_keys(environment, purpose, (concrete_content,))
+    grain = concrete_over + [concrete_content]
+    if parent.order_by:
+        concrete_order_by = [environment.concepts[x.expr.address] for x in parent.order_by]
+        grain += concrete_order_by
+    modifiers = get_upstream_modifiers([concrete_content], environment=environment)
+    datatype = concrete_content.datatype
     if parent.type in (
         WindowType.RANK,
         WindowType.ROW_NUMBER,
@@ -327,7 +326,7 @@ def window_item_to_concept(
         WindowType.COUNT_DISTINCT,
     ):
         datatype = DataType.INTEGER
-
+    print(keys)
     return Concept(
         name=name,
         datatype=datatype,
@@ -347,28 +346,30 @@ def agg_wrapper_to_concept(
     namespace: str,
     name: str,
     metadata: Metadata | None = None,
-    environment: BoundEnvironment | None = None,
+    environment: Environment | None = None,
 ) -> Concept:
-    concrete = parent.instantiate(environment)
+    concrete_by = [environment.concepts[x.address] for x in parent.by]
     _, keys = get_purpose_and_keys(
         environment,
-        Purpose.METRIC, tuple(x for x in concrete.by) if parent.by else None
+        Purpose.METRIC, tuple(x for x in concrete_by ) if parent.by else None
     )
     # anything grouped to a grain should be a property
     # at that grain
     fmetadata = metadata or Metadata()
-    aggfunction = concrete.function
-    modifiers = get_upstream_modifiers(concrete.concept_arguments, environment=environment)
-    granularity = Granularity.SINGLE_ROW if all(x.granularity == Granularity.SINGLE_ROW for x in concrete.by) else Granularity.MULTI_ROW
+    aggfunction = parent.function
+    concept_arguments = [environment.concepts[x.address] for x in parent.concept_arguments]
+    modifiers = get_upstream_modifiers(concept_arguments, environment=environment)
+    granularity = Granularity.SINGLE_ROW if all(x.granularity  in(Granularity.SINGLE_ROW, Granularity.ALL_ROWS) for x in concrete_by) else Granularity.MULTI_ROW
+    grain = Grain.from_concepts([x.address for x in concrete_by], environment) if concrete_by else Grain()
     out = Concept(
         name=name,
         datatype=aggfunction.output_datatype,
         purpose=Purpose.METRIC,
         metadata=fmetadata,
         lineage=parent,
-        grain=Grain(components=[x.address for x in concrete.by]) if concrete.by else Grain(),
+        grain=grain,
         namespace=namespace,
-        keys=set([x.address for x in concrete.by]) if concrete.by else keys,
+        keys=grain.components,
         modifiers=modifiers,
         granularity = granularity
     )

@@ -5,16 +5,12 @@ from trilogy import Dialects, parse
 from trilogy.core.enums import Granularity, Purpose
 from trilogy.core.functions import CurrentDatetime
 from trilogy.core.execute_models import (
-    BoundConcept,
-    DataType,
-    BoundEnvironment,
-    BoundFunction,
     ProcessedQuery,
 )
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.author_models import Environment, Concept
+from trilogy.authoring import Function, Concept, Environment, DataType
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.core.author_models import SelectItem
@@ -26,6 +22,7 @@ ENVIRONMENT_CONCEPTS = [
         datatype=DataType.DATETIME,
         purpose=Purpose.CONSTANT,
         lineage=CurrentDatetime([]),
+        granularity=Granularity.SINGLE_ROW,
     )
 ]
 
@@ -41,7 +38,7 @@ def test_sane_rendering():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
+        sql, environment=Environment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
     local_static = env.concepts["local.static"]
@@ -49,7 +46,7 @@ def test_sane_rendering():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(SelectItem(content=local_static))
+    statements[-1].select.selection.append(SelectItem(content=local_static.reference))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     # this should be a
@@ -79,7 +76,7 @@ def test_daily_job():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
+        sql, environment=Environment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
     local_static = env.concepts["local.static"]
@@ -87,7 +84,7 @@ def test_daily_job():
 
     case = env.concepts["all_sites.clean_url"]
 
-    assert isinstance(case.lineage, BoundFunction)
+    assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
     for x in case.lineage.concept_arguments:
@@ -103,7 +100,7 @@ def test_daily_job():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(SelectItem(content=local_static))
+    statements[-1].select.selection.append(SelectItem(content=local_static.reference))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     _ = engine.generator.compile_statement(select)
@@ -114,7 +111,7 @@ def test_rolling_analytics():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
+        sql, environment=Environment(working_path=Path(__file__).parent)
     )
 
     engine: Executor = Dialects.DUCK_DB.default_executor(
@@ -138,7 +135,7 @@ def test_counts():
         sql = f.read()
 
     env, statements = parse(
-        sql, environment=BoundEnvironment(working_path=Path(__file__).parent)
+        sql, environment=Environment(working_path=Path(__file__).parent)
     )
     enrich_environment(env)
     local_static = env.concepts["local.static"]
@@ -146,7 +143,7 @@ def test_counts():
 
     case = env.concepts["all_sites.clean_url"]
 
-    assert isinstance(case.lineage, BoundFunction)
+    assert isinstance(case.lineage, Function)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
     for x in case.lineage.concept_arguments:
@@ -162,7 +159,7 @@ def test_counts():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(SelectItem(content=local_static))
+    statements[-1].select.selection.append(SelectItem(content=local_static.reference))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     comp = engine.generator.compile_statement(select)

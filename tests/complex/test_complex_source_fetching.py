@@ -8,11 +8,10 @@ from trilogy.core.enums import Purpose
 from trilogy.core.execute_models import (
     BoundDatasource,
     BoundEnvironment,
-    Grain,
+    BoundGrain,
     QueryDatasource,
 )
-from trilogy.core.author_models import Environment
-from trilogy.core.author_models import SelectStatement
+from trilogy.core.author_models import Environment, SelectStatement, Grain
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
@@ -65,17 +64,22 @@ def test_aggregate_to_grain(stackoverflow_environment: Environment):
 
 
 def test_aggregate_of_aggregate(stackoverflow_environment:Environment):
-    env = stackoverflow_environment.instantiate()
-    post_id = env.concepts["post_id"]
-    avg_user_post_count = env.concepts["avg_user_post_count"]
-    user_post_count = env.concepts["user_post_count"]
+    base_env: Environment = stackoverflow_environment
+    post_id = base_env.concepts["post_id"]
+    avg_user_post_count = base_env.concepts["avg_user_post_count"]
+    user_post_count = base_env.concepts["user_post_count"]
 
     assert user_post_count.purpose == Purpose.METRIC
 
-    posts = env.datasources["posts"]
-    post_grain = Grain(components=[env.concepts["post_id"]])
+    posts = base_env.datasources["posts"]
+    post_grain = Grain(components=[base_env.concepts["post_id"]])
 
     assert posts.grain == post_grain
+    env = stackoverflow_environment.instantiate()
+    # get instantiated copy
+    post_id = env.concepts["post_id"]
+    avg_user_post_count = env.concepts["avg_user_post_count"]
+    user_post_count = env.concepts["user_post_count"]
 
     expected_parent = search_concepts(
         [user_post_count, env.concepts["user_id"]],
@@ -84,7 +88,6 @@ def test_aggregate_of_aggregate(stackoverflow_environment:Environment):
         g=generate_graph(env),
     ).resolve()
 
-    assert posts.grain == post_grain
 
     assert set(expected_parent.source_map.keys()) == set(
         ["local.user_post_count", "local.user_id", "local.post_id"]
@@ -97,7 +100,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment:Environment):
     ).resolve()
 
     assert isinstance(datasource, QueryDatasource)
-    assert datasource.grain == Grain()
+    assert datasource.grain == BoundGrain()
     # ensure we identify aggregates of aggregates properly
     assert datasource.output_concepts[0] == avg_user_post_count
     assert len(datasource.datasources) == 1
@@ -113,8 +116,8 @@ def test_aggregate_of_aggregate(stackoverflow_environment:Environment):
 
     root = parent.datasources[0].datasources[0]
     assert isinstance(root, BoundDatasource)
-    assert posts == root
-    assert post_id in root.concepts
+    assert posts.instantiate(base_env) == root
+    assert post_id.address in root.concepts
 
     ctes = datasource_to_cte(datasource, {})
 
@@ -122,7 +125,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment:Environment):
     assert len(final_cte.parent_ctes) > 0
 
     # now validate
-    select: SelectStatement = SelectStatement(selection=[avg_user_post_count])
+    select: SelectStatement = SelectStatement(selection=[avg_user_post_count.reference])
 
     query = process_query(statement=select, environment=env, hooks=[])
     cte = query.base

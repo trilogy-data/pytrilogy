@@ -1,6 +1,6 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import FunctionType, Purpose
-from trilogy.core.author_models import Concept, DataType, Function, Grain
+from trilogy.core.author_models import Concept, DataType, Function, Grain, Granularity
 
 DEFAULT_CONCEPTS = {
     ALL_ROWS_CONCEPT: Concept(
@@ -16,6 +16,7 @@ DEFAULT_CONCEPTS = {
             output_purpose=Purpose.CONSTANT,
             output_grain = Grain()
         ),
+        granularity = Granularity.ALL_ROWS
     ),
     "concept_name": Concept(
         name="concept_name",
@@ -23,6 +24,7 @@ DEFAULT_CONCEPTS = {
         datatype=DataType.STRING,
         purpose=Purpose.KEY,
         grain=Grain(),
+                granularity = Granularity.MULTI_ROW
     ),
     "datasource": Concept(
         name="datasource",
@@ -30,6 +32,7 @@ DEFAULT_CONCEPTS = {
         datatype=DataType.STRING,
         purpose=Purpose.KEY,
         grain=Grain(),
+        granularity = Granularity.MULTI_ROW
     ),
     "query_text": Concept(
         name="query_text",
@@ -37,5 +40,6 @@ DEFAULT_CONCEPTS = {
         datatype=DataType.STRING,
         purpose=Purpose.KEY,
         grain=Grain(),
+        granularity= Granularity.SINGLE_ROW
     ),
 }

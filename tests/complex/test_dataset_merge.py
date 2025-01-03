@@ -53,7 +53,8 @@ where order_date > '2024-01-01'::date
 
     x.parse_text(declarations)
 
-    env = x.environment
+    env:Environment = x.environment
+    env = env.instantiate()
 
     unions = get_union_sources(env.datasources.values(), [env.concepts["order_id"]])
     assert unions, unions
@@ -81,6 +82,7 @@ class ConditionalTest:
 
 def test_conditional_merge():
     env = Environment()
+    
     env.parse(
         """
 key x int;
@@ -89,19 +91,19 @@ key z float;
 key a datetime;
 """
     )
-
+    env = env.instantiate()
     test_cases = [
         ConditionalTest(2, "x"),
         ConditionalTest(date(year=2024, month=1, day=1), "y"),
         ConditionalTest(datetime.now(), "a"),
     ]
     for case in test_cases:
-        left = Comparison(
+        left = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = Comparison(
+        right = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LTE,

@@ -4,7 +4,7 @@ from typing import Optional
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import DatePart, FunctionType, Granularity, Purpose
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.core_models import arg_to_datatype
+from trilogy.core.common_models import arg_to_datatype
 from trilogy.core.execute_models import (
     BoundConcept,
     DataType,
@@ -42,7 +42,7 @@ from trilogy.parsing.common import (
     window_item_to_concept,
 )
 
-from trilogy.core.core_models import (
+from trilogy.core.common_models import (
     dict_to_map_wrapper,
     list_to_wrapper,
     tuple_to_wrapper,

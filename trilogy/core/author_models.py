@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from trilogy.core.core_models import (
+from trilogy.core.common_models import (
     MapWrapper,
     ListWrapper,
     ListType,
@@ -29,6 +29,7 @@ from trilogy.core.execute_models import (
     BoundConceptTransform,
     BoundGrain,
     BoundHavingClause,
+    BoundMultiSelectLineage,
     CTE,
     UnionCTE,
     LooseConceptList,
@@ -184,7 +185,7 @@ def validate_datasources(v) -> EnvironmentDatasourceDict:
     raise ValueError
 
 
-def get_concept_ref_arguments(expr: ExprRef):
+def get_concept_ref_arguments(expr: Expr):
     output = []
     if isinstance(expr, ConceptRef) and isinstance(expr, Reference):
         output += [expr]
@@ -454,7 +455,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
     lineage: Optional[
         Union[
             RowsetItem,
-            MultiSelectStatement,
+            MultiSelectLineage,
             Function,
             WindowItem,
             FilterItem,
@@ -613,6 +614,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             purpose=output_purpose,
             metadata=self.metadata,
             lineage=lineage,
+            derivation=self.derivation,
             namespace=self.namespace,
             keys=self.keys,
             grain=self.grain.instantiate(environment),
@@ -661,7 +663,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             return PurposeLineage.AGGREGATE
         elif self.lineage and isinstance(self.lineage, RowsetItem):
             return PurposeLineage.ROWSET
-        elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
+        elif self.lineage and isinstance(self.lineage, MultiSelectLineage):
             return PurposeLineage.MULTISELECT
         elif (
             self.lineage
@@ -691,13 +693,13 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
         elif self.lineage and isinstance(self.lineage, Function):
             if not self.lineage.concept_arguments:
                 return PurposeLineage.CONSTANT
-            # elif all(
-            #     [
-            #         x.derivation == PurposeLineage.CONSTANT
-            #         for x in self.lineage.concept_arguments
-            #     ]
-            # ):
-            #     return PurposeLineage.CONSTANT
+            elif all(
+                [
+                    x.derivation == PurposeLineage.CONSTANT
+                    for x in self.lineage.concept_arguments
+                ]
+            ):
+                return PurposeLineage.CONSTANT
             return PurposeLineage.BASIC
         elif self.purpose == Purpose.CONSTANT:
             return PurposeLineage.CONSTANT
@@ -772,7 +774,13 @@ class OrderBy(Reference, Namespaced, BaseModel):
 
 class CaseWhen(Reference, Namespaced, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
-    expr: "ExprRef"
+    expr: "Expr"
+
+    @property
+    def concept_arguments(self):
+        return get_concept_ref_arguments(self.comparison) + get_concept_ref_arguments(
+            self.expr
+        )
 
     def instantiate(self, environment: Environment):
         return BoundCaseWhen(
@@ -796,9 +804,15 @@ class CaseWhen(Reference, Namespaced, BaseModel):
 
 
 class CaseElse(Reference, Namespaced, BaseModel):
-    expr: "ExprRef"
+    expr: "Expr"
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
 
+    @property
+    def concept_arguments(self):
+        return get_concept_ref_arguments(
+            self.expr
+        )
+    
     def instantiate(self, environment: Environment):
         return BoundCaseElse(
             expr=(
@@ -1198,7 +1212,7 @@ class RowsetItem(Reference, Namespaced, BaseModel):
 
 
 class Parenthetical(Reference, TypedSentinal, Namespaced, BaseModel):
-    content: "ExprRef"
+    content: "Expr"
 
     def with_namespace(self, namespace: str) -> "Parenthetical":
         return Parenthetical(content=self.content.with_namespace(namespace))
@@ -1603,6 +1617,12 @@ class SelectItem(Namespaced, Reference, BaseModel):
     content: Union[ConceptRef, ConceptTransform]
     modifiers: List[Modifier] = Field(default_factory=list)
 
+    @field_validator("content", mode="before")
+    def validate_content(cls, v, values):
+        if isinstance(v, ConceptTransform):
+            return v
+        return ConceptRef.parse(v)
+
     def instantiate(self, environment: Environment) -> SelectItem:
         return BoundSelectItem(
             content=(
@@ -1632,7 +1652,7 @@ class SelectItem(Namespaced, Reference, BaseModel):
         )
 
 
-ExprRef = (
+Expr = (
     bool
     | MagicConstants
     | int
@@ -1642,6 +1662,7 @@ ExprRef = (
     | WindowItem
     | FilterItem
     | ConceptRef
+    | Concept
     | Comparison
     | Conditional
     | Parenthetical
@@ -1941,32 +1962,30 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                     if c.namespace == DEFAULT_NAMESPACE
                     else c.address.replace(".", "_")
                 ),
-                concept=environment.concepts[c.address],
+                concept=environment.concepts[c.address].reference,
                 modifiers=modifiers if c.address not in self.locally_derived else [],
             )
             for c in self.output_components
         ]
 
-        # condition = None
-        # if self.where_clause:
-        #     condition = self.where_clause.conditional
-        # if self.having_clause:
-        #     if condition:
-        #         condition = self.having_clause.conditional + condition
-        #     else:
-        #         condition = self.having_clause.conditional
+        condition = None
+        if self.where_clause:
+            condition = self.where_clause.conditional
+        if self.having_clause:
+            if condition:
+                condition = self.having_clause.conditional + condition
+            else:
+                condition = self.having_clause.conditional
 
-        # new_datasource = Datasource(
-        #     name=name,
-        #     address=address,
-        #     grain=grain or self.grain,
-        #     columns=columns,
-        #     namespace=namespace,
-        #     non_partial_for=WhereClauseRef(conditional=condition) if condition else None,
-        # )
-        # for column in columns:
-        #     column.concept = column.concept.with_grain(new_datasource.grain)
-        # return new_datasource
+        new_datasource = Datasource(
+            name=name,
+            address=address,
+            grain=Grain.from_concepts(self.output_components, environment),
+            columns=columns,
+            namespace=namespace,
+            non_partial_for=WhereClause(conditional=condition) if condition else None,
+        )
+        return new_datasource
 
     def with_namespace(self, namespace: str) -> "SelectStatement":
         return SelectStatement(
@@ -2020,7 +2039,7 @@ class MultiSelectStatement(HasUUID, Reference, SelectTypeMixin, Namespaced, Base
             ),
             # these need to be address references to avoid circular instantiation
             # TODO: find a better way
-            derived_concepts = set([x.address for x in self.generate_derived_concepts(environment)])
+            derived_concepts = set([x.instantiate(environment) for x in self.generate_derived_concepts(environment)]),
         )
 
     @property
@@ -2117,7 +2136,7 @@ class AlignItem(Namespaced, Reference, BaseModel):
     def instantiate(self, environment: Environment):
         return BoundAlignItem(
             alias=self.alias,
-            aligned_concept = environment.concepts[f'{self.namespace}.{self.alias}'],
+            aligned_concept = f'{self.namespace}.{self.alias}',
             concepts=[c.instantiate(environment) for c in self.concepts],
             namespace=self.namespace,
         )
@@ -2148,10 +2167,40 @@ class AlignItem(Namespaced, Reference, BaseModel):
             name=self.alias,
             datatype=datatypes.pop(),
             purpose=purpose,
-            lineage=parent,
+            lineage=MultiSelectLineage(
+                selects=parent.selects,
+                align=parent.align,
+                namespace=parent.namespace,
+            ),
             namespace=self.namespace,
         )
         return new
+
+class MultiSelectLineage(Namespaced, Reference, BaseModel):
+    selects: List[SelectStatement]
+    align: AlignClause
+    namespace: str
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+
+    def instantiate(self, environment: Environment):
+        return BoundMultiSelectLineage(
+            selects=[x.instantiate(environment) for x in self.selects],
+            align=self.align.instantiate(environment),
+            namespace=self.namespace,
+            order_by=self.order_by.instantiate(environment) if self.order_by else None,
+            limit=self.limit,
+        )
+    
+    def with_namespace(self, namespace: str) -> "MultiSelectLineage":
+        return MultiSelectLineage(
+            selects=[c.with_namespace(namespace) for c in self.selects],
+            align=self.align.with_namespace(namespace),
+            namespace=namespace,
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            limit=self.limit,
+        )
+
 
 
 class AlignClause(Namespaced, Reference, BaseModel):
@@ -2226,8 +2275,8 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
     ) -> List[Concept]:
         output: list[Concept] = []
         orig: dict[str, Concept] = {}
-        for orig_concept in self.select.output_components:
-            orig_concept = orig_concept.instantiate(environment)
+        for ref in self.select.output_components:
+            orig_concept = environment.concepts[ref.address]
             name = orig_concept.name
             if isinstance(orig_concept.lineage, FilterItem):
                 if orig_concept.lineage.where == self.select.where_clause:

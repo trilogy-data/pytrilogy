@@ -1,6 +1,5 @@
 # from trilogy.compiler import compile
-from trilogy.core.execute_models import Grain, BoundParenthetical
-from trilogy.core.author_models import SelectStatement
+from trilogy.authoring import SelectStatement, Grain, Parenthetical
 from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
@@ -169,7 +168,7 @@ where
 
     left = select.where_clause.conditional.left
 
-    assert isinstance(left, BoundParenthetical)
+    assert isinstance(left, Parenthetical)
 
     address = set([x.address for x in left.concept_arguments])
 

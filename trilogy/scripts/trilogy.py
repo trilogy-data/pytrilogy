@@ -3,7 +3,7 @@ from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 
-from trilogy import BoundEnvironment, Executor, parse
+from trilogy import Environment, Executor, parse
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.dialect.enums import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -98,7 +98,7 @@ def run(ctx, input, dialect: str, conn_args):
     exec = Executor(
         dialect=edialect,
         engine=edialect.default_engine(conf=conf),
-        environment=BoundEnvironment(working_path=str(directory), namespace=namespace),
+        environment=Environment(working_path=str(directory), namespace=namespace),
         hooks=[DebuggingHook()] if debug else [],
     )
 

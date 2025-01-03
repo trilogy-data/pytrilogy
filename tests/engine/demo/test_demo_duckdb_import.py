@@ -7,7 +7,32 @@ from trilogy.core.processing.node_generators.node_merge_node import (
 )
 from trilogy import Environment
 
+def test_merge_inputs(normalized_engine, test_env: BoundEnvironment):
+    normalized_engine.environment = test_env
+    test = """SELECT
+passenger.last_name,
+count(passenger.id) -> family_count
+WHERE
+passenger.last_name is not null;
 
+    """
+    # raw = executor.generate_sql(test)
+    results = normalized_engine.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 8 
+
+    test = """
+    SELECT
+rich_info.last_name,
+rich_info.net_worth_1918_dollars
+    WHERE 
+rich_info.net_worth_1918_dollars is not null;
+
+    """
+    # raw = executor.generate_sql(test)
+    results = normalized_engine.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 8
 def test_demo_merge(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
     normalized_engine.environment = test_env

@@ -689,6 +689,8 @@ def search_concepts(
     history: History | None = None,
     conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
+    if not all([isinstance(x, BoundConcept) for x in mandatory_list]): 
+        raise ValueError(f"Expected list of concepts, got {[type(x) for x in mandatory_list]}")
     history = history or History()
     hist = history.get_history(
         search=mandatory_list, accept_partial=accept_partial, conditions=conditions

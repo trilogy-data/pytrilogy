@@ -129,8 +129,7 @@ class DebuggingHook(BaseHook):
         self.process_other = PrintMode(process_other)
 
     def process_select_info(self, select: SelectStatement):
-        if self.process_datasources != PrintMode.OFF:
-            print(f"grain:")
+        return
 
     def process_root_datasource(self, datasource: QueryDatasource):
         if self.process_datasources != PrintMode.OFF:

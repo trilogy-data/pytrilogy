@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from trilogy import Dialects, Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
 from trilogy.core.functions import FunctionFactory, create_function_derived_concept
-from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
+from trilogy.core.common_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
     BoundColumnAssignment,
     BoundConcept,
