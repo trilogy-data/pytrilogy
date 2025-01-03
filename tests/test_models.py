@@ -5,22 +5,24 @@ from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Pu
 from trilogy.core.execute_models import (
     CTE,
     Address,
-    BoundAggregateWrapper,
     BaseJoin,
-    BoundComparison,
-    BoundConcept,
-    BoundConditional,
     CTEConceptPair,
     DataType,
-    BoundEnvironment,
-    Grain,
+    Environment,
     Join,
     QueryDatasource,
-    BoundRowsetItem,
     TupleWrapper,
+)
+from trilogy.core.author_models import (
+    SelectStatement,
+    AggregateWrapper,
+    Comparison,
+    Concept,
+    Conditional,
+    Grain,
+    RowsetItem,
     UndefinedConcept,
 )
-from trilogy.core.author_models import SelectStatement
 
 
 def test_cte_merge(test_environment, test_environment_graph):
@@ -68,7 +70,7 @@ def test_cte_merge(test_environment, test_environment_graph):
 
 
 def test_concept(test_environment, test_environment_graph):
-    test_concept: BoundConcept = list(test_environment.concepts.values())[0]
+    test_concept: Concept = list(test_environment.concepts.values())[0]
     new = test_concept.with_namespace("test")
     assert (
         new.namespace == ("test" + "." + test_concept.namespace)
@@ -78,27 +80,27 @@ def test_concept(test_environment, test_environment_graph):
 
 
 def test_concept_filter(test_environment, test_environment_graph):
-    test_concept: BoundConcept = list(test_environment.concepts.values())[0]
+    test_concept: Concept = list(test_environment.concepts.values())[0]
     new = test_concept.with_filter(
-        BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ)
+        Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
     )
     new2 = test_concept.with_filter(
-        BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ)
+        Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
     )
 
     assert new.name == new2.name != test_concept.name
 
-    new3 = new.with_filter(BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ))
+    new3 = new.with_filter(Comparison(left=1, right=2, operator=ComparisonOperator.EQ))
     assert new3 == new
 
 
 def test_conditional(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[-1]
 
-    condition_a = BoundConditional(
+    condition_a = Conditional(
         left=test_concept, right=test_concept, operator=BooleanOperator.AND
     )
-    condition_b = BoundConditional(
+    condition_b = Conditional(
         left=test_concept, right=test_concept, operator=BooleanOperator.AND
     )
     merged = condition_a + condition_b
@@ -109,7 +111,7 @@ def test_conditional(test_environment, test_environment_graph):
         for x in test_environment.concepts.values()
         if x.address != test_concept.address
     ].pop()
-    condition_c = BoundConditional(
+    condition_c = Conditional(
         left=test_concept, right=test_concept_two, operator=BooleanOperator.AND
     )
     merged_two = condition_a + condition_c
@@ -142,7 +144,7 @@ def test_grain(test_environment):
     ), f"Property should be removed from grain ({z.components}) vs {z2.components}"
 
 
-def test_select(test_environment: BoundEnvironment):
+def test_select(test_environment: Environment):
     oid = test_environment.concepts["order_id"]
     pid = test_environment.concepts["product_id"]
     cid = test_environment.concepts["category_id"]
@@ -157,7 +159,7 @@ def test_select(test_environment: BoundEnvironment):
     assert ds.grain.components == Grain(components=[oid, pid, cid]).components
 
 
-def test_undefined(test_environment: BoundEnvironment):
+def test_undefined(test_environment: Environment):
     x = UndefinedConcept(
         name="test",
         datatype="int",
@@ -176,7 +178,7 @@ def test_undefined(test_environment: BoundEnvironment):
     assert z.grain == Grain()
 
 
-def test_base_join(test_environment: BoundEnvironment):
+def test_base_join(test_environment: Environment):
     exc: SyntaxError | None = None
     try:
         BaseJoin(
@@ -205,12 +207,12 @@ def test_base_join(test_environment: BoundEnvironment):
 
 def test_comparison():
     try:
-        BoundComparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
     except Exception as exc:
         assert isinstance(exc, SyntaxError)
 
 
-def test_join(test_environment: BoundEnvironment):
+def test_join(test_environment: Environment):
     datasource = list(test_environment.datasources.values())[0]
     outputs = [c.concept for c in datasource.columns]
     output_map = {
@@ -265,7 +267,7 @@ def test_join(test_environment: BoundEnvironment):
 
 
 def test_concept_address_in_check():
-    target = BoundConcept(
+    target = Concept(
         name="test",
         datatype="int",
         purpose=Purpose.CONSTANT,
@@ -303,8 +305,8 @@ select avg_greater_ten;
     )
 
     lineage = env.concepts["avg_greater_ten"].lineage
-    assert isinstance(lineage, BoundAggregateWrapper)
-    assert isinstance(lineage.function.concept_arguments[0].lineage, BoundRowsetItem)
+    assert isinstance(lineage, AggregateWrapper)
+    assert isinstance(lineage.function.concept_arguments[0].lineage, RowsetItem)
 
 
 def test_tuple_clone():

@@ -47,7 +47,7 @@ from trilogy.core.execute_models import (
     BoundParenthetical,
     BoundWindowItem,
     BoundWindowItemOver,
-    WindowItemOrder,
+    BoundWindowItemOrder,
     BoundFilterItem,
     BoundComparison,
     BoundConditional,
@@ -344,13 +344,14 @@ class Function(Reference, TypedSentinal, Namespaced, BaseModel):
     operator: FunctionType
     arguments: Sequence[
         Union[
-            "AggregateWrapper",
-            "Function",
+            AggregateWrapper,
+            Function,
             WindowItem,
             int,
             float,
             # str,
             # this must be after a string in parse order
+            Concept,
             ConceptRef,
             str,
             date,
@@ -361,9 +362,9 @@ class Function(Reference, TypedSentinal, Namespaced, BaseModel):
             MapType,
             NumericType,
             DatePart,
-            "Parenthetical",
+            Parenthetical,
             CaseWhen,
-            "CaseElse",
+            CaseElse,
             list,
             ListWrapper[Any],
         ]
@@ -567,6 +568,21 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
         return hash(
             f"{self.name}+{self.datatype}+ {self.purpose} + {str(self.lineage)} + {self.namespace} + {str(self.grain)} + {str(self.keys)}"
         )
+    def __eq__(self, other: object):
+
+        if isinstance(other, str):
+            if self.address == other:
+                return True
+        if not isinstance(other, BoundConcept):
+            return False
+        return (
+            self.name == other.name
+            and self.datatype == other.datatype
+            and self.purpose == other.purpose
+            and self.namespace == other.namespace
+            and self.grain == other.grain
+            # and self.keys == other.keys
+        )
 
     @property
     def reference(self):
@@ -687,6 +703,34 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             return PurposeLineage.CONSTANT
         return PurposeLineage.ROOT
 
+    def with_filter(
+        self,
+        condition: Conditional | Comparison | Parenthetical,
+        environment: Environment | None = None,
+    ) -> "Concept":
+        from trilogy.utility import string_to_hash
+
+        if self.lineage and isinstance(self.lineage, FilterItem):
+            if self.lineage.where.conditional == condition:
+                return self
+        hash = string_to_hash(self.name + str(condition))
+        new = Concept(
+            name=f"{self.name}_filter_{hash}",
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=FilterItem(
+                content=self, where=WhereClause(conditional=condition)
+            ),
+            keys=(self.keys if self.purpose == Purpose.PROPERTY else None),
+            grain=self.grain if self.grain else Grain(components=set()),
+            namespace=self.namespace,
+            modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
+        )
+        if environment:
+            environment.add_concept(new)
+        return new
 
 class OrderItem(Reference, Namespaced, BaseModel):
     expr: ConceptRef
@@ -1067,6 +1111,14 @@ class AggregateWrapper(Reference, Namespaced, BaseModel):
     function: Function
     by: set[ConceptRef] = Field(default_factory=set)
 
+    @field_validator("by", mode="before")
+    def validate_by(cls, v, values):
+        if not v:
+            return set()
+        if isinstance(v, list):
+            return set([ConceptRef.parse(x) for x in v])
+        return v
+
     @property
     def concept_arguments(self) -> List[ConceptRef]:
         base = get_concept_ref_arguments(self.function)
@@ -1171,8 +1223,8 @@ class WindowItemOver(Reference, BaseModel):
 class WindowItemOrder(Reference, BaseModel):
     contents: List[OrderItem]
 
-    def instantiate(self, environment: Environment) -> WindowItemOrder:
-        return WindowItemOrder(
+    def instantiate(self, environment: Environment) -> BoundWindowItemOrder:
+        return BoundWindowItemOrder(
             contents=[c.instantiate(environment) for c in self.contents]
         )
 

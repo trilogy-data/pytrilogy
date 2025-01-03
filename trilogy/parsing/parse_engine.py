@@ -101,6 +101,9 @@ from trilogy.core.author_models import (
     AlignClause,
     Grain,
     RowsetDerivationStatement,
+    EnvironmentConceptDict,
+    WindowItemOrder,
+        ImportStatement,
 )
 from trilogy.core.execute_models import (
     Reference,
@@ -109,20 +112,20 @@ from trilogy.core.execute_models import (
     Comment,
     DataType,
     # Environment,
-    ImportStatement,
-    Limit,
+
+
     Metadata,
-    NumericType,
-    Query,
-    RawColumnExpr,
-    # RowsetDerivationStatement,
-    Window,
-    WindowItemOrder,
+
 )
 from trilogy.core.core_models import (
+        NumericType,
+            Limit,
     dict_to_map_wrapper,
     list_to_wrapper,
     tuple_to_wrapper,
+        Window,
+            RawColumnExpr,
+                Query,
     ListWrapper,
     MapWrapper,
     ListType,
@@ -145,15 +148,15 @@ from trilogy.parsing.exceptions import ParseError
 
 CONSTANT_TYPES = (int, float, str, bool, list, ListWrapper, MapWrapper)
 
-SELF_LABEL = "root"
-
+SELF_LABEL:str = "root"
+GRAMMAR_FILE:str = "trilogy.lark"
 
 @dataclass
 class WholeGrainWrapper:
     where: WhereClause
 
 
-with open(join(dirname(__file__), "trilogy.lark"), "r") as f:
+with open(join(dirname(__file__), GRAMMAR_FILE), "r") as f:
     PARSER = Lark(
         f.read(),
         start="start",

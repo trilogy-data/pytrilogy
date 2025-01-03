@@ -125,6 +125,28 @@ def address_with_namespace(address: str, namespace: str) -> str:
 class RawColumnExpr(BaseModel):
     text: str
 
+class Window(BaseModel):
+    count: int
+    window_order: WindowOrder
+
+    def __str__(self):
+        return f"Window<{self.window_order}>"
+
+
+class Address(BaseModel):
+    location: str
+    is_query: bool = False
+    quoted: bool = False
+
+
+class Query(BaseModel):
+    text: str
+
+
+class Limit(BaseModel):
+    count: int
+
+
 class ConceptRef(Namespaced, Reference, BaseModel):
     address: str
     line_no: int | None = None

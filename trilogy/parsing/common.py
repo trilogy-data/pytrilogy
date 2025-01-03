@@ -14,7 +14,7 @@ from trilogy.core.enums import (
 from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
     BoundAggregateWrapper,
-    BoundConcept as FullConcept,
+    BoundConcept,
     DataType,
     BoundEnvironment,
     BoundFilterItem,
@@ -196,7 +196,7 @@ def concepts_to_grain_concepts(
 
 
 def function_to_concept(
-    parent: Function,
+    parent: Function | BoundFunction,
     name: str,
     environment: Environment,
     namespace: str | None = None,
@@ -204,7 +204,7 @@ def function_to_concept(
 ) -> Concept:
     pkeys: List[Concept] = []
     namespace = namespace or environment.namespace
-    concrete = parent.instantiate(environment)
+    concrete = parent.instantiate(environment) if isinstance(parent, Function) else parent
     for x in concrete.arguments:
         pkeys += [
             x

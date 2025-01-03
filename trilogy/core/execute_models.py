@@ -68,6 +68,9 @@ from trilogy.core.core_models import (
     address_with_namespace,
     TypedSentinal,
     is_compatible_datatype,
+    Query,
+    Limit,
+    Address,
 )
 from trilogy.core.constants import (
     ALL_ROWS_CONCEPT,
@@ -116,6 +119,7 @@ def get_version():
 
 def get_concept_arguments(expr) -> List["BoundConcept"]:
     output = []
+    print(expr)
     if isinstance(expr, BoundConcept):
         output += [expr]
     elif isinstance(
@@ -306,6 +310,7 @@ class BoundConcept(SelectContext, BaseModel):
         return v
 
     def __eq__(self, other: object):
+
         if isinstance(other, str):
             if self.address == other:
                 return True
@@ -376,8 +381,6 @@ class BoundConcept(SelectContext, BaseModel):
     ) -> BoundConcept:
         new_lineage = self.lineage
         final_grain = self.grain if not self.grain.abstract else grain
-        print('context grain')
-        print(final_grain)
         keys = self.keys if self.keys else None
         if (
             self.is_aggregate
@@ -397,7 +400,6 @@ class BoundConcept(SelectContext, BaseModel):
         ):
             new_lineage.by = set([environment.concepts[x] for x in grain.components])
             keys = grain.components
-        print(final_grain)
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -565,64 +567,6 @@ class BoundConcept(SelectContext, BaseModel):
             return PurposeLineage.CONSTANT
         return PurposeLineage.ROOT
 
-    # @property
-    # def granularity(self) -> Granularity:
-    #     """ "used to determine if concepts need to be included in grain
-    #     calculations"""
-    #     if self.derivation == PurposeLineage.CONSTANT:
-    #         # constants are a single row
-    #         return Granularity.SINGLE_ROW
-    #     elif self.derivation == PurposeLineage.AGGREGATE:
-    #         # if it's an aggregate grouped over all rows
-    #         # there is only one row left and it's fine to cross_join
-    #         if all([x.endswith(ALL_ROWS_CONCEPT) for x in self.grain.components]):
-    #             return Granularity.SINGLE_ROW
-    #     elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
-    #         return Granularity.SINGLE_ROW
-    #     elif (
-    #         self.lineage
-    #         and isinstance(self.lineage, Function)
-    #         and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
-    #     ):
-    #         return Granularity.MULTI_ROW
-    #     elif self.lineage and all(
-    #         [
-    #             x.granularity == Granularity.SINGLE_ROW
-    #             for x in self.lineage.concept_arguments
-    #         ]
-    #     ):
-
-    #         return Granularity.SINGLE_ROW
-    #     return Granularity.MULTI_ROW
-
-    def with_filter(
-        self,
-        condition: "BoundConditional | BoundComparison | BoundParenthetical",
-        environment: BoundEnvironment | None = None,
-    ) -> "BoundConcept":
-        from trilogy.utility import string_to_hash
-
-        if self.lineage and isinstance(self.lineage, BoundFilterItem):
-            if self.lineage.where.conditional == condition:
-                return self
-        hash = string_to_hash(self.name + str(condition))
-        new = BoundConcept(
-            name=f"{self.name}_filter_{hash}",
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=BoundFilterItem(
-                content=self, where=BoundWhereClause(conditional=condition)
-            ),
-            keys=(self.keys if self.purpose == Purpose.PROPERTY else None),
-            grain=self.grain if self.grain else BoundGrain(components=set()),
-            namespace=self.namespace,
-            modifiers=self.modifiers,
-            pseudonyms=self.pseudonyms,
-        )
-        if environment:
-            environment.add_concept(new)
-        return new
 
 
 class BoundGrain(BaseModel):
@@ -845,8 +789,8 @@ class BoundFunction(Namespaced, TypedSentinal, SelectContext, BaseModel):
     arguments: Sequence[
         Union[
             BoundConcept,
-            "BoundAggregateWrapper",
-            "BoundFunction",
+            BoundAggregateWrapper,
+            BoundFunction,
             int,
             float,
             str,
@@ -858,9 +802,9 @@ class BoundFunction(Namespaced, TypedSentinal, SelectContext, BaseModel):
             MapType,
             NumericType,
             DatePart,
-            "BoundParenthetical",
+            BoundParenthetical,
             BoundCaseWhen,
-            "BoundCaseElse",
+            BoundCaseElse,
             list,
             ListWrapper[Any],
             BoundWindowItem,
@@ -1008,19 +952,13 @@ class BoundFunction(Namespaced, TypedSentinal, SelectContext, BaseModel):
         return base_grain
 
 
-class Window(BaseModel):
-    count: int
-    window_order: WindowOrder
-
-    def __str__(self):
-        return f"Window<{self.window_order}>"
 
 
 class BoundWindowItemOver(BaseModel):
     contents: List[BoundConcept]
 
 
-class WindowItemOrder(BaseModel):
+class BoundWindowItemOrder(BaseModel):
     contents: List["BoundOrderItem"]
 
 
@@ -1158,14 +1096,7 @@ class BoundOrderBy(BaseModel):
         )
 
 
-class Address(BaseModel):
-    location: str
-    is_query: bool = False
-    quoted: bool = False
 
-
-class Query(BaseModel):
-    text: str
 
 
 def safe_concept(v: Union[Dict, BoundConcept]) -> BoundConcept:
@@ -3360,9 +3291,6 @@ class ProcessedRawSQLStatement(BaseModel):
     text: str
 
 
-class Limit(BaseModel):
-    count: int
-
 
 class BoundRowsetDerivationStatement(BaseModel):
     name: str
@@ -3532,7 +3460,7 @@ BoundConcept.model_rebuild()
 BoundMultiSelectStatement.model_rebuild()
 
 BoundWindowItem.model_rebuild()
-WindowItemOrder.model_rebuild()
+BoundWindowItemOrder.model_rebuild()
 BoundFilterItem.model_rebuild()
 BoundComparison.model_rebuild()
 BoundConditional.model_rebuild()
