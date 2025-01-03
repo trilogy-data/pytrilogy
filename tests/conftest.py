@@ -39,28 +39,28 @@ def test_environment():
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Count([order_id]),
+        lineage=Count([order_id], env),
     )
 
     distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=CountDistinct([order_id]),
+        lineage=CountDistinct([order_id], env),
     )
 
     max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Max([order_id]),
+        lineage=Max([order_id], env),
     )
 
     min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Min([order_id]),
+        lineage=Min([order_id], env),
     )
 
     revenue = Concept(
@@ -148,7 +148,7 @@ def test_environment():
         purpose=Purpose.PROPERTY,
         lineage=WindowItem(
             type=WindowType.RANK,
-            content=product_id,
+            content=product_id.reference,
             over=[category_id],
             order_by=[OrderItem(expr=total_revenue, order="desc")],
         ),

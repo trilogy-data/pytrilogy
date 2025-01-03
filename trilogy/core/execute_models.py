@@ -2313,52 +2313,7 @@ class BoundSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         BoundEnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=BoundEnvironmentConceptDict)
 
-    def validate_syntax(self, environment: BoundEnvironment):
-        return True
-        if self.where_clause:
-            for x in self.where_clause.concept_arguments:
-                if x.address not in environment.concepts:
 
-                    environment.concepts.raise_undefined(
-                        x.address, x.metadata.line_number
-                    )
-        all_in_output = [x.address for x in self.output_components]
-        if self.where_clause:
-            for concept in self.where_clause.concept_arguments:
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, BoundFunction)
-                    and concept.lineage.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
-
-                if (
-                    concept.lineage
-                    and isinstance(concept.lineage, BoundAggregateWrapper)
-                    and concept.lineage.function.operator
-                    in FunctionClass.AGGREGATE_FUNCTIONS.value
-                ):
-                    if concept.address in self.locally_derived:
-                        raise SyntaxError(
-                            f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
-                        )
-        if self.having_clause:
-            self.having_clause.hydrate_missing(self.local_concepts)
-            for concept in self.having_clause.concept_arguments:
-                if concept.address not in [x.address for x in self.output_components]:
-                    raise SyntaxError(
-                        f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
-                    )
-        if self.order_by:
-            for concept in self.order_by.concept_arguments:
-                if concept.address not in all_in_output:
-                    raise SyntaxError(
-                        f"Cannot order by a column {concept.address} that is not in the output projection; {self.meta.line_number}"
-                    )
 
     def __str__(self):
         from trilogy.parsing.render import render_query

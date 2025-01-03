@@ -1668,13 +1668,11 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                     )
                 select.grain = grain
                 pass_grain = BoundGrain() if parse_pass == 1 else grain
-                print(grain)
                 for item in select.selection:
                     # we don't know the grain of an aggregate at assignment time
                     # so rebuild at this point in the tree
                     # TODO: simplify
                     if isinstance(item.content, BoundConceptTransform):
-                        print(f'REDOING CONCEPT {item.content.output.address}')
                         new_concept = item.content.output.with_select_context(
                             select.local_concepts,
                             # the first pass grain will be incorrect
@@ -1683,7 +1681,6 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                         )
                         select.local_concepts[new_concept.address] = new_concept
                         item.content.output = new_concept
-                        print(item.content.output)
                     elif isinstance(item.content, BoundConcept):
                         
                         # Sometimes cached values here don't have the latest info
@@ -1708,7 +1705,7 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                 grain=select.grain,
                 environment=environment,
             )
-        select.validate_syntax(environment)
+        
 
 
     def instantiate(self, environment: Environment) -> BoundSelectStatement:
@@ -1727,11 +1724,7 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                 {k: v.instantiate(environment) for k, v in self.local_concepts.items()}
             ),
         )
-        print("SELECT STATEMENT")
         self.create_select_context(base, environment)
-        print('END')
-        for x in base.selection:
-            print(x.output)
         return base
 
     @classmethod
@@ -1759,17 +1752,16 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
         return output
 
     def validate_syntax(self, environment: Environment):
-        return True
         if self.where_clause:
             for x in self.where_clause.concept_arguments:
                 if x.address not in environment.concepts:
-
                     environment.concepts.raise_undefined(
-                        x.address, x.metadata.line_number
+                        x.address
                     )
         all_in_output = [x.address for x in self.output_components]
         if self.where_clause:
-            for concept in self.where_clause.concept_arguments:
+            for ref in self.where_clause.concept_arguments:
+                concept = environment.concepts[ref.address]
                 if (
                     concept.lineage
                     and isinstance(concept.lineage, BoundFunction)
@@ -1792,7 +1784,6 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                             f"Cannot reference an aggregate derived in the select ({concept.address}) in the same statement where clause; move to the HAVING clause instead; Line: {self.meta.line_number}"
                         )
         if self.having_clause:
-            self.having_clause.hydrate_missing(self.local_concepts)
             for concept in self.having_clause.concept_arguments:
                 if concept.address not in [x.address for x in self.output_components]:
                     raise SyntaxError(

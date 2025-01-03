@@ -3,12 +3,12 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.execute_models import (
-    BoundColumnAssignment,
-    BoundConcept,
-    BoundDatasource,
+from trilogy.authoring import (
+    ColumnAssignment,
+    Concept,
+    Datasource,
     DataType,
-    BoundEnvironment,
+    Environment,
 )
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import (
@@ -25,12 +25,12 @@ def setup_engine() -> Executor:
     return output
 
 
-def setup_titanic(env: BoundEnvironment):
+def setup_titanic(env: Environment):
     namespace = "passenger"
-    id = BoundConcept(
+    id = Concept(
         name="id", namespace=namespace, datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    age = BoundConcept(
+    age = Concept(
         name="age",
         namespace=namespace,
         datatype=DataType.INTEGER,
@@ -40,7 +40,7 @@ def setup_titanic(env: BoundEnvironment):
         },
     )
 
-    name = BoundConcept(
+    name = Concept(
         name="name",
         namespace=namespace,
         datatype=DataType.STRING,
@@ -50,7 +50,7 @@ def setup_titanic(env: BoundEnvironment):
         },
     )
 
-    pclass = BoundConcept(
+    pclass = Concept(
         name="passenger_class",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -59,7 +59,7 @@ def setup_titanic(env: BoundEnvironment):
             id.address,
         },
     )
-    survived = BoundConcept(
+    survived = Concept(
         name="survived",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -68,7 +68,7 @@ def setup_titanic(env: BoundEnvironment):
             id.address,
         },
     )
-    fare = BoundConcept(
+    fare = Concept(
         name="fare",
         namespace=namespace,
         purpose=Purpose.PROPERTY,
@@ -81,16 +81,16 @@ def setup_titanic(env: BoundEnvironment):
         env.add_concept(x)
 
     env.add_datasource(
-        BoundDatasource(
+        Datasource(
             name="raw_data",
             address="raw_titanic",
             columns=[
-                BoundColumnAssignment(alias="passengerid", concept=id),
-                BoundColumnAssignment(alias="age", concept=age),
-                BoundColumnAssignment(alias="survived", concept=survived),
-                BoundColumnAssignment(alias="pclass", concept=pclass),
-                BoundColumnAssignment(alias="name", concept=name),
-                BoundColumnAssignment(alias="fare", concept=fare),
+                ColumnAssignment(alias="passengerid", concept=id),
+                ColumnAssignment(alias="age", concept=age),
+                ColumnAssignment(alias="survived", concept=survived),
+                ColumnAssignment(alias="pclass", concept=pclass),
+                ColumnAssignment(alias="name", concept=name),
+                ColumnAssignment(alias="fare", concept=fare),
             ],
         ),
     )
@@ -103,7 +103,7 @@ def test_partial_assignment():
     CTE that has the full concept, not a partially filtered copy"""
 
     executor = setup_engine()
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     executor.hooks = [DebuggingHook()]
@@ -113,6 +113,8 @@ def test_partial_assignment():
     family = env.concepts["passenger.family"]
     # id = env.concepts["passenger.id"]
     # survived = env.concepts["passenger.survived"]
+    env = env.instantiate()
+    print(env.concepts.keys())
     g = generate_graph(env)
     filtered_node = gen_filter_node(
         env.concepts["surviving_passenger"],
@@ -140,7 +142,7 @@ def test_partial_assignment():
 
 def test_filter_query():
     executor = setup_engine()
-    env = BoundEnvironment()
+    env = Environment()
     setup_titanic(env)
     executor.environment = env
     executor.hooks = [DebuggingHook()]

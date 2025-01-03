@@ -1,6 +1,5 @@
-# from trilogy.compiler import compile
-from trilogy import Dialects, BoundEnvironment
-from trilogy.core.author_models import Grain, SelectStatement
+from trilogy import Dialects, Environment
+from trilogy.core.author_models import Grain, SelectStatement, SelectItem
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
@@ -45,8 +44,9 @@ datasource users (
 ;"""
     env, parse_one = parse(q1, environment=env)
 
-    select: SelectStatement = parse_one[-1]
-    assert select.grain == Grain(components=[env.concepts["user_id"]])
+    select: SelectStatement = parse_one[-1].instantiate(environment=env)
+
+    assert select.grain.components == set(['local.user_id'])
 
     q2 = """select
     about_me,
@@ -54,7 +54,7 @@ datasource users (
 ;"""
     env, parse_two = parse(q2, environment=env)
 
-    select: SelectStatement = parse_two[-1]
+    select: SelectStatement = parse_two[-1].instantiate(environment=env)
     assert (
         select.grain.components
         == Grain(components=[env.concepts["about_me"]]).components
@@ -179,7 +179,7 @@ select id + 2 as three;
 
 
 def test_select_from_components():
-    env = BoundEnvironment()
+    env = Environment()
     q1 = """
 
 key id int;
@@ -188,23 +188,22 @@ property id.name string;
 
 select
     class,
-    upper(id.name)-> upper_name,
+    upper(name)-> upper_name,
     count(id) ->class_id_count,
 ;
 """
     env, statements = env.parse(q1)
 
     select: SelectStatement = statements[-1]
-
-    assert select.grain.components == {"local.class", "local.upper_name"}
-    assert select.local_concepts["local.class_id_count"].grain.components == {
+    instantiated = select.instantiate(env)
+    assert instantiated.grain.components == {"local.class", "local.upper_name"}
+    assert instantiated.local_concepts["local.class_id_count"].grain.components == {
         "local.class",
         "local.upper_name",
     }
 
-    # SelectStatement.from_inputs(
-    #     environment=env,
-    #     selection=[SelectItem(concept=env.concepts["id"]),
-    #                SelectItem(concept=env.concepts["id.class"])],
-    #     input_components=[],
-    # )
+    SelectStatement.from_inputs(
+        environment=env,
+        selection=[SelectItem(content=env.concepts["id"].reference),
+                   SelectItem(content=env.concepts["class"].reference)],
+    )
