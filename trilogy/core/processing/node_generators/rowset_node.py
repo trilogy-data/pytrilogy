@@ -7,8 +7,8 @@ from trilogy.core.execute_models import (
     BoundEnvironment,
     BoundGrain,
 
-    RowsetItem,
-    WhereClause,
+    BoundRowsetItem,
+    BoundWhereClause,
     BoundRowsetDerivationStatement,
     BoundMultiSelectStatement,
     BoundSelectStatement,
@@ -31,15 +31,15 @@ def gen_rowset_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
-    if not isinstance(concept.lineage, RowsetItem):
+    if not isinstance(concept.lineage, BoundRowsetItem):
         raise SyntaxError(
-            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
+            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {BoundRowsetItem}"
         )
-    lineage: RowsetItem = concept.lineage
+    lineage: BoundRowsetItem = concept.lineage
     rowset: BoundRowsetDerivationStatement = lineage.rowset
     derived = [environment.concepts[x] for x in rowset.derived_concepts]
     select: BoundSelectStatement | BoundMultiSelectStatement = lineage.rowset.select
@@ -57,7 +57,7 @@ def gen_rowset_node(
     rowset_hidden = [
         x
         for x in derived
-        if isinstance(x.lineage, RowsetItem)
+        if isinstance(x.lineage, BoundRowsetItem)
         and x.lineage.content.address in select_hidden
     ]
     additional_relevant = [

@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.execute_models import BoundConcept, BoundEnvironment, Function, WhereClause
+from trilogy.core.execute_models import BoundConcept, BoundEnvironment, BoundFunction, BoundWhereClause
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,
@@ -21,10 +21,10 @@ def gen_group_to_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> GroupNode | MergeNode:
     # aggregates MUST always group to the proper grain
-    if not isinstance(concept.lineage, Function):
+    if not isinstance(concept.lineage, BoundFunction):
         raise SyntaxError("Group to should have function lineage")
     group_arg = concept.lineage.arguments[0]
     parent_concepts: List[BoundConcept] = concept.lineage.concept_arguments

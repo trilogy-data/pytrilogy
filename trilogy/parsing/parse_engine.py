@@ -57,27 +57,26 @@ from trilogy.core.functions import (
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.author_models import (
-    AggregateWrapperRef,
-    ComparisonRef,
-    ConditionalRef,
-    FilterItemRef,
-    FunctionRef,
+    AggregateWrapper,
+    Comparison,
+    Conditional,
+    FilterItem,
+    Function,
     Reference,
     ColumnAssignment,
-    DatasourceRef,
-    SubselectComparisonRef,
-    WindowItemRef,
-    ParentheticalRef,
+    Datasource,
+    SubselectComparison,
+    WindowItem,
+    Parenthetical,
     Environment,
     ConceptRef,
     ConceptTransform,
     Concept,
     ConceptTransform,
-    WindowItemOrderRef,
-    CaseWhenRef,
-    CaseElseRef,
-    HavingClauseRef,
-    AlignClause,
+    WindowItemOrder,
+    CaseWhen,
+    CaseElse,
+    HavingClause,
     AlignItem,
     CopyStatement,
     MergeStatementV2,
@@ -87,56 +86,38 @@ from trilogy.core.author_models import (
     SelectItem,
     SelectStatement,
     ShowStatement,
-    WhereClauseRef,
-    OrderByRef,
-    OrderItemRef,
-    WindowItemOverRef,
-    ComparisonRef,
-    SubselectComparisonRef,
-    ConditionalRef,
-    WindowItemRef,
-    ParentheticalRef,
+    WhereClause,
+    OrderBy,
+    OrderItem,
+    WindowItemOver,
+    Comparison,
+    SubselectComparison,
+    Conditional,
+    WindowItem,
+    Parenthetical,
     Environment,
     ConceptDeclarationStatement,
     ConceptDerivation,
-    AlignItemRef,
-    AlignClauseRef,
+    AlignClause,
     Grain,
     RowsetDerivationStatement,
 )
 from trilogy.core.execute_models import (
     Reference,
     Address,
-    AggregateWrapper,
-    CaseElse,
-    CaseWhen,
-    BoundColumnAssignment,
+
     Comment,
-    Comparison,
-    BoundConcept,
-    Conditional,
-    Datasource,
     DataType,
     # Environment,
-    BoundEnvironmentConceptDict,
-    FilterItem,
-    HavingClause,
     ImportStatement,
     Limit,
     Metadata,
     NumericType,
-    OrderBy,
-    OrderItem,
-    Parenthetical,
     Query,
     RawColumnExpr,
     # RowsetDerivationStatement,
-    SubselectComparison,
-    WhereClause,
     Window,
-    WindowItem,
     WindowItemOrder,
-    WindowItemOver,
 )
 from trilogy.core.core_models import (
     dict_to_map_wrapper,
@@ -207,12 +188,12 @@ def parse_concept_reference(
 
 def expr_to_boolean(
     root,
-) -> Union[ComparisonRef, SubselectComparisonRef, ConditionalRef]:
-    if not isinstance(root, (ComparisonRef, SubselectComparisonRef, ConditionalRef)):
+) -> Union[Comparison, SubselectComparison, Conditional]:
+    if not isinstance(root, (Comparison, SubselectComparison,Conditional)):
         if arg_to_datatype(root) == DataType.BOOL:
-            root = ComparisonRef(left=root, right=True, operator=ComparisonOperator.EQ)
+            root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
         else:
-            root = ComparisonRef(
+            root = Comparison(
                 left=root,
                 right=MagicConstants.NULL,
                 operator=ComparisonOperator.IS_NOT,
@@ -222,38 +203,38 @@ def expr_to_boolean(
 
 def unwrap_transformation(
     input: Union[
-        FilterItemRef,
-        WindowItemRef,
+        FilterItem,
+        WindowItem,
         ConceptRef,
-        FunctionRef,
-        AggregateWrapperRef,
+        Function,
+        AggregateWrapper,
         int,
         str,
         float,
         bool,
     ],
     environment: Environment,
-) -> FunctionRef | FilterItemRef | WindowItemRef | AggregateWrapperRef:
-    if isinstance(input, FunctionRef):
+) -> Function | FilterItem | WindowItem | AggregateWrapper:
+    if isinstance(input, Function):
         return input
-    elif isinstance(input, AggregateWrapperRef):
+    elif isinstance(input, AggregateWrapper):
         return input
     elif isinstance(input, ConceptRef):
         concrete = input.instantiate(environment)
-        return FunctionRef(
+        return Function(
             operator=FunctionType.ALIAS,
             output_datatype=concrete.datatype,
             output_purpose=concrete.purpose,
             arguments=[input],
         )
-    elif isinstance(input, FilterItemRef):
+    elif isinstance(input, FilterItem):
         return input
-    elif isinstance(input, WindowItemRef):
+    elif isinstance(input, WindowItem):
         return input
-    elif isinstance(input, ParentheticalRef):
+    elif isinstance(input, Parenthetical):
         return unwrap_transformation(input.content, environment)
     else:
-        return FunctionRef(
+        return Function(
             operator=FunctionType.CONSTANT,
             output_datatype=arg_to_datatype(input),
             output_purpose=Purpose.CONSTANT,
@@ -470,11 +451,11 @@ class ParseToObjects(Transformer):
         return Purpose.PROPERTY
 
     @v_args(meta=True)
-    def prop_ident(self, meta: Meta, args) -> Tuple[List[BoundConcept], str]:
+    def prop_ident(self, meta: Meta, args) -> Tuple[List[Concept], str]:
         return [self.environment.concepts[grain] for grain in args[:-1]], args[-1]
 
     @v_args(meta=True)
-    def concept_property_declaration(self, meta: Meta, args) -> BoundConcept:
+    def concept_property_declaration(self, meta: Meta, args) -> Concept:
         metadata = Metadata()
         modifiers = []
         for arg in args:
@@ -561,12 +542,12 @@ class ParseToObjects(Transformer):
                 namespace = namespaces.pop()
         source_value = args[2]
         # we need to strip off every parenthetical to see what is being assigned.
-        while isinstance(source_value, ParentheticalRef):
+        while isinstance(source_value, Parenthetical):
             source_value = source_value.content
 
         if isinstance(
             source_value,
-            (FilterItemRef, WindowItemRef, AggregateWrapperRef, FunctionRef),
+            (FilterItem, WindowItem, AggregateWrapper, Function),
         ):
 
             concept = arbitrary_to_concept(
@@ -622,7 +603,7 @@ class ParseToObjects(Transformer):
         return output
 
     @v_args(meta=True)
-    def constant_derivation(self, meta: Meta, args) -> BoundConcept:
+    def constant_derivation(self, meta: Meta, args) -> Concept:
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -634,12 +615,12 @@ class ParseToObjects(Transformer):
         )
 
         datatype = arg_to_datatype(constant, self.environment)
-        concept = BoundConcept(
+        concept = Concept(
             name=name,
             datatype=datatype,
             purpose=Purpose.CONSTANT,
             metadata=metadata,
-            lineage=FunctionRef(
+            lineage=Function(
                 operator=FunctionType.CONSTANT,
                 output_datatype=datatype,
                 output_purpose=Purpose.CONSTANT,
@@ -689,8 +670,8 @@ class ParseToObjects(Transformer):
         columns: List[ColumnAssignment] = args[1]
         grain: Optional[Grain] = None
         address: Optional[Address] = None
-        where: Optional[WhereClauseRef] = None
-        non_partial_for: Optional[WhereClauseRef] = None
+        where: Optional[WhereClause] = None
+        non_partial_for: Optional[WhereClause] = None
         for val in args[1:]:
             if isinstance(val, Address):
                 address = val
@@ -700,13 +681,13 @@ class ParseToObjects(Transformer):
                 non_partial_for = val.where
             elif isinstance(val, Query):
                 address = Address(location=f"({val.text})", is_query=True)
-            elif isinstance(val, WhereClauseRef):
+            elif isinstance(val, WhereClause):
                 where = val
         if not address:
             raise ValueError(
                 "Malformed datasource, missing address or query declaration"
             )
-        datasource = DatasourceRef(
+        datasource = Datasource(
             name=name,
             columns=columns,
             # grain will be set by default from args
@@ -801,14 +782,14 @@ class ParseToObjects(Transformer):
 
     def order_list(self, args):
         def handle_order_item(x, namespace: str):
-            if not isinstance(x, (ConceptRef, BoundConcept)):
+            if not isinstance(x, (ConceptRef, Concept)):
                 x = arbitrary_to_concept(
                     x, namespace=namespace, environment=self.environment
                 )
             return x
 
         return [
-            OrderItemRef(
+            OrderItem(
                 expr=handle_order_item(
                     x,
                     self.environment.namespace,
@@ -818,8 +799,8 @@ class ParseToObjects(Transformer):
             for x, y in zip(args[::2], args[1::2])
         ]
 
-    def order_by(self, args) -> OrderByRef:
-        return OrderByRef(items=args[0])
+    def order_by(self, args) -> OrderBy:
+        return OrderBy(items=args[0])
 
     def over_list(self, args):
         return [x for x in args]
@@ -983,7 +964,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def align_item(self, meta: Meta, args) -> AlignItem:
-        return AlignItemRef(
+        return AlignItem(
             alias=args[0],
             namespace=self.environment.namespace,
             concepts=[self.environment.concepts[arg].reference for arg in args[1:]],
@@ -991,30 +972,30 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def align_clause(self, meta: Meta, args) -> AlignClause:
-        return AlignClauseRef(items=args)
+        return AlignClause(items=args)
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
         selects: list[SelectStatement] = []
-        align: AlignClauseRef | None = None
+        align: AlignClause | None = None
         limit: int | None = None
-        order_by: OrderByRef | None = None
-        where: WhereClauseRef | None = None
+        order_by: OrderBy | None = None
+        where: WhereClause | None = None
         for arg in args:
             if isinstance(arg, SelectStatement):
                 selects.append(arg)
             elif isinstance(arg, Limit):
                 limit = arg.count
-            elif isinstance(arg, OrderByRef):
+            elif isinstance(arg, OrderBy):
                 order_by = arg
-            elif isinstance(arg, WhereClauseRef):
+            elif isinstance(arg, WhereClause):
                 where = arg
-            elif isinstance(arg, AlignClauseRef):
+            elif isinstance(arg, AlignClause):
                 align = arg
 
         assert align
         assert align is not None
-        base_local: BoundEnvironmentConceptDict = selects[0].local_concepts
+        base_local: EnvironmentConceptDict = selects[0].local_concepts
         for select in selects[1:]:
             for k, v in select.local_concepts.items():
                 base_local[k] = v
@@ -1044,13 +1025,13 @@ class ParseToObjects(Transformer):
                 select_items = arg
             elif isinstance(arg, Limit):
                 limit = arg.count
-            elif isinstance(arg, OrderByRef):
+            elif isinstance(arg, OrderBy):
                 order_by = arg
-            elif isinstance(arg, WhereClauseRef) and not isinstance(
-                arg, HavingClauseRef
+            elif isinstance(arg, WhereClause) and not isinstance(
+                arg, HavingClause
             ):
                 where = arg
-            elif isinstance(arg, HavingClauseRef):
+            elif isinstance(arg, HavingClause):
                 having = arg
         if not select_items:
             raise ValueError("Malformed select, missing select items")
@@ -1076,27 +1057,27 @@ class ParseToObjects(Transformer):
     def where(self, args):
         root = args[0]
         root = expr_to_boolean(root,)
-        return WhereClauseRef(conditional=root)
+        return WhereClause(conditional=root)
 
     def having(self, args):
         root = args[0]
         root = expr_to_boolean(root,)
-        return HavingClauseRef(conditional=root)
+        return HavingClause(conditional=root)
 
     @v_args(meta=True)
-    def function_binding_list(self, meta: Meta, args) -> BoundConcept:
+    def function_binding_list(self, meta: Meta, args) -> ConceptRef:
         return args
 
     @v_args(meta=True)
-    def function_binding_item(self, meta: Meta, args) -> BoundConcept:
+    def function_binding_item(self, meta: Meta, args) -> ConceptRef:
         return args
 
     @v_args(meta=True)
-    def raw_function(self, meta: Meta, args) -> FunctionRef:
+    def raw_function(self, meta: Meta, args) -> Function:
         identity = args[0]
         fargs = args[1]
         output = args[2]
-        item = FunctionRef(
+        item = Function(
             operator=FunctionType.SUM,
             arguments=[x[1] for x in fargs],
             output_datatype=output,
@@ -1107,7 +1088,7 @@ class ParseToObjects(Transformer):
         return item
 
     @v_args(meta=True)
-    def function(self, meta: Meta, args) -> FunctionRef:
+    def function(self, meta: Meta, args) -> Function:
         return args[0]
 
     def int_lit(self, args):
@@ -1147,10 +1128,10 @@ class ParseToObjects(Transformer):
     def literal(self, args):
         return args[0]
 
-    def comparison(self, args) -> ComparisonRef:
+    def comparison(self, args) -> Comparison:
         if args[1] == ComparisonOperator.IN:
             raise SyntaxError
-        if isinstance(args[0], AggregateWrapperRef):
+        if isinstance(args[0], AggregateWrapper):
             left = arbitrary_to_concept(
                 args[0],
                 environment=self.environment,
@@ -1159,7 +1140,7 @@ class ParseToObjects(Transformer):
             left = left.reference
         else:
             left = args[0]
-        if isinstance(args[2], AggregateWrapperRef):
+        if isinstance(args[2], AggregateWrapper):
             right = arbitrary_to_concept(
                 args[2],
                 environment=self.environment,
@@ -1168,46 +1149,46 @@ class ParseToObjects(Transformer):
             right = right.reference
         else:
             right = args[2]
-        x = ComparisonRef(left=left, right=right, operator=args[1])
+        x = Comparison(left=left, right=right, operator=args[1])
         x.validate(self.environment)
         return x
 
-    def between_comparison(self, args) -> ConditionalRef:
+    def between_comparison(self, args) -> Conditional:
         left_bound = args[1]
         right_bound = args[2]
-        return ConditionalRef(
-            left=ComparisonRef(
+        return Conditional(
+            left=Comparison(
                 left=args[0], right=left_bound, operator=ComparisonOperator.GTE
             ),
-            right=ComparisonRef(
+            right=Comparison(
                 left=args[0], right=right_bound, operator=ComparisonOperator.LTE
             ),
             operator=BooleanOperator.AND,
         )
 
     @v_args(meta=True)
-    def subselect_comparison(self, meta: Meta, args) -> SubselectComparisonRef:
+    def subselect_comparison(self, meta: Meta, args) -> SubselectComparison:
         right = args[2]
 
-        while isinstance(right, ParentheticalRef) and isinstance(
+        while isinstance(right, Parenthetical) and isinstance(
             right.content,
             (
                 ConceptRef,
-                FunctionRef,
-                FilterItemRef,
-                WindowItemRef,
-                AggregateWrapperRef,
+                Function,
+                FilterItem,
+                WindowItem,
+                AggregateWrapper,
                 ListWrapper,
                 TupleWrapper,
             ),
         ):
             right = right.content
         if isinstance(
-            right, (FunctionRef, FilterItemRef, WindowItemRef, AggregateWrapperRef)
+            right, (Function, FilterItem, WindowItem, AggregateWrapper)
         ):
             right = arbitrary_to_concept(right, environment=self.environment)
             self.environment.add_concept(right, meta=meta)
-        return SubselectComparisonRef(
+        return SubselectComparison(
             left=args[0],
             right=right,
             operator=args[1],
@@ -1217,10 +1198,10 @@ class ParseToObjects(Transformer):
         return TupleWrapper(content=tuple(args))
 
     def parenthetical(self, args):
-        return ParentheticalRef(content=args[0])
+        return Parenthetical(content=args[0])
 
     def condition_parenthetical(self, args):
-        return ParentheticalRef(content=args[0])
+        return Parenthetical(content=args[0])
 
     def conditional(self, args):
         def munch_args(args):
@@ -1228,7 +1209,7 @@ class ParseToObjects(Transformer):
                 if len(args) == 1:
                     return args[0]
                 else:
-                    return ConditionalRef(
+                    return Conditional(
                         left=args[0], operator=args[1], right=munch_args(args[2:])
                     )
 
@@ -1248,10 +1229,10 @@ class ParseToObjects(Transformer):
         return WindowType(args.strip())
 
     def window_item_over(self, args):
-        return WindowItemOverRef(contents=args[0])
+        return WindowItemOver(contents=args[0])
 
     def window_item_order(self, args):
-        return WindowItemOrderRef(contents=args[0])
+        return WindowItemOrder(contents=args[0])
 
     @v_args(meta=True)
     def window_item(self, meta, args) -> WindowItem:
@@ -1263,9 +1244,9 @@ class ParseToObjects(Transformer):
         for item in args:
             if isinstance(item, int):
                 index = item
-            elif isinstance(item, WindowItemOrderRef):
+            elif isinstance(item, WindowItemOrder):
                 order_by = item.contents
-            elif isinstance(item, WindowItemOverRef):
+            elif isinstance(item, WindowItemOver):
                 over = item.contents
             elif isinstance(item, ConceptRef):
                 concept = item
@@ -1278,18 +1259,18 @@ class ParseToObjects(Transformer):
         assert concept
         if not isinstance(concept, ConceptRef):
             raise ValueError(f"Concept must be a reference, is {type(concept)}")
-        return WindowItemRef(
+        return WindowItem(
             type=type, content=concept, over=over, order_by=order_by, index=index
         )
 
-    def filter_item(self, args) -> FilterItemRef:
-        where: WhereClauseRef
+    def filter_item(self, args) -> FilterItem:
+        where: WhereClause
         string_concept, raw = args
-        if isinstance(raw, WhereClauseRef):
+        if isinstance(raw, WhereClause):
             where = raw
         else:
-            where = WhereClauseRef(conditional=raw)
-        return FilterItemRef(content=ConceptRef(address=string_concept), where=where)
+            where = WhereClause(conditional=raw)
+        return FilterItem(content=ConceptRef(address=string_concept), where=where)
 
     # BEGIN FUNCTIONS
     # @v_args(meta=True)
@@ -1301,16 +1282,16 @@ class ParseToObjects(Transformer):
             raise ParseError("Expression should have one child only.")
         return args[0]
 
-    def aggregate_over(self, args: list[list[BoundConcept]]) -> set[ConceptRef]:
-        return set(ConceptRef(address=x.address) for x in args[0])
+    def aggregate_over(self, args: list[list[ConceptRef]]) -> set[ConceptRef]:
+        return set(args[0])
 
     def aggregate_all(self, args):
         return [self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]]
 
     def aggregate_functions(self, args):
         if len(args) == 2:
-            return AggregateWrapperRef(function=args[0], by=args[1])
-        return AggregateWrapperRef(function=args[0])
+            return AggregateWrapper(function=args[0], by=args[1])
+        return AggregateWrapper(function=args[0])
 
     @v_args(meta=True)
     def index_access(self, meta, args):
@@ -1499,7 +1480,7 @@ class ParseToObjects(Transformer):
 
     # utility functions
     @v_args(meta=True)
-    def fcast(self, meta, args) -> FunctionRef:
+    def fcast(self, meta, args) -> Function:
         # if it's casting a constant, we'll process that directly
         args = process_function_args(args, meta=meta, environment=self.environment)
         if isinstance(args[0], str):
@@ -1527,43 +1508,43 @@ class ParseToObjects(Transformer):
 
     # math functions
     @v_args(meta=True)
-    def fadd(self, meta, args) -> FunctionRef:
+    def fadd(self, meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.ADD, meta)
 
     @v_args(meta=True)
-    def fsub(self, meta, args) -> FunctionRef:
+    def fsub(self, meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.SUBTRACT, meta)
 
     @v_args(meta=True)
-    def fmul(self, meta, args) -> FunctionRef:
+    def fmul(self, meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.MULTIPLY, meta)
 
     @v_args(meta=True)
-    def fdiv(self, meta: Meta, args) -> FunctionRef:
+    def fdiv(self, meta: Meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.DIVIDE, meta)
 
     @v_args(meta=True)
-    def fmod(self, meta: Meta, args) -> FunctionRef:
+    def fmod(self, meta: Meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.MOD, meta)
 
     @v_args(meta=True)
-    def fround(self, meta, args) -> FunctionRef:
+    def fround(self, meta, args) -> Function:
         return self.function_factory.create_function(args, FunctionType.ROUND, meta)
 
     @v_args(meta=True)
-    def fcase(self, meta, args: List[Union[CaseWhen, CaseElse]]) -> FunctionRef:
+    def fcase(self, meta, args: List[Union[CaseWhen, CaseElse]]) -> Function:
         return self.function_factory.create_function(args, FunctionType.CASE, meta)
 
     @v_args(meta=True)
     def fcase_when(self, meta, args) -> CaseWhen:
         args = process_function_args(args, meta=meta, environment=self.environment)
         root = expr_to_boolean(args[0],)
-        return CaseWhenRef(comparison=root, expr=args[1])
+        return CaseWhen(comparison=root, expr=args[1])
 
     @v_args(meta=True)
     def fcase_else(self, meta, args) -> CaseElse:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        return CaseElseRef(expr=args[0])
+        return CaseElse(expr=args[0])
 
     @v_args(meta=True)
     def fcurrent_date(self, meta, args):

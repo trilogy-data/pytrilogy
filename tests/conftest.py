@@ -11,19 +11,19 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
 from trilogy.core.execute_models import (
     BoundColumnAssignment,
-    Comparison,
+    BoundComparison,
     BoundConcept,
-    Datasource,
+    BoundDatasource,
     DataType,
-    FilterItem,
-    Function,
+    BoundFilterItem,
+    BoundFunction,
 
-    OrderItem,
-    WhereClause,
-    WindowItem,
-    Function,
+    BoundOrderItem,
+    BoundWhereClause,
+    BoundWindowItem,
+    BoundFunction,
 )
-from trilogy.core.author_models import Concept, FunctionRef, OrderItemRef, WindowItemRef, ComparisonRef, WhereClauseRef, FilterItemRef, DatasourceRef, ColumnAssignment, Grain
+from trilogy.core.author_models import Concept, Function, OrderItem, WindowItem, Comparison, WhereClause, FilterItem, Datasource, ColumnAssignment, Grain
 
 
 @fixture(scope="session")
@@ -75,7 +75,7 @@ def test_environment():
         name="total_revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.METRIC,
-        lineage=FunctionRef(
+        lineage=Function(
             arguments=[revenue.reference],
             output_datatype=DataType.FLOAT,
             output_purpose=Purpose.METRIC,
@@ -104,7 +104,7 @@ def test_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         grain=category_id,
-        lineage=FunctionRef(
+        lineage=Function(
             arguments=[category_name.reference],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.PROPERTY,
@@ -118,7 +118,7 @@ def test_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         grain=category_id,
-        lineage=FunctionRef(
+        lineage=Function(
             arguments=[category_name_length.reference],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
@@ -132,11 +132,11 @@ def test_environment():
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItemRef(
+        lineage=WindowItem(
             type=WindowType.RANK,
             content=product_id.reference,
             order_by=[
-                OrderItemRef(expr = rev_by_product.reference, order="desc")
+                OrderItem(expr = rev_by_product.reference, order="desc")
             ],
         ),
         grain=product_id,
@@ -146,11 +146,11 @@ def test_environment():
         name="product_revenue_rank_by_category",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItemRef(
+        lineage=WindowItem(
             type=WindowType.RANK,
             content=product_id,
             over=[category_id],
-            order_by=[OrderItemRef(expr=total_revenue, order="desc")],
+            order_by=[OrderItem(expr=total_revenue, order="desc")],
         ),
     )
 
@@ -158,10 +158,10 @@ def test_environment():
         name="products_with_revenue_over_50",
         datatype=DataType.INTEGER,
         purpose=Purpose.KEY,
-        lineage=FilterItemRef(
+        lineage=FilterItem(
             content=product_id,
-            where=WhereClauseRef(
-                conditional=ComparisonRef(
+            where=WhereClause(
+                conditional=Comparison(
                     left=total_revenue.with_grain(product_id).reference,
                     operator=ComparisonOperator.GT,
                     right=50,
@@ -169,7 +169,7 @@ def test_environment():
             ),
         ),
     )
-    test_revenue = DatasourceRef(
+    test_revenue = Datasource(
         name="revenue",
         columns=[
             ColumnAssignment(alias="revenue", concept=revenue),
@@ -181,7 +181,7 @@ def test_environment():
         grain=Grain(components=[order_id]),
     )
 
-    test_product = DatasourceRef(
+    test_product = Datasource(
         name="products",
         columns=[
             ColumnAssignment(alias="product_id", concept=product_id),
@@ -191,7 +191,7 @@ def test_environment():
         grain=Grain(components=[product_id]),
     )
 
-    test_category = DatasourceRef(
+    test_category = Datasource(
         name="category",
         columns=[
             ColumnAssignment(alias="category_id", concept=category_id),

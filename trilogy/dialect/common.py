@@ -4,7 +4,7 @@ from trilogy.core.enums import Modifier, UnnestMode
 from trilogy.core.execute_models import (
     CTE,
     BoundConcept,
-    Function,
+    BoundFunction,
     InstantiatedUnnestJoin,
     Join,
     RawColumnExpr,
@@ -43,7 +43,7 @@ def render_join_concept(
         if isinstance(raw_content, RawColumnExpr):
             rval = raw_content.text
             return rval
-        elif isinstance(raw_content, Function):
+        elif isinstance(raw_content, BoundFunction):
             rval = render_expr(raw_content, cte=cte)
             return rval
         return f"{name}.{quote_character}{raw_content}{quote_character}"

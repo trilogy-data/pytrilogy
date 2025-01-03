@@ -7,7 +7,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import PurposeLineage
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.execute_models import BoundConcept, Conditional, BoundEnvironment, WhereClause
+from trilogy.core.execute_models import BoundConcept, BoundConditional, BoundEnvironment, BoundWhereClause
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -293,7 +293,7 @@ def subgraphs_to_merge_node(
     source_concepts,
     history,
     conditions,
-    search_conditions: WhereClause | None = None,
+    search_conditions: BoundWhereClause | None = None,
     enable_early_exit: bool = True,
 ):
     parents: List[StrategyNode] = []
@@ -356,8 +356,8 @@ def gen_merge_node(
     source_concepts,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: Conditional | None = None,
-    search_conditions: WhereClause | None = None,
+    conditions: BoundConditional | None = None,
+    search_conditions: BoundWhereClause | None = None,
 ) -> Optional[MergeNode]:
     if search_conditions:
         all_concepts = unique(all_concepts + search_conditions.row_arguments, "address")

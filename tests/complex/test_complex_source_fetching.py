@@ -6,7 +6,7 @@ import re
 
 from trilogy.core.enums import Purpose
 from trilogy.core.execute_models import (
-    Datasource,
+    BoundDatasource,
     BoundEnvironment,
     Grain,
     QueryDatasource,
@@ -112,7 +112,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment:Environment):
     )
 
     root = parent.datasources[0].datasources[0]
-    assert isinstance(root, Datasource)
+    assert isinstance(root, BoundDatasource)
     assert posts == root
     assert post_id in root.concepts
 

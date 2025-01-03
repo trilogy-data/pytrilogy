@@ -1,6 +1,6 @@
 import networkx as nx
 
-from trilogy.core.execute_models import BoundConcept, Datasource
+from trilogy.core.execute_models import BoundConcept, BoundDatasource
 
 
 def concept_to_node(input: BoundConcept) -> str:
@@ -9,7 +9,7 @@ def concept_to_node(input: BoundConcept) -> str:
     return f"c~{input.address}@{input.grain}"
 
 
-def datasource_to_node(input: Datasource) -> str:
+def datasource_to_node(input: BoundDatasource) -> str:
     # if isinstance(input, JoinedDataSource):
     #     return "ds~join~" + ",".join(
     #         [datasource_to_node(sub) for sub in input.datasources]
@@ -27,7 +27,7 @@ class ReferenceGraph(nx.DiGraph):
             attr["type"] = "concept"
             attr["concept"] = node_for_adding
             attr["grain"] = node_for_adding.grain
-        elif isinstance(node_for_adding, Datasource):
+        elif isinstance(node_for_adding, BoundDatasource):
             node_name = datasource_to_node(node_for_adding)
             attr["type"] = "datasource"
             attr["ds"] = node_for_adding
@@ -42,7 +42,7 @@ class ReferenceGraph(nx.DiGraph):
             u_of_edge = concept_to_node(u_of_edge)
             if u_of_edge not in self.nodes:
                 self.add_node(orig)
-        elif isinstance(u_of_edge, Datasource):
+        elif isinstance(u_of_edge, BoundDatasource):
             u_of_edge = datasource_to_node(u_of_edge)
 
         if isinstance(v_of_edge, BoundConcept):
@@ -50,6 +50,6 @@ class ReferenceGraph(nx.DiGraph):
             v_of_edge = concept_to_node(v_of_edge)
             if v_of_edge not in self.nodes:
                 self.add_node(orig)
-        elif isinstance(v_of_edge, Datasource):
+        elif isinstance(v_of_edge, BoundDatasource):
             v_of_edge = datasource_to_node(v_of_edge)
         super().add_edge(u_of_edge, v_of_edge, **attr)

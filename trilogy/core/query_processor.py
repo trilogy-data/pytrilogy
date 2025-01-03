@@ -27,10 +27,10 @@ from trilogy.core.execute_models import (
     CTE,
     BaseJoin,
     BoundConcept,
-    Conditional,
+    BoundConditional,
     BoundSelectStatement,
     CTEConceptPair,
-    Datasource,
+    BoundDatasource,
     BoundEnvironment,
     InstantiatedUnnestJoin,
     Join,
@@ -42,6 +42,7 @@ from trilogy.core.execute_models import (
     QueryDatasource,
     UnionCTE,
     UnnestJoin,
+    BoundGrain,
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
@@ -64,7 +65,7 @@ def base_join_to_join(
             alias=base_join.alias,
         )
 
-    def get_datasource_cte(datasource: Datasource | QueryDatasource) -> CTE:
+    def get_datasource_cte(datasource: BoundDatasource | QueryDatasource) -> CTE:
         for cte in ctes:
             if cte.source.identifier == datasource.identifier:
                 return cte
@@ -128,7 +129,7 @@ def generate_source_map(
             and isinstance(list(qdv)[0], UnnestJoin)
         ):
             source_map[qdk] = []
-        basic = [x for x in qdv if isinstance(x, Datasource)]
+        basic = [x for x in qdv if isinstance(x, BoundDatasource)]
         for base in basic:
             source_map[qdk].append(base.safe_identifier)
 
@@ -177,8 +178,8 @@ def generate_source_map(
     }, existence_source_map
 
 
-def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
-    sub_select: Dict[str, Set[Union[Datasource, QueryDatasource, UnnestJoin]]] = {
+def datasource_to_query_datasource(datasource: BoundDatasource) -> QueryDatasource:
+    sub_select: Dict[str, Set[Union[BoundDatasource, QueryDatasource, UnnestJoin]]] = {
         **{c.address: {datasource} for c in datasource.concepts},
     }
     concepts = [c for c in datasource.concepts]
@@ -220,7 +221,7 @@ def resolve_cte_base_name_and_alias_v2(
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
     if (
-        isinstance(source.datasources[0], Datasource)
+        isinstance(source.datasources[0], BoundDatasource)
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
@@ -363,71 +364,16 @@ def datasource_to_cte(
     return cte
 
 
-def set_query_grain(
-    statement: BoundSelectStatement, environment: BoundEnvironment
-) -> Grain:
-    for parse_pass in [
-        1,
-        2,
-    ]:
-        # the first pass will result in all concepts being defined
-        # the second will get grains appropriately
-        # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
-        # until after the first pass, and so don't know the grain of a
-        where = statement.where_clause if statement.where_clause else None
-        if parse_pass == 1:
-            grain = Grain.from_concepts(
-                [
-                    environment.concepts[x.content.address]
-                    for x in statement.selection
-                    if isinstance(x.content, ConceptRef)
-                ],
-                environment=environment,
-                where_clause=where,
-            )
-            for k, v in environment.concepts.items():
-                new = v.with_select_context(
-                    statement.local_concepts, grain=grain, environment=environment
-                )
-                environment.concepts[k] = new
-        if parse_pass == 2:
-            grain = Grain.from_concepts(
-                [x.address for x in statement.output_components],
-                where_clause=where,
-                environment=environment,
-            )
-            for k, v in environment.concepts.items():
-                new = v.with_select_context(
-                    statement.local_concepts, grain=grain, environment=environment
-                )
-                environment.concepts[k] = new
 
-    # if statement.where_clause:
-    # if statement.having_clause:
-    #     statement.having_clause = statement.having_clause.with_select_context(
-    #         local_concepts=statement.local_concepts,
-    #         grain=statement.grain,
-    #         environment=environment,
-    #     )
-    return grain
 
 
 def create_statement_environment(
-    statement: SelectStatement | MultiSelectStatement,
     environment: Environment | BoundEnvironment,
 ) -> Tuple[BoundEnvironment, Grain]:
     if isinstance(environment, Environment):
         new_env = environment.instantiate()
     else:
         new_env = environment
-    statements = []
-    if isinstance(statement, MultiSelectStatement):
-        statements = statement.selects
-    else:
-        statements = [statement]
-    for statement in statements:
-        grain = set_query_grain(statement.instantiate(environment), new_env)
-
     return new_env
 
 
@@ -449,9 +395,7 @@ def get_query_node(
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
-    search_concepts: list[BoundConcept] = [
-        environment.concepts[x.address] for x in statement.output_components
-    ]
+    search_concepts: list[BoundConcept] = statement.output_components
     ods: StrategyNode = source_query_concepts(
         search_concepts,
         environment=environment,
@@ -467,7 +411,7 @@ def get_query_node(
     if statement.having_clause:
         final = statement.having_clause.conditional
         if ds.conditions:
-            final = Conditional(
+            final = BoundConditional(
                 left=ds.conditions,
                 right=final,
                 operator=BooleanOperator.AND,
@@ -562,7 +506,7 @@ def process_query(
 ) -> ProcessedQuery:
     hooks = hooks or []
 
-    environment = create_statement_environment(statement, environment)
+    environment = create_statement_environment(environment)
     logger.info(f"{LOGGER_PREFIX} query environment instantiated.")
     root_datasource = get_query_datasources(
         environment=environment, statement=statement, hooks=hooks

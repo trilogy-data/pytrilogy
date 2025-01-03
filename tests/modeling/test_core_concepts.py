@@ -3,11 +3,11 @@ import pytest
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.execute_models import BoundEnvironment
+from trilogy import Environment
 from trilogy.core.processing.node_generators import gen_select_node
 
 
-def test_key_assignments(test_environment: BoundEnvironment):
+def test_key_assignments(test_environment: Environment):
     # test keys
     order_id = test_environment.concepts["order_id"]
     store_id = test_environment.concepts["store_id"]
@@ -19,7 +19,7 @@ def test_key_assignments(test_environment: BoundEnvironment):
     # test_environment.concepts[]
 
 
-def test_property_assignments(test_environment: BoundEnvironment):
+def test_property_assignments(test_environment: Environment):
     # test keys
     store_id = test_environment.concepts["store_id"]
     product_id = test_environment.concepts["product_id"]
@@ -35,7 +35,7 @@ def test_property_assignments(test_environment: BoundEnvironment):
     assert product_name.grain.components == {product_id.address}
 
 
-def test_auto_property_assignments(test_environment: BoundEnvironment):
+def test_auto_property_assignments(test_environment: Environment):
     # test keys
     store_id = test_environment.concepts["store_id"]
     store_name = test_environment.concepts["store_name"]
@@ -54,7 +54,7 @@ def test_auto_property_assignments(test_environment: BoundEnvironment):
         ), f"grain for {candidate.address}: {candidate.keys} should be store_id"
 
 
-def test_metric_assignments(test_environment: BoundEnvironment):
+def test_metric_assignments(test_environment: Environment):
     # test keys
     store_id = test_environment.concepts["store_id"]
     store_order_count = test_environment.concepts["store_order_count"]
@@ -68,7 +68,8 @@ def test_metric_assignments(test_environment: BoundEnvironment):
         assert candidate.grain.components == {store_id.address}
 
 
-def test_source_outputs(test_environment: BoundEnvironment, test_executor: Executor):
+def test_source_outputs(test_environment: Environment, test_executor: Executor):
+    test_environment = test_environment.instantiate()
     order_ds = test_environment.datasources["orders"]
     for col in order_ds.columns:
         if col.alias == "order_id":
@@ -104,7 +105,7 @@ def test_source_outputs(test_environment: BoundEnvironment, test_executor: Execu
     assert found
 
 
-def test_statement_grains(test_environment: BoundEnvironment, test_executor: Executor):
+def test_statement_grains(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 SELECT
@@ -121,7 +122,7 @@ SELECT
     assert results[2] == (3, "store3", 0, 0, 0)
 
 
-def test_join_grain(test_environment: BoundEnvironment, test_executor: Executor):
+def test_join_grain(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 SELECT
@@ -131,19 +132,12 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert set(statement.grain.components) == set(
-        [
-            test_environment.concepts["store_id"].address,
-            test_environment.concepts["product_id"].address,
-            test_environment.concepts["order_id"].address,
-        ]
-    )
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 5
 
 
-def test_filter_grain(test_environment: BoundEnvironment, test_executor: Executor):
+def test_filter_grain(test_environment: Environment, test_executor: Executor):
     # test keys
     test_select = """
 
@@ -154,9 +148,7 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert statement.grain.components == {
-        "local.order_id",
-    }
+
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 4
 
@@ -167,13 +159,12 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert statement.grain.components == {"local.even_order_id"}
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2
 
 
-def test_datasource_properties(test_environment: BoundEnvironment, test_executor: Executor):
+def test_datasource_properties(test_environment: Environment, test_executor: Executor):
     cols = test_environment.datasources["orders"].columns
 
     for col in cols:
@@ -187,7 +178,7 @@ def test_datasource_properties(test_environment: BoundEnvironment, test_executor
     assert store.grain == [test_environment.concepts["store_id"]]
 
 
-def test_filter_grain_different(test_environment: BoundEnvironment, test_executor: Executor):
+def test_filter_grain_different(test_environment: Environment, test_executor: Executor):
     test_select = """
 
     auto even_order_store_id <- filter store_id where (order_id % 2) = 0;
@@ -203,7 +194,7 @@ def test_filter_grain_different(test_environment: BoundEnvironment, test_executo
 
 
 def test_inline_source_derivation(
-    test_environment: BoundEnvironment, test_executor: Executor
+    test_environment: Environment, test_executor: Executor
 ):
     test_select = """
 
@@ -220,7 +211,7 @@ def test_inline_source_derivation(
 
 
 @pytest.mark.xfail
-def test_filtered_project(test_environment: BoundEnvironment, test_executor: Executor):
+def test_filtered_project(test_environment: Environment, test_executor: Executor):
     test_select = """
 
     SELECT

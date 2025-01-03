@@ -8,15 +8,15 @@ from trilogy.core.enums import (
     PurposeLineage,
 )
 from trilogy.core.execute_models import (
-    Comparison,
+    BoundComparison,
     BoundConcept,
     ConceptPair,
-    Conditional,
-    Datasource,
+    BoundConditional,
+    BoundDatasource,
     BoundEnvironment,
     BoundGrain,
     LooseConceptList,
-    Parenthetical,
+    BoundParenthetical,
     QueryDatasource,
     SourceType,
     UnnestJoin,
@@ -25,13 +25,13 @@ from trilogy.utility import unique
 
 
 def resolve_concept_map(
-    inputs: List[QueryDatasource | Datasource],
+    inputs: List[QueryDatasource | BoundDatasource],
     targets: List[BoundConcept],
     inherited_inputs: List[BoundConcept],
     full_joins: List[BoundConcept] | None = None,
-) -> dict[str, set[Datasource | QueryDatasource | UnnestJoin]]:
+) -> dict[str, set[BoundDatasource | QueryDatasource | UnnestJoin]]:
     targets = targets or []
-    concept_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = (
+    concept_map: dict[str, set[BoundDatasource | QueryDatasource | UnnestJoin]] = (
         defaultdict(set)
     )
     full_addresses = {c.address for c in full_joins} if full_joins else set()
@@ -135,8 +135,8 @@ class StrategyNode:
         partial_concepts: List[BoundConcept] | None = None,
         nullable_concepts: List[BoundConcept] | None = None,
         depth: int = 0,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
+        preexisting_conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
         force_group: bool | None = None,
         grain: Optional[BoundGrain] = None,
         hidden_concepts: set[str] | None = None,
@@ -177,7 +177,7 @@ class StrategyNode:
             and self.preexisting_conditions
             and self.conditions != self.preexisting_conditions
         ):
-            self.preexisting_conditions = Conditional(
+            self.preexisting_conditions = BoundConditional(
                 left=self.conditions,
                 right=self.preexisting_conditions,
                 operator=BooleanOperator.AND,
@@ -207,16 +207,16 @@ class StrategyNode:
         return self
 
     def set_preexisting_conditions(
-        self, conditions: Conditional | Comparison | Parenthetical
+        self, conditions: BoundConditional | BoundComparison | BoundParenthetical
     ):
         self.preexisting_conditions = conditions
         return self
 
-    def add_condition(self, condition: Conditional | Comparison | Parenthetical):
+    def add_condition(self, condition: BoundConditional | BoundComparison | BoundParenthetical):
         if self.conditions and condition == self.conditions:
             return self
         if self.conditions:
-            self.conditions = Conditional(
+            self.conditions = BoundConditional(
                 left=self.conditions, right=condition, operator=BooleanOperator.AND
             )
         else:
@@ -332,7 +332,7 @@ class StrategyNode:
         return f"{self.__class__.__name__}<{contents}>"
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
+        parent_sources: List[QueryDatasource | BoundDatasource] = [
             p.resolve() for p in self.parents
         ]
 

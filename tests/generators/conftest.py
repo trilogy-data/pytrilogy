@@ -1,6 +1,6 @@
 from pytest import fixture
 
-from trilogy import BoundEnvironment
+from trilogy import Environment
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -10,62 +10,63 @@ from trilogy.core.enums import (
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
-from trilogy.core.execute_models import (
+from trilogy.authoring import (
     AggregateWrapper,
-    BoundColumnAssignment,
+    ColumnAssignment,
     Comparison,
-    BoundConcept,
+    Concept,
     Datasource,
     DataType,
     FilterItem,
     Function,
-    Grain,
     OrderItem,
     WhereClause,
     WindowItem,
+    Grain
 )
+from trilogy import Environment
 
 
 @fixture(scope="session")
 def test_environment():
-    env = BoundEnvironment()
-    order_id = BoundConcept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+    env = Environment()
+    order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
-    order_timestamp = BoundConcept(
+    order_timestamp = Concept(
         name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
     )
 
-    order_count = BoundConcept(
+    order_count = Concept(
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Count([order_id]),
     )
 
-    distinct_order_count = BoundConcept(
+    distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=CountDistinct([order_id]),
     )
 
-    max_order_id = BoundConcept(
+    max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Max([order_id]),
     )
 
-    min_order_id = BoundConcept(
+    min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=Min([order_id]),
     )
 
-    revenue = BoundConcept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
+    revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
 
-    total_revenue = BoundConcept(
+    total_revenue = Concept(
         name="total_revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.METRIC,
@@ -76,10 +77,10 @@ def test_environment():
             operator=FunctionType.SUM,
         ),
     )
-    product_id = BoundConcept(
+    product_id = Concept(
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    constant_one = BoundConcept(
+    constant_one = Concept(
         name="constant_one",
         datatype=DataType.INTEGER,
         purpose=Purpose.CONSTANT,
@@ -91,7 +92,7 @@ def test_environment():
         ),
     )
 
-    literal_array = BoundConcept(
+    literal_array = Concept(
         name="literal_array",
         datatype=DataType.ARRAY,
         purpose=Purpose.CONSTANT,
@@ -103,7 +104,7 @@ def test_environment():
         ),
     )
 
-    unnest_literal_array = BoundConcept(
+    unnest_literal_array = Concept(
         name="unnest_literal_array",
         datatype=DataType.INTEGER,
         purpose=Purpose.KEY,
@@ -115,10 +116,10 @@ def test_environment():
         ),
     )
 
-    category_id = BoundConcept(
+    category_id = Concept(
         name="category_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
-    category_name = BoundConcept(
+    category_name = Concept(
         name="category_name",
         datatype=DataType.STRING,
         purpose=Purpose.PROPERTY,
@@ -126,7 +127,7 @@ def test_environment():
         keys={category_id.address},
     )
 
-    category_name_length = BoundConcept(
+    category_name_length = Concept(
         name="category_name_length",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -139,7 +140,7 @@ def test_environment():
         ),
     )
 
-    product_revenue_rank = BoundConcept(
+    product_revenue_rank = Concept(
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -149,7 +150,7 @@ def test_environment():
             order_by=[OrderItem(expr=total_revenue, order="desc")],
         ),
     )
-    product_revenue_rank_by_category = BoundConcept(
+    product_revenue_rank_by_category = Concept(
         name="product_revenue_rank_by_category",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -161,7 +162,7 @@ def test_environment():
         ),
     )
 
-    products_with_revenue_over_50 = BoundConcept(
+    products_with_revenue_over_50 = Concept(
         name="products_with_revenue_over_50",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
@@ -178,7 +179,7 @@ def test_environment():
         grain=product_id,
     )
 
-    category_top_50_revenue_products = BoundConcept(
+    category_top_50_revenue_products = Concept(
         name="category_top_50_revenue_products",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
@@ -188,7 +189,7 @@ def test_environment():
         grain=Grain(components=[category_id]),
     )
 
-    category_products = BoundConcept(
+    category_products = Concept(
         name="category_products",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
@@ -198,12 +199,12 @@ def test_environment():
     test_revenue = Datasource(
         name="revenue",
         columns=[
-            BoundColumnAssignment(alias="revenue", concept=revenue),
-            BoundColumnAssignment(alias="order_id", concept=order_id),
-            BoundColumnAssignment(
+            ColumnAssignment(alias="revenue", concept=revenue),
+            ColumnAssignment(alias="order_id", concept=order_id),
+            ColumnAssignment(
                 alias="product_id", concept=product_id, modifiers=[Modifier.PARTIAL]
             ),
-            BoundColumnAssignment(alias="order_timestamp", concept=order_timestamp),
+            ColumnAssignment(alias="order_timestamp", concept=order_timestamp),
         ],
         address="tblRevenue",
         grain=Grain(components=[order_id]),
@@ -212,8 +213,8 @@ def test_environment():
     test_product = Datasource(
         name="products",
         columns=[
-            BoundColumnAssignment(alias="product_id", concept=product_id),
-            BoundColumnAssignment(
+            ColumnAssignment(alias="product_id", concept=product_id),
+            ColumnAssignment(
                 alias="category_id", concept=category_id, modifiers=[Modifier.PARTIAL]
             ),
         ],
@@ -224,8 +225,8 @@ def test_environment():
     test_category = Datasource(
         name="category",
         columns=[
-            BoundColumnAssignment(alias="category_id", concept=category_id),
-            BoundColumnAssignment(alias="category_name", concept=category_name),
+            ColumnAssignment(alias="category_id", concept=category_id),
+            ColumnAssignment(alias="category_name", concept=category_name),
         ],
         address="tblCategory",
         grain=Grain(components=[category_id]),

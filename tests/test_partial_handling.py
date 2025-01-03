@@ -6,7 +6,7 @@ from trilogy.core.enums import Purpose
 from trilogy.core.execute_models import (
     BoundColumnAssignment,
     BoundConcept,
-    Datasource,
+    BoundDatasource,
     DataType,
     BoundEnvironment,
 )
@@ -81,7 +81,7 @@ def setup_titanic(env: BoundEnvironment):
         env.add_concept(x)
 
     env.add_datasource(
-        Datasource(
+        BoundDatasource(
             name="raw_data",
             address="raw_titanic",
             columns=[

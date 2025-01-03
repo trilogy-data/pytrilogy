@@ -26,39 +26,39 @@ from trilogy.core.author_models import (
 )
 from trilogy.core.execute_models import (
     CTE,
-    AggregateWrapper,
-    CaseElse,
-    CaseWhen,
-    Comparison,
+    BoundAggregateWrapper,
+    BoundCaseElse,
+    BoundCaseWhen,
+    BoundComparison,
     CompiledCTE,
     BoundConcept,
 
-    Conditional,
-    Datasource,
+    BoundConditional,
+    BoundDatasource,
     DataType,
     BoundEnvironment,
-    FilterItem,
-    Function,
+    BoundFilterItem,
+    BoundFunction,
     ImportStatement,
     ListType,
     ListWrapper,
     MapType,
     MapWrapper,
     NumericType,
-    OrderItem,
-    Parenthetical,
+    BoundOrderItem,
+    BoundParenthetical,
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     RawColumnExpr,
-    RowsetItem,
+    BoundRowsetItem,
     StructType,
-    SubselectComparison,
+    BoundSubselectComparison,
     TupleWrapper,
     UnionCTE,
-    WindowItem,
+    BoundWindowItem,
 )
 from trilogy.core.processing.utility import (
     decompose_condition,
@@ -270,7 +270,7 @@ class BaseDialect:
 
     def render_order_item(
         self,
-        order_item: OrderItem,
+        order_item: BoundOrderItem,
         cte: CTE | UnionCTE,
         final: bool = False,
         alias: bool = True,
@@ -327,7 +327,7 @@ class BaseDialect:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing, have {cte.source_map}"
             )
-            if isinstance(c.lineage, WindowItem):
+            if isinstance(c.lineage, BoundWindowItem):
                 rendered_order_components = [
                     f"{self.render_concept_sql(x.expr, cte, alias=False, raise_invalid=raise_invalid)} {x.order.value}"
                     for x in c.lineage.order_by
@@ -350,17 +350,17 @@ class BaseDialect:
                     sort=",".join(rendered_order_components),
                     offset=c.lineage.index,
                 )
-            elif isinstance(c.lineage, FilterItem):
+            elif isinstance(c.lineage, BoundFilterItem):
                 # for cases when we've optimized this
                 if cte.condition == c.lineage.where.conditional:
                     rval = self.render_expr(c.lineage.content, cte=cte)
                 else:
                     rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)} ELSE NULL END"
-            elif isinstance(c.lineage, RowsetItem):
+            elif isinstance(c.lineage, BoundRowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, MultiSelectStatement):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
-            elif isinstance(c.lineage, AggregateWrapper):
+            elif isinstance(c.lineage, BoundAggregateWrapper):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
                     for v in c.lineage.function.arguments
@@ -374,7 +374,7 @@ class BaseDialect:
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
             elif (
-                isinstance(c.lineage, Function)
+                isinstance(c.lineage, BoundFunction)
                 and c.lineage.operator == FunctionType.UNION
             ):
                 local_matched = [
@@ -388,7 +388,7 @@ class BaseDialect:
                     )
                 rval = self.render_expr(local_matched[0], cte)
             elif (
-                isinstance(c.lineage, Function)
+                isinstance(c.lineage, BoundFunction)
                 and c.lineage.operator == FunctionType.CONSTANT
                 and CONFIG.rendering.parameters is True
                 and c.datatype.data_type != DataType.MAP
@@ -400,7 +400,7 @@ class BaseDialect:
                     if (
                         isinstance(arg, BoundConcept)
                         and arg.lineage
-                        and isinstance(arg.lineage, Function)
+                        and isinstance(arg.lineage, BoundFunction)
                         and arg.lineage.operator
                         in (
                             FunctionType.ADD,
@@ -411,7 +411,7 @@ class BaseDialect:
                     ):
                         args.append(
                             self.render_expr(
-                                Parenthetical(content=arg),
+                                BoundParenthetical(content=arg),
                                 cte=cte,
                                 raise_invalid=raise_invalid,
                             )
@@ -433,7 +433,7 @@ class BaseDialect:
             raw_content = cte.get_alias(c)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
-            elif isinstance(raw_content, Function):
+            elif isinstance(raw_content, BoundFunction):
                 rval = self.render_expr(
                     raw_content, cte=cte, raise_invalid=raise_invalid
                 )
@@ -457,10 +457,10 @@ class BaseDialect:
     def render_expr(
         self,
         e: Union[
-            Function,
-            Conditional,
-            Comparison,
-            SubselectComparison,
+            BoundFunction,
+            BoundConditional,
+            BoundComparison,
+            BoundSubselectComparison,
             BoundConcept,
             str,
             int,
@@ -470,9 +470,9 @@ class BaseDialect:
             date,
             datetime,
             DataType,
-            Function,
-            Parenthetical,
-            AggregateWrapper,
+            BoundFunction,
+            BoundParenthetical,
+            BoundAggregateWrapper,
             MagicConstants,
             MapWrapper[Any, Any],
             MapType,
@@ -482,17 +482,17 @@ class BaseDialect:
             ListWrapper[Any],
             TupleWrapper[Any],
             DatePart,
-            CaseWhen,
-            CaseElse,
-            WindowItem,
-            FilterItem,
+            BoundCaseWhen,
+            BoundCaseElse,
+            BoundWindowItem,
+            BoundFilterItem,
             # FilterItem
         ],
         cte: Optional[CTE | UnionCTE] = None,
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
     ) -> str:
-        if isinstance(e, SubselectComparison):
+        if isinstance(e, BoundSubselectComparison):
             if isinstance(e.right, BoundConcept):
                 # we won't always have an existnce map
                 # so fall back to the normal map
@@ -518,7 +518,7 @@ class BaseDialect:
                         f"Missing source CTE for {e.right.address}"
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-            elif isinstance(e.right, (ListWrapper, TupleWrapper, Parenthetical, list)):
+            elif isinstance(e.right, (ListWrapper, TupleWrapper, BoundParenthetical, list)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
             elif isinstance(
@@ -533,12 +533,12 @@ class BaseDialect:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
             else:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, Comparison):
+        elif isinstance(e, BoundComparison):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, Conditional):
+        elif isinstance(e, BoundConditional):
             # conditions need to be nested in parentheses
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, WindowItem):
+        elif isinstance(e, BoundWindowItem):
             rendered_order_components = [
                 f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid)} {x.order.value}"
                 for x in e.order_by
@@ -548,22 +548,22 @@ class BaseDialect:
                 for x in e.over
             ]
             return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
-        elif isinstance(e, Parenthetical):
+        elif isinstance(e, BoundParenthetical):
             # conditions need to be nested in parentheses
             if isinstance(e.content, list):
                 return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e.content])} )"
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} )"
-        elif isinstance(e, CaseWhen):
+        elif isinstance(e, BoundCaseWhen):
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
-        elif isinstance(e, CaseElse):
+        elif isinstance(e, BoundCaseElse):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
-        elif isinstance(e, Function):
+        elif isinstance(e, BoundFunction):
             arguments = []
             for arg in e.arguments:
                 if (
                     isinstance(arg, BoundConcept)
                     and arg.lineage
-                    and isinstance(arg.lineage, Function)
+                    and isinstance(arg.lineage, BoundFunction)
                     and arg.lineage.operator
                     in (
                         FunctionType.ADD,
@@ -574,7 +574,7 @@ class BaseDialect:
                 ):
                     arguments.append(
                         self.render_expr(
-                            Parenthetical(content=arg),
+                            BoundParenthetical(content=arg),
                             cte=cte,
                             cte_map=cte_map,
                             raise_invalid=raise_invalid,
@@ -591,15 +591,15 @@ class BaseDialect:
                 return self.FUNCTION_MAP[e.operator](arguments)
 
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments)
-        elif isinstance(e, AggregateWrapper):
+        elif isinstance(e, BoundAggregateWrapper):
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
             )
-        elif isinstance(e, FilterItem):
+        elif isinstance(e, BoundFilterItem):
             return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid)} ELSE NULL END"
         elif isinstance(e, BoundConcept):
             if (
-                isinstance(e.lineage, Function)
+                isinstance(e.lineage, BoundFunction)
                 and e.lineage.operator == FunctionType.CONSTANT
                 and CONFIG.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
@@ -708,8 +708,8 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
-        where: Conditional | Parenthetical | Comparison | None = None
-        having: Conditional | Parenthetical | Comparison | None = None
+        where: BoundConditional | BoundParenthetical | BoundComparison | None = None
+        having: BoundConditional | BoundParenthetical | BoundComparison | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
             if not cte.group_to_grain or is_scalar_condition(
@@ -867,7 +867,7 @@ class BaseDialect:
                     MergeStatementV2,
                     ImportStatement,
                     RowsetDerivationStatement,
-                    Datasource,
+                    BoundDatasource,
                 ),
             ):
                 continue

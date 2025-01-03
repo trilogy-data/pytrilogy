@@ -3,7 +3,7 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.execute_models import BoundConcept, Datasource, BoundEnvironment
+from trilogy.core.execute_models import BoundConcept, BoundDatasource, BoundEnvironment
 from trilogy.core.author_models import Environment
 
 
@@ -37,7 +37,7 @@ def add_concept(
 
 def generate_adhoc_graph(
     concepts: list[BoundConcept],
-    datasources: list[Datasource],
+    datasources: list[BoundDatasource],
     restrict_to_listed: bool = False,
 ) -> ReferenceGraph:
     g = ReferenceGraph()

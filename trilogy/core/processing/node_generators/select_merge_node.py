@@ -7,11 +7,11 @@ from trilogy.core.enums import PurposeLineage
 from trilogy.core.graph_models import concept_to_node
 from trilogy.core.execute_models import (
     BoundConcept,
-    Datasource,
+    BoundDatasource,
     BoundEnvironment,
     BoundGrain,
     LooseConceptList,
-    WhereClause,
+    BoundWhereClause,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
@@ -33,9 +33,9 @@ def extract_address(node: str):
 
 
 def get_graph_partial_nodes(
-    g: nx.DiGraph, conditions: WhereClause | None
+    g: nx.DiGraph, conditions: BoundWhereClause | None
 ) -> dict[str, list[str]]:
-    datasources: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+    datasources: dict[str, BoundDatasource | list[BoundDatasource]] = nx.get_node_attributes(
         g, "datasource"
     )
     partial: dict[str, list[str]] = {}
@@ -56,7 +56,7 @@ def get_graph_partial_nodes(
 
 
 def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
-    datasources: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+    datasources: dict[str, BoundDatasource | list[BoundDatasource]] = nx.get_node_attributes(
         g, "datasource"
     )
     grain_length: dict[str, int] = {}
@@ -73,9 +73,9 @@ def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
 def create_pruned_concept_graph(
     g: nx.DiGraph,
     all_concepts: List[BoundConcept],
-    datasources: list[Datasource],
+    datasources: list[BoundDatasource],
     accept_partial: bool = False,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
     depth: int = 0,
 ) -> nx.DiGraph:
     orig_g = g
@@ -93,7 +93,7 @@ def create_pruned_concept_graph(
 
     target_addresses = set([c.address for c in all_concepts])
     concepts: dict[str, BoundConcept] = nx.get_node_attributes(orig_g, "concept")
-    datasource_map: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+    datasource_map: dict[str, BoundDatasource | list[BoundDatasource]] = nx.get_node_attributes(
         orig_g, "datasource"
     )
     relevant_concepts_pre = {
@@ -183,7 +183,7 @@ def create_pruned_concept_graph(
 
 
 def resolve_subgraphs(
-    g: nx.DiGraph, conditions: WhereClause | None
+    g: nx.DiGraph, conditions: BoundWhereClause | None
 ) -> dict[str, list[str]]:
     datasources = [n for n in g.nodes if n.startswith("ds~")]
     subgraphs: dict[str, list[str]] = {
@@ -233,12 +233,12 @@ def resolve_subgraphs(
 
 
 def create_datasource_node(
-    datasource: Datasource,
+    datasource: BoundDatasource,
     all_concepts: List[BoundConcept],
     accept_partial: bool,
     environment: BoundEnvironment,
     depth: int,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
     target_grain = BoundGrain.from_concepts(all_concepts, environment=environment)
     force_group = False
@@ -289,7 +289,7 @@ def create_select_node(
     g,
     environment: BoundEnvironment,
     depth: int,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode:
 
     all_concepts = [
@@ -311,10 +311,10 @@ def create_select_node(
             force_group=False,
         )
 
-    datasource: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+    datasource: dict[str, BoundDatasource | list[BoundDatasource]] = nx.get_node_attributes(
         g, "datasource"
     )[ds_name]
-    if isinstance(datasource, Datasource):
+    if isinstance(datasource, BoundDatasource):
         bcandidate, force_group = create_datasource_node(
             datasource,
             all_concepts,
@@ -378,7 +378,7 @@ def gen_select_merge_node(
     environment: BoundEnvironment,
     depth: int,
     accept_partial: bool = False,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> Optional[StrategyNode]:
     non_constant = [c for c in all_concepts if c.derivation != PurposeLineage.CONSTANT]
     constants = [c for c in all_concepts if c.derivation == PurposeLineage.CONSTANT]

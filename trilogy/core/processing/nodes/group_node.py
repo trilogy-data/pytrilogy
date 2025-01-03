@@ -3,13 +3,13 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.execute_models import (
-    Comparison,
+    BoundComparison,
     BoundConcept,
-    Conditional,
-    Datasource,
+    BoundConditional,
+    BoundDatasource,
     BoundEnvironment,
     BoundGrain,
-    Parenthetical,
+    BoundParenthetical,
     QueryDatasource,
     SourceType,
 )
@@ -45,8 +45,8 @@ class GroupNode(StrategyNode):
         partial_concepts: Optional[List[BoundConcept]] = None,
         nullable_concepts: Optional[List[BoundConcept]] = None,
         force_group: bool | None = None,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
+        preexisting_conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
         existence_concepts: List[BoundConcept] | None = None,
         hidden_concepts: set[str] | None = None,
     ):
@@ -70,7 +70,7 @@ class GroupNode(StrategyNode):
     def check_if_required(
         cls,
         downstream_concepts: List[BoundConcept],
-        parents: list[QueryDatasource | Datasource],
+        parents: list[QueryDatasource | BoundDatasource],
         environment: BoundEnvironment,
     ) -> GroupRequiredResponse:
         target_grain = BoundGrain.from_concepts(
@@ -93,7 +93,7 @@ class GroupNode(StrategyNode):
         return GroupRequiredResponse(target_grain, comp_grain, True)
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
+        parent_sources: List[QueryDatasource | BoundDatasource] = [
             p.resolve() for p in self.parents
         ]
         grains = self.check_if_required(

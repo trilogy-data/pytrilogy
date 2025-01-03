@@ -14,13 +14,12 @@ from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
     BoundColumnAssignment,
     BoundConcept,
-    Datasource,
+    BoundDatasource,
     DataType,
-    Function,
-    Grain,
+    BoundFunction,
     Metadata,
 )
-from trilogy.core.author_models import Concept, FunctionRef, ColumnAssignment, DatasourceRef
+from trilogy.core.author_models import Concept, Function, ColumnAssignment, Datasource, Grain
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.common import function_to_concept
 from trilogy import Environment
@@ -155,7 +154,7 @@ def setup_richest_environment(env: Environment):
         env.add_concept(x)
 
     env.add_datasource(
-        DatasourceRef(
+        Datasource(
             name="rich_info",
             address="rich_info",
             columns=[
@@ -245,7 +244,7 @@ def setup_titanic_distributed(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        lineage=FunctionRef(
+        lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
                 split_name,
@@ -276,7 +275,7 @@ def setup_titanic_distributed(env: Environment):
     env.add_concept(survived_count)
 
     env.add_datasource(
-        DatasourceRef(
+        Datasource(
             name="dim_passenger",
             address="dim_passenger",
             columns=[
@@ -299,7 +298,7 @@ def setup_titanic_distributed(env: Environment):
     )
 
     env.add_datasource(
-        DatasourceRef(
+        Datasource(
             name="fact_titanic",
             address="fact_titanic",
             columns=[
@@ -319,7 +318,7 @@ def setup_titanic_distributed(env: Environment):
     )
 
     env.add_datasource(
-        DatasourceRef(
+        Datasource(
             name="dim_class",
             address="dim_class",
             columns=[
@@ -414,10 +413,10 @@ def setup_titanic(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        lineage=FunctionRef(
+        lineage=Function(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                FunctionRef(
+                Function(
                     operator=FunctionType.SPLIT,
                     arguments=[name, ","],
                     output_datatype=DataType.ARRAY,
@@ -446,7 +445,7 @@ def setup_titanic(env: Environment):
         env.add_concept(x)
     assert name in last_name.sources
     env.add_datasource(
-        DatasourceRef(
+        Datasource(
             name="raw_data",
             address="raw_titanic",
             columns=[

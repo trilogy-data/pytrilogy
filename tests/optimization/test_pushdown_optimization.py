@@ -4,10 +4,10 @@ from trilogy import Dialects, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.execute_models import (
     BooleanOperator,
-    Comparison,
+    BoundComparison,
     ComparisonOperator,
-    Conditional,
-    SubselectComparison,
+    BoundConditional,
+    BoundSubselectComparison,
 )
 from trilogy.core.optimizations.predicate_pushdown import (
     is_child_of,
@@ -52,19 +52,19 @@ def test_child_of():
 
     env, queries = parse(text)
 
-    test = Conditional(
-        left=SubselectComparison(
+    test = BoundConditional(
+        left=BoundSubselectComparison(
             left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
         ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+        right=BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
 
-    test2 = Conditional(
-        left=SubselectComparison(
+    test2 = BoundConditional(
+        left=BoundSubselectComparison(
             left=env.concepts["uuid"], right="a", operator=ComparisonOperator.EQ
         ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+        right=BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
     assert is_child_of(test, test2) is True

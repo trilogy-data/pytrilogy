@@ -1,11 +1,11 @@
 from typing import List
 
 from trilogy.core.execute_models import (
-    Comparison,
+    BoundComparison,
     BoundConcept,
-    Conditional,
+    BoundConditional,
     BoundGrain,
-    Parenthetical,
+    BoundParenthetical,
     SourceType,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
@@ -30,8 +30,8 @@ class FilterNode(StrategyNode):
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
+        preexisting_conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
         partial_concepts: List[BoundConcept] | None = None,
         force_group: bool | None = False,
         grain: BoundGrain | None = None,

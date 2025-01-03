@@ -3,14 +3,14 @@ from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.core_models import arg_to_purpose, args_to_output_purpose
 from trilogy.core.execute_models import (
-    Comparison,
-    Datasource,
+    BoundComparison,
+    BoundDatasource,
     DataType,
     BoundEnvironment,
     ProcessedQuery,
     TupleWrapper,
 )
-from trilogy.core.author_models import ComparisonRef, SelectStatement, ShowStatement
+from trilogy.core.author_models import Comparison, SelectStatement, ShowStatement
 from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
     arg_to_datatype,
@@ -238,7 +238,7 @@ def test_between():
     left = query.where_clause.conditional.left
     assert isinstance(
         left,
-        ComparisonRef,
+        Comparison,
     ), type(left)
     assert left.operator == ComparisonOperator.GTE
     assert left.right == 3
@@ -246,7 +246,7 @@ def test_between():
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
-        ComparisonRef,
+        Comparison,
     ), type(right)
     assert right.operator == ComparisonOperator.LTE
     assert right.right == 5
@@ -565,7 +565,7 @@ where y>10;
 """
     env, parsed = parse_text(text)
 
-    ds: Datasource = parsed[-1].datasource
+    ds: BoundDatasource = parsed[-1].datasource
     assert ds.non_partial_for.conditional.right == 10
     assert not ds.where
 

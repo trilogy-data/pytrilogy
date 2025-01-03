@@ -9,9 +9,9 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
-    Function,
-    RowsetItem,
-    WhereClause,
+    BoundFunction,
+    BoundRowsetItem,
+    BoundWhereClause,
     BoundEnvironment
 )
 from trilogy.core.processing.node_generators import (
@@ -58,7 +58,7 @@ class SearchConceptsType(Protocol):
         g: ReferenceGraph,
         accept_partial: bool = False,
         history: Optional[History] = None,
-        conditions: Optional[WhereClause] = None,
+        conditions: Optional[BoundWhereClause] = None,
     ) -> Union[StrategyNode, None]: ...
 
 
@@ -71,8 +71,9 @@ def get_upstream_concepts(environment:BoundEnvironment, base: BoundConcept, nest
     for x in base.lineage.concept_arguments:
         # if it's derived from any value in a rowset, ALL rowset items are upstream
         if x.derivation == PurposeLineage.ROWSET:
-            assert isinstance(x.lineage, RowsetItem)
+            assert isinstance(x.lineage, BoundRowsetItem)
             for y in x.lineage.rowset.derived_concepts:
+
                 upstream = upstream.union(get_upstream_concepts(environment, environment.concepts[y], nested=True))
         upstream = upstream.union(get_upstream_concepts(environment, x, nested=True))
     return upstream
@@ -161,7 +162,7 @@ def generate_candidates_restrictive(
     priority_concept: BoundConcept,
     candidates: list[BoundConcept],
     exhausted: set[str],
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> List[List[BoundConcept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
@@ -192,7 +193,7 @@ def generate_node(
     source_concepts: SearchConceptsType,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     # first check in case there is a materialized_concept
     history = history or History()
@@ -366,7 +367,7 @@ def generate_node(
     elif concept.derivation == PurposeLineage.BASIC:
         # this is special case handling for group bys
         if (
-            isinstance(concept.lineage, Function)
+            isinstance(concept.lineage, BoundFunction)
             and concept.lineage.operator == FunctionType.GROUP
         ):
             logger.info(
@@ -567,7 +568,7 @@ def validate_stack(
     stack: List[StrategyNode],
     concepts: List[BoundConcept],
     mandatory_with_filter: List[BoundConcept],
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
     accept_partial: bool = False,
 ) -> tuple[ValidationResult, set[str], set[str], set[str], set[str]]:
     found_map: dict[str, set[BoundConcept]] = defaultdict(set)
@@ -651,7 +652,7 @@ def append_existence_check(
     node: StrategyNode,
     environment: BoundEnvironment,
     graph: ReferenceGraph,
-    where: WhereClause,
+    where: BoundWhereClause,
     history: History | None = None,
 ):
     # we if we have a where clause doing an existence check
@@ -686,7 +687,7 @@ def search_concepts(
     g: ReferenceGraph,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     history = history or History()
     hist = history.get_history(
@@ -725,7 +726,7 @@ def _search_concepts(
     g: ReferenceGraph,
     history: History,
     accept_partial: bool = False,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     # these are the concepts we need in the output projection
     mandatory_list = unique(mandatory_list, "address")
@@ -965,7 +966,7 @@ def source_query_concepts(
     output_concepts: List[BoundConcept],
     environment: BoundEnvironment,
     g: Optional[ReferenceGraph] = None,
-    conditions: Optional[WhereClause] = None,
+    conditions: Optional[BoundWhereClause] = None,
     history: Optional[History] = None,
 ):
     if not output_concepts:

@@ -1,6 +1,6 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import FunctionType, Purpose
-from trilogy.core.author_models import Concept, DataType, FunctionRef, Grain
+from trilogy.core.author_models import Concept, DataType, Function, Grain
 
 DEFAULT_CONCEPTS = {
     ALL_ROWS_CONCEPT: Concept(
@@ -9,7 +9,7 @@ DEFAULT_CONCEPTS = {
         datatype=DataType.INTEGER,
         purpose=Purpose.CONSTANT,
         grain=Grain(),
-        lineage=FunctionRef(
+        lineage=Function(
             operator=FunctionType.CONSTANT,
             arguments=[1],
             output_datatype=DataType.INTEGER,

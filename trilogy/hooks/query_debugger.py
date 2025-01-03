@@ -5,7 +5,7 @@ from typing import Union
 from trilogy.constants import logger
 from trilogy.core.execute_models import (
     CTE,
-    Datasource,
+    BoundDatasource,
     QueryDatasource,
     UnionCTE,
 )
@@ -25,7 +25,7 @@ renderer = BigqueryDialect()
 
 
 def print_recursive_resolved(
-    input: Union[QueryDatasource, Datasource], mode: PrintMode, depth: int = 0
+    input: Union[QueryDatasource, BoundDatasource], mode: PrintMode, depth: int = 0
 ):
     extra = []
     if isinstance(input, QueryDatasource):

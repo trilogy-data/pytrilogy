@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.execute_models import BoundConcept, BoundEnvironment, FilterItem, BoundGrain, WhereClause
+from trilogy.core.execute_models import BoundConcept, BoundEnvironment, BoundFilterItem, BoundGrain, BoundWhereClause
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
@@ -25,7 +25,7 @@ def gen_filter_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
@@ -36,7 +36,7 @@ def gen_filter_node(
     optional_included: list[BoundConcept] = []
 
     for x in local_optional:
-        if isinstance(x.lineage, FilterItem):
+        if isinstance(x.lineage, BoundFilterItem):
             if concept.lineage.where == where:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "

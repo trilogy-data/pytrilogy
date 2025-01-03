@@ -6,10 +6,10 @@ from trilogy.constants import logger
 from trilogy.core.enums import BooleanOperator, JoinType, Purpose
 from trilogy.core.execute_models import (
     BoundConcept,
-    Conditional,
+    BoundConditional,
     BoundEnvironment,
     BoundGrain,
-    WhereClause,
+    BoundWhereClause,
 )
 from trilogy.core.author_models import MultiSelectStatement
 from trilogy.core.processing.node_generators.common import resolve_join_order
@@ -59,7 +59,7 @@ def gen_multiselect_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> MergeNode | None:
     if not isinstance(concept.lineage, MultiSelectStatement):
         logger.info(
@@ -86,7 +86,7 @@ def gen_multiselect_node(
             return None
         if select.having_clause:
             if snode.conditions:
-                snode.conditions = Conditional(
+                snode.conditions = BoundConditional(
                     left=snode.conditions,
                     right=select.having_clause.conditional,
                     operator=BooleanOperator.AND,

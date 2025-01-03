@@ -1,5 +1,5 @@
 from trilogy.core.enums import FunctionType, Purpose, PurposeLineage
-from trilogy.core.execute_models import AggregateWrapper, DataType, BoundEnvironment, Function
+from trilogy.core.execute_models import BoundAggregateWrapper, DataType, BoundEnvironment, BoundFunction
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_group_node
 from trilogy.core.processing.node_generators.common import (
@@ -15,7 +15,7 @@ def test_gen_group_node_parents(test_environment: BoundEnvironment):
     assert comp.lineage
     assert test_environment.concepts["category_id"] in comp.lineage.concept_arguments
     assert comp.grain.components == {test_environment.concepts["category_id"].address}
-    assert isinstance(comp.lineage, AggregateWrapper)
+    assert isinstance(comp.lineage, BoundAggregateWrapper)
     assert comp.lineage.by == [test_environment.concepts["category_id"]]
     parents = resolve_function_parent_concepts(comp, environment=test_environment)
     # parents should be both the value and the category
@@ -73,7 +73,7 @@ def test_gen_group_node(test_environment: BoundEnvironment, test_environment_gra
 
 
 def test_proper_parents(test_environment):
-    base = Function(
+    base = BoundFunction(
         operator=FunctionType.COUNT,
         arguments=[test_environment.concepts["category_name"]],
         output_purpose=Purpose.PROPERTY,
@@ -90,7 +90,7 @@ def test_proper_parents(test_environment):
     assert test_environment.concepts["category_id"] in resolved
     resolved = resolve_function_parent_concepts(
         agg_wrapper_to_concept(
-            AggregateWrapper(
+            BoundAggregateWrapper(
                 function=base,
                 by=[test_environment.concepts["category_name"]],
             ),

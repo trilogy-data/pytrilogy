@@ -5,7 +5,7 @@ from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
     LooseConceptList,
-    WhereClause,
+    BoundWhereClause,
 )
 from trilogy.core.processing.node_generators.select_merge_node import (
     gen_select_merge_node,
@@ -26,7 +26,7 @@ def gen_select_node(
     depth: int,
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     all_concepts = [concept] + local_optional
     all_lcl = LooseConceptList(concepts=all_concepts)

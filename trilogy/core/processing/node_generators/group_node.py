@@ -2,13 +2,13 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.execute_models import (
-    AggregateWrapper,
+    BoundAggregateWrapper,
     BoundConcept,
     BoundEnvironment,
-    Function,
+    BoundFunction,
     BoundGrain,
     LooseConceptList,
-    WhereClause,
+    BoundWhereClause,
 )
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
@@ -29,7 +29,7 @@ def gen_group_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     # aggregates MUST always group to the proper grain
     # except when the
@@ -55,7 +55,7 @@ def gen_group_node(
         output_concepts += grain_components
         for possible_agg in local_optional:
 
-            if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
+            if not isinstance(possible_agg.lineage, (BoundAggregateWrapper, BoundFunction)):
                 continue
             if possible_agg.grain and possible_agg.grain != concept.grain:
                 logger.info(

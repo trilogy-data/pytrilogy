@@ -13,31 +13,31 @@ from trilogy.core.enums import (
 )
 from trilogy.core.core_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
-    AggregateWrapper,
+    BoundAggregateWrapper,
     BoundConcept as FullConcept,
     DataType,
     BoundEnvironment,
-    FilterItem,
-    Function,
+    BoundFilterItem,
+    BoundFunction,
     FunctionClass,
 
     ListWrapper,
     MapWrapper,
     Meta,
     Metadata,
-    Parenthetical,
+    BoundParenthetical,
     Purpose,
-    WindowItem,
+    BoundWindowItem,
 
 )
 from trilogy.core.author_models import (
         ConceptRef,
         Grain,
-    FunctionRef,
-    AggregateWrapperRef,
-    FilterItemRef,
-    WindowItemRef,
-    ParentheticalRef,
+    Function,
+    AggregateWrapper,
+    FilterItem,
+    WindowItem,
+    Parenthetical,
     Concept,
     Environment,
 )
@@ -56,26 +56,26 @@ def process_function_args(
     args,
     meta: Meta | None,
     environment: Environment,
-) -> List[ConceptRef | FunctionRef | str | int | float | date | datetime]:
-    final: List[ConceptRef | FunctionRef | str | int | float | date | datetime] = []
+) -> List[ConceptRef | Function | str | int | float | date | datetime]:
+    final: List[ConceptRef | Function | str | int | float | date | datetime] = []
     for arg in args:
         # if a function has an anonymous function argument
         # create an implicit concept
         if isinstance(arg, ConceptRef):
             final.append(environment.concepts[arg.address])
-        elif isinstance(arg, ParentheticalRef):
+        elif isinstance(arg, Parenthetical):
             print(arg.content)
             processed = process_function_args([arg.content], meta, environment) 
             print(processed)
             final.append(
-                FunctionRef(
+                Function(
                     operator=FunctionType.PARENTHETICAL,
                     arguments=processed,
                     output_datatype=arg_to_datatype(processed[0]),
                     output_purpose=args_to_output_purpose(processed),
                 )
             )
-        elif isinstance(arg, FunctionRef):
+        elif isinstance(arg, Function):
             # if it's not an aggregate function, we can skip the virtual concepts
             # to simplify anonymous function handling
             if (
@@ -96,7 +96,7 @@ def process_function_args(
             environment.add_concept(concept, meta=meta)
             final.append(concept)
         elif isinstance(
-            arg, (FilterItemRef, WindowItemRef, AggregateWrapperRef, ListWrapper, MapWrapper)
+            arg, (FilterItem, WindowItem, AggregateWrapper, ListWrapper, MapWrapper)
         ):
             id_hash = string_to_hash(str(arg))
             concept = arbitrary_to_concept(
@@ -145,7 +145,7 @@ def constant_to_concept(
     purpose: Purpose | None = None,
     metadata: Metadata | None = None,
 ) -> Concept:
-    const_function: FunctionRef = FunctionRef(
+    const_function: Function = Function(
         operator=FunctionType.CONSTANT,
         output_datatype=arg_to_datatype(parent),
         output_purpose=Purpose.CONSTANT,
@@ -196,7 +196,7 @@ def concepts_to_grain_concepts(
 
 
 def function_to_concept(
-    parent: FunctionRef,
+    parent: Function,
     name: str,
     environment: Environment,
     namespace: str | None = None,
@@ -265,7 +265,7 @@ def function_to_concept(
 
 
 def filter_item_to_concept(
-    parent: FilterItemRef,
+    parent: FilterItem,
     name: str,
     namespace: str,
     environment:BoundEnvironment,
@@ -302,7 +302,7 @@ def filter_item_to_concept(
 
 
 def window_item_to_concept(
-    parent: WindowItemRef,
+    parent: WindowItem,
     name: str,
     namespace: str,
     environment: BoundEnvironment,
@@ -343,7 +343,7 @@ def window_item_to_concept(
 
 
 def agg_wrapper_to_concept(
-    parent: AggregateWrapperRef,
+    parent: AggregateWrapper,
     namespace: str,
     name: str,
     metadata: Metadata | None = None,
@@ -377,10 +377,10 @@ def agg_wrapper_to_concept(
 
 def arbitrary_to_concept(
     parent: (
-        AggregateWrapperRef
-        | WindowItemRef
-        | FilterItemRef
-        | FunctionRef
+        AggregateWrapper
+        | WindowItem
+        | FilterItem
+        | Function
         | ListWrapper
         | MapWrapper
         | int
@@ -394,19 +394,19 @@ def arbitrary_to_concept(
     purpose: Purpose | None = None,
 ) -> Concept:
     namespace = namespace or environment.namespace
-    if isinstance(parent, AggregateWrapperRef):
+    if isinstance(parent, AggregateWrapper):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_agg_{parent.function.operator.value}_{string_to_hash(str(parent))}"
         return agg_wrapper_to_concept(parent, namespace, name, environment=environment, metadata=metadata)
-    elif isinstance(parent, WindowItemRef):
+    elif isinstance(parent, WindowItem):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_window_{parent.type.value}_{string_to_hash(str(parent))}"
         return window_item_to_concept(parent, name, namespace, environment=environment, purpose=purpose, metadata=metadata)
-    elif isinstance(parent, FilterItemRef):
+    elif isinstance(parent, FilterItem):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_filter_{parent.content.name}_{string_to_hash(str(parent))}"
         return filter_item_to_concept(parent, name, namespace, environment=environment, purpose =purpose, metadata=metadata)
-    elif isinstance(parent, FunctionRef):
+    elif isinstance(parent, Function):
         if not name:
             name = f"{VIRTUAL_CONCEPT_PREFIX}_func_{parent.operator.value}_{string_to_hash(str(parent))}"
         return function_to_concept(

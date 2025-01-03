@@ -8,7 +8,7 @@ from trilogy.core.execute_models import (
     BoundConcept,
     DataType,
     BoundEnvironment,
-    Function,
+    BoundFunction,
     ProcessedQuery,
 )
 from trilogy.core.processing.node_generators.common import (
@@ -87,7 +87,7 @@ def test_daily_job():
 
     case = env.concepts["all_sites.clean_url"]
 
-    assert isinstance(case.lineage, Function)
+    assert isinstance(case.lineage, BoundFunction)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
     for x in case.lineage.concept_arguments:
@@ -146,7 +146,7 @@ def test_counts():
 
     case = env.concepts["all_sites.clean_url"]
 
-    assert isinstance(case.lineage, Function)
+    assert isinstance(case.lineage, BoundFunction)
     assert local_static.granularity == Granularity.SINGLE_ROW
 
     for x in case.lineage.concept_arguments:

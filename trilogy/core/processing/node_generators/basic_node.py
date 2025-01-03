@@ -5,9 +5,9 @@ from trilogy.constants import logger
 from trilogy.core.enums import SourceType
 from trilogy.core.execute_models import (
     BoundConcept,
-    Function,
+    BoundFunction,
     FunctionClass,
-    WhereClause,
+    BoundWhereClause,
 )
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
@@ -22,7 +22,7 @@ def is_equivalent_basic_function_lineage(
     x: BoundConcept,
     y: BoundConcept,
 ):
-    if not isinstance(x.lineage, Function) or not isinstance(y.lineage, Function):
+    if not isinstance(x.lineage, BoundFunction) or not isinstance(y.lineage, BoundFunction):
         return False
     if x.lineage.operator == y.lineage.operator:
         return True
@@ -42,7 +42,7 @@ def gen_basic_node(
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ):
     depth_prefix = "\t" * depth
     parent_concepts = resolve_function_parent_concepts(concept, environment=environment)

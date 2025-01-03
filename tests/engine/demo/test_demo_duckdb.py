@@ -3,10 +3,10 @@ from trilogy.core.enums import FunctionType, Modifier, Purpose
 from trilogy.core.execute_models import (
     BoundColumnAssignment,
     BoundConcept,
-    Datasource,
+    BoundDatasource,
     DataType,
     BoundEnvironment,
-    Function,
+    BoundFunction,
     Grain,
     SelectContext,
 )
@@ -91,10 +91,10 @@ def setup_titanic(env: BoundEnvironment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.STRING,
         keys=(id.address,),
-        lineage=Function(
+        lineage=BoundFunction(
             operator=FunctionType.INDEX_ACCESS,
             arguments=[
-                Function(
+                BoundFunction(
                     operator=FunctionType.SPLIT,
                     arguments=[name, ","],
                     output_datatype=DataType.ARRAY,
@@ -123,7 +123,7 @@ def setup_titanic(env: BoundEnvironment):
         env.add_concept(x)
 
     env.add_datasource(
-        Datasource(
+        BoundDatasource(
             name="raw_data",
             address="raw_titanic",
             columns=[
@@ -365,7 +365,7 @@ order by passenger.class desc
     env.parse(test)
     srate = env.concepts["survival_rate_auto"]
     assert srate.lineage
-    assert isinstance(srate.lineage, Function)
+    assert isinstance(srate.lineage, BoundFunction)
     assert isinstance(srate.lineage, SelectContext)
     results = executor.execute_text(test)[-1].fetchall()
 

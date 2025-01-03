@@ -13,20 +13,20 @@ from trilogy.core.author_models import (
 
 from trilogy.core.execute_models import (
     CTE,
-    AggregateWrapper,
+    BoundAggregateWrapper,
     BaseJoin,
-    CaseElse,
-    CaseWhen,
-    Comparison,
+    BoundCaseElse,
+    BoundCaseWhen,
+    BoundComparison,
     BoundConcept,
     ConceptPair,
-    Conditional,
-    Datasource,
+    BoundConditional,
+    BoundDatasource,
     DataType,
     DatePart,
     BoundEnvironment,
-    FilterItem,
-    Function,
+    BoundFilterItem,
+    BoundFunction,
     JoinType,
     ListType,
     ListWrapper,
@@ -36,15 +36,15 @@ from trilogy.core.execute_models import (
     MapWrapper,
     # MultiSelectStatement,
     NumericType,
-    Parenthetical,
+    BoundParenthetical,
     ProcessedQuery,
     QueryDatasource,
     # SelectStatement,
-    SubselectComparison,
+    BoundSubselectComparison,
     TupleWrapper,
     UnionCTE,
     UnnestJoin,
-    WindowItem,
+    BoundWindowItem,
 )
 from trilogy.utility import unique
 
@@ -298,7 +298,7 @@ def add_node_join_concept(
 
 
 def resolve_instantiated_concept(
-    concept: BoundConcept, datasource: QueryDatasource | Datasource
+    concept: BoundConcept, datasource: QueryDatasource | BoundDatasource
 ) -> BoundConcept:
     if concept.address in datasource.output_concepts:
         return concept
@@ -337,13 +337,13 @@ def reduce_concept_pairs(input: list[ConceptPair]) -> list[ConceptPair]:
 
 
 def get_node_joins(
-    datasources: List[QueryDatasource | Datasource],
+    datasources: List[QueryDatasource | BoundDatasource],
     environment: BoundEnvironment,
     # concepts:List[Concept],
 ) -> List[BaseJoin]:
     graph = nx.Graph()
     partials: dict[str, list[str]] = {}
-    ds_node_map: dict[str, QueryDatasource | Datasource] = {}
+    ds_node_map: dict[str, QueryDatasource | BoundDatasource] = {}
     concept_map: dict[str, BoundConcept] = {}
     for datasource in datasources:
         ds_node = f"ds~{datasource.identifier}"
@@ -418,18 +418,18 @@ def is_scalar_condition(
         | date
         | datetime
         | list[Any]
-        | WindowItem
-        | FilterItem
+        | BoundWindowItem
+        | BoundFilterItem
         | BoundConcept
-        | Comparison
-        | Conditional
-        | Parenthetical
-        | Function
-        | AggregateWrapper
+        | BoundComparison
+        | BoundConditional
+        | BoundParenthetical
+        | BoundFunction
+        | BoundAggregateWrapper
         | MagicConstants
         | DataType
-        | CaseWhen
-        | CaseElse
+        | BoundCaseWhen
+        | BoundCaseElse
         | MapWrapper[Any, Any]
         | ListType
         | MapType
@@ -440,37 +440,37 @@ def is_scalar_condition(
     ),
     materialized: set[str] | None = None,
 ) -> bool:
-    if isinstance(element, Parenthetical):
+    if isinstance(element, BoundParenthetical):
         return is_scalar_condition(element.content, materialized)
-    elif isinstance(element, SubselectComparison):
+    elif isinstance(element, BoundSubselectComparison):
         return True
-    elif isinstance(element, Comparison):
+    elif isinstance(element, BoundComparison):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
-    elif isinstance(element, Function):
+    elif isinstance(element, BoundFunction):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
         return all([is_scalar_condition(x, materialized) for x in element.arguments])
     elif isinstance(element, BoundConcept):
         if materialized and element.address in materialized:
             return True
-        if element.lineage and isinstance(element.lineage, AggregateWrapper):
+        if element.lineage and isinstance(element.lineage, BoundAggregateWrapper):
             return is_scalar_condition(element.lineage, materialized)
-        if element.lineage and isinstance(element.lineage, Function):
+        if element.lineage and isinstance(element.lineage, BoundFunction):
             return is_scalar_condition(element.lineage, materialized)
         return True
-    elif isinstance(element, AggregateWrapper):
+    elif isinstance(element, BoundAggregateWrapper):
         return is_scalar_condition(element.function, materialized)
-    elif isinstance(element, Conditional):
+    elif isinstance(element, BoundConditional):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
-    elif isinstance(element, CaseWhen):
+    elif isinstance(element, BoundCaseWhen):
         return is_scalar_condition(
             element.comparison, materialized
         ) and is_scalar_condition(element.expr, materialized)
-    elif isinstance(element, CaseElse):
+    elif isinstance(element, BoundCaseElse):
         return is_scalar_condition(element.expr, materialized)
     elif isinstance(element, MagicConstants):
         return True
@@ -478,26 +478,26 @@ def is_scalar_condition(
 
 
 def decompose_condition(
-    conditional: Conditional | Comparison | Parenthetical,
-) -> list[SubselectComparison | Comparison | Conditional | Parenthetical]:
-    chunks: list[SubselectComparison | Comparison | Conditional | Parenthetical] = []
-    if not isinstance(conditional, Conditional):
+    conditional: BoundConditional | BoundComparison | BoundParenthetical,
+) -> list[BoundSubselectComparison | BoundComparison | BoundConditional | BoundParenthetical]:
+    chunks: list[BoundSubselectComparison | BoundComparison | BoundConditional | BoundParenthetical] = []
+    if not isinstance(conditional, BoundConditional):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
         if not (
             isinstance(
                 conditional.left,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
+                (BoundSubselectComparison, BoundComparison, BoundConditional, BoundParenthetical),
             )
             and isinstance(
                 conditional.right,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
+                (BoundSubselectComparison, BoundComparison, BoundConditional, BoundParenthetical),
             )
         ):
             chunks.append(conditional)
         else:
             for val in [conditional.left, conditional.right]:
-                if isinstance(val, Conditional):
+                if isinstance(val, BoundConditional):
                     chunks.extend(decompose_condition(val))
                 else:
                     chunks.append(val)
@@ -507,8 +507,8 @@ def decompose_condition(
 
 
 def find_nullable_concepts(
-    source_map: Dict[str, set[Datasource | QueryDatasource | UnnestJoin]],
-    datasources: List[Datasource | QueryDatasource],
+    source_map: Dict[str, set[BoundDatasource | QueryDatasource | UnnestJoin]],
+    datasources: List[BoundDatasource | QueryDatasource],
     joins: List[BaseJoin | UnnestJoin],
 ) -> List[str]:
     """give a set of datasources and joins, find the concepts
@@ -518,7 +518,7 @@ def find_nullable_concepts(
     datasource_map = {
         x.identifier: x
         for x in datasources
-        if isinstance(x, (Datasource, QueryDatasource))
+        if isinstance(x, (BoundDatasource, QueryDatasource))
     }
     for join in joins:
         is_on_nullable_condition = False

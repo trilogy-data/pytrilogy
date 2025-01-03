@@ -3,7 +3,7 @@ from collections import defaultdict
 from trilogy.constants import CONFIG
 from trilogy.core.execute_models import (
     CTE,
-    Datasource,
+    BoundDatasource,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule
@@ -44,10 +44,10 @@ class InlineDatasource(OptimizationRule):
                 self.debug(f"parent {parent_cte.name} has condition, cannot be inlined")
                 continue
             raw_root = parent_cte.source.datasources[0]
-            if not isinstance(raw_root, Datasource):
+            if not isinstance(raw_root, BoundDatasource):
                 self.debug(f"Parent {parent_cte.name} is not datasource")
                 continue
-            root: Datasource = raw_root
+            root: BoundDatasource = raw_root
             if not root.can_be_inlined:
                 self.debug(f"Parent {parent_cte.name} datasource is not inlineable")
                 continue

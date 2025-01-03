@@ -9,10 +9,10 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.execute_models import (
     BoundConcept,
     BoundEnvironment,
-    FilterItem,
+    BoundFilterItem,
     Grain,
     LooseConceptList,
-    SubselectComparison,
+    BoundSubselectComparison,
 )
 from trilogy.core.core_models import DataType
 from trilogy.core.author_models import SelectStatement, ShowStatement
@@ -347,8 +347,8 @@ select
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, FilterItem)
-    assert isinstance(agg_parent.lineage.where.conditional, SubselectComparison)
+    assert isinstance(agg_parent.lineage, BoundFilterItem)
+    assert isinstance(agg_parent.lineage.where.conditional, BoundSubselectComparison)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
@@ -379,7 +379,7 @@ select
     agg = env.concepts["f_ord_count"]
     agg_parent = resolve_function_parent_concepts(agg, environment=env)[0]
     assert agg_parent.address == "local.filtered_even_orders"
-    assert isinstance(agg_parent.lineage, FilterItem)
+    assert isinstance(agg_parent.lineage, BoundFilterItem)
     _, _, existence = resolve_filter_parent_concepts(agg_parent, environment=env)
     assert len(existence) == 1
     results = default_duckdb_engine.execute_text(test)[0].fetchall()

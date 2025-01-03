@@ -6,7 +6,7 @@ from trilogy.core.core_models import (
     Metadata,
     StructType,
 )
-from trilogy.core.author_models import Environment, Concept, FunctionRef, Grain
+from trilogy.core.author_models import Environment, Concept, Function, Grain
 from trilogy.parsing.common import Meta, arg_to_datatype, process_function_args
 
 FUNCTION_DESCRIPTION_MAPS = {
@@ -43,7 +43,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        const_function: FunctionRef = FunctionRef(
+        const_function: Function = Function(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
@@ -91,7 +91,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             if concept.purpose == Purpose.CONSTANT
             else Purpose.PROPERTY
         )
-        const_function: FunctionRef = FunctionRef(
+        const_function: Function = Function(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
@@ -131,7 +131,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
     for ftype in [FunctionType.COUNT]:
         fname = ftype.name.lower()
         default_type = Purpose.METRIC
-        const_function: FunctionRef = FunctionRef(
+        const_function: Function = Function(
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,

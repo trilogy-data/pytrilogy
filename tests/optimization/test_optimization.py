@@ -7,11 +7,11 @@ from trilogy.core.enums import (
 )
 from trilogy.core.execute_models import (
     CTE,
-    Comparison,
-    Conditional,
+    BoundComparison,
+    BoundConditional,
     DataType,
     BoundEnvironment,
-    Function,
+    BoundFunction,
     Grain,
     QueryDatasource,
 )
@@ -26,44 +26,44 @@ from trilogy.core.processing.utility import decompose_condition
 
 
 def test_is_child_function():
-    condition = Conditional(
-        left=Comparison(left=1, right=2, operator=ComparisonOperator.EQ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+    condition = BoundConditional(
+        left=BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+        right=BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
     assert (
         is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition
+            BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition
+            BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.left
+            BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.left
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.right
+            BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.right
         )
         is True
     )
     assert (
         is_child_of(
-            Comparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.right
+            BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ), condition.right
         )
         is False
     )
     assert (
         is_child_of(
-            Comparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.left
+            BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ), condition.left
         )
         is False
     )
@@ -79,21 +79,21 @@ key year int;
                    key current_price float;               
 """
     )
-    comp = Conditional(
-        left=Conditional(
-            left=Comparison(
+    comp = BoundConditional(
+        left=BoundConditional(
+            left=BoundComparison(
                 left=env.concepts["customer_count"],
                 right=10,
                 operator=ComparisonOperator.GT,
             ),
-            right=Comparison(
+            right=BoundComparison(
                 left=env.concepts["year"], right=2001, operator=ComparisonOperator.EQ
             ),
             operator=BooleanOperator.AND,
         ),
-        right=Comparison(
+        right=BoundComparison(
             left=env.concepts["current_price"],
-            right=Function(
+            right=BoundFunction(
                 operator=FunctionType.MULTIPLY,
                 output_purpose=Purpose.PROPERTY,
                 output_datatype=DataType.FLOAT,
@@ -109,15 +109,15 @@ key year int;
 
 
 def test_decomposition_function():
-    condition = Conditional(
-        left=Comparison(left=1, right=2, operator=ComparisonOperator.EQ),
-        right=Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+    condition = BoundConditional(
+        left=BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+        right=BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ),
         operator=BooleanOperator.AND,
     )
     decomposed = decompose_condition(condition)
     assert decomposed == [
-        Comparison(left=1, right=2, operator=ComparisonOperator.EQ),
-        Comparison(left=3, right=4, operator=ComparisonOperator.EQ),
+        BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ),
+        BoundComparison(left=3, right=4, operator=ComparisonOperator.EQ),
     ]
 
 
@@ -154,7 +154,7 @@ def test_basic_pushdown(test_environment: BoundEnvironment, test_environment_gra
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
+        condition=BoundComparison(
             left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
         ),
         grain=Grain(),
@@ -219,7 +219,7 @@ def test_invalid_pushdown(test_environment: BoundEnvironment, test_environment_g
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
+        condition=BoundComparison(
             left=outputs[0], right=outputs[0], operator=ComparisonOperator.EQ
         ),
         grain=Grain(),
@@ -268,8 +268,8 @@ def test_invalid_aggregate_pushdown(
         ),
         output_columns=[],
         parent_ctes=[parent],
-        condition=Comparison(
-            left=Function(
+        condition=BoundComparison(
+            left=BoundFunction(
                 operator=FunctionType.COUNT,
                 arguments=[outputs[0]],
                 output_datatype=DataType.INTEGER,
@@ -311,7 +311,7 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
             },
         ),
         output_columns=[],
-        condition=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
+        condition=BoundComparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
         grain=Grain(),
         source_map={
             product_id.address: [products.name],
@@ -354,11 +354,11 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
         ),
         output_columns=[],
         parent_ctes=[parent1, parent2],
-        condition=Conditional(
-            left=Comparison(
+        condition=BoundConditional(
+            left=BoundComparison(
                 left=product_id, right=product_id, operator=ComparisonOperator.EQ
             ),
-            right=Comparison(
+            right=BoundComparison(
                 left=category_name, right=category_name, operator=ComparisonOperator.EQ
             ),
             operator=BooleanOperator.AND,
@@ -378,19 +378,19 @@ def test_decomposition_pushdown(test_environment: BoundEnvironment, test_environ
     # two to pushup, then last will fail
     assert rule.optimize(cte1, inverse_map) is True
     assert rule.optimize(cte1, inverse_map) is False
-    assert parent1.condition == Conditional(
-        left=Comparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
-        right=Comparison(
+    assert parent1.condition == BoundConditional(
+        left=BoundComparison(left=product_id, right=1, operator=ComparisonOperator.EQ),
+        right=BoundComparison(
             left=product_id, right=product_id, operator=ComparisonOperator.EQ
         ),
         operator=BooleanOperator.AND,
     )
-    assert isinstance(parent2.condition, Comparison)
+    assert isinstance(parent2.condition, BoundComparison)
     assert parent2.condition.left == category_name
     assert parent2.condition.right == category_name
     assert parent2.condition.operator == ComparisonOperator.EQ
     assert str(parent2.condition) == str(
-        Comparison(
+        BoundComparison(
             left=category_name, right=category_name, operator=ComparisonOperator.EQ
         )
     )

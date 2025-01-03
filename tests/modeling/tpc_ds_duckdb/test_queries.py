@@ -5,13 +5,13 @@ import pytest
 import tomli_w
 import tomllib
 
-from trilogy import BoundEnvironment, Executor
+from trilogy import Environment, Executor
 
 working_path = Path(__file__).parent
 
 
 def run_query(engine: Executor, idx: int, sql_override: bool = False):
-    engine.environment = BoundEnvironment(working_path=working_path)
+    engine.environment = Environment(working_path=working_path)
     with open(working_path / f"query{idx:02d}.preql") as f:
         text = f.read()
 

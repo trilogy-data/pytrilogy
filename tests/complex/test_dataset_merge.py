@@ -4,8 +4,8 @@ from datetime import date, datetime
 from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
 # from trilogy.core.execute_models import Comparison
-from trilogy.core.author_models import Environment, ComparisonRef
-from trilogy.core.execute_models import Comparison
+from trilogy.core.author_models import Environment, Comparison
+from trilogy.core.execute_models import BoundComparison
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
     simplify_conditions,
@@ -96,12 +96,12 @@ key a datetime;
         ConditionalTest(datetime.now(), "a"),
     ]
     for case in test_cases:
-        left = ComparisonRef(
+        left = Comparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = ComparisonRef(
+        right = Comparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LTE,
@@ -110,12 +110,12 @@ key a datetime;
 
         assert simplify_conditions(conditions)
 
-        left = Comparison(
+        left = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = Comparison(
+        right = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LT,
@@ -124,17 +124,17 @@ key a datetime;
 
         assert not simplify_conditions(conditions)
 
-        left = Comparison(
+        left = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        middle = Comparison(
+        middle = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.EQ,
         )
-        right = Comparison(
+        right = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LT,

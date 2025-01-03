@@ -13,17 +13,17 @@ from trilogy.core.functions import Count, CountDistinct, Max, Min
 # from trilogy.compiler import compile
 from trilogy.core.execute_models import (
     BoundColumnAssignment,
-    Comparison,
+    BoundComparison,
     BoundConcept,
-    Datasource,
+    BoundDatasource,
     DataType,
-    FilterItem,
-    Function,
+    BoundFilterItem,
+    BoundFunction,
     Grain,
-    OrderItem,
+    BoundOrderItem,
     SelectStatement,
-    WhereClause,
-    WindowItem,
+    BoundWhereClause,
+    BoundWindowItem,
 )
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.base import BaseDialect
@@ -74,7 +74,7 @@ def gen_environment():
         name="total_revenue",
         datatype=DataType.FLOAT,
         purpose=Purpose.METRIC,
-        lineage=Function(
+        lineage=BoundFunction(
             arguments=[revenue],
             output_datatype=DataType.FLOAT,
             output_purpose=Purpose.METRIC,
@@ -103,7 +103,7 @@ def gen_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
         grain=category_id,
-        lineage=Function(
+        lineage=BoundFunction(
             arguments=[category_name],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.PROPERTY,
@@ -116,7 +116,7 @@ def gen_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         grain=category_id,
-        lineage=Function(
+        lineage=BoundFunction(
             arguments=[category_name_length],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
@@ -128,11 +128,11 @@ def gen_environment():
         name="product_revenue_rank",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=BoundWindowItem(
             type=WindowType.RANK,
             content=product_id,
             order_by=[
-                OrderItem(expr=total_revenue.with_grain(product_id), order="desc")
+                BoundOrderItem(expr=total_revenue.with_grain(product_id), order="desc")
             ],
         ),
         grain=product_id,
@@ -141,11 +141,11 @@ def gen_environment():
         name="product_revenue_rank_by_category",
         datatype=DataType.INTEGER,
         purpose=Purpose.PROPERTY,
-        lineage=WindowItem(
+        lineage=BoundWindowItem(
             type=WindowType.RANK,
             content=product_id,
             over=[category_id],
-            order_by=[OrderItem(expr=total_revenue, order="desc")],
+            order_by=[BoundOrderItem(expr=total_revenue, order="desc")],
         ),
     )
 
@@ -153,10 +153,10 @@ def gen_environment():
         name="products_with_revenue_over_50",
         datatype=DataType.INTEGER,
         purpose=Purpose.KEY,
-        lineage=FilterItem(
+        lineage=BoundFilterItem(
             content=product_id,
-            where=WhereClause(
-                conditional=Comparison(
+            where=BoundWhereClause(
+                conditional=BoundComparison(
                     left=total_revenue.with_grain(product_id),
                     operator=ComparisonOperator.GT,
                     right=50,
@@ -164,7 +164,7 @@ def gen_environment():
             ),
         ),
     )
-    test_revenue = Datasource(
+    test_revenue = BoundDatasource(
         name="revenue",
         columns=[
             BoundColumnAssignment(alias="revenue", concept=revenue),
@@ -176,7 +176,7 @@ def gen_environment():
         grain=Grain(components=[order_id]),
     )
 
-    test_product = Datasource(
+    test_product = BoundDatasource(
         name="products",
         columns=[
             BoundColumnAssignment(alias="product_id", concept=product_id),
@@ -186,7 +186,7 @@ def gen_environment():
         grain=Grain(components=[product_id]),
     )
 
-    test_category = Datasource(
+    test_category = BoundDatasource(
         name="category",
         columns=[
             BoundColumnAssignment(alias="category_id", concept=category_id),

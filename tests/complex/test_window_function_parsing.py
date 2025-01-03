@@ -1,7 +1,7 @@
 from trilogy import Dialects
 from trilogy.core.enums import Granularity, Purpose, PurposeLineage
-from trilogy.core.execute_models import WindowItem, Grain
-from trilogy.core.author_models import SelectStatement, WindowItemRef
+from trilogy.core.execute_models import BoundWindowItem, Grain
+from trilogy.core.author_models import SelectStatement, WindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
@@ -60,7 +60,7 @@ limit 100
     env = env.instantiate()
     select: SelectStatement = parsed[-1]
 
-    assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
+    assert isinstance(env.concepts["user_rank"].lineage, BoundWindowItem)
 
     ds = search_concepts(
         [
@@ -141,7 +141,7 @@ limit 100
     assert concept_to_relevant_joins(
         [env.concepts[x] for x in ["user_id", "rank_derived"]]
     ) == [env.concepts["user_id"]]
-    assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
+    assert isinstance(env.concepts["user_country_rank"].lineage, BoundWindowItem)
 
     get_query_datasources(environment=env, statement=select)
     # raise ValueError

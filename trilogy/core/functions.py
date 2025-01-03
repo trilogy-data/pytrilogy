@@ -11,20 +11,20 @@ from trilogy.core.execute_models import (
     ListType,
     MapType,
     NumericType,
-    Parenthetical,
+    BoundParenthetical,
     StructType,
-    AggregateWrapper,
-    WindowItem,
-    Function,
+    BoundAggregateWrapper,
+    BoundWindowItem,
+    BoundFunction,
     BoundEnvironment,
     Reference,
     Meta,
 )
 
 from trilogy.core.author_models import (
-    AggregateWrapperRef,
-    FunctionRef,
-    WindowItemRef,
+    AggregateWrapper,
+    Function,
+    WindowItem,
     ConceptRef,
     Concept,
     Environment,
@@ -56,7 +56,7 @@ from trilogy.core.core_models import (
     arg_to_datatype,
 )
 
-GENERIC_ARGS = ConceptRef | FunctionRef | str | int | float | date | datetime
+GENERIC_ARGS = ConceptRef | Function | str | int | float | date | datetime
 
 from dataclasses import dataclass
 
@@ -690,7 +690,7 @@ class FunctionFactory:
                 final_args.append(arg.reference)
             else:
                 final_args.append(arg)
-        return FunctionRef(
+        return Function(
             operator=operator,
             arguments=final_args,
             output_datatype=output_type,
@@ -721,51 +721,51 @@ def create_function_derived_concept(
     )
 
 
-def Unnest(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Unnest(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args,
         operator=FunctionType.UNNEST,
     )
 
 
-def Group(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Group(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args,
         operator=FunctionType.GROUP,
     )
 
 
-def Count(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Count(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def CountDistinct(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def CountDistinct(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def Max(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Max(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def Min(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Min(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
     )
 
 
-def Split(args: list[ConceptRef], environment: Environment) -> FunctionRef:
+def Split(args: list[ConceptRef], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.SPLIT
     )
 
 
-def IndexAccess(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def IndexAccess(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.INDEX_ACCESS
     )
@@ -783,13 +783,13 @@ def AttrAccess(args: list[GENERIC_ARGS], environment: Environment):
     )
 
 
-def Abs(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Abs(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.ABS
     )
 
 
-def Coalesce(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Coalesce(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COALESCE
     )
@@ -797,7 +797,7 @@ def Coalesce(args: list[BoundConcept], environment: Environment) -> FunctionRef:
 
 def CurrentDate(
     args: list[BoundConcept], environment: Environment | None = None
-) -> FunctionRef:
+) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.CURRENT_DATE
     )
@@ -805,25 +805,25 @@ def CurrentDate(
 
 def CurrentDatetime(
     args: list[BoundConcept], environment: Environment | None = None
-) -> FunctionRef:
+) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.CURRENT_DATETIME
     )
 
 
-def Bool(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def Bool(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.BOOL
     )
 
 
-def StrPos(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def StrPos(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.STRPOS
     )
 
 
-def SubString(args: list[BoundConcept], environment: Environment) -> FunctionRef:
+def SubString(args: list[BoundConcept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.STRPOS
     )

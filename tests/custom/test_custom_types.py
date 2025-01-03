@@ -1,6 +1,6 @@
 import pytest
 
-from trilogy.core.execute_models import Parenthetical
+from trilogy.core.execute_models import BoundParenthetical
 from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
     parse_text,
@@ -26,7 +26,7 @@ validate test;
     right = query.where_clause.conditional.right
     assert isinstance(
         right,
-        Parenthetical,
+        BoundParenthetical,
     ), type(right)
     assert right.content[0] == 1
     rendered = BaseDialect().render_expr(right)

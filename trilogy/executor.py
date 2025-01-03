@@ -11,9 +11,9 @@ from trilogy.core.enums import Granularity, IOType
 from trilogy.core.execute_models import (
     BoundConcept,
 
-    Datasource,
+    BoundDatasource,
     BoundEnvironment,
-    Function,
+    BoundFunction,
     FunctionType,
     ImportStatement,
     ListWrapper,
@@ -148,7 +148,7 @@ class Executor(object):
         )
 
     @execute_query.register
-    def _(self, query: Datasource) -> CursorResult:
+    def _(self, query: BoundDatasource) -> CursorResult:
         return MockResult(
             [
                 {
@@ -419,7 +419,7 @@ class Executor(object):
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
         if (
-            isinstance(concept.lineage, Function)
+            isinstance(concept.lineage, BoundFunction)
             and concept.lineage.operator == FunctionType.CONSTANT
         ):
             rval = concept.lineage.arguments[0]

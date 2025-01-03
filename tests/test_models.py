@@ -5,18 +5,18 @@ from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Pu
 from trilogy.core.execute_models import (
     CTE,
     Address,
-    AggregateWrapper,
+    BoundAggregateWrapper,
     BaseJoin,
-    Comparison,
+    BoundComparison,
     BoundConcept,
-    Conditional,
+    BoundConditional,
     CTEConceptPair,
     DataType,
     BoundEnvironment,
     Grain,
     Join,
     QueryDatasource,
-    RowsetItem,
+    BoundRowsetItem,
     TupleWrapper,
     UndefinedConcept,
 )
@@ -80,25 +80,25 @@ def test_concept(test_environment, test_environment_graph):
 def test_concept_filter(test_environment, test_environment_graph):
     test_concept: BoundConcept = list(test_environment.concepts.values())[0]
     new = test_concept.with_filter(
-        Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
+        BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ)
     )
     new2 = test_concept.with_filter(
-        Comparison(left=1, right=2, operator=ComparisonOperator.EQ)
+        BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ)
     )
 
     assert new.name == new2.name != test_concept.name
 
-    new3 = new.with_filter(Comparison(left=1, right=2, operator=ComparisonOperator.EQ))
+    new3 = new.with_filter(BoundComparison(left=1, right=2, operator=ComparisonOperator.EQ))
     assert new3 == new
 
 
 def test_conditional(test_environment, test_environment_graph):
     test_concept = list(test_environment.concepts.values())[-1]
 
-    condition_a = Conditional(
+    condition_a = BoundConditional(
         left=test_concept, right=test_concept, operator=BooleanOperator.AND
     )
-    condition_b = Conditional(
+    condition_b = BoundConditional(
         left=test_concept, right=test_concept, operator=BooleanOperator.AND
     )
     merged = condition_a + condition_b
@@ -109,7 +109,7 @@ def test_conditional(test_environment, test_environment_graph):
         for x in test_environment.concepts.values()
         if x.address != test_concept.address
     ].pop()
-    condition_c = Conditional(
+    condition_c = BoundConditional(
         left=test_concept, right=test_concept_two, operator=BooleanOperator.AND
     )
     merged_two = condition_a + condition_c
@@ -205,7 +205,7 @@ def test_base_join(test_environment: BoundEnvironment):
 
 def test_comparison():
     try:
-        Comparison(left=1, right="abc", operator=ComparisonOperator.EQ)
+        BoundComparison(left=1, right="abc", operator=ComparisonOperator.EQ)
     except Exception as exc:
         assert isinstance(exc, SyntaxError)
 
@@ -303,8 +303,8 @@ select avg_greater_ten;
     )
 
     lineage = env.concepts["avg_greater_ten"].lineage
-    assert isinstance(lineage, AggregateWrapper)
-    assert isinstance(lineage.function.concept_arguments[0].lineage, RowsetItem)
+    assert isinstance(lineage, BoundAggregateWrapper)
+    assert isinstance(lineage.function.concept_arguments[0].lineage, BoundRowsetItem)
 
 
 def test_tuple_clone():
