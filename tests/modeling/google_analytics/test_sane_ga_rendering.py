@@ -2,7 +2,7 @@ from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, parse
-from trilogy.core.enums import Granularity, Purpose
+from trilogy.core.enums import Granularity, Purpose, Derivation
 from trilogy.core.functions import CurrentDatetime
 from trilogy.core.execute_models import (
     ProcessedQuery,
@@ -21,6 +21,7 @@ ENVIRONMENT_CONCEPTS = [
         namespace="local",
         datatype=DataType.DATETIME,
         purpose=Purpose.CONSTANT,
+        derivation=Derivation.CONSTANT,
         lineage=CurrentDatetime([]),
         granularity=Granularity.SINGLE_ROW,
     )

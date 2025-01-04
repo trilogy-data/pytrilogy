@@ -8,7 +8,7 @@ from trilogy.core.enums import (
     BooleanOperator,
     SourceType,
     SelectFiltering,
-    PurposeLineage,
+    Derivation,
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
@@ -396,6 +396,7 @@ def get_query_node(
         raise ValueError(f"Statement has no output components {statement}")
 
     search_concepts: list[BoundConcept] = statement.output_components
+    logger.info(f'{LOGGER_PREFIX} sourcing {search_concepts}')
     ods: StrategyNode = source_query_concepts(
         search_concepts,
         environment=environment,

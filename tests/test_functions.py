@@ -6,7 +6,7 @@ from pytest import raises
 
 from trilogy import Dialects
 from trilogy.constants import logger
-from trilogy.core.enums import Purpose, PurposeLineage
+from trilogy.core.enums import Purpose, Derivation
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.author_models import SelectStatement
 from trilogy.core.execute_models import DataType, BoundEnvironment, ListType
@@ -345,4 +345,4 @@ def test_validate_constant_functions():
             """
     )
     assert env.concepts["current_date"].purpose == Purpose.CONSTANT
-    assert env.concepts["current_date"].derivation == PurposeLineage.CONSTANT
+    assert env.concepts["current_date"].derivation == Derivation.CONSTANT

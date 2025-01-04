@@ -36,6 +36,7 @@ from trilogy.core.enums import (
     WindowOrder,
     WindowType,
     FunctionClass,
+    Derivation
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
@@ -191,7 +192,10 @@ def parse_concept_reference(
 
 def expr_to_boolean(
     root,
+    environment:Environment,
 ) -> Union[Comparison, SubselectComparison, Conditional]:
+    if isinstance(root, ConceptRef):
+        root = environment.concepts[root.address]
     if not isinstance(root, (Comparison, SubselectComparison,Conditional)):
         if arg_to_datatype(root) == DataType.BOOL:
             root = Comparison(left=root, right=True, operator=ComparisonOperator.EQ)
@@ -367,10 +371,10 @@ class ParseToObjects(Transformer):
             new = self.environment.concepts.__getitem__(  # type: ignore
                 key=arg, line_no=meta.line
             )
-            final.append(new.reference)
+            final.append(new)
 
         return StructType(
-            fields=final,
+            fields=[x.reference for x in final],
             fields_map={x.name: x for x in final if isinstance(x, Concept)},
         )
 
@@ -487,6 +491,7 @@ class ParseToObjects(Transformer):
             name=name,
             datatype=args[2],
             purpose=args[0],
+            derivation=Derivation.ROOT,
             metadata=metadata,
             grain=Grain(components={x.address for x in parents}),
             namespace=namespace,
@@ -510,6 +515,7 @@ class ParseToObjects(Transformer):
             name=name,
             datatype=args[2],
             purpose=args[0],
+            derivation=Derivation.ROOT,
             metadata=metadata,
             namespace=namespace,
             modifiers=modifiers,
@@ -1059,12 +1065,12 @@ class ParseToObjects(Transformer):
 
     def where(self, args):
         root = args[0]
-        root = expr_to_boolean(root,)
+        root = expr_to_boolean(root,self.environment)
         return WhereClause(conditional=root)
 
     def having(self, args):
         root = args[0]
-        root = expr_to_boolean(root,)
+        root = expr_to_boolean(root,self.environment)
         return HavingClause(conditional=root)
 
     @v_args(meta=True)
@@ -1541,7 +1547,7 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def fcase_when(self, meta, args) -> CaseWhen:
         args = process_function_args(args, meta=meta, environment=self.environment)
-        root = expr_to_boolean(args[0],)
+        root = expr_to_boolean(args[0],self.environment)
         return CaseWhen(comparison=root, expr=args[1])
 
     @v_args(meta=True)

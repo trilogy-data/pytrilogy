@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Callable, List, Tuple
 
-from trilogy.core.enums import Purpose, PurposeLineage
+from trilogy.core.enums import Purpose, Derivation
 from trilogy.core.execute_models import (
     BoundAggregateWrapper,
     BoundConcept,
@@ -24,7 +24,7 @@ from trilogy.utility import unique
 def resolve_function_parent_concepts(
     concept: BoundConcept, environment: BoundEnvironment
 ) -> List[BoundConcept]:
-    if concept.derivation == PurposeLineage.AGGREGATE:
+    if concept.derivation == Derivation.AGGREGATE:
         base: list[BoundConcept] = []
         if not concept.grain.abstract:
             base = [environment.concepts[x.address] for x in concept.lineage.concept_arguments] + [

@@ -1,5 +1,5 @@
 from trilogy import Dialects
-from trilogy.core.enums import Granularity, Purpose, PurposeLineage
+from trilogy.core.enums import Granularity, Purpose, Derivation
 from trilogy.core.author_models import SelectStatement, WindowItem, Grain
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
@@ -170,7 +170,7 @@ order by x asc;"""
 
     z = env.concepts["z"]
     assert z.purpose == Purpose.PROPERTY
-    assert z.derivation == PurposeLineage.WINDOW
+    assert z.derivation == Derivation.WINDOW
     assert set([x.address for x in z.lineage.concept_arguments]) == set(
         [
             x.address,
@@ -194,8 +194,8 @@ order by x asc;"""
     assert x.address in ds.output_concepts
     assert z.address in ds.output_concepts
 
-    assert x.derivation == PurposeLineage.UNNEST
-    assert z.derivation != PurposeLineage.CONSTANT
+    assert x.derivation == Derivation.UNNEST
+    assert z.derivation != Derivation.CONSTANT
 
     generator = duckdb.DuckDBDialect()
     query = process_query(statement=select, environment=env)

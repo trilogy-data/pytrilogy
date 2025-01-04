@@ -36,6 +36,7 @@ def gen_unnest_node(
             conditions=conditions,
         )
         if not parent:
+            raise SyntaxError
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} could not find unnest node parents"
             )

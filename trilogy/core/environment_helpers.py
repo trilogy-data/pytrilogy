@@ -1,5 +1,5 @@
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.enums import ConceptSource, FunctionType, Purpose
+from trilogy.core.enums import ConceptSource, FunctionType, Purpose, Derivation
 from trilogy.core.functions import AttrAccess
 from trilogy.core.common_models import (
     DataType,
@@ -53,6 +53,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
+            derivation=Derivation.BASIC,
             lineage=const_function,
             grain=Grain(components = {concept.address,}),
             namespace=concept.namespace,
@@ -102,6 +103,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
+                        derivation=Derivation.BASIC,
             lineage=const_function,
             grain=Grain(components={concept.address,}),
             namespace=concept.namespace,
@@ -142,6 +144,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
+            derivation=Derivation.BASIC,
             lineage=const_function,
             grain=Grain(components={concept.address,}),
             namespace=concept.namespace,
@@ -189,13 +192,14 @@ def generate_related_concepts(
                 name=key,
                 datatype=arg_to_datatype(value),
                 purpose=Purpose.PROPERTY,
+                            derivation=Derivation.BASIC,
                 namespace=(
                     environment.namespace + "." + concept.name
                     if environment.namespace
                     and environment.namespace != DEFAULT_NAMESPACE
                     else concept.name
                 ),
-                lineage=AttrAccess(args),
+                lineage=AttrAccess(args, environment),
             )
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):

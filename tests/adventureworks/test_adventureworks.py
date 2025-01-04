@@ -24,7 +24,6 @@ def test_parsing(environment: Environment):
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    SqlServerDialect()
     environment, statements = parse(file, environment=environment)
 
 
@@ -61,7 +60,7 @@ def test_query_datasources(environment: Environment):
     test: SelectStatement = statements[-1]  # multipart join
 
     environment_graph = generate_graph(environment)
-    from trilogy.hooks.query_debugger import print_recursive_nodes
+
 
     # assert a group up to the first name works
 
@@ -76,7 +75,7 @@ def test_query_datasources(environment: Environment):
         g=environment_graph,
         depth=0,
     )
-    print_recursive_nodes(customer_node)
+
     customer_datasource = customer_node.resolve()
 
     assert (

@@ -12,7 +12,6 @@ from trilogy.core.execute_models import (
     BoundConcept,
 
     BoundDatasource,
-    BoundEnvironment,
     BoundFunction,
     FunctionType,
     ImportStatement,
@@ -33,6 +32,7 @@ from trilogy.core.author_models import (
     SelectStatement,
     ShowStatement,
         ConceptDeclarationStatement,
+        Environment,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -73,12 +73,12 @@ class Executor(object):
         self,
         dialect: Dialects,
         engine: Engine,
-        environment: Optional[BoundEnvironment] = None,
+        environment: Optional[Environment] = None,
         hooks: List[BaseHook] | None = None,
     ):
         self.dialect: Dialects = dialect
         self.engine = engine
-        self.environment = environment or BoundEnvironment()
+        self.environment = environment or Environment()
         self.generator: BaseDialect
         self.logger = logger
         self.hooks = hooks

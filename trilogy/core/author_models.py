@@ -138,7 +138,7 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
-    PurposeLineage,
+    Derivation,
     SelectFiltering,
     ShowCategory,
     SourceType,
@@ -387,6 +387,10 @@ class Function(Reference, TypedSentinal, Namespaced, BaseModel):
         return self.output_datatype
     
     @property
+    def purpose(self)->Purpose:
+        return self.output_purpose
+    
+    @property
     def concept_arguments(self) -> List[ConceptRef]:
         base = []
         for arg in self.arguments:
@@ -446,11 +450,12 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
-    
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
     metadata: Metadata = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
         validate_default=True,
     )
+    keys: Optional[set[str]] = Field(default_factory=set)
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     lineage: Optional[
         Union[
@@ -462,9 +467,10 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             AggregateWrapper,
         ]
     ] = None
+    derivation: Derivation = Derivation.UNKNOWN
     granularity: Granularity = Granularity.MULTI_ROW
-    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
-    keys: Optional[set[str]] = Field(default_factory=set)
+
+
     # grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
@@ -478,15 +484,18 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             del self.address
         except AttributeError:
             pass
+    @field_validator("derivation", mode="before")
+    def validate_derivation(cls, v, values):
 
-    @property
-    def datatype(self):
-        return self.dict()["datatype"]
-
-    @datatype.getter
-    def datatype(self):
-        return self.datatype
+        if not values.data.get("lineage"):
+            return Derivation.ROOT
+        return v
     
+    @field_validator("namespace", mode="plain")
+    @classmethod
+    def namespace_validation(cls, v):
+        return v or DEFAULT_NAMESPACE
+ 
     def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
             new = target.with_grain(self.grain.with_merge(source, target, modifiers))
@@ -498,6 +507,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=self.lineage,
+            derivation=self.derivation,
             grain=self.grain.with_merge(source, target, modifiers),
             namespace=self.namespace,
             keys=(
@@ -516,6 +526,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             name=name or self.name,
             datatype=self.datatype,
             purpose=self.purpose,
+                    derivation=self.derivation,
             metadata=self.metadata,
             lineage=self.lineage,
             grain=grain if grain else Grain(components=set()),
@@ -541,6 +552,8 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             and values["lineage"].by
         ):
             v = Grain(components={c.address for c in values["lineage"].by})
+        elif "keys" in values and values["keys"]:
+            v = Grain(components=values["keys"])
         elif not v:
             v = Grain(components=set())
         elif isinstance(v, Grain):
@@ -608,6 +621,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             output_datatype = lineage.output_datatype
         if not self.purpose and isinstance(lineage, BoundFunction):
             output_purpose = lineage.output_purpose
+        ngrain = self.grain.instantiate(environment)
         return BoundConcept(
             name=self.name,
             datatype=output_datatype,
@@ -617,7 +631,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             derivation=self.derivation,
             namespace=self.namespace,
             keys=self.keys,
-            grain=self.grain.instantiate(environment),
+            grain=ngrain,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
             granularity=self.granularity
@@ -626,17 +640,15 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
     def with_namespace(self, namespace: str) -> Self:
         if namespace == self.namespace:
             return self
+        new_grain =    self.grain.with_namespace(namespace) if self.grain else Grain(components=set())
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
+                        derivation=self.derivation,
             lineage=self.lineage.with_namespace(namespace) if self.lineage else None,
-            grain=(
-                self.grain.with_namespace(namespace)
-                if self.grain
-                else Grain(components=set())
-            ),
+            grain=new_grain,
             namespace=(
                 namespace + "." + self.namespace
                 if self.namespace
@@ -653,58 +665,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
 
-    @property
-    def derivation(self) -> PurposeLineage:
-        if self.lineage and isinstance(self.lineage, WindowItem):
-            return PurposeLineage.WINDOW
-        elif self.lineage and isinstance(self.lineage, FilterItem):
-            return PurposeLineage.FILTER
-        elif self.lineage and isinstance(self.lineage, AggregateWrapper):
-            return PurposeLineage.AGGREGATE
-        elif self.lineage and isinstance(self.lineage, RowsetItem):
-            return PurposeLineage.ROWSET
-        elif self.lineage and isinstance(self.lineage, MultiSelectLineage):
-            return PurposeLineage.MULTISELECT
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-        ):
-            return PurposeLineage.AGGREGATE
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNNEST
-        ):
-            return PurposeLineage.UNNEST
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNION
-        ):
-            return PurposeLineage.UNION
-        elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.SINGLE_ROW.value
-        ):
-            return PurposeLineage.CONSTANT
-
-        elif self.lineage and isinstance(self.lineage, Function):
-            if not self.lineage.concept_arguments:
-                return PurposeLineage.CONSTANT
-            elif all(
-                [
-                    x.derivation == PurposeLineage.CONSTANT
-                    for x in self.lineage.concept_arguments
-                ]
-            ):
-                return PurposeLineage.CONSTANT
-            return PurposeLineage.BASIC
-        elif self.purpose == Purpose.CONSTANT:
-            return PurposeLineage.CONSTANT
-        return PurposeLineage.ROOT
-
+    
     def with_filter(
         self,
         condition: Conditional | Comparison | Parenthetical,
@@ -721,6 +682,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
+                    derivation=self.derivation,
             lineage=FilterItem(
                 content=self, where=WhereClause(conditional=condition)
             ),
@@ -1567,6 +1529,7 @@ class EnvironmentConceptDict(dict):
                     line_no=line_no,
                     datatype=DataType.UNKNOWN,
                     purpose=Purpose.UNKNOWN,
+                    derivation=Derivation.UNKNOWN,
                     namespace=ns,
                     granularity = Granularity.MULTI_ROW
                 )
@@ -1687,7 +1650,7 @@ class SelectTypeMixin(BaseModel):
             [
                 str(x.address)
                 for x in self.where_clause.row_arguments
-                if not x.derivation == PurposeLineage.CONSTANT
+                if not x.derivation == Derivation.CONSTANT
             ]
         )
         query_output = set([str(z.address) for z in self.output_components])
@@ -1720,7 +1683,6 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
     def create_select_context(cls, select:BoundSelectStatement, environment:BoundEnvironment):
         for parse_pass in [
                 1,
-                2,
             ]:
                 # the first pass will result in all concepts being defined
                 # the second will get grains appropriately
@@ -1739,8 +1701,11 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                     grain = BoundGrain.from_concepts(
                         select.output_components, where_clause=select.where_clause
                     )
+                grain = BoundGrain.from_concepts(
+                        select.output_components, where_clause=select.where_clause
+                    )
                 select.grain = grain
-                pass_grain = BoundGrain() if parse_pass == 1 else grain
+                pass_grain = grain
                 for item in select.selection:
                     # we don't know the grain of an aggregate at assignment time
                     # so rebuild at this point in the tree
@@ -2167,6 +2132,7 @@ class AlignItem(Namespaced, Reference, BaseModel):
             name=self.alias,
             datatype=datatypes.pop(),
             purpose=purpose,
+            derivation=Derivation.MULTISELECT,
             lineage=MultiSelectLineage(
                 selects=parent.selects,
                 align=parent.align,
@@ -2286,6 +2252,7 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
                 name=name,
                 datatype=orig_concept.datatype,
                 purpose=orig_concept.purpose,
+                derivation = Derivation.ROWSET,
                 lineage=(
                     RowsetItem(
                         content=orig_concept,
@@ -2439,20 +2406,21 @@ class Environment(BaseModel):
 
     def __init__(self, **data):
         super().__init__(**data)
-        # concept = Concept(
-        #     name="_env_working_path",
-        #     namespace=self.namespace,
-        #     lineage=Function(
-        #         operator=FunctionType.CONSTANT,
-        #         arguments=[str(self.working_path)],
-        #         output_datatype=DataType.STRING,
-        #         output_purpose=Purpose.CONSTANT,
-        #         output_grain = Grain(),
-        #     ),
-        #     datatype=DataType.STRING,
-        #     purpose=Purpose.CONSTANT,
-        # )
-        # self.add_concept(concept)
+        concept = Concept(
+            name="_env_working_path",
+            namespace=self.namespace,
+            lineage=Function(
+                operator=FunctionType.CONSTANT,
+                arguments=[str(self.working_path)],
+                output_datatype=DataType.STRING,
+                output_purpose=Purpose.CONSTANT,
+                output_grain = Grain(),
+            ),
+            derivation=Derivation.CONSTANT,
+            datatype=DataType.STRING,
+            purpose=Purpose.CONSTANT,
+        )
+        self.add_concept(concept)
 
     # def freeze(self):
     #     self.frozen = True
@@ -2714,12 +2682,13 @@ class Environment(BaseModel):
 
     def add_datasource(
         self,
-        datasource: Datasource,
+        datasource: Datasource | BoundDatasource,
         meta: Meta | None = None,
         _ignore_cache: bool = False,
     ):
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add datasource")
+        
         self.datasources[datasource.identifier] = datasource
 
         eligible_to_promote_roots = datasource.non_partial_for is None
@@ -2732,7 +2701,6 @@ class Environment(BaseModel):
             # current_derivation = current_concept.derivation
             # TODO: refine this section;
             # too hacky for maintainability
-
             if current_concept.lineage:
                 persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource
@@ -2752,6 +2720,8 @@ class Environment(BaseModel):
                     # to make this a root for discovery purposes
                     # as it now "exists" in a table
                     current_concept.lineage = None
+                    current_concept.grain = Grain(components=set([current_concept.address]))
+                    # raise SyntaxError(current_concept)
                     self.add_concept(
                         current_concept, meta=meta, force=True, _ignore_cache=True
                     )
@@ -2805,6 +2775,7 @@ class Environment(BaseModel):
             if source.address in ds.output_concepts:
                 ds.merge_concept(source, target, modifiers=modifiers)
         return True
+
 
 
 class LazyEnvironment(Environment):

@@ -1,5 +1,5 @@
 from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.execute_models import (
     BoundConcept,
@@ -35,14 +35,14 @@ def gen_select_node(
             x
             for x in all_concepts
             if x.address in environment.materialized_concepts
-            or x.derivation == PurposeLineage.CONSTANT
+            or x.derivation == Derivation.CONSTANT
         ]
     )
     if materialized_lcl != all_lcl:
         missing = all_lcl.difference(materialized_lcl)
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concept.address}"
-            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing}) "
+            f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing}) materialized {materialized_lcl}"
         )
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concept}")

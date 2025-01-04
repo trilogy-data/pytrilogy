@@ -32,7 +32,7 @@ from trilogy.core.execute_models import (
     BoundComparison,
     CompiledCTE,
     BoundConcept,
-
+    BoundMultiSelectLineage,
     BoundConditional,
     BoundDatasource,
     DataType,
@@ -358,7 +358,7 @@ class BaseDialect:
                     rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)} ELSE NULL END"
             elif isinstance(c.lineage, BoundRowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
-            elif isinstance(c.lineage, MultiSelectStatement):
+            elif isinstance(c.lineage, BoundMultiSelectLineage):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, BoundAggregateWrapper):
                 args = [
@@ -826,15 +826,17 @@ class BaseDialect:
                 copy = process_copy(environment, statement, hooks=hooks)
                 output.append(copy)
             elif isinstance(statement, SelectStatement):
+                processed = process_query(environment, statement, hooks=hooks)
                 if hooks:
                     for hook in hooks:
-                        hook.process_select_info(statement)
-                output.append(process_query(environment, statement, hooks=hooks))
+                        hook.process_select_info(processed)
+                output.append(processed)
             elif isinstance(statement, MultiSelectStatement):
+                processed = process_query(environment, statement, hooks=hooks)
                 if hooks:
                     for hook in hooks:
-                        hook.process_multiselect_info(statement)
-                output.append(process_query(environment, statement, hooks=hooks))
+                        hook.process_select_info(processed)
+                output.append(processed)
             elif isinstance(statement, RowsetDerivationStatement):
                 if hooks:
                     for hook in hooks:

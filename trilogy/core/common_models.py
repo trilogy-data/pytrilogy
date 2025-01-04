@@ -73,7 +73,7 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
-    PurposeLineage,
+    Derivation,
     SelectFiltering,
     ShowCategory,
     SourceType,

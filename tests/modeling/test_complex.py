@@ -1,5 +1,5 @@
 from trilogy import Dialects, Executor, parse
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import Derivation
 from trilogy.core.execute_models import BoundEnvironment
 from trilogy.core.author_models import SelectStatement
 from trilogy.core.processing.node_generators.common import (
@@ -64,7 +64,7 @@ def test_rowset_with_aggregation(
 
     group = test_environment.concepts["even_order_store_revenue"]
 
-    assert group.derivation == PurposeLineage.AGGREGATE
+    assert group.derivation == Derivation.AGGREGATE
     # grain_c_lcl = LooseConceptList(concepts=group.grain.components_copy)
     # assert "even_orders.store_id" in grain_c_lcl.addresses
     resolve_function_parent_concepts(group, environment=test_environment)

@@ -5,7 +5,7 @@ from typing import List, Optional
 from trilogy.core.enums import (
     BooleanOperator,
     JoinType,
-    PurposeLineage,
+    Derivation,
 )
 from trilogy.core.execute_models import (
     BoundComparison,
@@ -424,7 +424,7 @@ class NodeJoin:
             # we can join on 1=1
             for ds in [self.left_node, self.right_node]:
                 if all(
-                    [c.derivation == PurposeLineage.CONSTANT for c in ds.all_concepts]
+                    [c.derivation == Derivation.CONSTANT for c in ds.all_concepts]
                 ):
                     self.concepts = []
                     return

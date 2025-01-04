@@ -9,19 +9,19 @@ exec_time = 1.307407
 comp_time = 0.389268
 
 [query_03]
-parse_time = 0.342078
-exec_time = 0.055986
-comp_time = 1.212863
+parse_time = 0.105632
+exec_time = 0.033207
+comp_time = 1.042667
 
 [query_06]
-parse_time = 0.210079
-exec_time = 0.303744
-comp_time = 0.073532
+parse_time = 0.135337
+exec_time = 0.1994
+comp_time = 0.040618
 
 [query_07]
-parse_time = 0.353128
-exec_time = 0.235858
-comp_time = 0.126684
+parse_time = 0.115046
+exec_time = 0.134648
+comp_time = 0.099013
 
 [query_08]
 parse_time = 0.99144
@@ -29,9 +29,9 @@ exec_time = 0.335647
 comp_time = 0.174171
 
 [query_10]
-parse_time = 0.834806
-exec_time = 0.34979
-comp_time = 0.471378
+parse_time = 0.326505
+exec_time = 0.226872
+comp_time = 0.307314
 
 [query_12]
 parse_time = 0.286183
@@ -39,14 +39,14 @@ exec_time = 0.413064
 comp_time = 0.300247
 
 [query_15]
-parse_time = 0.371152
-exec_time = 0.336903
-comp_time = 0.300211
+parse_time = 0.093224
+exec_time = 0.212823
+comp_time = 0.169628
 
 [query_16]
-parse_time = 0.429947
-exec_time = 0.294497
-comp_time = 0.031654
+parse_time = 0.421985
+exec_time = 0.156131
+comp_time = 0.016868
 
 [query_20]
 parse_time = 1.120258
@@ -64,24 +64,24 @@ exec_time = 1.159649
 comp_time = 0.895967
 
 [query_25]
-parse_time = 1.055257
-exec_time = 0.264021
-comp_time = 0.047042
+parse_time = 0.585255
+exec_time = 0.123787
+comp_time = 0.034976
 
 [query_26]
-parse_time = 0.268965
-exec_time = 0.156574
-comp_time = 0.117799
+parse_time = 0.100458
+exec_time = 0.092227
+comp_time = 0.074687
 
 [query_30]
-parse_time = 0.555535
-exec_time = 0.107969
-comp_time = 0.076463
+parse_time = 0.205533
+exec_time = 0.069436
+comp_time = 0.046928
 
 [query_97]
-parse_time = 2.788381
-exec_time = 2.043175
-comp_time = 0.283945
+parse_time = 0.468473
+exec_time = 0.233275
+comp_time = 0.066341
 
 [query_98]
 parse_time = 0.370713
@@ -89,6 +89,6 @@ exec_time = 0.446855
 comp_time = 0.306312
 
 [query_99]
-parse_time = 0.506537
-exec_time = 0.512698
-comp_time = 0.078158
+parse_time = 0.166317
+exec_time = 0.339414
+comp_time = 0.060057

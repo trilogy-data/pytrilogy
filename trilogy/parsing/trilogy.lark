@@ -339,7 +339,8 @@
 
     SHORTHAND_MODIFIER: "~" | "?"
 
-    struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
+    //struct_type: "struct"i "<" ((data_type | IDENTIFIER) ",")* (data_type | IDENTIFIER) ","? ">" 
+    struct_type: "struct"i "<" (IDENTIFIER ",")* IDENTIFIER ","? ">" 
 
     list_type: "list"i "<" data_type ">"
 

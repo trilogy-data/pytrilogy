@@ -3,7 +3,7 @@ from enum import Enum
 from typing import List, Optional, Protocol, Union
 
 from trilogy.constants import logger
-from trilogy.core.enums import FunctionType, Granularity, PurposeLineage
+from trilogy.core.enums import FunctionType, Granularity, Derivation
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.execute_models import (
@@ -70,10 +70,11 @@ def get_upstream_concepts(environment:BoundEnvironment, base: BoundConcept, nest
         return upstream
     for x in base.lineage.concept_arguments:
         # if it's derived from any value in a rowset, ALL rowset items are upstream
-        if x.derivation == PurposeLineage.ROWSET:
+        print(base.lineage)
+        print
+        if x.derivation == Derivation.ROWSET:
             assert isinstance(x.lineage, BoundRowsetItem)
             for y in x.lineage.rowset.derived_concepts:
-
                 upstream = upstream.union(get_upstream_concepts(environment, environment.concepts[y], nested=True))
         upstream = upstream.union(get_upstream_concepts(environment, x, nested=True))
     return upstream
@@ -101,34 +102,34 @@ def get_priority_concept(
             [
                 c
                 for c in remaining_concept
-                if c.derivation == PurposeLineage.CONSTANT
+                if c.derivation == Derivation.CONSTANT
                 and c.granularity == Granularity.SINGLE_ROW
             ]
             +
             # then multiselects to remove them from scope
-            [c for c in remaining_concept if c.derivation == PurposeLineage.MULTISELECT]
+            [c for c in remaining_concept if c.derivation == Derivation.MULTISELECT]
             +
             # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == PurposeLineage.ROWSET]
+            [c for c in remaining_concept if c.derivation == Derivation.ROWSET]
             +
             # then rowsets to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == PurposeLineage.UNION]
+            [c for c in remaining_concept if c.derivation == Derivation.UNION]
             # we should be home-free here
             +
             # then aggregates to remove them from scope, as they cannot get partials
-            [c for c in remaining_concept if c.derivation == PurposeLineage.AGGREGATE]
+            [c for c in remaining_concept if c.derivation == Derivation.AGGREGATE]
             # then windows to remove them from scope, as they cannot get partials
-            + [c for c in remaining_concept if c.derivation == PurposeLineage.WINDOW]
+            + [c for c in remaining_concept if c.derivation == Derivation.WINDOW]
             # then filters to remove them from scope, also cannot get partials
-            + [c for c in remaining_concept if c.derivation == PurposeLineage.FILTER]
+            + [c for c in remaining_concept if c.derivation == Derivation.FILTER]
             # unnests are weird?
-            + [c for c in remaining_concept if c.derivation == PurposeLineage.UNNEST]
-            + [c for c in remaining_concept if c.derivation == PurposeLineage.BASIC]
+            + [c for c in remaining_concept if c.derivation == Derivation.UNNEST]
+            + [c for c in remaining_concept if c.derivation == Derivation.BASIC]
             # finally our plain selects
             + [
-                c for c in remaining_concept if c.derivation == PurposeLineage.ROOT
+                c for c in remaining_concept if c.derivation == Derivation.ROOT
             ]  # and any non-single row constants
-            + [c for c in remaining_concept if c.derivation == PurposeLineage.CONSTANT]
+            + [c for c in remaining_concept if c.derivation == Derivation.CONSTANT]
         )
 
         priority += [
@@ -167,7 +168,6 @@ def generate_candidates_restrictive(
     # if it's single row, joins are irrelevant. Fetch without keys.
     if priority_concept.granularity == Granularity.SINGLE_ROW:
         return [[]]
-
     local_candidates = [
         x
         for x in list(candidates)
@@ -177,8 +177,8 @@ def generate_candidates_restrictive(
         and priority_concept.address not in x.pseudonyms
     ]
     if conditions and priority_concept.derivation in (
-        PurposeLineage.ROOT,
-        PurposeLineage.CONSTANT,
+        Derivation.ROOT,
+        Derivation.CONSTANT,
     ):
         return [unique(conditions.row_arguments + local_candidates, "address")]
     return [local_candidates]
@@ -213,7 +213,7 @@ def generate_node(
     if candidate:
         return candidate
 
-    if concept.derivation == PurposeLineage.WINDOW:
+    if concept.derivation == Derivation.WINDOW:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating window node with optional {[x.address for x in local_optional]}"
         )
@@ -228,7 +228,7 @@ def generate_node(
             conditions=conditions,
         )
 
-    elif concept.derivation == PurposeLineage.FILTER:
+    elif concept.derivation == Derivation.FILTER:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating filter node with optional {[x.address for x in local_optional]}"
         )
@@ -242,7 +242,7 @@ def generate_node(
             history=history,
             conditions=conditions,
         )
-    elif concept.derivation == PurposeLineage.UNNEST:
+    elif concept.derivation == Derivation.UNNEST:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating unnest node with optional {[x.address for x in local_optional]} and condition {conditions}"
         )
@@ -256,7 +256,7 @@ def generate_node(
             history,
             conditions=conditions,
         )
-    elif concept.derivation == PurposeLineage.UNION:
+    elif concept.derivation == Derivation.UNION:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating union node with optional {[x.address for x in local_optional]} and condition {conditions}"
         )
@@ -270,7 +270,7 @@ def generate_node(
             history,
             conditions=conditions,
         )
-    elif concept.derivation == PurposeLineage.AGGREGATE:
+    elif concept.derivation == Derivation.AGGREGATE:
         # don't push constants up before aggregation
         # if not required
         # to avoid constants multiplication changing default aggregation results
@@ -293,7 +293,7 @@ def generate_node(
             history,
             conditions=conditions,
         )
-    elif concept.derivation == PurposeLineage.ROWSET:
+    elif concept.derivation == Derivation.ROWSET:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating rowset node with optional {[x.address for x in local_optional]}"
         )
@@ -307,7 +307,7 @@ def generate_node(
             history,
             conditions=conditions,
         )
-    elif concept.derivation == PurposeLineage.MULTISELECT:
+    elif concept.derivation == Derivation.MULTISELECT:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating multiselect node with optional {[x.address for x in local_optional]}"
         )
@@ -321,16 +321,16 @@ def generate_node(
             history,
             conditions=conditions,
         )
-    elif concept.derivation == PurposeLineage.CONSTANT:
+    elif concept.derivation == Derivation.CONSTANT:
         constant_targets = [concept] + local_optional
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating constant node"
         )
-        if any([x.derivation != PurposeLineage.CONSTANT for x in local_optional]):
+        if any([x.derivation != Derivation.CONSTANT for x in local_optional]):
             non_root = [
                 x.address
                 for x in local_optional
-                if x.derivation != PurposeLineage.CONSTANT
+                if x.derivation != Derivation.CONSTANT
             ]
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there is non root filter requirements {non_root}. Recursing with all of these as mandatory"
@@ -364,7 +364,7 @@ def generate_node(
             parents=[],
             depth=depth + 1,
         )
-    elif concept.derivation == PurposeLineage.BASIC:
+    elif concept.derivation == Derivation.BASIC:
         # this is special case handling for group bys
         if (
             isinstance(concept.lineage, BoundFunction)
@@ -397,7 +397,7 @@ def generate_node(
             conditions=conditions,
         )
 
-    elif concept.derivation == PurposeLineage.ROOT:
+    elif concept.derivation == Derivation.ROOT:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} for {concept.address}, generating select node with optional including condition inputs {[x.address for x in local_optional]}"
         )
@@ -407,14 +407,14 @@ def generate_node(
 
         if any(
             [
-                x.derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT)
+                x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
                 for x in local_optional
             ]
         ):
             non_root = [
                 x.address
                 for x in local_optional
-                if x.derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT)
+                if x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
             ]
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} including filter concepts, there is non root filter requirements {non_root}. Recursing with all of these as mandatory"
@@ -451,7 +451,6 @@ def generate_node(
             conditions=conditions,
         )
         if not check:
-
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Could not resolve root concepts, checking for expanded concepts"
             )
@@ -745,7 +744,7 @@ def _search_concepts(
         # we need to get _everything_ in this loop
         if any(
             [
-                x.derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT)
+                x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
                 and x.address in conditions.row_arguments
                 for x in mandatory_list
             ]
@@ -779,7 +778,7 @@ def _search_concepts(
                 [x.address in mandatory_list for x in conditions.row_arguments]
             ) and not any(
                 [
-                    x.derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT)
+                    x.derivation not in (Derivation.ROOT, Derivation.CONSTANT)
                     for x in mandatory_list
                     if x.address not in conditions.row_arguments
                 ]
@@ -799,7 +798,7 @@ def _search_concepts(
         if (
             conditions
             and priority_concept.derivation
-            not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT)
+            not in (Derivation.ROOT, Derivation.CONSTANT)
             and priority_concept.address not in conditions.row_arguments
         ):
             logger.info(
@@ -819,7 +818,7 @@ def _search_concepts(
         )
         for clist in candidate_lists:
             logger.info(
-                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {priority_concept.address}, accept_partial {accept_partial}, optional {[v.address for v in clist]}, exhausted {[c for c in skip]}"
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Beginning sourcing loop for {priority_concept}, accept_partial {accept_partial}, optional {[v.address for v in clist]}, exhausted {[c for c in skip]}"
             )
             node = generate_node(
                 priority_concept,
@@ -844,14 +843,14 @@ def _search_concepts(
                 # these concepts should not be attempted to be sourced again
                 # as fetching them requires operating on a subset of concepts
                 if priority_concept.derivation in [
-                    PurposeLineage.AGGREGATE,
-                    PurposeLineage.FILTER,
-                    PurposeLineage.WINDOW,
-                    PurposeLineage.UNNEST,
-                    PurposeLineage.ROWSET,
-                    PurposeLineage.BASIC,
-                    PurposeLineage.MULTISELECT,
-                    PurposeLineage.UNION,
+                    Derivation.AGGREGATE,
+                    Derivation.FILTER,
+                    Derivation.WINDOW,
+                    Derivation.UNNEST,
+                    Derivation.ROWSET,
+                    Derivation.BASIC,
+                    Derivation.MULTISELECT,
+                    Derivation.UNION,
                 ]:
                     skip.add(priority_concept.address)
                 break
@@ -882,7 +881,7 @@ def _search_concepts(
             break
         # if we have attempted on root node, we've tried them all.
         # inject in another search with filter concepts
-        if priority_concept.derivation == PurposeLineage.ROOT:
+        if priority_concept.derivation == Derivation.ROOT:
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Breaking as attempted root with no results"
             )

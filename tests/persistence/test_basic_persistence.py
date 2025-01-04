@@ -1,7 +1,7 @@
 # from trilogy.compiler import compile
 import networkx as nx
 
-from trilogy.core.enums import ConceptSource, Purpose, PurposeLineage
+from trilogy.core.enums import ConceptSource, Purpose, Derivation
 from trilogy.core.env_processor import (
     concept_to_node,
     datasource_to_node,
@@ -81,7 +81,7 @@ def test_derivations():
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.address in env.materialized_concepts
-        assert test_concept.derivation == PurposeLineage.ROOT
+        assert test_concept.derivation == Derivation.ROOT
 
         persist: PersistStatement = parsed[-2]
         assert persist.select.grain == Grain(components=[test_concept])
@@ -179,7 +179,7 @@ def test_derivations_reparse():
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.PERSIST_STATEMENT
         assert test_concept.address in env.materialized_concepts
-        assert test_concept.derivation == PurposeLineage.ROOT
+        assert test_concept.derivation == Derivation.ROOT
 
         # test that the rendered SQL didn't need to use a cASE
         assert "CASE" not in compiled[-1]
@@ -237,7 +237,7 @@ def test_derivations_reparse_new():
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.MANUAL
         assert test_concept not in env.materialized_concepts
-        assert test_concept.derivation == PurposeLineage.BASIC
+        assert test_concept.derivation == Derivation.BASIC
 
         # test that the rendered SQL did need to use a case
         assert "CASE" in compiled[-1]

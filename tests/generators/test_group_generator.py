@@ -1,4 +1,4 @@
-from trilogy.core.enums import FunctionType, Purpose, PurposeLineage
+from trilogy.core.enums import FunctionType, Purpose, Derivation
 from trilogy.core.execute_models import BoundAggregateWrapper, DataType
 from trilogy.core.author_models import AggregateWrapper, Environment, Function
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
@@ -13,7 +13,7 @@ from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 def test_gen_group_node_parents(test_environment: Environment):
     test_environment = test_environment.instantiate()
     comp = test_environment.concepts["category_top_50_revenue_products"]
-    assert comp.derivation == PurposeLineage.AGGREGATE
+    assert comp.derivation == Derivation.AGGREGATE
     assert comp.lineage
     assert test_environment.concepts["category_id"] in comp.lineage.concept_arguments
     assert comp.grain.components == {test_environment.concepts["category_id"].address}

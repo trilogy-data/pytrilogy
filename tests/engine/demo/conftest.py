@@ -12,12 +12,7 @@ from trilogy.core.enums import FunctionType, Modifier, Purpose
 from trilogy.core.functions import FunctionFactory, create_function_derived_concept
 from trilogy.core.common_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
-    BoundColumnAssignment,
-    BoundConcept,
-    BoundDatasource,
     DataType,
-    BoundFunction,
-    Metadata,
 )
 from trilogy.core.author_models import Concept, Function, ColumnAssignment, Datasource, Grain
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -139,7 +134,7 @@ def setup_richest_environment(env: Environment):
     )
     env.add_concept(name)
     split_name = create_function_derived_concept(
-        "split_name", namespace, FunctionType.SPLIT, [name, ","], environment=env
+        "split_name", namespace, FunctionType.SPLIT, [name, " "], environment=env
     )
     env.add_concept(split_name)
     last_name = create_function_derived_concept(
@@ -149,6 +144,7 @@ def setup_richest_environment(env: Environment):
         [split_name, -1],
         environment=env,
     )
+    assert last_name.grain.components == {'local.full_name'}
 
     for x in [money, last_name,]:
         env.add_concept(x)

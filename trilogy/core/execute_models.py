@@ -92,7 +92,7 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
-    PurposeLineage,
+    Derivation,
     SelectFiltering,
     ShowCategory,
     SourceType,
@@ -188,7 +188,7 @@ class SelectTypeMixin(BaseModel):
             [
                 str(x.address)
                 for x in self.where_clause.row_arguments
-                if not x.derivation == PurposeLineage.CONSTANT
+                if not x.derivation == Derivation.CONSTANT
             ]
         )
         query_output = set([str(z.address) for z in self.output_components])
@@ -212,7 +212,7 @@ class BoundConcept(SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
-    derivation: PurposeLineage
+    derivation: Derivation
     granularity: Granularity
     metadata: Metadata = Field(
         default_factory=lambda: Metadata(description=None, line_number=None),
@@ -331,6 +331,7 @@ class BoundConcept(SelectContext, BaseModel):
     ) -> BoundConcept:
         new_lineage = self.lineage
         final_grain = self.grain if not self.grain.abstract else grain
+        new_granularity = self.granularity
         keys = self.keys if self.keys else None
         if (
             self.is_aggregate
@@ -343,6 +344,7 @@ class BoundConcept(SelectContext, BaseModel):
             )
             final_grain = grain
             keys = grain.components
+            new_granularity = Granularity.MULTI_ROW
         elif (
             self.is_aggregate
             and isinstance(new_lineage, BoundAggregateWrapper)
@@ -350,6 +352,8 @@ class BoundConcept(SelectContext, BaseModel):
         ):
             new_lineage.by = set([environment.concepts[x] for x in grain.components])
             keys = grain.components
+            new_granularity = Granularity.MULTI_ROW
+            
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -364,7 +368,7 @@ class BoundConcept(SelectContext, BaseModel):
             # a select needs to always defer to the environment for pseudonyms
             # TODO: evaluate if this should be cached
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
-            granularity=self.granularity,
+            granularity=new_granularity
         )
 
     def with_grain(
@@ -405,12 +409,13 @@ class BoundConcept(SelectContext, BaseModel):
         elif self.purpose == Purpose.METRIC:
             grain = BoundGrain()
         elif self.purpose == Purpose.CONSTANT:
-            if self.derivation != PurposeLineage.CONSTANT:
+            if self.derivation != Derivation.CONSTANT:
                 grain = BoundGrain(components={self.address})
             else:
                 grain = self.grain
         else:
             grain = self.grain  # type: ignore
+
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -725,6 +730,12 @@ class BoundFunction(Namespaced, TypedSentinal, SelectContext, BaseModel):
 
     @property
     def datatype(self):
+        if isinstance(self.output_datatype, ListType):
+            return self.output_datatype.data_type
+        elif isinstance(self.output_datatype, StructType):
+            return self.output_datatype.data_type
+        elif isinstance(self.output_datatype, MapType):
+            return self.output_datatype.data_type
         return self.output_datatype
 
     def with_select_context(
@@ -790,12 +801,12 @@ class BoundFunction(Namespaced, TypedSentinal, SelectContext, BaseModel):
                     )
             if (
                 isinstance(arg, BoundFunction)
-                and arg.output_datatype not in valid_inputs[idx]
+                and arg.datatype not in valid_inputs[idx]
             ):
-                if arg.output_datatype != DataType.UNKNOWN:
+                if arg.datatype != DataType.UNKNOWN:
                     raise TypeError(
                         f"Invalid input datatype {arg.output_datatype} passed into"
-                        f" {operator_name} from function {arg.operator.name}"
+                        f" {operator_name} from function {arg.operator.name}; accepts only {valid_inputs[idx]}"
                     )
             # check constants
             comparisons: List[Tuple[Type, DataType]] = [
@@ -1662,7 +1673,7 @@ class CTE(BaseModel):
         return unique(v, "address")
 
     def inline_constant(self, concept: BoundConcept):
-        if not concept.derivation == PurposeLineage.CONSTANT:
+        if not concept.derivation == Derivation.CONSTANT:
             return False
         if not isinstance(concept.lineage, BoundFunction):
             return False
@@ -1947,15 +1958,15 @@ class CTE(BaseModel):
         def check_is_not_in_group(c: BoundConcept):
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
-            if c.derivation == PurposeLineage.ROWSET:
+            if c.derivation == Derivation.ROWSET:
                 assert isinstance(c.lineage, BoundRowsetItem)
                 return check_is_not_in_group(c.lineage.content)
-            if c.derivation == PurposeLineage.CONSTANT:
+            if c.derivation == Derivation.CONSTANT:
                 return True
             if c.purpose == Purpose.METRIC:
                 return True
 
-            if c.derivation == PurposeLineage.BASIC and c.lineage:
+            if c.derivation == Derivation.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
                     return True
                 if (
@@ -1977,7 +1988,7 @@ class CTE(BaseModel):
     @property
     def render_from_clause(self) -> bool:
         if (
-            all([c.derivation == PurposeLineage.CONSTANT for c in self.output_columns])
+            all([c.derivation == Derivation.CONSTANT for c in self.output_columns])
             and not self.parent_ctes
             and not self.group_to_grain
         ):
@@ -2265,6 +2276,20 @@ class BoundMultiSelectLineage(BaseModel):
     limit: Optional[int] = None
 
     @property
+    def arguments(self) -> List[BoundConcept]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        return unique(output, "address")
+
+    @property
+    def derived_concepts(self)->str:
+        output = set()
+        for item in self.align.items:
+            output.add(item.aligned_concept)
+        return output
+
+    @property
     def concept_arguments(self):
         output = []
         for select in self.selects:
@@ -2276,7 +2301,16 @@ class BoundMultiSelectLineage(BaseModel):
             if check in item.concepts_lcl:
                 return f'{item.namespace}.{item.alias}'
         return None
-
+    
+    def find_source(self, concept: BoundConcept, cte: CTE | UnionCTE) -> BoundConcept:
+        for x in self.align.items:
+            if concept.name == x.alias:
+                for c in x.concepts:
+                    if c.address in cte.output_lcl:
+                        return c
+        raise SyntaxError(
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        )
 class BoundMultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     selects: List[BoundSelectStatement]
     align: BoundAlignClause
@@ -3183,7 +3217,7 @@ class ProcessedQuery(BaseModel):
 
 class PersistQueryMixin(BaseModel):
     output_to: MaterializedDataset
-    datasource: BoundDatasource
+    datasource: Any
     # base:Dataset
 
 
@@ -3214,7 +3248,7 @@ class ProcessedRawSQLStatement(BaseModel):
 class BoundRowsetDerivationStatement(BaseModel):
     name: str
     namespace: str
-    select: BoundSelectStatement
+    select: BoundSelectStatement | BoundMultiSelectStatement
     derived_concepts: set[str]
 
 
