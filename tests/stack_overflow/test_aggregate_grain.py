@@ -1,7 +1,7 @@
 # from trilogy.compiler import compile
 from os.path import dirname
 
-from trilogy.core.models import Environment, Grain, SelectStatement
+from trilogy.authoring import SelectStatement, Environment, Grain
 from trilogy.parser import parse
 
 QUERY = """import concepts.core as core;
@@ -41,5 +41,5 @@ order by
 def test_select() -> None:
     env, parsed = parse(QUERY, environment=Environment(working_path=dirname(__file__)))
     select: SelectStatement = parsed[-1]
-
-    assert select.grain == Grain(components=[env.concepts["core.badge_id"]])
+    
+    assert Grain.from_concepts(select.output_components, env) == Grain(components=[env.concepts["core.badge_id"]])

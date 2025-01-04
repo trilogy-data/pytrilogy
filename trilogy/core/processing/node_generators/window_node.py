@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, WhereClause, WindowItem
+from trilogy.core.execute_models import BoundConcept, BoundEnvironment, BoundWhereClause, BoundWindowItem
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
@@ -10,9 +10,9 @@ LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
 
 def resolve_window_parent_concepts(
-    concept: Concept, environment: Environment
-) -> tuple[Concept, List[Concept]]:
-    if not isinstance(concept.lineage, WindowItem):
+    concept: BoundConcept, environment: BoundEnvironment
+) -> tuple[BoundConcept, List[BoundConcept]]:
+    if not isinstance(concept.lineage, BoundWindowItem):
         raise ValueError
     base = []
     if concept.lineage.over:
@@ -24,25 +24,25 @@ def resolve_window_parent_concepts(
             # that is grouped by a window
             # need to figure out how to resolve this
             # base += [environment.concepts[item.expr.output.address]]
-            base += [item.expr.output]
+            base += [item.expr]
     return concept.lineage.content, unique(base, "address")
 
 
 def gen_window_node(
-    concept: Concept,
-    local_optional: list[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: list[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     base, parent_concepts = resolve_window_parent_concepts(concept, environment)
     equivalent_optional = [
         x
         for x in local_optional
-        if isinstance(x.lineage, WindowItem)
+        if isinstance(x.lineage, BoundWindowItem)
         and resolve_window_parent_concepts(x, environment)[1] == parent_concepts
     ]
 
@@ -52,7 +52,7 @@ def gen_window_node(
     targets = [base]
     if equivalent_optional:
         for x in equivalent_optional:
-            assert isinstance(x.lineage, WindowItem)
+            assert isinstance(x.lineage, BoundWindowItem)
             targets.append(x.lineage.content)
 
     parent_node: StrategyNode = source_concepts(

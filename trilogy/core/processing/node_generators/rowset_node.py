@@ -1,16 +1,21 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage
-from trilogy.core.models import (
-    Concept,
-    Environment,
-    Grain,
+from trilogy.core.enums import Derivation
+from trilogy.core.execute_models import (
+    BoundConcept,
+    BoundEnvironment,
+    BoundGrain,
+
+    BoundRowsetItem,
+    BoundWhereClause,
+    BoundRowsetDerivationStatement,
+    BoundMultiSelectStatement,
+    BoundSelectStatement,
+)
+from trilogy.core.author_models import (
     MultiSelectStatement,
-    RowsetDerivationStatement,
-    RowsetItem,
-    SelectStatement,
-    WhereClause,
+    SelectStatement
 )
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -19,24 +24,25 @@ LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
 
 def gen_rowset_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
-    if not isinstance(concept.lineage, RowsetItem):
+    if not isinstance(concept.lineage, BoundRowsetItem):
         raise SyntaxError(
-            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
+            f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {BoundRowsetItem}"
         )
-    lineage: RowsetItem = concept.lineage
-    rowset: RowsetDerivationStatement = lineage.rowset
-    select: SelectStatement | MultiSelectStatement = lineage.rowset.select
+    lineage: BoundRowsetItem = concept.lineage
+    rowset: BoundRowsetDerivationStatement = lineage.rowset
+    derived = [environment.concepts[x] for x in rowset.derived_concepts]
+    select: BoundSelectStatement | BoundMultiSelectStatement = lineage.rowset.select
 
     node = get_query_node(environment, select)
 
@@ -46,12 +52,12 @@ def gen_rowset_node(
         )
         return None
     enrichment = set([x.address for x in local_optional])
-    rowset_relevant = [x for x in rowset.derived_concepts]
+    rowset_relevant = [x for x in derived]
     select_hidden = select.hidden_components
     rowset_hidden = [
         x
-        for x in rowset.derived_concepts
-        if isinstance(x.lineage, RowsetItem)
+        for x in derived
+        if isinstance(x.lineage, BoundRowsetItem)
         and x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
@@ -68,13 +74,13 @@ def gen_rowset_node(
         x
         for x in node.output_concepts
         if x.address not in local_optional + [concept]
-        and x.derivation != PurposeLineage.ROWSET
+        and x.derivation != Derivation.ROWSET
     ]
     node.hide_output_concepts(final_hidden)
     assert node.resolution_cache
     # assume grain to be output of select
     # but don't include anything hidden(the non-rowset concepts)
-    node.grain = Grain.from_concepts(
+    node.grain = BoundGrain.from_concepts(
         [
             x
             for x in node.output_concepts
@@ -82,7 +88,7 @@ def gen_rowset_node(
             not in [
                 y
                 for y in node.hidden_concepts
-                if environment.concepts[y].derivation != PurposeLineage.ROWSET
+                if environment.concepts[y].derivation != Derivation.ROWSET
             ]
         ],
     )
@@ -97,14 +103,14 @@ def gen_rowset_node(
         )
         return node
     possible_joins = concept_to_relevant_joins(
-        [x for x in node.output_concepts if x.derivation != PurposeLineage.ROWSET]
+        [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]
     )
     if not possible_joins:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
         )
         return node
-    if any(x.derivation == PurposeLineage.ROWSET for x in possible_joins):
+    if any(x.derivation == Derivation.ROWSET for x in possible_joins):
 
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot enrich rowset node with rowset concepts; exiting early"

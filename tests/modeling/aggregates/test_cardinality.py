@@ -1,5 +1,5 @@
 from trilogy import Executor, parse
-from trilogy.core.models import Environment, Grain
+from trilogy.authoring import Environment, Grain
 
 
 def test_key_fetch_cardinality(test_environment: Environment, test_executor: Executor):
@@ -12,11 +12,6 @@ SELECT
 ;"""
 
     _, statements = parse(test_select, test_environment)
-    select = statements[-1]
-    assert select.grain.components == {
-        "stores.name",
-        "local.aspen_store",
-    }
 
     results = test_executor.execute_text(test_select)[0].fetchall()
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from trilogy import Dialects, Environment, Executor
+from trilogy import Dialects, BoundEnvironment, Executor
 
 working_path = Path(__file__).parent
 
@@ -30,7 +30,7 @@ def run_query(engine: Executor, start, idx: int):
 
 if __name__ == "__main__":
     engine = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=working_path), hooks=[]
+        environment=BoundEnvironment(working_path=working_path), hooks=[]
     )
     # TODO: Detect if loaded
     start = datetime.now()

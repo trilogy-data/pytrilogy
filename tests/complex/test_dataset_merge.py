@@ -3,7 +3,9 @@ from datetime import date, datetime
 
 from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
-from trilogy.core.models import Comparison, Environment
+# from trilogy.core.execute_models import Comparison
+from trilogy.core.author_models import Environment, Comparison
+from trilogy.core.execute_models import BoundComparison
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
     simplify_conditions,
@@ -51,7 +53,8 @@ where order_date > '2024-01-01'::date
 
     x.parse_text(declarations)
 
-    env = x.environment
+    env:Environment = x.environment
+    env = env.instantiate()
 
     unions = get_union_sources(env.datasources.values(), [env.concepts["order_id"]])
     assert unions, unions
@@ -79,6 +82,7 @@ class ConditionalTest:
 
 def test_conditional_merge():
     env = Environment()
+    
     env.parse(
         """
 key x int;
@@ -87,19 +91,19 @@ key z float;
 key a datetime;
 """
     )
-
+    env = env.instantiate()
     test_cases = [
         ConditionalTest(2, "x"),
         ConditionalTest(date(year=2024, month=1, day=1), "y"),
         ConditionalTest(datetime.now(), "a"),
     ]
     for case in test_cases:
-        left = Comparison(
+        left = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = Comparison(
+        right = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LTE,
@@ -108,12 +112,12 @@ key a datetime;
 
         assert simplify_conditions(conditions)
 
-        left = Comparison(
+        left = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        right = Comparison(
+        right = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LT,
@@ -122,17 +126,17 @@ key a datetime;
 
         assert not simplify_conditions(conditions)
 
-        left = Comparison(
+        left = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.GT,
         )
-        middle = Comparison(
+        middle = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.EQ,
         )
-        right = Comparison(
+        right = BoundComparison(
             left=env.concepts[case.concept],
             right=case.match,
             operator=ComparisonOperator.LT,

@@ -1,5 +1,5 @@
-from trilogy.core.enums import ComparisonOperator, PurposeLineage
-from trilogy.core.models import Comparison, Environment, WhereClause
+from trilogy.core.enums import ComparisonOperator, Derivation
+from trilogy.core.execute_models import BoundComparison, BoundEnvironment, BoundWhereClause
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (
@@ -7,9 +7,9 @@ from trilogy.core.processing.node_generators.common import (
 )
 
 
-def test_gen_filter_node_parents(test_environment: Environment, test_environment_graph):
+def test_gen_filter_node_parents(test_environment: BoundEnvironment, test_environment_graph):
     comp = test_environment.concepts["products_with_revenue_over_50"]
-    assert comp.derivation == PurposeLineage.FILTER
+    assert comp.derivation == Derivation.FILTER
 
     assert comp.lineage
     assert test_environment.concepts["product_id"] in comp.lineage.concept_arguments
@@ -38,7 +38,7 @@ def test_gen_filter_node(test_environment, test_environment_graph):
 
 
 def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
-    conditional = Comparison(
+    conditional = BoundComparison(
         left=test_environment.concepts["category_name"],
         operator=ComparisonOperator.LIKE,
         right="%abc%",
@@ -61,7 +61,7 @@ def test_gen_filter_node_same_concept(test_environment, test_environment_graph):
 
 
 def test_gen_filter_node_include_all(test_environment, test_environment_graph):
-    conditional = Comparison(
+    conditional = BoundComparison(
         left=test_environment.concepts["category_name"],
         operator=ComparisonOperator.LIKE,
         right="%abc%",
@@ -79,7 +79,7 @@ def test_gen_filter_node_include_all(test_environment, test_environment_graph):
         g=test_environment_graph,
         depth=0,
         source_concepts=search_concepts,
-        conditions=WhereClause(conditional=conditional),
+        conditions=BoundWhereClause(conditional=conditional),
     )
     assert (
         node.conditions == conditional

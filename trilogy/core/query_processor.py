@@ -3,38 +3,53 @@ from math import ceil
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, logger
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import BooleanOperator, SourceType
+from trilogy.core.enums import (
+    BooleanOperator,
+    SourceType,
+    SelectFiltering,
+    Derivation,
+)
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.models import (
+from trilogy.core.author_models import (
+    Reference,
+    CopyStatement,
+    MultiSelectStatement,
+    PersistStatement,
+    SelectStatement,
+    ConceptRef,
+    ConceptDeclarationStatement,
+    Environment,
+    Grain,
+)
+from trilogy.core.execute_models import (
     CTE,
     BaseJoin,
-    Concept,
-    ConceptDeclarationStatement,
-    Conditional,
-    CopyStatement,
+    BoundConcept,
+    BoundConditional,
+    BoundSelectStatement,
     CTEConceptPair,
-    Datasource,
-    Environment,
+    BoundDatasource,
+    BoundEnvironment,
     InstantiatedUnnestJoin,
     Join,
     MaterializedDataset,
-    MultiSelectStatement,
-    PersistStatement,
+    BoundMultiSelectStatement,
     ProcessedCopyStatement,
     ProcessedQuery,
-    ProcessedQueryPersist,
     QueryDatasource,
-    SelectStatement,
     UnionCTE,
     UnnestJoin,
+    BoundGrain,
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
+from trilogy.core.execute_models import BoundEnvironment, BoundEnvironmentConceptDict
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -50,7 +65,7 @@ def base_join_to_join(
             alias=base_join.alias,
         )
 
-    def get_datasource_cte(datasource: Datasource | QueryDatasource) -> CTE:
+    def get_datasource_cte(datasource: BoundDatasource | QueryDatasource) -> CTE:
         for cte in ctes:
             if cte.source.identifier == datasource.identifier:
                 return cte
@@ -114,7 +129,7 @@ def generate_source_map(
             and isinstance(list(qdv)[0], UnnestJoin)
         ):
             source_map[qdk] = []
-        basic = [x for x in qdv if isinstance(x, Datasource)]
+        basic = [x for x in qdv if isinstance(x, BoundDatasource)]
         for base in basic:
             source_map[qdk].append(base.safe_identifier)
 
@@ -163,8 +178,8 @@ def generate_source_map(
     }, existence_source_map
 
 
-def datasource_to_query_datasource(datasource: Datasource) -> QueryDatasource:
-    sub_select: Dict[str, Set[Union[Datasource, QueryDatasource, UnnestJoin]]] = {
+def datasource_to_query_datasource(datasource: BoundDatasource) -> QueryDatasource:
+    sub_select: Dict[str, Set[Union[BoundDatasource, QueryDatasource, UnnestJoin]]] = {
         **{c.address: {datasource} for c in datasource.concepts},
     }
     concepts = [c for c in datasource.concepts]
@@ -206,7 +221,7 @@ def resolve_cte_base_name_and_alias_v2(
     raw_joins: List[Join | InstantiatedUnnestJoin],
 ) -> Tuple[str | None, str | None]:
     if (
-        isinstance(source.datasources[0], Datasource)
+        isinstance(source.datasources[0], BoundDatasource)
         and not source.datasources[0].name == CONSTANT_DATASET
     ):
         ds = source.datasources[0]
@@ -349,23 +364,42 @@ def datasource_to_cte(
     return cte
 
 
+
+
+
+def create_statement_environment(
+    environment: Environment | BoundEnvironment,
+) -> Tuple[BoundEnvironment, Grain]:
+    if isinstance(environment, Environment):
+        new_env = environment.instantiate()
+    else:
+        new_env = environment
+    return new_env
+
+
 def get_query_node(
-    environment: Environment,
-    statement: SelectStatement | MultiSelectStatement,
+    environment: BoundEnvironment,
+    statement: (
+        BoundSelectStatement
+        | BoundMultiSelectStatement
+        | SelectStatement
+        | MultiSelectStatement
+    ),
     history: History | None = None,
 ) -> StrategyNode:
-    environment = environment.duplicate()
-    for k, v in statement.local_concepts.items():
-        environment.concepts[k] = v
+
     graph = generate_graph(environment)
-    logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and grain {statement.grain}"
-    )
+    if isinstance(statement, Reference):
+        statement = statement.instantiate(environment)
+    
+    if isinstance(statement, BoundSelectStatement):
+        statement = statement.with_select_context(environment)
+
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
 
-    search_concepts: list[Concept] = statement.output_components
-
+    search_concepts: list[BoundConcept] = statement.output_components
+    logger.info(f'{LOGGER_PREFIX} sourcing {search_concepts}')
     ods: StrategyNode = source_query_concepts(
         search_concepts,
         environment=environment,
@@ -381,13 +415,13 @@ def get_query_node(
     if statement.having_clause:
         final = statement.having_clause.conditional
         if ds.conditions:
-            final = Conditional(
+            final = BoundConditional(
                 left=ds.conditions,
-                right=statement.having_clause.conditional,
+                right=final,
                 operator=BooleanOperator.AND,
             )
         ds = SelectNode(
-            output_concepts=statement.output_components,
+            output_concepts=search_concepts,
             input_concepts=ds.output_concepts,
             parents=[ds],
             environment=ds.environment,
@@ -398,7 +432,7 @@ def get_query_node(
 
 
 def get_query_datasources(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
@@ -420,7 +454,7 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
 
 
 def process_auto(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: PersistStatement | SelectStatement,
     hooks: List[BaseHook] | None = None,
 ):
@@ -434,7 +468,7 @@ def process_auto(
 
 
 def process_persist(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: PersistStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQueryPersist:
@@ -452,7 +486,7 @@ def process_persist(
 
 
 def process_copy(
-    environment: Environment,
+    environment: BoundEnvironment,
     statement: CopyStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedCopyStatement:
@@ -470,12 +504,14 @@ def process_copy(
 
 
 def process_query(
-    environment: Environment,
+    environment: Environment | BoundEnvironment,
     statement: SelectStatement | MultiSelectStatement,
     hooks: List[BaseHook] | None = None,
 ) -> ProcessedQuery:
     hooks = hooks or []
 
+    environment = create_statement_environment(environment)
+    logger.info(f"{LOGGER_PREFIX} query environment instantiated.")
     root_datasource = get_query_datasources(
         environment=environment, statement=statement, hooks=hooks
     )
@@ -498,22 +534,20 @@ def process_query(
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: List[CTE | UnionCTE] = list(seen.values())
-    root_cte.order_by = statement.order_by
+    root_cte.order_by = (
+        statement.order_by.instantiate(environment) if statement.order_by else None
+    )
     root_cte.limit = statement.limit
     root_cte.hidden_concepts = statement.hidden_components
 
     final_ctes = optimize_ctes(deduped_ctes, root_cte, statement)
     return ProcessedQuery(
-        order_by=statement.order_by,
-        grain=statement.grain,
-        limit=statement.limit,
-        where_clause=statement.where_clause,
-        having_clause=statement.having_clause,
-        output_columns=statement.output_components,
+        # where_clause=statement.where_clause.instantiate(environment) if statement.where_clause else None,
+        # having_clause=statement.having_clause.instantiate(environment) if statement.having_clause else None,
+        output_columns=[
+            x.instantiate(environment) for x in statement.output_components
+        ],
         ctes=final_ctes,
         base=root_cte,
-        # we no longer do any joins at final level, this should always happen in parent CTEs
-        joins=[],
-        hidden_columns=set([x for x in statement.hidden_components]),
-        local_concepts=statement.local_concepts,
+        local_concepts=environment.concepts,
     )

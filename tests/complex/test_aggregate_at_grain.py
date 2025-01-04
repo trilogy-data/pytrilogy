@@ -1,5 +1,5 @@
 from trilogy.core.enums import Granularity
-from trilogy.core.models import Grain, SelectStatement
+from trilogy.core.author_models import SelectStatement, Grain
 from trilogy.core.query_processor import process_query
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -66,12 +66,13 @@ select
 ;
     """
     env, parsed = parse(declarations)
+    env = env.instantiate()
 
     assert env.concepts["total_posts"].granularity == Granularity.SINGLE_ROW
     assert env.concepts["total_posts_auto"].granularity == Granularity.SINGLE_ROW
     select: SelectStatement = parsed[-1]
 
-    assert select.grain == Grain(components=[env.concepts["user_id"]])
+    assert Grain.from_concepts(select.output_components, env) == Grain(components=[env.concepts["user_id"]])
 
     query = process_query(statement=select, environment=env, hooks=[DebuggingHook()])
 

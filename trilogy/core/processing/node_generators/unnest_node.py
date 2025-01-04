@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.execute_models import BoundConcept, BoundFunction, BoundWhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
 from trilogy.core.processing.utility import padding
 
@@ -9,17 +9,17 @@ LOGGER_PREFIX = "[GEN_UNNEST_NODE]"
 
 
 def gen_unnest_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
     environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     arguments = []
-    if isinstance(concept.lineage, Function):
+    if isinstance(concept.lineage, BoundFunction):
         arguments = concept.lineage.concept_arguments
 
     equivalent_optional = [x for x in local_optional if x.lineage == concept.lineage]
@@ -36,6 +36,7 @@ def gen_unnest_node(
             conditions=conditions,
         )
         if not parent:
+            raise SyntaxError
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} could not find unnest node parents"
             )

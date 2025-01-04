@@ -1,11 +1,38 @@
 from trilogy.core.env_processor import concept_to_node, generate_graph
-from trilogy.core.models import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators.node_merge_node import (
     determine_induced_minimal_nodes,
     gen_merge_node,
 )
+from trilogy import Environment
 
+def test_merge_inputs(normalized_engine, test_env: Environment):
+    normalized_engine.environment = test_env
+    assert test_env.concepts["passenger.last_name"].grain.components == {'passenger.id'}
+    test = """SELECT
+passenger.last_name,
+count(passenger.id) -> family_count
+WHERE
+passenger.last_name is not null;
+
+    """
+    # raw = executor.generate_sql(test)
+    results = normalized_engine.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 667
+
+    test = """
+    SELECT
+rich_info.last_name,
+rich_info.net_worth_1918_dollars
+    WHERE 
+rich_info.net_worth_1918_dollars is not null;
+
+    """
+    # raw = executor.generate_sql(test)
+    results = normalized_engine.execute_text(test)[-1].fetchall()
+
+    assert len(results) == 30
 
 def test_demo_merge(normalized_engine, test_env: Environment):
     assert "passenger.last_name" in test_env.concepts
@@ -71,6 +98,7 @@ def test_merged_env_behavior(normalized_engine, test_env: Environment):
 merge rich_info.last_name into ~passenger.last_name;
     """
     normalized_engine.parse_text(test_pre)
+    test_env = test_env.instantiate()
     g = generate_graph(test_env)
     found = search_concepts(
         [
@@ -103,6 +131,7 @@ def test_demo_merge_rowset_with_condition(normalized_engine, test_env: Environme
 
     test_pre = """merge rich_info.last_name into ~passenger.last_name;"""
     normalized_engine.parse_text(test_pre)
+    test_env = test_env.instantiate()
     # raw = executor.generate_sql(test)
     g = generate_graph(test_env)
     # from trilogy.hooks.graph_hook import GraphHook

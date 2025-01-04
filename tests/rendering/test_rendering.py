@@ -10,37 +10,47 @@ from trilogy.core.enums import (
     IOType,
     Modifier,
 )
-from trilogy.core.models import (
-    Address,
+
+from trilogy.core.author_models import (
     AlignClause,
+    ConceptDeclarationStatement,
+    CopyStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
+    OrderBy,
+    OrderBy,
+    OrderItem,
+    OrderItem,
     AlignItem,
+    AlignClause,
+    ColumnAssignment,
+       Grain,
+    Address,
+    # AlignClause,
     CaseElse,
     CaseWhen,
     ColumnAssignment,
     Comparison,
     Concept,
-    ConceptDeclarationStatement,
     Conditional,
-    CopyStatement,
+    # CopyStatement,
     Datasource,
     DataType,
     Function,
-    Grain,
+ 
     ImportStatement,
     ListType,
     ListWrapper,
-    MergeStatementV2,
-    MultiSelectStatement,
     NumericType,
     OrderBy,
     Ordering,
-    OrderItem,
-    PersistStatement,
+    # PersistStatement,
     Purpose,
-    RawSQLStatement,
-    RowsetDerivationStatement,
-    SelectItem,
-    SelectStatement,
     TupleWrapper,
     WhereClause,
 )
@@ -49,19 +59,19 @@ from trilogy.parsing.render import Renderer, render_environment, render_query
 
 def test_basic_query(test_environment):
     query = SelectStatement(
-        selection=[test_environment.concepts["order_id"]],
+        selection=[SelectItem(content=test_environment.concepts["order_id"].reference)],
         where_clause=None,
         order_by=OrderBy(
             items=[
                 OrderItem(
-                    expr=test_environment.concepts["order_id"],
+                    expr=test_environment.concepts["order_id"].reference,
                     order=Ordering.ASCENDING,
                 )
             ]
         ),
     )
 
-    string_query = render_query(query)
+    string_query = render_query(query, test_environment)
     assert (
         string_query
         == """SELECT
@@ -88,7 +98,7 @@ select max(order_id) by order_id -> test;
 
 """
     )
-    string_query = Renderer().to_string(parsed[-1])
+    string_query = Renderer(env).to_string(parsed[-1])
     assert (
         string_query
         == """SELECT
@@ -101,32 +111,32 @@ def test_multi_select(test_environment):
         namespace=DEFAULT_NAMESPACE,
         selects=[
             SelectStatement(
-                selection=[test_environment.concepts["order_id"]],
+                selection=[test_environment.concepts["order_id"].reference],
                 where_clause=None,
             ),
             SelectStatement(
-                selection=[test_environment.concepts["order_id"]],
+                selection=[test_environment.concepts["order_id"].reference],
                 where_clause=None,
             ),
         ],
         align=AlignClause(
             items=[
                 AlignItem(
-                    alias="merge", concepts=[test_environment.concepts["order_id"]]
+                    alias="merge", concepts=[test_environment.concepts["order_id"].reference]
                 )
             ]
         ),
         order_by=OrderBy(
             items=[
                 OrderItem(
-                    expr=test_environment.concepts["order_id"],
+                    expr=test_environment.concepts["order_id"].reference,
                     order=Ordering.ASCENDING,
                 )
             ]
         ),
     )
 
-    string_query = render_query(query)
+    string_query = render_query(query, test_environment)
     assert (
         string_query
         == """SELECT
@@ -167,8 +177,8 @@ def test_full_query(test_environment):
                     order=Ordering.ASCENDING,
                 )
             ]
-        ),
-    )
+        ))
+    
 
     string_query = render_query(query)
     assert (
@@ -300,10 +310,10 @@ def test_render_case(test_environment: Environment):
         expr=test_environment.concepts["order_id"],
     )
 
-    test = Renderer().to_string(case_else)
+    test = Renderer(test_environment).to_string(case_else)
     assert test == "ELSE order_id"
 
-    test = Renderer().to_string(case_else)
+    test = Renderer(test_environment).to_string(case_else)
     assert test == "ELSE order_id"
     case_when = CaseWhen(
         expr=test_environment.concepts["order_id"],
@@ -314,7 +324,7 @@ def test_render_case(test_environment: Environment):
         ),
     )
 
-    test = Renderer().to_string(case_when)
+    test = Renderer(test_environment).to_string(case_when)
     assert test == "WHEN order_id = 123 THEN order_id"
 
     env, parsed = Environment().parse(
@@ -324,7 +334,7 @@ key x int;
 auto y <- case when x = 1 then 1 else 2 end;"""
     )
 
-    test = Renderer().to_string(parsed[-1])
+    test = Renderer(test_environment).to_string(parsed[-1])
     assert (
         test
         == """property y <- CASE WHEN x = 1 THEN 1
@@ -341,7 +351,7 @@ key category_name string;
 auto y <- CASE WHEN category_name like '%abc%' then True else False END;"""
     )
 
-    test = Renderer().to_string(parsed[-1])
+    test = Renderer(test_environment).to_string(parsed[-1])
     assert (
         test
         == """property y <- CASE WHEN like(category_name,'%abc%') = True THEN True

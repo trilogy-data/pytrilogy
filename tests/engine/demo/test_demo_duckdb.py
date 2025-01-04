@@ -1,6 +1,6 @@
 from trilogy import Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.models import (
+from trilogy.authoring import (
     ColumnAssignment,
     Concept,
     Datasource,
@@ -8,7 +8,6 @@ from trilogy.core.models import (
     Environment,
     Function,
     Grain,
-    SelectContext,
 )
 
 
@@ -366,7 +365,6 @@ order by passenger.class desc
     srate = env.concepts["survival_rate_auto"]
     assert srate.lineage
     assert isinstance(srate.lineage, Function)
-    assert isinstance(srate.lineage, SelectContext)
     results = executor.execute_text(test)[-1].fetchall()
 
     assert len(results) == 3

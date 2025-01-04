@@ -9,19 +9,15 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
-from trilogy.core.models import (
-    ColumnAssignment,
-    Concept,
-    Datasource,
+from trilogy.core.common_models import arg_to_datatype, args_to_output_purpose
+from trilogy.core.execute_models import (
     DataType,
-    Environment,
-    Function,
-    Grain,
-    Metadata,
 )
+from trilogy.core.author_models import Concept, Function, ColumnAssignment, Datasource, Grain
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.common import function_to_concept
+from trilogy import Environment
+from trilogy.authoring import create_function_derived_concept
 
 
 def create_passenger_dimension(exec: Executor, name: str):
@@ -120,39 +116,6 @@ def setup_engine(debug_flag: bool = True) -> Executor:
     return output
 
 
-def create_function_derived_concept(
-    name: str,
-    namespace: str,
-    operator: FunctionType,
-    arguments: list[Concept],
-    output_type: Optional[DataType] = None,
-    output_purpose: Optional[Purpose] = None,
-    metadata: Optional[Metadata] = None,
-) -> Concept:
-    purpose = (
-        function_args_to_output_purpose(arguments)
-        if output_purpose is None
-        else output_purpose
-    )
-    output_type = (
-        arg_to_datatype(arguments[0]).data_type if output_type is None else output_type
-    )
-    return Concept(
-        name=name,
-        namespace=namespace,
-        datatype=output_type,
-        purpose=purpose,
-        lineage=Function(
-            operator=operator,
-            arguments=arguments,
-            output_datatype=output_type,
-            output_purpose=purpose,
-            arg_count=len(arguments),
-        ),
-        metadata=metadata,
-    )
-
-
 def setup_richest_environment(env: Environment):
     namespace = None
     name = Concept(
@@ -169,37 +132,21 @@ def setup_richest_environment(env: Environment):
         keys=(name.address,),
     )
     env.add_concept(name)
-    split_name = function_to_concept(
-        Function(
-            operator=FunctionType.SPLIT,
-            arguments=[name, " "],
-            output_datatype=DataType.ARRAY,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
-        name="split_name",
-        namespace=namespace,
+    split_name = create_function_derived_concept(
+        "split_name", namespace=namespace, operator=FunctionType.SPLIT, arguments=[name, " "], environment=env
+    )
+    env.add_concept(split_name)
+    last_name = create_function_derived_concept(
+        "last_name",
+
+        FunctionType.INDEX_ACCESS,
+        [split_name, -1],
         environment=env,
-        # keys = (name,)
-    )
-    last_name = Concept(
-        name="last_name",
         namespace=namespace,
-        purpose=Purpose.PROPERTY,
-        datatype=DataType.STRING,
-        keys=(name.address,),
-        lineage=Function(
-            operator=FunctionType.INDEX_ACCESS,
-            arguments=[
-                split_name,
-                -1,
-            ],
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
     )
-    for x in [name, money, last_name, split_name]:
+    assert last_name.grain.components == {'local.full_name'}
+
+    for x in [money, last_name,]:
         env.add_concept(x)
 
     env.add_datasource(
@@ -280,47 +227,20 @@ def setup_titanic_distributed(env: Environment):
     )
     env.add_concept(name)
     env.add_concept(id)
-    split_name = function_to_concept(
-        Function(
-            operator=FunctionType.SPLIT,
-            arguments=[name, ","],
-            output_datatype=DataType.ARRAY,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
-        name="split_name",
-        namespace=namespace,
-        environment=env,
-        # keys = (id,)
+    split_name = create_function_derived_concept(
+        "split_name",FunctionType.SPLIT, [name, ","], environment=env, namespace= namespace, 
     )
+
     assert split_name.keys == {
         id.address,
     }
-    last_name = Concept(
-        name="last_name",
-        namespace=namespace,
-        purpose=Purpose.PROPERTY,
-        datatype=DataType.STRING,
-        keys=(id.address,),
-        lineage=Function(
-            operator=FunctionType.INDEX_ACCESS,
-            arguments=[
-                split_name,
-                1,
-            ],
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
+    last_name = create_function_derived_concept(
+        "last_name", FunctionType.INDEX_ACCESS, [split_name, 1], environment=env, namespace= namespace,
     )
-    survived_count = create_function_derived_concept(
-        "survived_count",
-        namespace,
-        FunctionType.SUM,
-        [survived],
-        output_purpose=Purpose.METRIC,
-    )
-
+    assert last_name.keys == {
+        id.address,
+    }
+    # assert last_name.instantiate(env).with_default_grain().grain.components == {id.address}
     for x in [
         id,
         age,
@@ -330,11 +250,15 @@ def setup_titanic_distributed(env: Environment):
         fare,
         cabin,
         embarked,
-        survived_count,
+        split_name,
         last_name,
         class_id,
     ]:
         env.add_concept(x)
+    survived_count = create_function_derived_concept(
+        "survived_count", FunctionType.SUM, [survived], environment=env, namespace= namespace,
+    )
+    env.add_concept(survived_count)
 
     env.add_datasource(
         Datasource(
@@ -345,11 +269,11 @@ def setup_titanic_distributed(env: Environment):
                 ColumnAssignment(alias="age", concept=age),
                 ColumnAssignment(alias="name", concept=name),
                 ColumnAssignment(alias="last_name", concept=last_name),
-                # ColumnAssignment(alias="pclass", concept=pclass),
-                # ColumnAssignment(alias="name", concept=name),
-                # ColumnAssignment(alias="fare", concept=fare),
-                # ColumnAssignment(alias="cabin", concept=cabin),
-                # ColumnAssignment(alias="embarked", concept=embarked),
+                # ColumnAssignmentRef(alias="pclass", concept=pclass),
+                # ColumnAssignmentRef(alias="name", concept=name),
+                # ColumnAssignmentRef(alias="fare", concept=fare),
+                # ColumnAssignmentRef(alias="cabin", concept=cabin),
+                # ColumnAssignmentRef(alias="embarked", concept=embarked),
             ],
             grain=Grain(
                 components={
@@ -386,9 +310,9 @@ def setup_titanic_distributed(env: Environment):
             columns=[
                 ColumnAssignment(alias="id", concept=class_id),
                 ColumnAssignment(alias="class", concept=pclass),
-                # ColumnAssignment(alias="fare", concept=fare),
-                # ColumnAssignment(alias="cabin", concept=cabin),
-                # ColumnAssignment(alias="embarked", concept=embarked),
+                # ColumnAssignmentRef(alias="fare", concept=fare),
+                # ColumnAssignmentRef(alias="cabin", concept=cabin),
+                # ColumnAssignmentRef(alias="embarked", concept=embarked),
             ],
             grain=Grain(components={class_id.address}),
         ),

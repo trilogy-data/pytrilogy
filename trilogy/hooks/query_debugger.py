@@ -3,13 +3,13 @@ from logging import DEBUG, StreamHandler
 from typing import Union
 
 from trilogy.constants import logger
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     CTE,
-    Datasource,
+    BoundDatasource,
     QueryDatasource,
-    SelectStatement,
     UnionCTE,
 )
+from trilogy.core.author_models import SelectStatement
 from trilogy.core.processing.nodes import StrategyNode
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.base_hook import BaseHook
@@ -25,7 +25,7 @@ renderer = BigqueryDialect()
 
 
 def print_recursive_resolved(
-    input: Union[QueryDatasource, Datasource], mode: PrintMode, depth: int = 0
+    input: Union[QueryDatasource, BoundDatasource], mode: PrintMode, depth: int = 0
 ):
     extra = []
     if isinstance(input, QueryDatasource):
@@ -129,8 +129,7 @@ class DebuggingHook(BaseHook):
         self.process_other = PrintMode(process_other)
 
     def process_select_info(self, select: SelectStatement):
-        if self.process_datasources != PrintMode.OFF:
-            print(f"grain: {str(select.grain)}")
+        return
 
     def process_root_datasource(self, datasource: QueryDatasource):
         if self.process_datasources != PrintMode.OFF:

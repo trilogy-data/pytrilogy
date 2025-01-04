@@ -2,14 +2,14 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.models import (
-    Comparison,
-    Concept,
-    Conditional,
-    Datasource,
-    Environment,
-    Grain,
-    Parenthetical,
+from trilogy.core.execute_models import (
+    BoundComparison,
+    BoundConcept,
+    BoundConditional,
+    BoundDatasource,
+    BoundEnvironment,
+    BoundGrain,
+    BoundParenthetical,
     QueryDatasource,
     SourceType,
 )
@@ -26,8 +26,8 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - GROUP NODE]"
 
 @dataclass
 class GroupRequiredResponse:
-    target: Grain
-    upstream: Grain
+    target: BoundGrain
+    upstream: BoundGrain
     required: bool
 
 
@@ -36,18 +36,18 @@ class GroupNode(StrategyNode):
 
     def __init__(
         self,
-        output_concepts: List[Concept],
-        input_concepts: List[Concept],
-        environment: Environment,
+        output_concepts: List[BoundConcept],
+        input_concepts: List[BoundConcept],
+        environment: BoundEnvironment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: Optional[List[Concept]] = None,
-        nullable_concepts: Optional[List[Concept]] = None,
+        partial_concepts: Optional[List[BoundConcept]] = None,
+        nullable_concepts: Optional[List[BoundConcept]] = None,
         force_group: bool | None = None,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
-        existence_concepts: List[Concept] | None = None,
+        conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
+        preexisting_conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
+        existence_concepts: List[BoundConcept] | None = None,
         hidden_concepts: set[str] | None = None,
     ):
         super().__init__(
@@ -69,20 +69,20 @@ class GroupNode(StrategyNode):
     @classmethod
     def check_if_required(
         cls,
-        downstream_concepts: List[Concept],
-        parents: list[QueryDatasource | Datasource],
-        environment: Environment,
+        downstream_concepts: List[BoundConcept],
+        parents: list[QueryDatasource | BoundDatasource],
+        environment: BoundEnvironment,
     ) -> GroupRequiredResponse:
-        target_grain = Grain.from_concepts(
+        target_grain = BoundGrain.from_concepts(
             concepts_to_grain_concepts(
                 downstream_concepts,
                 environment=environment,
             )
         )
-        comp_grain = Grain()
+        comp_grain = BoundGrain()
         for source in parents:
             comp_grain += source.grain
-        comp_grain = Grain.from_concepts(
+        comp_grain = BoundGrain.from_concepts(
             concepts_to_grain_concepts(comp_grain.components, environment=environment)
         )
         # dynamically select if we need to group
@@ -93,7 +93,7 @@ class GroupNode(StrategyNode):
         return GroupRequiredResponse(target_grain, comp_grain, True)
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
+        parent_sources: List[QueryDatasource | BoundDatasource] = [
             p.resolve() for p in self.parents
         ]
         grains = self.check_if_required(

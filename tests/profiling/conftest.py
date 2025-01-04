@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from trilogy import Dialects, Environment, Executor
+from trilogy import Dialects, BoundEnvironment, Executor
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.hooks.query_debugger import DebuggingHook
 
@@ -12,7 +12,7 @@ working_path = Path(__file__).parent
 
 @pytest.fixture(scope="session")
 def engine():
-    env = Environment(working_path=working_path)
+    env = BoundEnvironment(working_path=working_path)
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env,
         hooks=[DebuggingHook(level=INFO, process_other=False, process_ctes=False)],

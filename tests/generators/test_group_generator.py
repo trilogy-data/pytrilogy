@@ -1,5 +1,6 @@
-from trilogy.core.enums import FunctionType, Purpose, PurposeLineage
-from trilogy.core.models import AggregateWrapper, DataType, Environment, Function
+from trilogy.core.enums import FunctionType, Purpose, Derivation
+from trilogy.core.execute_models import BoundAggregateWrapper, DataType
+from trilogy.core.author_models import AggregateWrapper, Environment, Function
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_group_node
 from trilogy.core.processing.node_generators.common import (
@@ -10,21 +11,23 @@ from trilogy.parsing.common import agg_wrapper_to_concept, function_to_concept
 
 
 def test_gen_group_node_parents(test_environment: Environment):
+    test_environment = test_environment.instantiate()
     comp = test_environment.concepts["category_top_50_revenue_products"]
-    assert comp.derivation == PurposeLineage.AGGREGATE
+    assert comp.derivation == Derivation.AGGREGATE
     assert comp.lineage
     assert test_environment.concepts["category_id"] in comp.lineage.concept_arguments
     assert comp.grain.components == {test_environment.concepts["category_id"].address}
-    assert isinstance(comp.lineage, AggregateWrapper)
-    assert comp.lineage.by == [test_environment.concepts["category_id"]]
+    assert isinstance(comp.lineage, BoundAggregateWrapper)
+    assert comp.lineage.by == {test_environment.concepts["category_id"]}
     parents = resolve_function_parent_concepts(comp, environment=test_environment)
     # parents should be both the value and the category
     assert len(parents) == 2
     assert test_environment.concepts["category_id"] in parents
 
 
-def test_gen_group_node_basic(test_environment, test_environment_graph):
+def test_gen_group_node_basic(test_environment:Environment, test_environment_graph):
     # from trilogy.core.models import AggregateWrapper
+    test_environment = test_environment.instantiate()
     prod = test_environment.concepts["product_id"]
     test_environment.concepts["revenue"]
     prod_r = test_environment.concepts["total_revenue"]
@@ -41,10 +44,8 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
 
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
-    # from trilogy.core.models import AggregateWrapper
-    from trilogy.hooks.query_debugger import DebuggingHook
+    test_environment = test_environment.instantiate()
 
-    DebuggingHook()
     cat = test_environment.concepts["category_id"]
     test_environment.concepts["category_top_50_revenue_products"]
     immediate_aggregate_input = test_environment.concepts[
@@ -72,22 +73,23 @@ def test_gen_group_node(test_environment: Environment, test_environment_graph):
     parent.resolve()
 
 
-def test_proper_parents(test_environment):
+def test_proper_parents(test_environment:Environment):
+
     base = Function(
         operator=FunctionType.COUNT,
         arguments=[test_environment.concepts["category_name"]],
         output_purpose=Purpose.PROPERTY,
         output_datatype=DataType.INTEGER,
     )
-
-    resolved = resolve_function_parent_concepts(
-        function_to_concept(
+    generated = function_to_concept(
             base, name="base_agg", namespace="local", environment=test_environment
-        ),
+        )
+    resolved = resolve_function_parent_concepts(
+        generated.instantiate(test_environment),
         environment=test_environment,
     )
-    assert len(resolved) == 2
-    assert test_environment.concepts["category_id"] in resolved
+    assert len(resolved) == 2, generated
+    assert test_environment.concepts["category_id"].address in resolved
     resolved = resolve_function_parent_concepts(
         agg_wrapper_to_concept(
             AggregateWrapper(

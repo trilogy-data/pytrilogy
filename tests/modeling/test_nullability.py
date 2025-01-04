@@ -1,5 +1,4 @@
-from trilogy import Executor
-from trilogy.core.models import Environment
+from trilogy import Executor, Environment
 
 
 def test_statement_grains(test_environment: Environment, test_executor: Executor):

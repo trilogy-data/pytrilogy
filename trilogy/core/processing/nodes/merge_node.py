@@ -1,16 +1,16 @@
 from typing import List, Optional, Tuple
 
 from trilogy.constants import logger
-from trilogy.core.models import (
+from trilogy.core.execute_models import (
     BaseJoin,
-    Comparison,
-    Concept,
-    Conditional,
-    Datasource,
-    Environment,
-    Grain,
+    BoundComparison,
+    BoundConcept,
+    BoundConditional,
+    BoundDatasource,
+    BoundEnvironment,
+    BoundGrain,
     JoinType,
-    Parenthetical,
+    BoundParenthetical,
     QueryDatasource,
     SourceType,
     UnnestJoin,
@@ -27,10 +27,10 @@ LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
 
 
 def deduplicate_nodes(
-    merged: dict[str, QueryDatasource | Datasource],
+    merged: dict[str, QueryDatasource | BoundDatasource],
     logging_prefix: str,
-    environment: Environment,
-) -> tuple[bool, dict[str, QueryDatasource | Datasource], set[str]]:
+    environment: BoundEnvironment,
+) -> tuple[bool, dict[str, QueryDatasource | BoundDatasource], set[str]]:
     duplicates = False
     removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
@@ -73,10 +73,10 @@ def deduplicate_nodes(
 
 def deduplicate_nodes_and_joins(
     joins: List[NodeJoin] | None,
-    merged: dict[str, QueryDatasource | Datasource],
+    merged: dict[str, QueryDatasource | BoundDatasource],
     logging_prefix: str,
-    environment: Environment,
-) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | Datasource]]:
+    environment: BoundEnvironment,
+) -> Tuple[List[NodeJoin] | None, dict[str, QueryDatasource | BoundDatasource]]:
     # it's possible that we have more sources than we need
     duplicates = True
     while duplicates:
@@ -100,24 +100,24 @@ class MergeNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         node_joins: List[NodeJoin] | None = None,
         join_concepts: Optional[List] = None,
         force_join_type: Optional[JoinType] = None,
-        partial_concepts: Optional[List[Concept]] = None,
-        nullable_concepts: Optional[List[Concept]] = None,
+        partial_concepts: Optional[List[BoundConcept]] = None,
+        nullable_concepts: Optional[List[BoundConcept]] = None,
         force_group: bool | None = None,
         depth: int = 0,
-        grain: Grain | None = None,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        grain: BoundGrain | None = None,
+        conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
+        preexisting_conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
         hidden_concepts: set[str] | None = None,
-        virtual_output_concepts: List[Concept] | None = None,
-        existence_concepts: List[Concept] | None = None,
+        virtual_output_concepts: List[BoundConcept] | None = None,
+        existence_concepts: List[BoundConcept] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -166,7 +166,7 @@ class MergeNode(StrategyNode):
             )
         return joins
 
-    def create_full_joins(self, dataset_list: List[QueryDatasource | Datasource]):
+    def create_full_joins(self, dataset_list: List[QueryDatasource | BoundDatasource]):
         joins = []
         seen = set()
         for left_value in dataset_list:
@@ -191,12 +191,12 @@ class MergeNode(StrategyNode):
         self,
         final_datasets,
         final_joins: List[NodeJoin] | None,
-        pregrain: Grain,
-        grain: Grain,
-        environment: Environment,
+        pregrain: BoundGrain,
+        grain: BoundGrain,
+        environment: BoundEnvironment,
     ) -> List[BaseJoin | UnnestJoin]:
         # only finally, join between them for unique values
-        dataset_list: List[QueryDatasource | Datasource] = sorted(
+        dataset_list: List[QueryDatasource | BoundDatasource] = sorted(
             final_datasets, key=lambda x: -len(x.grain.components)
         )
 
@@ -227,10 +227,10 @@ class MergeNode(StrategyNode):
         return joins
 
     def _resolve(self) -> QueryDatasource:
-        parent_sources: List[QueryDatasource | Datasource] = [
+        parent_sources: List[QueryDatasource | BoundDatasource] = [
             p.resolve() for p in self.parents
         ]
-        merged: dict[str, QueryDatasource | Datasource] = {}
+        merged: dict[str, QueryDatasource | BoundDatasource] = {}
         final_joins: List[NodeJoin] | None = self.node_joins
         for source in parent_sources:
             if source.identifier in merged:
@@ -246,7 +246,7 @@ class MergeNode(StrategyNode):
             final_joins, merged, self.logging_prefix, self.environment
         )
         # early exit if we can just return the parent
-        final_datasets: List[QueryDatasource | Datasource] = list(merged.values())
+        final_datasets: List[QueryDatasource | BoundDatasource] = list(merged.values())
 
         existence_final = [
             x
@@ -254,7 +254,7 @@ class MergeNode(StrategyNode):
             if all([y in self.existence_concepts for y in x.output_concepts])
         ]
         if len(merged.keys()) == 1:
-            final: QueryDatasource | Datasource = list(merged.values())[0]
+            final: QueryDatasource | BoundDatasource = list(merged.values())[0]
             if (
                 set([c.address for c in final.output_concepts])
                 == set([c.address for c in self.output_concepts])
@@ -288,7 +288,7 @@ class MergeNode(StrategyNode):
                 )
                 return dataset
 
-        pregrain = Grain()
+        pregrain = BoundGrain()
         for source in final_datasets:
             pregrain += source.grain
 

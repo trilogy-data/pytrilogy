@@ -1,8 +1,8 @@
 from typing import List
 
-from trilogy.core.models import (
-    Concept,
-    Function,
+from trilogy.core.execute_models import (
+    BoundConcept,
+    BoundFunction,
     QueryDatasource,
     SourceType,
     UnnestJoin,
@@ -19,9 +19,9 @@ class UnnestNode(StrategyNode):
 
     def __init__(
         self,
-        unnest_concepts: List[Concept],
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
+        unnest_concepts: List[BoundConcept],
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
         environment,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
@@ -41,7 +41,7 @@ class UnnestNode(StrategyNode):
         """We need to ensure that any filtered values are removed from the output to avoid inappropriate references"""
         base = super()._resolve()
         lineage = self.unnest_concepts[0].lineage
-        assert isinstance(lineage, Function)
+        assert isinstance(lineage, BoundFunction)
         final = "_".join(set([c.address for c in self.unnest_concepts]))
         unnest = UnnestJoin(
             concepts=self.unnest_concepts,

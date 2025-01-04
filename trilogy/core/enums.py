@@ -38,7 +38,8 @@ class Purpose(Enum):
         return super()._missing_(value)
 
 
-class PurposeLineage(Enum):
+class Derivation(Enum):
+    UNKNOWN="unknown"
     BASIC = "basic"
     WINDOW = "window"
     AGGREGATE = "aggregate"
@@ -54,6 +55,7 @@ class PurposeLineage(Enum):
 class Granularity(Enum):
     SINGLE_ROW = "single_row"
     MULTI_ROW = "multi_row"
+    ALL_ROWS = "all_rows"
 
 
 class Modifier(Enum):

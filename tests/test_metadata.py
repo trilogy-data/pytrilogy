@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Environment, parse
+from trilogy import BoundEnvironment, parse
 
 
 def test_metadata():
@@ -14,7 +14,7 @@ property user_id.display_name string metadata(description="The display name");""
 
 
 def test_import_metadata():
-    env = Environment(working_path=Path(__file__).parent)
+    env = BoundEnvironment(working_path=Path(__file__).parent)
     env, _ = parse(
         """import test_env as env; # Dragon metrics
         import test_env as env2;""",

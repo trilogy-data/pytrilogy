@@ -2,21 +2,18 @@ from logging import INFO
 from pathlib import Path
 
 from trilogy import Dialects, parse
-from trilogy.core.enums import Granularity, Purpose
+from trilogy.core.enums import Granularity, Purpose, Derivation
 from trilogy.core.functions import CurrentDatetime
-from trilogy.core.models import (
-    Concept,
-    DataType,
-    Environment,
-    Function,
+from trilogy.core.execute_models import (
     ProcessedQuery,
-    SelectItem,
 )
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
+from trilogy.authoring import Function, Concept, Environment, DataType
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook
+from trilogy.core.author_models import SelectItem
 
 ENVIRONMENT_CONCEPTS = [
     Concept(
@@ -24,7 +21,9 @@ ENVIRONMENT_CONCEPTS = [
         namespace="local",
         datatype=DataType.DATETIME,
         purpose=Purpose.CONSTANT,
+        derivation=Derivation.CONSTANT,
         lineage=CurrentDatetime([]),
+        granularity=Granularity.SINGLE_ROW,
     )
 ]
 
@@ -48,7 +47,7 @@ def test_sane_rendering():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(SelectItem(content=local_static))
+    statements[-1].select.selection.append(SelectItem(content=local_static.reference))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     # this should be a
@@ -102,7 +101,7 @@ def test_daily_job():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(SelectItem(content=local_static))
+    statements[-1].select.selection.append(SelectItem(content=local_static.reference))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     _ = engine.generator.compile_statement(select)
@@ -161,7 +160,7 @@ def test_counts():
     engine: Executor = Dialects.DUCK_DB.default_executor(
         environment=env, hooks=[DebuggingHook(INFO)]
     )
-    statements[-1].select.selection.append(SelectItem(content=local_static))
+    statements[-1].select.selection.append(SelectItem(content=local_static.reference))
     pstatements = engine.generator.generate_queries(env, statements)
     select: ProcessedQuery = pstatements[-1]
     comp = engine.generator.compile_statement(select)

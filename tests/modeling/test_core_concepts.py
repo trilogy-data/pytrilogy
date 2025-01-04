@@ -3,7 +3,7 @@ import pytest
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models import Environment
+from trilogy import Environment
 from trilogy.core.processing.node_generators import gen_select_node
 
 
@@ -69,6 +69,7 @@ def test_metric_assignments(test_environment: Environment):
 
 
 def test_source_outputs(test_environment: Environment, test_executor: Executor):
+    test_environment = test_environment.instantiate()
     order_ds = test_environment.datasources["orders"]
     for col in order_ds.columns:
         if col.alias == "order_id":
@@ -131,13 +132,6 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert set(statement.grain.components) == set(
-        [
-            test_environment.concepts["store_id"].address,
-            test_environment.concepts["product_id"].address,
-            test_environment.concepts["order_id"].address,
-        ]
-    )
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 5
@@ -154,9 +148,7 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert statement.grain.components == {
-        "local.order_id",
-    }
+
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 4
 
@@ -167,7 +159,6 @@ SELECT
 ;"""
     _, statements = parse(test_select, test_environment)
     statement = statements[-1]
-    assert statement.grain.components == {"local.even_order_id"}
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2

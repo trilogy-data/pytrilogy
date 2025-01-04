@@ -2,26 +2,26 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Purpose
-from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.execute_models import BoundConcept, BoundFunction, BoundWhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnionNode
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_UNION_NODE]"
 
 
-def is_union(c: Concept):
-    return isinstance(c.lineage, Function) and c.lineage.operator == FunctionType.UNION
+def is_union(c: BoundConcept):
+    return isinstance(c.lineage, BoundFunction) and c.lineage.operator == FunctionType.UNION
 
 
 def gen_union_node(
-    concept: Concept,
-    local_optional: List[Concept],
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
     environment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     all_unions = [x for x in local_optional if is_union(x)] + [concept]
 
@@ -30,14 +30,14 @@ def gen_union_node(
     base = keys.pop()
     remaining = [x for x in all_unions if x.address != base.address]
     arguments = []
-    if isinstance(base.lineage, Function):
+    if isinstance(base.lineage, BoundFunction):
         arguments = base.lineage.concept_arguments
     for arg in arguments:
-        relevant_parents: list[Concept] = []
+        relevant_parents: list[BoundConcept] = []
         for other_union in remaining:
             assert other_union.lineage
             potential_parents = [
-                z for z in other_union.lineage.arguments if isinstance(z, Concept)
+                z for z in other_union.lineage.arguments if isinstance(z, BoundConcept)
             ]
             relevant_parents += [
                 x for x in potential_parents if x.keys and arg.address in x.keys

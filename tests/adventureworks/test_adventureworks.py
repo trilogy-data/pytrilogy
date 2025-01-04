@@ -4,15 +4,12 @@ from os.path import dirname, join
 import pytest
 
 from trilogy import Executor
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models import (
-    Concept,
-    Environment,
-    Grain,
+from trilogy.core.author_models import SelectStatement, Grain, Concept, Environment
+from trilogy.core.execute_models import (
     ProcessedQuery,
-    ProcessedQueryPersist,
     QueryDatasource,
-    SelectStatement,
 )
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.nodes import MergeNode, SelectNode
@@ -27,7 +24,6 @@ def test_parsing(environment: Environment):
         join(dirname(__file__), "finance_queries.preql"), "r", encoding="utf-8"
     ) as f:
         file = f.read()
-    SqlServerDialect()
     environment, statements = parse(file, environment=environment)
 
 
@@ -64,7 +60,7 @@ def test_query_datasources(environment: Environment):
     test: SelectStatement = statements[-1]  # multipart join
 
     environment_graph = generate_graph(environment)
-    from trilogy.hooks.query_debugger import print_recursive_nodes
+
 
     # assert a group up to the first name works
 
@@ -79,7 +75,7 @@ def test_query_datasources(environment: Environment):
         g=environment_graph,
         depth=0,
     )
-    print_recursive_nodes(customer_node)
+
     customer_datasource = customer_node.resolve()
 
     assert (
@@ -259,7 +255,7 @@ def test_group_to_grain(environment: Environment):
             environment.concepts["internet_sales.order_number"],
         ]
     )
-    assert resolved.grain == expected_grain, [resolved.grain.set, expected_grain.set]
+    assert resolved.grain.components == expected_grain.components, [resolved.grain.components, expected_grain.components]
     assert resolved.force_group is False
     assert resolved.group_required is False
 

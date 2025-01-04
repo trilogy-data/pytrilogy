@@ -2,16 +2,16 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import Purpose, PurposeLineage
-from trilogy.core.models import (
-    Comparison,
-    Concept,
-    Conditional,
-    Datasource,
-    Environment,
-    Function,
-    Grain,
-    Parenthetical,
+from trilogy.core.enums import Purpose, Derivation
+from trilogy.core.execute_models import (
+    BoundComparison,
+    BoundConcept,
+    BoundConditional,
+    BoundDatasource,
+    BoundEnvironment,
+    BoundFunction,
+    BoundGrain,
+    BoundParenthetical,
     QueryDatasource,
     SourceType,
     UnnestJoin,
@@ -31,20 +31,20 @@ class SelectNode(StrategyNode):
 
     def __init__(
         self,
-        input_concepts: List[Concept],
-        output_concepts: List[Concept],
-        environment: Environment,
-        datasource: Datasource | None = None,
+        input_concepts: List[BoundConcept],
+        output_concepts: List[BoundConcept],
+        environment: BoundEnvironment,
+        datasource: BoundDatasource | None = None,
         whole_grain: bool = False,
         parents: List["StrategyNode"] | None = None,
         depth: int = 0,
-        partial_concepts: List[Concept] | None = None,
-        nullable_concepts: List[Concept] | None = None,
+        partial_concepts: List[BoundConcept] | None = None,
+        nullable_concepts: List[BoundConcept] | None = None,
         accept_partial: bool = False,
-        grain: Optional[Grain] = None,
+        grain: Optional[BoundGrain] = None,
         force_group: bool | None = False,
-        conditions: Conditional | Comparison | Parenthetical | None = None,
-        preexisting_conditions: Conditional | Comparison | Parenthetical | None = None,
+        conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
+        preexisting_conditions: BoundConditional | BoundComparison | BoundParenthetical | None = None,
         hidden_concepts: set[str] | None = None,
     ):
         super().__init__(
@@ -75,31 +75,31 @@ class SelectNode(StrategyNode):
     ) -> QueryDatasource:
         if not self.datasource:
             raise ValueError("Datasource not provided")
-        datasource: Datasource = self.datasource
+        datasource: BoundDatasource = self.datasource
 
-        all_concepts_final: List[Concept] = unique(self.all_concepts, "address")
-        source_map: dict[str, set[Datasource | QueryDatasource | UnnestJoin]] = {
+        all_concepts_final: List[BoundConcept] = unique(self.all_concepts, "address")
+        source_map: dict[str, set[BoundDatasource | QueryDatasource | UnnestJoin]] = {
             concept.address: {datasource} for concept in self.input_concepts
         }
 
         derived_concepts = [
             c
             for c in datasource.columns
-            if isinstance(c.alias, Function) and c.concept.address in source_map
+            if isinstance(c.alias, BoundFunction) and c.concept.address in source_map
         ]
         for c in derived_concepts:
-            if not isinstance(c.alias, Function):
+            if not isinstance(c.alias, BoundFunction):
                 continue
             for x in c.alias.concept_arguments:
                 source_map[x.address] = {datasource}
         for x in all_concepts_final:
             if x.address not in source_map and x.derivation in (
-                PurposeLineage.MULTISELECT,
-                PurposeLineage.FILTER,
-                PurposeLineage.BASIC,
-                PurposeLineage.ROWSET,
-                PurposeLineage.BASIC,
-                PurposeLineage.UNION,
+                Derivation.MULTISELECT,
+                Derivation.FILTER,
+                Derivation.BASIC,
+                Derivation.ROWSET,
+                Derivation.BASIC,
+                Derivation.UNION,
             ):
                 source_map[x.address] = set()
 
@@ -109,7 +109,7 @@ class SelectNode(StrategyNode):
         if self.force_group is False:
             grain = datasource.grain
         else:
-            grain = self.grain or Grain()
+            grain = self.grain or BoundGrain()
         return QueryDatasource(
             input_concepts=self.input_concepts,
             output_concepts=all_concepts_final,
@@ -130,7 +130,7 @@ class SelectNode(StrategyNode):
         )
 
     def resolve_from_constant_datasources(self) -> QueryDatasource:
-        datasource = Datasource(
+        datasource = BoundDatasource(
             name=CONSTANT_DATASET, address=CONSTANT_DATASET, columns=[]
         )
         return QueryDatasource(
@@ -152,10 +152,10 @@ class SelectNode(StrategyNode):
         if all(
             [
                 (
-                    c.derivation == PurposeLineage.CONSTANT
+                    c.derivation == Derivation.CONSTANT
                     or (
                         c.purpose == Purpose.CONSTANT
-                        and c.derivation == PurposeLineage.MULTISELECT
+                        and c.derivation == Derivation.MULTISELECT
                     )
                 )
                 for c in self.all_concepts
@@ -172,7 +172,7 @@ class SelectNode(StrategyNode):
             if not resolution:
                 return super()._resolve()
             # zip in our parent source map
-            parent_sources: List[QueryDatasource | Datasource] = [
+            parent_sources: List[QueryDatasource | BoundDatasource] = [
                 p.resolve() for p in self.parents
             ]
 

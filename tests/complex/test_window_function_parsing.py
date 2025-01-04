@@ -1,12 +1,13 @@
 from trilogy import Dialects
-from trilogy.core.enums import Granularity, Purpose, PurposeLineage
-from trilogy.core.models import SelectStatement, WindowItem
+from trilogy.core.enums import Granularity, Purpose, Derivation
+from trilogy.core.author_models import SelectStatement, WindowItem, Grain
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from trilogy.core.query_processor import get_query_datasources, process_query
+from trilogy.core.execute_models import BoundGrain
 from trilogy.dialect import duckdb
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
@@ -56,12 +57,17 @@ limit 100
 
     """
     env, parsed = parse(declarations)
+    assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
+    env = env.instantiate()
     select: SelectStatement = parsed[-1]
 
-    assert isinstance(env.concepts["user_rank"].lineage, WindowItem)
-
     ds = search_concepts(
-        [env.concepts["post_count"], env.concepts["user_id"]],
+        [
+            env.concepts["local.post_count"].with_grain(
+                BoundGrain(components={"local.user_id"})
+            ),
+            env.concepts["user_id"],
+        ],
         environment=env,
         g=generate_graph(env),
         depth=0,
@@ -125,15 +131,18 @@ limit 100
 
     """
     env, parsed = parse(declarations)
+    assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)   
+    assert env.concepts["rank_derived"].keys == {
+            env.concepts["user_id"].address,
+        } 
+    env = env.instantiate()
     select: SelectStatement = parsed[-1]
 
-    assert env.concepts["rank_derived"].keys == {
-        env.concepts["user_id"].address,
-    }
+    
     assert concept_to_relevant_joins(
         [env.concepts[x] for x in ["user_id", "rank_derived"]]
     ) == [env.concepts["user_id"]]
-    assert isinstance(env.concepts["user_country_rank"].lineage, WindowItem)
+    
 
     get_query_datasources(environment=env, statement=select)
     # raise ValueError
@@ -161,6 +170,7 @@ order by x asc;"""
 
     z = env.concepts["z"]
     assert z.purpose == Purpose.PROPERTY
+    assert z.derivation == Derivation.WINDOW
     assert set([x.address for x in z.lineage.concept_arguments]) == set(
         [
             x.address,
@@ -169,16 +179,23 @@ order by x asc;"""
     assert z.keys == {
         x.address,
     }
-
+    materialized_env = env.instantiate()
+    mat_x =materialized_env.concepts[x.address] 
     ds = search_concepts(
-        [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0
+        [
+            materialized_env.concepts[z.address].with_grain(BoundGrain(components=set([mat_x.address]))),
+            mat_x,
+        ],
+        environment=materialized_env,
+        g=generate_graph(materialized_env),
+        depth=0,
     ).resolve()
 
-    assert x in ds.output_concepts
-    assert z in ds.output_concepts
+    assert x.address in ds.output_concepts
+    assert z.address in ds.output_concepts
 
-    assert x.derivation == PurposeLineage.UNNEST
-    assert z.derivation != PurposeLineage.CONSTANT
+    assert x.derivation == Derivation.UNNEST
+    assert z.derivation != Derivation.CONSTANT
 
     generator = duckdb.DuckDBDialect()
     query = process_query(statement=select, environment=env)

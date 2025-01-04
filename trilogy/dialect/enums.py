@@ -2,7 +2,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Callable, List, Optional
 
 if TYPE_CHECKING:
-    from trilogy import Environment, Executor
+    from trilogy import BoundEnvironment, Executor
     from trilogy.hooks.base_hook import BaseHook
 
 from trilogy.constants import logger

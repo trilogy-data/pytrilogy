@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models import (
+from trilogy.authoring import (
     ColumnAssignment,
     Concept,
     Datasource,
@@ -113,6 +113,8 @@ def test_partial_assignment():
     family = env.concepts["passenger.family"]
     # id = env.concepts["passenger.id"]
     # survived = env.concepts["passenger.survived"]
+    env = env.instantiate()
+    print(env.concepts.keys())
     g = generate_graph(env)
     filtered_node = gen_filter_node(
         env.concepts["surviving_passenger"],

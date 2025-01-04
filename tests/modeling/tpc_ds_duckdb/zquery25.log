@@ -1,5 +1,5 @@
 query_id = 25
-gen_length = 11720
+gen_length = 13764
 generated_sql = """
 
 WITH 
@@ -55,11 +55,14 @@ SELECT
     cast(catalog_sales_date_date.\"D_YEAR\" as int) as \"catalog_sales_date_year\",
     cast(store_sales_date_date.\"D_YEAR\" as int) as \"store_sales_date_year\",
     cast(store_sales_return_date_date.\"D_YEAR\" as int) as \"store_sales_return_date_year\",
+    catalog_sales_date_date.\"D_DATE_SK\" as \"catalog_sales_date_id\",
     catalog_sales_date_date.\"D_MOY\" as \"catalog_sales_date_month_of_year\",
+    store_sales_date_date.\"D_DATE_SK\" as \"store_sales_date_id\",
     store_sales_date_date.\"D_MOY\" as \"store_sales_date_month_of_year\",
     store_sales_item_items.\"I_ITEM_DESC\" as \"store_sales_item_desc\",
     store_sales_item_items.\"I_ITEM_ID\" as \"store_sales_item_name\",
     store_sales_item_items.\"I_ITEM_SK\" as \"store_sales_item_id\",
+    store_sales_return_date_date.\"D_DATE_SK\" as \"store_sales_return_date_id\",
     store_sales_return_date_date.\"D_MOY\" as \"store_sales_return_date_month_of_year\",
     store_sales_store_returns.\"SR_CUSTOMER_SK\" as \"store_sales_return_customer_id\",
     store_sales_store_returns.\"SR_NET_LOSS\" as \"store_sales_return_net_loss\",
@@ -67,7 +70,8 @@ SELECT
     store_sales_store_sales.\"SS_NET_PROFIT\" as \"store_sales_net_profit\",
     store_sales_store_sales.\"SS_TICKET_NUMBER\" as \"store_sales_ticket_number\",
     store_sales_store_store.\"S_STORE_ID\" as \"store_sales_store_text_id\",
-    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\"
+    store_sales_store_store.\"S_STORE_NAME\" as \"store_sales_store_name\",
+    store_sales_store_store.\"S_STORE_SK\" as \"store_sales_store_id\"
 FROM
     vacuous
     INNER JOIN memory.store_sales as store_sales_store_sales on vacuous.\"store_sales_customer_id\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" AND vacuous.\"store_sales_item_id\" = store_sales_store_sales.\"SS_ITEM_SK\"
@@ -78,7 +82,7 @@ FROM
     INNER JOIN memory.date_dim as catalog_sales_date_date on vacuous.\"catalog_sales_date_id\" = catalog_sales_date_date.\"D_DATE_SK\"
     LEFT OUTER JOIN memory.date_dim as store_sales_return_date_date on store_sales_store_returns.\"SR_RETURNED_DATE_SK\" = store_sales_return_date_date.\"D_DATE_SK\"
 WHERE
-    cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 4 and cast(store_sales_return_date_date.\"D_YEAR\" as int) = 2001 and store_sales_return_date_date.\"D_MOY\" >= 4 and store_sales_return_date_date.\"D_MOY\" <= 10 and cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2001 and catalog_sales_date_date.\"D_MOY\" >= 4 and catalog_sales_date_date.\"D_MOY\" <= 10 and store_sales_store_returns.\"SR_CUSTOMER_SK\" = store_sales_store_sales.\"SS_CUSTOMER_SK\" and CASE WHEN store_sales_store_returns.\"SR_RETURN_TIME_SK\" THEN TRUE ELSE FALSE END
+    cast(store_sales_date_date.\"D_YEAR\" as int) = 2001 and store_sales_date_date.\"D_MOY\" = 4 and cast(store_sales_return_date_date.\"D_YEAR\" as int) = 2001 and store_sales_return_date_date.\"D_MOY\" >= 4 and store_sales_return_date_date.\"D_MOY\" <= 10 and cast(catalog_sales_date_date.\"D_YEAR\" as int) = 2001 and catalog_sales_date_date.\"D_MOY\" >= 4 and catalog_sales_date_date.\"D_MOY\" <= 10 and store_sales_store_returns.\"SR_CUSTOMER_SK\" = store_sales_store_sales.\"SS_CUSTOMER_SK\"
 ),
 yummy as (
 SELECT
@@ -122,19 +126,28 @@ GROUP BY
     uneven.\"store_sales_store_text_id\"),
 young as (
 SELECT
+    concerned.\"catalog_sales_date_month_of_year\" as \"catalog_sales_date_month_of_year\",
+    concerned.\"catalog_sales_date_year\" as \"catalog_sales_date_year\",
+    concerned.\"store_sales_customer_id\" as \"store_sales_customer_id\",
+    concerned.\"store_sales_date_month_of_year\" as \"store_sales_date_month_of_year\",
+    concerned.\"store_sales_date_year\" as \"store_sales_date_year\",
+    concerned.\"store_sales_is_returned\" as \"store_sales_is_returned\",
     concerned.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    concerned.\"store_sales_item_id\" as \"store_sales_item_id\",
     concerned.\"store_sales_item_name\" as \"store_sales_item_name\",
+    concerned.\"store_sales_net_profit\" as \"store_sales_net_profit\",
+    concerned.\"store_sales_return_customer_id\" as \"store_sales_return_customer_id\",
+    concerned.\"store_sales_return_date_month_of_year\" as \"store_sales_return_date_month_of_year\",
+    concerned.\"store_sales_return_date_year\" as \"store_sales_return_date_year\",
+    concerned.\"store_sales_return_net_loss\" as \"store_sales_return_net_loss\",
     concerned.\"store_sales_store_name\" as \"store_sales_store_name\",
     concerned.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
-    sum(concerned.\"store_sales_net_profit\") as \"store_sales_profit\",
-    sum(concerned.\"store_sales_return_net_loss\") as \"store_returns_loss\"
+    concerned.\"store_sales_ticket_number\" as \"store_sales_ticket_number\"
 FROM
     concerned
-GROUP BY 
-    concerned.\"store_sales_item_desc\",
-    concerned.\"store_sales_item_name\",
-    concerned.\"store_sales_store_name\",
-    concerned.\"store_sales_store_text_id\"),
+WHERE
+    concerned.\"store_sales_date_year\" = 2001 and concerned.\"store_sales_date_month_of_year\" = 4 and concerned.\"store_sales_return_date_year\" = 2001 and concerned.\"store_sales_return_date_month_of_year\" >= 4 and concerned.\"store_sales_return_date_month_of_year\" <= 10 and concerned.\"catalog_sales_date_year\" = 2001 and concerned.\"catalog_sales_date_month_of_year\" >= 4 and concerned.\"catalog_sales_date_month_of_year\" <= 10 and concerned.\"store_sales_return_customer_id\" = concerned.\"store_sales_customer_id\" and concerned.\"store_sales_is_returned\"
+),
 juicy as (
 SELECT
     sum(yummy.\"catalog_sales_net_profit\") as \"catalog_sales_profit\",
@@ -148,18 +161,33 @@ GROUP BY
     yummy.\"store_sales_item_desc\",
     yummy.\"store_sales_item_name\",
     yummy.\"store_sales_store_name\",
-    yummy.\"store_sales_store_text_id\")
+    yummy.\"store_sales_store_text_id\"),
+sparkling as (
+SELECT
+    sum(young.\"store_sales_net_profit\") as \"store_sales_profit\",
+    sum(young.\"store_sales_return_net_loss\") as \"store_returns_loss\",
+    young.\"store_sales_item_desc\" as \"store_sales_item_desc\",
+    young.\"store_sales_item_name\" as \"store_sales_item_name\",
+    young.\"store_sales_store_name\" as \"store_sales_store_name\",
+    young.\"store_sales_store_text_id\" as \"store_sales_store_text_id\"
+FROM
+    young
+GROUP BY 
+    young.\"store_sales_item_desc\",
+    young.\"store_sales_item_name\",
+    young.\"store_sales_store_name\",
+    young.\"store_sales_store_text_id\")
 SELECT
     juicy.\"store_sales_item_name\" as \"store_sales_item_name\",
     juicy.\"store_sales_item_desc\" as \"store_sales_item_desc\",
     juicy.\"store_sales_store_text_id\" as \"store_sales_store_text_id\",
     juicy.\"store_sales_store_name\" as \"store_sales_store_name\",
-    young.\"store_sales_profit\" as \"store_sales_profit\",
-    young.\"store_returns_loss\" as \"store_returns_loss\",
+    sparkling.\"store_sales_profit\" as \"store_sales_profit\",
+    sparkling.\"store_returns_loss\" as \"store_returns_loss\",
     juicy.\"catalog_sales_profit\" as \"catalog_sales_profit\"
 FROM
     juicy
-    INNER JOIN young on (juicy.\"store_sales_item_desc\" = young.\"store_sales_item_desc\" or (juicy.\"store_sales_item_desc\" is null and young.\"store_sales_item_desc\" is null)) AND juicy.\"store_sales_item_name\" = young.\"store_sales_item_name\" AND juicy.\"store_sales_store_name\" = young.\"store_sales_store_name\" AND juicy.\"store_sales_store_text_id\" = young.\"store_sales_store_text_id\"
+    INNER JOIN sparkling on (juicy.\"store_sales_item_desc\" = sparkling.\"store_sales_item_desc\" or (juicy.\"store_sales_item_desc\" is null and sparkling.\"store_sales_item_desc\" is null)) AND juicy.\"store_sales_item_name\" = sparkling.\"store_sales_item_name\" AND juicy.\"store_sales_store_name\" = sparkling.\"store_sales_store_name\" AND juicy.\"store_sales_store_text_id\" = sparkling.\"store_sales_store_text_id\"
 ORDER BY 
     juicy.\"store_sales_item_name\" asc,
     juicy.\"store_sales_item_desc\" asc,

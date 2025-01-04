@@ -1,14 +1,14 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import (
-    AggregateWrapper,
-    Concept,
-    Environment,
-    Function,
-    Grain,
+from trilogy.core.execute_models import (
+    BoundAggregateWrapper,
+    BoundConcept,
+    BoundEnvironment,
+    BoundFunction,
+    BoundGrain,
     LooseConceptList,
-    WhereClause,
+    BoundWhereClause,
 )
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
@@ -22,23 +22,25 @@ LOGGER_PREFIX = "[GEN_GROUP_NODE]"
 
 
 def gen_group_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
     # aggregates MUST always group to the proper grain
     # except when the
-    parent_concepts: List[Concept] = unique(
+    parent_concepts: List[BoundConcept] = unique(
         resolve_function_parent_concepts(concept, environment=environment), "address"
     )
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} parent concepts are {[x.address for x in parent_concepts]} from group grain {concept.grain}"
     )
+    if not parent_concepts:
+        raise SyntaxError(f'Group node should have parents, has {parent_concepts}')
 
     # if the aggregation has a grain, we need to ensure these are the ONLY optional in the output of the select
     output_concepts = [concept]
@@ -53,16 +55,15 @@ def gen_group_node(
         output_concepts += grain_components
         for possible_agg in local_optional:
 
-            if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
+            if not isinstance(possible_agg.lineage, (BoundAggregateWrapper, BoundFunction)):
                 continue
-            logger.info(possible_agg)
             if possible_agg.grain and possible_agg.grain != concept.grain:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} mismatched equivalent group by with grain {possible_agg.grain} for {concept.address}"
                 )
 
             if possible_agg.grain and possible_agg.grain == concept.grain:
-                agg_parents: List[Concept] = resolve_function_parent_concepts(
+                agg_parents: List[BoundConcept] = resolve_function_parent_concepts(
                     possible_agg,
                     environment=environment,
                 )
@@ -73,7 +74,7 @@ def gen_group_node(
                     logger.info(
                         f"{padding(depth)}{LOGGER_PREFIX} found equivalent group by optional concept {possible_agg.address} for {concept.address}"
                     )
-                elif Grain.from_concepts(agg_parents) == Grain.from_concepts(
+                elif BoundGrain.from_concepts(agg_parents) == BoundGrain.from_concepts(
                     parent_concepts
                 ):
                     extra = [x for x in agg_parents if x.address not in parent_concepts]
@@ -84,7 +85,7 @@ def gen_group_node(
                     )
                 else:
                     logger.info(
-                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {Grain.from_concepts(agg_parents)} vs {Grain.from_concepts(parent_concepts)}"
+                        f"{padding(depth)}{LOGGER_PREFIX} mismatched grain {BoundGrain.from_concepts(agg_parents)} vs {BoundGrain.from_concepts(parent_concepts)}"
                     )
     if parent_concepts:
         logger.info(

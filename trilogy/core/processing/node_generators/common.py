@@ -1,15 +1,16 @@
 from collections import defaultdict
 from typing import Callable, List, Tuple
 
-from trilogy.core.enums import Purpose, PurposeLineage
-from trilogy.core.models import (
-    AggregateWrapper,
-    Concept,
-    Environment,
-    FilterItem,
-    Function,
+from trilogy.core.enums import Purpose, Derivation
+from trilogy.core.execute_models import (
+    BoundAggregateWrapper,
+    BoundConcept,
+    BoundEnvironment,
+    BoundFilterItem,
+    BoundFunction,
     LooseConceptList,
-    WhereClause,
+    BoundWhereClause,
+    Reference,
 )
 from trilogy.core.processing.nodes import (
     History,
@@ -21,12 +22,10 @@ from trilogy.utility import unique
 
 
 def resolve_function_parent_concepts(
-    concept: Concept, environment: Environment
-) -> List[Concept]:
-    if not isinstance(concept.lineage, (Function, AggregateWrapper)):
-        raise ValueError(f"Concept {concept} lineage is not function or aggregate")
-    if concept.derivation == PurposeLineage.AGGREGATE:
-        base: list[Concept] = []
+    concept: BoundConcept, environment: BoundEnvironment
+) -> List[BoundConcept]:
+    if concept.derivation == Derivation.AGGREGATE:
+        base: list[BoundConcept] = []
         if not concept.grain.abstract:
             base = concept.lineage.concept_arguments + [
                 environment.concepts[c] for c in concept.grain.components
@@ -35,13 +34,13 @@ def resolve_function_parent_concepts(
             # keep the key as a parent
         else:
             base = concept.lineage.concept_arguments
-        if isinstance(concept.lineage, AggregateWrapper):
+        if isinstance(concept.lineage, BoundAggregateWrapper):
             # for aggregate wrapper, don't include the by
             extra_property_grain = concept.lineage.function.concept_arguments
         else:
             extra_property_grain = concept.lineage.concept_arguments
         for x in extra_property_grain:
-            if isinstance(x, Concept) and x.purpose == Purpose.PROPERTY and x.keys:
+            if isinstance(x, BoundConcept) and x.purpose == Purpose.PROPERTY and x.keys:
                 base += [environment.concepts[c] for c in x.keys]
         return unique(base, "address")
     # TODO: handle basic lineage chains?
@@ -49,8 +48,8 @@ def resolve_function_parent_concepts(
 
 
 def resolve_condition_parent_concepts(
-    condition: WhereClause,
-) -> Tuple[List[Concept], List[Tuple[Concept, ...]]]:
+    condition: BoundWhereClause,
+) -> Tuple[List[BoundConcept], List[Tuple[BoundConcept, ...]]]:
     base_existence = []
     base_rows = []
     base_rows += condition.row_arguments
@@ -60,10 +59,10 @@ def resolve_condition_parent_concepts(
 
 
 def resolve_filter_parent_concepts(
-    concept: Concept,
-    environment: Environment,
-) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
-    if not isinstance(concept.lineage, FilterItem):
+    concept: BoundConcept,
+    environment: BoundEnvironment,
+) -> Tuple[BoundConcept, List[BoundConcept], List[Tuple[BoundConcept, ...]]]:
+    if not isinstance(concept.lineage, BoundFilterItem):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )
@@ -78,7 +77,7 @@ def resolve_filter_parent_concepts(
     if direct_parent.grain:
         base_rows += [environment.concepts[c] for c in direct_parent.grain.components]
     if (
-        isinstance(direct_parent, Concept)
+        isinstance(direct_parent, BoundConcept)
         and direct_parent.purpose == Purpose.PROPERTY
         and direct_parent.keys
     ):
@@ -94,14 +93,14 @@ def resolve_filter_parent_concepts(
 
 def gen_property_enrichment_node(
     base_node: StrategyNode,
-    extra_properties: list[Concept],
-    environment: Environment,
+    extra_properties: list[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
     log_lambda: Callable,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ):
     required_keys: dict[str, set[str]] = defaultdict(set)
     for x in extra_properties:
@@ -146,15 +145,15 @@ def gen_property_enrichment_node(
 
 def gen_enrichment_node(
     base_node: StrategyNode,
-    join_keys: List[Concept],
-    local_optional: list[Concept],
-    environment: Environment,
+    join_keys: List[BoundConcept],
+    local_optional: list[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
     log_lambda,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ):
     local_opts = LooseConceptList(concepts=local_optional)
 

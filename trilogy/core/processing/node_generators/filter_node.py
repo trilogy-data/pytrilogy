@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
+from trilogy.core.execute_models import BoundConcept, BoundEnvironment, BoundFilterItem, BoundGrain, BoundWhereClause
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )
@@ -18,26 +18,25 @@ LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
 
 def gen_filter_node(
-    concept: Concept,
-    local_optional: List[Concept],
-    environment: Environment,
+    concept: BoundConcept,
+    local_optional: List[BoundConcept],
+    environment: BoundEnvironment,
     g,
     depth: int,
     source_concepts,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BoundWhereClause | None = None,
 ) -> StrategyNode | None:
+    
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept, environment)
     )
-    if not isinstance(concept.lineage, FilterItem):
-        raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
     where = concept.lineage.where
 
-    optional_included: list[Concept] = []
+    optional_included: list[BoundConcept] = []
 
     for x in local_optional:
-        if isinstance(x.lineage, FilterItem):
+        if isinstance(x.lineage, BoundFilterItem):
             if concept.lineage.where == where:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "
@@ -136,7 +135,7 @@ def gen_filter_node(
         parent.add_existence_concepts(flattened_existence, False).set_output_concepts(
             expected_output, False
         )
-        parent.grain = Grain.from_concepts(
+        parent.grain = BoundGrain.from_concepts(
             (
                 [environment.concepts[k] for k in immediate_parent.keys]
                 if immediate_parent.keys
@@ -162,7 +161,7 @@ def gen_filter_node(
             output_concepts=[concept, immediate_parent] + parent_row_concepts,
             environment=environment,
             parents=core_parents,
-            grain=Grain.from_concepts(
+            grain=BoundGrain.from_concepts(
                 [immediate_parent] + parent_row_concepts,
             ),
             preexisting_conditions=conditions.conditional if conditions else None,

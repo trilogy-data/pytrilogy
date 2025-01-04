@@ -3,23 +3,24 @@ from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
 
 from trilogy.core.enums import ComparisonOperator
-from trilogy.core.models import (
-    Comparison,
-    Concept,
-    Conditional,
-    Datasource,
+from trilogy.core.execute_models import (
+    BoundComparison,
+    BoundConcept,
+    BoundConditional,
+    BoundDatasource,
     DataType,
-    Function,
+    BoundFunction,
     FunctionType,
-    Parenthetical,
+    BoundParenthetical,
 )
+from trilogy.core.author_models import Comparison, Conditional, Parenthetical, Function, Concept, ConceptRef
 
 # Define a generic type that ensures start and end are the same type
 T = TypeVar("T", int, date, datetime)
 
 
 def reduce_expression(
-    var: Concept, group_tuple: list[tuple[ComparisonOperator, T]]
+    var: BoundConcept | Concept, group_tuple: list[tuple[ComparisonOperator, T]]
 ) -> bool:
     # Track ranges
     lower_check: T
@@ -95,27 +96,28 @@ def reduce_expression(
 
 
 def simplify_conditions(
-    conditions: list[Comparison | Conditional | Parenthetical],
+    conditions: list[BoundComparison | BoundConditional | BoundParenthetical | Comparison | Conditional | Parenthetical],
 ) -> bool:
     # Group conditions by variable
-    grouped: dict[Concept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
+    grouped: dict[BoundConcept, list[tuple[ComparisonOperator, datetime | int | date]]] = (
         defaultdict(list)
     )
     for condition in conditions:
-        if not isinstance(condition, Comparison):
+        if not isinstance(condition, (Comparison, BoundComparison)):
             return False
         if not isinstance(
-            condition.left, (int, date, datetime, Function)
-        ) and not isinstance(condition.right, (int, date, datetime, Function)):
+            condition.left, (int, date, datetime, BoundFunction, Function)
+        ) and not isinstance(condition.right, (int, date, datetime, BoundFunction, Function)):
             return False
-        if not isinstance(condition.left, Concept) and not isinstance(
-            condition.right, Concept
+        if not isinstance(condition.left, (BoundConcept, Concept,)) and not isinstance(
+            condition.right, (BoundConcept, Concept)
         ):
             return False
         vars = [condition.left, condition.right]
-        concept = [x for x in vars if isinstance(x, Concept)][0]
-        comparison = [x for x in vars if not isinstance(x, Concept)][0]
-        if isinstance(comparison, Function):
+        concept = [x for x in vars if isinstance(x, (BoundConcept, Concept))][0]
+        comparison = [x for x in vars if not isinstance(x, (BoundConcept, Concept))][0]
+        if isinstance(comparison, (BoundFunction, Function)):
+          
             if not comparison.operator == FunctionType.CONSTANT:
                 return False
             first_arg = comparison.arguments[0]
@@ -159,26 +161,18 @@ def is_fully_covered(
 
     # Check for gaps
     current_end = start
-    print(ranges)
     for r_start, r_end in ranges:
-        print(r_start, r_end)
-        # If there's a gap between the current range and the previous coverage
-        print(r_start - current_end)
         if (r_start - current_end) > increment:  # type: ignore
-            print("gap")
             return False
-        print("okay")
         # Extend the current coverage
         current_end = max(current_end, r_end)
 
     # If the loop ends and we haven't reached the end, return False
-    print(current_end, end)
-    print(current_end >= end)
     return current_end >= end
 
 
-def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
-    candidates: list[Datasource] = []
+def get_union_sources(datasources: list[BoundDatasource], concepts: list[BoundConcept]):
+    candidates: list[BoundDatasource] = []
     for x in datasources:
         if all([c.address in x.output_concepts for c in concepts]):
             if (
@@ -187,7 +181,7 @@ def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
             ):
                 candidates.append(x)
 
-    assocs: dict[str, list[Datasource]] = defaultdict(list[Datasource])
+    assocs: dict[str, list[BoundDatasource]] = defaultdict(list[BoundDatasource])
     for x in candidates:
         if not x.non_partial_for:
             continue
@@ -195,9 +189,10 @@ def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
             continue
         merge_key = x.non_partial_for.concept_arguments[0]
         assocs[merge_key.address].append(x)
-    final: list[list[Datasource]] = []
+    final: list[list[BoundDatasource]] = []
     for _, dses in assocs.items():
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
+
         if simplify_conditions(conditions):
             final.append(dses)
     return final

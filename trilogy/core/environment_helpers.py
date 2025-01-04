@@ -1,14 +1,12 @@
 from trilogy.constants import DEFAULT_NAMESPACE
-from trilogy.core.enums import ConceptSource, FunctionType, Purpose
+from trilogy.core.enums import ConceptSource, FunctionType, Purpose, Derivation
 from trilogy.core.functions import AttrAccess
-from trilogy.core.models import (
-    Concept,
+from trilogy.core.common_models import (
     DataType,
-    Environment,
-    Function,
     Metadata,
     StructType,
 )
+from trilogy.core.author_models import Environment, Concept, Function, Grain
 from trilogy.parsing.common import Meta, arg_to_datatype, process_function_args
 
 FUNCTION_DESCRIPTION_MAPS = {
@@ -49,20 +47,18 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
-            arguments=[concept],
-        )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
+            arguments=[concept.reference],
         )
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
+            derivation=Derivation.BASIC,
             lineage=const_function,
-            grain=const_function.output_grain,
-            namespace=namespace,
+            grain=Grain(components = {concept.address,}),
+            namespace=concept.namespace,
             keys=set(
-                concept.address,
+                [concept.address],
             ),
             metadata=Metadata(
                 description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}. ",
@@ -100,20 +96,19 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
-            arguments=[concept],
+            arguments=[concept.reference],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
+
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
+                        derivation=Derivation.BASIC,
             lineage=const_function,
-            grain=const_function.output_grain,
-            namespace=namespace,
-            keys=set(
-                concept.address,
+            grain=Grain(components={concept.address,}),
+            namespace=concept.namespace,
+            keys=set([
+                concept.address,],
             ),
             metadata=Metadata(
                 description=f"Auto-derived from {base_description}. {FUNCTION_DESCRIPTION_MAPS.get(ftype, ftype.value)}.",
@@ -142,18 +137,17 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             operator=ftype,
             output_datatype=DataType.INTEGER,
             output_purpose=default_type,
-            arguments=[concept],
+            arguments=[concept.reference],
         )
-        namespace = (
-            None if concept.namespace == DEFAULT_NAMESPACE else concept.namespace
-        )
+
         new_concept = Concept(
             name=f"{concept.name}.{fname}",
             datatype=DataType.INTEGER,
             purpose=default_type,
+            derivation=Derivation.BASIC,
             lineage=const_function,
-            grain=const_function.output_grain,
-            namespace=namespace,
+            grain=Grain(components={concept.address,}),
+            namespace=concept.namespace,
             keys={
                 concept.address,
             },
@@ -174,6 +168,7 @@ def generate_related_concepts(
     meta: Meta | None = None,
     add_derived: bool = False,
 ):
+
     """Auto populate common derived concepts on types"""
     if concept.purpose == Purpose.KEY and add_derived:
         generate_key_concepts(concept, environment)
@@ -197,13 +192,14 @@ def generate_related_concepts(
                 name=key,
                 datatype=arg_to_datatype(value),
                 purpose=Purpose.PROPERTY,
+                            derivation=Derivation.BASIC,
                 namespace=(
                     environment.namespace + "." + concept.name
                     if environment.namespace
                     and environment.namespace != DEFAULT_NAMESPACE
                     else concept.name
                 ),
-                lineage=AttrAccess(args),
+                lineage=AttrAccess(args, environment),
             )
             environment.add_concept(auto, meta=meta)
             if isinstance(value, Concept):

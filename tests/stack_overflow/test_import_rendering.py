@@ -2,7 +2,7 @@
 from os.path import dirname
 
 from trilogy.core.enums import Modifier
-from trilogy.core.models import Environment
+from trilogy.authoring import Environment
 from trilogy.parser import parse
 from trilogy.parsing.render import render_environment
 
@@ -17,7 +17,7 @@ select
     avg(core.post_length)-> user_avg_post_length
 ORDER BY
     user_post_count desc
- limit 10;
+ limit 10;st
 
  
  auto user_badge_count<-count(core.badge_id) by core.user_id;
@@ -101,9 +101,6 @@ def test_circular():
     env, parsed = parse(
         CIRC_QUERY, environment=Environment(working_path=dirname(__file__))
     )
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
     assert env.concepts["c1.id"]
     assert env.concepts["c2.id"]
     validated = False

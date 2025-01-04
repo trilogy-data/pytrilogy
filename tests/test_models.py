@@ -2,24 +2,26 @@ from copy import deepcopy
 
 from trilogy import parse
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Purpose
-from trilogy.core.models import (
+from trilogy.core.common_models import Address
+from trilogy.core.execute_models import (
     CTE,
-    Address,
-    AggregateWrapper,
     BaseJoin,
+    CTEConceptPair,
+    DataType,
+    Join,
+    QueryDatasource,
+    TupleWrapper,
+)
+from trilogy.core.author_models import (
+    SelectStatement,
+    AggregateWrapper,
     Comparison,
     Concept,
     Conditional,
-    CTEConceptPair,
-    DataType,
-    Environment,
     Grain,
-    Join,
-    QueryDatasource,
     RowsetItem,
-    SelectStatement,
-    TupleWrapper,
     UndefinedConcept,
+    Environment
 )
 
 

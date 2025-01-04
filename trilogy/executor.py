@@ -7,29 +7,33 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.enums import Granularity, IOType
-from trilogy.core.models import (
-    Concept,
-    ConceptDeclarationStatement,
-    CopyStatement,
-    Datasource,
-    Environment,
-    Function,
+from trilogy.core.execute_models import (
+    BoundConcept,
+
+    BoundDatasource,
+    BoundFunction,
     FunctionType,
     ImportStatement,
     ListWrapper,
     MapWrapper,
+    ProcessedCopyStatement,
+    ProcessedQuery,
+    ProcessedRawSQLStatement,
+    ProcessedShowStatement,
+)
+from trilogy.core.author_models import (
+    CopyStatement,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
-    ProcessedCopyStatement,
-    ProcessedQuery,
-    ProcessedQueryPersist,
-    ProcessedRawSQLStatement,
-    ProcessedShowStatement,
     RawSQLStatement,
     SelectStatement,
     ShowStatement,
+        ConceptDeclarationStatement,
+        Environment,
+        Datasource,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -58,7 +62,7 @@ class MockResult:
         return self.columns
 
 
-def generate_result_set(columns: List[Concept], output_data: list[Any]) -> MockResult:
+def generate_result_set(columns: List[BoundConcept], output_data: list[Any]) -> MockResult:
     names = [x.address.replace(".", "_") for x in columns]
     return MockResult(
         values=[dict(zip(names, [row])) for row in output_data], columns=names
@@ -143,9 +147,19 @@ class Executor(object):
             ],
             ["address", "type", "purpose", "derivation"],
         )
-
     @execute_query.register
     def _(self, query: Datasource) -> CursorResult:
+        return MockResult(
+            [
+                {
+                    "name": query.name,
+                }
+            ],
+            ["name"],
+        )
+
+    @execute_query.register
+    def _(self, query: BoundDatasource) -> CursorResult:
         return MockResult(
             [
                 {
@@ -231,6 +245,7 @@ class Executor(object):
     @execute_query.register
     def _(self, query: ProcessedQuery) -> CursorResult:
         sql = self.generator.compile_statement(query)
+
         output = self.execute_raw_sql(sql, local_concepts=query.local_concepts)
         return output
 
@@ -395,27 +410,27 @@ class Executor(object):
                 self.environment.add_datasource(x.datasource)
 
     def _hydrate_param(
-        self, param: str, local_concepts: dict[str, Concept] | None = None
+        self, param: str, local_concepts: dict[str, BoundConcept] | None = None
     ) -> Any:
+        # matched = [
+        #     v
+        #     for v in self.environment.concepts.values()
+        #     if v.safe_address == param or v.address == param
+        # ]
+        # if local_concepts and not matched:
         matched = [
             v
-            for v in self.environment.concepts.values()
+            for v in local_concepts.values()
             if v.safe_address == param or v.address == param
         ]
-        if local_concepts and not matched:
-            matched = [
-                v
-                for v in local_concepts.values()
-                if v.safe_address == param or v.address == param
-            ]
         if not matched:
             raise SyntaxError(f"No concept found for parameter {param}")
 
-        concept: Concept = matched.pop()
+        concept: BoundConcept = matched.pop()
         if not concept.granularity == Granularity.SINGLE_ROW:
             raise SyntaxError(f"Cannot bind non-singleton concept {concept.address}")
         if (
-            isinstance(concept.lineage, Function)
+            isinstance(concept.lineage, BoundFunction)
             and concept.lineage.operator == FunctionType.CONSTANT
         ):
             rval = concept.lineage.arguments[0]
@@ -434,12 +449,13 @@ class Executor(object):
         self,
         command: str,
         variables: dict | None = None,
-        local_concepts: dict[str, Concept] | None = None,
+        local_concepts: dict[str, BoundConcept] | None = None,
     ) -> CursorResult:
         """Run a command against the raw underlying
         execution engine"""
         final_params = None
         q = text(command)
+        
         if variables:
             final_params = variables
         else:
