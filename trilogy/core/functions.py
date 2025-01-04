@@ -20,7 +20,7 @@ from trilogy.core.execute_models import (
     Reference,
     Meta,
 )
-
+from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.author_models import (
     AggregateWrapper,
     Function,
@@ -261,13 +261,13 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.ABS: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=1,
     ),
     FunctionType.COALESCE: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=-1,
         output_type_function=get_coalesce_output_type,
@@ -529,25 +529,25 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     ),
     FunctionType.ADD: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.SUBTRACT: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.MULTIPLY: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.DIVIDE: FunctionConfig(
         valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
@@ -556,7 +556,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             {DataType.INTEGER},
         ],
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=InfiniteFunctionArgs,
     ),
@@ -565,7 +565,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
             {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
             {DataType.INTEGER},
         ],
-        output_purpose=Purpose.METRIC,
+        output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=2,
     ),
@@ -702,13 +702,17 @@ class FunctionFactory:
 
 def create_function_derived_concept(
     name: str,
-    namespace: str,
+
     operator: FunctionType,
-    arguments: list[BoundConcept],
+    arguments: list[Any],
     environment: Environment,
+        namespace: str = DEFAULT_NAMESPACE
 ) -> Concept:
     from trilogy.parsing.common import function_to_concept
-
+    for arg in arguments:
+        if isinstance(arg, (Concept,  ConceptRef)):
+            if arg.address not in environment.concepts:
+                environment.add_concept(arg)
     function = FunctionFactory(environment).create_function(
         args=arguments,
         operator=operator,

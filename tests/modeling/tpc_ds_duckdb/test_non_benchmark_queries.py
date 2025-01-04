@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from trilogy.core.execute_models import BoundEnvironment
+from trilogy import Environment
 
 working_path = Path(__file__).parent
 
@@ -32,7 +32,7 @@ limit 10
 
 
 def test_copy_perf():
-    env, imports = BoundEnvironment(working_path=working_path).parse(
+    env, imports = Environment(working_path=working_path).parse(
         """
 import call_center as call_center;
 import catalog_returns as catalog_returns;
@@ -57,8 +57,8 @@ import web_sales as web_sales;
     end = datetime.now()
     duration = end - start
     dumped = env.model_dump_json()
-
-    assert duration.total_seconds() < 1.0, f"{len(dumped)}, {duration}"
+    assert len(dumped) <1_000_000, f"{len(dumped)}, {duration}"
+    assert duration.total_seconds() < .1, f"{len(dumped)}, {duration}"
 
 
 def test_merge_comparison(engine):

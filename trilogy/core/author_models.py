@@ -11,6 +11,7 @@ from trilogy.core.common_models import (
     merge_datatypes,
     TupleWrapper,
     arg_to_datatype,
+    arg_to_purpose,
     TypedSentinal,
     Reference,
     Namespaced,
@@ -252,7 +253,6 @@ class Grain(Namespaced, Reference, BaseModel):
 
     @field_validator("components", mode="before")
     def component_validator(cls, v, info: ValidationInfo):
-        from trilogy.core.author_models import ConceptRef, Concept
         output = set()
         if isinstance(v, list):
             for vc in v:
@@ -467,13 +467,17 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             AggregateWrapper,
         ]
     ] = None
-    derivation: Derivation = Derivation.UNKNOWN
+    derivation: Derivation = Field(default=Derivation.UNKNOWN, validate_default=True)
     granularity: Granularity = Granularity.MULTI_ROW
 
 
     # grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
+
+    def __init__(self, **data):
+        super().__init__(**data)
+
 
     def duplicate(self) -> Concept:
         return self.model_copy(deep=True)
@@ -484,11 +488,25 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             del self.address
         except AttributeError:
             pass
+
     @field_validator("derivation", mode="before")
     def validate_derivation(cls, v, values):
-
-        if not values.data.get("lineage"):
+        lineage = values.data.get("lineage")
+        if not lineage:
             return Derivation.ROOT
+        if isinstance(lineage, RowsetItem):
+            return Derivation.ROWSET
+        if isinstance(lineage, MultiSelectLineage):
+            return Derivation.MULTISELECT
+        if isinstance(lineage, Function):
+            # TODO: can we auto-infer this without duplication?
+            assert v in (Derivation.BASIC, Derivation.AGGREGATE, Derivation.CONSTANT, Derivation.UNNEST)
+        if isinstance(lineage, WindowItem):
+            return Derivation.WINDOW
+        if isinstance(lineage, FilterItem):
+            return Derivation.FILTER
+        if isinstance(lineage, AggregateWrapper):
+            return Derivation.AGGREGATE
         return v
     
     @field_validator("namespace", mode="plain")
@@ -526,7 +544,7 @@ class Concept(Concrete, Reference, Namespaced, SelectContext, TypedSentinal, Bas
             name=name or self.name,
             datatype=self.datatype,
             purpose=self.purpose,
-                    derivation=self.derivation,
+            derivation=self.derivation,
             metadata=self.metadata,
             lineage=self.lineage,
             grain=grain if grain else Grain(components=set()),
@@ -1106,7 +1124,7 @@ class AggregateWrapper(Reference, Namespaced, BaseModel):
         return AggregateWrapper(
             function=self.function.with_namespace(namespace),
             by=(
-                set([address_with_namespace(c, namespace) for c in self.by])
+                set([c.with_namespace(namespace) for c in self.by])
                 if self.by
                 else set()
             ),
@@ -1176,6 +1194,10 @@ class RowsetItem(Reference, Namespaced, BaseModel):
 class Parenthetical(Reference, TypedSentinal, Namespaced, BaseModel):
     content: "Expr"
 
+    @property
+    def concept_arguments(self) -> List[ConceptRef]:
+        return get_concept_ref_arguments(self.content)
+
     def with_namespace(self, namespace: str) -> "Parenthetical":
         return Parenthetical(content=self.content.with_namespace(namespace))
 
@@ -1185,6 +1207,10 @@ class Parenthetical(Reference, TypedSentinal, Namespaced, BaseModel):
     @property
     def datatype(self)->DataType:
         return arg_to_datatype(self.content)
+    
+    @property
+    def purpose(self)->Purpose:
+        return arg_to_purpose(self.content)
 
 
 class WindowItemOver(Reference, BaseModel):
@@ -1679,70 +1705,7 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
 
-    @classmethod
-    def create_select_context(cls, select:BoundSelectStatement, environment:BoundEnvironment):
-        for parse_pass in [
-                1,
-            ]:
-                # the first pass will result in all concepts being defined
-                # the second will get grains appropriately
-                # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
-                # until after the first pass, and so don't know the grain of a
-                if parse_pass == 1:
-                    grain = BoundGrain.from_concepts(
-                        [
-                            x.content
-                            for x in select.selection
-                            if isinstance(x.content, BoundConcept)
-                        ],
-                        where_clause=select.where_clause,
-                    )
-                if parse_pass == 2:
-                    grain = BoundGrain.from_concepts(
-                        select.output_components, where_clause=select.where_clause
-                    )
-                grain = BoundGrain.from_concepts(
-                        select.output_components, where_clause=select.where_clause
-                    )
-                select.grain = grain
-                pass_grain = grain
-                for item in select.selection:
-                    # we don't know the grain of an aggregate at assignment time
-                    # so rebuild at this point in the tree
-                    # TODO: simplify
-                    if isinstance(item.content, BoundConceptTransform):
-                        new_concept = item.content.output.with_select_context(
-                            select.local_concepts,
-                            # the first pass grain will be incorrect
-                            pass_grain,
-                            environment=environment,
-                        )
-                        select.local_concepts[new_concept.address] = new_concept
-                        item.content.output = new_concept
-                    elif isinstance(item.content, BoundConcept):
-                        
-                        # Sometimes cached values here don't have the latest info
-                        # but we can't just use environment, as it might not have the right grain.
-                        item.content = item.content.with_select_context(
-                            select.local_concepts,
-                            pass_grain,
-                            environment=environment,
-                        )
-                        select.local_concepts[item.content.address] = item.content
-                        
-
-        if select.order_by:
-            select.order_by = select.order_by.with_select_context(
-                local_concepts=select.local_concepts,
-                grain=select.grain,
-                environment=environment,
-            )
-        if select.having_clause:
-            select.having_clause = select.having_clause.with_select_context(
-                local_concepts=select.local_concepts,
-                grain=select.grain,
-                environment=environment,
-            )
+    
         
 
 
@@ -1762,7 +1725,7 @@ class SelectStatement(HasUUID, Namespaced, Reference, SelectTypeMixin, BaseModel
                 {k: v.instantiate(environment) for k, v in self.local_concepts.items()}
             ),
         )
-        self.create_select_context(base, environment)
+        # self.create_select_context(base, environment)
         return base
 
     @classmethod
@@ -2360,7 +2323,6 @@ class Environment(BaseModel):
     environment_config: EnvironmentOptions = Field(default_factory=EnvironmentOptions)
     version: str = Field(default_factory=get_version)
     cte_name_map: Dict[str, str] = Field(default_factory=dict)
-    materialized_concepts: set[str] = Field(default_factory=set)
     alias_origin_lookup: Dict[str, Concept] = Field(default_factory=dict)
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
@@ -2398,7 +2360,6 @@ class Environment(BaseModel):
             environment_config=self.environment_config,
             version=self.version,
             cte_name_map=dict(self.cte_name_map),
-            materialized_concepts=set(self.materialized_concepts),
             alias_origin_lookup={
                 k: v.duplicate() for k, v in self.alias_origin_lookup.items()
             },
@@ -2755,6 +2716,8 @@ class Environment(BaseModel):
         replacements = {}
 
         # exit early if we've run this
+        if source.address == target.address:
+            return False
         if source.address in self.alias_origin_lookup and not force:
             if self.concepts[source.address] == target:
                 return False

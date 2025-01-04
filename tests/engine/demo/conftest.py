@@ -9,7 +9,6 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.functions import FunctionFactory, create_function_derived_concept
 from trilogy.core.common_models import arg_to_datatype, args_to_output_purpose
 from trilogy.core.execute_models import (
     DataType,
@@ -134,15 +133,16 @@ def setup_richest_environment(env: Environment):
     )
     env.add_concept(name)
     split_name = create_function_derived_concept(
-        "split_name", namespace, FunctionType.SPLIT, [name, " "], environment=env
+        "split_name", namespace=namespace, operator=FunctionType.SPLIT, arguments=[name, " "], environment=env
     )
     env.add_concept(split_name)
     last_name = create_function_derived_concept(
         "last_name",
-        namespace,
+
         FunctionType.INDEX_ACCESS,
         [split_name, -1],
         environment=env,
+        namespace=namespace,
     )
     assert last_name.grain.components == {'local.full_name'}
 
@@ -228,30 +228,19 @@ def setup_titanic_distributed(env: Environment):
     env.add_concept(name)
     env.add_concept(id)
     split_name = create_function_derived_concept(
-        "split_name", namespace, FunctionType.SPLIT, [name, ","], environment=env
+        "split_name",FunctionType.SPLIT, [name, ","], environment=env, namespace= namespace, 
     )
 
     assert split_name.keys == {
         id.address,
     }
-    last_name = Concept(
-        name="last_name",
-        namespace=namespace,
-        purpose=Purpose.PROPERTY,
-        datatype=DataType.STRING,
-        keys=(id.address,),
-        lineage=Function(
-            operator=FunctionType.INDEX_ACCESS,
-            arguments=[
-                split_name,
-                1,
-            ],
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            arg_count=2,
-        ),
+    last_name = create_function_derived_concept(
+        "last_name", FunctionType.INDEX_ACCESS, [split_name, 1], environment=env, namespace= namespace,
     )
-
+    assert last_name.keys == {
+        id.address,
+    }
+    # assert last_name.instantiate(env).with_default_grain().grain.components == {id.address}
     for x in [
         id,
         age,
@@ -261,12 +250,13 @@ def setup_titanic_distributed(env: Environment):
         fare,
         cabin,
         embarked,
+        split_name,
         last_name,
         class_id,
     ]:
         env.add_concept(x)
     survived_count = create_function_derived_concept(
-        "survived_count", namespace, FunctionType.SUM, [survived], environment=env
+        "survived_count", FunctionType.SUM, [survived], environment=env, namespace= namespace,
     )
     env.add_concept(survived_count)
 

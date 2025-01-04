@@ -3,6 +3,7 @@ from math import ceil
 from typing import Dict, List, Optional, Set, Tuple, Union
 
 from trilogy.constants import CONFIG, logger
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
     BooleanOperator,
@@ -38,7 +39,6 @@ from trilogy.core.execute_models import (
     BoundMultiSelectStatement,
     ProcessedCopyStatement,
     ProcessedQuery,
-    ProcessedQueryPersist,
     QueryDatasource,
     UnionCTE,
     UnnestJoin,
@@ -391,6 +391,9 @@ def get_query_node(
     graph = generate_graph(environment)
     if isinstance(statement, Reference):
         statement = statement.instantiate(environment)
+    
+    if isinstance(statement, BoundSelectStatement):
+        statement = statement.with_select_context(environment)
 
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")

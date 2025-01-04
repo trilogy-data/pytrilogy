@@ -1,5 +1,6 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.authoring import Environment, Grain
+from trilogy.authoring import Environment
+from trilogy.core.execute_models import BoundGrain
 from trilogy.core.processing.concept_strategies_v3 import (
     GroupNode,
     search_concepts,
@@ -7,10 +8,11 @@ from trilogy.core.processing.concept_strategies_v3 import (
 from trilogy.core.processing.node_generators import gen_group_node
 
 
-def test_group_node(test_environment, test_environment_graph):
-    total_revenue = test_environment.concepts["total_revenue"]
-    revenue = test_environment.concepts["revenue"]
-    category = test_environment.concepts["category_name"]
+def test_group_node(test_environment:Environment, test_environment_graph):
+    test_environment = test_environment.instantiate()
+    total_revenue = test_environment.concepts["local.total_revenue"]
+    revenue = test_environment.concepts["local.revenue"]
+    category = test_environment.concepts["local.category_name"]
     group_node = GroupNode(
         output_concepts=[total_revenue, category],
         input_concepts=[category, revenue],
@@ -28,6 +30,7 @@ def test_group_node(test_environment, test_environment_graph):
 
 
 def test_group_node_property(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.instantiate()
     sum_name_length = test_environment.concepts["category_name_length_sum"]
 
     group_node = gen_group_node(
@@ -50,9 +53,9 @@ def test_group_node_property(test_environment: Environment, test_environment_gra
 
 
 def test_group_node_property_all(test_environment: Environment, test_environment_graph):
+    test_environment = test_environment.instantiate()
     sum_name_length = test_environment.concepts["category_name_length_sum"]
-    all_rows = test_environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]
-    sum_name_length_all_rows = sum_name_length.with_grain(Grain(components=[all_rows]))
+    sum_name_length_all_rows = sum_name_length.with_grain(BoundGrain(components=set([f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"])))
     group_node = gen_group_node(
         sum_name_length_all_rows,
         local_optional=[],

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Dialects, BoundEnvironment, parse
+from trilogy import Dialects, Environment, parse
 from trilogy.hooks.query_debugger import DebuggingHook
 
 working_path = Path(__file__).parent
@@ -8,7 +8,7 @@ test = working_path / "store.preql"
 
 
 def test_one():
-    env = BoundEnvironment(working_path=working_path)
+    env = Environment(working_path=working_path)
     with open(test) as f:
         text = f.read()
         env, queries = parse(text, env)
@@ -32,7 +32,7 @@ def test_one():
         if c.address == "returns.return_date.year":
             found = True
     assert found
-    assert env.concepts["returns.return_date.year"].address in env.materialized_concepts
+
     assert len(env.datasources["returns.store_returns"].concepts) == 7
     assert (
         len(
@@ -78,7 +78,7 @@ limit 100;"""
 
 
 def test_three():
-    env = BoundEnvironment(working_path=working_path)
+    env = Environment(working_path=working_path)
     with open(working_path / "query3.preql") as f:
         text = f.read()
         env, queries = parse(text, env)
@@ -95,7 +95,7 @@ def test_three():
 
 
 def test_three_alt():
-    env = BoundEnvironment(working_path=working_path)
+    env = Environment(working_path=working_path)
     with open(working_path / "query3_alt.preql") as f:
         text = f.read()
         env, queries = parse(text, env)

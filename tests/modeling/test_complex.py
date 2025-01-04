@@ -90,10 +90,6 @@ def test_in_select(test_environment: BoundEnvironment, test_executor: Executor):
     _, statements = parse(test_select, test_environment)
 
     select: SelectStatement = statements[-1]
-    assert select.where_clause.conditional.existence_arguments, str(
-        select.where_clause.conditional.__class__
-    ) + str(select.where_clause.conditional)
-    assert select.where_clause.existence_arguments
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 2

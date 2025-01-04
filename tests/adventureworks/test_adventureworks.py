@@ -4,11 +4,11 @@ from os.path import dirname, join
 import pytest
 
 from trilogy import Executor
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.author_models import SelectStatement, Grain, Concept, Environment
 from trilogy.core.execute_models import (
     ProcessedQuery,
-    ProcessedQueryPersist,
     QueryDatasource,
 )
 from trilogy.core.processing.concept_strategies_v3 import search_concepts

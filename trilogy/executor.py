@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.enums import Granularity, IOType
 from trilogy.core.execute_models import (
     BoundConcept,
@@ -19,7 +20,6 @@ from trilogy.core.execute_models import (
     MapWrapper,
     ProcessedCopyStatement,
     ProcessedQuery,
-    ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
 )
@@ -33,6 +33,7 @@ from trilogy.core.author_models import (
     ShowStatement,
         ConceptDeclarationStatement,
         Environment,
+        Datasource,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects
@@ -145,6 +146,16 @@ class Executor(object):
                 }
             ],
             ["address", "type", "purpose", "derivation"],
+        )
+    @execute_query.register
+    def _(self, query: Datasource) -> CursorResult:
+        return MockResult(
+            [
+                {
+                    "name": query.name,
+                }
+            ],
+            ["name"],
         )
 
     @execute_query.register

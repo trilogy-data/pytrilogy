@@ -6,53 +6,52 @@ from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Modifier, Purpose
-from trilogy.core.author_models import (BoundAlignClause,
-                                       AlignItem,
-                                       Function,
-                                       ConceptDeclarationStatement,
-                                       ConceptRef,
-                                       ConceptDerivation,
-                                       ConceptTransform,
-                                       CopyStatement,
-                                       MergeStatementV2,
-                                       MultiSelectStatement,
-                                       OrderBy,
-                                       OrderItem,
-                                       AggregateWrapper,
-                                       PersistStatement,
-                                       RawSQLStatement,
-                                       RowsetDerivationStatement,
-                                       SelectItem,
-                                       ConceptRef,
-                                       Grain,
-                                       SelectStatement)
-from trilogy.core.execute_models import (
+from trilogy.core.author_models import (
+    AlignClause,
+    AlignItem,
+    Function,
+    ConceptDeclarationStatement,
+    ConceptRef,
+    ConceptDerivation,
+    ConceptTransform,
+    CopyStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    OrderBy,
+    OrderItem,
+    AggregateWrapper,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectItem,
+    ConceptRef,
+    Grain,
+    SelectStatement,
     Address,
-    BoundAggregateWrapper,
-    BoundCaseElse,
-    BoundCaseWhen,
-    BoundColumnAssignment,
-    BoundComparison,
-    BoundConcept,
-    BoundConditional,
-    BoundDatasource,
+    AggregateWrapper,
+    CaseElse,
+    CaseWhen,
+    ColumnAssignment,
+    Comparison,
+    Concept,
+    Conditional,
+    Datasource,
     DataType,
-    BoundEnvironment,
-    BoundFilterItem,
-    BoundFunction,
+    Environment,
+    FilterItem,
+    Function,
     ImportStatement,
     ListType,
     ListWrapper,
     NumericType,
-    BoundOrderBy,
-    BoundOrderItem,
-    BoundParenthetical,
-    Query,
+    OrderBy,
+    OrderItem,
+    Parenthetical,
     RawColumnExpr,
-    BoundSubselectComparison,
+    SubselectComparison,
     TupleWrapper,
-    BoundWhereClause,
-    BoundWindowItem,
+    WhereClause,
+    WindowItem,
 )
 
 QUERY_TEMPLATE = Template(
@@ -72,19 +71,18 @@ LIMIT {{ limit }}{% endif %};"""
 
 class Renderer:
 
-    def __init__(self, environment: BoundEnvironment):
+    def __init__(self, environment: Environment):
         self.environment = environment
 
-    
     @singledispatchmethod
     def to_string(self, arg):
         raise NotImplementedError("Cannot render type {}".format(type(arg)))
 
     @to_string.register
-    def _(self, arg: BoundEnvironment):
+    def _(self, arg: Environment):
         output_concepts = []
-        constants: list[BoundConcept] = []
-        keys: list[BoundConcept] = []
+        constants: list[Concept] = []
+        keys: list[Concept] = []
         properties = defaultdict(list)
         metrics = []
         # first, keys
@@ -150,7 +148,7 @@ class Renderer:
         return final
 
     @to_string.register
-    def _(self, arg: BoundDatasource):
+    def _(self, arg: Datasource):
         assignments = ",\n    ".join([self.to_string(x) for x in arg.columns])
         if arg.non_partial_for:
             non_partial = f"\ncomplete where {self.to_string(arg.non_partial_for)}"
@@ -167,7 +165,7 @@ class Renderer:
 
         base += ";"
         return base
-    
+
     @to_string.register
     def _(self, arg: "ConceptRef"):
         return self.to_string(arg.instantiate(self.environment))
@@ -193,17 +191,17 @@ class Renderer:
         return f"""rowset {arg.name} <- {self.to_string(arg.select)}"""
 
     @to_string.register
-    def _(self, arg: "BoundCaseWhen"):
+    def _(self, arg: "CaseWhen"):
         return (
             f"""WHEN {self.to_string(arg.comparison)} THEN {self.to_string(arg.expr)}"""
         )
 
     @to_string.register
-    def _(self, arg: "BoundCaseElse"):
+    def _(self, arg: "CaseElse"):
         return f"""ELSE {self.to_string(arg.expr)}"""
 
     @to_string.register
-    def _(self, arg: "BoundParenthetical"):
+    def _(self, arg: "Parenthetical"):
         return f"""({self.to_string(arg.content)})"""
 
     @to_string.register
@@ -243,7 +241,7 @@ class Renderer:
         return arg.value
 
     @to_string.register
-    def _(self, arg: "BoundColumnAssignment"):
+    def _(self, arg: "ColumnAssignment"):
         if arg.modifiers:
             modifiers = "".join(
                 [self.to_string(modifier) for modifier in arg.modifiers]
@@ -358,7 +356,7 @@ class Renderer:
         return f"COPY INTO {arg.target_type.value.upper()} '{arg.target}' FROM {self.to_string(arg.select)}"
 
     @to_string.register
-    def _(self, arg: BoundAlignClause):
+    def _(self, arg: AlignClause):
         return "\nALIGN\n\t" + ",\n\t".join([self.to_string(c) for c in arg.items])
 
     @to_string.register
@@ -370,30 +368,30 @@ class Renderer:
         return ",\n".join([self.to_string(c) for c in arg.items])
 
     @to_string.register
-    def _(self, arg: BoundOrderBy):
+    def _(self, arg: OrderBy):
         return ",\n".join([self.to_string(c) for c in arg.items])
 
     @to_string.register
-    def _(self, arg: "BoundWhereClause"):
+    def _(self, arg: "WhereClause"):
         base = f"{self.to_string(arg.conditional)}"
         if base[0] == "(" and base[-1] == ")":
             return base[1:-1]
         return base
 
     @to_string.register
-    def _(self, arg: "BoundConditional"):
+    def _(self, arg: "Conditional"):
         return f"({self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)})"
 
     @to_string.register
-    def _(self, arg: "BoundSubselectComparison"):
+    def _(self, arg: "SubselectComparison"):
         return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
 
     @to_string.register
-    def _(self, arg: "BoundComparison"):
+    def _(self, arg: "Comparison"):
         return f"{self.to_string(arg.left)} {arg.operator.value} {self.to_string(arg.right)}"
 
     @to_string.register
-    def _(self, arg: "BoundWindowItem"):
+    def _(self, arg: "WindowItem"):
         over = ",".join(self.to_string(c) for c in arg.over)
         order = ",".join(self.to_string(c) for c in arg.order_by)
         if over and order:
@@ -405,7 +403,7 @@ class Renderer:
         return f"{arg.type.value} {self.to_string(arg.content)} by {order}"
 
     @to_string.register
-    def _(self, arg: "BoundFilterItem"):
+    def _(self, arg: "FilterItem"):
 
         return f"filter {self.to_string(arg.content)} where {self.to_string(arg.where)}"
 
@@ -429,7 +427,7 @@ class Renderer:
         return f"import {path} as {arg.alias};"
 
     @to_string.register
-    def _(self, arg: "BoundConcept"):
+    def _(self, arg: "Concept"):
         if arg.name.startswith(VIRTUAL_CONCEPT_PREFIX):
             return self.to_string(arg.lineage)
         if arg.namespace == DEFAULT_NAMESPACE:
@@ -443,9 +441,9 @@ class Renderer:
     @to_string.register
     def _(self, arg: "Function"):
         return self.to_string(arg.instantiate(self.environment))
-    
+
     @to_string.register
-    def _(self, arg: "BoundFunction"):
+    def _(self, arg: "Function"):
         args = [self.to_string(c) for c in arg.arguments]
 
         if arg.operator == FunctionType.SUBTRACT:
@@ -476,24 +474,24 @@ class Renderer:
         return f"{arg.operator.value}({inputs})"
 
     @to_string.register
-    def _(self, arg: "BoundOrderItem"):
+    def _(self, arg: "OrderItem"):
         return f"{self.to_string(arg.expr)} {arg.order.value}"
-    
+
     @to_string.register
     def _(self, arg: "OrderItem"):
         return f"{self.to_string(arg.expr.instantiate(self.environment))} {arg.order.value}"
-    
+
     @to_string.register
     def _(self, arg: "AggregateWrapper"):
         return f"{self.to_string(arg.instantiate(self.environment))}"
-    
+
     @to_string.register
-    def _(self, arg:tuple):
-        content =", ".join([self.to_string(x) for x in arg])
+    def _(self, arg: tuple):
+        content = ", ".join([self.to_string(x) for x in arg])
         return f"({content})"
-    
+
     @to_string.register
-    def _(self, arg: BoundAggregateWrapper):
+    def _(self, arg: AggregateWrapper):
         if arg.by:
             by = ", ".join([self.to_string(x) for x in arg.by])
             return f"{self.to_string(arg.function)} by {by}"
@@ -535,9 +533,9 @@ class Renderer:
         return f"[{base}]"
 
 
-def render_query(query: "SelectStatement", environment:BoundEnvironment) -> str:
+def render_query(query: "SelectStatement", environment: Environment) -> str:
     return Renderer(environment).to_string(query)
 
 
-def render_environment(environment: "BoundEnvironment") -> str:
+def render_environment(environment: "Environment") -> str:
     return Renderer(environment).to_string(environment)

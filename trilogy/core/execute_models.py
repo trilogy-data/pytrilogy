@@ -50,6 +50,7 @@ from trilogy.constants import (
     MagicConstants,
     logger,
 )
+
 from trilogy.core.common_models import (
     DataType,
     Metadata,
@@ -234,6 +235,12 @@ class BoundConcept(SelectContext, BaseModel):
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.derivation == Derivation.UNKNOWN:
+            raise SyntaxError(f"Derivation cannot be unknown for bound concept {self.address}")
+        
+
     @property
     def reference(self):
         from trilogy.core.author_models import ConceptRef
@@ -330,30 +337,38 @@ class BoundConcept(SelectContext, BaseModel):
         environment: Environment,
     ) -> BoundConcept:
         new_lineage = self.lineage
-        final_grain = self.grain if not self.grain.abstract else grain
+        if isinstance(new_lineage, SelectContext):
+            new_lineage = new_lineage.with_select_context(local_concepts, grain, environment)
+        final_grain = self.grain or grain
         new_granularity = self.granularity
-        keys = self.keys if self.keys else None
+        keys = self.keys if self.keys else set()
+
         if (
             self.is_aggregate
             and isinstance(new_lineage, BoundFunction)
-            and grain.components
         ):
+            grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage = BoundAggregateWrapper(
                 function=new_lineage,
-                by=set([environment.concepts[x] for x in grain.components]),
+                by=set(grain_components),
             )
             final_grain = grain
-            keys = grain.components
+            keys = set(grain.components)
             new_granularity = Granularity.MULTI_ROW
+        # elif self.is_aggregate and isinstance(new_lineage, BoundAggregateWrapper) and new_lineage.by:
+        #     final_grain = BoundGrain(components=set([x.address for x in new_lineage.by]))
         elif (
             self.is_aggregate
+            and not keys
             and isinstance(new_lineage, BoundAggregateWrapper)
-            and not new_lineage.by
+
         ):
-            new_lineage.by = set([environment.concepts[x] for x in grain.components])
-            keys = grain.components
+            keys = set([x.address for x in new_lineage.by])
             new_granularity = Granularity.MULTI_ROW
-            
+
+        if isinstance(new_lineage, BoundAggregateWrapper) and not final_grain.components:
+            final_grain = BoundGrain(components={c.address for c in new_lineage.by})
+           
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -496,7 +511,22 @@ class BoundGrain(BaseModel):
             },
             where_clause=where_clause,
         )
-
+    @field_validator("components", mode="before")
+    def component_validator(cls, v, info: ValidationInfo):
+        output = set()
+        if isinstance(v, list):
+            for vc in v:
+                if isinstance(vc, (BoundConcept,)):
+                    output.add(vc.address)
+                else:
+                    output.add(vc)
+        else:
+            output = v
+        if not isinstance(output, set):
+            raise ValueError(f"Invalid grain component {output}, is not set")
+        if not all(isinstance(x, str) for x in output):
+            raise ValueError(f"Invalid component {output}")
+        return output
     def __add__(self, other: "BoundGrain") -> "BoundGrain":
         where = self.where_clause
         if other.where_clause:
@@ -2161,10 +2191,52 @@ class BoundSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     ] = Field(default_factory=BoundEnvironmentConceptDict)
 
 
+    def with_select_context(self:BoundSelectStatement, environment:BoundEnvironment):
+        grain = BoundGrain.from_concepts(
+                self.output_components, where_clause=self.where_clause
+            )
+        self.grain = grain
+        pass_grain = grain
+        for item in self.selection:
+            # we don't know the grain of an aggregate at assignment time
+            # so rebuild at this point in the tree
+            # TODO: simplify
+            if isinstance(item.content, BoundConceptTransform):
+                new_concept = item.content.output.with_select_context(
+                    self.local_concepts,
+                    # the first pass grain will be incorrect
+                    pass_grain,
+                    environment=environment,
+                )
+                self.local_concepts[new_concept.address] = new_concept
+                item.content.output = new_concept
+            elif isinstance(item.content, BoundConcept):
+                
+                # Sometimes cached values here don't have the latest info
+                # but we can't just use environment, as it might not have the right grain.
+                item.content = item.content.with_select_context(
+                    self.local_concepts,
+                    pass_grain,
+                    environment=environment,
+                )
+                self.local_concepts[item.content.address] = item.content
+                        
+
+        if self.order_by:
+            self.order_by = self.order_by.with_select_context(
+                local_concepts=self.local_concepts,
+                grain=self.grain,
+                environment=environment,
+            )
+        if self.having_clause:
+            self.having_clause = self.having_clause.with_select_context(
+                local_concepts=self.local_concepts,
+                grain=self.grain,
+                environment=environment,
+            )
+        return self
 
     def __str__(self):
-        from trilogy.parsing.render import render_query
-
         output = ", ".join([str(x) for x in self.selection])
         return f"SelectStatement<{output}> where {self.where_clause} having {self.having_clause} order by {self.order_by} limit {self.limit}"
 
@@ -3078,7 +3150,25 @@ class BoundConditional(
         else:
             chunks.append(self)
         return chunks
+    
 
+    def with_select_context(
+        self, local_concepts: dict[str, BoundConcept], grain: BoundGrain, environment: Environment
+    ):
+        return self.__class__(
+            left=(
+                self.left.with_select_context(local_concepts, grain, environment)
+                if isinstance(self.left, SelectContext)
+                else self.left
+            ),
+            # the right side does NOT need to inherit select grain
+            right=(
+                self.right.with_select_context(local_concepts, grain, environment)
+                if isinstance(self.right, SelectContext)
+                else self.right
+            ),
+            operator=self.operator,
+        )
 
 class BoundAggregateWrapper(SelectContext, BaseModel):
     function: BoundFunction
@@ -3114,6 +3204,19 @@ class BoundAggregateWrapper(SelectContext, BaseModel):
     @property
     def arguments(self):
         return self.function.arguments
+    
+    def with_select_context(
+        self, local_concepts: dict[str, BoundConcept], grain: BoundGrain, environment: Environment
+    ) -> BoundAggregateWrapper:
+        if not self.by:
+            by = [environment.concepts[c] for c in grain.components]
+        else:
+            by = [
+                x.with_select_context(local_concepts, grain, environment)
+                for x in self.by
+            ]
+        parent = self.function.with_select_context(local_concepts, grain, environment)
+        return BoundAggregateWrapper(function=parent, by=by)
 
 
 class BoundWhereClause(ConceptArgs, Namespaced, SelectContext, BaseModel):
@@ -3214,15 +3317,6 @@ class ProcessedQuery(BaseModel):
     def hidden_columns(self):
         return self.base.hidden_concepts
 
-
-class PersistQueryMixin(BaseModel):
-    output_to: MaterializedDataset
-    datasource: Any
-    # base:Dataset
-
-
-class ProcessedQueryPersist(ProcessedQuery, PersistQueryMixin):
-    pass
 
 
 class CopyQueryMixin(BaseModel):
@@ -3427,7 +3521,7 @@ CTE.model_rebuild()
 BaseJoin.model_rebuild()
 QueryDatasource.model_rebuild()
 ProcessedQuery.model_rebuild()
-ProcessedQueryPersist.model_rebuild()
+
 InstantiatedUnnestJoin.model_rebuild()
 
 BoundFunction.model_rebuild()

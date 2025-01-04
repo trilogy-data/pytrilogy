@@ -12,7 +12,7 @@ from trilogy.core.enums import (
 )
 
 from trilogy.core.author_models import (
-    BoundAlignClause,
+    AlignClause,
     ConceptDeclarationStatement,
     CopyStatement,
     MergeStatementV2,
@@ -23,38 +23,36 @@ from trilogy.core.author_models import (
     SelectItem,
     SelectStatement,
     OrderBy,
-    BoundOrderBy,
-    BoundOrderItem,
+    OrderBy,
+    OrderItem,
     OrderItem,
     AlignItem,
-    BoundAlignClause,
+    AlignClause,
     ColumnAssignment,
        Grain,
-)
-from trilogy.core.execute_models import (
     Address,
     # AlignClause,
-    BoundCaseElse,
-    BoundCaseWhen,
-    BoundColumnAssignment,
-    BoundComparison,
-    BoundConcept,
-    BoundConditional,
+    CaseElse,
+    CaseWhen,
+    ColumnAssignment,
+    Comparison,
+    Concept,
+    Conditional,
     # CopyStatement,
-    BoundDatasource,
+    Datasource,
     DataType,
-    BoundFunction,
+    Function,
  
     ImportStatement,
     ListType,
     ListWrapper,
     NumericType,
-    BoundOrderBy,
+    OrderBy,
     Ordering,
     # PersistStatement,
     Purpose,
     TupleWrapper,
-    BoundWhereClause,
+    WhereClause,
 )
 from trilogy.parsing.render import Renderer, render_environment, render_query
 
@@ -121,7 +119,7 @@ def test_multi_select(test_environment):
                 where_clause=None,
             ),
         ],
-        align=BoundAlignClause(
+        align=AlignClause(
             items=[
                 AlignItem(
                     alias="merge", concepts=[test_environment.concepts["order_id"].reference]
@@ -157,14 +155,14 @@ ORDER BY
 def test_full_query(test_environment):
     query = SelectStatement(
         selection=[test_environment.concepts["order_id"]],
-        where_clause=BoundWhereClause(
-            conditional=BoundConditional(
-                left=BoundComparison(
+        where_clause=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
                     left=test_environment.concepts["order_id"],
                     right=123,
                     operator=ComparisonOperator.EQ,
                 ),
-                right=BoundComparison(
+                right=Comparison(
                     left=test_environment.concepts["order_id"],
                     right=456,
                     operator=ComparisonOperator.EQ,
@@ -267,7 +265,7 @@ def test_render_list_wrapper(test_environment: Environment):
 
 def test_render_constant(test_environment: Environment):
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[[1, 2, 3, 4]],
             operator=FunctionType.CONSTANT,
             output_purpose=Purpose.CONSTANT,
@@ -308,7 +306,7 @@ ORDER BY
 
 
 def test_render_case(test_environment: Environment):
-    case_else = BoundCaseElse(
+    case_else = CaseElse(
         expr=test_environment.concepts["order_id"],
     )
 
@@ -317,9 +315,9 @@ def test_render_case(test_environment: Environment):
 
     test = Renderer(test_environment).to_string(case_else)
     assert test == "ELSE order_id"
-    case_when = BoundCaseWhen(
+    case_when = CaseWhen(
         expr=test_environment.concepts["order_id"],
-        comparison=BoundComparison(
+        comparison=Comparison(
             left=test_environment.concepts["order_id"],
             operator=ComparisonOperator.EQ,
             right=123,
@@ -365,7 +363,7 @@ END;"""
 def test_render_math():
     # addition
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[1, 2],
             operator=FunctionType.ADD,
             output_purpose=Purpose.CONSTANT,
@@ -378,7 +376,7 @@ def test_render_math():
 
     # subtraction
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[1, 2],
             operator=FunctionType.SUBTRACT,
             output_purpose=Purpose.CONSTANT,
@@ -391,7 +389,7 @@ def test_render_math():
 
     # multiplication
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[1, 2],
             operator=FunctionType.MULTIPLY,
             output_purpose=Purpose.CONSTANT,
@@ -404,7 +402,7 @@ def test_render_math():
 
     # division
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[1, 2],
             operator=FunctionType.DIVIDE,
             output_purpose=Purpose.CONSTANT,
@@ -416,7 +414,7 @@ def test_render_math():
     assert test == "1 / 2"
 
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[1, 2, 3],
             operator=FunctionType.DIVIDE,
             output_purpose=Purpose.CONSTANT,
@@ -430,11 +428,11 @@ def test_render_math():
 
 def test_render_anon(test_environment: Environment):
     test = Renderer().to_string(
-        BoundConcept(
+        Concept(
             name="materialized",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
-            lineage=BoundFunction(
+            lineage=Function(
                 arguments=[[1, 2, 3, 4]],
                 operator=FunctionType.CONSTANT,
                 output_purpose=Purpose.CONSTANT,
@@ -446,11 +444,11 @@ def test_render_anon(test_environment: Environment):
     assert test == "materialized"
 
     test = Renderer().to_string(
-        BoundConcept(
+        Concept(
             name=f"{VIRTUAL_CONCEPT_PREFIX}_test",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
-            lineage=BoundFunction(
+            lineage=Function(
                 arguments=[[1, 2, 3, 4]],
                 operator=FunctionType.CONSTANT,
                 output_purpose=Purpose.CONSTANT,
@@ -466,11 +464,11 @@ def test_render_dates():
 
     now = datetime.now()
     test = Renderer().to_string(
-        BoundConcept(
+        Concept(
             name=f"{VIRTUAL_CONCEPT_PREFIX}_materialized",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
-            lineage=BoundFunction(
+            lineage=Function(
                 arguments=[now],
                 operator=FunctionType.CONSTANT,
                 output_purpose=Purpose.CONSTANT,
@@ -483,11 +481,11 @@ def test_render_dates():
 
     today = date.today()
     test = Renderer().to_string(
-        BoundConcept(
+        Concept(
             name=f"{VIRTUAL_CONCEPT_PREFIX}_materialized",
             purpose=Purpose.CONSTANT,
             datatype=DataType.INTEGER,
-            lineage=BoundFunction(
+            lineage=Function(
                 arguments=[today],
                 operator=FunctionType.CONSTANT,
                 output_purpose=Purpose.CONSTANT,
@@ -503,11 +501,11 @@ def test_render_merge():
     test = Renderer().to_string(
         MergeStatementV2(
             sources=[
-                BoundConcept(
+                Concept(
                     name="materialized",
                     purpose=Purpose.CONSTANT,
                     datatype=DataType.INTEGER,
-                    lineage=BoundFunction(
+                    lineage=Function(
                         arguments=[[1, 2, 3, 4]],
                         operator=FunctionType.CONSTANT,
                         output_purpose=Purpose.CONSTANT,
@@ -516,12 +514,12 @@ def test_render_merge():
                 )
             ],
             targets={
-                "local.materialized": BoundConcept(
+                "local.materialized": Concept(
                     name="materialized",
                     purpose=Purpose.CONSTANT,
                     namespace="test",
                     datatype=DataType.INTEGER,
-                    lineage=BoundFunction(
+                    lineage=Function(
                         arguments=[[1, 2, 3, 4]],
                         operator=FunctionType.CONSTANT,
                         output_purpose=Purpose.CONSTANT,
@@ -557,9 +555,9 @@ def test_render_numeric():
 
 def test_render_index_access():
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[
-                BoundConcept(
+                Concept(
                     name="user_id",
                     purpose=Purpose.KEY,
                     datatype=DataType.INTEGER,
@@ -579,9 +577,9 @@ def test_render_index_access():
 
 def test_render_parenthetical():
     test = Renderer().to_string(
-        BoundFunction(
+        Function(
             arguments=[
-                BoundConcept(
+                Concept(
                     name="user_id",
                     purpose=Purpose.KEY,
                     datatype=DataType.INTEGER,
@@ -622,30 +620,30 @@ def test_render_import():
 
 
 def test_render_datasource():
-    user_id = BoundConcept(
+    user_id = Concept(
         name="user_id",
         purpose=Purpose.KEY,
         datatype=DataType.INTEGER,
         lineage=None,
     )
 
-    ds = BoundDatasource(
+    ds = Datasource(
         name="useful_data",
         columns=[
-            BoundColumnAssignment(
+            ColumnAssignment(
                 alias="user_id", concept=user_id, modifiers=[Modifier.PARTIAL]
             )
         ],
         address="customers.dim_customers",
         grain=Grain(components=[user_id]),
-        where=BoundWhereClause(
-            conditional=BoundConditional(
-                left=BoundComparison(
+        where=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
                     left=user_id,
                     right=123,
                     operator=ComparisonOperator.EQ,
                 ),
-                right=BoundComparison(
+                right=Comparison(
                     left=user_id,
                     right=456,
                     operator=ComparisonOperator.EQ,
@@ -653,8 +651,8 @@ def test_render_datasource():
                 operator=BooleanOperator.OR,
             ),
         ),
-        non_partial_for=BoundWhereClause(
-            conditional=BoundComparison(
+        non_partial_for=WhereClause(
+            conditional=Comparison(
                 left=user_id,
                 right=123,
                 operator=ComparisonOperator.EQ,
@@ -673,19 +671,19 @@ complete where user_id = 123
 address customers.dim_customers
 where user_id = 123 or user_id = 456;"""
     )
-    ds = BoundDatasource(
+    ds = Datasource(
         name="useful_data",
-        columns=[BoundColumnAssignment(alias="user_id", concept=user_id)],
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
         address=Address(is_query=True, location="SELECT * FROM test"),
         grain=Grain(components=[user_id]),
-        where=BoundWhereClause(
-            conditional=BoundConditional(
-                left=BoundComparison(
+        where=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
                     left=user_id,
                     right=123,
                     operator=ComparisonOperator.EQ,
                 ),
-                right=BoundComparison(
+                right=Comparison(
                     left=user_id,
                     right=456,
                     operator=ComparisonOperator.EQ,
@@ -750,19 +748,19 @@ address memory.date_dim;"""
 grain (id)
 address memory.date_dim;"""
     ), test
-    ds = BoundDatasource(
+    ds = Datasource(
         name="useful_data",
-        columns=[BoundColumnAssignment(alias="user_id", concept=user_id)],
+        columns=[ColumnAssignment(alias="user_id", concept=user_id)],
         address=Address(is_query=True, location="SELECT * FROM test"),
         grain=Grain(components=set()),
-        where=BoundWhereClause(
-            conditional=BoundConditional(
-                left=BoundComparison(
+        where=WhereClause(
+            conditional=Conditional(
+                left=Comparison(
                     left=user_id,
                     right=123,
                     operator=ComparisonOperator.EQ,
                 ),
-                right=BoundComparison(
+                right=Comparison(
                     left=user_id,
                     right=456,
                     operator=ComparisonOperator.EQ,
@@ -871,7 +869,7 @@ final_zips;
 
     final_zips: ConceptDeclarationStatement = commands[-2]
     assert isinstance(
-        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, BoundConcept
+        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept
     ), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
     rendered = Renderer().to_string(final_zips)
 

@@ -10,12 +10,11 @@ from trilogy.core.enums import (
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
 from trilogy.core.execute_models import (
-    BoundDatasource,
     DataType,
 )
 
 from trilogy.core.author_models import Concept, Function, OrderItem, WindowItem, Comparison, WhereClause, FilterItem, Datasource, ColumnAssignment, Grain
-
+from trilogy.core.functions import Count, CountDistinct, Max, Min, FunctionFactory, create_function_derived_concept
 
 @fixture(scope="session")
 def test_environment():
@@ -25,33 +24,33 @@ def test_environment():
     order_timestamp = Concept(
         name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
     )
-
-    order_count = Concept(
+    order_count = create_function_derived_concept(
         name="order_count",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.METRIC,
-        lineage=Count([order_id], env),
+        operator = FunctionType.COUNT,
+        arguments = [order_id],
+        environment=env,
     )
 
-    distinct_order_count = Concept(
+
+    distinct_order_count =  create_function_derived_concept(
         name="distinct_order_count",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.METRIC,
-        lineage=CountDistinct([order_id], env),
+        operator = FunctionType.COUNT_DISTINCT,
+        arguments = [order_id],
+          environment=env,
     )
 
-    max_order_id = Concept(
+    max_order_id = create_function_derived_concept(
         name="max_order_id",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.METRIC,
-        lineage=Max([order_id], env),
+        operator = FunctionType.MAX,
+        arguments = [order_id],
+          environment=env,
     )
 
-    min_order_id = Concept(
+    min_order_id = create_function_derived_concept(
         name="min_order_id",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.METRIC,
-        lineage=Min([order_id],env),
+        operator = FunctionType.MIN,
+        arguments = [order_id],
+          environment=env,
     )
 
     revenue = Concept(
@@ -62,17 +61,12 @@ def test_environment():
         grain=Grain(components=[order_id]),
     )
 
-    total_revenue = Concept(
+    total_revenue = create_function_derived_concept(
         name="total_revenue",
-        datatype=DataType.FLOAT,
-        purpose=Purpose.METRIC,
-        lineage=Function(
-            arguments=[revenue.reference],
-            output_datatype=DataType.FLOAT,
-            output_purpose=Purpose.METRIC,
-            operator=FunctionType.SUM,
-        ),
-    )
+        operator = FunctionType.SUM,
+        arguments = [revenue],
+        environment=env 
+    ) 
     product_id = Concept(
         name="product_id", datatype=DataType.INTEGER, purpose=Purpose.KEY
     )
@@ -88,31 +82,18 @@ def test_environment():
         keys={category_id.address},
     )
 
-    category_name_length = Concept(
+    category_name_length = create_function_derived_concept(
         name="category_name_length",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.PROPERTY,
-        grain=category_id,
-        lineage=Function(
-            arguments=[category_name.reference],
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            operator=FunctionType.LENGTH,
-        ),
-        keys={category_id.address},
+        operator = FunctionType.LENGTH,
+        arguments = [category_name],
+        environment=env,
     )
 
-    category_name_length_sum = Concept(
+    category_name_length_sum = create_function_derived_concept(
         name="category_name_length_sum",
-        datatype=DataType.INTEGER,
-        purpose=Purpose.METRIC,
-        grain=category_id,
-        lineage=Function(
-            arguments=[category_name_length.reference],
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
-            operator=FunctionType.SUM,
-        ),
+        operator = FunctionType.SUM,
+        arguments = [category_name_length],
+          environment=env,
     )
 
     product_revenue_rank = Concept(
@@ -155,7 +136,7 @@ def test_environment():
             ),
         ),
     )
-    test_revenue = BoundDatasource(
+    test_revenue = Datasource(
         name="revenue",
         columns=[
             ColumnAssignment(alias="revenue", concept=revenue),
@@ -167,7 +148,7 @@ def test_environment():
         grain=Grain(components=[order_id]),
     )
 
-    test_product = BoundDatasource(
+    test_product = Datasource(
         name="products",
         columns=[
             ColumnAssignment(alias="product_id", concept=product_id),
@@ -177,7 +158,7 @@ def test_environment():
         grain=Grain(components=[product_id]),
     )
 
-    test_category = BoundDatasource(
+    test_category = Datasource(
         name="category",
         columns=[
             ColumnAssignment(alias="category_id", concept=category_id),
@@ -186,9 +167,6 @@ def test_environment():
         address="tblCategory",
         grain=Grain(components=[category_id]),
     )
-
-    for item in [test_product, test_category, test_revenue]:
-        env.add_datasource(item)
 
     for item in [
         category_id,
@@ -209,6 +187,10 @@ def test_environment():
         category_name_length_sum,
     ]:
         env.add_concept(item)
+        
+    for item in [test_product, test_category, test_revenue]:
+        env.add_datasource(item)
+
         # env.concepts[item.name] = item
     yield env
 

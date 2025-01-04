@@ -795,6 +795,7 @@ class ParseToObjects(Transformer):
                 x = arbitrary_to_concept(
                     x, namespace=namespace, environment=self.environment
                 )
+                self.environment.add_concept(x)
             return x
 
         return [
@@ -1309,7 +1310,7 @@ class ParseToObjects(Transformer):
         if isinstance(args[0], Reference):
             base = base.instantiate(self.environment)
         if base.datatype == DataType.MAP or isinstance(base.datatype, MapType):
-            return MapAccess(args)
+            return MapAccess(args, environment=self.environment)
         return IndexAccess(args, environment=self.environment)
 
     @v_args(meta=True)

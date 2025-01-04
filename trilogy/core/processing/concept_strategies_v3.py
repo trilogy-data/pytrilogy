@@ -69,9 +69,6 @@ def get_upstream_concepts(environment:BoundEnvironment, base: BoundConcept, nest
     if not base.lineage:
         return upstream
     for x in base.lineage.concept_arguments:
-        # if it's derived from any value in a rowset, ALL rowset items are upstream
-        print(base.lineage)
-        print
         if x.derivation == Derivation.ROWSET:
             assert isinstance(x.lineage, BoundRowsetItem)
             for y in x.lineage.rowset.derived_concepts:

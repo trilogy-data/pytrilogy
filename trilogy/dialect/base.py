@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 from jinja2 import Template
 
 from trilogy.constants import CONFIG, MagicConstants, logger
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.enums import (
     DatePart,
     FunctionType,
@@ -49,7 +50,6 @@ from trilogy.core.execute_models import (
     BoundParenthetical,
     ProcessedCopyStatement,
     ProcessedQuery,
-    ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
     RawColumnExpr,

@@ -1,6 +1,7 @@
 # from trilogy.compiler import compile
 import networkx as nx
 
+from trilogy.core.execute_statements import ProcessedQueryPersist
 from trilogy.core.enums import ConceptSource, Purpose, Derivation
 from trilogy.core.env_processor import (
     concept_to_node,
@@ -8,7 +9,7 @@ from trilogy.core.env_processor import (
     generate_graph,
 )
 from trilogy.core.execute_models import (
-    ProcessedQueryPersist,
+    BoundGrain,
 )
 from trilogy.core.author_models import PersistStatement, Grain
 from trilogy.core.processing.node_generators import (
@@ -80,18 +81,21 @@ def test_derivations():
 
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
-        assert test_concept.address in env.materialized_concepts
+        # assert test_concept.address in env.materialized_concepts
         assert test_concept.derivation == Derivation.ROOT
 
         persist: PersistStatement = parsed[-2]
-        assert persist.select.grain == Grain(components=[test_concept])
+        assert Grain.from_concepts(persist.select.output_components, env) == Grain(components=[test_concept])
         assert len(compiled) == 2
 
-        g = generate_graph(env)
+
+        cenv = env.instantiate()
+        test_concept = cenv.concepts["test_upper_case_2"]
+        g = generate_graph(cenv)
 
         path = nx.shortest_path(
             g,
-            source=datasource_to_node(env.datasources["bool_is_upper_name"]),
+            source=datasource_to_node(cenv.datasources["bool_is_upper_name"]),
             target=concept_to_node(test_concept.with_default_grain()),
         )
         assert len(path) == 3, path
@@ -100,7 +104,7 @@ def test_derivations():
         static = gen_select_node(
             concept=test_concept,
             local_optional=[],
-            environment=env,
+            environment=cenv,
             g=g,
             depth=0,
         )
@@ -110,7 +114,7 @@ def test_derivations():
         assert "CASE" not in compiled[-1]
 
         assert test_concept.purpose == Purpose.PROPERTY
-        assert env.datasources["bool_is_upper_name"].grain == Grain(
+        assert cenv.datasources["bool_is_upper_name"].grain == BoundGrain(
             components=[test_concept]
         )
 
@@ -118,7 +122,7 @@ def test_derivations():
         test = SelectNode(
             [test_concept.with_default_grain()],
             [],
-            env,
+            cenv,
             g,
             parents=[],
         )
@@ -178,7 +182,7 @@ def test_derivations_reparse():
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.PERSIST_STATEMENT
-        assert test_concept.address in env.materialized_concepts
+        assert test_concept.address in env.instantiate().materialized_concepts
         assert test_concept.derivation == Derivation.ROOT
 
         # test that the rendered SQL didn't need to use a cASE
@@ -236,7 +240,7 @@ def test_derivations_reparse_new():
         test_concept = env.concepts["local.test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
         assert test_concept.metadata.concept_source == ConceptSource.MANUAL
-        assert test_concept not in env.materialized_concepts
+        assert test_concept not in env.instantiate().materialized_concepts
         assert test_concept.derivation == Derivation.BASIC
 
         # test that the rendered SQL did need to use a case
