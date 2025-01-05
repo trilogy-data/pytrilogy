@@ -40,7 +40,6 @@ from trilogy.core.functions import (
     CurrentDate,
     CurrentDatetime,
     FunctionFactory,
-    function_args_to_output_purpose,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models import (
