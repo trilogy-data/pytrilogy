@@ -759,20 +759,6 @@ def function_args_to_output_purpose(args) -> Purpose:
     return Purpose.PROPERTY
 
 
-def Unnest(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args,
-        operator=FunctionType.UNNEST,
-    )
-
-
-def Group(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args,
-        operator=FunctionType.GROUP,
-    )
-
-
 def Count(args: list[Concept], environment: Environment) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.COUNT
@@ -803,33 +789,9 @@ def Split(args: list[Concept], environment: Environment) -> Function:
     )
 
 
-def IndexAccess(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.INDEX_ACCESS
-    )
-
-
-def MapAccess(args: list[Concept], environment: Environment):
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.MAP_ACCESS
-    )
-
-
 def AttrAccess(args: list[GENERIC_ARGS], environment: Environment):
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.ATTR_ACCESS
-    )
-
-
-def Abs(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.ABS
-    )
-
-
-def Coalesce(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.COALESCE
     )
 
 
@@ -846,22 +808,4 @@ def CurrentDatetime(
 ) -> Function:
     return FunctionFactory(environment).create_function(
         args=args, operator=FunctionType.CURRENT_DATETIME
-    )
-
-
-def Bool(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.BOOL
-    )
-
-
-def StrPos(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.STRPOS
-    )
-
-
-def SubString(args: list[Concept], environment: Environment) -> Function:
-    return FunctionFactory(environment).create_function(
-        args=args, operator=FunctionType.STRPOS
     )
