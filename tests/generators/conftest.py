@@ -39,28 +39,28 @@ def test_environment():
         name="order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Count([order_id]),
+        lineage=Count([order_id], env),
     )
 
     distinct_order_count = Concept(
         name="distinct_order_count",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=CountDistinct([order_id]),
+        lineage=CountDistinct([order_id], env),
     )
 
     max_order_id = Concept(
         name="max_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Max([order_id]),
+        lineage=Max([order_id], env),
     )
 
     min_order_id = Concept(
         name="min_order_id",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=Min([order_id]),
+        lineage=Min([order_id], env),
     )
 
     revenue = Concept(name="revenue", datatype=DataType.FLOAT, purpose=Purpose.PROPERTY)
@@ -183,7 +183,7 @@ def test_environment():
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
         lineage=AggregateWrapper(
-            function=Count([products_with_revenue_over_50]), by=[category_id]
+            function=Count([products_with_revenue_over_50], env), by=[category_id]
         ),
         grain=Grain(components=[category_id]),
     )
@@ -192,7 +192,7 @@ def test_environment():
         name="category_products",
         datatype=DataType.INTEGER,
         purpose=Purpose.METRIC,
-        lineage=AggregateWrapper(function=Count([product_id]), by=[category_id]),
+        lineage=AggregateWrapper(function=Count([product_id], env), by=[category_id]),
     )
 
     test_revenue = Datasource(

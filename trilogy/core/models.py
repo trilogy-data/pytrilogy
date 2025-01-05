@@ -4,17 +4,14 @@ import difflib
 import hashlib
 import os
 from abc import ABC
-from collections import UserDict, UserList, defaultdict
+from collections import defaultdict
 from datetime import date, datetime
-from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from typing import (
     Annotated,
     Any,
-    Callable,
     Dict,
-    Generic,
     ItemsView,
     List,
     Never,
@@ -24,10 +21,8 @@ from typing import (
     Set,
     Tuple,
     Type,
-    TypeVar,
     Union,
     ValuesView,
-    get_args,
 )
 
 from lark.tree import Meta
@@ -40,7 +35,6 @@ from pydantic import (
     field_validator,
 )
 from pydantic.functional_validators import PlainValidator
-from pydantic_core import core_schema
 
 from trilogy.constants import (
     CONFIG,
@@ -80,28 +74,22 @@ from trilogy.core.exceptions import (
     InvalidSyntaxException,
     UndefinedConceptException,
 )
+from trilogy.core.models_core import (
+    DataType,
+    DataTyped,
+    ListType,
+    ListWrapper,
+    MapType,
+    MapWrapper,
+    NumericType,
+    StructType,
+    TupleWrapper,
+    arg_to_datatype,
+    is_compatible_datatype,
+)
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS]"
-
-KT = TypeVar("KT")
-VT = TypeVar("VT")
-LT = TypeVar("LT")
-
-
-def is_compatible_datatype(left, right):
-    # for unknown types, we can't make any assumptions
-    if right == DataType.UNKNOWN or left == DataType.UNKNOWN:
-        return True
-    if left == right:
-        return True
-    if {left, right} == {DataType.NUMERIC, DataType.FLOAT}:
-        return True
-    if {left, right} == {DataType.NUMERIC, DataType.INTEGER}:
-        return True
-    if {left, right} == {DataType.FLOAT, DataType.INTEGER}:
-        return True
-    return False
 
 
 def get_version():
@@ -135,24 +123,6 @@ def get_concept_arguments(expr) -> List["Concept"]:
     ):
         output += expr.concept_arguments
     return output
-
-
-ALL_TYPES = Union[
-    "DataType", "MapType", "ListType", "NumericType", "StructType", "Concept"
-]
-
-NAMESPACED_TYPES = Union[
-    "WindowItem",
-    "FilterItem",
-    "Conditional",
-    "Comparison",
-    "Concept",
-    "CaseWhen",
-    "CaseElse",
-    "Function",
-    "AggregateWrapper",
-    "Parenthetical",
-]
 
 
 class Namespaced(ABC):
@@ -239,166 +209,6 @@ class SelectTypeMixin(BaseModel):
         return SelectFiltering.EXPLICIT
 
 
-class DataType(Enum):
-    # PRIMITIVES
-    STRING = "string"
-    BOOL = "bool"
-    MAP = "map"
-    LIST = "list"
-    NUMBER = "number"
-    FLOAT = "float"
-    NUMERIC = "numeric"
-    INTEGER = "int"
-    BIGINT = "bigint"
-    DATE = "date"
-    DATETIME = "datetime"
-    TIMESTAMP = "timestamp"
-    ARRAY = "array"
-    DATE_PART = "date_part"
-    STRUCT = "struct"
-    NULL = "null"
-
-    # GRANULAR
-    UNIX_SECONDS = "unix_seconds"
-
-    # PARSING
-    UNKNOWN = "unknown"
-
-    @property
-    def data_type(self):
-        return self
-
-
-class NumericType(BaseModel):
-    precision: int = 20
-    scale: int = 5
-
-    @property
-    def data_type(self):
-        return DataType.NUMERIC
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-
-class ListType(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    type: ALL_TYPES
-
-    def __str__(self) -> str:
-        return f"ListType<{self.type}>"
-
-    @property
-    def data_type(self):
-        return DataType.LIST
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-    @property
-    def value_data_type(
-        self,
-    ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.type, Concept):
-            return self.type.datatype
-        return self.type
-
-
-class MapType(BaseModel):
-    key_type: DataType
-    value_type: ALL_TYPES
-
-    @property
-    def data_type(self):
-        return DataType.MAP
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-    @property
-    def value_data_type(
-        self,
-    ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.value_type, Concept):
-            return self.value_type.datatype
-        return self.value_type
-
-    @property
-    def key_data_type(
-        self,
-    ) -> DataType | StructType | MapType | ListType | NumericType:
-        if isinstance(self.key_type, Concept):
-            return self.key_type.datatype
-        return self.key_type
-
-
-class StructType(BaseModel):
-    fields: List[ALL_TYPES]
-    fields_map: Dict[str, Concept | int | float | str]
-
-    @property
-    def data_type(self):
-        return DataType.STRUCT
-
-    @property
-    def value(self):
-        return self.data_type.value
-
-
-class ListWrapper(Generic[VT], UserList):
-    """Used to distinguish parsed list objects from other lists"""
-
-    def __init__(self, *args, type: DataType, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.type = type
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-        if args:
-            schema = handler(List[args])  # type: ignore
-        else:
-            schema = handler(List)
-        return core_schema.no_info_after_validator_function(cls.validate, schema)
-
-    @classmethod
-    def validate(cls, v):
-        return cls(v, type=arg_to_datatype(v[0]))
-
-
-class MapWrapper(Generic[KT, VT], UserDict):
-    """Used to distinguish parsed map objects from other dicts"""
-
-    def __init__(self, *args, key_type: DataType, value_type: DataType, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.key_type = key_type
-        self.value_type = value_type
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-        if args:
-            schema = handler(Dict[args])  # type: ignore
-        else:
-            schema = handler(Dict)
-        return core_schema.no_info_after_validator_function(cls.validate, schema)
-
-    @classmethod
-    def validate(cls, v):
-        return cls(
-            v,
-            key_type=arg_to_datatype(list(v.keys()).pop()),
-            value_type=arg_to_datatype(list(v.values()).pop()),
-        )
-
-
 class Metadata(BaseModel):
     """Metadata container object.
     TODO: support arbitrary tags"""
@@ -408,7 +218,7 @@ class Metadata(BaseModel):
     concept_source: ConceptSource = ConceptSource.MANUAL
 
 
-class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
+class Concept(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
@@ -447,6 +257,10 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
     def __repr__(self):
         base = f"{self.address}@{self.grain}"
         return base
+
+    @property
+    def output_datatype(self):
+        return self.datatype
 
     @property
     def is_aggregate(self):
@@ -1169,15 +983,29 @@ class LooseConceptList(BaseModel):
         return self.addresses.isdisjoint(other.addresses)
 
 
-class Function(Mergeable, Namespaced, SelectContext, BaseModel):
+def get_basic_type(
+    type: DataType | ListType | StructType | MapType | NumericType,
+) -> DataType:
+    if isinstance(type, ListType):
+        return DataType.LIST
+    if isinstance(type, StructType):
+        return DataType.STRUCT
+    if isinstance(type, MapType):
+        return DataType.MAP
+    if isinstance(type, NumericType):
+        return DataType.NUMERIC
+    return type
+
+
+class Function(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
     output_purpose: Purpose
     valid_inputs: Optional[
         Union[
-            Set[DataType | ListType | StructType | MapType | NumericType],
-            List[Set[DataType | ListType | StructType | MapType | NumericType]],
+            Set[DataType],
+            List[Set[DataType]],
         ]
     ] = None
     arguments: Sequence[
@@ -1264,9 +1092,10 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
         elif not valid_inputs:
             return v
         for idx, arg in enumerate(v):
+
             if (
                 isinstance(arg, Concept)
-                and arg.datatype.data_type not in valid_inputs[idx]
+                and get_basic_type(arg.datatype.data_type) not in valid_inputs[idx]
             ):
                 if arg.datatype != DataType.UNKNOWN:
                     raise TypeError(
@@ -1275,12 +1104,12 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
                     )
             if (
                 isinstance(arg, Function)
-                and arg.output_datatype not in valid_inputs[idx]
+                and get_basic_type(arg.output_datatype) not in valid_inputs[idx]
             ):
                 if arg.output_datatype != DataType.UNKNOWN:
                     raise TypeError(
                         f"Invalid input datatype {arg.output_datatype} passed into"
-                        f" {operator_name} from function {arg.operator.name}"
+                        f" {operator_name} from function {arg.operator.name}, need {valid_inputs[idx]}"
                     )
             # check constants
             comparisons: List[Tuple[Type, DataType]] = [
@@ -1291,7 +1120,10 @@ class Function(Mergeable, Namespaced, SelectContext, BaseModel):
                 (DatePart, DataType.DATE_PART),
             ]
             for ptype, dtype in comparisons:
-                if isinstance(arg, ptype) and dtype in valid_inputs[idx]:
+                if (
+                    isinstance(arg, ptype)
+                    and get_basic_type(dtype) in valid_inputs[idx]
+                ):
                     # attempt to exit early to avoid checking all types
                     break
                 elif isinstance(arg, ptype):
@@ -1401,7 +1233,7 @@ class WindowItemOrder(BaseModel):
     contents: List["OrderItem"]
 
 
-class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
+class WindowItem(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
     type: WindowType
     content: Concept
     order_by: List["OrderItem"]
@@ -1487,7 +1319,9 @@ class WindowItem(Mergeable, Namespaced, SelectContext, BaseModel):
 
     @property
     def output_datatype(self):
-        return self.content.datatype
+        if self.type in (WindowType.RANK, WindowType.ROW_NUMBER):
+            return DataType.INTEGER
+        return self.content.output_datatype
 
     @property
     def output_purpose(self):
@@ -4776,7 +4610,13 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
 
 
 class Parenthetical(
-    ConceptArgs, Mergeable, Namespaced, ConstantInlineable, SelectContext, BaseModel
+    DataTyped,
+    ConceptArgs,
+    Mergeable,
+    Namespaced,
+    ConstantInlineable,
+    SelectContext,
+    BaseModel,
 ):
     content: "Expr"
 
@@ -4861,36 +4701,9 @@ class Parenthetical(
             base += x.input
         return base
 
-
-class TupleWrapper(Generic[VT], tuple):
-    """Used to distinguish parsed tuple objects from other tuples"""
-
-    def __init__(self, val, type: DataType, **kwargs):
-        super().__init__()
-        self.type = type
-        self.val = val
-
-    def __getnewargs__(self):
-        return (self.val, self.type)
-
-    def __new__(cls, val, type: DataType, **kwargs):
-        return super().__new__(cls, tuple(val))
-        # self.type = type
-
-    @classmethod
-    def __get_pydantic_core_schema__(
-        cls, source_type: Any, handler: Callable[[Any], core_schema.CoreSchema]
-    ) -> core_schema.CoreSchema:
-        args = get_args(source_type)
-        if args:
-            schema = handler(Tuple[args])  # type: ignore
-        else:
-            schema = handler(Tuple)
-        return core_schema.no_info_after_validator_function(cls.validate, schema)
-
-    @classmethod
-    def validate(cls, v):
-        return cls(v, type=arg_to_datatype(v[0]))
+    @property
+    def output_datatype(self):
+        return arg_to_datatype(self.content)
 
 
 class PersistStatement(HasUUID, BaseModel):
@@ -4951,89 +4764,3 @@ InstantiatedUnnestJoin.model_rebuild()
 UndefinedConcept.model_rebuild()
 Function.model_rebuild()
 Grain.model_rebuild()
-
-
-def list_to_wrapper(args):
-    types = [arg_to_datatype(arg) for arg in args]
-    assert len(set(types)) == 1
-    return ListWrapper(args, type=types[0])
-
-
-def tuple_to_wrapper(args):
-    types = [arg_to_datatype(arg) for arg in args]
-    assert len(set(types)) == 1
-    return TupleWrapper(args, type=types[0])
-
-
-def dict_to_map_wrapper(arg):
-    key_types = [arg_to_datatype(arg) for arg in arg.keys()]
-
-    value_types = [arg_to_datatype(arg) for arg in arg.values()]
-    assert len(set(key_types)) == 1
-    assert len(set(key_types)) == 1
-    return MapWrapper(arg, key_type=key_types[0], value_type=value_types[0])
-
-
-def merge_datatypes(
-    inputs: list[DataType | ListType | StructType | MapType | NumericType],
-) -> DataType | ListType | StructType | MapType | NumericType:
-    """This is a temporary hack for doing between
-    allowable datatype transformation matrix"""
-    if len(inputs) == 1:
-        return inputs[0]
-    if set(inputs) == {DataType.INTEGER, DataType.FLOAT}:
-        return DataType.FLOAT
-    if set(inputs) == {DataType.INTEGER, DataType.NUMERIC}:
-        return DataType.NUMERIC
-    if any(isinstance(x, NumericType) for x in inputs) and all(
-        isinstance(x, NumericType)
-        or x in (DataType.INTEGER, DataType.FLOAT, DataType.NUMERIC)
-        for x in inputs
-    ):
-        candidate = next(x for x in inputs if isinstance(x, NumericType))
-        return candidate
-    return inputs[0]
-
-
-def arg_to_datatype(arg) -> DataType | ListType | StructType | MapType | NumericType:
-    if isinstance(arg, Function):
-        return arg.output_datatype
-    elif isinstance(arg, MagicConstants):
-        if arg == MagicConstants.NULL:
-            return DataType.NULL
-        raise ValueError(f"Cannot parse arg datatype for arg of type {arg}")
-    elif isinstance(arg, Concept):
-        return arg.datatype
-    elif isinstance(arg, bool):
-        return DataType.BOOL
-    elif isinstance(arg, int):
-        return DataType.INTEGER
-    elif isinstance(arg, str):
-        return DataType.STRING
-    elif isinstance(arg, float):
-        return DataType.FLOAT
-    elif isinstance(arg, NumericType):
-        return arg
-    elif isinstance(arg, ListWrapper):
-        return ListType(type=arg.type)
-    elif isinstance(arg, AggregateWrapper):
-        return arg.function.output_datatype
-    elif isinstance(arg, Parenthetical):
-        return arg_to_datatype(arg.content)
-    elif isinstance(arg, TupleWrapper):
-        return ListType(type=arg.type)
-    elif isinstance(arg, WindowItem):
-        if arg.type in (WindowType.RANK, WindowType.ROW_NUMBER):
-            return DataType.INTEGER
-        return arg_to_datatype(arg.content)
-    elif isinstance(arg, list):
-        wrapper = list_to_wrapper(arg)
-        return ListType(type=wrapper.type)
-    elif isinstance(arg, MapWrapper):
-        return MapType(key_type=arg.key_type, value_type=arg.value_type)
-    elif isinstance(arg, datetime):
-        return DataType.DATETIME
-    elif isinstance(arg, date):
-        return DataType.DATE
-    else:
-        raise ValueError(f"Cannot parse arg datatype for arg of raw type {type(arg)}")

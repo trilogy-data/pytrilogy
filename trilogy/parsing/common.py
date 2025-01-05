@@ -1,6 +1,8 @@
 from datetime import date, datetime
 from typing import List, Tuple
 
+from lark.tree import Meta
+
 from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
@@ -23,21 +25,12 @@ from trilogy.core.models import (
     Grain,
     ListWrapper,
     MapWrapper,
-    Meta,
     Metadata,
     Parenthetical,
     Purpose,
     WindowItem,
 )
 from trilogy.utility import string_to_hash, unique
-
-
-def get_upstream_modifiers(keys: List[Concept]) -> list[Modifier]:
-    modifiers = set()
-    for pkey in keys:
-        if pkey.modifiers:
-            modifiers.update(pkey.modifiers)
-    return list(modifiers)
 
 
 def process_function_args(
@@ -96,6 +89,14 @@ def process_function_args(
         else:
             final.append(arg)
     return final
+
+
+def get_upstream_modifiers(keys: List[Concept]) -> list[Modifier]:
+    modifiers = set()
+    for pkey in keys:
+        if pkey.modifiers:
+            modifiers.update(pkey.modifiers)
+    return list(modifiers)
 
 
 def get_purpose_and_keys(

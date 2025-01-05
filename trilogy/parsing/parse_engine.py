@@ -27,7 +27,6 @@ from trilogy.core.enums import (
     ConceptSource,
     DatePart,
     FunctionType,
-    InfiniteFunctionArgs,
     IOType,
     Modifier,
     Ordering,
@@ -38,25 +37,9 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UndefinedConceptException
 from trilogy.core.functions import (
-    Abs,
-    AttrAccess,
-    Bool,
-    Coalesce,
-    Count,
-    CountDistinct,
     CurrentDate,
     CurrentDatetime,
-    Group,
-    IndexAccess,
-    IsNull,
-    MapAccess,
-    Max,
-    Min,
-    Split,
-    StrPos,
-    SubString,
-    Unnest,
-    function_args_to_output_purpose,
+    FunctionFactory,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models import (
@@ -112,10 +95,11 @@ from trilogy.core.models import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
+)
+from trilogy.core.models_core import (
     arg_to_datatype,
     dict_to_map_wrapper,
     list_to_wrapper,
-    merge_datatypes,
     tuple_to_wrapper,
 )
 from trilogy.parsing.common import (
@@ -248,6 +232,7 @@ class ParseToObjects(Transformer):
         # we do a second pass to pick up circular dependencies
         # after initial parsing
         self.pass_count = 1
+        self.function_factory = FunctionFactory(self.environment)
 
     def set_text(self, text: str):
         self.text_lookup[self.token_address] = text
@@ -1118,15 +1103,10 @@ class ParseToObjects(Transformer):
             return ""
         return args[0]
 
-    def struct_lit(self, args):
-        zipped = dict(zip(args[::2], args[1::2]))
-        types = [arg_to_datatype(x) for x in args[1::2]]
-        return Function(
-            operator=FunctionType.STRUCT,
-            output_datatype=StructType(fields=types, fields_map=zipped),
-            output_purpose=function_args_to_output_purpose(args),
-            arguments=args,
-            arg_count=-1,
+    @v_args(meta=True)
+    def struct_lit(self, meta, args):
+        return self.function_factory.create_function(
+            args, operator=FunctionType.STRUCT, meta=meta
         )
 
     def map_lit(self, args):
@@ -1237,6 +1217,12 @@ class ParseToObjects(Transformer):
     def window_item_order(self, args):
         return WindowItemOrder(contents=args[0])
 
+    def logical_operator(self, args):
+        return BooleanOperator(args[0].value.lower())
+
+    def DATE_PART(self, args):
+        return DatePart(args.value)
+
     @v_args(meta=True)
     def window_item(self, meta, args) -> WindowItem:
         type: WindowType = args[0]
@@ -1299,452 +1285,190 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def index_access(self, meta, args):
         args = process_function_args(args, meta=meta, environment=self.environment)
-        if args[0].datatype == DataType.MAP or isinstance(args[0].datatype, MapType):
-            return MapAccess(args)
-        return IndexAccess(args)
+        base = args[0]
+        if base.datatype == DataType.MAP or isinstance(base.datatype, MapType):
+            return self.function_factory.create_function(
+                args, FunctionType.MAP_ACCESS, meta
+            )
+        return self.function_factory.create_function(
+            args, FunctionType.INDEX_ACCESS, meta
+        )
 
     @v_args(meta=True)
     def map_key_access(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return MapAccess(args)
+        return self.function_factory.create_function(
+            args, FunctionType.MAP_ACCESS, meta
+        )
 
     @v_args(meta=True)
     def attr_access(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return AttrAccess(args)
+        return self.function_factory.create_function(
+            args, FunctionType.ATTR_ACCESS, meta
+        )
 
     @v_args(meta=True)
     def fcoalesce(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Coalesce(args)
+        return self.function_factory.create_function(args, FunctionType.COALESCE, meta)
 
     @v_args(meta=True)
     def unnest(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Unnest(args)
+        return self.function_factory.create_function(args, FunctionType.UNNEST, meta)
 
     @v_args(meta=True)
     def count(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Count(args)
+        return self.function_factory.create_function(args, FunctionType.COUNT, meta)
 
     @v_args(meta=True)
     def fgroup(self, meta, args):
         if len(args) == 2:
-            fargs = [args[0]] + args[1]
+            fargs = [args[0]] + list(args[1])
         else:
             fargs = [args[0]]
-        args = process_function_args(fargs, meta=meta, environment=self.environment)
-        return Group(args)
+        return self.function_factory.create_function(fargs, FunctionType.GROUP, meta)
 
     @v_args(meta=True)
     def fabs(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Abs(args)
+        return self.function_factory.create_function(args, FunctionType.ABS, meta)
 
     @v_args(meta=True)
     def count_distinct(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return CountDistinct(args)
+        return self.function_factory.create_function(
+            args, FunctionType.COUNT_DISTINCT, meta
+        )
 
     @v_args(meta=True)
     def sum(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.SUM,
-            arguments=args,
-            output_datatype=args[0].datatype,
-            output_purpose=Purpose.METRIC,
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.SUM, meta)
 
     @v_args(meta=True)
     def avg(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        arg = args[0]
-
-        return Function(
-            operator=FunctionType.AVG,
-            arguments=args,
-            output_datatype=arg.datatype,
-            output_purpose=Purpose.METRIC,
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.AVG, meta)
 
     @v_args(meta=True)
     def max(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Max(args)
+        return self.function_factory.create_function(args, FunctionType.MAX, meta)
 
     @v_args(meta=True)
     def min(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Min(args)
+        return self.function_factory.create_function(args, FunctionType.MIN, meta)
 
     @v_args(meta=True)
     def len(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.LENGTH,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING, DataType.ARRAY, DataType.MAP},
-            # output_grain=args[0].grain,
-        )
+        return self.function_factory.create_function(args, FunctionType.LENGTH, meta)
 
     @v_args(meta=True)
     def fsplit(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Split(args)
+        return self.function_factory.create_function(args, FunctionType.SPLIT, meta)
 
     @v_args(meta=True)
     def concat(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.CONCAT,
-            arguments=args,
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=-1,
-            # output_grain=args[0].grain,
-        )
+        return self.function_factory.create_function(args, FunctionType.CONCAT, meta)
 
     @v_args(meta=True)
     def union(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
-        return Function(
-            operator=FunctionType.UNION,
-            arguments=args,
-            output_datatype=output_datatype,
-            output_purpose=Purpose.KEY,
-            valid_inputs={*DataType},
-            arg_count=-1,
-        )
+        return self.function_factory.create_function(args, FunctionType.UNION, meta)
 
     @v_args(meta=True)
     def like(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.LIKE,
-            arguments=args,
-            output_datatype=DataType.BOOL,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=2,
-        )
+        return self.function_factory.create_function(args, FunctionType.LIKE, meta)
 
     @v_args(meta=True)
     def alt_like(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.LIKE,
-            arguments=args,
-            output_datatype=DataType.BOOL,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=2,
-        )
+        return self.function_factory.create_function(args, FunctionType.LIKE, meta)
 
     @v_args(meta=True)
     def ilike(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.ILIKE,
-            arguments=args,
-            output_datatype=DataType.BOOL,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=2,
-        )
+        return self.function_factory.create_function(args, FunctionType.LIKE, meta)
 
     @v_args(meta=True)
     def upper(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.UPPER,
-            arguments=args,
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.UPPER, meta)
 
     @v_args(meta=True)
     def fstrpos(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return StrPos(args)
+        return self.function_factory.create_function(args, FunctionType.STRPOS, meta)
 
     @v_args(meta=True)
     def fsubstring(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return SubString(args)
-
-    def logical_operator(self, args):
-        return BooleanOperator(args[0].value.lower())
+        return self.function_factory.create_function(args, FunctionType.SUBSTRING, meta)
 
     @v_args(meta=True)
     def lower(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.LOWER,
-            arguments=args,
-            output_datatype=DataType.STRING,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.STRING},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.LOWER, meta)
 
     # date functions
     @v_args(meta=True)
     def fdate(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.DATE,
-            arguments=args,
-            output_datatype=DataType.DATE,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
-            arg_count=1,
-        )
-
-    def DATE_PART(self, args):
-        return DatePart(args.value)
+        return self.function_factory.create_function(args, FunctionType.DATE, meta)
 
     @v_args(meta=True)
     def fdate_trunc(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.DATE_TRUNCATE,
-            arguments=args,
-            output_datatype=DataType.DATE,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {DataType.DATE_PART},
-            ],
-            arg_count=2,
+        return self.function_factory.create_function(
+            args, FunctionType.DATE_TRUNCATE, meta
         )
 
     @v_args(meta=True)
     def fdate_part(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.DATE_PART,
-            arguments=args,
-            output_datatype=DataType.DATE,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {DataType.DATE_PART},
-            ],
-            arg_count=2,
-        )
+        return self.function_factory.create_function(args, FunctionType.DATE_PART, meta)
 
     @v_args(meta=True)
     def fdate_add(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.DATE_ADD,
-            arguments=args,
-            output_datatype=DataType.DATE,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                    DataType.STRING,
-                },
-                {DataType.DATE_PART},
-                {DataType.INTEGER},
-            ],
-            arg_count=3,
-        )
+        return self.function_factory.create_function(args, FunctionType.DATE_ADD, meta)
 
     @v_args(meta=True)
     def fdate_diff(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        purpose = function_args_to_output_purpose(args)
-        return Function(
-            operator=FunctionType.DATE_DIFF,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=purpose,
-            valid_inputs=[
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                },
-                {
-                    DataType.DATE,
-                    DataType.TIMESTAMP,
-                    DataType.DATETIME,
-                },
-                {DataType.DATE_PART},
-            ],
-            arg_count=3,
-        )
+        return self.function_factory.create_function(args, FunctionType.DATE_DIFF, meta)
 
     @v_args(meta=True)
     def fdatetime(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.DATETIME,
-            arguments=args,
-            output_datatype=DataType.DATETIME,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={
-                DataType.DATE,
-                DataType.TIMESTAMP,
-                DataType.DATETIME,
-                DataType.STRING,
-            },
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.DATETIME, meta)
 
     @v_args(meta=True)
     def ftimestamp(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.TIMESTAMP,
-            arguments=args,
-            output_datatype=DataType.TIMESTAMP,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs=[{DataType.TIMESTAMP, DataType.STRING}],
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.TIMESTAMP, meta)
 
     @v_args(meta=True)
     def fsecond(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.SECOND,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.SECOND, meta)
 
     @v_args(meta=True)
     def fminute(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.MINUTE,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.MINUTE, meta)
 
     @v_args(meta=True)
     def fhour(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.HOUR,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.HOUR, meta)
 
     @v_args(meta=True)
     def fday(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.DAY,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.DAY, meta)
 
     @v_args(meta=True)
     def fday_of_week(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.DAY_OF_WEEK,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
+        return self.function_factory.create_function(
+            args, FunctionType.DAY_OF_WEEK, meta
         )
 
     @v_args(meta=True)
     def fweek(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.WEEK,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.WEEK, meta)
 
     @v_args(meta=True)
     def fmonth(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.MONTH,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.MONTH, meta)
 
     @v_args(meta=True)
     def fquarter(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.QUARTER,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.QUARTER, meta)
 
     @v_args(meta=True)
     def fyear(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.YEAR,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.PROPERTY,
-            valid_inputs={DataType.DATE, DataType.TIMESTAMP, DataType.DATETIME},
-            arg_count=1,
-        )
+        return self.function_factory.create_function(args, FunctionType.YEAR, meta)
 
     # utility functions
     @v_args(meta=True)
     def fcast(self, meta, args) -> Function:
+        # if it's casting a constant, we'll process that directly
         args = process_function_args(args, meta=meta, environment=self.environment)
         if isinstance(args[0], str):
             processed: date | datetime | int | float | bool | str
@@ -1764,134 +1488,39 @@ class ParseToObjects(Transformer):
                 processed = args[0]
             else:
                 raise SyntaxError(f"Invalid cast type {args[1]}")
-            return Function(
-                operator=FunctionType.CONSTANT,
-                output_datatype=args[1],
-                output_purpose=Purpose.CONSTANT,
-                arguments=[processed],
+            return self.function_factory.create_function(
+                [processed], FunctionType.CONSTANT, meta
             )
-        output_datatype = args[1]
-        return Function(
-            operator=FunctionType.CAST,
-            arguments=args,
-            output_datatype=output_datatype,
-            output_purpose=function_args_to_output_purpose(args),
-            valid_inputs={
-                DataType.INTEGER,
-                DataType.STRING,
-                DataType.FLOAT,
-                DataType.NUMBER,
-                DataType.NUMERIC,
-                DataType.BOOL,
-            },
-            arg_count=2,
-        )
+        return self.function_factory.create_function(args, FunctionType.CAST, meta)
 
     # math functions
     @v_args(meta=True)
     def fadd(self, meta, args) -> Function:
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
-        return Function(
-            operator=FunctionType.ADD,
-            arguments=args,
-            output_datatype=output_datatype,
-            output_purpose=function_args_to_output_purpose(args),
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=-1,
-        )
+        return self.function_factory.create_function(args, FunctionType.ADD, meta)
 
     @v_args(meta=True)
     def fsub(self, meta, args) -> Function:
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
-        return Function(
-            operator=FunctionType.SUBTRACT,
-            arguments=args,
-            output_datatype=output_datatype,
-            output_purpose=function_args_to_output_purpose(args),
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=-1,
-        )
+        return self.function_factory.create_function(args, FunctionType.SUBTRACT, meta)
 
     @v_args(meta=True)
     def fmul(self, meta, args) -> Function:
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
-        return Function(
-            operator=FunctionType.MULTIPLY,
-            arguments=args,
-            output_datatype=output_datatype,
-            output_purpose=function_args_to_output_purpose(args),
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=-1,
-        )
+        return self.function_factory.create_function(args, FunctionType.MULTIPLY, meta)
 
     @v_args(meta=True)
-    def fdiv(self, meta: Meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        # 2024-11-18 - this is a bit of a hack, but division always returns a float
-        # output_datatype = merge_datatypes([arg_to_datatype(x) for x in args])
-        return Function(
-            operator=FunctionType.DIVIDE,
-            arguments=args,
-            output_datatype=DataType.FLOAT,  # division always returns a float
-            output_purpose=function_args_to_output_purpose(args),
-            valid_inputs={DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-            arg_count=-1,
-        )
+    def fdiv(self, meta: Meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.DIVIDE, meta)
 
     @v_args(meta=True)
-    def fmod(self, meta: Meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Function(
-            operator=FunctionType.MOD,
-            arguments=args,
-            output_datatype=DataType.INTEGER,
-            output_purpose=function_args_to_output_purpose(args),
-            valid_inputs=[
-                {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-                {DataType.INTEGER},
-            ],
-            arg_count=2,
-        )
+    def fmod(self, meta: Meta, args) -> Function:
+        return self.function_factory.create_function(args, FunctionType.MOD, meta)
 
     @v_args(meta=True)
     def fround(self, meta, args) -> Function:
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        output_datatype = arg_to_datatype(args[0])
-        return Function(
-            operator=FunctionType.ROUND,
-            arguments=args,
-            output_datatype=output_datatype,
-            output_purpose=function_args_to_output_purpose(args),
-            valid_inputs=[
-                {DataType.INTEGER, DataType.FLOAT, DataType.NUMBER},
-                {DataType.INTEGER},
-            ],
-            arg_count=2,
-        )
+        return self.function_factory.create_function(args, FunctionType.ROUND, meta)
 
-    def fcase(self, args: List[Union[CaseWhen, CaseElse]]):
-        datatypes = set()
-        mapz = dict()
-        for arg in args:
-            output_datatype = arg_to_datatype(arg.expr)
-            if output_datatype != DataType.NULL:
-                datatypes.add(output_datatype)
-            mapz[str(arg.expr)] = output_datatype
-        if not len(datatypes) == 1:
-            raise SyntaxError(
-                f"All case expressions must have the same output datatype, got {datatypes} from {mapz}"
-            )
-        return Function(
-            operator=FunctionType.CASE,
-            arguments=args,
-            output_datatype=datatypes.pop(),
-            output_purpose=Purpose.PROPERTY,
-            # valid_inputs=[{DataType.INTEGER, DataType.FLOAT, DataType.NUMBER}, {DataType.INTEGER}],
-            arg_count=InfiniteFunctionArgs,
-        )
+    @v_args(meta=True)
+    def fcase(self, meta, args: List[Union[CaseWhen, CaseElse]]) -> Function:
+        return self.function_factory.create_function(args, FunctionType.CASE, meta)
 
     @v_args(meta=True)
     def fcase_when(self, meta, args) -> CaseWhen:
@@ -1906,23 +1535,19 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def fcurrent_date(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
         return CurrentDate([])
 
     @v_args(meta=True)
     def fcurrent_datetime(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
         return CurrentDatetime([])
 
     @v_args(meta=True)
     def fnot(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return IsNull(args)
+        return self.function_factory.create_function(args, FunctionType.IS_NULL, meta)
 
     @v_args(meta=True)
     def fbool(self, meta, args):
-        args = process_function_args(args, meta=meta, environment=self.environment)
-        return Bool(args)
+        return self.function_factory.create_function(args, FunctionType.BOOL, meta)
 
 
 def unpack_visit_error(e: VisitError):

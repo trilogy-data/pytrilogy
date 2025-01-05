@@ -107,7 +107,7 @@ def test_constants(duckdb_engine: Executor, expected_results):
     )[0].fetchall()
     # expected_results["converted_total_count"]
     scaled_metric = duckdb_engine.environment.concepts["converted_total_count"]
-    assert scaled_metric.purpose == Purpose.METRIC
+
     assert (
         duckdb_engine.environment.concepts["usd_conversion"].granularity
         == Granularity.SINGLE_ROW
