@@ -237,7 +237,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=1,
     ),
     FunctionType.COALESCE: FunctionConfig(
-        valid_inputs={DataType.STRING, DataType.LIST},
+        valid_inputs={*DataType},
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.INTEGER,
         arg_count=-1,
