@@ -1104,15 +1104,10 @@ class ParseToObjects(Transformer):
             return ""
         return args[0]
 
-    def struct_lit(self, args):
-        zipped = dict(zip(args[::2], args[1::2]))
-        types = [arg_to_datatype(x) for x in args[1::2]]
-        return Function(
-            operator=FunctionType.STRUCT,
-            output_datatype=StructType(fields=types, fields_map=zipped),
-            output_purpose=function_args_to_output_purpose(args),
-            arguments=args,
-            arg_count=-1,
+    @v_args(meta=True)
+    def struct_lit(self, meta, args):
+        return self.function_factory.create_function(
+            args, operator=FunctionType.STRUCT, meta=meta
         )
 
     def map_lit(self, args):
