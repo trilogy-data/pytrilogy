@@ -1,5 +1,5 @@
 query_id = 2
-gen_length = 8808
+gen_length = 8810
 generated_sql = """
 
 WITH 
@@ -130,13 +130,13 @@ WHERE
 ),
 juicy as (
 SELECT
-    lead(yummy.\"yearly_agg_friday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2578719262949543\",
-    lead(yummy.\"yearly_agg_monday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_404386951727110\",
-    lead(yummy.\"yearly_agg_saturday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_831205695088766\",
-    lead(yummy.\"yearly_agg_sunday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_1255924029437161\",
-    lead(yummy.\"yearly_agg_thursday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_3563408544170682\",
-    lead(yummy.\"yearly_agg_tuesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_9283222009025038\",
-    lead(yummy.\"yearly_agg_wednesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_3441641280596195\",
+    lead(yummy.\"yearly_agg_friday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8448737272361667\",
+    lead(yummy.\"yearly_agg_monday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7376041761849885\",
+    lead(yummy.\"yearly_agg_saturday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_8110431306719359\",
+    lead(yummy.\"yearly_agg_sunday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_134730777397554\",
+    lead(yummy.\"yearly_agg_thursday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_1774913669970999\",
+    lead(yummy.\"yearly_agg_tuesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2178601858758211\",
+    lead(yummy.\"yearly_agg_wednesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7608461872801975\",
     yummy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     yummy.\"yearly_agg_friday_sales\" as \"yearly_agg_friday_sales\",
     yummy.\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\",
@@ -151,13 +151,13 @@ vacuous as (
 SELECT
     juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     juicy.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\",
-    round(juicy.\"yearly_agg_friday_sales\" / (juicy.\"_virt_2578719262949543\"),2) as \"friday_increase\",
-    round(juicy.\"yearly_agg_monday_sales\" / (juicy.\"_virt_404386951727110\"),2) as \"monday_increase\",
-    round(juicy.\"yearly_agg_saturday_sales\" / (juicy.\"_virt_831205695088766\"),2) as \"saturday_increase\",
-    round(juicy.\"yearly_agg_sunday_sales\" / (juicy.\"_virt_1255924029437161\"),2) as \"sunday_increase\",
-    round(juicy.\"yearly_agg_thursday_sales\" / (juicy.\"_virt_3563408544170682\"),2) as \"thursday_increase\",
-    round(juicy.\"yearly_agg_tuesday_sales\" / (juicy.\"_virt_9283222009025038\"),2) as \"tuesday_increase\",
-    round(juicy.\"yearly_agg_wednesday_sales\" / (juicy.\"_virt_3441641280596195\"),2) as \"wednesday_increase\"
+    round(juicy.\"yearly_agg_friday_sales\" / (juicy.\"_virt_8448737272361667\"),2) as \"friday_increase\",
+    round(juicy.\"yearly_agg_monday_sales\" / (juicy.\"_virt_7376041761849885\"),2) as \"monday_increase\",
+    round(juicy.\"yearly_agg_saturday_sales\" / (juicy.\"_virt_8110431306719359\"),2) as \"saturday_increase\",
+    round(juicy.\"yearly_agg_sunday_sales\" / (juicy.\"_virt_134730777397554\"),2) as \"sunday_increase\",
+    round(juicy.\"yearly_agg_thursday_sales\" / (juicy.\"_virt_1774913669970999\"),2) as \"thursday_increase\",
+    round(juicy.\"yearly_agg_tuesday_sales\" / (juicy.\"_virt_2178601858758211\"),2) as \"tuesday_increase\",
+    round(juicy.\"yearly_agg_wednesday_sales\" / (juicy.\"_virt_7608461872801975\"),2) as \"wednesday_increase\"
 FROM
     juicy),
 concerned as (
