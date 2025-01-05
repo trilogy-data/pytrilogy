@@ -5,10 +5,10 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
 from trilogy.core.enums import (
+    Derivation,
     FunctionType,
     Granularity,
     Modifier,
-    PurposeLineage,
     WindowType,
 )
 from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
@@ -182,7 +182,7 @@ def function_to_concept(
         pkeys += [
             x
             for x in parent.concept_arguments
-            if not x.derivation == PurposeLineage.CONSTANT
+            if not x.derivation == Derivation.CONSTANT
         ]
     grain: Grain | None = Grain()
     for x in pkeys:

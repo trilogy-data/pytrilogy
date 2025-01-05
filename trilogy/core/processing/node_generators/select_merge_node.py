@@ -3,7 +3,7 @@ from typing import List, Optional
 import networkx as nx
 
 from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import concept_to_node
 from trilogy.core.models import (
     Concept,
@@ -296,7 +296,7 @@ def create_select_node(
         environment.concepts[extract_address(c)] for c in subgraph if c.startswith("c~")
     ]
 
-    if all([c.derivation == PurposeLineage.CONSTANT for c in all_concepts]):
+    if all([c.derivation == Derivation.CONSTANT for c in all_concepts]):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
         )
@@ -380,8 +380,8 @@ def gen_select_merge_node(
     accept_partial: bool = False,
     conditions: WhereClause | None = None,
 ) -> Optional[StrategyNode]:
-    non_constant = [c for c in all_concepts if c.derivation != PurposeLineage.CONSTANT]
-    constants = [c for c in all_concepts if c.derivation == PurposeLineage.CONSTANT]
+    non_constant = [c for c in all_concepts if c.derivation != Derivation.CONSTANT]
+    constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
     if not non_constant and constants:
         return ConstantNode(
             output_concepts=constants,

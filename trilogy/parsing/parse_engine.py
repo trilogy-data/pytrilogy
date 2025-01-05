@@ -993,6 +993,9 @@ class ParseToObjects(Transformer):
         for select in selects[1:]:
             for k, v in select.local_concepts.items():
                 base_local[k] = v
+        derived_concepts = []
+        for x in align.items:
+            derived_concepts.append(x.gen_concept(selects, align, self.environment))
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -1002,6 +1005,7 @@ class ParseToObjects(Transformer):
             limit=limit,
             meta=Metadata(line_number=meta.line),
             local_concepts=base_local,
+            derived_concepts=derived_concepts,
         )
         for concept in multi.derived_concepts:
             self.environment.add_concept(concept, meta=meta)

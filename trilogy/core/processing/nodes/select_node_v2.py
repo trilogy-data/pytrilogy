@@ -2,7 +2,7 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import Purpose, PurposeLineage
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models import (
     Comparison,
     Concept,
@@ -94,12 +94,12 @@ class SelectNode(StrategyNode):
                 source_map[x.address] = {datasource}
         for x in all_concepts_final:
             if x.address not in source_map and x.derivation in (
-                PurposeLineage.MULTISELECT,
-                PurposeLineage.FILTER,
-                PurposeLineage.BASIC,
-                PurposeLineage.ROWSET,
-                PurposeLineage.BASIC,
-                PurposeLineage.UNION,
+                Derivation.MULTISELECT,
+                Derivation.FILTER,
+                Derivation.BASIC,
+                Derivation.ROWSET,
+                Derivation.BASIC,
+                Derivation.UNION,
             ):
                 source_map[x.address] = set()
 
@@ -152,10 +152,10 @@ class SelectNode(StrategyNode):
         if all(
             [
                 (
-                    c.derivation == PurposeLineage.CONSTANT
+                    c.derivation == Derivation.CONSTANT
                     or (
                         c.purpose == Purpose.CONSTANT
-                        and c.derivation == PurposeLineage.MULTISELECT
+                        and c.derivation == Derivation.MULTISELECT
                     )
                 )
                 for c in self.all_concepts

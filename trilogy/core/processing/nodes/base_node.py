@@ -4,8 +4,8 @@ from typing import List, Optional
 
 from trilogy.core.enums import (
     BooleanOperator,
+    Derivation,
     JoinType,
-    PurposeLineage,
 )
 from trilogy.core.models import (
     Comparison,
@@ -423,9 +423,7 @@ class NodeJoin:
             # if one datasource only has constants
             # we can join on 1=1
             for ds in [self.left_node, self.right_node]:
-                if all(
-                    [c.derivation == PurposeLineage.CONSTANT for c in ds.all_concepts]
-                ):
+                if all([c.derivation == Derivation.CONSTANT for c in ds.all_concepts]):
                     self.concepts = []
                     return
 

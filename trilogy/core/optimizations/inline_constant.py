@@ -1,4 +1,4 @@
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import Derivation
 from trilogy.core.models import (
     CTE,
     Concept,
@@ -18,7 +18,7 @@ class InlineConstant(OptimizationRule):
         for x in cte.source.input_concepts:
             if x.address not in cte.source_map:
                 continue
-            if x.derivation == PurposeLineage.CONSTANT:
+            if x.derivation == Derivation.CONSTANT:
                 self.log(f"Found constant {x.address} on {cte.name}")
                 to_inline.append(x)
         if to_inline:

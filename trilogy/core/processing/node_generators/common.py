@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Callable, List, Tuple
 
-from trilogy.core.enums import Purpose, PurposeLineage
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models import (
     AggregateWrapper,
     Concept,
@@ -25,7 +25,7 @@ def resolve_function_parent_concepts(
 ) -> List[Concept]:
     if not isinstance(concept.lineage, (Function, AggregateWrapper)):
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
-    if concept.derivation == PurposeLineage.AGGREGATE:
+    if concept.derivation == Derivation.AGGREGATE:
         base: list[Concept] = []
         if not concept.grain.abstract:
             base = concept.lineage.concept_arguments + [

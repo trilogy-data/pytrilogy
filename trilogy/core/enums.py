@@ -38,7 +38,7 @@ class Purpose(Enum):
         return super()._missing_(value)
 
 
-class PurposeLineage(Enum):
+class Derivation(Enum):
     BASIC = "basic"
     WINDOW = "window"
     AGGREGATE = "aggregate"

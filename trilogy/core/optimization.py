@@ -1,5 +1,5 @@
 from trilogy.constants import CONFIG, logger
-from trilogy.core.enums import BooleanOperator, PurposeLineage
+from trilogy.core.enums import BooleanOperator, Derivation
 from trilogy.core.models import (
     CTE,
     Conditional,
@@ -146,18 +146,18 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
     ]
     condition_arguments = cte.condition.row_arguments if cte.condition else []
     for x in derived_concepts:
-        if x.derivation == PurposeLineage.WINDOW:
+        if x.derivation == Derivation.WINDOW:
             return None
-        if x.derivation == PurposeLineage.UNNEST:
+        if x.derivation == Derivation.UNNEST:
             return None
-        if x.derivation == PurposeLineage.AGGREGATE:
+        if x.derivation == Derivation.AGGREGATE:
             return None
     for x in parent_derived_concepts:
         if x.address not in condition_arguments:
             continue
-        if x.derivation == PurposeLineage.UNNEST:
+        if x.derivation == Derivation.UNNEST:
             return None
-        if x.derivation == PurposeLineage.WINDOW:
+        if x.derivation == Derivation.WINDOW:
             return None
 
     logger.info(

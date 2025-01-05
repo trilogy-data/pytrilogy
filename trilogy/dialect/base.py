@@ -33,6 +33,7 @@ from trilogy.core.models import (
     MapType,
     MapWrapper,
     MergeStatementV2,
+    MultiSelectLineage,
     MultiSelectStatement,
     NumericType,
     OrderItem,
@@ -353,7 +354,7 @@ class BaseDialect:
                     rval = f"CASE WHEN {self.render_expr(c.lineage.where.conditional, cte=cte)} THEN {self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)} ELSE NULL END"
             elif isinstance(c.lineage, RowsetItem):
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
-            elif isinstance(c.lineage, MultiSelectStatement):
+            elif isinstance(c.lineage, MultiSelectLineage):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, AggregateWrapper):
                 args = [

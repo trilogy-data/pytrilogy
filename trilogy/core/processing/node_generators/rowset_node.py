@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import Derivation
 from trilogy.core.models import (
     Concept,
     Environment,
@@ -68,7 +68,7 @@ def gen_rowset_node(
         x
         for x in node.output_concepts
         if x.address not in local_optional + [concept]
-        and x.derivation != PurposeLineage.ROWSET
+        and x.derivation != Derivation.ROWSET
     ]
     node.hide_output_concepts(final_hidden)
     assert node.resolution_cache
@@ -82,7 +82,7 @@ def gen_rowset_node(
             not in [
                 y
                 for y in node.hidden_concepts
-                if environment.concepts[y].derivation != PurposeLineage.ROWSET
+                if environment.concepts[y].derivation != Derivation.ROWSET
             ]
         ],
     )
@@ -97,14 +97,14 @@ def gen_rowset_node(
         )
         return node
     possible_joins = concept_to_relevant_joins(
-        [x for x in node.output_concepts if x.derivation != PurposeLineage.ROWSET]
+        [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]
     )
     if not possible_joins:
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no possible joins for rowset node to get {[x.address for x in local_optional]}; have {[x.address for x in node.output_concepts]}"
         )
         return node
-    if any(x.derivation == PurposeLineage.ROWSET for x in possible_joins):
+    if any(x.derivation == Derivation.ROWSET for x in possible_joins):
 
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} cannot enrich rowset node with rowset concepts; exiting early"

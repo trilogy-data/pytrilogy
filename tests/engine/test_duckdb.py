@@ -4,7 +4,7 @@ from pathlib import Path
 import networkx as nx
 
 from trilogy import Dialects
-from trilogy.core.enums import FunctionType, Granularity, Purpose, PurposeLineage
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models import (
     Concept,
@@ -298,7 +298,7 @@ select
         "local.orid",
     }
     assert half.lineage.operator == FunctionType.DIVIDE
-    assert half.derivation == PurposeLineage.BASIC
+    assert half.derivation == Derivation.BASIC
     assert half.granularity == Granularity.MULTI_ROW
     assert len(results) == 4
 
@@ -495,7 +495,7 @@ select
     total = default_duckdb_engine.environment.concepts["total_mod_two"]
     assert cased.purpose == Purpose.PROPERTY
     assert cased.keys == {"local.orid"}
-    assert total.derivation == PurposeLineage.AGGREGATE
+    assert total.derivation == Derivation.AGGREGATE
     x = resolve_function_parent_concepts(
         total, environment=default_duckdb_engine.environment
     )

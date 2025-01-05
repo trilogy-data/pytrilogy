@@ -109,6 +109,7 @@ def test_multi_select(test_environment):
                 where_clause=None,
             ),
         ],
+        derived_concepts=[test_environment.concepts["order_id"]],
         align=AlignClause(
             items=[
                 AlignItem(

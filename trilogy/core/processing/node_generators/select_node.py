@@ -1,5 +1,5 @@
 from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models import (
     Concept,
@@ -35,7 +35,7 @@ def gen_select_node(
             x
             for x in all_concepts
             if x.address in environment.materialized_concepts
-            or x.derivation == PurposeLineage.CONSTANT
+            or x.derivation == Derivation.CONSTANT
         ]
     )
     if materialized_lcl != all_lcl:

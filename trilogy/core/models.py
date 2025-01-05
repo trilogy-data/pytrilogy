@@ -60,6 +60,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     ConceptSource,
     DatePart,
+    Derivation,
     FunctionClass,
     FunctionType,
     Granularity,
@@ -69,7 +70,6 @@ from trilogy.core.enums import (
     Modifier,
     Ordering,
     Purpose,
-    PurposeLineage,
     SelectFiltering,
     ShowCategory,
     SourceType,
@@ -219,7 +219,7 @@ class SelectTypeMixin(BaseModel):
             [
                 str(x.address)
                 for x in self.where_clause.row_arguments
-                if not x.derivation == PurposeLineage.CONSTANT
+                if not x.derivation == Derivation.CONSTANT
             ]
         )
         query_output = set([str(z.address) for z in self.output_components])
@@ -423,7 +423,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
             FilterItem,
             AggregateWrapper,
             RowsetItem,
-            MultiSelectStatement,
+            MultiSelectLineage,
         ]
     ] = None
     namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -679,7 +679,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         elif self.purpose == Purpose.METRIC:
             grain = Grain()
         elif self.purpose == Purpose.CONSTANT:
-            if self.derivation != PurposeLineage.CONSTANT:
+            if self.derivation != Derivation.CONSTANT:
                 grain = Grain(components={self.address})
             else:
                 grain = self.grain
@@ -713,7 +713,7 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
                     FilterItem,
                     AggregateWrapper,
                     RowsetItem,
-                    MultiSelectStatement,
+                    MultiSelectLineage,
                 ],
                 output: List[Concept],
             ):
@@ -741,65 +741,65 @@ class Concept(Mergeable, Namespaced, SelectContext, BaseModel):
         return [self] + self.sources
 
     @property
-    def derivation(self) -> PurposeLineage:
+    def derivation(self) -> Derivation:
         if self.lineage and isinstance(self.lineage, WindowItem):
-            return PurposeLineage.WINDOW
+            return Derivation.WINDOW
         elif self.lineage and isinstance(self.lineage, FilterItem):
-            return PurposeLineage.FILTER
+            return Derivation.FILTER
         elif self.lineage and isinstance(self.lineage, AggregateWrapper):
-            return PurposeLineage.AGGREGATE
+            return Derivation.AGGREGATE
         elif self.lineage and isinstance(self.lineage, RowsetItem):
-            return PurposeLineage.ROWSET
-        elif self.lineage and isinstance(self.lineage, MultiSelectStatement):
-            return PurposeLineage.MULTISELECT
+            return Derivation.ROWSET
+        elif self.lineage and isinstance(self.lineage, MultiSelectLineage):
+            return Derivation.MULTISELECT
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
             and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
-            return PurposeLineage.AGGREGATE
+            return Derivation.AGGREGATE
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
             and self.lineage.operator == FunctionType.UNNEST
         ):
-            return PurposeLineage.UNNEST
+            return Derivation.UNNEST
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
             and self.lineage.operator == FunctionType.UNION
         ):
-            return PurposeLineage.UNION
+            return Derivation.UNION
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
             and self.lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
-            return PurposeLineage.CONSTANT
+            return Derivation.CONSTANT
 
         elif self.lineage and isinstance(self.lineage, Function):
             if not self.lineage.concept_arguments:
-                return PurposeLineage.CONSTANT
+                return Derivation.CONSTANT
             elif all(
                 [
-                    x.derivation == PurposeLineage.CONSTANT
+                    x.derivation == Derivation.CONSTANT
                     for x in self.lineage.concept_arguments
                 ]
             ):
-                return PurposeLineage.CONSTANT
-            return PurposeLineage.BASIC
+                return Derivation.CONSTANT
+            return Derivation.BASIC
         elif self.purpose == Purpose.CONSTANT:
-            return PurposeLineage.CONSTANT
-        return PurposeLineage.ROOT
+            return Derivation.CONSTANT
+        return Derivation.ROOT
 
     @property
     def granularity(self) -> Granularity:
         """ "used to determine if concepts need to be included in grain
         calculations"""
-        if self.derivation == PurposeLineage.CONSTANT:
+        if self.derivation == Derivation.CONSTANT:
             # constants are a single row
             return Granularity.SINGLE_ROW
-        elif self.derivation == PurposeLineage.AGGREGATE:
+        elif self.derivation == Derivation.AGGREGATE:
             # if it's an aggregate grouped over all rows
             # there is only one row left and it's fine to cross_join
             if all([x.endswith(ALL_ROWS_CONCEPT) for x in self.grain.components]):
@@ -1951,13 +1951,18 @@ class CopyStatement(BaseModel):
 
 class AlignItem(Namespaced, BaseModel):
     alias: str
+    # aligned_concept: str
     concepts: List[Concept]
-    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
 
     @computed_field  # type: ignore
     @cached_property
     def concepts_lcl(self) -> LooseConceptList:
         return LooseConceptList(concepts=self.concepts)
+
+    @property
+    def aligned_concept(self) -> str:
+        return f"{self.namespace}.{self.alias}"
 
     def with_namespace(self, namespace: str) -> "AlignItem":
         return AlignItem(
@@ -1966,7 +1971,12 @@ class AlignItem(Namespaced, BaseModel):
             namespace=namespace,
         )
 
-    def gen_concept(self, parent: MultiSelectStatement):
+    def gen_concept(
+        self,
+        selects: list[SelectStatement],
+        align: AlignClause,
+        environment: Environment,
+    ):
         datatypes = set([c.datatype for c in self.concepts])
         purposes = set([c.purpose for c in self.concepts])
         if len(datatypes) > 1:
@@ -1981,8 +1991,13 @@ class AlignItem(Namespaced, BaseModel):
             name=self.alias,
             datatype=datatypes.pop(),
             purpose=purpose,
-            lineage=parent,
-            namespace=parent.namespace,
+            derivation=Derivation.MULTISELECT,
+            lineage=MultiSelectLineage(
+                selects=selects,
+                align=align,
+                namespace=self.namespace,
+            ),
+            namespace=self.namespace,
         )
         return new
 
@@ -1994,10 +2009,82 @@ class AlignClause(Namespaced, BaseModel):
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
+class MultiSelectLineage(Namespaced, BaseModel):
+    selects: List[SelectStatement]
+    align: AlignClause
+    namespace: str
+
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+
+    def with_namespace(self, namespace: str) -> "MultiSelectLineage":
+        return MultiSelectLineage(
+            selects=[c.with_namespace(namespace) for c in self.selects],
+            align=self.align.with_namespace(namespace),
+            namespace=namespace,
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            limit=self.limit,
+        )
+
+    @property
+    def arguments(self) -> List[Concept]:
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        return unique(output, "address")
+
+    @property
+    def derived_concepts(self) -> set[str]:
+        output = set()
+        for item in self.align.items:
+            output.add(item.aligned_concept)
+        return output
+
+    @property
+    def concept_arguments(self):
+        output = []
+        for select in self.selects:
+            output += select.input_components
+        return unique(output, "address")
+
+    def get_merge_concept(self, check: Concept) -> str | None:
+        for item in self.align.items:
+            if check in item.concepts_lcl:
+                return f"{item.namespace}.{item.alias}"
+        return None
+
+    def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
+        for x in self.align.items:
+            if concept.name == x.alias:
+                for c in x.concepts:
+                    if c.address in cte.output_lcl:
+                        return c
+        raise SyntaxError(
+            f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "MultiSelectLineage":
+        new = MultiSelectLineage(
+            selects=[s.with_merge(source, target, modifiers) for s in self.selects],
+            align=self.align,
+            namespace=self.namespace,
+            order_by=(
+                self.order_by.with_merge(source, target, modifiers)
+                if self.order_by
+                else None
+            ),
+            limit=self.limit,
+        )
+        return new
+
+
 class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, BaseModel):
     selects: List[SelectStatement]
     align: AlignClause
     namespace: str
+    derived_concepts: List[Concept]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Optional[Metadata] = Field(default_factory=lambda: Metadata())
@@ -2031,6 +2118,9 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
             namespace=self.namespace,
+            derived_concepts=[
+                x.with_merge(source, target, modifiers) for x in self.derived_concepts
+            ],
             order_by=(
                 self.order_by.with_merge(source, target, modifiers)
                 if self.order_by
@@ -2046,17 +2136,14 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
         )
         return new
 
-    def get_merge_concept(self, check: Concept):
-        for item in self.align.items:
-            if check in item.concepts_lcl:
-                return item.gen_concept(self)
-        return None
-
     def with_namespace(self, namespace: str) -> "MultiSelectStatement":
         return MultiSelectStatement(
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             namespace=namespace,
+            derived_concepts=[
+                x.with_namespace(namespace) for x in self.derived_concepts
+            ],
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
             limit=self.limit,
             meta=self.meta,
@@ -2076,14 +2163,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
         for select in self.selects:
             base += select.grain
         return base
-
-    @computed_field  # type: ignore
-    @cached_property
-    def derived_concepts(self) -> List[Concept]:
-        output = []
-        for item in self.align.items:
-            output.append(item.gen_concept(self))
-        return output
 
     def find_source(self, concept: Concept, cte: CTE | UnionCTE) -> Concept:
         for x in self.align.items:
@@ -2785,7 +2864,7 @@ class CTE(BaseModel):
         return unique(v, "address")
 
     def inline_constant(self, concept: Concept):
-        if not concept.derivation == PurposeLineage.CONSTANT:
+        if not concept.derivation == Derivation.CONSTANT:
             return False
         if not isinstance(concept.lineage, Function):
             return False
@@ -3070,15 +3149,15 @@ class CTE(BaseModel):
         def check_is_not_in_group(c: Concept):
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
-            if c.derivation == PurposeLineage.ROWSET:
+            if c.derivation == Derivation.ROWSET:
                 assert isinstance(c.lineage, RowsetItem)
                 return check_is_not_in_group(c.lineage.content)
-            if c.derivation == PurposeLineage.CONSTANT:
+            if c.derivation == Derivation.CONSTANT:
                 return True
             if c.purpose == Purpose.METRIC:
                 return True
 
-            if c.derivation == PurposeLineage.BASIC and c.lineage:
+            if c.derivation == Derivation.BASIC and c.lineage:
                 if all([check_is_not_in_group(x) for x in c.lineage.concept_arguments]):
                     return True
                 if (
@@ -3100,7 +3179,7 @@ class CTE(BaseModel):
     @property
     def render_from_clause(self) -> bool:
         if (
-            all([c.derivation == PurposeLineage.CONSTANT for c in self.output_columns])
+            all([c.derivation == Derivation.CONSTANT for c in self.output_columns])
             and not self.parent_ctes
             and not self.group_to_grain
         ):
@@ -3701,7 +3780,7 @@ class Environment(BaseModel):
             current_derivation = current_concept.derivation
             # TODO: refine this section;
             # too hacky for maintainability
-            if current_derivation not in (PurposeLineage.ROOT, PurposeLineage.CONSTANT):
+            if current_derivation not in (Derivation.ROOT, Derivation.CONSTANT):
                 persisted = f"{PERSISTED_CONCEPT_PREFIX}_" + current_concept.name
                 # override the current concept source to reflect that it's now coming from a datasource
                 if (

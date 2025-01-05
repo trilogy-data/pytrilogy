@@ -4,7 +4,7 @@ import networkx as nx
 from networkx.algorithms import approximation as ax
 
 from trilogy.constants import logger
-from trilogy.core.enums import PurposeLineage
+from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
 from trilogy.core.models import Concept, Conditional, Environment, WhereClause
@@ -87,10 +87,10 @@ def determine_induced_minimal_nodes(
     for node in G.nodes:
         if concepts.get(node):
             lookup: Concept = concepts[node]
-            if lookup.derivation in (PurposeLineage.CONSTANT,):
+            if lookup.derivation in (Derivation.CONSTANT,):
                 nodes_to_remove.append(node)
             # purge a node if we're already looking for all it's parents
-            if filter_downstream and lookup.derivation not in (PurposeLineage.ROOT,):
+            if filter_downstream and lookup.derivation not in (Derivation.ROOT,):
                 nodes_to_remove.append(node)
 
     H.remove_nodes_from(nodes_to_remove)
