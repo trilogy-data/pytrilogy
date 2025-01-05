@@ -109,16 +109,6 @@ class ListType(BaseModel):
 
     @field_validator("type", mode="plain")
     def validate_type(cls, v):
-        if isinstance(v, DataTyped):
-            return v
-        if isinstance(v, list):
-            return list_to_wrapper(v)
-        if isinstance(v, tuple):
-            return tuple_to_wrapper(v)
-        if isinstance(v, dict):
-            return dict_to_map_wrapper(v)
-        if isinstance(v, DataTyped):
-            return v
         return v
 
     def __str__(self) -> str:
@@ -147,16 +137,6 @@ class MapType(BaseModel):
 
     @field_validator("value_type", mode="plain")
     def validate_type(cls, v):
-        if isinstance(v, DataTyped):
-            return v
-        if isinstance(v, list):
-            return list_to_wrapper(v)
-        if isinstance(v, tuple):
-            return tuple_to_wrapper(v)
-        if isinstance(v, dict):
-            return dict_to_map_wrapper(v)
-        if isinstance(v, DataTyped):
-            return v
         return v
 
     @property
@@ -365,10 +345,7 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
     elif isinstance(arg, ListWrapper):
         return ListType(type=arg.type)
     elif isinstance(arg, DataTyped):
-        try:
-            return arg.output_datatype
-        except NotImplementedError:
-            raise SyntaxError(type(arg))
+        return arg.output_datatype
     elif isinstance(arg, TupleWrapper):
         return ListType(type=arg.type)
     elif isinstance(arg, list):
