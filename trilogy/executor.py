@@ -7,29 +7,28 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
-from trilogy.core.enums import Granularity, IOType
-from trilogy.core.models import (
-    Concept,
+from trilogy.core.enums import FunctionType, Granularity, IOType
+from trilogy.core.models_author import Concept, Function
+from trilogy.core.models_core import ListWrapper, MapWrapper
+from trilogy.core.models_datasource import Datasource
+from trilogy.core.models_environment import Environment
+from trilogy.core.statements_author import (
     ConceptDeclarationStatement,
     CopyStatement,
-    Datasource,
-    Environment,
-    Function,
-    FunctionType,
     ImportStatement,
-    ListWrapper,
-    MapWrapper,
     MergeStatementV2,
     MultiSelectStatement,
     PersistStatement,
+    RawSQLStatement,
+    SelectStatement,
+    ShowStatement,
+)
+from trilogy.core.statements_execute import (
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,
     ProcessedShowStatement,
-    RawSQLStatement,
-    SelectStatement,
-    ShowStatement,
 )
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.enums import Dialects

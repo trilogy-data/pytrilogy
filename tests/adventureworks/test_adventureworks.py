@@ -5,18 +5,16 @@ import pytest
 
 from trilogy import Executor
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models import (
-    Concept,
+from trilogy.core.models_author import Concept, Grain
+from trilogy.core.models_environment import (
     Environment,
-    Grain,
-    ProcessedQuery,
-    ProcessedQueryPersist,
-    QueryDatasource,
-    SelectStatement,
 )
+from trilogy.core.models_execute import QueryDatasource
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.nodes import MergeNode, SelectNode
 from trilogy.core.query_processor import datasource_to_cte, get_query_datasources
+from trilogy.core.statements_author import SelectStatement
+from trilogy.core.statements_execute import ProcessedQuery, ProcessedQueryPersist
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
 

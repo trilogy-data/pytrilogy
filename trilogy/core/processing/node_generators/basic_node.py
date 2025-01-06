@@ -2,13 +2,8 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import SourceType
-from trilogy.core.models import (
-    Concept,
-    Function,
-    FunctionClass,
-    WhereClause,
-)
+from trilogy.core.enums import FunctionClass, SourceType
+from trilogy.core.models_author import Concept, Function, WhereClause
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )

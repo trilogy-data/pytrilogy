@@ -1,12 +1,13 @@
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, Granularity, Purpose
-from trilogy.core.models import SelectStatement, WindowItem
+from trilogy.core.models_author import WindowItem
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
 )
 from trilogy.core.processing.utility import concept_to_relevant_joins
 from trilogy.core.query_processor import get_query_datasources, process_query
+from trilogy.core.statements_author import SelectStatement
 from trilogy.dialect import duckdb
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse

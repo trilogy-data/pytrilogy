@@ -8,28 +8,32 @@ from trilogy.constants import (
 )
 from trilogy.core.enums import (
     Derivation,
+    FunctionClass,
     FunctionType,
     Granularity,
     Modifier,
+    Purpose,
     WindowType,
 )
-from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
-from trilogy.core.models import (
+from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.functions import function_args_to_output_purpose
+from trilogy.core.models_author import (
     AggregateWrapper,
+    AlignItem,
     Concept,
-    DataType,
-    Environment,
     FilterItem,
     Function,
-    FunctionClass,
     Grain,
     ListWrapper,
     MapWrapper,
     Metadata,
+    MultiSelectLineage,
     Parenthetical,
-    Purpose,
     WindowItem,
 )
+from trilogy.core.models_core import DataType, arg_to_datatype
+from trilogy.core.models_environment import Environment
+from trilogy.core.statements_author import AlignClause, SelectStatement
 from trilogy.utility import string_to_hash, unique
 
 
@@ -327,6 +331,37 @@ def agg_wrapper_to_concept(
         modifiers=modifiers,
     )
     return out
+
+
+def align_item_to_concept(
+    parent: AlignItem,
+    align_clause: AlignClause,
+    selects: list[SelectStatement],
+) -> Concept:
+    align = parent
+    datatypes = set([c.datatype for c in align.concepts])
+    purposes = set([c.purpose for c in align.concepts])
+    if len(datatypes) > 1:
+        raise InvalidSyntaxException(
+            f"Datatypes do not align for merged statements {align.alias}, have {datatypes}"
+        )
+    if len(purposes) > 1:
+        purpose = Purpose.KEY
+    else:
+        purpose = list(purposes)[0]
+    new = Concept(
+        name=align.alias,
+        datatype=datatypes.pop(),
+        purpose=purpose,
+        derivation=Derivation.MULTISELECT,
+        lineage=MultiSelectLineage(
+            selects=selects,
+            align=align_clause,
+            namespace=align.namespace,
+        ),
+        namespace=align.namespace,
+    )
+    return new
 
 
 def arbitrary_to_concept(

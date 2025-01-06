@@ -1,7 +1,8 @@
 from datetime import datetime
 from pathlib import Path
 
-from trilogy import Dialects, Environment, Executor
+from trilogy import Dialects, Executor
+from trilogy.core.models_environment import Environment
 
 working_path = Path(__file__).parent
 

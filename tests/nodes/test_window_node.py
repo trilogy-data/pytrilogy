@@ -1,4 +1,4 @@
-from trilogy.core.models import Environment
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.nodes.window_node import WindowNode
 
 

@@ -6,48 +6,54 @@ from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Modifier, Purpose
-from trilogy.core.models import (
-    Address,
+from trilogy.core.models_author import (
     AggregateWrapper,
-    AlignClause,
     AlignItem,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
     Comparison,
     Concept,
-    ConceptDeclarationStatement,
-    ConceptDerivation,
     ConceptRef,
     ConceptTransform,
     Conditional,
-    CopyStatement,
-    Datasource,
-    DataType,
-    Environment,
     FilterItem,
     Function,
     Grain,
-    ImportStatement,
-    ListType,
-    ListWrapper,
-    MergeStatementV2,
-    MultiSelectStatement,
-    NumericType,
     OrderBy,
     OrderItem,
     Parenthetical,
-    PersistStatement,
+    SubselectComparison,
+    WhereClause,
+    WindowItem,
+)
+from trilogy.core.models_core import (
+    DataType,
+    ListType,
+    ListWrapper,
+    NumericType,
+    TupleWrapper,
+)
+from trilogy.core.models_datasource import (
+    Address,
+    ColumnAssignment,
+    Datasource,
     Query,
     RawColumnExpr,
+)
+from trilogy.core.models_environment import Environment
+from trilogy.core.statements_author import (
+    AlignClause,
+    ConceptDeclarationStatement,
+    ConceptDerivationStatement,
+    CopyStatement,
+    ImportStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectItem,
     SelectStatement,
-    SubselectComparison,
-    TupleWrapper,
-    WhereClause,
-    WindowItem,
 )
 
 QUERY_TEMPLATE = Template(
@@ -294,7 +300,7 @@ class Renderer:
         return f"'{arg.isoformat()}'::datetime"
 
     @to_string.register
-    def _(self, arg: ConceptDerivation):
+    def _(self, arg: ConceptDerivationStatement):
         # this is identical rendering;
         return self.to_string(ConceptDeclarationStatement(concept=arg.concept))
 

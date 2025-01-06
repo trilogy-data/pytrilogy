@@ -1,7 +1,9 @@
 from typing import List
 
-from trilogy.core.models import Concept, SourceType
-from trilogy.core.processing.nodes.base_node import QueryDatasource, StrategyNode
+from trilogy.core.enums import SourceType
+from trilogy.core.models_author import Concept
+from trilogy.core.models_execute import QueryDatasource
+from trilogy.core.processing.nodes.base_node import StrategyNode
 
 
 class WindowNode(StrategyNode):

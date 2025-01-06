@@ -3,7 +3,8 @@ import pytest
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
-from trilogy.core.models import Environment, Grain
+from trilogy.core.models_author import Grain
+from trilogy.core.models_environment import Environment
 
 
 def test_ambiguous_error(test_environment: Environment, test_executor: Executor):

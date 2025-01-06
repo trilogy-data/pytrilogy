@@ -1,12 +1,12 @@
 from trilogy.core.models import (
-    Environment,
-    Grain,
-    QueryDatasource,
-    SelectStatement,
     SourceType,
 )
+from trilogy.core.models_author import Grain
+from trilogy.core.models_environment import Environment
+from trilogy.core.models_execute import QueryDatasource
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.query_processor import get_query_datasources, process_query
+from trilogy.core.statements_author import SelectStatement
 
 
 def test_direct_select(test_environment, test_environment_graph):

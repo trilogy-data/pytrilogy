@@ -2,18 +2,20 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
-from trilogy.core.models import (
+from trilogy.core.models_author import (
     Concept,
-    Environment,
     Grain,
-    MultiSelectStatement,
-    RowsetDerivationStatement,
     RowsetItem,
-    SelectStatement,
     WhereClause,
 )
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
+from trilogy.core.statements_author import (
+    MultiSelectStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+)
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 

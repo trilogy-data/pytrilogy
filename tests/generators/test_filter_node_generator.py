@@ -1,5 +1,6 @@
 from trilogy.core.enums import ComparisonOperator, Derivation
-from trilogy.core.models import Comparison, Environment, WhereClause
+from trilogy.core.models_author import Comparison, WhereClause
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_filter_node
 from trilogy.core.processing.node_generators.common import (

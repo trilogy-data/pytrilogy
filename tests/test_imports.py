@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trilogy import Environment
+from trilogy.core.models_environment import Environment
 
 
 def test_multi_environment():

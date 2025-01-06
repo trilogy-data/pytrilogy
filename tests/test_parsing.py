@@ -3,15 +3,14 @@ from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
 from trilogy.core.models import (
-    Comparison,
-    Datasource,
     DataType,
-    Environment,
-    ProcessedQuery,
-    SelectStatement,
-    ShowStatement,
     TupleWrapper,
 )
+from trilogy.core.models_author import Comparison
+from trilogy.core.models_datasource import Datasource
+from trilogy.core.models_environment import Environment
+from trilogy.core.statements_author import SelectStatement, ShowStatement
+from trilogy.core.statements_execute import ProcessedQuery
 from trilogy.dialect.base import BaseDialect
 from trilogy.parsing.parse_engine import (
     arg_to_datatype,

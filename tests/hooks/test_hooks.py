@@ -1,6 +1,6 @@
 from trilogy import parse
-from trilogy.core.models import RowsetDerivationStatement
-from trilogy.hooks.base_hook import BaseHook, SelectStatement
+from trilogy.core.statements_author import RowsetDerivationStatement, SelectStatement
+from trilogy.hooks.base_hook import BaseHook
 
 
 def test_base():

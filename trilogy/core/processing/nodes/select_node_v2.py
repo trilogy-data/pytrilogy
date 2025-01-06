@@ -2,20 +2,18 @@ from typing import List, Optional
 
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models import (
+from trilogy.core.enums import Derivation, Purpose, SourceType
+from trilogy.core.models_author import (
     Comparison,
     Concept,
     Conditional,
-    Datasource,
-    Environment,
     Function,
     Grain,
     Parenthetical,
-    QueryDatasource,
-    SourceType,
-    UnnestJoin,
 )
+from trilogy.core.models_datasource import Datasource
+from trilogy.core.models_environment import Environment
+from trilogy.core.models_execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode, resolve_concept_map
 from trilogy.utility import unique
 

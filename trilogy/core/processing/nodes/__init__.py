@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from trilogy.core.models import Concept, Environment, WhereClause
+from trilogy.core.models_author import Concept, WhereClause
+from trilogy.core.models_environment import Environment
 
 from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode

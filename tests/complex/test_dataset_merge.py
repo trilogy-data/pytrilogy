@@ -3,7 +3,8 @@ from datetime import date, datetime
 
 from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
-from trilogy.core.models import Comparison, Environment
+from trilogy.core.models_author import Comparison
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
     simplify_conditions,

@@ -4,14 +4,14 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import BooleanOperator, JoinType, Purpose
-from trilogy.core.models import (
+from trilogy.core.models_author import (
     Concept,
     Conditional,
-    Environment,
     Grain,
     MultiSelectLineage,
     WhereClause,
 )
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.node_generators.common import resolve_join_order
 from trilogy.core.processing.nodes import History, MergeNode, NodeJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode

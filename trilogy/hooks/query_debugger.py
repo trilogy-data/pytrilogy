@@ -3,14 +3,14 @@ from logging import DEBUG, StreamHandler
 from typing import Union
 
 from trilogy.constants import logger
-from trilogy.core.models import (
+from trilogy.core.models_datasource import Datasource
+from trilogy.core.models_execute import (
     CTE,
-    Datasource,
     QueryDatasource,
-    SelectStatement,
     UnionCTE,
 )
 from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.statements_author import SelectStatement
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.base_hook import BaseHook
 

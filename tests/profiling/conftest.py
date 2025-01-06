@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from trilogy import Dialects, Environment, Executor
+from trilogy import Dialects, Executor
+from trilogy.core.models_environment import Environment
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.hooks.query_debugger import DebuggingHook
 

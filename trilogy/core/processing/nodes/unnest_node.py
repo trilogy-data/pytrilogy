@@ -1,12 +1,8 @@
 from typing import List
 
-from trilogy.core.models import (
-    Concept,
-    Function,
-    QueryDatasource,
-    SourceType,
-    UnnestJoin,
-)
+from trilogy.core.enums import SourceType
+from trilogy.core.models_author import Concept, Function
+from trilogy.core.models_execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
 

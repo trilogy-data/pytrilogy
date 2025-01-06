@@ -6,42 +6,50 @@ from typing import Any, Dict, List, Set, Tuple
 
 import networkx as nx
 
-from trilogy.core.enums import BooleanOperator, FunctionClass, Granularity, Purpose
-from trilogy.core.models import (
-    CTE,
+from trilogy.constants import MagicConstants
+from trilogy.core.enums import (
+    BooleanOperator,
+    DatePart,
+    FunctionClass,
+    Granularity,
+    JoinType,
+    Purpose,
+)
+from trilogy.core.models_author import (
     AggregateWrapper,
-    BaseJoin,
     CaseElse,
     CaseWhen,
     Comparison,
     Concept,
-    ConceptPair,
     Conditional,
-    Datasource,
-    DataType,
-    DatePart,
-    Environment,
     FilterItem,
     Function,
-    JoinType,
-    ListType,
-    ListWrapper,
-    LooseConceptList,
-    MagicConstants,
-    MapType,
-    MapWrapper,
-    MultiSelectStatement,
-    NumericType,
     Parenthetical,
-    ProcessedQuery,
-    QueryDatasource,
-    SelectStatement,
     SubselectComparison,
-    TupleWrapper,
-    UnionCTE,
-    UnnestJoin,
     WindowItem,
 )
+from trilogy.core.models_core import (
+    DataType,
+    ListType,
+    ListWrapper,
+    MapType,
+    MapWrapper,
+    NumericType,
+    TupleWrapper,
+)
+from trilogy.core.models_datasource import Datasource
+from trilogy.core.models_environment import Environment
+from trilogy.core.models_execute import (
+    CTE,
+    BaseJoin,
+    ConceptPair,
+    QueryDatasource,
+    UnionCTE,
+    UnnestJoin,
+)
+from trilogy.core.models_author import LooseConceptList
+from trilogy.core.statements_author import MultiSelectStatement, SelectStatement
+from trilogy.core.statements_execute import ProcessedQuery
 from trilogy.utility import unique
 
 

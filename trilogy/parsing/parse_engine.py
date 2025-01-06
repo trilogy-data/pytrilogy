@@ -42,54 +42,25 @@ from trilogy.core.functions import (
     FunctionFactory,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.models import (
-    Address,
+from trilogy.core.models_author import (
     AggregateWrapper,
-    AlignClause,
     AlignItem,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
     Comment,
     Comparison,
     Concept,
-    ConceptDeclarationStatement,
-    ConceptDerivation,
     ConceptTransform,
     Conditional,
-    CopyStatement,
-    Datasource,
-    DataType,
-    Environment,
-    EnvironmentConceptDict,
     FilterItem,
     Function,
     Grain,
     HavingClause,
-    ImportStatement,
-    Limit,
-    ListType,
-    ListWrapper,
-    MapType,
-    MapWrapper,
-    MergeStatementV2,
     Metadata,
-    MultiSelectStatement,
-    NumericType,
     OrderBy,
     OrderItem,
     Parenthetical,
-    PersistStatement,
-    Query,
-    RawColumnExpr,
-    RawSQLStatement,
-    RowsetDerivationStatement,
-    SelectItem,
-    SelectStatement,
-    ShowStatement,
-    StructType,
     SubselectComparison,
-    TupleWrapper,
     WhereClause,
     Window,
     WindowItem,
@@ -97,13 +68,46 @@ from trilogy.core.models import (
     WindowItemOver,
 )
 from trilogy.core.models_core import (
+    DataType,
+    ListType,
+    ListWrapper,
+    MapType,
+    MapWrapper,
+    NumericType,
+    StructType,
+    TupleWrapper,
     arg_to_datatype,
     dict_to_map_wrapper,
     list_to_wrapper,
     tuple_to_wrapper,
 )
+from trilogy.core.models_datasource import (
+    Address,
+    ColumnAssignment,
+    Datasource,
+    Query,
+    RawColumnExpr,
+)
+from trilogy.core.models_environment import Environment, EnvironmentConceptDict
+from trilogy.core.statements_author import (
+    AlignClause,
+    ConceptDeclarationStatement,
+    ConceptDerivationStatement,
+    CopyStatement,
+    ImportStatement,
+    Limit,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
+    ShowStatement,
+)
 from trilogy.parsing.common import (
     agg_wrapper_to_concept,
+    align_item_to_concept,
     arbitrary_to_concept,
     constant_to_concept,
     filter_item_to_concept,
@@ -481,7 +485,7 @@ class ParseToObjects(Transformer):
         return ConceptDeclarationStatement(concept=concept)
 
     @v_args(meta=True)
-    def concept_derivation(self, meta: Meta, args) -> ConceptDerivation:
+    def concept_derivation(self, meta: Meta, args) -> ConceptDerivationStatement:
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -524,7 +528,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
+            return ConceptDerivationStatement(concept=concept)
 
         elif isinstance(source_value, CONSTANT_TYPES):
             concept = constant_to_concept(
@@ -537,7 +541,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
+            return ConceptDerivationStatement(concept=concept)
 
         raise SyntaxError(
             f"Received invalid type {type(args[2])} {args[2]} as input to select"
@@ -955,6 +959,7 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
+
         selects: list[SelectStatement] = []
         align: AlignClause | None = None
         limit: int | None = None
@@ -980,7 +985,7 @@ class ParseToObjects(Transformer):
                 base_local[k] = v
         derived_concepts = []
         for x in align.items:
-            derived_concepts.append(x.gen_concept(selects, align, self.environment))
+            derived_concepts.append(align_item_to_concept(x, align, selects))
         multi = MultiSelectStatement(
             selects=selects,
             align=align,

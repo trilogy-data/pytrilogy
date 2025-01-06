@@ -3,7 +3,7 @@ from pathlib import Path
 from trilogy import Dialects
 from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models import Environment
+from trilogy.core.models_environment import Environment
 
 
 def test_environment_serialization(test_environment: Environment):

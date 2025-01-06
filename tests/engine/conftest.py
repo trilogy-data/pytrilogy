@@ -5,7 +5,8 @@ from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
-from trilogy import Dialects, Environment, Executor, parse
+from trilogy import Dialects, Executor, parse
+from trilogy.core.models_environment import Environment
 from trilogy.dialect.config import PrestoConfig, SnowflakeConfig, TrinoConfig
 from trilogy.dialect.enums import DialectConfig
 from trilogy.engine import EngineConnection, EngineResult, ExecutionEngine

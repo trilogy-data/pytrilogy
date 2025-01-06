@@ -1,6 +1,7 @@
 from logging import INFO
 
-from trilogy.core.models import Concept, Environment
+from trilogy.core.models_author import Concept
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.group_node import GroupNode

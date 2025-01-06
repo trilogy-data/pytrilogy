@@ -1,6 +1,7 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import FunctionType, Purpose
-from trilogy.core.models import Concept, DataType, Function, Grain
+from trilogy.core.models_author import Concept, Function, Grain
+from trilogy.core.models_core import DataType
 
 DEFAULT_CONCEPTS = {
     ALL_ROWS_CONCEPT: Concept(

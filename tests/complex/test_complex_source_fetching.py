@@ -5,18 +5,18 @@
 import re
 
 from trilogy.core.enums import Purpose
-from trilogy.core.models import (
-    Datasource,
+from trilogy.core.models_author import Grain
+from trilogy.core.models_datasource import Datasource
+from trilogy.core.models_environment import (
     Environment,
-    Grain,
-    QueryDatasource,
-    SelectStatement,
 )
+from trilogy.core.models_execute import QueryDatasource
 from trilogy.core.processing.concept_strategies_v3 import (
     generate_graph,
     search_concepts,
 )
 from trilogy.core.query_processor import datasource_to_cte, process_query
+from trilogy.core.statements_author import SelectStatement
 from trilogy.dialect.sql_server import SqlServerDialect
 
 

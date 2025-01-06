@@ -1,13 +1,12 @@
 from typing import Callable
 
 from trilogy.core.enums import Modifier, UnnestMode
-from trilogy.core.models import (
+from trilogy.core.models_author import Concept, Function
+from trilogy.core.models_datasource import RawColumnExpr
+from trilogy.core.models_execute import (
     CTE,
-    Concept,
-    Function,
     InstantiatedUnnestJoin,
     Join,
-    RawColumnExpr,
 )
 
 

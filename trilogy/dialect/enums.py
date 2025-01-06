@@ -1,8 +1,10 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, List, Optional
 
+from trilogy.core.models_environment import Environment
+
 if TYPE_CHECKING:
-    from trilogy import Environment, Executor
+    from trilogy import Executor
     from trilogy.hooks.base_hook import BaseHook
 
 from trilogy.constants import logger
@@ -98,7 +100,7 @@ class Dialects(Enum):
         conf: DialectConfig | None = None,
         _engine_factory: Callable | None = None,
     ) -> "Executor":
-        from trilogy import Environment, Executor
+        from trilogy import Executor
 
         if _engine_factory is not None:
             return Executor(

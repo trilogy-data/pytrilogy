@@ -1,7 +1,6 @@
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from trilogy import Environment
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import (
     BooleanOperator,
@@ -11,38 +10,41 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models import (
-    Address,
-    AlignClause,
+    DataType,
+    ListType,
+    ListWrapper,
+    NumericType,
+    Ordering,
+    Purpose,
+    TupleWrapper,
+)
+from trilogy.core.models_author import (
     AlignItem,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
     Comparison,
     Concept,
-    ConceptDeclarationStatement,
     Conditional,
-    CopyStatement,
-    Datasource,
-    DataType,
     Function,
     Grain,
+    OrderBy,
+    OrderItem,
+    WhereClause,
+)
+from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
+from trilogy.core.models_environment import Environment
+from trilogy.core.statements_author import (
+    AlignClause,
+    ConceptDeclarationStatement,
+    CopyStatement,
     ImportStatement,
-    ListType,
-    ListWrapper,
     MergeStatementV2,
     MultiSelectStatement,
-    NumericType,
-    OrderBy,
-    Ordering,
-    OrderItem,
     PersistStatement,
-    Purpose,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectItem,
     SelectStatement,
-    TupleWrapper,
-    WhereClause,
 )
 from trilogy.parsing.render import Renderer, render_environment, render_query
 

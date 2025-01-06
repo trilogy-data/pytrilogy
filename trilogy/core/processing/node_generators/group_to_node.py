@@ -1,7 +1,8 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, Function, WhereClause
+from trilogy.core.models_author import Concept, Function, WhereClause
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.nodes import (
     GroupNode,
     History,

@@ -6,14 +6,14 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation, FunctionType, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models import (
+from trilogy.core.models_author import (
     Concept,
-    Environment,
     Function,
     RowsetItem,
     UndefinedConcept,
     WhereClause,
 )
+from trilogy.core.models_environment import Environment
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
     gen_filter_node,

@@ -1,7 +1,7 @@
 from trilogy.core.enums import Derivation
-from trilogy.core.models import (
+from trilogy.core.models_author import Concept
+from trilogy.core.models_execute import (
     CTE,
-    Concept,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule

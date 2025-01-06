@@ -3,8 +3,9 @@ from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Path, argument, group, option, pass_context
 
-from trilogy import Environment, Executor, parse
+from trilogy import Executor, parse
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.models_environment import Environment
 from trilogy.dialect.enums import Dialects
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parsing.render import Renderer

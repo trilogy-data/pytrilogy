@@ -1,7 +1,9 @@
 # from trilogy.compiler import compile
-from trilogy import Dialects, Environment
-from trilogy.core.models import Grain, SelectStatement
+from trilogy import Dialects
+from trilogy.core.models_author import Grain
+from trilogy.core.models_environment import Environment
 from trilogy.core.query_processor import process_query
+from trilogy.core.statements_author import SelectStatement
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
 
