@@ -62,6 +62,14 @@ datasource users (
         == Grain(components=[env.concepts["about_me"]]).components
     )
 
+    assert (
+        str(select)
+        == """SELECT
+    about_me,
+    post_count,
+;"""
+    )
+
 
 def test_double_aggregate():
     declarations = """

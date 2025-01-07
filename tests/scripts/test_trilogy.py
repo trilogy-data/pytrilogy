@@ -35,7 +35,8 @@ def test_cli_fmt_string():
         assert (
             f.read().strip()
             == """SELECT
-    1 -> test,;"""
+    1 -> test,
+;"""
         )
     os.remove("test.sql")
 

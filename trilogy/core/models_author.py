@@ -452,18 +452,6 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
             )
         )
 
-    @property
-    def components(self):
-        from trilogy.core.processing.utility import decompose_condition
-
-        return decompose_condition(self.conditional)
-
-    @property
-    def is_scalar(self):
-        from trilogy.core.processing.utility import is_scalar_condition
-
-        return is_scalar_condition(self.conditional)
-
 
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)

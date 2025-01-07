@@ -3,7 +3,7 @@ from pathlib import Path
 from trilogy import Dialects
 from trilogy.core.enums import Modifier
 from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models_environment import Environment
+from trilogy.core.models_environment import Environment, LazyEnvironment
 
 
 def test_environment_serialization(test_environment: Environment):
@@ -23,6 +23,20 @@ def test_environment_from_path():
     env = Environment.from_file(Path(__file__).parent / "test_env.preql")
 
     assert "local.id" in env.concepts
+
+
+def test_lazy_environment_from_path():
+    env = LazyEnvironment(load_path=Path(__file__).parent / "test_env.preql")
+
+    assert not env.loaded
+
+    _ = len(env.concepts)
+
+    assert env.loaded
+
+    env2 = Environment.from_file(Path(__file__).parent / "test_env.preql")
+
+    assert env.concepts == env2.concepts
 
 
 def test_environment_invalid():

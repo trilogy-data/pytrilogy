@@ -65,9 +65,9 @@ HAVING
     {{ having }}
 {% endif %}{%- if order_by %}
 ORDER BY{% for order in order_by %}
-    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}
-{% endif %}{%- if limit is not none %}
-LIMIT {{ limit }}{% endif %};"""
+    {{ order }}{% if not loop.last %},{% endif %}{% endfor %}{% endif %}{%- if limit is not none %}
+LIMIT {{ limit }}{% endif %}
+;"""
 )
 
 
@@ -334,7 +334,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: MultiSelectStatement):
-        base = "\nMERGE\n".join([self.to_string(select)[:-1] for select in arg.selects])
+        base = "\nMERGE\n".join([self.to_string(select)[:-2] for select in arg.selects])
         base += self.to_string(arg.align)
         if arg.where_clause:
             base += f"\nWHERE\n{self.to_string(arg.where_clause)}"

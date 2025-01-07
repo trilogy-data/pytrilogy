@@ -94,7 +94,8 @@ select max(order_id) by order_id -> test;
     assert (
         string_query
         == """SELECT
-    max(order_id) by order_id -> test,;"""
+    max(order_id) by order_id -> test,
+;"""
     )
 
 
@@ -794,7 +795,8 @@ where id in (1,2,3);
         == """PERSIST test INTO test FROM WHERE
     id in (1, 2, 3)
 SELECT
-    id,;"""
+    id,
+;"""
     ), rendered
 
 

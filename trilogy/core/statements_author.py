@@ -21,10 +21,8 @@ from trilogy.core.models_author import (
     Grain,
     HasUUID,
     HavingClause,
-    Mergeable,
     Metadata,
     MultiSelectLineage,
-    Namespaced,
     OrderBy,
     SelectItem,
     SelectLineage,
@@ -42,7 +40,7 @@ from trilogy.core.statements_common import SelectTypeMixin
 from trilogy.utility import unique
 
 
-class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel):
+class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -215,19 +213,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
                 new.append(item)
         return new
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SelectStatement":
-        return SelectStatement(
-            selection=[x.with_merge(source, target, modifiers) for x in self.selection],
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
-            limit=self.limit,
-        )
-
     @property
     def locally_derived(self) -> set[str]:
         locally_derived: set[str] = set()
@@ -235,25 +220,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
             if isinstance(item.content, ConceptTransform):
                 locally_derived.add(item.content.output.address)
         return locally_derived
-
-    @property
-    def input_components(self) -> List[Concept]:
-        output = set()
-        output_list = []
-        for item in self.selection:
-            for concept in item.input:
-                if concept.name in output:
-                    continue
-                output.add(concept.name)
-                output_list.append(concept)
-        if self.where_clause:
-            for concept in self.where_clause.input:
-                if concept.name in output:
-                    continue
-                output.add(concept.name)
-                output_list.append(concept)
-
-        return output_list
 
     @property
     def output_components(self) -> List[Concept]:
@@ -272,10 +238,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
             if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
                 output.add(item.output.address)
         return output
-
-    @property
-    def all_components(self) -> List[Concept]:
-        return self.input_components + self.output_components
 
     def to_datasource(
         self,
@@ -325,18 +287,6 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
             column.concept = column.concept.with_grain(new_datasource.grain)
         return new_datasource
 
-    def with_namespace(self, namespace: str) -> "SelectStatement":
-        return SelectStatement(
-            selection=[c.with_namespace(namespace) for c in self.selection],
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
-            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
-            limit=self.limit,
-        )
-
 
 class RawSQLStatement(BaseModel):
     text: str
@@ -350,7 +300,7 @@ class CopyStatement(BaseModel):
     select: SelectStatement
 
 
-class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, BaseModel):
+class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     selects: List[SelectStatement]
     align: AlignClause
     namespace: str
@@ -394,52 +344,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
             output += self.where_clause.concept_arguments
         return unique(output, "address")
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "MultiSelectStatement":
-        new = MultiSelectStatement(
-            selects=[s.with_merge(source, target, modifiers) for s in self.selects],
-            align=self.align,
-            namespace=self.namespace,
-            derived_concepts=[
-                x.with_merge(source, target, modifiers) for x in self.derived_concepts
-            ],
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
-            limit=self.limit,
-            meta=self.meta,
-            where_clause=(
-                self.where_clause.with_merge(source, target, modifiers)
-                if self.where_clause
-                else None
-            ),
-        )
-        return new
-
-    def with_namespace(self, namespace: str) -> "MultiSelectStatement":
-        return MultiSelectStatement(
-            selects=[c.with_namespace(namespace) for c in self.selects],
-            align=self.align.with_namespace(namespace),
-            namespace=namespace,
-            derived_concepts=[
-                x.with_namespace(namespace) for x in self.derived_concepts
-            ],
-            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
-            limit=self.limit,
-            meta=self.meta,
-            where_clause=(
-                self.where_clause.with_namespace(namespace)
-                if self.where_clause
-                else None
-            ),
-            local_concepts=EnvironmentConceptDict(
-                {k: v.with_namespace(namespace) for k, v in self.local_concepts.items()}
-            ),
-        )
-
     @property
     def grain(self):
         base = Grain()
@@ -473,7 +377,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
         return output
 
 
-class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
+class RowsetDerivationStatement(HasUUID, BaseModel):
     name: str
     select: SelectStatement | MultiSelectStatement
     namespace: str
@@ -484,32 +388,13 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
     def __str__(self):
         return self.__repr__()
 
-    @property
-    def arguments(self) -> List[Concept]:
-        return self.select.output_components
 
-    def with_namespace(self, namespace: str) -> "RowsetDerivationStatement":
-        return RowsetDerivationStatement(
-            name=self.name,
-            select=self.select.with_namespace(namespace),
-            namespace=namespace,
-        )
-
-
-class MergeStatementV2(HasUUID, Namespaced, BaseModel):
+class MergeStatementV2(HasUUID, BaseModel):
     sources: list[Concept]
     targets: dict[str, Concept]
     source_wildcard: str | None = None
     target_wildcard: str | None = None
     modifiers: List[Modifier] = Field(default_factory=list)
-
-    def with_namespace(self, namespace: str) -> "MergeStatementV2":
-        new = MergeStatementV2(
-            sources=[x.with_namespace(namespace) for x in self.sources],
-            targets={k: v.with_namespace(namespace) for k, v in self.targets.items()},
-            modifiers=self.modifiers,
-        )
-        return new
 
 
 class ImportStatement(HasUUID, BaseModel):

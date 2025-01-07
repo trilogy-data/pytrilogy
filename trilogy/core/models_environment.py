@@ -206,8 +206,7 @@ class Environment(BaseModel):
             },
         )
 
-    def __init__(self, **data):
-        super().__init__(**data)
+    def _add_path_concepts(self):
         concept = Concept(
             name="_env_working_path",
             namespace=self.namespace,
@@ -221,6 +220,10 @@ class Environment(BaseModel):
             purpose=Purpose.CONSTANT,
         )
         self.add_concept(concept)
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        self._add_path_concepts()
 
     # def freeze(self):
     #     self.frozen = True
@@ -608,6 +611,12 @@ class LazyEnvironment(Environment):
 
     load_path: Path
     loaded: bool = False
+
+    def __init__(self, **data):
+        super().__init__(**data)
+
+    def _add_path_concepts(self):
+        pass
 
     def __getattribute__(self, name):
         if name in (
