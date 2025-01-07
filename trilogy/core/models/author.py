@@ -186,10 +186,10 @@ class Parenthetical(
     def concept_arguments(self) -> List[Concept]:
         base: List[Concept] = []
         x = self.content
-        if hasattr(x, "concept_arguments"):
+        if isinstance(x, Concept):
+            base += [x]
+        elif isinstance(ConceptArgs):
             base += x.concept_arguments
-        elif isinstance(x, Concept):
-            base.append(x)
         return base
 
     @property
@@ -806,7 +806,7 @@ class SubselectComparison(Comparison):
         )
 
 
-class Concept(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
+class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
