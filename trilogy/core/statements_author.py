@@ -329,22 +329,6 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
 
     @property
-    def arguments(self) -> List[Concept]:
-        output = []
-        for select in self.selects:
-            output += select.input_components
-        return unique(output, "address")
-
-    @property
-    def concept_arguments(self) -> List[Concept]:
-        output = []
-        for select in self.selects:
-            output += select.input_components
-        if self.where_clause:
-            output += self.where_clause.concept_arguments
-        return unique(output, "address")
-
-    @property
     def grain(self):
         base = Grain()
         for select in self.selects:

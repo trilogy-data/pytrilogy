@@ -212,14 +212,6 @@ class Parenthetical(
         return []
 
     @property
-    def input(self):
-        base = []
-        x = self.content
-        if hasattr(x, "input"):
-            base += x.input
-        return base
-
-    @property
     def output_datatype(self):
         return arg_to_datatype(self.content)
 
@@ -357,20 +349,6 @@ class Conditional(
         )
 
     @property
-    def input(self) -> List[Concept]:
-        """Return concepts directly referenced in where clause"""
-        output = []
-
-        for x in (self.left, self.right):
-            if isinstance(x, Concept):
-                output += x.input
-            elif isinstance(x, (Comparison, Conditional)):
-                output += x.input
-            elif isinstance(x, (Function, Parenthetical, FilterItem)):
-                output += x.concept_arguments
-        return output
-
-    @property
     def concept_arguments(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
@@ -418,10 +396,6 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
 
     def __repr__(self):
         return str(self.conditional)
-
-    @property
-    def input(self) -> List[Concept]:
-        return self.conditional.input
 
     @property
     def concept_arguments(self) -> List[Concept]:
@@ -770,32 +744,6 @@ class Comparison(
         )
 
     @property
-    def input(self) -> List[Concept]:
-        output: List[Concept] = []
-        if isinstance(self.left, (Concept,)):
-            output += [self.left]
-        if isinstance(
-            self.left, (Comparison, SubselectComparison, Conditional, Parenthetical)
-        ):
-            output += self.left.input
-        if isinstance(self.left, FilterItem):
-            output += self.left.concept_arguments
-        if isinstance(self.left, Function):
-            output += self.left.concept_arguments
-
-        if isinstance(self.right, (Concept,)):
-            output += [self.right]
-        if isinstance(
-            self.right, (Comparison, SubselectComparison, Conditional, Parenthetical)
-        ):
-            output += self.right.input
-        if isinstance(self.right, FilterItem):
-            output += self.right.concept_arguments
-        if isinstance(self.right, Function):
-            output += self.right.concept_arguments
-        return output
-
-    @property
     def concept_arguments(self) -> List[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
@@ -1130,9 +1078,8 @@ class Concept(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
             if self.keys:
                 components = [*self.keys]
             if self.lineage:
-                for item in self.lineage.arguments:
-                    if isinstance(item, Concept):
-                        components += [x.address for x in item.sources]
+                for item in self.lineage.concept_arguments:
+                    components += [x.address for x in item.sources]
             # TODO: set synonyms
             grain = Grain(
                 components=set([x for x in components]),
@@ -1178,7 +1125,7 @@ class Concept(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
                 ],
                 output: List[Concept],
             ):
-                for item in expr.arguments:
+                for item in expr.concept_arguments:
                     if isinstance(item, Concept):
                         if item.address == self.address:
                             raise SyntaxError(
@@ -1196,10 +1143,6 @@ class Concept(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.lineage.concept_arguments if self.lineage else []
-
-    @property
-    def input(self):
-        return [self] + self.sources
 
     @property
     def derivation(self) -> Derivation:
@@ -1340,10 +1283,6 @@ class ConceptTransform(Namespaced, BaseModel):
     output: Concept
     modifiers: List[Modifier] = Field(default_factory=list)
 
-    @property
-    def input(self) -> List[Concept]:
-        return [v for v in self.function.arguments if isinstance(v, Concept)]
-
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return ConceptTransform(
             function=self.function.with_merge(source, target, modifiers),
@@ -1382,10 +1321,6 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         return OrderItem(
             expr=source.with_merge(source, target, modifiers), order=self.order
         )
-
-    @property
-    def input(self):
-        return self.expr.input
 
     @property
     def output(self):
@@ -1466,15 +1401,6 @@ class WindowItem(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
             self.content.output = value
         else:
             self.content = value
-
-    @property
-    def input(self) -> List[Concept]:
-        base = self.content.input
-        for v in self.order_by:
-            base += v.input
-        for c in self.over:
-            base += c.input
-        return base
 
     @property
     def output_datatype(self):
@@ -1893,7 +1819,7 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
     @property
     def arguments(self) -> List[Concept]:
         output = [self.content]
-        output += self.where.input
+        output += self.where.concept_arguments
         return output
 
     @property
@@ -1908,12 +1834,6 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
             self.content.output = value
         else:
             self.content = value
-
-    @property
-    def input(self) -> List[Concept]:
-        base = self.content.input
-        base += self.where.input
-        return base
 
     @property
     def output_datatype(self):
@@ -1985,7 +1905,7 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
     def arguments(self) -> List[Concept]:
         output = [self.content]
         if self.where:
-            output += self.where.input
+            output += self.where.concept_arguments
         return output
 
     @property
@@ -2000,13 +1920,6 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
             self.content.output = value
         else:
             self.content = value
-
-    @property
-    def input(self) -> List[Concept]:
-        base = self.content.input
-        if self.where:
-            base += self.where.input
-        return base
 
     @property
     def output_datatype(self):
@@ -2067,25 +1980,6 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
     having_clause: Union["HavingClause", None] = Field(default=None)
 
     @property
-    def input_components(self) -> List[Concept]:
-        output = set()
-        output_list = []
-        for item in self.selection:
-            for concept in item.input:
-                if concept.name in output:
-                    continue
-                output.add(concept.name)
-                output_list.append(concept)
-        if self.where_clause:
-            for concept in self.where_clause.input:
-                if concept.name in output:
-                    continue
-                output.add(concept.name)
-                output_list.append(concept)
-
-        return output_list
-
-    @property
     def output_components(self) -> List[Concept]:
         output = []
         for item in self.selection:
@@ -2102,10 +1996,6 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
             if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
                 output.add(item.output.address)
         return output
-
-    @property
-    def all_components(self) -> List[Concept]:
-        return self.input_components + self.output_components
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -2224,7 +2114,7 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
     def arguments(self) -> List[Concept]:
         output = []
         for select in self.selects:
-            output += select.input_components
+            output += select.output_components
         return unique(output, "address")
 
     @property
@@ -2238,7 +2128,7 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
     def concept_arguments(self):
         output = []
         for select in self.selects:
-            output += select.input_components
+            output += select.output_components
         return unique(output, "address")
 
     def get_merge_concept(self, check: Concept) -> str | None:
@@ -2399,10 +2289,6 @@ class SelectItem(Mergeable, Namespaced, BaseModel):
         elif isinstance(self.content, WindowItem):
             return self.content.output
         return self.content
-
-    @property
-    def input(self) -> List[Concept]:
-        return self.content.input
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
