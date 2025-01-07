@@ -24,9 +24,6 @@ order by
 
 
 def test_import():
-    from trilogy.hooks.query_debugger import DebuggingHook
-
-    DebuggingHook()
     env = Environment.from_file(Path(__file__).parent / "entrypoint.preql")
 
     assert env.concepts["holdings.cost_basis"].grain.components == {
@@ -49,6 +46,7 @@ def test_import():
     _ = duckdb.generate_sql(
         """SELECT
     holdings.profitable,
+    holdings.return,
 WHERE
     holdings.profitable
 ;

@@ -8,6 +8,7 @@ from trilogy.core.models.author import (
     Concept,
     Conditional,
     Grain,
+    Parenthetical,
     RowsetItem,
     UndefinedConcept,
 )
@@ -315,3 +316,9 @@ def test_tuple_clone():
     x = TupleWrapper([1, 2, 3], type=DataType.INTEGER)
     y = deepcopy(x)
     assert y == x
+
+
+def test_parenthetical():
+    x = Parenthetical(content=TupleWrapper([1, 2, 3], type=DataType.INTEGER))
+
+    assert x.concept_arguments == []
