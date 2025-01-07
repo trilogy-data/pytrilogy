@@ -188,8 +188,6 @@ def generate_related_concepts(
             args = process_function_args(
                 [concept, key], meta=meta, environment=environment
             )
-            print("----")
-            print(key, value)
             auto = Concept(
                 name=key,
                 datatype=arg_to_datatype(value),

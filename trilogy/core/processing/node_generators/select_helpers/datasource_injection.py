@@ -158,21 +158,14 @@ def is_fully_covered(
 
     # Check for gaps
     current_end = start
-    print(ranges)
     for r_start, r_end in ranges:
-        print(r_start, r_end)
         # If there's a gap between the current range and the previous coverage
-        print(r_start - current_end)
         if (r_start - current_end) > increment:  # type: ignore
-            print("gap")
             return False
-        print("okay")
         # Extend the current coverage
         current_end = max(current_end, r_end)
 
     # If the loop ends and we haven't reached the end, return False
-    print(current_end, end)
-    print(current_end >= end)
     return current_end >= end
 
 
