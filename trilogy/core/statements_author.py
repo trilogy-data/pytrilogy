@@ -1,6 +1,6 @@
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Union
 
 from pydantic import BaseModel, Field, computed_field, field_validator
 from pydantic.functional_validators import PlainValidator
@@ -16,7 +16,7 @@ from trilogy.core.models_author import (
     AggregateWrapper,
     AlignClause,
     Concept,
-    ConceptTransform,
+    FilterItem,
     Function,
     Grain,
     HasUUID,
@@ -24,10 +24,10 @@ from trilogy.core.models_author import (
     Metadata,
     MultiSelectLineage,
     OrderBy,
-    SelectItem,
     SelectLineage,
     UndefinedConcept,
     WhereClause,
+    WindowItem,
 )
 from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models_environment import (
@@ -38,6 +38,37 @@ from trilogy.core.models_environment import (
 from trilogy.core.models_execute import CTE, UnionCTE
 from trilogy.core.statements_common import SelectTypeMixin
 from trilogy.utility import unique
+
+
+class ConceptTransform(BaseModel):
+    function: Function | FilterItem | WindowItem | AggregateWrapper
+    output: Concept
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return ConceptTransform(
+            function=self.function.with_merge(source, target, modifiers),
+            output=self.output.with_merge(source, target, modifiers),
+            modifiers=self.modifiers + modifiers,
+        )
+
+    def with_namespace(self, namespace: str) -> "ConceptTransform":
+        return ConceptTransform(
+            function=self.function.with_namespace(namespace),
+            output=self.output.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
+
+
+class SelectItem(BaseModel):
+    content: Union[Concept, ConceptTransform]
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    @property
+    def concept(self):
+        return (
+            self.content if isinstance(self.content, Concept) else self.content.output
+        )
 
 
 class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
@@ -52,7 +83,8 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
 
     def as_lineage(self) -> SelectLineage:
         return SelectLineage(
-            selection=self.selection,
+            selection=[x.concept for x in self.selection],
+            hidden_components=self.hidden_components,
             order_by=self.order_by,
             limit=self.limit,
             meta=self.meta,
@@ -218,26 +250,18 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         locally_derived: set[str] = set()
         for item in self.selection:
             if isinstance(item.content, ConceptTransform):
-                locally_derived.add(item.content.output.address)
+                locally_derived.add(item.concept.address)
         return locally_derived
 
     @property
     def output_components(self) -> List[Concept]:
-        output = []
-        for item in self.selection:
-            if isinstance(item, Concept):
-                output.append(item)
-            else:
-                output.append(item.output)
-        return output
+        return [x.concept for x in self.selection]
 
     @property
     def hidden_components(self) -> set[str]:
-        output = set()
-        for item in self.selection:
-            if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
-                output.add(item.output.address)
-        return output
+        return set(
+            x.concept.address for x in self.selection if Modifier.HIDDEN in x.modifiers
+        )
 
     def to_datasource(
         self,

@@ -15,7 +15,6 @@ from trilogy.core.models_author import (
     Comparison,
     Concept,
     ConceptRef,
-    ConceptTransform,
     Conditional,
     FilterItem,
     Function,
@@ -23,7 +22,6 @@ from trilogy.core.models_author import (
     OrderBy,
     OrderItem,
     Parenthetical,
-    SelectItem,
     SubselectComparison,
     WhereClause,
     WindowItem,
@@ -46,6 +44,7 @@ from trilogy.core.models_environment import Environment, Import
 from trilogy.core.statements_author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
+    ConceptTransform,
     CopyStatement,
     ImportStatement,
     MergeStatementV2,
@@ -53,6 +52,7 @@ from trilogy.core.statements_author import (
     PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
+    SelectItem,
     SelectStatement,
 )
 

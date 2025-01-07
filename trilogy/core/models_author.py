@@ -27,7 +27,7 @@ from pydantic import (
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -1133,8 +1133,6 @@ class Concept(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
                             )
                         output.append(item)
                         output += item.sources
-                    elif isinstance(item, Function):
-                        get_sources(item, output)
 
             get_sources(self.lineage, output)
             return output
@@ -1208,8 +1206,6 @@ class Concept(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
             # there is only one row left and it's fine to cross_join
             if all([x.endswith(ALL_ROWS_CONCEPT) for x in self.grain.components]):
                 return Granularity.SINGLE_ROW
-        elif self.namespace == INTERNAL_NAMESPACE and self.name == ALL_ROWS_CONCEPT:
-            return Granularity.SINGLE_ROW
         elif (
             self.lineage
             and isinstance(self.lineage, Function)
@@ -1276,26 +1272,6 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         if environment.concepts.fail_on_missing:
             environment.concepts.raise_undefined(self.address, line_no=self.line_no)
         return self
-
-
-class ConceptTransform(Namespaced, BaseModel):
-    function: Function | FilterItem | WindowItem | AggregateWrapper
-    output: Concept
-    modifiers: List[Modifier] = Field(default_factory=list)
-
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return ConceptTransform(
-            function=self.function.with_merge(source, target, modifiers),
-            output=self.output.with_merge(source, target, modifiers),
-            modifiers=self.modifiers + modifiers,
-        )
-
-    def with_namespace(self, namespace: str) -> "ConceptTransform":
-        return ConceptTransform(
-            function=self.function.with_namespace(namespace),
-            output=self.output.with_namespace(namespace),
-            modifiers=self.modifiers,
-        )
 
 
 class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
@@ -1391,16 +1367,7 @@ class WindowItem(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
 
     @property
     def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
         return self.content
-
-    @output.setter
-    def output(self, value):
-        if isinstance(self.content, ConceptTransform):
-            self.content.output = value
-        else:
-            self.content = value
 
     @property
     def output_datatype(self):
@@ -1817,25 +1784,6 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
         )
 
     @property
-    def arguments(self) -> List[Concept]:
-        output = [self.content]
-        output += self.where.concept_arguments
-        return output
-
-    @property
-    def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
-        return self.content
-
-    @output.setter
-    def output(self, value):
-        if isinstance(self.content, ConceptTransform):
-            self.content.output = value
-        else:
-            self.content = value
-
-    @property
     def output_datatype(self):
         return self.content.datatype
 
@@ -1888,7 +1836,7 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return RowsetItem(
             content=self.content.with_merge(source, target, modifiers),
-            rowset=self.rowset,
+            rowset=self.rowset.with_merge(source, target, modifiers),
             where=(
                 self.where.with_merge(source, target, modifiers) if self.where else None
             ),
@@ -1910,16 +1858,7 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
 
     @property
     def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
         return self.content
-
-    @output.setter
-    def output(self, value):
-        if isinstance(self.content, ConceptTransform):
-            self.content.output = value
-        else:
-            self.content = value
 
     @property
     def output_datatype(self):
@@ -1970,7 +1909,8 @@ class AlignClause(Namespaced, BaseModel):
 
 
 class SelectLineage(Mergeable, Namespaced, BaseModel):
-    selection: List[SelectItem]
+    selection: List[Concept]
+    hidden_components: set[str]
     local_concepts: dict[str, Concept]
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -1981,27 +1921,14 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
 
     @property
     def output_components(self) -> List[Concept]:
-        output = []
-        for item in self.selection:
-            if isinstance(item, Concept):
-                output.append(item)
-            else:
-                output.append(item.output)
-        return output
-
-    @property
-    def hidden_components(self) -> set[str]:
-        output = set()
-        for item in self.selection:
-            if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
-                output.add(item.output.address)
-        return output
+        return self.selection
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> SelectLineage:
         return SelectLineage(
             selection=[x.with_merge(source, target, modifiers) for x in self.selection],
+            hidden_components=self.hidden_components,
             local_concepts={
                 x: y.with_merge(source, target, modifiers)
                 for x, y in self.local_concepts.items()
@@ -2111,13 +2038,6 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
         return output
 
     @property
-    def arguments(self) -> List[Concept]:
-        output = []
-        for select in self.selects:
-            output += select.output_components
-        return unique(output, "address")
-
-    @property
     def derived_concepts(self) -> set[str]:
         output = set()
         for item in self.align.items:
@@ -2131,6 +2051,7 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
             output += select.output_components
         return unique(output, "address")
 
+    # these are needed to help disambiguate between parents
     def get_merge_concept(self, check: Concept) -> str | None:
         for item in self.align.items:
             if check in item.concepts_lcl:
@@ -2276,30 +2197,3 @@ Expr = (
     | Function
     | AggregateWrapper
 )
-
-
-class SelectItem(Mergeable, Namespaced, BaseModel):
-    content: Union[Concept, ConceptTransform]
-    modifiers: List[Modifier] = Field(default_factory=list)
-
-    @property
-    def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
-        elif isinstance(self.content, WindowItem):
-            return self.content.output
-        return self.content
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SelectItem":
-        return SelectItem(
-            content=self.content.with_merge(source, target, modifiers),
-            modifiers=modifiers,
-        )
-
-    def with_namespace(self, namespace: str) -> "SelectItem":
-        return SelectItem(
-            content=self.content.with_namespace(namespace),
-            modifiers=self.modifiers,
-        )

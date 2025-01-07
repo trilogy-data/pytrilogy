@@ -112,9 +112,9 @@ def test_constants(duckdb_engine: Executor, expected_results):
         == Granularity.SINGLE_ROW
     )
     parent_arg: Concept = [
-        x for x in scaled_metric.lineage.arguments if x.name == "total_count"
+        x for x in scaled_metric.lineage.concept_arguments if x.name == "total_count"
     ][0]
-    assert len(parent_arg.lineage.arguments[0].grain.components) == 2
+    assert len(parent_arg.lineage.concept_arguments[0].grain.components) == 2
     # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
@@ -438,7 +438,7 @@ select
 
     count_by_customer = default_duckdb_engine.environment.concepts[
         "avg_customer_orders"
-    ].lineage.arguments[0]
+    ].lineage.concept_arguments[0]
     # assert isinstance(count_by_customer, AggregateWrapper)
     assert set([x for x in count_by_customer.keys]) == {"local.customer"}
     assert set([x for x in count_by_customer.grain.components]) == {"local.customer"}

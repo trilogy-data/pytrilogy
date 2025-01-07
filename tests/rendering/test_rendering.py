@@ -23,7 +23,6 @@ from trilogy.core.models_author import (
     Grain,
     OrderBy,
     OrderItem,
-    SelectItem,
     WhereClause,
 )
 from trilogy.core.models_core import (
@@ -44,6 +43,7 @@ from trilogy.core.statements_author import (
     PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
+    SelectItem,
     SelectStatement,
 )
 from trilogy.parsing.render import Renderer, render_environment, render_query
@@ -861,8 +861,9 @@ final_zips;
 
     final_zips: ConceptDeclarationStatement = commands[-2]
     assert isinstance(
-        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept
-    ), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
+        final_zips.concept.lineage.concept_arguments[0].lineage.where.conditional.right,
+        Concept,
+    ), final_zips.concept.lineage.concept_arguments[0].lineage.where.conditional.right
     rendered = Renderer().to_string(final_zips)
 
     assert (
