@@ -1,5 +1,6 @@
 import symbol as symbol;
 import provider as provider;
+import holdings as holdings;
 
 key id int;
 property id.date date;

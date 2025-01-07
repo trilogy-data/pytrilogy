@@ -1394,7 +1394,7 @@ def get_basic_type(
     return type
 
 
-class CaseWhen(Namespaced, SelectContext, BaseModel):
+class CaseWhen(Namespaced, Mergeable, SelectContext, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
@@ -1435,8 +1435,20 @@ class CaseWhen(Namespaced, SelectContext, BaseModel):
             ),
         )
 
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> CaseWhen:
+        return CaseWhen(
+            comparison=self.comparison.with_merge(source, target, modifiers),
+            expr=(
+                self.expr.with_merge(source, target, modifiers)
+                if isinstance(self.expr, Mergeable)
+                else self.expr
+            ),
+        )
 
-class CaseElse(Namespaced, SelectContext, BaseModel):
+
+class CaseElse(Namespaced, Mergeable, SelectContext, BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -1459,6 +1471,18 @@ class CaseElse(Namespaced, SelectContext, BaseModel):
                     self.expr,
                     SelectContext,
                 )
+                else self.expr
+            ),
+        )
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> CaseElse:
+        return CaseElse(
+            discriminant=self.discriminant,
+            expr=(
+                self.expr.with_merge(source, target, modifiers)
+                if isinstance(self.expr, Mergeable)
                 else self.expr
             ),
         )

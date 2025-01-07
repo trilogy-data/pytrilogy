@@ -212,7 +212,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             if self.namespace and self.namespace != DEFAULT_NAMESPACE
             else namespace
         )
-        return Datasource(
+        new = Datasource(
             name=self.name,
             namespace=new_namespace,
             grain=self.grain.with_namespace(namespace),
@@ -220,6 +220,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             columns=[c.with_namespace(namespace) for c in self.columns],
             where=self.where.with_namespace(namespace) if self.where else None,
         )
+        return new
 
     @property
     def concepts(self) -> List[Concept]:

@@ -43,7 +43,7 @@ def gen_basic_node(
     parent_concepts = resolve_function_parent_concepts(concept, environment=environment)
 
     logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}"
+        f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x for x in parent_concepts]}"
     )
 
     equivalent_optional = [
