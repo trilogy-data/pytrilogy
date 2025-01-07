@@ -8,6 +8,10 @@ class UndefinedConceptException(Exception):
         self.suggestions = suggestions
 
 
+class UnresolvableQueryException(Exception):
+    pass
+
+
 class InvalidSyntaxException(Exception):
     pass
 

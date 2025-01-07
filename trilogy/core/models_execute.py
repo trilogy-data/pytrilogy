@@ -22,12 +22,12 @@ from trilogy.core.models_author import (
     Conditional,
     Function,
     Grain,
+    LooseConceptList,
+    OrderBy,
     Parenthetical,
     RowsetItem,
 )
 from trilogy.core.models_datasource import Address, Datasource
-from trilogy.core.models_author import LooseConceptList
-from trilogy.core.models_author import OrderBy
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"

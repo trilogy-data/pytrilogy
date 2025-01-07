@@ -2,10 +2,10 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
+from trilogy.core.models_author import Concept
 from trilogy.core.models_core import (
     DataType,
 )
-from trilogy.core.models_author import Concept
 from trilogy.core.models_datasource import ColumnAssignment, Datasource
 from trilogy.core.models_environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts

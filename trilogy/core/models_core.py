@@ -41,8 +41,7 @@ class DataTyped(ABC):
         if "output_datatype" in self.__dict__:
             return self.__dict__["output_datatype"]
         raise NotImplementedError
-    
-    
+
 
 TYPEDEF_TYPES = Union[
     "DataType", "MapType", "ListType", "NumericType", "StructType", "DataTyped"

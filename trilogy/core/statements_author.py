@@ -1,13 +1,12 @@
 from functools import cached_property
 from pathlib import Path
-from typing import Annotated, List, Optional, Union
+from typing import Annotated, List, Optional
 
 from pydantic import BaseModel, Field, computed_field, field_validator
 from pydantic.functional_validators import PlainValidator
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE
 from trilogy.core.enums import (
-    ConceptSource,
     FunctionClass,
     IOType,
     Modifier,
@@ -18,25 +17,26 @@ from trilogy.core.models_author import (
     AlignClause,
     Concept,
     ConceptTransform,
-    FilterItem,
     Function,
     Grain,
     HasUUID,
     HavingClause,
     Mergeable,
     Metadata,
+    MultiSelectLineage,
     Namespaced,
     OrderBy,
-    RowsetItem,
     SelectItem,
+    SelectLineage,
     UndefinedConcept,
     WhereClause,
-    RowsetLineage,
-    SelectLineage,
-    MultiSelectLineage,
 )
 from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
-from trilogy.core.models_environment import Environment, EnvironmentConceptDict, validate_concepts
+from trilogy.core.models_environment import (
+    Environment,
+    EnvironmentConceptDict,
+    validate_concepts,
+)
 from trilogy.core.models_execute import CTE, UnionCTE
 from trilogy.core.statements_common import SelectTypeMixin
 from trilogy.utility import unique
@@ -52,16 +52,16 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
     ] = Field(default_factory=EnvironmentConceptDict)
     grain: Grain = Field(default_factory=Grain)
 
-    def as_lineage(self)->SelectLineage:
+    def as_lineage(self) -> SelectLineage:
         return SelectLineage(
-            selection = self.selection,
-            order_by = self.order_by,
-            limit = self.limit,
-            meta = self.meta,
-            local_concepts = self.local_concepts,
-            grain = self.grain   ,
+            selection=self.selection,
+            order_by=self.order_by,
+            limit=self.limit,
+            meta=self.meta,
+            local_concepts=self.local_concepts,
+            grain=self.grain,
             having_clause=self.having_clause,
-            where_clause=self.where_clause
+            where_clause=self.where_clause,
         )
 
     @classmethod
@@ -364,15 +364,15 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
 
     def as_lineage(self):
         return MultiSelectLineage(
-            selects = [x.as_lineage() for x in self.selects],
-            align = self.align,
-            namespace = self.namespace,
+            selects=[x.as_lineage() for x in self.selects],
+            align=self.align,
+            namespace=self.namespace,
             # derived_concepts = self.derived_concepts,
-            limit = self.limit,
+            limit=self.limit,
             order_by=self.order_by,
             where_clause=self.where_clause,
-            having_clause = self.having_clause,
-
+            having_clause=self.having_clause,
+            local_concepts=self.local_concepts,
         )
 
     def __repr__(self):

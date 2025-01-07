@@ -42,7 +42,7 @@ from trilogy.core.models_datasource import (
     Query,
     RawColumnExpr,
 )
-from trilogy.core.models_environment import Environment
+from trilogy.core.models_environment import Environment, Import
 from trilogy.core.statements_author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
@@ -406,6 +406,18 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: "ImportStatement"):
+        path: str = str(arg.path).replace("\\", ".")
+        path = path.replace("/", ".")
+        if path.endswith(".preql"):
+            path = path.rsplit(".", 1)[0]
+        if path.startswith("."):
+            path = path[1:]
+        if arg.alias == DEFAULT_NAMESPACE or not arg.alias:
+            return f"import {path};"
+        return f"import {path} as {arg.alias};"
+
+    @to_string.register
+    def _(self, arg: "Import"):
         path: str = str(arg.path).replace("\\", ".")
         path = path.replace("/", ".")
         if path.endswith(".preql"):

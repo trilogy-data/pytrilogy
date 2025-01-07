@@ -4,15 +4,14 @@ from pathlib import Path
 from trilogy import Dialects, parse
 from trilogy.core.enums import Granularity, Purpose
 from trilogy.core.functions import CurrentDatetime
+from trilogy.core.models_author import Concept, Function, SelectItem
 from trilogy.core.models_core import (
     DataType,
 )
-from trilogy.core.models_author import Concept, Function
 from trilogy.core.models_environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
-from trilogy.core.models_author import SelectItem
 from trilogy.core.statements_execute import ProcessedQuery
 from trilogy.executor import Executor
 from trilogy.hooks.query_debugger import DebuggingHook

@@ -6,10 +6,10 @@ from trilogy.core.models_author import (
     Concept,
     Function,
     Grain,
+    LooseConceptList,
     WhereClause,
 )
 from trilogy.core.models_environment import Environment
-from trilogy.core.models_author import LooseConceptList
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,

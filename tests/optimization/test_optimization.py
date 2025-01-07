@@ -5,10 +5,10 @@ from trilogy.core.enums import (
     FunctionType,
     Purpose,
 )
+from trilogy.core.models_author import Comparison, Conditional, Function, Grain
 from trilogy.core.models_core import (
     DataType,
 )
-from trilogy.core.models_author import Comparison, Conditional, Function, Grain
 from trilogy.core.models_environment import Environment
 from trilogy.core.models_execute import CTE, QueryDatasource
 from trilogy.core.optimization import (

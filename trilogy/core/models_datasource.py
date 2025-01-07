@@ -9,10 +9,10 @@ from trilogy.core.models_author import (
     Function,
     Grain,
     HasUUID,
+    LooseConceptList,
     Namespaced,
     WhereClause,
 )
-from trilogy.core.models_author import LooseConceptList
 
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
 

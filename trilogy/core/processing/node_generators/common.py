@@ -7,10 +7,10 @@ from trilogy.core.models_author import (
     Concept,
     FilterItem,
     Function,
+    LooseConceptList,
     WhereClause,
 )
 from trilogy.core.models_environment import Environment
-from trilogy.core.models_author import LooseConceptList
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,

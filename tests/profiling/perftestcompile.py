@@ -9,11 +9,6 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.functions import Count, CountDistinct, Max, Min
-
-# from trilogy.compiler import compile
-from trilogy.core.models_core import (
-    DataType,
-)
 from trilogy.core.models_author import (
     Comparison,
     Concept,
@@ -23,6 +18,11 @@ from trilogy.core.models_author import (
     OrderItem,
     WhereClause,
     WindowItem,
+)
+
+# from trilogy.compiler import compile
+from trilogy.core.models_core import (
+    DataType,
 )
 from trilogy.core.models_datasource import ColumnAssignment, Datasource
 from trilogy.core.models_environment import Environment

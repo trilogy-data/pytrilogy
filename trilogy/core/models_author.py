@@ -5,6 +5,7 @@ from abc import ABC
 from datetime import date, datetime
 from functools import cached_property
 from typing import (
+    TYPE_CHECKING,
     Any,
     List,
     Optional,
@@ -14,7 +15,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 from pydantic import (
@@ -436,16 +436,16 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
         return self.conditional.existence_arguments
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
-        return WhereClause(
+        return self.__class__(
             conditional=self.conditional.with_merge(source, target, modifiers)
         )
 
-    def with_namespace(self, namespace: str) -> WhereClause:
-        return WhereClause(conditional=self.conditional.with_namespace(namespace))
+    def with_namespace(self, namespace: str) -> Self:
+        return self.__class__(conditional=self.conditional.with_namespace(namespace))
 
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> WhereClause:
+    ) -> Self:
         return self.__class__(
             conditional=self.conditional.with_select_context(
                 local_concepts, grain, environment
@@ -1943,7 +1943,7 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
 class RowsetLineage(Namespaced, Mergeable, BaseModel):
     name: str
     derived_concepts: List[Concept]
-    select: SelectLineage
+    select: SelectLineage | MultiSelectLineage
 
     def with_namespace(self, namespace: str):
         return RowsetLineage(
@@ -2152,11 +2152,18 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
     selects: List[SelectLineage]
     align: AlignClause
     namespace: str
-
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
+    local_concepts: dict[str, Concept]
+
+    @property
+    def grain(self):
+        base = Grain()
+        for select in self.selects:
+            base += select.grain
+        return base
 
     def with_merge(
         self, source: Concept, target: Concept, modifiers: List[Modifier]
@@ -2171,8 +2178,20 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
                 else None
             ),
             limit=self.limit,
-            where_clause = self.where_clause.with_merge(source, target, modifiers) if self.where_clause else None,
-            having_clause = self.having_clause.with_merge(source, target, modifiers) if self.having_clause else None,
+            where_clause=(
+                self.where_clause.with_merge(source, target, modifiers)
+                if self.where_clause
+                else None
+            ),
+            having_clause=(
+                self.having_clause.with_merge(source, target, modifiers)
+                if self.having_clause
+                else None
+            ),
+            local_concepts={
+                x: y.with_merge(source, target, modifiers)
+                for x, y in self.local_concepts.items()
+            },
         )
         return new
 
@@ -2183,20 +2202,36 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
             namespace=namespace,
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
             limit=self.limit,
-            where_clause=self.where_clause.with_namespace(namespace) if self.where_clause else None,
-            having_clause=self.having_clause.with_namespace(namespace) if self.having_clause else None,
+            where_clause=(
+                self.where_clause.with_namespace(namespace)
+                if self.where_clause
+                else None
+            ),
+            having_clause=(
+                self.having_clause.with_namespace(namespace)
+                if self.having_clause
+                else None
+            ),
+            local_concepts={
+                x: y.with_namespace(namespace) for x, y in self.local_concepts.items()
+            },
         )
-    @property
-    def hidden_components(self):
-        return []
-    
+
+    @computed_field  # type: ignore
+    @cached_property
+    def hidden_components(self) -> set[str]:
+        output: set[str] = set()
+        for select in self.selects:
+            output = output.union(select.hidden_components)
+        return output
+
     @property
     def output_components(self):
-        output = []
+        output = [self.local_concepts[x] for x in self.derived_concepts]
         for select in self.selects:
             output += select.output_components
         return output
-    
+
     @property
     def arguments(self) -> List[Concept]:
         output = []
@@ -2233,8 +2268,6 @@ class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
         raise SyntaxError(
             f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
         )
-
-
 
 
 class LooseConceptList(BaseModel):
@@ -2284,7 +2317,6 @@ class LooseConceptList(BaseModel):
 
 class AlignItem(Namespaced, BaseModel):
     alias: str
-    # aligned_concept: str
     concepts: List[Concept]
     namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
 

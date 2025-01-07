@@ -68,7 +68,6 @@ from trilogy.core.models_author import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
-    RowsetLineage,
 )
 from trilogy.core.models_core import (
     DataType,
@@ -114,8 +113,8 @@ from trilogy.parsing.common import (
     filter_item_to_concept,
     function_to_concept,
     process_function_args,
-    window_item_to_concept,
     rowset_to_concepts,
+    window_item_to_concept,
 )
 from trilogy.parsing.exceptions import ParseError
 
@@ -909,7 +908,9 @@ class ParseToObjects(Transformer):
                 ) from e
 
         imps = ImportStatement(alias=alias, path=Path(args[0]))
-        self.environment.add_import(alias, new_env, Import(alias=alias, path=Path(args[0])))
+        self.environment.add_import(
+            alias, new_env, Import(alias=alias, path=Path(args[0]))
+        )
         return imps
 
     @v_args(meta=True)
@@ -966,6 +967,7 @@ class ParseToObjects(Transformer):
         limit: int | None = None
         order_by: OrderBy | None = None
         where: WhereClause | None = None
+        having: HavingClause | None = None
         for arg in args:
             if isinstance(arg, SelectStatement):
                 selects.append(arg)
@@ -975,6 +977,8 @@ class ParseToObjects(Transformer):
                 order_by = arg
             elif isinstance(arg, WhereClause):
                 where = arg
+            elif isinstance(arg, HavingClause):
+                having = arg
             elif isinstance(arg, AlignClause):
                 align = arg
 
@@ -986,7 +990,18 @@ class ParseToObjects(Transformer):
                 base_local[k] = v
         derived_concepts = []
         for x in align.items:
-            derived_concepts.append(align_item_to_concept(x, align, selects))
+            concept = align_item_to_concept(
+                x,
+                align,
+                selects,
+                local_concepts=base_local,
+                where=where,
+                having=having,
+                limit=limit,
+            )
+            derived_concepts.append(concept)
+            self.environment.add_concept(concept, meta=meta)
+            base_local[concept.address] = concept
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -998,8 +1013,6 @@ class ParseToObjects(Transformer):
             local_concepts=base_local,
             derived_concepts=derived_concepts,
         )
-        for concept in multi.derived_concepts:
-            self.environment.add_concept(concept, meta=meta)
         return multi
 
     @v_args(meta=True)

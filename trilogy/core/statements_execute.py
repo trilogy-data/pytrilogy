@@ -7,12 +7,12 @@ from trilogy.core.models_author import (
     Concept,
     Grain,
     HavingClause,
+    OrderBy,
     WhereClause,
 )
 from trilogy.core.models_datasource import Datasource
 from trilogy.core.models_environment import EnvironmentConceptDict, validate_concepts
 from trilogy.core.models_execute import CTE, Join, UnionCTE
-from trilogy.core.models_author import OrderBy
 from trilogy.core.statements_common import CopyQueryMixin, PersistQueryMixin
 
 

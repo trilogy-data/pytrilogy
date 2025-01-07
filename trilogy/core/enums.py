@@ -322,6 +322,7 @@ class ShowCategory(Enum):
     MODELS = "models"
     CONCEPTS = "concepts"
 
+
 class IOType(Enum):
     CSV = "csv"
 

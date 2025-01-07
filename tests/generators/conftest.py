@@ -9,9 +9,6 @@ from trilogy.core.enums import (
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
-from trilogy.core.models_core import (
-    DataType,
-)
 from trilogy.core.models_author import (
     AggregateWrapper,
     Comparison,
@@ -22,6 +19,9 @@ from trilogy.core.models_author import (
     OrderItem,
     WhereClause,
     WindowItem,
+)
+from trilogy.core.models_core import (
+    DataType,
 )
 from trilogy.core.models_datasource import ColumnAssignment, Datasource
 from trilogy.core.models_environment import Environment

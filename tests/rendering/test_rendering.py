@@ -8,16 +8,8 @@ from trilogy.core.enums import (
     FunctionType,
     IOType,
     Modifier,
-        Ordering,
+    Ordering,
     Purpose,
-)
-from trilogy.core.models_core import (
-    DataType,
-    ListType,
-    ListWrapper,
-    NumericType,
-
-    TupleWrapper,
 )
 from trilogy.core.models_author import (
     AlignClause,
@@ -34,8 +26,15 @@ from trilogy.core.models_author import (
     SelectItem,
     WhereClause,
 )
+from trilogy.core.models_core import (
+    DataType,
+    ListType,
+    ListWrapper,
+    NumericType,
+    TupleWrapper,
+)
 from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
-from trilogy.core.models_environment import Environment
+from trilogy.core.models_environment import Environment, Import
 from trilogy.core.statements_author import (
     ConceptDeclarationStatement,
     CopyStatement,
@@ -591,26 +590,23 @@ def test_render_parenthetical():
 
 
 def test_render_import():
-    base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="user_id", path=str(PureWindowsPath(base)))
-    )
+    for obj in [ImportStatement, Import]:
+        base = Path("/path/to/file.preql")
+        test = Renderer().to_string(
+            obj(alias="user_id", path=str(PureWindowsPath(base)))
+        )
 
-    assert test == "import path.to.file as user_id;"
+        assert test == "import path.to.file as user_id;"
 
-    base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="user_id", path=str(PurePosixPath(base)))
-    )
+        base = Path("/path/to/file.preql")
+        test = Renderer().to_string(obj(alias="user_id", path=str(PurePosixPath(base))))
 
-    assert test == "import path.to.file as user_id;"
+        assert test == "import path.to.file as user_id;"
 
-    base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="", path=str(PurePosixPath(base)))
-    )
+        base = Path("/path/to/file.preql")
+        test = Renderer().to_string(obj(alias="", path=str(PurePosixPath(base))))
 
-    assert test == "import path.to.file;"
+        assert test == "import path.to.file;"
 
 
 def test_render_datasource():

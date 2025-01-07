@@ -2,11 +2,11 @@ from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
+from trilogy.core.models_author import Comparison
 from trilogy.core.models_core import (
     DataType,
     TupleWrapper,
 )
-from trilogy.core.models_author import Comparison
 from trilogy.core.models_datasource import Datasource
 from trilogy.core.models_environment import Environment
 from trilogy.core.statements_author import SelectStatement, ShowStatement

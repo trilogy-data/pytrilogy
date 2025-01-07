@@ -10,10 +10,10 @@ from sqlalchemy import create_engine
 from trilogy import Dialects, Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
 from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
+from trilogy.core.models_author import Concept, Function, Grain, Metadata
 from trilogy.core.models_core import (
     DataType,
 )
-from trilogy.core.models_author import Concept, Function, Grain, Metadata
 from trilogy.core.models_datasource import ColumnAssignment, Datasource
 from trilogy.core.models_environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook

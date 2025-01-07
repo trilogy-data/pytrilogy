@@ -10,7 +10,8 @@ from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.models_author import (
     Concept,
     Conditional,
-    SelectLineage, MultiSelectLineage
+    MultiSelectLineage,
+    SelectLineage,
 )
 from trilogy.core.models_datasource import Datasource
 from trilogy.core.models_environment import Environment
@@ -358,7 +359,9 @@ def datasource_to_cte(
 
 def get_query_node(
     environment: Environment,
-    statement: SelectStatement | SelectLineage |  MultiSelectStatement | MultiSelectLineage,
+    statement: (
+        SelectStatement | SelectLineage | MultiSelectStatement | MultiSelectLineage
+    ),
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()

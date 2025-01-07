@@ -24,6 +24,7 @@ from trilogy.core.models_author import (
     Conditional,
     FilterItem,
     Function,
+    LooseConceptList,
     Parenthetical,
     SubselectComparison,
     WindowItem,
@@ -47,7 +48,6 @@ from trilogy.core.models_execute import (
     UnionCTE,
     UnnestJoin,
 )
-from trilogy.core.models_author import LooseConceptList
 from trilogy.core.statements_author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements_execute import ProcessedQuery
 from trilogy.utility import unique

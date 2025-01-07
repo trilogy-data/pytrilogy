@@ -13,12 +13,12 @@ from trilogy.core.models_author import (
     Concept,
     Conditional,
     Grain,
+    LooseConceptList,
     Parenthetical,
 )
 from trilogy.core.models_datasource import Datasource
 from trilogy.core.models_environment import Environment
 from trilogy.core.models_execute import ConceptPair, QueryDatasource, UnnestJoin
-from trilogy.core.models_author import LooseConceptList
 from trilogy.utility import unique
 
 

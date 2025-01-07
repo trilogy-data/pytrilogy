@@ -10,10 +10,10 @@ from trilogy.core.models_author import (
     Concept,
     FilterItem,
     Grain,
+    LooseConceptList,
     SubselectComparison,
 )
 from trilogy.core.models_environment import Environment
-from trilogy.core.models_author import LooseConceptList
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,

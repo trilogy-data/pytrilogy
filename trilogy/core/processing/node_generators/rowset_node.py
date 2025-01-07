@@ -2,19 +2,19 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models_author import (
     Concept,
     Grain,
-    RowsetItem,
-    WhereClause,
-    RowsetLineage,
     MultiSelectLineage,
+    RowsetItem,
+    RowsetLineage,
     SelectLineage,
+    WhereClause,
 )
 from trilogy.core.models_environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
-
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
@@ -45,10 +45,14 @@ def gen_rowset_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent rowset node for {concept}"
         )
-        return None
+        raise UnresolvableQueryException(
+            f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
+        )
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
-    logger.info(f'{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}')
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
+    )
     select_hidden = select.hidden_components
     rowset_hidden = [
         x

@@ -2,10 +2,6 @@ from copy import deepcopy
 
 from trilogy import parse
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Purpose
-from trilogy.core.models_core import (
-    DataType,
-    TupleWrapper,
-)
 from trilogy.core.models_author import (
     AggregateWrapper,
     Comparison,
@@ -14,6 +10,10 @@ from trilogy.core.models_author import (
     Grain,
     RowsetItem,
     UndefinedConcept,
+)
+from trilogy.core.models_core import (
+    DataType,
+    TupleWrapper,
 )
 from trilogy.core.models_datasource import Address
 from trilogy.core.models_environment import Environment

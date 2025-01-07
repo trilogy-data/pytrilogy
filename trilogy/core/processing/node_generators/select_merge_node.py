@@ -8,11 +8,11 @@ from trilogy.core.graph_models import concept_to_node
 from trilogy.core.models_author import (
     Concept,
     Grain,
+    LooseConceptList,
     WhereClause,
 )
 from trilogy.core.models_datasource import Datasource
 from trilogy.core.models_environment import Environment
-from trilogy.core.models_author import LooseConceptList
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
 )

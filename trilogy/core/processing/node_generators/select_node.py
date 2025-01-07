@@ -3,10 +3,10 @@ from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.models_author import (
     Concept,
+    LooseConceptList,
     WhereClause,
 )
 from trilogy.core.models_environment import Environment
-from trilogy.core.models_author import LooseConceptList
 from trilogy.core.processing.node_generators.select_merge_node import (
     gen_select_merge_node,
 )

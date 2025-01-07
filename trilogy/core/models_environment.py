@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import difflib
 import os
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Dict, ItemsView, List, Never, Optional, Tuple, ValuesView
 
@@ -27,14 +29,13 @@ from trilogy.core.models_author import (
 )
 from trilogy.core.models_core import DataType
 from trilogy.core.models_datasource import Datasource, EnvironmentDatasourceDict
-from typing import TYPE_CHECKING
-from dataclasses import dataclass
-import difflib
+
 
 @dataclass
 class Import:
-    alias:str
-    path:Path
+    alias: str
+    path: Path
+
 
 class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
@@ -154,9 +155,6 @@ def get_version():
     from trilogy import __version__
 
     return __version__
-
-
-
 
 
 class Environment(BaseModel):
