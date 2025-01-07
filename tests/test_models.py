@@ -2,7 +2,7 @@ from copy import deepcopy
 
 from trilogy import parse
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Purpose
-from trilogy.core.models import (
+from trilogy.core.models_core import (
     DataType,
     TupleWrapper,
 )

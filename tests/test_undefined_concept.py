@@ -1,6 +1,6 @@
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models import DataType
+from trilogy.core.models_core import DataType
 from trilogy.core.models_author import Concept
 from trilogy.core.models_environment import EnvironmentConceptDict
 from trilogy.parser import parse

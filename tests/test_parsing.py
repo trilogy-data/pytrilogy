@@ -2,7 +2,7 @@ from trilogy import Dialects
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.functions import argument_to_purpose, function_args_to_output_purpose
-from trilogy.core.models import (
+from trilogy.core.models_core import (
     DataType,
     TupleWrapper,
 )

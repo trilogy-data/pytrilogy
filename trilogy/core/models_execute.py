@@ -798,8 +798,8 @@ class QueryDatasource(BaseModel):
 class UnionCTE(BaseModel):
     name: str
     source: QueryDatasource
-    parent_ctes: list[CTE | "UnionCTE"]
-    internal_ctes: list[CTE | "UnionCTE"]
+    parent_ctes: list[CTE | UnionCTE]
+    internal_ctes: list[CTE | UnionCTE]
     output_columns: List[Concept]
     grain: Grain
     operator: str = "UNION ALL"

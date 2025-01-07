@@ -8,7 +8,7 @@ from trilogy import Dialects
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models import DataType, ListType
+from trilogy.core.models_core import DataType, ListType
 from trilogy.core.models_environment import Environment
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements_author import SelectStatement

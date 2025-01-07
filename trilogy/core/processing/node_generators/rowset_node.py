@@ -7,15 +7,14 @@ from trilogy.core.models_author import (
     Grain,
     RowsetItem,
     WhereClause,
+    RowsetLineage,
+    MultiSelectLineage,
+    SelectLineage,
 )
 from trilogy.core.models_environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
-from trilogy.core.statements_author import (
-    MultiSelectStatement,
-    RowsetDerivationStatement,
-    SelectStatement,
-)
+
 
 LOGGER_PREFIX = "[GEN_ROWSET_NODE]"
 
@@ -37,8 +36,8 @@ def gen_rowset_node(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
         )
     lineage: RowsetItem = concept.lineage
-    rowset: RowsetDerivationStatement = lineage.rowset
-    select: SelectStatement | MultiSelectStatement = lineage.rowset.select
+    rowset: RowsetLineage = lineage.rowset
+    select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
     node = get_query_node(environment, select)
 
@@ -49,6 +48,7 @@ def gen_rowset_node(
         return None
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
+    logger.info(f'{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}')
     select_hidden = select.hidden_components
     rowset_hidden = [
         x

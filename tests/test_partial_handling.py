@@ -1,9 +1,8 @@
-# from trilogy.core.models import Environment
 from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models import (
+from trilogy.core.models_core import (
     DataType,
 )
 from trilogy.core.models_author import Concept

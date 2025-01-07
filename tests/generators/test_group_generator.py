@@ -1,5 +1,5 @@
 from trilogy.core.enums import Derivation, FunctionType, Purpose
-from trilogy.core.models import DataType
+from trilogy.core.models_core import DataType
 from trilogy.core.models_author import AggregateWrapper, Function
 from trilogy.core.models_environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
@@ -26,7 +26,6 @@ def test_gen_group_node_parents(test_environment: Environment):
 
 
 def test_gen_group_node_basic(test_environment, test_environment_graph):
-    # from trilogy.core.models import AggregateWrapper
     prod = test_environment.concepts["product_id"]
     test_environment.concepts["revenue"]
     prod_r = test_environment.concepts["total_revenue"]
@@ -43,7 +42,6 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
 
 
 def test_gen_group_node(test_environment: Environment, test_environment_graph):
-    # from trilogy.core.models import AggregateWrapper
     from trilogy.hooks.query_debugger import DebuggingHook
 
     DebuggingHook()

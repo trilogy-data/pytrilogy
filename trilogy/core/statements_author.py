@@ -15,7 +15,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models_author import (
     AggregateWrapper,
-    AlignItem,
+    AlignClause,
     Concept,
     ConceptTransform,
     FilterItem,
@@ -28,46 +28,18 @@ from trilogy.core.models_author import (
     Namespaced,
     OrderBy,
     RowsetItem,
+    SelectItem,
     UndefinedConcept,
     WhereClause,
-    WindowItem,
+    RowsetLineage,
+    SelectLineage,
+    MultiSelectLineage,
 )
 from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models_environment import Environment, EnvironmentConceptDict, validate_concepts
 from trilogy.core.models_execute import CTE, UnionCTE
 from trilogy.core.statements_common import SelectTypeMixin
 from trilogy.utility import unique
-
-
-class SelectItem(Mergeable, Namespaced, BaseModel):
-    content: Union[Concept, ConceptTransform]
-    modifiers: List[Modifier] = Field(default_factory=list)
-
-    @property
-    def output(self) -> Concept:
-        if isinstance(self.content, ConceptTransform):
-            return self.content.output
-        elif isinstance(self.content, WindowItem):
-            return self.content.output
-        return self.content
-
-    @property
-    def input(self) -> List[Concept]:
-        return self.content.input
-
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "SelectItem":
-        return SelectItem(
-            content=self.content.with_merge(source, target, modifiers),
-            modifiers=modifiers,
-        )
-
-    def with_namespace(self, namespace: str) -> "SelectItem":
-        return SelectItem(
-            content=self.content.with_namespace(namespace),
-            modifiers=self.modifiers,
-        )
 
 
 class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel):
@@ -79,6 +51,18 @@ class SelectStatement(HasUUID, Mergeable, Namespaced, SelectTypeMixin, BaseModel
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
     grain: Grain = Field(default_factory=Grain)
+
+    def as_lineage(self)->SelectLineage:
+        return SelectLineage(
+            selection = self.selection,
+            order_by = self.order_by,
+            limit = self.limit,
+            meta = self.meta,
+            local_concepts = self.local_concepts,
+            grain = self.grain   ,
+            having_clause=self.having_clause,
+            where_clause=self.where_clause
+        )
 
     @classmethod
     def from_inputs(
@@ -366,13 +350,6 @@ class CopyStatement(BaseModel):
     select: SelectStatement
 
 
-class AlignClause(Namespaced, BaseModel):
-    items: List[AlignItem]
-
-    def with_namespace(self, namespace: str) -> "AlignClause":
-        return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
-
-
 class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, BaseModel):
     selects: List[SelectStatement]
     align: AlignClause
@@ -384,6 +361,19 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, Mergeable, Namespaced, Base
     local_concepts: Annotated[
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
+
+    def as_lineage(self):
+        return MultiSelectLineage(
+            selects = [x.as_lineage() for x in self.selects],
+            align = self.align,
+            namespace = self.namespace,
+            # derived_concepts = self.derived_concepts,
+            limit = self.limit,
+            order_by=self.order_by,
+            where_clause=self.where_clause,
+            having_clause = self.having_clause,
+
+        )
 
     def __repr__(self):
         return "MultiSelect<" + " MERGE ".join([str(s) for s in self.selects]) + ">"
@@ -493,53 +483,6 @@ class RowsetDerivationStatement(HasUUID, Namespaced, BaseModel):
 
     def __str__(self):
         return self.__repr__()
-
-    @property
-    def derived_concepts(self) -> List[Concept]:
-        output: list[Concept] = []
-        orig: dict[str, Concept] = {}
-        for orig_concept in self.select.output_components:
-            name = orig_concept.name
-            if isinstance(orig_concept.lineage, FilterItem):
-                if orig_concept.lineage.where == self.select.where_clause:
-                    name = orig_concept.lineage.content.name
-
-            new_concept = Concept(
-                name=name,
-                datatype=orig_concept.datatype,
-                purpose=orig_concept.purpose,
-                lineage=RowsetItem(
-                    content=orig_concept, where=self.select.where_clause, rowset=self
-                ),
-                grain=orig_concept.grain,
-                # TODO: add proper metadata
-                metadata=Metadata(concept_source=ConceptSource.CTE),
-                namespace=(
-                    f"{self.name}.{orig_concept.namespace}"
-                    if orig_concept.namespace != self.namespace
-                    else self.name
-                ),
-                keys=orig_concept.keys,
-            )
-            orig[orig_concept.address] = new_concept
-            output.append(new_concept)
-        default_grain = Grain.from_concepts([*output])
-        # remap everything to the properties of the rowset
-        for x in output:
-            if x.keys:
-                if all([k in orig for k in x.keys]):
-                    x.keys = set([orig[k].address if k in orig else k for k in x.keys])
-                else:
-                    # TODO: fix this up
-                    x.keys = set()
-        for x in output:
-            if all([c in orig for c in x.grain.components]):
-                x.grain = Grain(
-                    components={orig[c].address for c in x.grain.components}
-                )
-            else:
-                x.grain = default_grain
-        return output
 
     @property
     def arguments(self) -> List[Concept]:

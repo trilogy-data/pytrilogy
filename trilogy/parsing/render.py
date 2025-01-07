@@ -8,6 +8,7 @@ from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicCo
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Modifier, Purpose
 from trilogy.core.models_author import (
     AggregateWrapper,
+    AlignClause,
     AlignItem,
     CaseElse,
     CaseWhen,
@@ -22,6 +23,7 @@ from trilogy.core.models_author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    SelectItem,
     SubselectComparison,
     WhereClause,
     WindowItem,
@@ -42,7 +44,6 @@ from trilogy.core.models_datasource import (
 )
 from trilogy.core.models_environment import Environment
 from trilogy.core.statements_author import (
-    AlignClause,
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     CopyStatement,
@@ -52,7 +53,6 @@ from trilogy.core.statements_author import (
     PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
-    SelectItem,
     SelectStatement,
 )
 

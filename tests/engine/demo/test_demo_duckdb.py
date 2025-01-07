@@ -1,6 +1,6 @@
 from trilogy import Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.models import (
+from trilogy.core.models_core import (
     DataType,
 )
 from trilogy.core.models_author import Concept, Function, Grain, SelectContext

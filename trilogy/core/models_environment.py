@@ -27,8 +27,14 @@ from trilogy.core.models_author import (
 )
 from trilogy.core.models_core import DataType
 from trilogy.core.models_datasource import Datasource, EnvironmentDatasourceDict
-from trilogy.core.statements_author import ImportStatement
+from typing import TYPE_CHECKING
+from dataclasses import dataclass
+import difflib
 
+@dataclass
+class Import:
+    alias:str
+    path:Path
 
 class EnvironmentOptions(BaseModel):
     allow_duplicate_declaration: bool = True
@@ -150,6 +156,9 @@ def get_version():
     return __version__
 
 
+
+
+
 class Environment(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, strict=False)
 
@@ -161,7 +170,7 @@ class Environment(BaseModel):
     ] = Field(default_factory=EnvironmentDatasourceDict)
     functions: Dict[str, Function] = Field(default_factory=dict)
     data_types: Dict[str, DataType] = Field(default_factory=dict)
-    imports: Dict[str, list[ImportStatement]] = Field(
+    imports: Dict[str, list[Import]] = Field(
         default_factory=lambda: defaultdict(list)  # type: ignore
     )
     namespace: str = DEFAULT_NAMESPACE
@@ -333,10 +342,8 @@ class Environment(BaseModel):
         )
 
     def add_import(
-        self, alias: str, source: Environment, imp_stm: ImportStatement | None = None
+        self, alias: str, source: Environment, imp_stm: Import | None = None
     ):
-        from trilogy.core.statements_author import ImportStatement
-
         if self.frozen:
             raise ValueError("Environment is frozen, cannot add imports")
         exists = False
@@ -351,7 +358,7 @@ class Environment(BaseModel):
                 [x.path == source.working_path and x.alias == alias for x in existing]
             ):
                 exists = True
-            imp_stm = ImportStatement(alias=alias, path=Path(source.working_path))
+            imp_stm = Import(alias=alias, path=Path(source.working_path))
         same_namespace = alias == self.namespace
 
         if not exists:
@@ -437,7 +444,7 @@ class Environment(BaseModel):
                     f"Unable to import file {target.parent}, parsing error: {e}"
                 )
             env = nparser.environment
-        imps = ImportStatement(alias=alias, path=target)
+        imps = Import(alias=alias, path=target)
         self.add_import(alias, source=env, imp_stm=imps)
         return imps
 
@@ -630,4 +637,4 @@ class LazyEnvironment(Environment):
         return super().__getattribute__(name)
 
 
-Environment.update_forward_refs()
+Environment.model_rebuild()

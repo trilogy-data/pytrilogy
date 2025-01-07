@@ -5,7 +5,7 @@ from trilogy.core.enums import (
     FunctionType,
     Purpose,
 )
-from trilogy.core.models import (
+from trilogy.core.models_core import (
     DataType,
 )
 from trilogy.core.models_author import Comparison, Conditional, Function, Grain

@@ -62,7 +62,6 @@ ALIGN
 
 
 def test_multi_select_constant(test_environment: Environment, test_environment_graph):
-    # from trilogy.core.models import AggregateWrapper
 
     parse(
         """

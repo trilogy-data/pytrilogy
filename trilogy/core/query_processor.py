@@ -10,6 +10,7 @@ from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.models_author import (
     Concept,
     Conditional,
+    SelectLineage, MultiSelectLineage
 )
 from trilogy.core.models_datasource import Datasource
 from trilogy.core.models_environment import Environment
@@ -357,7 +358,7 @@ def datasource_to_cte(
 
 def get_query_node(
     environment: Environment,
-    statement: SelectStatement | MultiSelectStatement,
+    statement: SelectStatement | SelectLineage |  MultiSelectStatement | MultiSelectLineage,
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()
@@ -365,7 +366,7 @@ def get_query_node(
         environment.concepts[k] = v
     graph = generate_graph(environment)
     logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and grain {statement.grain}"
+        f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {statement.grain}"
     )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")

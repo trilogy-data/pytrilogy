@@ -8,17 +8,19 @@ from trilogy.core.enums import (
     FunctionType,
     IOType,
     Modifier,
+        Ordering,
+    Purpose,
 )
-from trilogy.core.models import (
+from trilogy.core.models_core import (
     DataType,
     ListType,
     ListWrapper,
     NumericType,
-    Ordering,
-    Purpose,
+
     TupleWrapper,
 )
 from trilogy.core.models_author import (
+    AlignClause,
     AlignItem,
     CaseElse,
     CaseWhen,
@@ -29,12 +31,12 @@ from trilogy.core.models_author import (
     Grain,
     OrderBy,
     OrderItem,
+    SelectItem,
     WhereClause,
 )
 from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models_environment import Environment
 from trilogy.core.statements_author import (
-    AlignClause,
     ConceptDeclarationStatement,
     CopyStatement,
     ImportStatement,
@@ -43,7 +45,6 @@ from trilogy.core.statements_author import (
     PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
-    SelectItem,
     SelectStatement,
 )
 from trilogy.parsing.render import Renderer, render_environment, render_query

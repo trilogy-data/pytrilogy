@@ -10,7 +10,7 @@ from trilogy.core.statements_author import SelectStatement
 def test_rowset(test_environment: Environment, test_executor: Executor):
     test_select = """
 
-    rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
+    rowset even_orders <- select order_id, store_id where order_id % 2 = 0;
     SELECT
         even_orders.order_id,
         even_orders.store_id

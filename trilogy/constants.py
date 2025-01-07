@@ -32,7 +32,7 @@ class Optimizations:
 class Comments:
     """Control what is placed in CTE comments"""
 
-    show: bool = False
+    show: bool = True
     basic: bool = True
     joins: bool = True
     nullable: bool = False

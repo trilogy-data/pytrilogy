@@ -26,7 +26,6 @@ def test_gen_filter_node_parents(test_environment: Environment, test_environment
 
 
 def test_gen_filter_node(test_environment, test_environment_graph):
-    # from trilogy.core.models import AggregateWrapper
 
     _ = gen_filter_node(
         concept=test_environment.concepts["products_with_revenue_over_50"],

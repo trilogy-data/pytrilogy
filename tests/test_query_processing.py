@@ -1,4 +1,4 @@
-from trilogy.core.models import (
+from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.models_author import Grain

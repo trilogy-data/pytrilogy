@@ -44,6 +44,7 @@ from trilogy.core.functions import (
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models_author import (
     AggregateWrapper,
+    AlignClause,
     AlignItem,
     CaseElse,
     CaseWhen,
@@ -60,12 +61,14 @@ from trilogy.core.models_author import (
     OrderBy,
     OrderItem,
     Parenthetical,
+    SelectItem,
     SubselectComparison,
     WhereClause,
     Window,
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
+    RowsetLineage,
 )
 from trilogy.core.models_core import (
     DataType,
@@ -88,9 +91,8 @@ from trilogy.core.models_datasource import (
     Query,
     RawColumnExpr,
 )
-from trilogy.core.models_environment import Environment, EnvironmentConceptDict
+from trilogy.core.models_environment import Environment, EnvironmentConceptDict, Import
 from trilogy.core.statements_author import (
-    AlignClause,
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     CopyStatement,
@@ -101,7 +103,6 @@ from trilogy.core.statements_author import (
     PersistStatement,
     RawSQLStatement,
     RowsetDerivationStatement,
-    SelectItem,
     SelectStatement,
     ShowStatement,
 )
@@ -114,6 +115,7 @@ from trilogy.parsing.common import (
     function_to_concept,
     process_function_args,
     window_item_to_concept,
+    rowset_to_concepts,
 )
 from trilogy.parsing.exceptions import ParseError
 
@@ -559,12 +561,11 @@ class ParseToObjects(Transformer):
             select=select,
             namespace=self.environment.namespace or DEFAULT_NAMESPACE,
         )
-        for new_concept in output.derived_concepts:
+        for new_concept in rowset_to_concepts(output):
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
             # output.select.local_concepts[new_concept.address] = new_concept
             self.environment.add_concept(new_concept)
-
         return output
 
     @v_args(meta=True)
@@ -908,7 +909,7 @@ class ParseToObjects(Transformer):
                 ) from e
 
         imps = ImportStatement(alias=alias, path=Path(args[0]))
-        self.environment.add_import(alias, new_env, imps)
+        self.environment.add_import(alias, new_env, Import(alias=alias, path=Path(args[0])))
         return imps
 
     @v_args(meta=True)

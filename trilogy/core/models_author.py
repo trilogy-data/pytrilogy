@@ -14,7 +14,7 @@ from typing import (
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING
+    TYPE_CHECKING,
 )
 
 from pydantic import (
@@ -57,19 +57,13 @@ from trilogy.core.models_core import (
     arg_to_datatype,
     is_compatible_datatype,
 )
-
-
-from trilogy.core.statements_author import (
-    AlignClause,
-    RowsetDerivationStatement,
-    SelectStatement,
-)
 from trilogy.utility import unique
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
     from trilogy.core.models_environment import Environment, EnvironmentConceptDict
     from trilogy.core.models_execute import CTE, UnionCTE
+
 
 class Namespaced(ABC):
     def with_namespace(self, namespace: str):
@@ -1946,9 +1940,33 @@ class FilterItem(Namespaced, SelectContext, BaseModel):
         return [self.content] + self.where.concept_arguments
 
 
+class RowsetLineage(Namespaced, Mergeable, BaseModel):
+    name: str
+    derived_concepts: List[Concept]
+    select: SelectLineage
+
+    def with_namespace(self, namespace: str):
+        return RowsetLineage(
+            name=self.name,
+            derived_concepts=[
+                x.with_namespace(namespace) for x in self.derived_concepts
+            ],
+            select=self.select.with_namespace(namespace),
+        )
+
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+        return RowsetLineage(
+            name=self.name,
+            derived_concepts=[
+                x.with_merge(source, target, modifiers) for x in self.derived_concepts
+            ],
+            select=self.select.with_merge(source, target, modifiers),
+        )
+
+
 class RowsetItem(Mergeable, Namespaced, BaseModel):
     content: Concept
-    rowset: RowsetDerivationStatement
+    rowset: RowsetLineage
     where: Optional["WhereClause"] = None
 
     def __repr__(self):
@@ -2043,13 +2061,120 @@ class OrderBy(SelectContext, Mergeable, Namespaced, BaseModel):
         return [x.expr for x in self.items]
 
 
-class MultiSelectLineage(Namespaced, BaseModel):
-    selects: List[SelectStatement]
+class AlignClause(Namespaced, BaseModel):
+    items: List[AlignItem]
+
+    def with_namespace(self, namespace: str) -> "AlignClause":
+        return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
+
+
+class SelectLineage(Mergeable, Namespaced, BaseModel):
+    selection: List[SelectItem]
+    local_concepts: dict[str, Concept]
+    order_by: Optional[OrderBy] = None
+    limit: Optional[int] = None
+    meta: Metadata = Field(default_factory=lambda: Metadata())
+    grain: Grain = Field(default_factory=Grain)
+    where_clause: Union["WhereClause", None] = Field(default=None)
+    having_clause: Union["HavingClause", None] = Field(default=None)
+
+    @property
+    def input_components(self) -> List[Concept]:
+        output = set()
+        output_list = []
+        for item in self.selection:
+            for concept in item.input:
+                if concept.name in output:
+                    continue
+                output.add(concept.name)
+                output_list.append(concept)
+        if self.where_clause:
+            for concept in self.where_clause.input:
+                if concept.name in output:
+                    continue
+                output.add(concept.name)
+                output_list.append(concept)
+
+        return output_list
+
+    @property
+    def output_components(self) -> List[Concept]:
+        output = []
+        for item in self.selection:
+            if isinstance(item, Concept):
+                output.append(item)
+            else:
+                output.append(item.output)
+        return output
+
+    @property
+    def hidden_components(self) -> set[str]:
+        output = set()
+        for item in self.selection:
+            if isinstance(item, SelectItem) and Modifier.HIDDEN in item.modifiers:
+                output.add(item.output.address)
+        return output
+
+    @property
+    def all_components(self) -> List[Concept]:
+        return self.input_components + self.output_components
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> SelectLineage:
+        return SelectLineage(
+            selection=[x.with_merge(source, target, modifiers) for x in self.selection],
+            local_concepts={
+                x: y.with_merge(source, target, modifiers)
+                for x, y in self.local_concepts.items()
+            },
+            order_by=(
+                self.order_by.with_merge(source, target, modifiers)
+                if self.order_by
+                else None
+            ),
+            limit=self.limit,
+            grain=self.grain.with_merge(source, target, modifiers),
+            where_clause=(
+                self.where_clause.with_merge(source, target, modifiers)
+                if self.where_clause
+                else None
+            ),
+            having_clause=(
+                self.having_clause.with_merge(source, target, modifiers)
+                if self.having_clause
+                else None
+            ),
+        )
+
+
+class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
+    selects: List[SelectLineage]
     align: AlignClause
     namespace: str
 
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
+    where_clause: Union["WhereClause", None] = Field(default=None)
+    having_clause: Union["HavingClause", None] = Field(default=None)
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> MultiSelectLineage:
+        new = MultiSelectLineage(
+            selects=[s.with_merge(source, target, modifiers) for s in self.selects],
+            align=self.align,
+            namespace=self.namespace,
+            order_by=(
+                self.order_by.with_merge(source, target, modifiers)
+                if self.order_by
+                else None
+            ),
+            limit=self.limit,
+            where_clause = self.where_clause.with_merge(source, target, modifiers) if self.where_clause else None,
+            having_clause = self.having_clause.with_merge(source, target, modifiers) if self.having_clause else None,
+        )
+        return new
 
     def with_namespace(self, namespace: str) -> "MultiSelectLineage":
         return MultiSelectLineage(
@@ -2058,8 +2183,20 @@ class MultiSelectLineage(Namespaced, BaseModel):
             namespace=namespace,
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
             limit=self.limit,
+            where_clause=self.where_clause.with_namespace(namespace) if self.where_clause else None,
+            having_clause=self.having_clause.with_namespace(namespace) if self.having_clause else None,
         )
-
+    @property
+    def hidden_components(self):
+        return []
+    
+    @property
+    def output_components(self):
+        output = []
+        for select in self.selects:
+            output += select.output_components
+        return output
+    
     @property
     def arguments(self) -> List[Concept]:
         output = []
@@ -2097,21 +2234,7 @@ class MultiSelectLineage(Namespaced, BaseModel):
             f"Could not find upstream map for multiselect {str(concept)} on cte ({cte})"
         )
 
-    def with_merge(
-        self, source: Concept, target: Concept, modifiers: List[Modifier]
-    ) -> "MultiSelectLineage":
-        new = MultiSelectLineage(
-            selects=[s.with_merge(source, target, modifiers) for s in self.selects],
-            align=self.align,
-            namespace=self.namespace,
-            order_by=(
-                self.order_by.with_merge(source, target, modifiers)
-                if self.order_by
-                else None
-            ),
-            limit=self.limit,
-        )
-        return new
+
 
 
 class LooseConceptList(BaseModel):
@@ -2243,3 +2366,34 @@ Expr = (
     | Function
     | AggregateWrapper
 )
+
+
+class SelectItem(Mergeable, Namespaced, BaseModel):
+    content: Union[Concept, ConceptTransform]
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    @property
+    def output(self) -> Concept:
+        if isinstance(self.content, ConceptTransform):
+            return self.content.output
+        elif isinstance(self.content, WindowItem):
+            return self.content.output
+        return self.content
+
+    @property
+    def input(self) -> List[Concept]:
+        return self.content.input
+
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> "SelectItem":
+        return SelectItem(
+            content=self.content.with_merge(source, target, modifiers),
+            modifiers=modifiers,
+        )
+
+    def with_namespace(self, namespace: str) -> "SelectItem":
+        return SelectItem(
+            content=self.content.with_namespace(namespace),
+            modifiers=self.modifiers,
+        )
