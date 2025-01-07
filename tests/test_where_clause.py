@@ -1,8 +1,8 @@
 # from trilogy.compiler import compile
-from trilogy.core.models_author import Grain, Parenthetical
+from trilogy.core.models.author import Grain, Parenthetical
 from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
-from trilogy.core.statements_author import SelectStatement
+from trilogy.core.statements.author import SelectStatement
 from trilogy.dialect.base import BaseDialect
 from trilogy.parser import parse
 

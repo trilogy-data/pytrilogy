@@ -15,7 +15,7 @@ from trilogy.core.enums import (
     JoinType,
     Purpose,
 )
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     CaseElse,
     CaseWhen,
@@ -29,7 +29,7 @@ from trilogy.core.models_author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     DataType,
     ListType,
     ListWrapper,
@@ -38,9 +38,9 @@ from trilogy.core.models_core import (
     NumericType,
     TupleWrapper,
 )
-from trilogy.core.models_datasource import Datasource
-from trilogy.core.models_environment import Environment
-from trilogy.core.models_execute import (
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
     ConceptPair,
@@ -48,8 +48,8 @@ from trilogy.core.models_execute import (
     UnionCTE,
     UnnestJoin,
 )
-from trilogy.core.statements_author import MultiSelectStatement, SelectStatement
-from trilogy.core.statements_execute import ProcessedQuery
+from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
+from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
 
 

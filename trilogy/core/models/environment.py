@@ -20,15 +20,18 @@ from trilogy.core.enums import (
     Modifier,
     Purpose,
 )
-from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models_author import (
+from trilogy.core.exceptions import (
+    FrozenEnvironmentException,
+    UndefinedConceptException,
+)
+from trilogy.core.models.author import (
     Concept,
     Function,
     UndefinedConcept,
     address_with_namespace,
 )
-from trilogy.core.models_core import DataType
-from trilogy.core.models_datasource import Datasource, EnvironmentDatasourceDict
+from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
 
 
 @dataclass
@@ -454,7 +457,7 @@ class Environment(BaseModel):
     ) -> Tuple["Environment", list]:
         from trilogy import parse
         from trilogy.core.query_processor import process_persist
-        from trilogy.core.statements_author import (
+        from trilogy.core.statements.author import (
             MultiSelectStatement,
             PersistStatement,
             SelectStatement,
@@ -496,7 +499,9 @@ class Environment(BaseModel):
         _ignore_cache: bool = False,
     ):
         if self.frozen:
-            raise ValueError("Environment is frozen, cannot add concepts")
+            raise FrozenEnvironmentException(
+                "Environment is frozen, cannot add concepts"
+            )
         if not force:
             existing = self.validate_concept(concept, meta=meta)
             if existing:
@@ -516,7 +521,9 @@ class Environment(BaseModel):
         _ignore_cache: bool = False,
     ):
         if self.frozen:
-            raise ValueError("Environment is frozen, cannot add datasource")
+            raise FrozenEnvironmentException(
+                "Environment is frozen, cannot add datasource"
+            )
         self.datasources[datasource.identifier] = datasource
 
         eligible_to_promote_roots = datasource.non_partial_for is None

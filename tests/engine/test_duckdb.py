@@ -6,20 +6,20 @@ import networkx as nx
 from trilogy import Dialects
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Concept,
     FilterItem,
     Grain,
     LooseConceptList,
     SubselectComparison,
 )
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import get_upstream_concepts
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
     resolve_function_parent_concepts,
 )
-from trilogy.core.statements_author import SelectStatement, ShowStatement
+from trilogy.core.statements.author import SelectStatement, ShowStatement
 from trilogy.executor import Executor
 from trilogy.parser import parse_text
 

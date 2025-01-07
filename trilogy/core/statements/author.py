@@ -12,7 +12,7 @@ from trilogy.core.enums import (
     Modifier,
     ShowCategory,
 )
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     Concept,
@@ -29,14 +29,14 @@ from trilogy.core.models_author import (
     WhereClause,
     WindowItem,
 )
-from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
-from trilogy.core.models_environment import (
+from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
+from trilogy.core.models.environment import (
     Environment,
     EnvironmentConceptDict,
     validate_concepts,
 )
-from trilogy.core.models_execute import CTE, UnionCTE
-from trilogy.core.statements_common import SelectTypeMixin
+from trilogy.core.models.execute import CTE, UnionCTE
+from trilogy.core.statements.common import SelectTypeMixin
 from trilogy.utility import unique
 
 
@@ -151,7 +151,11 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                     )
                     output.local_concepts[new_concept.address] = new_concept
                     item.content.output = new_concept
-                    if parse_pass == 2 and CONFIG.select_as_definition:
+                    if (
+                        parse_pass == 2
+                        and CONFIG.select_as_definition
+                        and not environment.frozen
+                    ):
                         environment.add_concept(new_concept)
                 elif isinstance(item.content, UndefinedConcept):
                     environment.concepts.raise_undefined(

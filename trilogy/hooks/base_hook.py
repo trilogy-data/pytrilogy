@@ -1,10 +1,10 @@
-from trilogy.core.models_execute import (
+from trilogy.core.models.execute import (
     CTE,
     QueryDatasource,
     UnionCTE,
 )
 from trilogy.core.processing.nodes import StrategyNode
-from trilogy.core.statements_author import (
+from trilogy.core.statements.author import (
     MultiSelectStatement,
     PersistStatement,
     RowsetDerivationStatement,

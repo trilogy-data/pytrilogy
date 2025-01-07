@@ -8,11 +8,11 @@ from sqlalchemy.engine import CursorResult, Engine
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Granularity, IOType
-from trilogy.core.models_author import Concept, Function
-from trilogy.core.models_core import ListWrapper, MapWrapper
-from trilogy.core.models_datasource import Datasource
-from trilogy.core.models_environment import Environment
-from trilogy.core.statements_author import (
+from trilogy.core.models.author import Concept, Function
+from trilogy.core.models.core import ListWrapper, MapWrapper
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
     ImportStatement,
@@ -23,7 +23,7 @@ from trilogy.core.statements_author import (
     SelectStatement,
     ShowStatement,
 )
-from trilogy.core.statements_execute import (
+from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,

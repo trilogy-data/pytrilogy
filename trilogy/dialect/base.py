@@ -11,7 +11,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     CaseElse,
     CaseWhen,
@@ -27,7 +27,7 @@ from trilogy.core.models_author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     DataType,
     ListType,
     ListWrapper,
@@ -37,16 +37,16 @@ from trilogy.core.models_core import (
     StructType,
     TupleWrapper,
 )
-from trilogy.core.models_datasource import Datasource, RawColumnExpr
-from trilogy.core.models_environment import Environment
-from trilogy.core.models_execute import CTE, CompiledCTE, UnionCTE
+from trilogy.core.models.datasource import Datasource, RawColumnExpr
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
 from trilogy.core.processing.utility import (
     decompose_condition,
     is_scalar_condition,
     sort_select_output,
 )
 from trilogy.core.query_processor import process_copy, process_persist, process_query
-from trilogy.core.statements_author import (
+from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
     ImportStatement,
@@ -58,7 +58,7 @@ from trilogy.core.statements_author import (
     SelectStatement,
     ShowStatement,
 )
-from trilogy.core.statements_execute import (
+from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,

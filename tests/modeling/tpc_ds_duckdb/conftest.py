@@ -5,7 +5,7 @@ import pytest
 
 from tests.modeling.tpc_ds_duckdb.analyze_test_results import analyze
 from trilogy import Dialects, Executor
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.hooks.query_debugger import DebuggingHook
 

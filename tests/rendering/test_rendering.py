@@ -11,7 +11,7 @@ from trilogy.core.enums import (
     Ordering,
     Purpose,
 )
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     CaseElse,
@@ -25,16 +25,16 @@ from trilogy.core.models_author import (
     OrderItem,
     WhereClause,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     DataType,
     ListType,
     ListWrapper,
     NumericType,
     TupleWrapper,
 )
-from trilogy.core.models_datasource import Address, ColumnAssignment, Datasource
-from trilogy.core.models_environment import Environment, Import
-from trilogy.core.statements_author import (
+from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
+from trilogy.core.models.environment import Environment, Import
+from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
     ImportStatement,

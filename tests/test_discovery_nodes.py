@@ -1,6 +1,6 @@
 from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.models_author import Grain
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.author import Grain
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import (
     GroupNode,
     search_concepts,

@@ -7,8 +7,8 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.graph_models import concept_to_node
-from trilogy.core.models_author import Concept, Conditional, WhereClause
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.author import Concept, Conditional, WhereClause
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique

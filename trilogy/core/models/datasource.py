@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Modifier
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Concept,
     Function,
     Grain,

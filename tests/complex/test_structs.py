@@ -1,5 +1,5 @@
 from trilogy import Dialects
-from trilogy.core.models_core import StructType
+from trilogy.core.models.core import StructType
 
 
 def test_struct_in_array_parsing():

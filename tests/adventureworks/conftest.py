@@ -13,7 +13,7 @@ from sqlalchemy.engine import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.constants import logger
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 
 logger.setLevel(DEBUG)
 

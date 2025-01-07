@@ -3,9 +3,9 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
-from trilogy.core.models_author import Concept
-from trilogy.core.models_datasource import Datasource
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.author import Concept
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
 
 
 def add_concept(

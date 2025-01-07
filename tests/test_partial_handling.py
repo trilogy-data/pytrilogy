@@ -2,12 +2,12 @@ from sqlalchemy import create_engine
 
 from trilogy import Dialects, Executor
 from trilogy.core.enums import Purpose
-from trilogy.core.models_author import Concept
-from trilogy.core.models_core import (
+from trilogy.core.models.author import Concept
+from trilogy.core.models.core import (
     DataType,
 )
-from trilogy.core.models_datasource import ColumnAssignment, Datasource
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.datasource import ColumnAssignment, Datasource
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import (
     gen_filter_node,

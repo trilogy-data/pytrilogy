@@ -4,7 +4,7 @@ from pytest import fixture
 
 from trilogy import Dialects, parse
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
 

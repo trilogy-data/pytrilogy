@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
     Function,
@@ -9,7 +9,7 @@ from trilogy.core.models_author import (
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,

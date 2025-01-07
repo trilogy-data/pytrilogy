@@ -7,15 +7,15 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Concept,
     Conditional,
     MultiSelectLineage,
     SelectLineage,
 )
-from trilogy.core.models_datasource import Datasource
-from trilogy.core.models_environment import Environment
-from trilogy.core.models_execute import (
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
     CTEConceptPair,
@@ -28,15 +28,15 @@ from trilogy.core.models_execute import (
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
-from trilogy.core.statements_author import (
+from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     CopyStatement,
     MultiSelectStatement,
     PersistStatement,
     SelectStatement,
 )
-from trilogy.core.statements_common import MaterializedDataset
-from trilogy.core.statements_execute import (
+from trilogy.core.statements.common import MaterializedDataset
+from trilogy.core.statements.execute import (
     ProcessedCopyStatement,
     ProcessedQuery,
     ProcessedQueryPersist,

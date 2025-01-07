@@ -3,8 +3,8 @@ from typing import List, Union
 from pydantic import BaseModel, Field
 
 from trilogy.core.enums import IOType
-from trilogy.core.models_author import Concept, HavingClause, WhereClause
-from trilogy.core.models_datasource import Address, Datasource
+from trilogy.core.models.author import Concept, HavingClause, WhereClause
+from trilogy.core.models.datasource import Address, Datasource
 
 
 class CopyQueryMixin(BaseModel):

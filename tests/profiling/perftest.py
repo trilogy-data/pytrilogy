@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from pstats import SortKey, Stats
 
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text, parse_text_raw
 
 

@@ -1,7 +1,7 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models_author import Concept, Function, WhereClause
+from trilogy.core.models.author import Concept, Function, WhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnnestNode
 from trilogy.core.processing.utility import padding
 

@@ -5,12 +5,12 @@ from trilogy.core.enums import (
     FunctionType,
     Purpose,
 )
-from trilogy.core.models_author import Comparison, Conditional, Function, Grain
-from trilogy.core.models_core import (
+from trilogy.core.models.author import Comparison, Conditional, Function, Grain
+from trilogy.core.models.core import (
     DataType,
 )
-from trilogy.core.models_environment import Environment
-from trilogy.core.models_execute import CTE, QueryDatasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import CTE, QueryDatasource
 from trilogy.core.optimization import (
     PredicatePushdown,
     PredicatePushdownRemove,

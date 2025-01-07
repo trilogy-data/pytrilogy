@@ -1,5 +1,5 @@
 from trilogy import parse
-from trilogy.core.statements_author import RowsetDerivationStatement, SelectStatement
+from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
 from trilogy.hooks.base_hook import BaseHook
 
 

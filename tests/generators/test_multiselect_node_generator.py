@@ -1,6 +1,6 @@
 from trilogy import parse
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.concept_strategies_v3 import search_concepts
 from trilogy.core.processing.node_generators import gen_multiselect_node
 from trilogy.core.query_processor import datasource_to_cte

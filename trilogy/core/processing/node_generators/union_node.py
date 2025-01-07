@@ -2,7 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Purpose
-from trilogy.core.models_author import Concept, Function, WhereClause
+from trilogy.core.models.author import Concept, Function, WhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnionNode
 from trilogy.core.processing.utility import padding
 

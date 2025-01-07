@@ -8,7 +8,7 @@ from trilogy.core.enums import (
     JoinType,
     SourceType,
 )
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,
@@ -16,9 +16,9 @@ from trilogy.core.models_author import (
     LooseConceptList,
     Parenthetical,
 )
-from trilogy.core.models_datasource import Datasource
-from trilogy.core.models_environment import Environment
-from trilogy.core.models_execute import ConceptPair, QueryDatasource, UnnestJoin
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.utility import unique
 
 

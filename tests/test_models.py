@@ -2,7 +2,7 @@ from copy import deepcopy
 
 from trilogy import parse
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Purpose
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     Comparison,
     Concept,
@@ -11,20 +11,20 @@ from trilogy.core.models_author import (
     RowsetItem,
     UndefinedConcept,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     DataType,
     TupleWrapper,
 )
-from trilogy.core.models_datasource import Address
-from trilogy.core.models_environment import Environment
-from trilogy.core.models_execute import (
+from trilogy.core.models.datasource import Address
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
     CTEConceptPair,
     Join,
     QueryDatasource,
 )
-from trilogy.core.statements_author import SelectStatement
+from trilogy.core.statements.author import SelectStatement
 
 
 def test_cte_merge(test_environment, test_environment_graph):

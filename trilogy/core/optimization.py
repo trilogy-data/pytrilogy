@@ -1,9 +1,9 @@
 from trilogy.constants import CONFIG, logger
 from trilogy.core.enums import BooleanOperator, Derivation
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Conditional,
 )
-from trilogy.core.models_execute import CTE, UnionCTE
+from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations import (
     InlineConstant,
     InlineDatasource,
@@ -12,7 +12,7 @@ from trilogy.core.optimizations import (
     PredicatePushdownRemove,
 )
 from trilogy.core.processing.utility import sort_select_output
-from trilogy.core.statements_author import MultiSelectStatement, SelectStatement
+from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 
 MAX_OPTIMIZATION_LOOPS = 100
 

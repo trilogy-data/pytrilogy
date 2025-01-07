@@ -1,7 +1,7 @@
 import networkx as nx
 
-from trilogy.core.models_author import Concept
-from trilogy.core.models_datasource import Datasource
+from trilogy.core.models.author import Concept
+from trilogy.core.models.datasource import Datasource
 
 
 def concept_to_node(input: Concept) -> str:

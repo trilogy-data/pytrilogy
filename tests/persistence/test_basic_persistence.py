@@ -7,7 +7,7 @@ from trilogy.core.env_processor import (
     datasource_to_node,
     generate_graph,
 )
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Grain,
 )
 from trilogy.core.processing.node_generators import (
@@ -15,8 +15,8 @@ from trilogy.core.processing.node_generators import (
 )
 from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.query_processor import process_auto
-from trilogy.core.statements_author import PersistStatement
-from trilogy.core.statements_execute import ProcessedQueryPersist
+from trilogy.core.statements.author import PersistStatement
+from trilogy.core.statements.execute import ProcessedQueryPersist
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect

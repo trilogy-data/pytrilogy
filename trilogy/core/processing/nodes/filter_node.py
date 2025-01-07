@@ -3,7 +3,7 @@ from typing import List
 from trilogy.core.enums import (
     SourceType,
 )
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,

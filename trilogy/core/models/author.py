@@ -44,7 +44,7 @@ from trilogy.core.enums import (
     WindowOrder,
     WindowType,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     DataType,
     DataTyped,
     ListType,
@@ -61,8 +61,8 @@ from trilogy.utility import unique
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
-    from trilogy.core.models_environment import Environment, EnvironmentConceptDict
-    from trilogy.core.models_execute import CTE, UnionCTE
+    from trilogy.core.models.environment import Environment, EnvironmentConceptDict
+    from trilogy.core.models.execute import CTE, UnionCTE
 
 
 class Namespaced(ABC):
@@ -1836,7 +1836,7 @@ class RowsetItem(Mergeable, Namespaced, BaseModel):
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         return RowsetItem(
             content=self.content.with_merge(source, target, modifiers),
-            rowset=self.rowset.with_merge(source, target, modifiers),
+            rowset=self.rowset,
             where=(
                 self.where.with_merge(source, target, modifiers) if self.where else None
             ),

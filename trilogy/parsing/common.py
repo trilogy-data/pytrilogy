@@ -18,7 +18,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.functions import function_args_to_output_purpose
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
@@ -37,9 +37,9 @@ from trilogy.core.models_author import (
     WhereClause,
     WindowItem,
 )
-from trilogy.core.models_core import DataType, arg_to_datatype
-from trilogy.core.models_environment import Environment
-from trilogy.core.statements_author import RowsetDerivationStatement, SelectStatement
+from trilogy.core.models.core import DataType, arg_to_datatype
+from trilogy.core.models.environment import Environment
+from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
 from trilogy.utility import string_to_hash, unique
 
 

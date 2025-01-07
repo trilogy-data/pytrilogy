@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from trilogy.core.enums import JoinType
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.graph_utils import extract_required_subgraphs
 from trilogy.core.processing.nodes import ConstantNode, MergeNode, NodeJoin
 

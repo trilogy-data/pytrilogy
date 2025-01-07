@@ -42,7 +42,7 @@ from trilogy.core.functions import (
     FunctionFactory,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
@@ -67,7 +67,7 @@ from trilogy.core.models_author import (
     WindowItemOrder,
     WindowItemOver,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     DataType,
     ListType,
     ListWrapper,
@@ -81,15 +81,15 @@ from trilogy.core.models_core import (
     list_to_wrapper,
     tuple_to_wrapper,
 )
-from trilogy.core.models_datasource import (
+from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
     Datasource,
     Query,
     RawColumnExpr,
 )
-from trilogy.core.models_environment import Environment, EnvironmentConceptDict, Import
-from trilogy.core.statements_author import (
+from trilogy.core.models.environment import Environment, EnvironmentConceptDict, Import
+from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     ConceptTransform,

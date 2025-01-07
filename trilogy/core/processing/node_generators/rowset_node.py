@@ -3,7 +3,7 @@ from typing import List
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Concept,
     Grain,
     MultiSelectLineage,
@@ -12,7 +12,7 @@ from trilogy.core.models_author import (
     SelectLineage,
     WhereClause,
 )
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 

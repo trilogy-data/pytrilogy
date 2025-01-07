@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, List, Optional
 
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 
 if TYPE_CHECKING:
     from trilogy import Executor

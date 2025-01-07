@@ -6,7 +6,7 @@ import tomli_w
 import tomllib
 
 from trilogy import Executor
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
 

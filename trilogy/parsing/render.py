@@ -6,7 +6,7 @@ from jinja2 import Template
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Modifier, Purpose
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
@@ -26,22 +26,22 @@ from trilogy.core.models_author import (
     WhereClause,
     WindowItem,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     DataType,
     ListType,
     ListWrapper,
     NumericType,
     TupleWrapper,
 )
-from trilogy.core.models_datasource import (
+from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
     Datasource,
     Query,
     RawColumnExpr,
 )
-from trilogy.core.models_environment import Environment, Import
-from trilogy.core.statements_author import (
+from trilogy.core.models.environment import Environment, Import
+from trilogy.core.statements.author import (
     ConceptDeclarationStatement,
     ConceptDerivationStatement,
     ConceptTransform,

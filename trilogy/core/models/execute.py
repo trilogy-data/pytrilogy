@@ -16,7 +16,7 @@ from trilogy.core.enums import (
     Purpose,
     SourceType,
 )
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,
@@ -27,7 +27,7 @@ from trilogy.core.models_author import (
     Parenthetical,
     RowsetItem,
 )
-from trilogy.core.models_datasource import Address, Datasource
+from trilogy.core.models.datasource import Address, Datasource
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"

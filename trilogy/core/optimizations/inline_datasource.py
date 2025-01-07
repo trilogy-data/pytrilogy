@@ -1,8 +1,8 @@
 from collections import defaultdict
 
 from trilogy.constants import CONFIG
-from trilogy.core.models_datasource import Datasource
-from trilogy.core.models_execute import (
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.execute import (
     CTE,
     UnionCTE,
 )

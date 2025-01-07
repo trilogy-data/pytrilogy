@@ -1,6 +1,6 @@
 from trilogy.core.enums import Derivation
-from trilogy.core.models_author import Concept
-from trilogy.core.models_execute import (
+from trilogy.core.models.author import Concept
+from trilogy.core.models.execute import (
     CTE,
     UnionCTE,
 )

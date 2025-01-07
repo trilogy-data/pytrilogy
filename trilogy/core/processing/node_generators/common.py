@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Callable, List, Tuple
 
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
     FilterItem,
@@ -10,7 +10,7 @@ from trilogy.core.models_author import (
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,

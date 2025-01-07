@@ -1,5 +1,5 @@
 from trilogy import parse
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.dialect.base import BaseDialect
 
 

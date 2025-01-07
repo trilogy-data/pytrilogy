@@ -14,14 +14,14 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
     Function,
     Parenthetical,
     WindowItem,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
     CONCRETE_TYPES,
     DataType,
     ListType,
@@ -31,7 +31,7 @@ from trilogy.core.models_core import (
     arg_to_datatype,
     merge_datatypes,
 )
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 
 GENERIC_ARGS = Concept | Function | str | int | float | date | datetime
 

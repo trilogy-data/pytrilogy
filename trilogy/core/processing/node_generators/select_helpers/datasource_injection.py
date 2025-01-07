@@ -3,15 +3,15 @@ from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
 
 from trilogy.core.enums import ComparisonOperator, FunctionType
-from trilogy.core.models_author import (
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,
     Function,
     Parenthetical,
 )
-from trilogy.core.models_core import DataType
-from trilogy.core.models_datasource import Datasource
+from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import Datasource
 
 # Define a generic type that ensures start and end are the same type
 T = TypeVar("T", int, date, datetime)

@@ -3,7 +3,7 @@ from typing import Any, Callable, Mapping
 from jinja2 import Template
 
 from trilogy.core.enums import FunctionType, WindowType
-from trilogy.core.statements_execute import (
+from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedQueryPersist,
     ProcessedRawSQLStatement,

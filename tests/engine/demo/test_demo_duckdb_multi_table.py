@@ -1,5 +1,5 @@
 from trilogy.core.enums import Purpose
-from trilogy.core.models_execute import (
+from trilogy.core.models.execute import (
     CTE,
 )
 from trilogy.core.processing.nodes import SelectNode

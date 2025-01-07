@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Dict, List
 
-from trilogy.core.models_author import Concept
+from trilogy.core.models.author import Concept
 from trilogy.utility import unique
 
 

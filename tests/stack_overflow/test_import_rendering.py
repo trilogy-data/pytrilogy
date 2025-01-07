@@ -2,7 +2,7 @@
 from os.path import dirname
 
 from trilogy.core.enums import Modifier
-from trilogy.core.models_environment import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.parser import parse
 from trilogy.parsing.render import render_environment
 
