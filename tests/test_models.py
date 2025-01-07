@@ -1,12 +1,19 @@
 from copy import deepcopy
 
 from trilogy import parse
-from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Purpose
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    JoinType,
+    Purpose,
+)
 from trilogy.core.models.author import (
     AggregateWrapper,
     Comparison,
     Concept,
     Conditional,
+    Function,
     Grain,
     Parenthetical,
     RowsetItem,
@@ -318,7 +325,24 @@ def test_tuple_clone():
     assert y == x
 
 
-def test_parenthetical():
+def test_parenthetical(test_environment: Environment):
     x = Parenthetical(content=TupleWrapper([1, 2, 3], type=DataType.INTEGER))
 
     assert x.concept_arguments == []
+
+    x = Parenthetical(
+        content=test_environment.concepts["order_id"], type=DataType.INTEGER
+    )
+    # return concept if it's a concept
+    assert x.concept_arguments == [test_environment.concepts["order_id"]]
+
+    x = Parenthetical(
+        content=Function(
+            operator=FunctionType.COUNT,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            arguments=[test_environment.concepts["order_id"]],
+        )
+    )
+    # else pass through parent
+    assert x.concept_arguments == [test_environment.concepts["order_id"]]

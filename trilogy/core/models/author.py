@@ -188,7 +188,7 @@ class Parenthetical(
         x = self.content
         if isinstance(x, Concept):
             base += [x]
-        elif isinstance(ConceptArgs):
+        elif isinstance(x, ConceptArgs):
             base += x.concept_arguments
         return base
 
@@ -402,7 +402,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
     def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return self.conditional.existence_arguments
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier])-> Self:
         return self.__class__(
             conditional=self.conditional.with_merge(source, target, modifiers)
         )
@@ -419,6 +419,8 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
             )
         )
 
+class HavingClause(WhereClause):
+    pass
 
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
@@ -1296,7 +1298,7 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         return self.expr.output
 
 
-class WindowItem(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
+class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
     type: WindowType
     content: Concept
     order_by: List["OrderItem"]
@@ -1348,6 +1350,7 @@ class WindowItem(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.arguments
+    
 
     @property
     def arguments(self) -> List[Concept]:
@@ -1515,7 +1518,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
     return output
 
 
-class Function(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
+class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -1711,7 +1714,7 @@ class Function(DataTyped, Mergeable, Namespaced, SelectContext, BaseModel):
         return base_grain
 
 
-class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
+class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
     function: Function
     by: List[Concept] = Field(default_factory=list)
 
@@ -1769,7 +1772,7 @@ class AggregateWrapper(Mergeable, Namespaced, SelectContext, BaseModel):
         return AggregateWrapper(function=parent, by=by)
 
 
-class FilterItem(Namespaced, SelectContext, BaseModel):
+class FilterItem(Namespaced, ConceptArgs, SelectContext, BaseModel):
     content: Concept
     where: "WhereClause"
 
@@ -1837,7 +1840,7 @@ class RowsetLineage(Namespaced, Mergeable, BaseModel):
         )
 
 
-class RowsetItem(Mergeable, Namespaced, BaseModel):
+class RowsetItem(Mergeable, ConceptArgs, Namespaced, BaseModel):
     content: Concept
     rowset: RowsetLineage
     where: Optional["WhereClause"] = None
@@ -1970,7 +1973,7 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
         )
 
 
-class MultiSelectLineage(Mergeable, Namespaced, BaseModel):
+class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     selects: List[SelectLineage]
     align: AlignClause
     namespace: str
@@ -2182,20 +2185,6 @@ class Comment(BaseModel):
     text: str
 
 
-class HavingClause(WhereClause):
-    pass
-
-    def hydrate_missing(self, concepts: EnvironmentConceptDict):
-        self.conditional.hydrate_missing(concepts)
-
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> HavingClause:
-        return HavingClause(
-            conditional=self.conditional.with_select_context(
-                local_concepts, grain, environment
-            )
-        )
 
 
 Expr = (

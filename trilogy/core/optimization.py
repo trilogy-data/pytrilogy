@@ -157,7 +157,9 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
             return None
         if x.derivation == Derivation.WINDOW:
             return None
-
+    for x in condition_arguments:
+        if x not in parent_output_addresses:
+            return None
     logger.info(
         f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}"
     )

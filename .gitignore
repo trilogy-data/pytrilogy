@@ -38,3 +38,5 @@ duckdb_temp_storage-*.tmp
 *.parquet
 
 prof_stats.prof
+
+duckdb_temp_*
