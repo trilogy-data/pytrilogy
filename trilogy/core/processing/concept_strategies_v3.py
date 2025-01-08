@@ -178,6 +178,8 @@ def generate_candidates_restrictive(
         Derivation.ROOT,
         Derivation.CONSTANT,
     ):
+        logger.info("DEBUG")
+        logger.info(conditions.row_arguments)
         return [unique(conditions.row_arguments + local_candidates, "address")]
     return [local_candidates]
 

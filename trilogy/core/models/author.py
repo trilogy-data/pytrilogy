@@ -352,14 +352,8 @@ class Conditional(
     @property
     def row_arguments(self) -> List[Concept]:
         output = []
-        if isinstance(self.left, ConceptArgs):
-            output += self.left.row_arguments
-        else:
-            output += get_concept_arguments(self.left)
-        if isinstance(self.right, ConceptArgs):
-            output += self.right.row_arguments
-        else:
-            output += get_concept_arguments(self.right)
+        output += get_concept_row_arguments(self.left)
+        output += get_concept_row_arguments(self.right)
         return output
 
     @property
@@ -402,7 +396,9 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
     def existence_arguments(self) -> list[tuple["Concept", ...]]:
         return self.conditional.existence_arguments
 
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier])-> Self:
+    def with_merge(
+        self, source: Concept, target: Concept, modifiers: List[Modifier]
+    ) -> Self:
         return self.__class__(
             conditional=self.conditional.with_merge(source, target, modifiers)
         )
@@ -419,11 +415,13 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
             )
         )
 
+
 class HavingClause(WhereClause):
     pass
 
     def hydrate_missing(self, concepts: EnvironmentConceptDict):
         self.conditional.hydrate_missing(concepts)
+
 
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
@@ -752,19 +750,8 @@ class Comparison(
     @property
     def row_arguments(self) -> List[Concept]:
         output = []
-        if isinstance(self.left, Concept):
-            output += [self.left]
-        
-        elif isinstance(self.left, ConceptArgs):
-            output += self.left.row_arguments
-        else:
-            output += get_concept_arguments(self.left)
-        if isinstance(self.right, Concept):
-            output += [self.right]
-        elif isinstance(self.right, ConceptArgs):
-            output += self.right.row_arguments
-        else:
-            output += get_concept_arguments(self.right)
+        output += get_concept_row_arguments(self.left)
+        output += get_concept_row_arguments(self.right)
         return output
 
     @property
@@ -792,7 +779,7 @@ class SubselectComparison(Comparison):
 
     @property
     def row_arguments(self) -> List[Concept]:
-        return get_concept_arguments(self.left)
+        return get_concept_row_arguments(self.left)
 
     @property
     def existence_arguments(self) -> list[tuple["Concept", ...]]:
@@ -1306,7 +1293,9 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         return self.expr.output
 
 
-class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
+class WindowItem(
+    DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel
+):
     type: WindowType
     content: Concept
     order_by: List["OrderItem"]
@@ -1358,7 +1347,6 @@ class WindowItem(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, B
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.arguments
-    
 
     @property
     def arguments(self) -> List[Concept]:
@@ -1411,6 +1399,12 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
+
+    @property
+    def concept_row_arguments(self):
+        return get_concept_row_arguments(self.comparison) + get_concept_row_arguments(
+            self.expr
+        )
 
     def with_namespace(self, namespace: str) -> CaseWhen:
         return CaseWhen(
@@ -1505,6 +1499,16 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
         )
 
 
+def get_concept_row_arguments(expr) -> List["Concept"]:
+    output = []
+    if isinstance(expr, Concept):
+        output += [expr]
+
+    elif isinstance(expr, ConceptArgs):
+        output += expr.row_arguments
+    return output
+
+
 def get_concept_arguments(expr) -> List["Concept"]:
     output = []
     if isinstance(expr, Concept):
@@ -1512,16 +1516,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
 
     elif isinstance(
         expr,
-        (
-            Comparison,
-            Conditional,
-            Function,
-            Parenthetical,
-            AggregateWrapper,
-            CaseWhen,
-            CaseElse,
-            WindowItem
-        ),
+        ConceptArgs,
     ):
         output += expr.concept_arguments
     return output
@@ -2192,8 +2187,6 @@ class WindowItemOrder(BaseModel):
 
 class Comment(BaseModel):
     text: str
-
-
 
 
 Expr = (
