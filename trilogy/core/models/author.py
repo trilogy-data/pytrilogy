@@ -1019,6 +1019,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Concept:
+        from trilogy.core.models.build import BoundConcept
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectContext):
             new_lineage = self.lineage.with_select_context(
@@ -1036,10 +1037,13 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         ):
             keys = set([x.address for x in new_lineage.by])
 
-        return self.__class__(
+        return BoundConcept(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
+            derivation=self.derivation,
+            granularity=self.granularity,
+            is_aggregate=self.is_aggregate,
             metadata=self.metadata,
             lineage=new_lineage,
             grain=final_grain,
@@ -1578,7 +1582,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Bas
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "Function":
-        base = Function(
+        from trilogy.core.models.build import BoundFunction
+        base = BoundFunction(
             operator=self.operator,
             arguments=[
                 (
