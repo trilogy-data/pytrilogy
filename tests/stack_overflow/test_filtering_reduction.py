@@ -1,7 +1,8 @@
 from os.path import dirname
 
-from trilogy.core.models import Environment, SelectStatement
+from trilogy.core.models.environment import Environment
 from trilogy.core.query_processor import process_query
+from trilogy.core.statements.author import SelectStatement
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse
 

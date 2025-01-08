@@ -2,15 +2,15 @@ from collections import defaultdict
 from typing import Callable, List, Tuple
 
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
-    Environment,
     FilterItem,
     Function,
     LooseConceptList,
     WhereClause,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     History,
     NodeJoin,

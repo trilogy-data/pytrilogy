@@ -1,4 +1,4 @@
-from trilogy.core.models import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes.base_node import StrategyNode, get_all_parent_partial
 
 

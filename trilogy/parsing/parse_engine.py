@@ -42,73 +42,78 @@ from trilogy.core.functions import (
     FunctionFactory,
 )
 from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
-from trilogy.core.models import (
-    Address,
+from trilogy.core.models.author import (
     AggregateWrapper,
     AlignClause,
     AlignItem,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
     Comment,
     Comparison,
     Concept,
-    ConceptDeclarationStatement,
-    ConceptDerivation,
-    ConceptTransform,
     Conditional,
-    CopyStatement,
-    Datasource,
-    DataType,
-    Environment,
-    EnvironmentConceptDict,
     FilterItem,
     Function,
     Grain,
     HavingClause,
-    ImportStatement,
-    Limit,
-    ListType,
-    ListWrapper,
-    MapType,
-    MapWrapper,
-    MergeStatementV2,
     Metadata,
-    MultiSelectStatement,
-    NumericType,
     OrderBy,
     OrderItem,
     Parenthetical,
-    PersistStatement,
-    Query,
-    RawColumnExpr,
-    RawSQLStatement,
-    RowsetDerivationStatement,
-    SelectItem,
-    SelectStatement,
-    ShowStatement,
-    StructType,
     SubselectComparison,
-    TupleWrapper,
     WhereClause,
     Window,
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
 )
-from trilogy.core.models_core import (
+from trilogy.core.models.core import (
+    DataType,
+    ListType,
+    ListWrapper,
+    MapType,
+    MapWrapper,
+    NumericType,
+    StructType,
+    TupleWrapper,
     arg_to_datatype,
     dict_to_map_wrapper,
     list_to_wrapper,
     tuple_to_wrapper,
 )
+from trilogy.core.models.datasource import (
+    Address,
+    ColumnAssignment,
+    Datasource,
+    Query,
+    RawColumnExpr,
+)
+from trilogy.core.models.environment import Environment, EnvironmentConceptDict, Import
+from trilogy.core.statements.author import (
+    ConceptDeclarationStatement,
+    ConceptDerivationStatement,
+    ConceptTransform,
+    CopyStatement,
+    ImportStatement,
+    Limit,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectItem,
+    SelectStatement,
+    ShowStatement,
+)
 from trilogy.parsing.common import (
     agg_wrapper_to_concept,
+    align_item_to_concept,
     arbitrary_to_concept,
     constant_to_concept,
     filter_item_to_concept,
     function_to_concept,
     process_function_args,
+    rowset_to_concepts,
     window_item_to_concept,
 )
 from trilogy.parsing.exceptions import ParseError
@@ -481,7 +486,7 @@ class ParseToObjects(Transformer):
         return ConceptDeclarationStatement(concept=concept)
 
     @v_args(meta=True)
-    def concept_derivation(self, meta: Meta, args) -> ConceptDerivation:
+    def concept_derivation(self, meta: Meta, args) -> ConceptDerivationStatement:
         if len(args) > 3:
             metadata = args[3]
         else:
@@ -524,7 +529,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
+            return ConceptDerivationStatement(concept=concept)
 
         elif isinstance(source_value, CONSTANT_TYPES):
             concept = constant_to_concept(
@@ -537,7 +542,7 @@ class ParseToObjects(Transformer):
             if concept.metadata:
                 concept.metadata.line_number = meta.line
             self.environment.add_concept(concept, meta=meta)
-            return ConceptDerivation(concept=concept)
+            return ConceptDerivationStatement(concept=concept)
 
         raise SyntaxError(
             f"Received invalid type {type(args[2])} {args[2]} as input to select"
@@ -555,12 +560,11 @@ class ParseToObjects(Transformer):
             select=select,
             namespace=self.environment.namespace or DEFAULT_NAMESPACE,
         )
-        for new_concept in output.derived_concepts:
+        for new_concept in rowset_to_concepts(output):
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
             # output.select.local_concepts[new_concept.address] = new_concept
             self.environment.add_concept(new_concept)
-
         return output
 
     @v_args(meta=True)
@@ -904,7 +908,9 @@ class ParseToObjects(Transformer):
                 ) from e
 
         imps = ImportStatement(alias=alias, path=Path(args[0]))
-        self.environment.add_import(alias, new_env, imps)
+        self.environment.add_import(
+            alias, new_env, Import(alias=alias, path=Path(args[0]))
+        )
         return imps
 
     @v_args(meta=True)
@@ -955,11 +961,13 @@ class ParseToObjects(Transformer):
 
     @v_args(meta=True)
     def multi_select_statement(self, meta: Meta, args) -> MultiSelectStatement:
+
         selects: list[SelectStatement] = []
         align: AlignClause | None = None
         limit: int | None = None
         order_by: OrderBy | None = None
         where: WhereClause | None = None
+        having: HavingClause | None = None
         for arg in args:
             if isinstance(arg, SelectStatement):
                 selects.append(arg)
@@ -969,6 +977,8 @@ class ParseToObjects(Transformer):
                 order_by = arg
             elif isinstance(arg, WhereClause):
                 where = arg
+            elif isinstance(arg, HavingClause):
+                having = arg
             elif isinstance(arg, AlignClause):
                 align = arg
 
@@ -980,7 +990,18 @@ class ParseToObjects(Transformer):
                 base_local[k] = v
         derived_concepts = []
         for x in align.items:
-            derived_concepts.append(x.gen_concept(selects, align, self.environment))
+            concept = align_item_to_concept(
+                x,
+                align,
+                selects,
+                local_concepts=base_local,
+                where=where,
+                having=having,
+                limit=limit,
+            )
+            derived_concepts.append(concept)
+            self.environment.add_concept(concept, meta=meta)
+            base_local[concept.address] = concept
         multi = MultiSelectStatement(
             selects=selects,
             align=align,
@@ -992,8 +1013,6 @@ class ParseToObjects(Transformer):
             local_concepts=base_local,
             derived_concepts=derived_concepts,
         )
-        for concept in multi.derived_concepts:
-            self.environment.add_concept(concept, meta=meta)
         return multi
 
     @v_args(meta=True)

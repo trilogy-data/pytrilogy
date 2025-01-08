@@ -1,12 +1,9 @@
 from trilogy.constants import CONFIG, logger
 from trilogy.core.enums import BooleanOperator, Derivation
-from trilogy.core.models import (
-    CTE,
+from trilogy.core.models.author import (
     Conditional,
-    MultiSelectStatement,
-    SelectStatement,
-    UnionCTE,
 )
+from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations import (
     InlineConstant,
     InlineDatasource,
@@ -15,6 +12,7 @@ from trilogy.core.optimizations import (
     PredicatePushdownRemove,
 )
 from trilogy.core.processing.utility import sort_select_output
+from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 
 MAX_OPTIMIZATION_LOOPS = 100
 
@@ -159,7 +157,6 @@ def is_direct_return_eligible(cte: CTE | UnionCTE) -> CTE | UnionCTE | None:
             return None
         if x.derivation == Derivation.WINDOW:
             return None
-
     logger.info(
         f"[Optimization][EarlyReturn] Removing redundant output CTE with derived_concepts {[x.address for x in derived_concepts]}"
     )

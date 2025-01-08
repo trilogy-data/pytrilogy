@@ -1,6 +1,5 @@
 from pytest import fixture
 
-from trilogy import Environment
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -9,12 +8,9 @@ from trilogy.core.enums import (
 )
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.functions import Count, CountDistinct, Max, Min
-from trilogy.core.models import (
-    ColumnAssignment,
+from trilogy.core.models.author import (
     Comparison,
     Concept,
-    Datasource,
-    DataType,
     FilterItem,
     Function,
     Grain,
@@ -22,6 +18,11 @@ from trilogy.core.models import (
     WhereClause,
     WindowItem,
 )
+from trilogy.core.models.core import (
+    DataType,
+)
+from trilogy.core.models.datasource import ColumnAssignment, Datasource
+from trilogy.core.models.environment import Environment
 
 
 @fixture(scope="session")

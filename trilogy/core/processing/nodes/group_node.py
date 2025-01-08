@@ -2,17 +2,17 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from trilogy.constants import logger
-from trilogy.core.models import (
+from trilogy.core.enums import SourceType
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,
-    Datasource,
-    Environment,
     Grain,
     Parenthetical,
-    QueryDatasource,
-    SourceType,
 )
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,

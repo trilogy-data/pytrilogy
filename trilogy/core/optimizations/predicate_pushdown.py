@@ -1,14 +1,15 @@
-from trilogy.core.models import (
-    CTE,
+from trilogy.core.enums import (
     BooleanOperator,
+)
+from trilogy.core.models.author import (
     Comparison,
     ConceptArgs,
     Conditional,
-    Datasource,
     Parenthetical,
-    UnionCTE,
     WindowItem,
 )
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
 from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.utility import unique

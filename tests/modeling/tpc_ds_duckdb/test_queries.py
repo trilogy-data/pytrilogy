@@ -5,7 +5,8 @@ import pytest
 import tomli_w
 import tomllib
 
-from trilogy import Environment, Executor
+from trilogy import Executor
+from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
 
@@ -196,7 +197,7 @@ def test_ninety_nine(engine):
 def run_adhoc(number: int, text: str | None = None):
     from logging import INFO
 
-    from trilogy import Dialects, Environment
+    from trilogy import Dialects
     from trilogy.hooks.query_debugger import DebuggingHook
 
     env = Environment(working_path=Path(__file__).parent)

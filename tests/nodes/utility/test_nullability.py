@@ -1,6 +1,7 @@
 from trilogy import parse
-from trilogy.core.enums import Modifier
-from trilogy.core.models import BaseJoin, ConceptPair, Grain, JoinType, QueryDatasource
+from trilogy.core.enums import JoinType, Modifier
+from trilogy.core.models.author import Grain
+from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
 from trilogy.core.processing.utility import find_nullable_concepts
 
 

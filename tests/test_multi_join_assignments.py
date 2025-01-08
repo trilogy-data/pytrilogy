@@ -1,6 +1,7 @@
 # from trilogy.compiler import compile
-from trilogy.core.models import Grain, SelectStatement
+from trilogy.core.models.author import Grain
 from trilogy.core.query_processor import process_query
+from trilogy.core.statements.author import SelectStatement
 from trilogy.parser import parse
 
 TEST_SETUP = r"""

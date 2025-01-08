@@ -2,13 +2,8 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import SourceType
-from trilogy.core.models import (
-    Concept,
-    Function,
-    FunctionClass,
-    WhereClause,
-)
+from trilogy.core.enums import FunctionClass, SourceType
+from trilogy.core.models.author import Concept, Function, WhereClause
 from trilogy.core.processing.node_generators.common import (
     resolve_function_parent_concepts,
 )
@@ -48,7 +43,7 @@ def gen_basic_node(
     parent_concepts = resolve_function_parent_concepts(concept, environment=environment)
 
     logger.info(
-        f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x.address for x in parent_concepts]}"
+        f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has parents {[x for x in parent_concepts]}"
     )
 
     equivalent_optional = [

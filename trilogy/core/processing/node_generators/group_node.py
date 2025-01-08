@@ -1,15 +1,15 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import (
+from trilogy.core.models.author import (
     AggregateWrapper,
     Concept,
-    Environment,
     Function,
     Grain,
     LooseConceptList,
     WhereClause,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
     resolve_function_parent_concepts,

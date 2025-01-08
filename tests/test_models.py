@@ -1,26 +1,38 @@
 from copy import deepcopy
 
 from trilogy import parse
-from trilogy.core.enums import BooleanOperator, ComparisonOperator, JoinType, Purpose
-from trilogy.core.models import (
-    CTE,
-    Address,
+from trilogy.core.enums import (
+    BooleanOperator,
+    ComparisonOperator,
+    FunctionType,
+    JoinType,
+    Purpose,
+)
+from trilogy.core.models.author import (
     AggregateWrapper,
-    BaseJoin,
     Comparison,
     Concept,
     Conditional,
-    CTEConceptPair,
-    DataType,
-    Environment,
+    Function,
     Grain,
-    Join,
-    QueryDatasource,
+    Parenthetical,
     RowsetItem,
-    SelectStatement,
-    TupleWrapper,
     UndefinedConcept,
 )
+from trilogy.core.models.core import (
+    DataType,
+    TupleWrapper,
+)
+from trilogy.core.models.datasource import Address
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import (
+    CTE,
+    BaseJoin,
+    CTEConceptPair,
+    Join,
+    QueryDatasource,
+)
+from trilogy.core.statements.author import SelectStatement
 
 
 def test_cte_merge(test_environment, test_environment_graph):
@@ -311,3 +323,29 @@ def test_tuple_clone():
     x = TupleWrapper([1, 2, 3], type=DataType.INTEGER)
     y = deepcopy(x)
     assert y == x
+
+
+def test_parenthetical(test_environment: Environment):
+    x = Parenthetical(content=TupleWrapper([1, 2, 3], type=DataType.INTEGER))
+
+    assert x.concept_arguments == []
+
+    x = Parenthetical(
+        content=test_environment.concepts["order_id"], type=DataType.INTEGER
+    )
+    # return concept if it's a concept
+    assert x.concept_arguments == [test_environment.concepts["order_id"]]
+
+    x = Parenthetical(
+        content=Function(
+            operator=FunctionType.COUNT,
+            output_datatype=DataType.INTEGER,
+            output_purpose=Purpose.METRIC,
+            arguments=[test_environment.concepts["order_id"]],
+        )
+    )
+    # else pass through parent
+    assert x.concept_arguments == [test_environment.concepts["order_id"]]
+
+    merged = x + x
+    assert isinstance(merged, Conditional)

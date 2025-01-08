@@ -3,7 +3,8 @@ import pytest
 from trilogy import Executor, parse
 from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
-from trilogy.core.models import Environment, Grain
+from trilogy.core.models.author import Grain
+from trilogy.core.models.environment import Environment
 
 
 def test_ambiguous_error(test_environment: Environment, test_executor: Executor):
@@ -33,7 +34,7 @@ property store_by_order <- group(store_id) by order_id;
     _, statements = parse(test_select, test_environment)
     grouped = test_environment.concepts["store_by_warehouse"]
     assert grouped.purpose == Purpose.PROPERTY
-    assert grouped.lineage.arguments == [
+    assert grouped.lineage.concept_arguments == [
         test_environment.concepts["store_id"],
         test_environment.concepts["wh_id"],
     ]
@@ -70,7 +71,7 @@ property store_by_order <- group(store_id) by order_id;
             test_environment.concepts["order_id"],
         ]
     )
-    assert Grain(components=grouped.lineage.arguments) == target_grain
+    assert Grain(components=grouped.lineage.concept_arguments) == target_grain
     assert grouped.grain == target_grain
     test_select = """
 SELECT

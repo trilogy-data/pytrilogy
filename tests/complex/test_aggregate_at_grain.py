@@ -1,6 +1,7 @@
 from trilogy.core.enums import Granularity
-from trilogy.core.models import Grain, SelectStatement
+from trilogy.core.models.author import Grain
 from trilogy.core.query_processor import process_query
+from trilogy.core.statements.author import SelectStatement
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.query_debugger import DebuggingHook
 from trilogy.parser import parse

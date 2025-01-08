@@ -1,5 +1,5 @@
 from trilogy.core.exceptions import InvalidSyntaxException
-from trilogy.core.models import (
+from trilogy.core.models.core import (
     NumericType,
 )
 from trilogy.parsing.parse_engine import (

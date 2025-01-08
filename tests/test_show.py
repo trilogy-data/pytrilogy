@@ -1,5 +1,5 @@
 from trilogy import Dialects
-from trilogy.core.models import ShowStatement
+from trilogy.core.statements.author import ShowStatement
 from trilogy.parser import parse
 
 

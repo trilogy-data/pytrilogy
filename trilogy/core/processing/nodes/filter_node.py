@@ -1,12 +1,14 @@
 from typing import List
 
-from trilogy.core.models import (
+from trilogy.core.enums import (
+    SourceType,
+)
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,
     Grain,
     Parenthetical,
-    SourceType,
 )
 from trilogy.core.processing.nodes.base_node import StrategyNode
 

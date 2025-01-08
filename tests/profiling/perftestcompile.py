@@ -1,7 +1,7 @@
 from cProfile import Profile
 from pstats import SortKey, Stats
 
-from trilogy import Environment, parse
+from trilogy import parse
 from trilogy.core.enums import (
     ComparisonOperator,
     FunctionType,
@@ -9,23 +9,25 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.functions import Count, CountDistinct, Max, Min
-
-# from trilogy.compiler import compile
-from trilogy.core.models import (
-    ColumnAssignment,
+from trilogy.core.models.author import (
     Comparison,
     Concept,
-    Datasource,
-    DataType,
     FilterItem,
     Function,
     Grain,
     OrderItem,
-    SelectStatement,
     WhereClause,
     WindowItem,
 )
+
+# from trilogy.compiler import compile
+from trilogy.core.models.core import (
+    DataType,
+)
+from trilogy.core.models.datasource import ColumnAssignment, Datasource
+from trilogy.core.models.environment import Environment
 from trilogy.core.query_processor import process_query
+from trilogy.core.statements.author import SelectStatement
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.duckdb import DuckDBDialect

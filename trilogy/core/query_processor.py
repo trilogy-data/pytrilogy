@@ -7,32 +7,40 @@ from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import BooleanOperator, SourceType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
-from trilogy.core.models import (
+from trilogy.core.models.author import (
+    Concept,
+    Conditional,
+    MultiSelectLineage,
+    SelectLineage,
+)
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
-    Concept,
-    ConceptDeclarationStatement,
-    Conditional,
-    CopyStatement,
     CTEConceptPair,
-    Datasource,
-    Environment,
     InstantiatedUnnestJoin,
     Join,
-    MaterializedDataset,
-    MultiSelectStatement,
-    PersistStatement,
-    ProcessedCopyStatement,
-    ProcessedQuery,
-    ProcessedQueryPersist,
     QueryDatasource,
-    SelectStatement,
     UnionCTE,
     UnnestJoin,
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing.concept_strategies_v3 import source_query_concepts
 from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.core.statements.author import (
+    ConceptDeclarationStatement,
+    CopyStatement,
+    MultiSelectStatement,
+    PersistStatement,
+    SelectStatement,
+)
+from trilogy.core.statements.common import MaterializedDataset
+from trilogy.core.statements.execute import (
+    ProcessedCopyStatement,
+    ProcessedQuery,
+    ProcessedQueryPersist,
+)
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.utility import unique
 
@@ -351,7 +359,9 @@ def datasource_to_cte(
 
 def get_query_node(
     environment: Environment,
-    statement: SelectStatement | MultiSelectStatement,
+    statement: (
+        SelectStatement | SelectLineage | MultiSelectStatement | MultiSelectLineage
+    ),
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()
@@ -359,7 +369,7 @@ def get_query_node(
         environment.concepts[k] = v
     graph = generate_graph(environment)
     logger.info(
-        f"{LOGGER_PREFIX} getting source datasource for query with filtering {statement.where_clause_category} and grain {statement.grain}"
+        f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {statement.grain}"
     )
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")

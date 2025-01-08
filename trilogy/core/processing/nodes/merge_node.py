@@ -1,20 +1,20 @@
 from typing import List, Optional, Tuple
 
 from trilogy.constants import logger
-from trilogy.core.models import (
-    BaseJoin,
+from trilogy.core.enums import (
+    JoinType,
+    SourceType,
+)
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,
-    Datasource,
-    Environment,
     Grain,
-    JoinType,
     Parenthetical,
-    QueryDatasource,
-    SourceType,
-    UnnestJoin,
 )
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     StrategyNode,

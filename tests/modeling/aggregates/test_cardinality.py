@@ -1,5 +1,6 @@
 from trilogy import Executor, parse
-from trilogy.core.models import Environment, Grain
+from trilogy.core.models.author import Grain
+from trilogy.core.models.environment import Environment
 
 
 def test_key_fetch_cardinality(test_environment: Environment, test_executor: Executor):

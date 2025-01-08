@@ -2,7 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import FunctionType, Purpose
-from trilogy.core.models import Concept, Function, WhereClause
+from trilogy.core.models.author import Concept, Function, WhereClause
 from trilogy.core.processing.nodes import History, StrategyNode, UnionNode
 from trilogy.core.processing.utility import padding
 
@@ -36,9 +36,7 @@ def gen_union_node(
         relevant_parents: list[Concept] = []
         for other_union in remaining:
             assert other_union.lineage
-            potential_parents = [
-                z for z in other_union.lineage.arguments if isinstance(z, Concept)
-            ]
+            potential_parents = [z for z in other_union.lineage.concept_arguments]
             relevant_parents += [
                 x for x in potential_parents if x.keys and arg.address in x.keys
             ]

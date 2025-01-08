@@ -6,21 +6,19 @@ from trilogy.core.enums import (
     BooleanOperator,
     Derivation,
     JoinType,
+    SourceType,
 )
-from trilogy.core.models import (
+from trilogy.core.models.author import (
     Comparison,
     Concept,
-    ConceptPair,
     Conditional,
-    Datasource,
-    Environment,
     Grain,
     LooseConceptList,
     Parenthetical,
-    QueryDatasource,
-    SourceType,
-    UnnestJoin,
 )
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.utility import unique
 
 

@@ -1,7 +1,8 @@
 # from trilogy.compiler import compile
-from trilogy.core.models import Grain, Parenthetical, SelectStatement
+from trilogy.core.models.author import Grain, Parenthetical
 from trilogy.core.processing.utility import is_scalar_condition
 from trilogy.core.query_processor import process_query
+from trilogy.core.statements.author import SelectStatement
 from trilogy.dialect.base import BaseDialect
 from trilogy.parser import parse
 
@@ -100,7 +101,7 @@ select
 
     spec_category = env.concepts["special_category"]
     category_name = env.concepts["category_name"]
-    inputs = [x.address for x in spec_category.lineage.where.input]
+    inputs = [x.address for x in spec_category.lineage.where.concept_arguments]
     assert len(inputs) == 1
     assert category_name.address in inputs
 

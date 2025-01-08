@@ -1,13 +1,15 @@
-from trilogy.core.models import (
+from trilogy.core.models.execute import (
     CTE,
-    MultiSelectStatement,
-    PersistStatement,
     QueryDatasource,
-    RowsetDerivationStatement,
-    SelectStatement,
     UnionCTE,
 )
 from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.statements.author import (
+    MultiSelectStatement,
+    PersistStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+)
 
 
 class BaseHook:

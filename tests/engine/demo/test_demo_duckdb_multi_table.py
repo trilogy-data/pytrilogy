@@ -1,5 +1,6 @@
 from trilogy.core.enums import Purpose
-from trilogy.core.models import (
+from trilogy.core.models.author import Comparison
+from trilogy.core.models.execute import (
     CTE,
 )
 from trilogy.core.processing.nodes import SelectNode
@@ -96,7 +97,8 @@ order by survivors.passenger.name desc
 limit 5;"""
 
     sql = executor.parse_text(test)[-1]
-
+    assert isinstance(sql.where_clause.conditional, Comparison)
+    assert sql.where_clause.conditional.row_arguments[0].address == "local.eldest"
     assert env.concepts["local.eldest"].purpose == Purpose.PROPERTY
 
     # actual = executor.generate_sql(sql)

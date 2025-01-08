@@ -2,17 +2,16 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import List, Tuple, TypeVar
 
-from trilogy.core.enums import ComparisonOperator
-from trilogy.core.models import (
+from trilogy.core.enums import ComparisonOperator, FunctionType
+from trilogy.core.models.author import (
     Comparison,
     Concept,
     Conditional,
-    Datasource,
-    DataType,
     Function,
-    FunctionType,
     Parenthetical,
 )
+from trilogy.core.models.core import DataType
+from trilogy.core.models.datasource import Datasource
 
 # Define a generic type that ensures start and end are the same type
 T = TypeVar("T", int, date, datetime)
@@ -159,21 +158,14 @@ def is_fully_covered(
 
     # Check for gaps
     current_end = start
-    print(ranges)
     for r_start, r_end in ranges:
-        print(r_start, r_end)
         # If there's a gap between the current range and the previous coverage
-        print(r_start - current_end)
         if (r_start - current_end) > increment:  # type: ignore
-            print("gap")
             return False
-        print("okay")
         # Extend the current coverage
         current_end = max(current_end, r_end)
 
     # If the loop ends and we haven't reached the end, return False
-    print(current_end, end)
-    print(current_end >= end)
     return current_end >= end
 
 

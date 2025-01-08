@@ -5,7 +5,9 @@ datasource id_source (
 id:id,
 )
 grain (id)
-address tbl_id;
+query '''
+
+select 1 as id union select 2 as id''';
 
 
 select id;

@@ -7,29 +7,39 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
 )
 from trilogy.core.enums import (
+    ConceptSource,
     Derivation,
+    FunctionClass,
     FunctionType,
     Granularity,
     Modifier,
+    Purpose,
     WindowType,
 )
-from trilogy.core.functions import arg_to_datatype, function_args_to_output_purpose
-from trilogy.core.models import (
+from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.functions import function_args_to_output_purpose
+from trilogy.core.models.author import (
     AggregateWrapper,
+    AlignClause,
+    AlignItem,
     Concept,
-    DataType,
-    Environment,
     FilterItem,
     Function,
-    FunctionClass,
     Grain,
+    HavingClause,
     ListWrapper,
     MapWrapper,
     Metadata,
+    MultiSelectLineage,
     Parenthetical,
-    Purpose,
+    RowsetItem,
+    RowsetLineage,
+    WhereClause,
     WindowItem,
 )
+from trilogy.core.models.core import DataType, arg_to_datatype
+from trilogy.core.models.environment import Environment
+from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
 from trilogy.utility import string_to_hash, unique
 
 
@@ -327,6 +337,99 @@ def agg_wrapper_to_concept(
         modifiers=modifiers,
     )
     return out
+
+
+def align_item_to_concept(
+    parent: AlignItem,
+    align_clause: AlignClause,
+    selects: list[SelectStatement],
+    local_concepts: dict[str, Concept],
+    where: WhereClause | None = None,
+    having: HavingClause | None = None,
+    limit: int | None = None,
+) -> Concept:
+    align = parent
+    datatypes = set([c.datatype for c in align.concepts])
+    purposes = set([c.purpose for c in align.concepts])
+    if len(datatypes) > 1:
+        raise InvalidSyntaxException(
+            f"Datatypes do not align for merged statements {align.alias}, have {datatypes}"
+        )
+    if len(purposes) > 1:
+        purpose = Purpose.KEY
+    else:
+        purpose = list(purposes)[0]
+    new = Concept(
+        name=align.alias,
+        datatype=datatypes.pop(),
+        purpose=purpose,
+        derivation=Derivation.MULTISELECT,
+        lineage=MultiSelectLineage(
+            selects=[x.as_lineage() for x in selects],
+            align=align_clause,
+            namespace=align.namespace,
+            local_concepts=local_concepts,
+            where_clause=where,
+            having_clause=having,
+            limit=limit,
+        ),
+        namespace=align.namespace,
+    )
+    return new
+
+
+def rowset_to_concepts(rowset: RowsetDerivationStatement):
+    output: list[Concept] = []
+    orig: dict[str, Concept] = {}
+    orig_map: dict[str, Concept] = {}
+    for orig_concept in rowset.select.output_components:
+        name = orig_concept.name
+        if isinstance(orig_concept.lineage, FilterItem):
+            if orig_concept.lineage.where == rowset.select.where_clause:
+                name = orig_concept.lineage.content.name
+
+        new_concept = Concept(
+            name=name,
+            datatype=orig_concept.datatype,
+            purpose=orig_concept.purpose,
+            lineage=None,
+            grain=orig_concept.grain,
+            # TODO: add proper metadata
+            metadata=Metadata(concept_source=ConceptSource.CTE),
+            namespace=(
+                f"{rowset.name}.{orig_concept.namespace}"
+                if orig_concept.namespace != rowset.namespace
+                else rowset.name
+            ),
+            keys=orig_concept.keys,
+        )
+        orig[orig_concept.address] = new_concept
+        orig_map[new_concept.address] = orig_concept
+        output.append(new_concept)
+    for x in output:
+        x.lineage = RowsetItem(
+            content=orig_map[x.address],
+            where=rowset.select.where_clause,
+            rowset=RowsetLineage(
+                name=rowset.name,
+                derived_concepts=output,
+                select=rowset.select.as_lineage(),
+            ),
+        )
+    default_grain = Grain.from_concepts([*output])
+    # remap everything to the properties of the rowset
+    for x in output:
+        if x.keys:
+            if all([k in orig for k in x.keys]):
+                x.keys = set([orig[k].address if k in orig else k for k in x.keys])
+            else:
+                # TODO: fix this up
+                x.keys = set()
+        if all([c in orig for c in x.grain.components]):
+            x.grain = Grain(components={orig[c].address for c in x.grain.components})
+        else:
+            x.grain = default_grain
+    return output
 
 
 def arbitrary_to_concept(

@@ -1,7 +1,8 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, WhereClause, WindowItem
+from trilogy.core.models.author import Concept, WhereClause, WindowItem
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique

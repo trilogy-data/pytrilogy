@@ -1,6 +1,6 @@
 from typing import Optional
 
-from trilogy.core.models import Environment
+from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import parse_text
 
 

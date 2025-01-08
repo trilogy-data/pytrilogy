@@ -1,9 +1,9 @@
 from collections import defaultdict
 
 from trilogy.constants import CONFIG
-from trilogy.core.models import (
+from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.execute import (
     CTE,
-    Datasource,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import OptimizationRule

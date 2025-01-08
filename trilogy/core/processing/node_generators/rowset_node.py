@@ -2,16 +2,17 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
-from trilogy.core.models import (
+from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.models.author import (
     Concept,
-    Environment,
     Grain,
-    MultiSelectStatement,
-    RowsetDerivationStatement,
+    MultiSelectLineage,
     RowsetItem,
-    SelectStatement,
+    RowsetLineage,
+    SelectLineage,
     WhereClause,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
 
@@ -35,8 +36,8 @@ def gen_rowset_node(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
         )
     lineage: RowsetItem = concept.lineage
-    rowset: RowsetDerivationStatement = lineage.rowset
-    select: SelectStatement | MultiSelectStatement = lineage.rowset.select
+    rowset: RowsetLineage = lineage.rowset
+    select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
     node = get_query_node(environment, select)
 
@@ -44,9 +45,14 @@ def gen_rowset_node(
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate parent rowset node for {concept}"
         )
-        return None
+        raise UnresolvableQueryException(
+            f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
+        )
     enrichment = set([x.address for x in local_optional])
     rowset_relevant = [x for x in rowset.derived_concepts]
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
+    )
     select_hidden = select.hidden_components
     rowset_hidden = [
         x

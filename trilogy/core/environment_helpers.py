@@ -1,15 +1,10 @@
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, FunctionType, Purpose
 from trilogy.core.functions import AttrAccess
-from trilogy.core.models import (
-    Concept,
-    DataType,
-    Environment,
-    Function,
-    Metadata,
-    StructType,
-)
-from trilogy.parsing.common import Meta, arg_to_datatype, process_function_args
+from trilogy.core.models.author import Concept, Function, Metadata
+from trilogy.core.models.core import DataType, StructType, arg_to_datatype
+from trilogy.core.models.environment import Environment
+from trilogy.parsing.common import Meta, process_function_args
 
 FUNCTION_DESCRIPTION_MAPS = {
     FunctionType.DATE: "The date part of a timestamp/date. Integer, 0-31 depending on month.",
@@ -193,8 +188,6 @@ def generate_related_concepts(
             args = process_function_args(
                 [concept, key], meta=meta, environment=environment
             )
-            print("----")
-            print(key, value)
             auto = Concept(
                 name=key,
                 datatype=arg_to_datatype(value),

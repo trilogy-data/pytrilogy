@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from trilogy import Dialects, Environment
+from trilogy import Dialects
+from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
 

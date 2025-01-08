@@ -1,7 +1,8 @@
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.models import Concept, Environment, FilterItem, Grain, WhereClause
+from trilogy.core.models.author import Concept, FilterItem, Grain, WhereClause
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
 )

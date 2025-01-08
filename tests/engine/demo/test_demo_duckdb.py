@@ -1,15 +1,11 @@
 from trilogy import Executor
 from trilogy.core.enums import FunctionType, Modifier, Purpose
-from trilogy.core.models import (
-    ColumnAssignment,
-    Concept,
-    Datasource,
+from trilogy.core.models.author import Concept, Function, Grain, SelectContext
+from trilogy.core.models.core import (
     DataType,
-    Environment,
-    Function,
-    Grain,
-    SelectContext,
 )
+from trilogy.core.models.datasource import ColumnAssignment, Datasource
+from trilogy.core.models.environment import Environment
 
 
 def setup_titanic(env: Environment):

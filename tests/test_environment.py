@@ -1,9 +1,16 @@
 from pathlib import Path
 
+from pytest import raises
+
 from trilogy import Dialects
-from trilogy.core.enums import Modifier
-from trilogy.core.exceptions import UndefinedConceptException
-from trilogy.core.models import Environment
+from trilogy.core.enums import Modifier, Purpose
+from trilogy.core.exceptions import (
+    FrozenEnvironmentException,
+    UndefinedConceptException,
+)
+from trilogy.core.models.author import Concept
+from trilogy.core.models.core import DataType
+from trilogy.core.models.environment import Environment, LazyEnvironment
 
 
 def test_environment_serialization(test_environment: Environment):
@@ -23,6 +30,37 @@ def test_environment_from_path():
     env = Environment.from_file(Path(__file__).parent / "test_env.preql")
 
     assert "local.id" in env.concepts
+
+
+def test_lazy_environment_from_path():
+    env = LazyEnvironment(load_path=Path(__file__).parent / "test_env.preql")
+
+    assert not env.loaded
+
+    _ = len(env.concepts)
+
+    assert env.loaded
+
+    env2 = Environment.from_file(Path(__file__).parent / "test_env.preql")
+
+    assert env.concepts == env2.concepts
+
+
+def test_frozen_environment():
+    env = Environment.from_file(Path(__file__).parent / "test_env.preql")
+    env.freeze()
+
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+
+    run = exec.execute_query(
+        """select id+5 ->id_plus_5 order by id_plus_5 asc;"""
+    ).fetchall()
+    assert run[0].id_plus_5 == 6
+
+    with raises(FrozenEnvironmentException):
+        env.add_concept(
+            Concept(name="test", datatype=DataType.INTEGER, purpose=Purpose.KEY)
+        )
 
 
 def test_environment_invalid():

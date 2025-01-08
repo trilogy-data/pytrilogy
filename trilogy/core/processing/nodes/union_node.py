@@ -1,10 +1,8 @@
 from typing import List
 
-from trilogy.core.models import (
-    Concept,
-    QueryDatasource,
-    SourceType,
-)
+from trilogy.core.enums import SourceType
+from trilogy.core.models.author import Concept
+from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
 

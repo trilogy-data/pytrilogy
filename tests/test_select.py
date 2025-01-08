@@ -1,7 +1,9 @@
 # from trilogy.compiler import compile
-from trilogy import Dialects, Environment
-from trilogy.core.models import Grain, SelectStatement
+from trilogy import Dialects
+from trilogy.core.models.author import Grain
+from trilogy.core.models.environment import Environment
 from trilogy.core.query_processor import process_query
+from trilogy.core.statements.author import SelectStatement
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.parser import parse
 
@@ -58,6 +60,14 @@ datasource users (
     assert (
         select.grain.components
         == Grain(components=[env.concepts["about_me"]]).components
+    )
+
+    assert (
+        str(select)
+        == """SELECT
+    about_me,
+    post_count,
+;"""
     )
 
 

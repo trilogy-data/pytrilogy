@@ -6,14 +6,14 @@ from trilogy.constants import logger
 from trilogy.core.enums import Derivation, FunctionType, Granularity
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models import (
+from trilogy.core.models.author import (
     Concept,
-    Environment,
     Function,
     RowsetItem,
     UndefinedConcept,
     WhereClause,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
     gen_filter_node,
@@ -178,6 +178,8 @@ def generate_candidates_restrictive(
         Derivation.ROOT,
         Derivation.CONSTANT,
     ):
+        logger.info("DEBUG")
+        logger.info(conditions.row_arguments)
         return [unique(conditions.row_arguments + local_candidates, "address")]
     return [local_candidates]
 

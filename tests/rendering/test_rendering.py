@@ -1,7 +1,6 @@
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from trilogy import Environment
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX
 from trilogy.core.enums import (
     BooleanOperator,
@@ -9,40 +8,43 @@ from trilogy.core.enums import (
     FunctionType,
     IOType,
     Modifier,
+    Ordering,
+    Purpose,
 )
-from trilogy.core.models import (
-    Address,
+from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     CaseElse,
     CaseWhen,
-    ColumnAssignment,
     Comparison,
     Concept,
-    ConceptDeclarationStatement,
     Conditional,
-    CopyStatement,
-    Datasource,
-    DataType,
     Function,
     Grain,
-    ImportStatement,
+    OrderBy,
+    OrderItem,
+    WhereClause,
+)
+from trilogy.core.models.core import (
+    DataType,
     ListType,
     ListWrapper,
+    NumericType,
+    TupleWrapper,
+)
+from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
+from trilogy.core.models.environment import Environment, Import
+from trilogy.core.statements.author import (
+    ConceptDeclarationStatement,
+    CopyStatement,
+    ImportStatement,
     MergeStatementV2,
     MultiSelectStatement,
-    NumericType,
-    OrderBy,
-    Ordering,
-    OrderItem,
     PersistStatement,
-    Purpose,
     RawSQLStatement,
     RowsetDerivationStatement,
     SelectItem,
     SelectStatement,
-    TupleWrapper,
-    WhereClause,
 )
 from trilogy.parsing.render import Renderer, render_environment, render_query
 
@@ -92,7 +94,8 @@ select max(order_id) by order_id -> test;
     assert (
         string_query
         == """SELECT
-    max(order_id) by order_id -> test,;"""
+    max(order_id) by order_id -> test,
+;"""
     )
 
 
@@ -588,26 +591,23 @@ def test_render_parenthetical():
 
 
 def test_render_import():
-    base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="user_id", path=str(PureWindowsPath(base)))
-    )
+    for obj in [ImportStatement, Import]:
+        base = Path("/path/to/file.preql")
+        test = Renderer().to_string(
+            obj(alias="user_id", path=str(PureWindowsPath(base)))
+        )
 
-    assert test == "import path.to.file as user_id;"
+        assert test == "import path.to.file as user_id;"
 
-    base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="user_id", path=str(PurePosixPath(base)))
-    )
+        base = Path("/path/to/file.preql")
+        test = Renderer().to_string(obj(alias="user_id", path=str(PurePosixPath(base))))
 
-    assert test == "import path.to.file as user_id;"
+        assert test == "import path.to.file as user_id;"
 
-    base = Path("/path/to/file.preql")
-    test = Renderer().to_string(
-        ImportStatement(alias="", path=str(PurePosixPath(base)))
-    )
+        base = Path("/path/to/file.preql")
+        test = Renderer().to_string(obj(alias="", path=str(PurePosixPath(base))))
 
-    assert test == "import path.to.file;"
+        assert test == "import path.to.file;"
 
 
 def test_render_datasource():
@@ -795,7 +795,8 @@ where id in (1,2,3);
         == """PERSIST test INTO test FROM WHERE
     id in (1, 2, 3)
 SELECT
-    id,;"""
+    id,
+;"""
     ), rendered
 
 
@@ -860,8 +861,9 @@ final_zips;
 
     final_zips: ConceptDeclarationStatement = commands[-2]
     assert isinstance(
-        final_zips.concept.lineage.arguments[0].lineage.where.conditional.right, Concept
-    ), final_zips.concept.lineage.arguments[0].lineage.where.conditional.right
+        final_zips.concept.lineage.concept_arguments[0].lineage.where.conditional.right,
+        Concept,
+    ), final_zips.concept.lineage.concept_arguments[0].lineage.where.conditional.right
     rendered = Renderer().to_string(final_zips)
 
     assert (

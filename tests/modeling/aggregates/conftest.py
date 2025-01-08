@@ -3,8 +3,9 @@ from pathlib import Path
 
 from pytest import fixture
 
-from trilogy import Dialects, Environment
+from trilogy import Dialects
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.models.environment import Environment
 from trilogy.hooks.query_debugger import DebuggingHook
 
 

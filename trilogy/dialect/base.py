@@ -11,57 +11,60 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.internal import DEFAULT_CONCEPTS
-from trilogy.core.models import (
-    CTE,
+from trilogy.core.models.author import (
     AggregateWrapper,
     CaseElse,
     CaseWhen,
     Comparison,
-    CompiledCTE,
     Concept,
-    ConceptDeclarationStatement,
     Conditional,
-    CopyStatement,
-    Datasource,
-    DataType,
-    Environment,
     FilterItem,
     Function,
-    ImportStatement,
+    MultiSelectLineage,
+    OrderItem,
+    Parenthetical,
+    RowsetItem,
+    SubselectComparison,
+    WindowItem,
+)
+from trilogy.core.models.core import (
+    DataType,
     ListType,
     ListWrapper,
     MapType,
     MapWrapper,
-    MergeStatementV2,
-    MultiSelectLineage,
-    MultiSelectStatement,
     NumericType,
-    OrderItem,
-    Parenthetical,
-    PersistStatement,
-    ProcessedCopyStatement,
-    ProcessedQuery,
-    ProcessedQueryPersist,
-    ProcessedRawSQLStatement,
-    ProcessedShowStatement,
-    RawColumnExpr,
-    RawSQLStatement,
-    RowsetDerivationStatement,
-    RowsetItem,
-    SelectStatement,
-    ShowStatement,
     StructType,
-    SubselectComparison,
     TupleWrapper,
-    UnionCTE,
-    WindowItem,
 )
+from trilogy.core.models.datasource import Datasource, RawColumnExpr
+from trilogy.core.models.environment import Environment
+from trilogy.core.models.execute import CTE, CompiledCTE, UnionCTE
 from trilogy.core.processing.utility import (
     decompose_condition,
     is_scalar_condition,
     sort_select_output,
 )
 from trilogy.core.query_processor import process_copy, process_persist, process_query
+from trilogy.core.statements.author import (
+    ConceptDeclarationStatement,
+    CopyStatement,
+    ImportStatement,
+    MergeStatementV2,
+    MultiSelectStatement,
+    PersistStatement,
+    RawSQLStatement,
+    RowsetDerivationStatement,
+    SelectStatement,
+    ShowStatement,
+)
+from trilogy.core.statements.execute import (
+    ProcessedCopyStatement,
+    ProcessedQuery,
+    ProcessedQueryPersist,
+    ProcessedRawSQLStatement,
+    ProcessedShowStatement,
+)
 from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 

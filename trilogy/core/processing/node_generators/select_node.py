@@ -1,12 +1,12 @@
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
-from trilogy.core.models import (
+from trilogy.core.models.author import (
     Concept,
-    Environment,
     LooseConceptList,
     WhereClause,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_merge_node import (
     gen_select_merge_node,
 )

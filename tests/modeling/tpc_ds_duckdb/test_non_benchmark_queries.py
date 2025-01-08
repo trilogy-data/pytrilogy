@@ -1,7 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from trilogy.core.models import Environment
+from trilogy.core.models.environment import Environment
 
 working_path = Path(__file__).parent
 
@@ -132,3 +132,35 @@ ORDER BY
     r1 = engine.execute_query(y).fetchall()
     for row in r1:
         assert row.store_order_count is None or row.store_order_count > 1000, row
+
+
+def test_where_clause_inputs(engine):
+    y = """import store_sales as store_sales;
+import catalog_sales as catalog_sales;
+
+merge catalog_sales.bill_customer.id into store_sales.customer.id;
+merge catalog_sales.item.id into store_sales.item.id;
+
+SELECT 
+    store_sales.item.name,
+    store_sales.item.desc,
+    store_sales.store.text_id,
+    store_sales.store.name,
+    sum(store_sales.net_profit) AS store_sales_profit ,
+    sum(store_sales.return_net_loss) AS store_returns_loss ,
+    sum(catalog_sales.net_profit) AS catalog_sales_profit
+WHERE 
+    store_sales.is_returned and store_sales.date.year=2001 and store_sales.date.month_of_year=4
+    and store_sales.return_date.year=2001 and store_sales.return_date.month_of_year between 4 and 10
+    and catalog_sales.date.year=2001 and catalog_sales.date.month_of_year between 4 and 10
+    and store_sales.return_customer.id = store_sales.customer.id
+ORDER BY 
+    store_sales.item.name asc,
+    store_sales.item.desc asc,
+    store_sales.store.text_id asc,
+    store_sales.store.name asc
+LIMIT 100;"""
+    r1 = engine.parse_text(y)[-1]
+    assert "store_sales.is_returned" in [
+        x.address for x in r1.where_clause.conditional.row_arguments
+    ], [x.address for x in r1.where_clause.conditional.row_arguments]

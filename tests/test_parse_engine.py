@@ -1,7 +1,7 @@
 from pytest import raises
 
-from trilogy import Environment
 from trilogy.core.exceptions import UndefinedConceptException
+from trilogy.core.models.environment import Environment
 from trilogy.parsing.parse_engine import PARSER, ParseToObjects, unpack_visit_error
 
 TEXT = """
