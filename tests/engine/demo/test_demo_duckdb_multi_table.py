@@ -4,7 +4,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.nodes import SelectNode
 from trilogy.core.processing.nodes.base_node import StrategyNode
-
+from trilogy.core.models.author import Conditional, Comparison
 
 def fingerprint(node: StrategyNode) -> str:
     base = node.__class__.__name__ + ",".join(
@@ -96,7 +96,8 @@ order by survivors.passenger.name desc
 limit 5;"""
 
     sql = executor.parse_text(test)[-1]
-
+    assert isinstance(sql.where_clause.conditional, Comparison)
+    assert sql.where_clause.conditional.row_arguments[0].address == "local.eldest"
     assert env.concepts["local.eldest"].purpose == Purpose.PROPERTY
 
     # actual = executor.generate_sql(sql)

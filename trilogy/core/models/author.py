@@ -422,6 +422,9 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
 class HavingClause(WhereClause):
     pass
 
+    def hydrate_missing(self, concepts: EnvironmentConceptDict):
+        self.conditional.hydrate_missing(concepts)
+
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
@@ -749,11 +752,16 @@ class Comparison(
     @property
     def row_arguments(self) -> List[Concept]:
         output = []
-        if isinstance(self.left, ConceptArgs):
+        if isinstance(self.left, Concept):
+            output += [self.left]
+        
+        elif isinstance(self.left, ConceptArgs):
             output += self.left.row_arguments
         else:
             output += get_concept_arguments(self.left)
-        if isinstance(self.right, ConceptArgs):
+        if isinstance(self.right, Concept):
+            output += [self.right]
+        elif isinstance(self.right, ConceptArgs):
             output += self.right.row_arguments
         else:
             output += get_concept_arguments(self.right)
@@ -1512,6 +1520,7 @@ def get_concept_arguments(expr) -> List["Concept"]:
             AggregateWrapper,
             CaseWhen,
             CaseElse,
+            WindowItem
         ),
     ):
         output += expr.concept_arguments
