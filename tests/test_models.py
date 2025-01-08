@@ -346,3 +346,6 @@ def test_parenthetical(test_environment: Environment):
     )
     # else pass through parent
     assert x.concept_arguments == [test_environment.concepts["order_id"]]
+
+    merged = x + x
+    assert isinstance(merged, Conditional)
