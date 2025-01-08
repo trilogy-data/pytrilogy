@@ -1398,7 +1398,7 @@ def get_basic_type(
     return type
 
 
-class CaseWhen(Namespaced, Mergeable, SelectContext, BaseModel):
+class CaseWhen(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
     comparison: Conditional | SubselectComparison | Comparison
     expr: "Expr"
 
@@ -1452,7 +1452,7 @@ class CaseWhen(Namespaced, Mergeable, SelectContext, BaseModel):
         )
 
 
-class CaseElse(Namespaced, Mergeable, SelectContext, BaseModel):
+class CaseElse(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
     expr: "Expr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE

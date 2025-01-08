@@ -923,4 +923,4 @@ class CompiledCTE(BaseModel):
     statement: str
 
 
-UnionCTE.update_forward_refs()
+UnionCTE.model_rebuild()
