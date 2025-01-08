@@ -365,6 +365,8 @@ def get_query_node(
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()
+    if isinstance(statement, SelectStatement):
+        statement = statement.rebuild_for_select(environment)
     for k, v in statement.local_concepts.items():
         environment.concepts[k] = v
     graph = generate_graph(environment)

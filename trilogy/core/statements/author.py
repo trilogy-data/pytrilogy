@@ -114,6 +114,10 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             order_by=order_by,
             meta=meta or Metadata(),
         )
+        return output
+
+    def rebuild_for_select(self, environment: Environment):
+        output = self
         for parse_pass in [
             1,
             2,
@@ -138,7 +142,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 )
             output.grain = grain
             pass_grain = Grain() if parse_pass == 1 else grain
-            for item in selection:
+            for item in self.selection:
                 # we don't know the grain of an aggregate at assignment time
                 # so rebuild at this point in the tree
                 # TODO: simplify
@@ -173,8 +177,8 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                     )
                     output.local_concepts[item.content.address] = item.content
 
-        if order_by:
-            output.order_by = order_by.with_select_context(
+        if self.order_by:
+            output.order_by = self.order_by.with_select_context(
                 local_concepts=output.local_concepts,
                 grain=output.grain,
                 environment=environment,
