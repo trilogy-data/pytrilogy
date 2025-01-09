@@ -152,14 +152,15 @@ select
 
 
 def test_parenthetical(test_environment):
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     declarations = """
 
-
+where 
+(order_id = 1 or order_id = 2) and total_revenue>30
 select
     order_id,
     total_revenue,
-where 
-(order_id = 1 or order_id = 2) and total_revenue>30
 ;
 
 

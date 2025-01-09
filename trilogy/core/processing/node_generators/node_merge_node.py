@@ -141,7 +141,8 @@ def determine_induced_minimal_nodes(
         return None
 
     if not all([node in final.nodes for node in nodelist]):
-        logger.debug(f"Skipping graph for {nodelist} as missing nodes")
+        missing = [node for node in nodelist if node not in final.nodes]
+        logger.debug(f"Skipping graph for {nodelist} as missing nodes {missing} from {final.nodes}")
         return None
     logger.debug(f"Found final graph {final.nodes}")
     return final
@@ -392,6 +393,8 @@ def gen_merge_node(
                 conditions=conditions,
                 search_conditions=search_conditions,
             )
+        else:
+            raise SyntaxError
     # one concept handling may need to be kicked to alias
     if len(all_concepts) == 1:
         concept = all_concepts[0]

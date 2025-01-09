@@ -390,6 +390,9 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
 
     def __repr__(self):
         return str(self.conditional)
+    
+    def __str__(self):
+        return self.__repr__()
 
     @property
     def concept_arguments(self) -> List[Concept]:
@@ -433,6 +436,9 @@ class HavingClause(WhereClause):
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
     where_clause: Optional["WhereClause"] = None
+
+    def without_condition(self):
+        return Grain(components=self.components)
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
         new_components = set()
@@ -661,7 +667,15 @@ class Comparison(
         return Conditional(left=self, right=other, operator=BooleanOperator.AND)
 
     def __repr__(self):
-        return f"{str(self.left)} {self.operator.value} {str(self.right)}"
+        if isinstance(self.left, Concept):
+            left = self.left.address
+        else:
+            left = str(self.left)
+        if isinstance(self.right, Concept):
+            right = self.right.address
+        else:
+            right = str(self.right)
+        return f"{left} {self.operator.value} {right}"
 
     def __str__(self):
         return self.__repr__()
@@ -1015,28 +1029,40 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             modifiers=self.modifiers,
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
-
-    def with_select_context(
-        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
-    ) -> Concept:
+    
+    def set_select_grain(self, grain:Grain, environment:Environment) -> Self:
+        '''Assign a mutable concept the appropriate grain/keys for a select'''
         new_lineage = self.lineage
-        if isinstance(self.lineage, SelectContext):
-            new_lineage = self.lineage.with_select_context(
-                local_concepts=local_concepts, grain=grain, environment=environment
-            )
-        final_grain = self.grain or grain
-        keys = self.keys if self.keys else None
+        final_grain = grain if not self.grain.components else self.grain
+        keys = self.keys
         if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
             grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
             keys = set(grain.components)
         elif (
-            self.is_aggregate and not keys and isinstance(new_lineage, AggregateWrapper)
+            isinstance(new_lineage, AggregateWrapper) and not new_lineage.by
         ):
+            grain_components = [environment.concepts[c] for c in grain.components]
+            new_lineage.by = grain_components
+            final_grain = grain
             keys = set([x.address for x in new_lineage.by])
-
-        return self.__class__(
+                  
+        self.keys = keys
+        self.grain = final_grain
+        return self
+    
+    def with_select_context(
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
+    ) -> Concept:
+        '''Propagate the select context to the lineage of the concept'''
+        new_lineage = self.lineage
+        if isinstance(self.lineage, SelectContext):
+            new_lineage = self.lineage.with_select_context(
+                local_concepts=local_concepts, grain=grain, environment=environment
+            )
+        final_grain = self.grain or grain
+        base = self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1044,12 +1070,15 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             lineage=new_lineage,
             grain=final_grain,
             namespace=self.namespace,
-            keys=keys,
+            keys=self.keys,
             modifiers=self.modifiers,
             # a select needs to always defer to the environment for pseudonyms
             # TODO: evaluate if this should be cached
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
         )
+
+        base.set_select_grain(final_grain, environment)
+        return base
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
         return self.__class__(

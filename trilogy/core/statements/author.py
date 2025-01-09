@@ -71,6 +71,12 @@ class SelectItem(BaseModel):
         )
 
 
+    @property
+    def is_undefined(self)->bool:
+        return (
+            True if isinstance(self.content, UndefinedConcept) else False
+        )
+
 class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
     order_by: Optional[OrderBy] = None
@@ -81,7 +87,8 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     ] = Field(default_factory=EnvironmentConceptDict)
     grain: Grain = Field(default_factory=Grain)
 
-    def as_lineage(self) -> SelectLineage:
+    def as_lineage(self, environment:Environment) -> SelectLineage:
+        self.rebuild_for_select(environment)
         return SelectLineage(
             selection=[x.concept for x in self.selection],
             hidden_components=self.hidden_components,
@@ -105,7 +112,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         where_clause: WhereClause | None = None,
         having_clause: HavingClause | None = None,
     ) -> "SelectStatement":
-
         output = SelectStatement(
             selection=selection,
             where_clause=where_clause,
@@ -113,9 +119,33 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             limit=limit,
             order_by=order_by,
             meta=meta or Metadata(),
+            
         )
-        return output
 
+        output.grain = output.calculate_grain()
+        for x in selection:
+            if x.is_undefined and environment.concepts.fail_on_missing:
+                environment.concepts.raise_undefined(
+                    x.content.address, x.content.metadata.line_number
+                )
+            elif isinstance(x.content, ConceptTransform):
+                x.content.output = x.content.output.set_select_grain(output.grain, environment)
+                if (
+                        CONFIG.select_as_definition
+                        and not environment.frozen
+                    ):  
+                        environment.add_concept(x.content.output)
+            elif isinstance(x.content, Concept):
+                x.content = x.content.set_select_grain(output.grain, environment)
+                # output.local_concepts[x.content.address] = x.content
+        return output
+    
+    def calculate_grain(self) -> Grain:
+        return Grain.from_concepts(
+            [x.concept for x in self.selection if isinstance(x.concept, Concept)],
+            where_clause=self.where_clause,
+        )
+    
     def rebuild_for_select(self, environment: Environment):
         output = self
         for parse_pass in [
@@ -155,12 +185,12 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                     )
                     output.local_concepts[new_concept.address] = new_concept
                     item.content.output = new_concept
-                    if (
-                        parse_pass == 2
-                        and CONFIG.select_as_definition
-                        and not environment.frozen
-                    ):
-                        environment.add_concept(new_concept)
+                    # if (
+                    #     parse_pass == 2
+                    #     and CONFIG.select_as_definition
+                    #     and not environment.frozen
+                    # ):
+                    #     environment.add_concept(new_concept)
                 elif isinstance(item.content, UndefinedConcept):
                     environment.concepts.raise_undefined(
                         item.content.address,
@@ -344,9 +374,9 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
 
-    def as_lineage(self):
+    def as_lineage(self, environment:Environment):
         return MultiSelectLineage(
-            selects=[x.as_lineage() for x in self.selects],
+            selects=[x.as_lineage(environment) for x in self.selects],
             align=self.align,
             namespace=self.namespace,
             # derived_concepts = self.derived_concepts,

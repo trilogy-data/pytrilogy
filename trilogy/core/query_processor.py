@@ -366,7 +366,9 @@ def get_query_node(
 ) -> StrategyNode:
     environment = environment.duplicate()
     if isinstance(statement, SelectStatement):
-        statement = statement.rebuild_for_select(environment)
+        statement = statement.as_lineage(environment)
+    elif isinstance(statement, MultiSelectStatement):
+        statement = statement.as_lineage(environment)
     for k, v in statement.local_concepts.items():
         environment.concepts[k] = v
     graph = generate_graph(environment)

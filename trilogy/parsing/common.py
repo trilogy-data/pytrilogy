@@ -344,6 +344,7 @@ def align_item_to_concept(
     align_clause: AlignClause,
     selects: list[SelectStatement],
     local_concepts: dict[str, Concept],
+    environment:Environment,
     where: WhereClause | None = None,
     having: HavingClause | None = None,
     limit: int | None = None,
@@ -365,7 +366,7 @@ def align_item_to_concept(
         purpose=purpose,
         derivation=Derivation.MULTISELECT,
         lineage=MultiSelectLineage(
-            selects=[x.as_lineage() for x in selects],
+            selects=[x.as_lineage(environment) for x in selects],
             align=align_clause,
             namespace=align.namespace,
             local_concepts=local_concepts,
@@ -378,7 +379,7 @@ def align_item_to_concept(
     return new
 
 
-def rowset_to_concepts(rowset: RowsetDerivationStatement):
+def rowset_to_concepts(rowset: RowsetDerivationStatement, environment:Environment):
     output: list[Concept] = []
     orig: dict[str, Concept] = {}
     orig_map: dict[str, Concept] = {}
@@ -413,7 +414,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement):
             rowset=RowsetLineage(
                 name=rowset.name,
                 derived_concepts=output,
-                select=rowset.select.as_lineage(),
+                select=rowset.select.as_lineage(environment),
             ),
         )
     default_grain = Grain.from_concepts([*output])

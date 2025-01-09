@@ -235,7 +235,8 @@ def test_demo_filter(engine):
 
     test = """
     auto surviving_passenger<- filter passenger.id where passenger.survived =1; 
-    select     passenger.last_name,    passenger.id.count,   
+    select     
+        passenger.last_name,    passenger.id.count,   
       count(surviving_passenger) -> surviving_size
     order by surviving_size desc, passenger.id.count desc
     limit 5;"""
@@ -472,6 +473,8 @@ where
 
 
 def test_merge(base_test_env: Environment, engine):
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     executor = engine
     executor.environment = base_test_env
     rich_name = base_test_env.concepts["rich_info.full_name"]
