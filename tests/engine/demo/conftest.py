@@ -245,7 +245,9 @@ def setup_titanic_distributed(env: Environment):
         purpose=Purpose.PROPERTY,
         datatype=DataType.INTEGER,
         keys=(class_id.address,),
+        # grain = Grain(components={class_id.address,}),
     )
+
     survived = Concept(
         name="survived",
         namespace=namespace,

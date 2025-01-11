@@ -2,6 +2,9 @@ from trilogy import Dialects
 
 
 def test_constant_optimization():
+    from trilogy.hooks.query_debugger import DebuggingHook
+
+    DebuggingHook()
     test_query = """
     const x <- 1;
 

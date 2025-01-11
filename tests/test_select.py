@@ -212,9 +212,30 @@ select
         "local.upper_name",
     }
 
-    # SelectStatement.from_inputs(
-    #     environment=env,
-    #     selection=[SelectItem(concept=env.concepts["id"]),
-    #                SelectItem(concept=env.concepts["id.class"])],
-    #     input_components=[],
-    # )
+
+def test_select_nested_agg_grain():
+    env = Environment()
+    q1 = """
+
+key id int;
+property id.class int;
+property id.name string;
+
+auto class_count <- count(class);
+auto name_count <- count(name);
+
+select
+    class,
+    count(class) -> name_count,
+    (name_count / sum name_count over class) -> name_class_ratio,
+;
+"""
+    env, statements = env.parse(q1)
+
+    select: SelectStatement = statements[-1]
+    assert select.grain.components == {
+        "local.class",
+    }
+    assert select.local_concepts["local.name_class_ratio"].grain.components == {
+        "local.class",
+    }

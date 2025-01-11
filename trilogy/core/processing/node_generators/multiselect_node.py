@@ -3,10 +3,9 @@ from itertools import combinations
 from typing import List
 
 from trilogy.constants import logger
-from trilogy.core.enums import BooleanOperator, JoinType, Purpose
+from trilogy.core.enums import JoinType, Purpose
 from trilogy.core.models.author import (
     Concept,
-    Conditional,
     Grain,
     MultiSelectLineage,
     WhereClause,
@@ -61,6 +60,8 @@ def gen_multiselect_node(
     history: History | None = None,
     conditions: WhereClause | None = None,
 ) -> MergeNode | None:
+    from trilogy.core.query_processor import get_query_node
+
     if not isinstance(concept.lineage, MultiSelectLineage):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
@@ -71,28 +72,17 @@ def gen_multiselect_node(
     base_parents: List[StrategyNode] = []
     partial = []
     for select in lineage.selects:
-        snode: StrategyNode = source_concepts(
-            mandatory_list=select.output_components,
-            environment=environment,
-            g=g,
-            depth=depth + 1,
-            history=history,
-            conditions=select.where_clause,
+
+        snode: StrategyNode = get_query_node(environment, select)
+        # raise SyntaxError(select.output_components)
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} Fetched parent node with outputs {select.output_components}"
         )
         if not snode:
             logger.info(
                 f"{padding(depth)}{LOGGER_PREFIX} Cannot generate multiselect node for {concept}"
             )
             return None
-        if select.having_clause:
-            if snode.conditions:
-                snode.conditions = Conditional(
-                    left=snode.conditions,
-                    right=select.having_clause.conditional,
-                    operator=BooleanOperator.AND,
-                )
-            else:
-                snode.conditions = select.having_clause.conditional
         merge_concepts = []
         for x in [*snode.output_concepts]:
             merge_name = lineage.get_merge_concept(x)
@@ -108,16 +98,38 @@ def gen_multiselect_node(
         if select.where_clause:
             for item in select.output_components:
                 partial.append(item)
+        logger.info(snode.hidden_concepts)
 
     node_joins = extra_align_joins(lineage, environment, base_parents)
+    logger.info(
+        f"Non-hidden {[x for y in base_parents for x in y.output_concepts if x.address not in y.hidden_concepts]}"
+    )
     node = MergeNode(
-        input_concepts=[x for y in base_parents for x in y.output_concepts],
-        output_concepts=[x for y in base_parents for x in y.output_concepts],
+        input_concepts=[
+            x
+            for y in base_parents
+            for x in y.output_concepts
+            if x.address not in y.hidden_concepts
+        ],
+        output_concepts=[
+            x
+            for y in base_parents
+            for x in y.output_concepts
+            if x.address not in y.hidden_concepts
+        ],
         environment=environment,
         depth=depth,
         parents=base_parents,
         node_joins=node_joins,
-        hidden_concepts=set([x for y in base_parents for x in y.hidden_concepts]),
+        grain=Grain.from_concepts(
+            [
+                x
+                for y in base_parents
+                for x in y.output_concepts
+                if x.address not in y.hidden_concepts
+            ],
+            environment=environment,
+        ),
     )
 
     enrichment = set([x.address for x in local_optional])
@@ -157,7 +169,9 @@ def gen_multiselect_node(
             f"{padding(depth)}{LOGGER_PREFIX} all enriched concepts returned from base rowset node; exiting early"
         )
         return node
-
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} Missing required concepts {[x for x in local_optional if x.address not in [y.address for y in node.output_concepts]]}"
+    )
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
         mandatory_list=additional_relevant + local_optional,

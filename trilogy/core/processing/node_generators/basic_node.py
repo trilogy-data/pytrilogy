@@ -52,6 +52,7 @@ def gen_basic_node(
         if is_equivalent_basic_function_lineage(concept, x)
         and x.address != concept.address
     ]
+
     if equivalent_optional:
         logger.info(
             f"{depth_prefix}{LOGGER_PREFIX} basic node for {concept} has equivalent optional {[x.address for x in equivalent_optional]}"
@@ -59,7 +60,10 @@ def gen_basic_node(
     for eo in equivalent_optional:
         parent_concepts += resolve_function_parent_concepts(eo, environment=environment)
     non_equivalent_optional = [
-        x for x in local_optional if x not in equivalent_optional
+        x
+        for x in local_optional
+        if x not in equivalent_optional
+        and not any(x.address in y.pseudonyms for y in equivalent_optional)
     ]
     all_parents: list[Concept] = unique(
         parent_concepts + non_equivalent_optional, "address"

@@ -9,11 +9,13 @@ where store_sales.date.month_seq between 1200 and 1200 + 11
 SELECT
     store_sales.customer.id,
     store_sales.item.id,
+    --store_sales.date.month_seq,
 MERGE 
 where catalog_sales.date.month_seq between 1200 and 1200 + 11
 SELECT
     catalog_sales.bill_customer.id,
     catalog_sales.item.id,
+    --catalog_sales.date.month_seq,
 align 
     customer_id: store_sales.customer.id, catalog_sales.bill_customer.id
     AND

@@ -7,7 +7,7 @@ from trilogy.core.models.datasource import Datasource
 def concept_to_node(input: Concept) -> str:
     # if input.purpose == Purpose.METRIC:
     #     return f"c~{input.namespace}.{input.name}@{input.grain}"
-    return f"c~{input.address}@{input.grain}"
+    return f"c~{input.address}@{input.grain.without_condition()}"
 
 
 def datasource_to_node(input: Datasource) -> str:

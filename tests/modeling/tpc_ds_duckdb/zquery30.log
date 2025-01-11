@@ -63,7 +63,7 @@ WHERE
 ),
 abundant as (
 SELECT
-    CASE WHEN questionable.\"web_returns_return_date_year\" = 2002 THEN questionable.\"web_returns_return_amount\" ELSE NULL END as \"_virt_1372977232752887\",
+    CASE WHEN questionable.\"web_returns_return_date_year\" = 2002 THEN questionable.\"web_returns_return_amount\" ELSE NULL END as \"_virt_2115193292636965\",
     questionable.\"web_returns_item_id\" as \"web_returns_item_id\",
     questionable.\"web_returns_return_amount\" as \"web_returns_return_amount\",
     questionable.\"web_returns_return_date_year\" as \"web_returns_return_date_year\",
@@ -72,7 +72,7 @@ FROM
     questionable),
 yummy as (
 SELECT
-    abundant.\"_virt_1372977232752887\" as \"_virt_1372977232752887\",
+    abundant.\"_virt_2115193292636965\" as \"_virt_2115193292636965\",
     abundant.\"web_returns_item_id\" as \"web_returns_item_id\",
     abundant.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\",
     uneven.\"web_returns_customer_id\" as \"web_returns_customer_id\",
@@ -85,7 +85,7 @@ WHERE
 ),
 juicy as (
 SELECT
-    sum(yummy.\"_virt_1372977232752887\") as \"customer_state_returns_2002\",
+    sum(yummy.\"_virt_2115193292636965\") as \"customer_state_returns_2002\",
     yummy.\"web_returns_customer_id\" as \"web_returns_customer_id\",
     yummy.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
