@@ -1047,6 +1047,9 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
+            derivation=self.derivation,
+            granularity=self.granularity,
+            is_aggregate=self.is_aggregate,
             metadata=self.metadata,
             lineage=new_lineage,
             grain=final_grain,
@@ -1611,7 +1614,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Bas
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "Function":
-        base = Function(
+        from trilogy.core.models.build import BoundFunction
+        base = BoundFunction(
             operator=self.operator,
             arguments=[
                 (
