@@ -278,14 +278,14 @@ class Conditional(
         new_val = constant.lineage.arguments[0]
         if isinstance(self.left, ConstantInlineable):
             new_left = self.left.inline_constant(constant)
-        elif self.left == constant:
+        elif isinstance(self.left, Concept) and self.left.address == constant.address:
             new_left = new_val
         else:
             new_left = self.left
 
         if isinstance(self.right, ConstantInlineable):
             new_right = self.right.inline_constant(constant)
-        elif self.right == constant:
+        elif isinstance(self.right, Concept) and self.right.address == constant.address:
             new_right = new_val
         else:
             new_right = self.right
@@ -390,7 +390,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
 
     def __repr__(self):
         return str(self.conditional)
-    
+
     def __str__(self):
         return self.__repr__()
 
@@ -694,14 +694,13 @@ class Comparison(
         new_val = constant.lineage.arguments[0]
         if isinstance(self.left, ConstantInlineable):
             new_left = self.left.inline_constant(constant)
-        elif self.left == constant:
+        elif isinstance(self.left, Concept) and self.left.address == constant.address:
             new_left = new_val
         else:
             new_left = self.left
-
         if isinstance(self.right, ConstantInlineable):
             new_right = self.right.inline_constant(constant)
-        elif self.right == constant:
+        elif isinstance(self.right, Concept) and self.right.address == constant.address:
             new_right = new_val
         else:
             new_right = self.right
@@ -825,7 +824,9 @@ class SubselectComparison(Comparison):
 
 
 class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
-    model_config = ConfigDict(extra='forbid',)
+    model_config = ConfigDict(
+        extra="forbid",
+    )
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
@@ -870,12 +871,14 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
     @property
     def is_aggregate(self):
-        if (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-        ):
-            return True
+        if self.lineage and isinstance(self.lineage, Function):
+            if self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+                return True
+            if len(self.lineage.concept_arguments) > 0 and all(
+                [c.is_aggregate for c in self.lineage.concept_arguments]
+            ):
+                return True
+
         if (
             self.lineage
             and isinstance(self.lineage, AggregateWrapper)
@@ -941,9 +944,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
                 }
             )
         elif not v and values.get("purpose", None) == Purpose.PROPERTY:
-            v = Grain(
-                components=values.get("keys", set()) or set()
-            )
+            v = Grain(components=values.get("keys", set()) or set())
         elif (
             "lineage" in values
             and isinstance(values["lineage"], AggregateWrapper)
@@ -984,7 +985,6 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     @cached_property
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
-
 
     @property
     def output(self) -> "Concept":
@@ -1027,10 +1027,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             modifiers=self.modifiers,
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
-    
-    def set_select_grain(self, grain:Grain, environment:Environment) -> Self:
-        '''Assign a mutable concept the appropriate grain/keys for a select'''
-        new_lineage = self.lineage
+
+    def set_select_grain(self, grain: Grain, environment: Environment) -> Self:
+        """Assign a mutable concept the appropriate grain/keys for a select"""
+        new_lineage = self.lineage.model_copy(deep=True) if self.lineage else None
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
         if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
@@ -1038,9 +1038,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
             keys = set(grain.components)
-        elif (
-            isinstance(new_lineage, AggregateWrapper) and not new_lineage.by
-        ):
+        elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
             grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage.by = grain_components
             final_grain = grain
@@ -1057,11 +1055,11 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
         )
-    
+
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Concept:
-        '''Propagate the select context to the lineage of the concept'''
+        """Propagate the select context to the lineage of the concept"""
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectContext):
             new_lineage = self.lineage.with_select_context(
@@ -1298,7 +1296,6 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         environment: Environment,
     ) -> "Concept":
         if self.address in local_concepts:
-            print(self.address)
             rval = local_concepts[self.address]
             rval = rval.with_select_context(local_concepts, grain, environment)
             return rval
@@ -2029,6 +2026,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
     local_concepts: dict[str, Concept]
+    hidden_components: set[str]
 
     @property
     def grain(self):
@@ -2044,6 +2042,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
             selects=[s.with_merge(source, target, modifiers) for s in self.selects],
             align=self.align,
             namespace=self.namespace,
+            hidden_components=self.hidden_components,
             order_by=(
                 self.order_by.with_merge(source, target, modifiers)
                 if self.order_by
@@ -2072,6 +2071,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
             selects=[c.with_namespace(namespace) for c in self.selects],
             align=self.align.with_namespace(namespace),
             namespace=namespace,
+            hidden_components=self.hidden_components,
             order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
             limit=self.limit,
             where_clause=(
@@ -2089,20 +2089,12 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
             },
         )
 
-    @computed_field  # type: ignore
-    @cached_property
-    def hidden_components(self) -> set[str]:
-        output: set[str] = set()
-        for select in self.selects:
-            output = output.union(select.hidden_components)
-        return output
-
     @property
-    def output_components(self):
+    def output_components(self) -> list[Concept]:
         output = [self.local_concepts[x] for x in self.derived_concepts]
         for select in self.selects:
             output += select.output_components
-        return output
+        return [x for x in output if x.address not in self.hidden_components]
 
     @property
     def derived_concepts(self) -> set[str]:

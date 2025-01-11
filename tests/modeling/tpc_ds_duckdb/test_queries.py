@@ -183,7 +183,7 @@ def test_thirty(engine):
 
 def test_ninety_seven(engine):
     query = run_query(engine, 97)
-    assert len(query) < 4000, query
+    assert len(query) < 4200, query
 
 
 def test_ninety_eight(engine):

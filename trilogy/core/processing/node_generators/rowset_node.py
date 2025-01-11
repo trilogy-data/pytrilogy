@@ -68,6 +68,9 @@ def gen_rowset_node(
     node.add_output_concepts(rowset_relevant + additional_relevant)
     if select.where_clause:
         for item in additional_relevant:
+            logger.info(
+                f"{padding(depth)}{LOGGER_PREFIX} adding {item} to partial concepts"
+            )
             node.partial_concepts.append(item)
 
     final_hidden = rowset_hidden + [
@@ -88,20 +91,26 @@ def gen_rowset_node(
             not in [
                 y
                 for y in node.hidden_concepts
-                if y in environment.concepts and environment.concepts[y].derivation != Derivation.ROWSET
+                if y in environment.concepts
+                and environment.concepts[y].derivation != Derivation.ROWSET
             ]
         ],
     )
 
     node.rebuild_cache()
-
     if not local_optional or all(
-        x.address in node.output_concepts for x in local_optional
+        x.address in node.output_concepts and x.address not in node.partial_concepts
+        for x in local_optional
     ):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} no enrichment required for rowset node as all optional {[x.address for x in local_optional]} found or no optional; exiting early."
         )
         return node
+    remaining = [
+        x
+        for x in local_optional
+        if x not in node.output_concepts or x in node.partial_concepts
+    ]
     possible_joins = concept_to_relevant_joins(
         [x for x in node.output_concepts if x.derivation != Derivation.ROWSET]
     )
@@ -119,7 +128,7 @@ def gen_rowset_node(
     logger.info([x.address for x in possible_joins + local_optional])
     enrich_node: MergeNode = source_concepts(  # this fetches the parent + join keys
         # to then connect to the rest of the query
-        mandatory_list=possible_joins + local_optional,
+        mandatory_list=possible_joins + remaining,
         environment=environment,
         g=g,
         depth=depth + 1,

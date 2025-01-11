@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import List, Tuple
+from typing import List, Sequence, Tuple
 
 from lark.tree import Meta
 
@@ -156,8 +156,26 @@ def constant_to_concept(
     )
 
 
+def concept_is_relevant(concept: Concept, others: list[Concept]) -> bool:
+    if concept.is_aggregate and not (
+        isinstance(concept.lineage, AggregateWrapper) and concept.lineage.by
+    ):
+        return False
+    if concept.purpose in (Purpose.PROPERTY, Purpose.METRIC) and concept.keys:
+        if any([c in others for c in concept.keys]):
+            return False
+    if concept.purpose in (Purpose.METRIC,):
+        if all([c in others for c in concept.grain.components]):
+            return False
+    if concept.derivation in (Derivation.BASIC,):
+        return any(concept_is_relevant(c, others) for c in concept.concept_arguments)
+    if concept.granularity == Granularity.SINGLE_ROW:
+        return False
+    return True
+
+
 def concepts_to_grain_concepts(
-    concepts: List[Concept] | List[str] | set[str], environment: Environment | None
+    concepts: Sequence[Concept | str], environment: Environment | None
 ) -> list[Concept]:
     environment = Environment() if environment is None else environment
     pconcepts: list[Concept] = [
@@ -166,13 +184,7 @@ def concepts_to_grain_concepts(
 
     final: List[Concept] = []
     for sub in pconcepts:
-        if sub.purpose in (Purpose.PROPERTY, Purpose.METRIC) and sub.keys:
-            if any([c in pconcepts for c in sub.keys]):
-                continue
-        if sub.purpose in (Purpose.METRIC,):
-            if all([c in pconcepts for c in sub.grain.components]):
-                continue
-        if sub.granularity == Granularity.SINGLE_ROW:
+        if not concept_is_relevant(sub, pconcepts):
             continue
         final.append(sub)
     final = unique(final, "address")
@@ -344,7 +356,7 @@ def align_item_to_concept(
     align_clause: AlignClause,
     selects: list[SelectStatement],
     local_concepts: dict[str, Concept],
-    environment:Environment,
+    environment: Environment,
     where: WhereClause | None = None,
     having: HavingClause | None = None,
     limit: int | None = None,
@@ -360,25 +372,27 @@ def align_item_to_concept(
         purpose = Purpose.KEY
     else:
         purpose = list(purposes)[0]
+    new_selects = [x.as_lineage(environment) for x in selects]
     new = Concept(
         name=align.alias,
         datatype=datatypes.pop(),
         purpose=purpose,
         lineage=MultiSelectLineage(
-            selects=[x.as_lineage(environment) for x in selects],
+            selects=new_selects,
             align=align_clause,
             namespace=align.namespace,
             local_concepts=local_concepts,
             where_clause=where,
             having_clause=having,
             limit=limit,
+            hidden_components=set(y for x in new_selects for y in x.hidden_components),
         ),
         namespace=align.namespace,
     )
     return new
 
 
-def rowset_to_concepts(rowset: RowsetDerivationStatement, environment:Environment):
+def rowset_to_concepts(rowset: RowsetDerivationStatement, environment: Environment):
     pre_output: list[Concept] = []
     orig: dict[str, Concept] = {}
     orig_map: dict[str, Concept] = {}

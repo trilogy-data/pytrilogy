@@ -474,6 +474,7 @@ where
 
 def test_merge(base_test_env: Environment, engine):
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     executor = engine
     executor.environment = base_test_env

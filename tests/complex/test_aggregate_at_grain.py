@@ -64,16 +64,16 @@ datasource posts (
     """
     env, parsed = parse(declarations)
 
-
     assert env.concepts["total_posts"].granularity == Granularity.SINGLE_ROW
     assert env.concepts["total_posts_auto"].granularity == Granularity.SINGLE_ROW
 
-    
-    env, parsed = env.parse('''select
+    env, parsed = env.parse(
+        """select
     user_id,
     total_posts,
     total_posts_auto
-;''')
+;"""
+    )
     assert env.concepts["total_posts"].granularity == Granularity.SINGLE_ROW
     assert env.concepts["total_posts_auto"].granularity == Granularity.SINGLE_ROW
     select: SelectStatement = parsed[-1]

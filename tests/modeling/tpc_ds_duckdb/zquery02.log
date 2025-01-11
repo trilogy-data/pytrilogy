@@ -1,9 +1,9 @@
 query_id = 2
-gen_length = 11001
+gen_length = 10402
 generated_sql = """
 
 WITH 
-abundant as (
+uneven as (
 SELECT
     date_date.\"D_WEEK_SEQ\" as \"relevent_week_seq\"
 FROM
@@ -35,13 +35,13 @@ FROM
     memory.date_dim as date_date
     LEFT OUTER JOIN memory.catalog_sales as catalog_sales_catalog_sales on date_date.\"D_DATE_SK\" = catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\"
     LEFT OUTER JOIN memory.date_dim as catalog_sales_date_date on catalog_sales_catalog_sales.\"CS_SOLD_DATE_SK\" = catalog_sales_date_date.\"D_DATE_SK\" AND date_date.\"D_DATE_SK\" = catalog_sales_date_date.\"D_DATE_SK\"),
-uneven as (
+yummy as (
 SELECT
-    abundant.\"relevent_week_seq\" as \"relevent_week_seq\"
+    uneven.\"relevent_week_seq\" as \"relevent_week_seq\"
 FROM
-    abundant
+    uneven
 GROUP BY 
-    abundant.\"relevent_week_seq\"),
+    uneven.\"relevent_week_seq\"),
 questionable as (
 SELECT
     cooperative.\"date_week_seq\" as \"date_week_seq\",
@@ -112,121 +112,108 @@ FROM
     wakeful
 GROUP BY 
     wakeful.\"date_week_seq\"),
-concerned as (
+abundant as (
 SELECT
-    cheerful.\"date_week_seq\" as \"yearly_agg_date_week_seq\",
-    questionable.\"_virt_1604629190144375\" + cheerful.\"_virt_2761245834649643\" as \"yearly_agg_friday_sales\",
-    questionable.\"_virt_3460711605760879\" + cheerful.\"_virt_4991071302144169\" as \"yearly_agg_thursday_sales\",
-    questionable.\"_virt_3718131092416154\" + cheerful.\"_virt_7355120847097043\" as \"yearly_agg_tuesday_sales\",
-    questionable.\"_virt_5027213103262380\" + cheerful.\"_virt_7366779718561438\" as \"yearly_agg_sunday_sales\",
-    questionable.\"_virt_5901924552391602\" + cheerful.\"_virt_3302628762793863\" as \"yearly_agg_wednesday_sales\",
-    questionable.\"_virt_7816026194661096\" + cheerful.\"_virt_7803610564228334\" as \"yearly_agg_saturday_sales\",
-    questionable.\"_virt_8205341647386944\" + cheerful.\"_virt_790881869197983\" as \"yearly_agg_monday_sales\"
+    cheerful.\"_virt_2761245834649643\" as \"_virt_2761245834649643\",
+    cheerful.\"_virt_3302628762793863\" as \"_virt_3302628762793863\",
+    cheerful.\"_virt_4991071302144169\" as \"_virt_4991071302144169\",
+    cheerful.\"_virt_7355120847097043\" as \"_virt_7355120847097043\",
+    cheerful.\"_virt_7366779718561438\" as \"_virt_7366779718561438\",
+    cheerful.\"_virt_7803610564228334\" as \"_virt_7803610564228334\",
+    cheerful.\"_virt_790881869197983\" as \"_virt_790881869197983\",
+    cheerful.\"date_week_seq\" as \"date_week_seq\",
+    questionable.\"_virt_1604629190144375\" as \"_virt_1604629190144375\",
+    questionable.\"_virt_3460711605760879\" as \"_virt_3460711605760879\",
+    questionable.\"_virt_3718131092416154\" as \"_virt_3718131092416154\",
+    questionable.\"_virt_5027213103262380\" as \"_virt_5027213103262380\",
+    questionable.\"_virt_5901924552391602\" as \"_virt_5901924552391602\",
+    questionable.\"_virt_7816026194661096\" as \"_virt_7816026194661096\",
+    questionable.\"_virt_8205341647386944\" as \"_virt_8205341647386944\"
 FROM
     cheerful
     INNER JOIN questionable on cheerful.\"date_week_seq\" = questionable.\"date_week_seq\"),
-yummy as (
-SELECT
-    cheerful.\"date_week_seq\" as \"yearly_agg_date_week_seq\",
-    questionable.\"_virt_1604629190144375\" + cheerful.\"_virt_2761245834649643\" as \"yearly_agg_friday_sales\",
-    questionable.\"_virt_3460711605760879\" + cheerful.\"_virt_4991071302144169\" as \"yearly_agg_thursday_sales\",
-    questionable.\"_virt_3718131092416154\" + cheerful.\"_virt_7355120847097043\" as \"yearly_agg_tuesday_sales\",
-    questionable.\"_virt_5027213103262380\" + cheerful.\"_virt_7366779718561438\" as \"yearly_agg_sunday_sales\",
-    questionable.\"_virt_5901924552391602\" + cheerful.\"_virt_3302628762793863\" as \"yearly_agg_wednesday_sales\",
-    questionable.\"_virt_7816026194661096\" + cheerful.\"_virt_7803610564228334\" as \"yearly_agg_saturday_sales\",
-    questionable.\"_virt_8205341647386944\" + cheerful.\"_virt_790881869197983\" as \"yearly_agg_monday_sales\"
-FROM
-    cheerful
-    INNER JOIN questionable on cheerful.\"date_week_seq\" = questionable.\"date_week_seq\"
-WHERE
-    cheerful.\"date_week_seq\" in (select uneven.\"relevent_week_seq\" from uneven where uneven.\"relevent_week_seq\" is not null)
-),
 juicy as (
 SELECT
-    lead(yummy.\"yearly_agg_friday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_9323565443652609\",
-    lead(yummy.\"yearly_agg_monday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7275714504863186\",
-    lead(yummy.\"yearly_agg_saturday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_9737491896934912\",
-    lead(yummy.\"yearly_agg_sunday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_469987502370563\",
-    lead(yummy.\"yearly_agg_thursday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2744594248063643\",
-    lead(yummy.\"yearly_agg_tuesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_5577328536808168\",
-    lead(yummy.\"yearly_agg_wednesday_sales\", 53) over (order by yummy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_9346542831495147\",
-    yummy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\"
+    abundant.\"_virt_1604629190144375\" + abundant.\"_virt_2761245834649643\" as \"yearly_agg_friday_sales\",
+    abundant.\"_virt_3460711605760879\" + abundant.\"_virt_4991071302144169\" as \"yearly_agg_thursday_sales\",
+    abundant.\"_virt_3718131092416154\" + abundant.\"_virt_7355120847097043\" as \"yearly_agg_tuesday_sales\",
+    abundant.\"_virt_5027213103262380\" + abundant.\"_virt_7366779718561438\" as \"yearly_agg_sunday_sales\",
+    abundant.\"_virt_5901924552391602\" + abundant.\"_virt_3302628762793863\" as \"yearly_agg_wednesday_sales\",
+    abundant.\"_virt_7816026194661096\" + abundant.\"_virt_7803610564228334\" as \"yearly_agg_saturday_sales\",
+    abundant.\"_virt_8205341647386944\" + abundant.\"_virt_790881869197983\" as \"yearly_agg_monday_sales\",
+    abundant.\"date_week_seq\" as \"yearly_agg_date_week_seq\"
 FROM
-    yummy),
+    abundant
+WHERE
+    abundant.\"date_week_seq\" in (select yummy.\"relevent_week_seq\" from yummy where yummy.\"relevent_week_seq\" is not null)
+
+GROUP BY 
+    abundant.\"_virt_1604629190144375\" + abundant.\"_virt_2761245834649643\",
+    abundant.\"_virt_3460711605760879\" + abundant.\"_virt_4991071302144169\",
+    abundant.\"_virt_3718131092416154\" + abundant.\"_virt_7355120847097043\",
+    abundant.\"_virt_5027213103262380\" + abundant.\"_virt_7366779718561438\",
+    abundant.\"_virt_5901924552391602\" + abundant.\"_virt_3302628762793863\",
+    abundant.\"_virt_7816026194661096\" + abundant.\"_virt_7803610564228334\",
+    abundant.\"_virt_8205341647386944\" + abundant.\"_virt_790881869197983\",
+    abundant.\"date_week_seq\"),
 vacuous as (
 SELECT
-    juicy.\"_virt_2744594248063643\" as \"_virt_2744594248063643\",
-    juicy.\"_virt_469987502370563\" as \"_virt_469987502370563\",
-    juicy.\"_virt_5577328536808168\" as \"_virt_5577328536808168\",
-    juicy.\"_virt_7275714504863186\" as \"_virt_7275714504863186\",
-    juicy.\"_virt_9323565443652609\" as \"_virt_9323565443652609\",
-    juicy.\"_virt_9346542831495147\" as \"_virt_9346542831495147\",
-    juicy.\"_virt_9737491896934912\" as \"_virt_9737491896934912\",
-    juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\"
+    juicy.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
+    juicy.\"yearly_agg_friday_sales\" as \"yearly_agg_friday_sales\",
+    juicy.\"yearly_agg_monday_sales\" as \"yearly_agg_monday_sales\",
+    juicy.\"yearly_agg_saturday_sales\" as \"yearly_agg_saturday_sales\",
+    juicy.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\",
+    juicy.\"yearly_agg_thursday_sales\" as \"yearly_agg_thursday_sales\",
+    juicy.\"yearly_agg_tuesday_sales\" as \"yearly_agg_tuesday_sales\",
+    juicy.\"yearly_agg_wednesday_sales\" as \"yearly_agg_wednesday_sales\",
+    lead(juicy.\"yearly_agg_friday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_3449985772104237\",
+    lead(juicy.\"yearly_agg_monday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7829361413548394\",
+    lead(juicy.\"yearly_agg_saturday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_1690217624425882\",
+    lead(juicy.\"yearly_agg_sunday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_7067660371992955\",
+    lead(juicy.\"yearly_agg_thursday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_1406289791391207\",
+    lead(juicy.\"yearly_agg_tuesday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_2002690484951820\",
+    lead(juicy.\"yearly_agg_wednesday_sales\", 53) over (order by juicy.\"yearly_agg_date_week_seq\" asc ) as \"_virt_6776446038092107\"
 FROM
-    juicy
-WHERE
-    juicy.\"yearly_agg_date_week_seq\" in (select uneven.\"relevent_week_seq\" from uneven where uneven.\"relevent_week_seq\" is not null)
-),
+    juicy),
+concerned as (
+SELECT
+    round(vacuous.\"yearly_agg_friday_sales\" / (vacuous.\"_virt_3449985772104237\"),2) as \"friday_increase\",
+    round(vacuous.\"yearly_agg_monday_sales\" / (vacuous.\"_virt_7829361413548394\"),2) as \"monday_increase\",
+    round(vacuous.\"yearly_agg_saturday_sales\" / (vacuous.\"_virt_1690217624425882\"),2) as \"saturday_increase\",
+    round(vacuous.\"yearly_agg_sunday_sales\" / (vacuous.\"_virt_7067660371992955\"),2) as \"sunday_increase\",
+    round(vacuous.\"yearly_agg_thursday_sales\" / (vacuous.\"_virt_1406289791391207\"),2) as \"thursday_increase\",
+    round(vacuous.\"yearly_agg_tuesday_sales\" / (vacuous.\"_virt_2002690484951820\"),2) as \"tuesday_increase\",
+    round(vacuous.\"yearly_agg_wednesday_sales\" / (vacuous.\"_virt_6776446038092107\"),2) as \"wednesday_increase\",
+    vacuous.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
+    vacuous.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\"
+FROM
+    vacuous),
 young as (
 SELECT
-    round(concerned.\"yearly_agg_friday_sales\" / (vacuous.\"_virt_9323565443652609\"),2) as \"friday_increase\",
-    round(concerned.\"yearly_agg_monday_sales\" / (vacuous.\"_virt_7275714504863186\"),2) as \"monday_increase\",
-    round(concerned.\"yearly_agg_saturday_sales\" / (vacuous.\"_virt_9737491896934912\"),2) as \"saturday_increase\",
-    round(concerned.\"yearly_agg_sunday_sales\" / (vacuous.\"_virt_469987502370563\"),2) as \"sunday_increase\",
-    round(concerned.\"yearly_agg_thursday_sales\" / (vacuous.\"_virt_2744594248063643\"),2) as \"thursday_increase\",
-    round(concerned.\"yearly_agg_tuesday_sales\" / (vacuous.\"_virt_5577328536808168\"),2) as \"tuesday_increase\",
-    round(concerned.\"yearly_agg_wednesday_sales\" / (vacuous.\"_virt_9346542831495147\"),2) as \"wednesday_increase\",
-    vacuous.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\"
+    concerned.\"friday_increase\" as \"friday_increase\",
+    concerned.\"monday_increase\" as \"monday_increase\",
+    concerned.\"saturday_increase\" as \"saturday_increase\",
+    concerned.\"sunday_increase\" as \"sunday_increase\",
+    concerned.\"thursday_increase\" as \"thursday_increase\",
+    concerned.\"tuesday_increase\" as \"tuesday_increase\",
+    concerned.\"wednesday_increase\" as \"wednesday_increase\",
+    concerned.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
+    lead(concerned.\"yearly_agg_sunday_sales\", 53) over (order by concerned.\"yearly_agg_date_week_seq\" asc ) as \"filter_flag\"
 FROM
-    vacuous
-    INNER JOIN concerned on vacuous.\"yearly_agg_date_week_seq\" = concerned.\"yearly_agg_date_week_seq\"
-WHERE
-    vacuous.\"yearly_agg_date_week_seq\" in (select uneven.\"relevent_week_seq\" from uneven where uneven.\"relevent_week_seq\" is not null)
-),
-sparkling as (
+    concerned)
 SELECT
-    concerned.\"yearly_agg_sunday_sales\" as \"yearly_agg_sunday_sales\",
-    young.\"friday_increase\" as \"friday_increase\",
-    young.\"monday_increase\" as \"monday_increase\",
-    young.\"saturday_increase\" as \"saturday_increase\",
+    young.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
     young.\"sunday_increase\" as \"sunday_increase\",
-    young.\"thursday_increase\" as \"thursday_increase\",
+    young.\"monday_increase\" as \"monday_increase\",
     young.\"tuesday_increase\" as \"tuesday_increase\",
     young.\"wednesday_increase\" as \"wednesday_increase\",
-    young.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\"
+    young.\"thursday_increase\" as \"thursday_increase\",
+    young.\"friday_increase\" as \"friday_increase\",
+    young.\"saturday_increase\" as \"saturday_increase\"
 FROM
     young
-    INNER JOIN concerned on young.\"yearly_agg_date_week_seq\" = concerned.\"yearly_agg_date_week_seq\"
 WHERE
-    young.\"yearly_agg_date_week_seq\" in (select uneven.\"relevent_week_seq\" from uneven where uneven.\"relevent_week_seq\" is not null)
-),
-abhorrent as (
-SELECT
-    lead(sparkling.\"yearly_agg_sunday_sales\", 53) over (order by sparkling.\"yearly_agg_date_week_seq\" asc ) as \"filter_flag\",
-    sparkling.\"friday_increase\" as \"friday_increase\",
-    sparkling.\"monday_increase\" as \"monday_increase\",
-    sparkling.\"saturday_increase\" as \"saturday_increase\",
-    sparkling.\"sunday_increase\" as \"sunday_increase\",
-    sparkling.\"thursday_increase\" as \"thursday_increase\",
-    sparkling.\"tuesday_increase\" as \"tuesday_increase\",
-    sparkling.\"wednesday_increase\" as \"wednesday_increase\",
-    sparkling.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\"
-FROM
-    sparkling)
-SELECT
-    abhorrent.\"yearly_agg_date_week_seq\" as \"yearly_agg_date_week_seq\",
-    abhorrent.\"sunday_increase\" as \"sunday_increase\",
-    abhorrent.\"monday_increase\" as \"monday_increase\",
-    abhorrent.\"tuesday_increase\" as \"tuesday_increase\",
-    abhorrent.\"wednesday_increase\" as \"wednesday_increase\",
-    abhorrent.\"thursday_increase\" as \"thursday_increase\",
-    abhorrent.\"friday_increase\" as \"friday_increase\",
-    abhorrent.\"saturday_increase\" as \"saturday_increase\"
-FROM
-    abhorrent
-WHERE
-    abhorrent.\"filter_flag\" is not null
+    young.\"filter_flag\" is not null
 
 ORDER BY 
-    abhorrent.\"yearly_agg_date_week_seq\" asc nulls first"""
+    young.\"yearly_agg_date_week_seq\" asc nulls first"""

@@ -78,6 +78,27 @@ def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
     return upstream
 
 
+def restrict_node_outputs_targets(
+    node: StrategyNode, targets: list[Concept], depth: int
+) -> list[Concept]:
+    ex_resolve = node.resolve()
+    extra = [
+        x
+        for x in ex_resolve.output_concepts
+        if x.address not in [y.address for y in targets]
+    ]
+
+    logger.info(
+        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}"
+    )
+    base = [x for x in ex_resolve.output_concepts if x.address not in extra]
+    for x in targets:
+        if x.address not in base:
+            base.append(x)
+    node.set_output_concepts(base)
+    return extra
+
+
 def get_priority_concept(
     all_concepts: List[Concept],
     attempted_addresses: set[str],
@@ -160,6 +181,7 @@ def generate_candidates_restrictive(
     priority_concept: Concept,
     candidates: list[Concept],
     exhausted: set[str],
+    depth: int,
     conditions: WhereClause | None = None,
 ) -> List[List[Concept]]:
     # if it's single row, joins are irrelevant. Fetch without keys.
@@ -178,8 +200,9 @@ def generate_candidates_restrictive(
         Derivation.ROOT,
         Derivation.CONSTANT,
     ):
-        logger.info("DEBUG")
-        logger.info(conditions.row_arguments)
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Injecting additional conditional row arguments as all remaining concepts are roots or constant"
+        )
         return [unique(conditions.row_arguments + local_candidates, "address")]
     return [local_candidates]
 
@@ -466,29 +489,12 @@ def generate_node(
                 )
 
                 if expanded:
-                    ex_resolve = expanded.resolve()
-                    extra = [
-                        x
-                        for x in ex_resolve.output_concepts
-                        if x.address not in [y.address for y in root_targets]
-                    ]
-
+                    extra = restrict_node_outputs_targets(expanded, root_targets, depth)
                     pseudonyms = [
                         x
                         for x in extra
                         if any(x.address in y.pseudonyms for y in root_targets)
                     ]
-                    logger.info(
-                        f"{depth_to_prefix(depth)}{LOGGER_PREFIX} reducing final outputs, was {[c.address for c in ex_resolve.output_concepts]} with extra {[c.address for c in extra]}"
-                    )
-                    base = [
-                        x for x in ex_resolve.output_concepts if x.address not in extra
-                    ]
-                    for x in root_targets:
-                        if x.address not in base:
-                            base.append(x)
-                    expanded.set_output_concepts(base)
-                    # but hide them
                     if pseudonyms:
                         expanded.add_output_concepts(pseudonyms)
                         logger.info(
@@ -813,7 +819,7 @@ def _search_concepts(
             c for c in mandatory_list if c.address != priority_concept.address
         ]
         candidate_lists = generate_candidates_restrictive(
-            priority_concept, candidates, skip, conditions=conditions
+            priority_concept, candidates, skip, depth=depth, conditions=conditions
         )
         for clist in candidate_lists:
             logger.info(
@@ -910,6 +916,7 @@ def _search_concepts(
             )
         if len(stack) == 1:
             output: StrategyNode = stack[0]
+            # _ = restrict_node_outputs_targets(output, mandatory_list, depth)
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
             )
@@ -992,6 +999,9 @@ def source_query_concepts(
             f"Could not resolve conections between {error_strings} from environment graph."
         )
     final = [x for x in root.output_concepts if x.address not in root.hidden_concepts]
+    logger.info(
+        f"{depth_to_prefix(0)}{LOGGER_PREFIX} final concepts are {[x.address for x in final]}"
+    )
     if GroupNode.check_if_required(
         downstream_concepts=final,
         parents=[root.resolve()],

@@ -209,7 +209,9 @@ select my_rowset.x, my_rowset.z;"""
     _, parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
-    assert z.grain == Grain(components=[x])
+    assert z.grain.components == {
+        x.address,
+    }
     assert str(z) == "local.z@Grain<local.x>"
     results = duckdb_engine.execute_text(test)[0].fetchall()
     assert len(results) == 1

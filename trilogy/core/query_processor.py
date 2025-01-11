@@ -359,9 +359,7 @@ def datasource_to_cte(
 
 def get_query_node(
     environment: Environment,
-    statement: (
-       SelectLineage |MultiSelectLineage
-    ),
+    statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()
@@ -404,6 +402,7 @@ def get_query_node(
             partial_concepts=ds.partial_concepts,
             conditions=final,
         )
+    ds.hidden_concepts = statement.hidden_components
     return ds
 
 
@@ -413,6 +412,7 @@ def get_query_datasources(
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
     ds = get_query_node(environment, statement.as_lineage(environment))
+
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:

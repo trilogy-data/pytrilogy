@@ -142,7 +142,9 @@ def determine_induced_minimal_nodes(
 
     if not all([node in final.nodes for node in nodelist]):
         missing = [node for node in nodelist if node not in final.nodes]
-        logger.debug(f"Skipping graph for {nodelist} as missing nodes {missing} from {final.nodes}")
+        logger.debug(
+            f"Skipping graph for {nodelist} as missing nodes {missing} from {final.nodes}"
+        )
         return None
     logger.debug(f"Found final graph {final.nodes}")
     return final

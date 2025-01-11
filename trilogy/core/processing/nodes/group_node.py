@@ -79,11 +79,20 @@ class GroupNode(StrategyNode):
                 environment=environment,
             )
         )
+
+        # the concepts of the souce grain might not exist in the output environment
+        # so we need to construct a new
+        concept_map: dict[str, Concept] = {}
         comp_grain = Grain()
         for source in parents:
             comp_grain += source.grain
+            for x in source.output_concepts:
+                concept_map[x.address] = x
+        lookups = [
+            concept_map[x] if x in concept_map else x for x in comp_grain.components
+        ]
         comp_grain = Grain.from_concepts(
-            concepts_to_grain_concepts(comp_grain.components, environment=environment)
+            concepts_to_grain_concepts(lookups, environment=environment)
         )
         # dynamically select if we need to group
         # because sometimes, we are already at required grain

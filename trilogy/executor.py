@@ -436,7 +436,7 @@ class Executor(object):
         local_concepts: dict[str, Concept] | None = None,
     ) -> CursorResult:
         """Run a command against the raw underlying
-        execution engine"""
+        execution engine."""
         final_params = None
         q = text(command)
         if variables:
@@ -458,7 +458,7 @@ class Executor(object):
     def execute_text(
         self, command: str, non_interactive: bool = False
     ) -> List[CursorResult]:
-        """Run a preql text command"""
+        """Run a trilogy query expressed as text."""
         output = []
         # connection = self.engine.connect()
         for statement in self.parse_text_generator(command):

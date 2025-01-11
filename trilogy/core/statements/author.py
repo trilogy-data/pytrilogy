@@ -70,12 +70,10 @@ class SelectItem(BaseModel):
             self.content if isinstance(self.content, Concept) else self.content.output
         )
 
-
     @property
-    def is_undefined(self)->bool:
-        return (
-            True if isinstance(self.content, UndefinedConcept) else False
-        )
+    def is_undefined(self) -> bool:
+        return True if isinstance(self.content, UndefinedConcept) else False
+
 
 class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     selection: List[SelectItem]
@@ -87,7 +85,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     ] = Field(default_factory=EnvironmentConceptDict)
     grain: Grain = Field(default_factory=Grain)
 
-    def as_lineage(self, environment:Environment) -> SelectLineage:
+    def as_lineage(self, environment: Environment) -> SelectLineage:
         self.rebuild_for_select(environment)
         return SelectLineage(
             selection=[x.concept for x in self.selection],
@@ -119,117 +117,87 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             limit=limit,
             order_by=order_by,
             meta=meta or Metadata(),
-            
         )
-
         output.grain = output.calculate_grain()
         for x in selection:
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
-                    x.content.address, meta.line_number
+                    x.concept.address, meta.line_number if meta else None
                 )
             elif isinstance(x.content, ConceptTransform):
-                x.content.output = x.content.output.set_select_grain(output.grain, environment)
+                if (
+                    CONFIG.select_as_definition
+                    and not environment.frozen
+                    and x.concept.address not in environment.concepts
+                ):
+                    environment.add_concept(x.concept)
+                x.content.output = x.content.output.set_select_grain(
+                    output.grain, environment
+                )
                 # we might not need this
                 output.local_concepts[x.concept.address] = x.concept
+
             elif isinstance(x.content, Concept):
                 x.content = x.content.set_select_grain(output.grain, environment)
-                # output.local_concepts[x.content.address] = x.content
+                output.local_concepts[x.content.address] = x.content
+
         output.validate_syntax(environment)
         return output
-    
+
     def calculate_grain(self) -> Grain:
         targets = []
         for x in self.selection:
-            print(x.concept)
-            if x.concept.is_aggregate and not (isinstance(x.concept.lineage, AggregateWrapper) and x.concept.lineage.by):
-                print('skipping')
-                continue
             targets.append(x.concept)
-        print(targets)
         result = Grain.from_concepts(
             targets,
             where_clause=self.where_clause,
         )
-        print('final')
-        print(result)
         return result
-    
-    def rebuild_for_select(self, environment: Environment):
-        output = self
-        for parse_pass in [
-            1,
-            2,
-        ]:
-            # the first pass will result in all concepts being defined
-            # the second will get grains appropriately
-            # eg if someone does sum(x)->a, b+c -> z - we don't know if Z is a key to group by or an aggregate
-            # until after the first pass, and so don't know the grain of a
 
-            if parse_pass == 1:
-                grain = Grain.from_concepts(
-                    [
-                        x.content
-                        for x in output.selection
-                        if isinstance(x.content, Concept)
-                    ],
-                    where_clause=output.where_clause,
+    def rebuild_for_select(self, environment: Environment):
+        for item in self.selection:
+            # we don't know the grain of an aggregate at assignment time
+            # so rebuild at this point in the tree
+            # TODO: simplify
+            if isinstance(item.content, ConceptTransform):
+                new_concept = item.content.output.with_select_context(
+                    self.local_concepts,
+                    # the first pass grain will be incorrect
+                    self.grain,
+                    environment=environment,
                 )
-            if parse_pass == 2:
-                grain = Grain.from_concepts(
-                    output.output_components, where_clause=output.where_clause
+                self.local_concepts[new_concept.address] = new_concept
+                item.content.output = new_concept
+            elif isinstance(item.content, UndefinedConcept):
+                environment.concepts.raise_undefined(
+                    item.content.address,
+                    line_no=item.content.metadata.line_number,
+                    file=environment.env_file_path,
                 )
-            output.grain = grain
-            pass_grain = Grain() if parse_pass == 1 else grain
-            for item in self.selection:
-                # we don't know the grain of an aggregate at assignment time
-                # so rebuild at this point in the tree
-                # TODO: simplify
-                if isinstance(item.content, ConceptTransform):
-                    new_concept = item.content.output.with_select_context(
-                        output.local_concepts,
-                        # the first pass grain will be incorrect
-                        pass_grain,
-                        environment=environment,
-                    )
-                    output.local_concepts[new_concept.address] = new_concept
-                    item.content.output = new_concept
-                    # if (
-                    #     parse_pass == 2
-                    #     and CONFIG.select_as_definition
-                    #     and not environment.frozen
-                    # ):
-                    #     environment.add_concept(new_concept)
-                elif isinstance(item.content, UndefinedConcept):
-                    environment.concepts.raise_undefined(
-                        item.content.address,
-                        line_no=item.content.metadata.line_number,
-                        file=environment.env_file_path,
-                    )
-                elif isinstance(item.content, Concept):
-                    # Sometimes cached values here don't have the latest info
-                    # but we can't just use environment, as it might not have the right grain.
-                    item.content = item.content.with_select_context(
-                        output.local_concepts,
-                        pass_grain,
-                        environment=environment,
-                    )
-                    output.local_concepts[item.content.address] = item.content
+            elif isinstance(item.content, Concept):
+                # Sometimes cached values here don't have the latest info
+                # but we can't just use environment, as it might not have the right grain.
+                item.content = item.content.with_select_context(
+                    self.local_concepts,
+                    self.grain,
+                    environment=environment,
+                )
+                self.local_concepts[item.content.address] = item.content
 
         if self.order_by:
-            output.order_by = self.order_by.with_select_context(
-                local_concepts=output.local_concepts,
-                grain=output.grain,
+            self.order_by = self.order_by.with_select_context(
+                local_concepts=self.local_concepts,
+                grain=self.grain,
                 environment=environment,
             )
-        if output.having_clause:
-            output.having_clause = output.having_clause.with_select_context(
-                local_concepts=output.local_concepts,
-                grain=output.grain,
+        if self.having_clause:
+            self.having_clause = self.having_clause.with_select_context(
+                local_concepts=self.local_concepts,
+                grain=self.grain,
                 environment=environment,
             )
 
-        return output
+        return self
 
     def validate_syntax(self, environment: Environment):
         if self.where_clause:
@@ -383,7 +351,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         EnvironmentConceptDict, PlainValidator(validate_concepts)
     ] = Field(default_factory=EnvironmentConceptDict)
 
-    def as_lineage(self, environment:Environment):
+    def as_lineage(self, environment: Environment):
         return MultiSelectLineage(
             selects=[x.as_lineage(environment) for x in self.selects],
             align=self.align,
@@ -394,6 +362,7 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             where_clause=self.where_clause,
             having_clause=self.having_clause,
             local_concepts=self.local_concepts,
+            hidden_components=self.hidden_components,
         )
 
     def __repr__(self):
@@ -420,7 +389,11 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     def output_components(self) -> List[Concept]:
         output = self.derived_concepts
         for select in self.selects:
-            output += select.output_components
+            output += [
+                x
+                for x in select.output_components
+                if x.address not in select.hidden_components
+            ]
         return unique(output, "address")
 
     @computed_field  # type: ignore

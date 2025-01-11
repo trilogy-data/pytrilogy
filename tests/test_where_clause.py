@@ -153,6 +153,7 @@ select
 
 def test_parenthetical(test_environment):
     from trilogy.hooks.query_debugger import DebuggingHook
+
     DebuggingHook()
     declarations = """
 

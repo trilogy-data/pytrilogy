@@ -191,14 +191,15 @@ def optimize_ctes(
         sort_select_output(root_cte, select)
 
     REGISTERED_RULES: list["OptimizationRule"] = []
-    if CONFIG.optimizations.constant_inlining:
-        REGISTERED_RULES.append(InlineConstant())
+
     if CONFIG.optimizations.datasource_inlining:
         REGISTERED_RULES.append(InlineDatasource())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdown())
     if CONFIG.optimizations.predicate_pushdown:
         REGISTERED_RULES.append(PredicatePushdownRemove())
+    if CONFIG.optimizations.constant_inlining:
+        REGISTERED_RULES.append(InlineConstant())
     for rule in REGISTERED_RULES:
         loops = 0
         complete = False
