@@ -43,17 +43,17 @@ jobs:
       - name: Lint with mypy
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          mypy trilogy
+          uv run mypy trilogy
       - name: Lint with ruff
         run: |
           # stop the build if there are Python syntax errors or undefined names
-          ruff check trilogy
+          uv run ruff check trilogy
       - name: Test with pytest
         run: |
-          pip install pytest
-          pip install pytest-cov
+          uv pip install pytest
+          uv pip install pytest-cov
           # disable active adventureworks queries unless we get docker configured
-          pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
+          uv run pytest --ignore=docs_src/ --cov=./ -m "not adventureworks_execution" 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
