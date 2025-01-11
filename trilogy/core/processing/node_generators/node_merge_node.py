@@ -393,8 +393,7 @@ def gen_merge_node(
                 conditions=conditions,
                 search_conditions=search_conditions,
             )
-        else:
-            raise SyntaxError
+
     # one concept handling may need to be kicked to alias
     if len(all_concepts) == 1:
         concept = all_concepts[0]

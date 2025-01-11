@@ -88,7 +88,7 @@ def gen_rowset_node(
             not in [
                 y
                 for y in node.hidden_concepts
-                if environment.concepts[y].derivation != Derivation.ROWSET
+                if y in environment.concepts and environment.concepts[y].derivation != Derivation.ROWSET
             ]
         ],
     )

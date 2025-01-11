@@ -364,7 +364,6 @@ def align_item_to_concept(
         name=align.alias,
         datatype=datatypes.pop(),
         purpose=purpose,
-        derivation=Derivation.MULTISELECT,
         lineage=MultiSelectLineage(
             selects=[x.as_lineage(environment) for x in selects],
             align=align_clause,
@@ -380,7 +379,7 @@ def align_item_to_concept(
 
 
 def rowset_to_concepts(rowset: RowsetDerivationStatement, environment:Environment):
-    output: list[Concept] = []
+    pre_output: list[Concept] = []
     orig: dict[str, Concept] = {}
     orig_map: dict[str, Concept] = {}
     for orig_concept in rowset.select.output_components:
@@ -406,20 +405,21 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment:Environmen
         )
         orig[orig_concept.address] = new_concept
         orig_map[new_concept.address] = orig_concept
-        output.append(new_concept)
-    for x in output:
+        pre_output.append(new_concept)
+    select_lineage = rowset.select.as_lineage(environment)
+    for x in pre_output:
         x.lineage = RowsetItem(
             content=orig_map[x.address],
             where=rowset.select.where_clause,
             rowset=RowsetLineage(
                 name=rowset.name,
-                derived_concepts=output,
-                select=rowset.select.as_lineage(environment),
+                derived_concepts=pre_output,
+                select=select_lineage,
             ),
         )
-    default_grain = Grain.from_concepts([*output])
+    default_grain = Grain.from_concepts([*pre_output])
     # remap everything to the properties of the rowset
-    for x in output:
+    for x in pre_output:
         if x.keys:
             if all([k in orig for k in x.keys]):
                 x.keys = set([orig[k].address if k in orig else k for k in x.keys])
@@ -430,7 +430,7 @@ def rowset_to_concepts(rowset: RowsetDerivationStatement, environment:Environmen
             x.grain = Grain(components={orig[c].address for c in x.grain.components})
         else:
             x.grain = default_grain
-    return output
+    return pre_output
 
 
 def arbitrary_to_concept(

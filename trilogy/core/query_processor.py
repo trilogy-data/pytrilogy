@@ -360,15 +360,11 @@ def datasource_to_cte(
 def get_query_node(
     environment: Environment,
     statement: (
-        SelectStatement | SelectLineage | MultiSelectStatement | MultiSelectLineage
+       SelectLineage |MultiSelectLineage
     ),
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()
-    if isinstance(statement, SelectStatement):
-        statement = statement.as_lineage(environment)
-    elif isinstance(statement, MultiSelectStatement):
-        statement = statement.as_lineage(environment)
     for k, v in statement.local_concepts.items():
         environment.concepts[k] = v
     graph = generate_graph(environment)
@@ -416,8 +412,7 @@ def get_query_datasources(
     statement: SelectStatement | MultiSelectStatement,
     hooks: Optional[List[BaseHook]] = None,
 ) -> QueryDatasource:
-
-    ds = get_query_node(environment, statement)
+    ds = get_query_node(environment, statement.as_lineage(environment))
     final_qds = ds.resolve()
     if hooks:
         for hook in hooks:

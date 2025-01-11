@@ -825,6 +825,7 @@ class SubselectComparison(Comparison):
 
 
 class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, BaseModel):
+    model_config = ConfigDict(extra='forbid',)
     name: str
     datatype: DataType | ListType | StructType | MapType | NumericType
     purpose: Purpose
@@ -847,7 +848,6 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     grain: "Grain" = Field(default=None, validate_default=True)  # type: ignore
     modifiers: List[Modifier] = Field(default_factory=list)  # type: ignore
     pseudonyms: set[str] = Field(default_factory=set)
-    _address_cache: str | None = None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -940,6 +940,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
                     f'{values.get("namespace", DEFAULT_NAMESPACE)}.{values["name"]}'
                 }
             )
+        elif not v and values.get("purpose", None) == Purpose.PROPERTY:
+            v = Grain(
+                components=values.get("keys", set()) or set()
+            )
         elif (
             "lineage" in values
             and isinstance(values["lineage"], AggregateWrapper)
@@ -981,12 +985,6 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     def address(self) -> str:
         return f"{self.namespace}.{self.name}"
 
-    def set_name(self, name: str):
-        self.name = name
-        try:
-            del self.address
-        except AttributeError:
-            pass
 
     @property
     def output(self) -> "Concept":
@@ -1047,10 +1045,18 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             new_lineage.by = grain_components
             final_grain = grain
             keys = set([x.address for x in new_lineage.by])
-                  
-        self.keys = keys
-        self.grain = final_grain
-        return self
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=new_lineage,
+            grain=final_grain,
+            namespace=self.namespace,
+            keys=keys,
+            modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
+        )
     
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
@@ -1292,6 +1298,7 @@ class UndefinedConcept(Concept, Mergeable, Namespaced):
         environment: Environment,
     ) -> "Concept":
         if self.address in local_concepts:
+            print(self.address)
             rval = local_concepts[self.address]
             rval = rval.with_select_context(local_concepts, grain, environment)
             return rval

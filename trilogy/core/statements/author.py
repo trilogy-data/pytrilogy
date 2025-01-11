@@ -126,25 +126,34 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         for x in selection:
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
-                    x.content.address, x.content.metadata.line_number
+                    x.content.address, meta.line_number
                 )
             elif isinstance(x.content, ConceptTransform):
                 x.content.output = x.content.output.set_select_grain(output.grain, environment)
-                if (
-                        CONFIG.select_as_definition
-                        and not environment.frozen
-                    ):  
-                        environment.add_concept(x.content.output)
+                # we might not need this
+                output.local_concepts[x.concept.address] = x.concept
             elif isinstance(x.content, Concept):
                 x.content = x.content.set_select_grain(output.grain, environment)
                 # output.local_concepts[x.content.address] = x.content
+        output.validate_syntax(environment)
         return output
     
     def calculate_grain(self) -> Grain:
-        return Grain.from_concepts(
-            [x.concept for x in self.selection if isinstance(x.concept, Concept)],
+        targets = []
+        for x in self.selection:
+            print(x.concept)
+            if x.concept.is_aggregate and not (isinstance(x.concept.lineage, AggregateWrapper) and x.concept.lineage.by):
+                print('skipping')
+                continue
+            targets.append(x.concept)
+        print(targets)
+        result = Grain.from_concepts(
+            targets,
             where_clause=self.where_clause,
         )
+        print('final')
+        print(result)
+        return result
     
     def rebuild_for_select(self, environment: Environment):
         output = self
@@ -219,7 +228,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 grain=output.grain,
                 environment=environment,
             )
-        output.validate_syntax(environment)
+
         return output
 
     def validate_syntax(self, environment: Environment):

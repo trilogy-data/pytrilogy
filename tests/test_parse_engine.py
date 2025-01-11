@@ -17,7 +17,6 @@ select
 def test_parser():
     env = Environment()
     x = ParseToObjects(environment=env)
-    x.environment.concepts.fail_on_missing = False
     x.set_text(TEXT)
 
     failed = False
