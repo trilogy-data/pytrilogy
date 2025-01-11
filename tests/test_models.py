@@ -176,7 +176,6 @@ def test_undefined(test_environment: Environment):
         purpose=Purpose.CONSTANT,
         grain=Grain(),
         namespace="test",
-        environment=test_environment.concepts,
     )
 
     # y = x.with_select_context({}, Grain(components=[test_environment.concepts["order_id"]]), test_environment)
@@ -282,7 +281,6 @@ def test_concept_address_in_check():
         datatype="int",
         purpose=Purpose.CONSTANT,
         grain=Grain(),
-        environment={},
     )
     assert target.address == "local.test"
     x = [target]

@@ -1,11 +1,11 @@
 query_id = 8
-gen_length = 3625
+gen_length = 3629
 generated_sql = """
 
 WITH 
 questionable as (
 SELECT
-    CASE WHEN customer_customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customer_customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_221882250846823\",
+    CASE WHEN customer_customers.\"C_PREFERRED_CUST_FLAG\" = 'Y' THEN customer_customers.\"C_CUSTOMER_SK\" ELSE NULL END as \"_virt_1650179778496089\",
     customer_customers.\"C_CUSTOMER_SK\" as \"customer_id\",
     customer_customers.\"C_PREFERRED_CUST_FLAG\" as \"customer_preferred_cust_flag\"
 FROM
@@ -25,14 +25,14 @@ SELECT
 uneven as (
 SELECT
     abundant.\"customer_zip\" as \"customer_zip\",
-    questionable.\"_virt_221882250846823\" as \"_virt_221882250846823\",
+    questionable.\"_virt_1650179778496089\" as \"_virt_1650179778496089\",
     questionable.\"customer_id\" as \"customer_id\"
 FROM
     abundant
     INNER JOIN questionable on abundant.\"customer_id\" = questionable.\"customer_id\"),
 yummy as (
 SELECT
-    count(uneven.\"_virt_221882250846823\") as \"zip_p_count\",
+    count(uneven.\"_virt_1650179778496089\") as \"zip_p_count\",
     uneven.\"customer_zip\" as \"customer_zip\"
 FROM
     uneven

@@ -60,6 +60,13 @@ def test_query_datasources(environment: Environment):
     )
 
     test: SelectStatement = statements[-1]  # multipart join
+    datasource = get_query_datasources(environment=environment, statement=test)
+    assert {c.address for c in datasource.output_concepts} == {
+        "internet_sales.customer.first_name",
+        "internet_sales.order_line_number",
+        "internet_sales.order_number",
+        "internet_sales.total_sales_amount",
+    }
 
     environment_graph = generate_graph(environment)
     from trilogy.hooks.query_debugger import print_recursive_nodes
@@ -112,8 +119,19 @@ def test_query_datasources(environment: Environment):
         customer_datasource.safe_identifier
         == "internet_sales_customer_customers_at_internet_sales_customer_customer_id_at_internet_sales_customer_first_name"
     )
-
+    assert {c.address for c in test.output_components} == {
+        "internet_sales.customer.first_name",
+        "internet_sales.order_line_number",
+        "internet_sales.order_number",
+        "internet_sales.total_sales_amount",
+    }
     datasource = get_query_datasources(environment=environment, statement=test)
+    assert {c.address for c in datasource.output_concepts} == {
+        "internet_sales.customer.first_name",
+        "internet_sales.order_line_number",
+        "internet_sales.order_number",
+        "internet_sales.total_sales_amount",
+    }
 
     cte = datasource_to_cte(datasource, {})
 

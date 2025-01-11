@@ -86,7 +86,6 @@ class CTE(BaseModel):
 
         if self.condition:
             self.condition = self.condition.inline_constant(concept)
-
         # if we've entirely removed the need to join to someplace to get the concept
         # drop the join as well.
         for removed_cte in removed:

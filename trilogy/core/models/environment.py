@@ -507,6 +507,7 @@ class Environment(BaseModel):
             if existing:
                 concept = existing
         self.concepts[concept.address] = concept
+
         from trilogy.core.environment_helpers import generate_related_concepts
 
         generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
@@ -542,19 +543,23 @@ class Environment(BaseModel):
                     current_concept.metadata.concept_source
                     != ConceptSource.PERSIST_STATEMENT
                 ):
-                    new_concept = current_concept.model_copy(deep=True)
-                    new_concept.set_name(persisted)
+                    new_concept = current_concept.model_copy(
+                        deep=True, update={"name": persisted}
+                    )
                     self.add_concept(
                         new_concept, meta=meta, force=True, _ignore_cache=True
                     )
-                    current_concept.metadata.concept_source = (
-                        ConceptSource.PERSIST_STATEMENT
-                    )
-                    # remove the associated lineage
-                    # to make this a root for discovery purposes
-                    # as it now "exists" in a table
-                    current_concept.lineage = None
-                    current_concept = current_concept.with_default_grain()
+                    current_concept = current_concept.model_copy(
+                        deep=True,
+                        update={
+                            "lineage": None,
+                            "metadata": current_concept.metadata.model_copy(
+                                update={
+                                    "concept_source": ConceptSource.PERSIST_STATEMENT
+                                }
+                            ),
+                        },
+                    ).with_default_grain()
                     self.add_concept(
                         current_concept, meta=meta, force=True, _ignore_cache=True
                     )

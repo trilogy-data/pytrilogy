@@ -560,7 +560,7 @@ class ParseToObjects(Transformer):
             select=select,
             namespace=self.environment.namespace or DEFAULT_NAMESPACE,
         )
-        for new_concept in rowset_to_concepts(output):
+        for new_concept in rowset_to_concepts(output, self.environment):
             if new_concept.metadata:
                 new_concept.metadata.line_number = meta.line
             # output.select.local_concepts[new_concept.address] = new_concept
@@ -998,6 +998,7 @@ class ParseToObjects(Transformer):
                 where=where,
                 having=having,
                 limit=limit,
+                environment=self.environment,
             )
             derived_concepts.append(concept)
             self.environment.add_concept(concept, meta=meta)

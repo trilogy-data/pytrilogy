@@ -52,7 +52,7 @@ rich_info.net_worth_1918_dollars
 rich_info.net_worth_1918_dollars is not null
 and passenger.last_name is not null;
 
-select 
+SELECT
     test.join_last_name,
     test.family_count
 ;
@@ -60,7 +60,6 @@ select
     """
     # raw = executor.generate_sql(test)
     results = normalized_engine.execute_text(test)[-1].fetchall()
-
     assert len(results) == 8
 
 

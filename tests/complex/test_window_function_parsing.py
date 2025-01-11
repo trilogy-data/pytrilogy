@@ -175,8 +175,8 @@ order by x asc;"""
         [z.with_grain(x), x], environment=env, g=generate_graph(env), depth=0
     ).resolve()
 
-    assert x in ds.output_concepts
-    assert z in ds.output_concepts
+    assert x.address in ds.output_concepts
+    assert z.address in ds.output_concepts
 
     assert x.derivation == Derivation.UNNEST
     assert z.derivation != Derivation.CONSTANT

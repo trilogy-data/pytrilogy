@@ -62,7 +62,7 @@ GROUP BY
     questionable.\"store_sales_store_state\"),
 juicy as (
 SELECT
-    CASE WHEN abundant.\"su_store_sales_item_color\" = 'peach' THEN abundant.\"su_net_paid\" ELSE NULL END as \"_virt_9720171099955064\",
+    CASE WHEN abundant.\"su_store_sales_item_color\" = 'peach' THEN abundant.\"su_net_paid\" ELSE NULL END as \"_virt_4323535190648732\",
     abundant.\"su_net_paid\" as \"su_net_paid\",
     abundant.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     abundant.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
@@ -80,7 +80,7 @@ SELECT
     juicy.\"su_store_sales_customer_first_name\" as \"su_store_sales_customer_first_name\",
     juicy.\"su_store_sales_customer_last_name\" as \"su_store_sales_customer_last_name\",
     juicy.\"su_store_sales_store_name\" as \"su_store_sales_store_name\",
-    sum(juicy.\"_virt_9720171099955064\") as \"peach_sales\"
+    sum(juicy.\"_virt_4323535190648732\") as \"peach_sales\"
 FROM
     juicy
 GROUP BY 
