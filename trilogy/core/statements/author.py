@@ -89,7 +89,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         return self.rebuild_for_select(environment)
     
     def rebuild_for_select(self, environment: Environment):
-        local_concepts = self.local_concepts.copy()
+        local_concepts = {k:v.model_copy(deep=True) for k,v in self.local_concepts.items()}
         final:List[SelectItem] = []
         for original in self.selection:
             new = original.model_copy(deep=True)
@@ -98,7 +98,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             # TODO: simplify
             if isinstance(new.content, ConceptTransform):
                 new_concept = new.content.output.with_select_context(
-                    self.local_concepts,
+                    local_concepts,
                     # the first pass grain will be incorrect
                     self.grain,
                     environment=environment,
@@ -115,7 +115,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
                 new.content = new.content.with_select_context(
-                    self.local_concepts,
+                    local_concepts,
                     self.grain,
                     environment=environment,
                 )
@@ -126,7 +126,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             selection=[x.concept for x in final],
             hidden_components=self.hidden_components,
             order_by=self.order_by.with_select_context(
-                local_concepts=self.local_concepts,
+                local_concepts=local_concepts,
                 grain=self.grain,
                 environment=environment,
             ) if self.order_by else None,
@@ -135,7 +135,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             local_concepts=local_concepts,
             grain=self.grain,
             having_clause=self.having_clause.with_select_context(
-                local_concepts=self.local_concepts,
+                local_concepts=local_concepts,
                 grain=self.grain,
                 environment=environment,
             ) if self.having_clause else None,
