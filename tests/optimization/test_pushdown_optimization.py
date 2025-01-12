@@ -25,6 +25,8 @@ def test_pushdown():
 
 
 def test_pushdown_execution():
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     with open(Path(__file__).parent / "pushdown.preql") as f:
         text = f.read()
 

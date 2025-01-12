@@ -54,7 +54,8 @@ def gen_filter_node(
     # we'll populate this with the row parent
     # and the existence parent(s)
     core_parents = []
-
+    if any([x.address == concept.address for x in parent_row_concepts]):
+        raise SyntaxError
     row_parent: StrategyNode = source_concepts(
         mandatory_list=parent_row_concepts,
         environment=environment,

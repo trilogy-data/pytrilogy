@@ -875,10 +875,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         if self.lineage and isinstance(self.lineage, Function):
             if self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                 return True
-            if len(self.lineage.concept_arguments) > 0 and all(
-                [c.is_aggregate for c in self.lineage.concept_arguments]
-            ):
-                return True
+            # if len(self.lineage.concept_arguments) > 0 and all(
+            #     [c.is_aggregate for c in self.lineage.concept_arguments]
+            # ):
+            #     return True
 
         if (
             self.lineage

@@ -305,6 +305,8 @@ select
 
 
 def test_array_inclusion(default_duckdb_engine: Executor):
+    from trilogy.hooks.query_debugger import DebuggingHook
+    DebuggingHook()
     test = """
 const list <- [1,2,3,4,5,6];
 const list_2 <- [1,2,3,4,5,6,7,8,9,10];
