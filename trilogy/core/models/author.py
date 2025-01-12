@@ -76,6 +76,10 @@ class Mergeable(ABC):
 
     def hydrate_missing(self, concepts: EnvironmentConceptDict):
         return self
+    
+class ConstantInlineable(ABC):
+    def inline_concept(self, concept: Concept):
+        raise NotImplementedError
 
 
 class SelectContext(ABC):
@@ -102,9 +106,6 @@ class ConceptArgs(ABC):
         return self.concept_arguments
 
 
-class ConstantInlineable(ABC):
-    def inline_concept(self, concept: Concept):
-        raise NotImplementedError
 
 
 class HasUUID(ABC):
@@ -1060,18 +1061,20 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Concept:
         """Propagate the select context to the lineage of the concept"""
+        from trilogy.core.models.build import BuildConcept
         new_lineage = self.lineage
         if isinstance(self.lineage, SelectContext):
             new_lineage = self.lineage.with_select_context(
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
         final_grain = self.grain or grain
-        base = self.__class__(
+        base = BuildConcept(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=new_lineage,
+
             grain=final_grain,
             namespace=self.namespace,
             keys=self.keys,
@@ -1079,6 +1082,11 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             # a select needs to always defer to the environment for pseudonyms
             # TODO: evaluate if this should be cached
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
+
+            ## instantiated values
+            derivation=self.derivation,
+            granularity=self.granularity,
+            is_aggregate=self.is_aggregate, 
         )
 
         base.set_select_grain(final_grain, environment)

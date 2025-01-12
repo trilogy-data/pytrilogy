@@ -32,7 +32,7 @@ from trilogy.constants import (
 class DataTyped(ABC):
 
     # this is not abstract
-    # because when it's a pydantic property, it fails validation
+    # only because when it's a pydantic property, it fails validation
     @property
     def output_datatype(self) -> CONCRETE_TYPES:  # type: ignore
         """
