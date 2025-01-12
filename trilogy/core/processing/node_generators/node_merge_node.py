@@ -107,8 +107,8 @@ def determine_induced_minimal_nodes(
 
     try:
         paths = nx.multi_source_dijkstra_path(H, nodelist)
-    except nx.exception.NodeNotFound:
-        logger.debug(f"Unable to find paths for {nodelist}")
+    except nx.exception.NodeNotFound as e:
+        logger.debug(f"Unable to find paths for {nodelist}- {str(e)}")
         return None
     H.remove_nodes_from(list(x for x in H.nodes if x not in paths))
     sG: nx.Graph = ax.steinertree.steiner_tree(H, nodelist).copy()

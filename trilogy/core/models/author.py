@@ -1028,9 +1028,8 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             modifiers=self.modifiers,
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
-
-    def set_select_grain(self, grain: Grain, environment: Environment) -> Self:
-        """Assign a mutable concept the appropriate grain/keys for a select"""
+    
+    def get_select_grain_and_keys(self, grain: Grain, environment: Environment) -> Tuple[Grain, set[str]]:
         new_lineage = self.lineage.model_copy(deep=True) if self.lineage else None
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
@@ -1044,6 +1043,11 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             new_lineage.by = grain_components
             final_grain = grain
             keys = set([x.address for x in new_lineage.by])
+        return new_lineage, final_grain, keys
+
+    def set_select_grain(self, grain: Grain, environment: Environment) -> Self:
+        """Assign a mutable concept the appropriate grain/keys for a select"""
+        new_lineage, final_grain, keys = self.get_select_grain_and_keys(grain, environment)
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -1062,13 +1066,13 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     ) -> Concept:
         """Propagate the select context to the lineage of the concept"""
         from trilogy.core.models.build import BuildConcept
-        new_lineage = self.lineage
-        if isinstance(self.lineage, SelectContext):
-            new_lineage = self.lineage.with_select_context(
+
+        new_lineage, final_grain, keys = self.get_select_grain_and_keys(grain, environment)
+        if isinstance(new_lineage, SelectContext):
+            new_lineage = new_lineage.with_select_context(
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
-        final_grain = self.grain or grain
-        base = BuildConcept(
+        base = self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1077,19 +1081,17 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
             grain=final_grain,
             namespace=self.namespace,
-            keys=self.keys,
+            keys=keys,
             modifiers=self.modifiers,
             # a select needs to always defer to the environment for pseudonyms
             # TODO: evaluate if this should be cached
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
 
             ## instantiated values
-            derivation=self.derivation,
-            granularity=self.granularity,
-            is_aggregate=self.is_aggregate, 
+            # build_derivation=self.derivation,
+            # build_granularity=self.granularity,
+            # build_is_aggregate=self.is_aggregate, 
         )
-
-        base.set_select_grain(final_grain, environment)
         return base
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
@@ -1322,6 +1324,7 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "OrderItem":
+        from trilogy.core.models.build import BuildOrderItem
         return OrderItem(
             expr=self.expr.with_select_context(
                 local_concepts, grain, environment=environment
@@ -1376,6 +1379,7 @@ class WindowItem(
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "WindowItem":
+        from trilogy.core.models.build import BuildWindowItem
         return WindowItem(
             type=self.type,
             content=self.content.with_select_context(

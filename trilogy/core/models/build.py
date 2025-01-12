@@ -58,7 +58,7 @@ from trilogy.core.models.core import (
     is_compatible_datatype,
 )
 from trilogy.utility import unique
-from trilogy.core.models.author import Concept, Metadata, Grain, LooseConceptList
+from trilogy.core.models.author import Concept, Metadata, Grain, LooseConceptList, Function, MultiSelectLineage, RowsetItem, FilterItem, AggregateWrapper, WindowItem, WindowOrder, OrderItem, get_concept_arguments, get_concept_row_arguments, ConceptArgs
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
@@ -70,28 +70,6 @@ class ConstantInlineable(ABC):
         raise NotImplementedError
 
 
-class BuildSelectContext(ABC):
-    def with_select_context(
-        self,
-        local_BuildConcepts: dict[str, BuildConcept],
-        grain: Grain,
-        environment: Environment,
-    ) -> Any:
-        raise NotImplementedError
-
-
-class BuildConceptArgs(ABC):
-    @property
-    def concept_arguments(self) -> List["BuildConcept"]:
-        raise NotImplementedError
-
-    @property
-    def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
-        return []
-
-    @property
-    def row_arguments(self) -> List["BuildConcept"]:
-        return self.concept_arguments
 
 
 def address_with_namespace(address: str, namespace: str) -> str:
@@ -102,7 +80,7 @@ def address_with_namespace(address: str, namespace: str) -> str:
 
 class BuildParenthetical(
     DataTyped,
-    BuildConceptArgs,
+    ConceptArgs,
     ConstantInlineable,
     BaseModel,
 ):
@@ -136,19 +114,19 @@ class BuildParenthetical(
         x = self.content
         if isinstance(x, BuildConcept):
             base += [x]
-        elif isinstance(x, BuildConceptArgs):
+        elif isinstance(x, ConceptArgs):
             base += x.concept_arguments
         return base
 
     @property
     def row_arguments(self) -> List[BuildConcept]:
-        if isinstance(self.content, BuildConceptArgs):
+        if isinstance(self.content, ConceptArgs):
             return self.content.row_arguments
         return self.concept_arguments
 
     @property
     def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
-        if isinstance(self.content, BuildConceptArgs):
+        if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
         return []
 
@@ -158,7 +136,7 @@ class BuildParenthetical(
 
 
 class BuildConditional(
-    BuildConceptArgs,  ConstantInlineable, BaseModel
+    ConceptArgs,  ConstantInlineable, BaseModel
 ):
     left: Union[
         int,
@@ -261,9 +239,9 @@ class BuildConditional(
     @property
     def existence_arguments(self) -> list[tuple["BuildConcept", ...]]:
         output = []
-        if isinstance(self.left, BuildConceptArgs):
+        if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
-        if isinstance(self.right, BuildConceptArgs):
+        if isinstance(self.right, ConceptArgs):
             output += self.right.existence_arguments
         return output
 
@@ -280,7 +258,7 @@ class BuildConditional(
         return chunks
 
 
-class BuildWhereClause(BuildConceptArgs, BaseModel):
+class BuildWhereClause(ConceptArgs, BaseModel):
     conditional: Union[BuildSubselectComparison, BuildComparison, BuildConditional, "BuildParenthetical"]
 
     def __repr__(self):
@@ -309,7 +287,7 @@ class BuildHavingClause(BuildWhereClause):
 
 
 class BuildComparison(
-    BuildConceptArgs, ConstantInlineable, BaseModel
+    ConceptArgs, ConstantInlineable, BaseModel
 ):
     left: Union[
         int,
@@ -461,9 +439,9 @@ class BuildComparison(
     def existence_arguments(self) -> List[Tuple[BuildConcept, ...]]:
         """Return BuildConcepts directly referenced in where clause"""
         output: List[Tuple[BuildConcept, ...]] = []
-        if isinstance(self.left, BuildConceptArgs):
+        if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
-        if isinstance(self.right, BuildConceptArgs):
+        if isinstance(self.right, ConceptArgs):
             output += self.right.existence_arguments
         return output
 
@@ -494,10 +472,32 @@ class BuildConcept(Concept, BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    derivation: Derivation
-    granularity: Granularity
-    is_aggregate: bool
+    build_derivation: Derivation
+    build_granularity: Granularity
+    build_is_aggregate: bool
+    lineage: Optional[
+        Union[
+            Function,
+            BuildWindowItem,
+            WindowItem,
+            FilterItem,
+            AggregateWrapper,
+            RowsetItem,
+            MultiSelectLineage,
+        ]
+    ] = None
 
+    @property
+    def derivation(self) -> Derivation:
+        return self.build_derivation
+    
+    @property
+    def granularity(self) -> Granularity:
+        return self.build_granularity
+
+    @property
+    def is_aggregate(self) -> bool:
+        return self.build_is_aggregate
 
     def duplicate(self) -> BuildConcept:
         return self.model_copy(deep=True)
@@ -564,6 +564,10 @@ class BuildConcept(Concept, BaseModel):
             keys=self.keys,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
+            ## bound
+            build_derivation=self.build_derivation,
+            build_granularity=self.build_granularity,
+            build_is_aggregate=self.build_is_aggregate,
         )
 
     @property
@@ -602,6 +606,10 @@ class BuildConcept(Concept, BaseModel):
             namespace=self.namespace,
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
+            ## bound
+            build_derivation=self.build_derivation,
+            build_granularity=self.build_granularity,
+            build_is_aggregate=self.build_is_aggregate,
         )
 
     def with_default_grain(self) -> "BuildConcept":
@@ -656,11 +664,11 @@ class BuildOrderItem( BaseModel):
 
 
 class BuildWindowItem(
-    DataTyped, BuildConceptArgs, BaseModel
+    DataTyped, ConceptArgs, BaseModel
 ):
     type: WindowType
     content: BuildConcept
-    order_by: List["BuildOrderItem"]
+    order_by: List[BuildOrderItem | OrderItem]
     over: List["BuildConcept"] = Field(default_factory=list)
     index: Optional[int] = None
 
@@ -711,7 +719,7 @@ def get_basic_type(
     return type
 
 
-class BuildCaseWhen( BuildConceptArgs,  BaseModel):
+class BuildCaseWhen( ConceptArgs,  BaseModel):
     comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
 
@@ -732,7 +740,7 @@ class BuildCaseWhen( BuildConceptArgs,  BaseModel):
         )
 
 
-class BuildCaseElse( BuildConceptArgs, BaseModel):
+class BuildCaseElse( ConceptArgs, BaseModel):
     expr: "BuildExpr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -743,30 +751,8 @@ class BuildCaseElse( BuildConceptArgs, BaseModel):
 
 
 
-def get_concept_row_arguments(expr) -> List["BuildConcept"]:
-    output = []
-    if isinstance(expr, BuildConcept):
-        output += [expr]
 
-    elif isinstance(expr, BuildConceptArgs):
-        output += expr.row_arguments
-    return output
-
-
-def get_concept_arguments(expr) -> List["BuildConcept"]:
-    output = []
-    if isinstance(expr, BuildConcept):
-        output += [expr]
-
-    elif isinstance(
-        expr,
-        BuildConceptArgs,
-    ):
-        output += expr.concept_arguments
-    return output
-
-
-class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
+class BuildFunction(DataTyped, ConceptArgs, BaseModel):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -832,7 +818,7 @@ class BuildFunction(DataTyped, BuildConceptArgs, BaseModel):
         return base_grain
 
 
-class BuildAggregateWrapper(BuildConceptArgs,  BaseModel):
+class BuildAggregateWrapper(ConceptArgs,  BaseModel):
     function: BuildFunction
     by: List[BuildConcept] = Field(default_factory=list)
 
@@ -861,7 +847,7 @@ class BuildAggregateWrapper(BuildConceptArgs,  BaseModel):
         return self.function.arguments
 
 
-class BuildFilterItem(BuildConceptArgs,BaseModel):
+class BuildFilterItem(ConceptArgs,BaseModel):
     content: BuildConcept
     where: "BuildWhereClause"
 
@@ -889,7 +875,7 @@ class BuildRowsetLineage(BaseModel):
 
 
 
-class BuildRowsetItem(BuildConceptArgs, BaseModel):
+class BuildRowsetItem(ConceptArgs, BaseModel):
     content: BuildConcept
     rowset: BuildRowsetLineage
     where: Optional["BuildWhereClause"] = None
@@ -957,7 +943,7 @@ class BuildSelectLineage( BaseModel):
 
 
 
-class BuildMultiSelectLineage( BuildConceptArgs,  BaseModel):
+class BuildMultiSelectLineage( ConceptArgs,  BaseModel):
     selects: List[BuildSelectLineage]
     align: BuildAlignClause
     namespace: str

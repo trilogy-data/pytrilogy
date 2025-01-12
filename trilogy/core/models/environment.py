@@ -498,6 +498,7 @@ class Environment(BaseModel):
         add_derived: bool = True,
         _ignore_cache: bool = False,
     ):
+
         if self.frozen:
             raise FrozenEnvironmentException(
                 "Environment is frozen, cannot add concepts"

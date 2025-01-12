@@ -2,6 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.models.author import Concept, WhereClause, WindowItem
+from trilogy.core.models.build import BuildWindowItem, BuildConcept
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, StrategyNode, WindowNode
 from trilogy.core.processing.utility import padding
@@ -10,10 +11,12 @@ from trilogy.utility import unique
 LOGGER_PREFIX = "[GEN_WINDOW_NODE]"
 
 
+WINDOW_TYPES = (WindowItem, BuildWindowItem)
+
 def resolve_window_parent_concepts(
-    concept: Concept, environment: Environment
-) -> tuple[Concept, List[Concept]]:
-    if not isinstance(concept.lineage, WindowItem):
+    concept: BuildConcept, environment: Environment
+) -> tuple[BuildConcept, List[BuildConcept]]:
+    if not isinstance(concept.lineage, WINDOW_TYPES):
         raise ValueError
     base = []
     if concept.lineage.over:
@@ -30,8 +33,8 @@ def resolve_window_parent_concepts(
 
 
 def gen_window_node(
-    concept: Concept,
-    local_optional: list[Concept],
+    concept: BuildConcept,
+    local_optional: list[BuildConcept],
     environment: Environment,
     g,
     depth: int,
@@ -43,7 +46,7 @@ def gen_window_node(
     equivalent_optional = [
         x
         for x in local_optional
-        if isinstance(x.lineage, WindowItem)
+        if isinstance(x.lineage, WINDOW_TYPES)
         and resolve_window_parent_concepts(x, environment)[1] == parent_concepts
     ]
 
@@ -53,7 +56,7 @@ def gen_window_node(
     targets = [base]
     if equivalent_optional:
         for x in equivalent_optional:
-            assert isinstance(x.lineage, WindowItem)
+            assert isinstance(x.lineage, WINDOW_TYPES)
             targets.append(x.lineage.content)
 
     parent_node: StrategyNode = source_concepts(

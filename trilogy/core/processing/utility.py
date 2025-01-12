@@ -29,6 +29,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
+from trilogy.core.models.build import BuildWindowItem
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -423,6 +424,7 @@ def is_scalar_condition(
         | datetime
         | list[Any]
         | WindowItem
+        | BuildWindowItem
         | FilterItem
         | Concept
         | Comparison

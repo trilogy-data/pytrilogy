@@ -27,6 +27,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
+from trilogy.core.models.build import BuildWindowItem
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -69,6 +70,8 @@ from trilogy.dialect.common import render_join, render_unnest
 from trilogy.hooks.base_hook import BaseHook
 
 LOGGER_PREFIX = "[RENDERING]"
+
+WINDOW_ITEMS = (WindowItem, BuildWindowItem)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -326,7 +329,7 @@ class BaseDialect:
             logger.debug(
                 f"{LOGGER_PREFIX} [{c.address}] rendering concept with lineage that is not already existing, have {cte.source_map}"
             )
-            if isinstance(c.lineage, WindowItem):
+            if isinstance(c.lineage, WINDOW_ITEMS):
                 rendered_order_components = [
                     f"{self.render_concept_sql(x.expr, cte, alias=False, raise_invalid=raise_invalid)} {x.order.value}"
                     for x in c.lineage.order_by
@@ -483,6 +486,7 @@ class BaseDialect:
             DatePart,
             CaseWhen,
             CaseElse,
+            BuildWindowItem,
             WindowItem,
             FilterItem,
             # FilterItem
@@ -537,7 +541,7 @@ class BaseDialect:
         elif isinstance(e, Conditional):
             # conditions need to be nested in parentheses
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, WindowItem):
+        elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
                 f"{self.render_expr(x.expr, cte, cte_map=cte_map, raise_invalid=raise_invalid)} {x.order.value}"
                 for x in e.order_by

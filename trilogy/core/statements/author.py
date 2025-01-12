@@ -86,18 +86,8 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
     grain: Grain = Field(default_factory=Grain)
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
-        self.rebuild_for_select(environment)
-        return SelectLineage(
-            selection=[x.concept for x in self.selection],
-            hidden_components=self.hidden_components,
-            order_by=self.order_by,
-            limit=self.limit,
-            meta=self.meta,
-            local_concepts=self.local_concepts,
-            grain=self.grain,
-            having_clause=self.having_clause,
-            where_clause=self.where_clause,
-        )
+        return self.rebuild_for_select(environment)
+
 
     @classmethod
     def from_inputs(
@@ -155,49 +145,57 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         return result
 
     def rebuild_for_select(self, environment: Environment):
-        for item in self.selection:
+        local_concepts = self.local_concepts.copy()
+        final:List[SelectItem] = []
+        for original in self.selection:
+            new = original.model_copy(deep=True)
             # we don't know the grain of an aggregate at assignment time
             # so rebuild at this point in the tree
             # TODO: simplify
-            if isinstance(item.content, ConceptTransform):
-                new_concept = item.content.output.with_select_context(
+            if isinstance(new.content, ConceptTransform):
+                new_concept = new.content.output.with_select_context(
                     self.local_concepts,
                     # the first pass grain will be incorrect
                     self.grain,
                     environment=environment,
                 )
-                self.local_concepts[new_concept.address] = new_concept
-                item.content.output = new_concept
-            elif isinstance(item.content, UndefinedConcept):
+                local_concepts[new_concept.address] = new_concept
+                new.content.output = new_concept
+            elif isinstance(new.content, UndefinedConcept):
                 environment.concepts.raise_undefined(
-                    item.content.address,
-                    line_no=item.content.metadata.line_number,
+                    new.content.address,
+                    line_no=new.content.metadata.line_number,
                     file=environment.env_file_path,
                 )
-            elif isinstance(item.content, Concept):
+            elif isinstance(new.content, Concept):
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
-                item.content = item.content.with_select_context(
+                new.content = new.content.with_select_context(
                     self.local_concepts,
                     self.grain,
                     environment=environment,
                 )
-                self.local_concepts[item.content.address] = item.content
-
-        if self.order_by:
-            self.order_by = self.order_by.with_select_context(
+                local_concepts[new.content.address] = new.content
+            final.append(new)
+        return SelectLineage(
+            selection=[x.concept for x in final],
+            hidden_components=self.hidden_components,
+            order_by=self.order_by.with_select_context(
                 local_concepts=self.local_concepts,
                 grain=self.grain,
                 environment=environment,
-            )
-        if self.having_clause:
-            self.having_clause = self.having_clause.with_select_context(
+            ) if self.order_by else None,
+            limit=self.limit,
+            meta=self.meta,
+            local_concepts=local_concepts,
+            grain=self.grain,
+            having_clause=self.having_clause.with_select_context(
                 local_concepts=self.local_concepts,
                 grain=self.grain,
                 environment=environment,
-            )
-
-        return self
+            ) if self.having_clause else None,
+            where_clause=self.where_clause
+        )
 
     def validate_syntax(self, environment: Environment):
         if self.where_clause:
