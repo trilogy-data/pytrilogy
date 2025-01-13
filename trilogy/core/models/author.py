@@ -1045,7 +1045,8 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             pkeys = set()
             for x in new_lineage.concept_arguments:
                 _, parent_grain, parent_keys = x.get_select_grain_and_keys(grain, environment)
-                pkeys.update(parent_keys)
+                if parent_keys:
+                    pkeys.update(parent_keys)
             raw_keys = pkeys
             #deduplicate
             final_grain = Grain.from_concepts(raw_keys, environment)
