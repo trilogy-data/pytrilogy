@@ -87,10 +87,12 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         return self.rebuild_for_select(environment)
-    
+
     def rebuild_for_select(self, environment: Environment):
-        local_concepts = {k:v.model_copy(deep=True) for k,v in self.local_concepts.items()}
-        final:List[SelectItem] = []
+        local_concepts = {
+            k: v.model_copy(deep=True) for k, v in self.local_concepts.items()
+        }
+        final: List[SelectItem] = []
         for original in self.selection:
             new = original.model_copy(deep=True)
             # we don't know the grain of an aggregate at assignment time
@@ -121,25 +123,33 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                 )
                 local_concepts[new.content.address] = new.content
             final.append(new)
-            
+
         return SelectLineage(
             selection=[x.concept for x in final],
             hidden_components=self.hidden_components,
-            order_by=self.order_by.with_select_context(
-                local_concepts=local_concepts,
-                grain=self.grain,
-                environment=environment,
-            ) if self.order_by else None,
+            order_by=(
+                self.order_by.with_select_context(
+                    local_concepts=local_concepts,
+                    grain=self.grain,
+                    environment=environment,
+                )
+                if self.order_by
+                else None
+            ),
             limit=self.limit,
             meta=self.meta,
             local_concepts=local_concepts,
             grain=self.grain,
-            having_clause=self.having_clause.with_select_context(
-                local_concepts=local_concepts,
-                grain=self.grain,
-                environment=environment,
-            ) if self.having_clause else None,
-            where_clause=self.where_clause
+            having_clause=(
+                self.having_clause.with_select_context(
+                    local_concepts=local_concepts,
+                    grain=self.grain,
+                    environment=environment,
+                )
+                if self.having_clause
+                else None
+            ),
+            where_clause=self.where_clause,
         )
 
     @classmethod
@@ -196,8 +206,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             where_clause=self.where_clause,
         )
         return result
-
-    
 
     def validate_syntax(self, environment: Environment):
         if self.where_clause:

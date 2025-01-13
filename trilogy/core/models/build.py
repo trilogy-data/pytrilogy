@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from abc import ABC
 from datetime import date, datetime
 from functools import cached_property
@@ -13,7 +12,6 @@ from typing import (
     Sequence,
     Set,
     Tuple,
-    Type,
     Union,
 )
 
@@ -21,13 +19,10 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationInfo,
     computed_field,
-    field_validator,
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     BooleanOperator,
     ComparisonOperator,
@@ -37,12 +32,28 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     Granularity,
-    InfiniteFunctionArgs,
-    Modifier,
     Ordering,
     Purpose,
     WindowOrder,
     WindowType,
+    Modifier
+)
+from trilogy.core.models.author import (
+    AggregateWrapper,
+    Concept,
+    ConceptArgs,
+    FilterItem,
+    Function,
+    Grain,
+    LooseConceptList,
+    Metadata,
+    MultiSelectLineage,
+    OrderItem,
+    RowsetItem,
+    WindowItem,
+    WindowOrder,
+    get_concept_arguments,
+    get_concept_row_arguments,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -58,18 +69,15 @@ from trilogy.core.models.core import (
     is_compatible_datatype,
 )
 from trilogy.utility import unique
-from trilogy.core.models.author import Concept, Metadata, Grain, LooseConceptList, Function, MultiSelectLineage, RowsetItem, FilterItem, AggregateWrapper, WindowItem, WindowOrder, OrderItem, get_concept_arguments, get_concept_row_arguments, ConceptArgs
 
 # TODO: refactor to avoid these
 if TYPE_CHECKING:
-    from trilogy.core.models.environment import Environment, EnvironmentConceptDict
     from trilogy.core.models.execute import CTE, UnionCTE
+
 
 class ConstantInlineable(ABC):
     def inline_concept(self, concept: BuildConcept):
         raise NotImplementedError
-
-
 
 
 def address_with_namespace(address: str, namespace: str) -> str:
@@ -90,7 +98,9 @@ class BuildParenthetical(
         if other is None:
             return self
         elif isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
-            return BuildConditional(left=self, right=other, operator=BooleanOperator.AND)
+            return BuildConditional(
+                left=self, right=other, operator=BooleanOperator.AND
+            )
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
     def __str__(self):
@@ -135,9 +145,7 @@ class BuildParenthetical(
         return arg_to_datatype(self.content)
 
 
-class BuildConditional(
-    ConceptArgs,  ConstantInlineable, BaseModel
-):
+class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
     left: Union[
         int,
         str,
@@ -174,7 +182,9 @@ class BuildConditional(
         elif str(other) == str(self):
             return self
         elif isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
-            return BuildConditional(left=self, right=other, operator=BooleanOperator.AND)
+            return BuildConditional(
+                left=self, right=other, operator=BooleanOperator.AND
+            )
         raise ValueError(f"Cannot add {self.__class__} and {type(other)}")
 
     def __str__(self):
@@ -197,14 +207,20 @@ class BuildConditional(
         new_val = constant.lineage.arguments[0]
         if isinstance(self.left, ConstantInlineable):
             new_left = self.left.inline_constant(constant)
-        elif isinstance(self.left, BuildConcept) and self.left.address == constant.address:
+        elif (
+            isinstance(self.left, BuildConcept)
+            and self.left.address == constant.address
+        ):
             new_left = new_val
         else:
             new_left = self.left
 
         if isinstance(self.right, ConstantInlineable):
             new_right = self.right.inline_constant(constant)
-        elif isinstance(self.right, BuildConcept) and self.right.address == constant.address:
+        elif (
+            isinstance(self.right, BuildConcept)
+            and self.right.address == constant.address
+        ):
             new_right = new_val
         else:
             new_right = self.right
@@ -217,9 +233,6 @@ class BuildConditional(
             right=new_right,
             operator=self.operator,
         )
-
-
-
 
     @property
     def concept_arguments(self) -> List[BuildConcept]:
@@ -259,7 +272,12 @@ class BuildConditional(
 
 
 class BuildWhereClause(ConceptArgs, BaseModel):
-    conditional: Union[BuildSubselectComparison, BuildComparison, BuildConditional, "BuildParenthetical"]
+    conditional: Union[
+        BuildSubselectComparison,
+        BuildComparison,
+        BuildConditional,
+        "BuildParenthetical",
+    ]
 
     def __repr__(self):
         return str(self.conditional)
@@ -280,15 +298,11 @@ class BuildWhereClause(ConceptArgs, BaseModel):
         return self.conditional.existence_arguments
 
 
-
 class BuildHavingClause(BuildWhereClause):
     pass
 
 
-
-class BuildComparison(
-    ConceptArgs, ConstantInlineable, BaseModel
-):
+class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
     left: Union[
         int,
         str,
@@ -328,7 +342,6 @@ class BuildComparison(
     ]
     operator: ComparisonOperator
 
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if self.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
@@ -340,7 +353,9 @@ class BuildComparison(
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
             right = arg_to_datatype(self.right)
-            if not isinstance(self.right, BuildConcept) and not isinstance(right, ListType):
+            if not isinstance(self.right, BuildConcept) and not isinstance(
+                right, ListType
+            ):
                 raise SyntaxError(
                     f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}"
                 )
@@ -368,7 +383,9 @@ class BuildComparison(
     def __add__(self, other):
         if other is None:
             return self
-        if not isinstance(other, (BuildComparison, BuildConditional, BuildParenthetical)):
+        if not isinstance(
+            other, (BuildComparison, BuildConditional, BuildParenthetical)
+        ):
             raise ValueError("Cannot add Comparison to non-Comparison")
         if other == self:
             return self
@@ -402,13 +419,19 @@ class BuildComparison(
         new_val = constant.lineage.arguments[0]
         if isinstance(self.left, ConstantInlineable):
             new_left = self.left.inline_constant(constant)
-        elif isinstance(self.left, BuildConcept) and self.left.address == constant.address:
+        elif (
+            isinstance(self.left, BuildConcept)
+            and self.left.address == constant.address
+        ):
             new_left = new_val
         else:
             new_left = self.left
         if isinstance(self.right, ConstantInlineable):
             new_right = self.right.inline_constant(constant)
-        elif isinstance(self.right, BuildConcept) and self.right.address == constant.address:
+        elif (
+            isinstance(self.right, BuildConcept)
+            and self.right.address == constant.address
+        ):
             new_right = new_val
         else:
             new_right = self.right
@@ -418,7 +441,6 @@ class BuildComparison(
             right=new_right,
             operator=self.operator,
         )
-
 
     @property
     def concept_arguments(self) -> List[BuildConcept]:
@@ -467,7 +489,6 @@ class BuildSubselectComparison(BuildComparison):
         return [tuple(get_concept_arguments(self.right))]
 
 
-
 class BuildConcept(Concept, BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -487,14 +508,63 @@ class BuildConcept(Concept, BaseModel):
         ]
     ] = None
 
+    @classmethod
+    def build(cls, base:Concept)->BuildConcept:
+        return BuildConcept(
+            name=base.name,
+            datatype=base.datatype,
+            purpose=base.purpose,
+            metadata=base.metadata,
+            lineage=base.lineage,
+            grain=base.grain,
+            namespace=base.namespace,
+            keys=base.keys,
+            modifiers=base.modifiers,
+            pseudonyms=base.pseudonyms,
+            ## instantiated values
+            build_derivation=base.derivation,
+            build_granularity=base.granularity,
+            build_is_aggregate=base.is_aggregate,
+        )
+
     @property
     def derivation(self) -> Derivation:
         return self.build_derivation
-    
+
     @property
     def granularity(self) -> Granularity:
         return self.build_granularity
 
+    def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
+        if self.address == source.address:
+            new = target.with_grain(self.grain.with_merge(source, target, modifiers))
+            new.pseudonyms.add(self.address)
+            return new
+        return self.__class__(
+            name=self.name,
+            datatype=self.datatype,
+            purpose=self.purpose,
+            metadata=self.metadata,
+            lineage=(
+                self.lineage.with_merge(source, target, modifiers)
+                if self.lineage
+                else None
+            ),
+            grain=self.grain.with_merge(source, target, modifiers),
+            namespace=self.namespace,
+            keys=(
+                set(x if x != source.address else target.address for x in self.keys)
+                if self.keys
+                else None
+            ),
+            modifiers=self.modifiers,
+            pseudonyms=self.pseudonyms,
+            # build
+            build_derivation=self.build_derivation,
+            build_granularity=self.build_granularity,
+            build_is_aggregate=self.build_is_aggregate,
+        )
+    
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
@@ -514,7 +584,6 @@ class BuildConcept(Concept, BaseModel):
     @property
     def output_datatype(self):
         return self.datatype
-
 
     def __eq__(self, other: object):
         if isinstance(other, str):
@@ -550,7 +619,6 @@ class BuildConcept(Concept, BaseModel):
         elif self.namespace:
             return f"{self.namespace.replace('.','_')}_{self.name.replace('.','_')}"
         return self.name.replace(".", "_")
-
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
         return self.__class__(
@@ -649,23 +717,16 @@ class BuildConcept(Concept, BaseModel):
         return self.lineage.concept_arguments if self.lineage else []
 
 
-
-
-
-class BuildOrderItem( BaseModel):
+class BuildOrderItem(BaseModel):
     expr: BuildConcept
     order: Ordering
-
-
 
     @property
     def output(self):
         return self.expr.output
 
 
-class BuildWindowItem(
-    DataTyped, ConceptArgs, BaseModel
-):
+class BuildWindowItem(DataTyped, ConceptArgs, BaseModel):
     type: WindowType
     content: BuildConcept
     order_by: List[BuildOrderItem | OrderItem]
@@ -674,8 +735,6 @@ class BuildWindowItem(
 
     def __repr__(self) -> str:
         return f"{self.type}({self.content} {self.index}, {self.over}, {self.order_by})"
-
-
 
     @property
     def concept_arguments(self) -> List[BuildConcept]:
@@ -719,7 +778,7 @@ def get_basic_type(
     return type
 
 
-class BuildCaseWhen( ConceptArgs,  BaseModel):
+class BuildCaseWhen(ConceptArgs, BaseModel):
     comparison: BuildConditional | BuildSubselectComparison | BuildComparison
     expr: "BuildExpr"
 
@@ -740,7 +799,7 @@ class BuildCaseWhen( ConceptArgs,  BaseModel):
         )
 
 
-class BuildCaseElse( ConceptArgs, BaseModel):
+class BuildCaseElse(ConceptArgs, BaseModel):
     expr: "BuildExpr"
     # this ensures that it's easily differentiable from CaseWhen
     discriminant: ComparisonOperator = ComparisonOperator.ELSE
@@ -748,8 +807,6 @@ class BuildCaseElse( ConceptArgs, BaseModel):
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.expr)
-
-
 
 
 class BuildFunction(DataTyped, ConceptArgs, BaseModel):
@@ -798,7 +855,6 @@ class BuildFunction(DataTyped, ConceptArgs, BaseModel):
     def datatype(self):
         return self.output_datatype
 
-
     @property
     def concept_arguments(self) -> List[BuildConcept]:
         base = []
@@ -818,7 +874,7 @@ class BuildFunction(DataTyped, ConceptArgs, BaseModel):
         return base_grain
 
 
-class BuildAggregateWrapper(ConceptArgs,  BaseModel):
+class BuildAggregateWrapper(ConceptArgs, BaseModel):
     function: BuildFunction
     by: List[BuildConcept] = Field(default_factory=list)
 
@@ -847,13 +903,12 @@ class BuildAggregateWrapper(ConceptArgs,  BaseModel):
         return self.function.arguments
 
 
-class BuildFilterItem(ConceptArgs,BaseModel):
+class BuildFilterItem(ConceptArgs, BaseModel):
     content: BuildConcept
     where: "BuildWhereClause"
 
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
-
 
     @property
     def output_datatype(self):
@@ -874,7 +929,6 @@ class BuildRowsetLineage(BaseModel):
     select: BuildSelectLineage | BuildMultiSelectLineage
 
 
-
 class BuildRowsetItem(ConceptArgs, BaseModel):
     content: BuildConcept
     rowset: BuildRowsetLineage
@@ -887,7 +941,6 @@ class BuildRowsetItem(ConceptArgs, BaseModel):
 
     def __str__(self):
         return self.__repr__()
-
 
     @property
     def arguments(self) -> List[BuildConcept]:
@@ -912,20 +965,19 @@ class BuildRowsetItem(ConceptArgs, BaseModel):
         return [self.content]
 
 
-class BuildOrderBy( BaseModel):
+class BuildOrderBy(BaseModel):
     items: List[BuildOrderItem]
-
-
 
     @property
     def concept_arguments(self):
         return [x.expr for x in self.items]
 
 
-class BuildAlignClause( BaseModel):
+class BuildAlignClause(BaseModel):
     items: List[BuildAlignItem]
 
-class BuildSelectLineage( BaseModel):
+
+class BuildSelectLineage(BaseModel):
     selection: List[BuildConcept]
     hidden_components: set[str]
     local_BuildConcepts: dict[str, BuildConcept]
@@ -941,9 +993,7 @@ class BuildSelectLineage( BaseModel):
         return self.selection
 
 
-
-
-class BuildMultiSelectLineage( ConceptArgs,  BaseModel):
+class BuildMultiSelectLineage(ConceptArgs, BaseModel):
     selects: List[BuildSelectLineage]
     align: BuildAlignClause
     namespace: str
@@ -989,7 +1039,9 @@ class BuildMultiSelectLineage( ConceptArgs,  BaseModel):
                 return f"{item.namespace}.{item.alias}"
         return None
 
-    def find_source(self, BuildConcept: BuildConcept, cte: CTE | UnionCTE) -> BuildConcept:
+    def find_source(
+        self, BuildConcept: BuildConcept, cte: CTE | UnionCTE
+    ) -> BuildConcept:
         for x in self.align.items:
             if BuildConcept.name == x.alias:
                 for c in x.BuildConcepts:
@@ -1045,7 +1097,7 @@ class BuildLooseConceptList(BaseModel):
         return self.addresses.isdisjoint(other.addresses)
 
 
-class BuildAlignItem( BaseModel):
+class BuildAlignItem(BaseModel):
     alias: str
     concepts: List[BuildConcept]
     namespace: str = Field(default=DEFAULT_NAMESPACE, validate_default=True)
@@ -1058,7 +1110,6 @@ class BuildAlignItem( BaseModel):
     @property
     def aligned_concept(self) -> str:
         return f"{self.namespace}.{self.alias}"
-
 
 
 class BuildMetadata(BaseModel):

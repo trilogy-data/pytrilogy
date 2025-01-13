@@ -75,14 +75,14 @@ def resolve_filter_parent_concepts(
     )
     base_rows += condition_rows
     base_existence += condition_existence
-    if direct_parent.grain:
-        base_rows += [environment.concepts[c] for c in direct_parent.grain.components]
+    # this is required so that 
     if (
         isinstance(direct_parent, Concept)
-        and direct_parent.purpose == Purpose.PROPERTY
+        and direct_parent.purpose in (Purpose.PROPERTY, Purpose.METRIC)
         and direct_parent.keys
     ):
         base_rows += [environment.concepts[c] for c in direct_parent.keys]
+
     if concept.lineage.where.existence_arguments:
         return (
             concept.lineage.content,

@@ -76,7 +76,8 @@ class Mergeable(ABC):
 
     def hydrate_missing(self, concepts: EnvironmentConceptDict):
         return self
-    
+
+
 class ConstantInlineable(ABC):
     def inline_concept(self, concept: Concept):
         raise NotImplementedError
@@ -104,8 +105,6 @@ class ConceptArgs(ABC):
     @property
     def row_arguments(self) -> List["Concept"]:
         return self.concept_arguments
-
-
 
 
 class HasUUID(ABC):
@@ -1028,8 +1027,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             modifiers=self.modifiers,
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
-    
-    def get_select_grain_and_keys(self, grain: Grain, environment: Environment) -> Tuple[Grain, set[str]]:
+
+    def get_select_grain_and_keys(
+        self, grain: Grain, environment: Environment
+    ) -> Tuple[Grain, set[str]]:
         new_lineage = self.lineage.model_copy(deep=True) if self.lineage else None
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
@@ -1047,7 +1048,9 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
     def set_select_grain(self, grain: Grain, environment: Environment) -> Self:
         """Assign a mutable concept the appropriate grain/keys for a select"""
-        new_lineage, final_grain, keys = self.get_select_grain_and_keys(grain, environment)
+        new_lineage, final_grain, keys = self.get_select_grain_and_keys(
+            grain, environment
+        )
         return self.__class__(
             name=self.name,
             datatype=self.datatype,
@@ -1061,24 +1064,25 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             pseudonyms=self.pseudonyms,
         )
 
+
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Concept:
         """Propagate the select context to the lineage of the concept"""
         from trilogy.core.models.build import BuildConcept
-
-        new_lineage, final_grain, keys = self.get_select_grain_and_keys(grain, environment)
+        new_lineage, final_grain, keys = self.get_select_grain_and_keys(
+            grain, environment
+        )
         if isinstance(new_lineage, SelectContext):
             new_lineage = new_lineage.with_select_context(
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
-        base = self.__class__(
+        base = __class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
             metadata=self.metadata,
             lineage=new_lineage,
-
             grain=final_grain,
             namespace=self.namespace,
             keys=keys,
@@ -1086,13 +1090,8 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             # a select needs to always defer to the environment for pseudonyms
             # TODO: evaluate if this should be cached
             pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
-
-            ## instantiated values
-            # build_derivation=self.derivation,
-            # build_granularity=self.granularity,
-            # build_is_aggregate=self.is_aggregate, 
         )
-        return base
+        return BuildConcept.build(base)
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
         return self.__class__(
@@ -1324,7 +1323,7 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "OrderItem":
-        from trilogy.core.models.build import BuildOrderItem
+
         return OrderItem(
             expr=self.expr.with_select_context(
                 local_concepts, grain, environment=environment
@@ -1379,7 +1378,7 @@ class WindowItem(
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "WindowItem":
-        from trilogy.core.models.build import BuildWindowItem
+
         return WindowItem(
             type=self.type,
             content=self.content.with_select_context(
@@ -1994,6 +1993,8 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
     grain: Grain = Field(default_factory=Grain)
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
+
+    
 
     @property
     def output_components(self) -> List[Concept]:

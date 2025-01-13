@@ -49,7 +49,7 @@ def gen_filter_node(
         if conditions and conditions == where:
             optional_included.append(x)
     logger.info(
-        f"{padding(depth)}{LOGGER_PREFIX} filter {concept.address} derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
+        f"{padding(depth)}{LOGGER_PREFIX} filter `{concept}` condition `{concept.lineage.where}` derived from {immediate_parent.address} row parents {[x.address for x in parent_row_concepts]} and {[[y.address] for x  in parent_existence_concepts for y  in x]} existence parents"
     )
     # we'll populate this with the row parent
     # and the existence parent(s)

@@ -40,3 +40,5 @@ duckdb_temp_storage-*.tmp
 prof_stats.prof
 
 duckdb_temp_*
+
+.tmp/*

@@ -755,9 +755,17 @@ def _search_concepts(
                 for x in mandatory_list
             ]
         ):
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} derived condition row input present in mandatory list, forcing condition evaluation at this level. "
+            )
             mandatory_list = completion_mandatory
             must_evaluate_condition_on_this_level_not_push_down = True
+        else:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Do not need to evaluate conditions yet."
+            )
     else:
+
         completion_mandatory = mandatory_list
 
     attempted: set[str] = set()
@@ -812,7 +820,7 @@ def _search_concepts(
             local_conditions = conditions
 
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} with conditions {local_conditions}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granulairty {priority_concept.granularity} with conditions {local_conditions}"
         )
 
         candidates = [
