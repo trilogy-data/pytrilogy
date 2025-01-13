@@ -42,3 +42,5 @@ prof_stats.prof
 duckdb_temp_*
 
 .tmp/*
+
+debug*.log
