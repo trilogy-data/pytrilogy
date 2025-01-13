@@ -820,7 +820,7 @@ def _search_concepts(
             local_conditions = conditions
 
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granulairty {priority_concept.granularity} with conditions {local_conditions}"
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} priority concept is {str(priority_concept)} derivation {priority_concept.derivation} granularity {priority_concept.granularity} with conditions {local_conditions}"
         )
 
         candidates = [

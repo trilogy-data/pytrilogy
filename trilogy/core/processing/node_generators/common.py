@@ -165,7 +165,8 @@ def gen_enrichment_node(
     ]
 
     # property lookup optimization
-    # this helps when evaluating a normalized star schema as you only want to lookup the missing properties based on the relevant keys
+    # this helps create ergonomic merge nodes when evaluating a normalized star schema
+    # as we only want to lookup the missing properties based on the relevant keys
     if all([x.purpose == Purpose.PROPERTY for x in extra_required]):
         if all(
             x.keys and all([key in base_node.output_lcl for key in x.keys])

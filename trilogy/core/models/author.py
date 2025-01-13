@@ -874,11 +874,6 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         if self.lineage and isinstance(self.lineage, Function):
             if self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                 return True
-            # if len(self.lineage.concept_arguments) > 0 and all(
-            #     [c.is_aggregate for c in self.lineage.concept_arguments]
-            # ):
-            #     return True
-
         if (
             self.lineage
             and isinstance(self.lineage, AggregateWrapper)
@@ -1030,10 +1025,11 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
     def get_select_grain_and_keys(
         self, grain: Grain, environment: Environment
-    ) -> Tuple[Grain, set[str]]:
+    ) -> Tuple[Any, Grain, set[str]]:
         new_lineage = self.lineage.model_copy(deep=True) if self.lineage else None
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
+
         if self.is_aggregate and isinstance(new_lineage, Function) and grain.components:
             grain_components = [environment.concepts[c] for c in grain.components]
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
@@ -1044,6 +1040,16 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             new_lineage.by = grain_components
             final_grain = grain
             keys = set([x.address for x in new_lineage.by])
+        elif self.derivation == Derivation.BASIC:
+
+            pkeys = set()
+            for x in new_lineage.concept_arguments:
+                _, parent_grain, parent_keys = x.get_select_grain_and_keys(grain, environment)
+                pkeys.update(parent_keys)
+            raw_keys = pkeys
+            #deduplicate
+            final_grain = Grain.from_concepts(raw_keys, environment)
+            keys = final_grain.components
         return new_lineage, final_grain, keys
 
     def set_select_grain(self, grain: Grain, environment: Environment) -> Self:
@@ -2151,9 +2157,13 @@ class LooseConceptList(BaseModel):
     @classmethod
     def validate(cls, v):
         return cls(v)
-
+    
+    @cached_property
+    def sorted_addresses(self) -> List[str]:
+        return sorted(list(self.addresses))
+    
     def __str__(self) -> str:
-        return f"lcl{str(self.addresses)}"
+        return f"lcl{str(self.sorted_addresses)}"
 
     def __iter__(self):
         return iter(self.concepts)

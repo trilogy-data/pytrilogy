@@ -55,7 +55,6 @@ def gen_group_node(
 
             if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
                 continue
-            logger.info(possible_agg)
             if possible_agg.grain and possible_agg.grain != concept.grain:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} mismatched equivalent group by with grain {possible_agg.grain} for {concept.address}"
