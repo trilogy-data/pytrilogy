@@ -1178,12 +1178,12 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     
     @classmethod
     def calculate_derivation(self, lineage, purpose):
-        from trilogy.core.models.build import BuildWindowItem, BuildFilterItem
+        from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper
         if lineage and isinstance(lineage, (BuildWindowItem, WindowItem)):
             return Derivation.WINDOW
         elif lineage and isinstance(lineage, (BuildFilterItem,FilterItem)):
             return Derivation.FILTER
-        elif lineage and isinstance(lineage, AggregateWrapper):
+        elif lineage and isinstance(lineage, (BuildAggregateWrapper, AggregateWrapper)):
             return Derivation.AGGREGATE
         elif lineage and isinstance(lineage, RowsetItem):
             return Derivation.ROWSET
@@ -1813,6 +1813,7 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseMo
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "AggregateWrapper":
+        from trilogy.core.models.build import BuildAggregateWrapper
         if not self.by:
             by = [environment.concepts[c] for c in grain.components]
         else:
@@ -1821,7 +1822,7 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseMo
                 for x in self.by
             ]
         parent = self.function.with_select_context(local_concepts, grain, environment)
-        return AggregateWrapper(function=parent, by=by)
+        return BuildAggregateWrapper(function=parent, by=by)
 
 
 class FilterItem(Namespaced, ConceptArgs, SelectContext, BaseModel):

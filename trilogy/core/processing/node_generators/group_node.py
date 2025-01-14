@@ -9,6 +9,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
+from trilogy.core.models.build import BuildAggregateWrapper
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     gen_enrichment_node,
@@ -53,7 +54,7 @@ def gen_group_node(
         output_concepts += grain_components
         for possible_agg in local_optional:
 
-            if not isinstance(possible_agg.lineage, (AggregateWrapper, Function)):
+            if not isinstance(possible_agg.lineage, (AggregateWrapper, BuildAggregateWrapper, Function)):
                 continue
             if possible_agg.grain and possible_agg.grain != concept.grain:
                 logger.info(

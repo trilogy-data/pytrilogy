@@ -29,7 +29,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models.build import BuildWindowItem, BuildFilterItem
+from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -54,6 +54,7 @@ from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
 
 
+AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
 
 
 class NodeType(Enum):
@@ -435,6 +436,7 @@ def is_scalar_condition(
         | Parenthetical
         | Function
         | AggregateWrapper
+        | BuildAggregateWrapper
         | MagicConstants
         | DataType
         | CaseWhen
@@ -464,12 +466,12 @@ def is_scalar_condition(
     elif isinstance(element, Concept):
         if materialized and element.address in materialized:
             return True
-        if element.lineage and isinstance(element.lineage, AggregateWrapper):
+        if element.lineage and isinstance(element.lineage, AGGREGATE_TYPES):
             return is_scalar_condition(element.lineage, materialized)
         if element.lineage and isinstance(element.lineage, Function):
             return is_scalar_condition(element.lineage, materialized)
         return True
-    elif isinstance(element, AggregateWrapper):
+    elif isinstance(element, AGGREGATE_TYPES):
         return is_scalar_condition(element.function, materialized)
     elif isinstance(element, Conditional):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(

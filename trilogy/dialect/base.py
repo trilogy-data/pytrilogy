@@ -27,7 +27,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models.build import BuildWindowItem, BuildFilterItem
+from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -73,6 +73,7 @@ LOGGER_PREFIX = "[RENDERING]"
 
 WINDOW_ITEMS = (WindowItem, BuildWindowItem)
 FILTER_ITEMS = (FilterItem, BuildFilterItem)
+AGGREGATE_ITEMS = (AggregateWrapper, BuildAggregateWrapper)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -363,7 +364,7 @@ class BaseDialect:
                 rval = f"{self.render_concept_sql(c.lineage.content, cte=cte, alias=False, raise_invalid=raise_invalid)}"
             elif isinstance(c.lineage, MultiSelectLineage):
                 rval = f"{self.render_concept_sql(c.lineage.find_source(c, cte), cte=cte, alias=False, raise_invalid=raise_invalid)}"
-            elif isinstance(c.lineage, AggregateWrapper):
+            elif isinstance(c.lineage, AGGREGATE_ITEMS):
                 args = [
                     self.render_expr(v, cte)  # , alias=False)
                     for v in c.lineage.function.arguments
@@ -476,6 +477,7 @@ class BaseDialect:
             Function,
             Parenthetical,
             AggregateWrapper,
+            BuildAggregateWrapper,
             MagicConstants,
             MapWrapper[Any, Any],
             MapType,
@@ -596,7 +598,7 @@ class BaseDialect:
                 return self.FUNCTION_MAP[e.operator](arguments)
 
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments)
-        elif isinstance(e, AggregateWrapper):
+        elif isinstance(e, AGGREGATE_ITEMS):
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
             )

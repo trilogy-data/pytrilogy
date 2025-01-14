@@ -510,6 +510,7 @@ class BuildConcept(Concept, BaseModel):
             FilterItem,
             BuildFilterItem,
             AggregateWrapper,
+            BuildAggregateWrapper,
             RowsetItem,
             MultiSelectLineage,
         ]
@@ -894,7 +895,7 @@ class BuildFunction(DataTyped, ConceptArgs, BaseModel):
 
 
 class BuildAggregateWrapper(ConceptArgs, BaseModel):
-    function: BuildFunction
+    function: Function
     by: List[BuildConcept] = Field(default_factory=list)
 
     def __str__(self):
