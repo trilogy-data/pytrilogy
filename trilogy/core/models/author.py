@@ -869,20 +869,24 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     @property
     def output_datatype(self):
         return self.datatype
-
-    @property
-    def is_aggregate(self):
-        if self.lineage and isinstance(self.lineage, Function):
-            if self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+    
+    @classmethod
+    def calculate_is_aggregate(cls, lineage):
+        if lineage and isinstance(lineage, Function):
+            if lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
                 return True
         if (
-            self.lineage
-            and isinstance(self.lineage, AggregateWrapper)
-            and self.lineage.function.operator
+            lineage
+            and isinstance(lineage, AggregateWrapper)
+            and lineage.function.operator
             in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
         return False
+
+    @property
+    def is_aggregate(self):
+        return self.calculate_is_aggregate(self.lineage)
 
     def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
@@ -1082,29 +1086,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         from trilogy.core.models.build import BuildConcept
         if isinstance(self, BuildConcept):
             return self
-
-        new_lineage, final_grain, keys = self.get_select_grain_and_keys(
-            grain, environment
-        )
-        if isinstance(new_lineage, SelectContext):
-            new_lineage = new_lineage.with_select_context(
-                local_concepts=local_concepts, grain=grain, environment=environment
-            )
-        base = self.__class__(
-            name=self.name,
-            datatype=self.datatype,
-            purpose=self.purpose,
-            metadata=self.metadata,
-            lineage=new_lineage,
-            grain=final_grain,
-            namespace=self.namespace,
-            keys=keys,
-            modifiers=self.modifiers,
-            # a select needs to always defer to the environment for pseudonyms
-            # TODO: evaluate if this should be cached
-            pseudonyms=(environment.concepts.get(self.address) or self).pseudonyms,
-        )
-        return BuildConcept.build(base)
+        return BuildConcept.build(self, grain, environment, local_concepts)
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
         return self.__class__(
@@ -1193,86 +1175,87 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.lineage.concept_arguments if self.lineage else []
-
-    @property
-    def derivation(self) -> Derivation:
-        if self.lineage and isinstance(self.lineage, WindowItem):
+    
+    @classmethod
+    def calculate_derivation(self, lineage, purpose):
+        if lineage and isinstance(lineage, WindowItem):
             return Derivation.WINDOW
-        elif self.lineage and isinstance(self.lineage, FilterItem):
+        elif lineage and isinstance(lineage, FilterItem):
             return Derivation.FILTER
-        elif self.lineage and isinstance(self.lineage, AggregateWrapper):
+        elif lineage and isinstance(lineage, AggregateWrapper):
             return Derivation.AGGREGATE
-        elif self.lineage and isinstance(self.lineage, RowsetItem):
+        elif lineage and isinstance(lineage, RowsetItem):
             return Derivation.ROWSET
-        elif self.lineage and isinstance(self.lineage, MultiSelectLineage):
+        elif lineage and isinstance(lineage, MultiSelectLineage):
             return Derivation.MULTISELECT
         elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+            lineage
+            and isinstance(lineage, Function)
+            and lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return Derivation.AGGREGATE
         elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNNEST
+            lineage
+            and isinstance(lineage, Function)
+            and lineage.operator == FunctionType.UNNEST
         ):
             return Derivation.UNNEST
         elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator == FunctionType.UNION
+            lineage
+            and isinstance(lineage, Function)
+            and lineage.operator == FunctionType.UNION
         ):
             return Derivation.UNION
         elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in FunctionClass.SINGLE_ROW.value
+            lineage
+            and isinstance(lineage, Function)
+            and lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
             return Derivation.CONSTANT
 
-        elif self.lineage and isinstance(self.lineage, Function):
-            if not self.lineage.concept_arguments:
+        elif lineage and isinstance(lineage, Function):
+            if not lineage.concept_arguments:
                 return Derivation.CONSTANT
             elif all(
                 [
                     x.derivation == Derivation.CONSTANT
-                    for x in self.lineage.concept_arguments
+                    for x in lineage.concept_arguments
                 ]
             ):
                 return Derivation.CONSTANT
             return Derivation.BASIC
-        elif self.purpose == Purpose.CONSTANT:
+        elif purpose == Purpose.CONSTANT:
             return Derivation.CONSTANT
         return Derivation.ROOT
 
+
     @property
-    def granularity(self) -> Granularity:
-        """ "used to determine if concepts need to be included in grain
-        calculations"""
-        if self.derivation == Derivation.CONSTANT:
-            # constants are a single row
+    def derivation(self) -> Derivation:
+        return self.calculate_derivation(self.lineage, self.purpose)
+
+
+    @classmethod
+    def calculate_granularity(cls, derivation:Derivation, grain:Grain, lineage):
+        if derivation == Derivation.CONSTANT:
             return Granularity.SINGLE_ROW
-        elif self.derivation == Derivation.AGGREGATE:
-            # if it's an aggregate grouped over all rows
-            # there is only one row left and it's fine to cross_join
-            if all([x.endswith(ALL_ROWS_CONCEPT) for x in self.grain.components]):
+        elif derivation == Derivation.AGGREGATE:
+            if all([x.endswith(ALL_ROWS_CONCEPT) for x in grain.components]):
                 return Granularity.SINGLE_ROW
         elif (
-            self.lineage
-            and isinstance(self.lineage, Function)
-            and self.lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
+            lineage
+            and isinstance(lineage, Function)
+            and lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
         ):
             return Granularity.MULTI_ROW
-        elif self.lineage and all(
-            [
-                x.granularity == Granularity.SINGLE_ROW
-                for x in self.lineage.concept_arguments
-            ]
+        elif lineage and all(
+            [x.granularity == Granularity.SINGLE_ROW for x in lineage.concept_arguments]
         ):
-
             return Granularity.SINGLE_ROW
         return Granularity.MULTI_ROW
+
+    @property
+    def granularity(self) -> Granularity:
+        return self.calculate_granularity(self.derivation, self.grain, self.lineage)
 
     def with_filter(
         self,

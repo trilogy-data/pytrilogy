@@ -39,6 +39,7 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.models.author import (
+    SelectContext,
     AggregateWrapper,
     Concept,
     ConceptArgs,
@@ -59,6 +60,7 @@ from trilogy.core.models.author import (
     get_concept_arguments,
     get_concept_row_arguments,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.models.core import (
     DataType,
     DataTyped,
@@ -513,22 +515,34 @@ class BuildConcept(Concept, BaseModel):
     ] = None
 
     @classmethod
-    def build(cls, base: Concept) -> BuildConcept:
+    def build(cls, base: Concept, grain:Grain, environment:Environment, local_concepts) -> BuildConcept:
+
+        new_lineage, final_grain, keys = base.get_select_grain_and_keys(
+            grain, environment
+        )
+        if isinstance(new_lineage, SelectContext):
+            new_lineage = new_lineage.with_select_context(
+                local_concepts=local_concepts, grain=grain, environment=environment
+            )
+        
+        derivation = Concept.calculate_derivation(new_lineage, base.purpose)
+        granularity = Concept.calculate_granularity(derivation, final_grain, new_lineage)
+        is_aggregate = Concept.calculate_is_aggregate(new_lineage)
         return BuildConcept(
             name=base.name,
             datatype=base.datatype,
             purpose=base.purpose,
             metadata=base.metadata,
-            lineage=base.lineage,
-            grain=base.grain,
+            lineage=new_lineage,
+            grain=final_grain,
             namespace=base.namespace,
             keys=base.keys,
             modifiers=base.modifiers,
-            pseudonyms=base.pseudonyms,
+            pseudonyms=(environment.concepts.get(base.address) or base).pseudonyms,
             ## instantiated values
-            build_derivation=base.derivation,
-            build_granularity=base.granularity,
-            build_is_aggregate=base.is_aggregate,
+            build_derivation=derivation,
+            build_granularity=granularity,
+            build_is_aggregate=is_aggregate,
         )
 
     @property
