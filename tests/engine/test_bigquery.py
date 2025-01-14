@@ -5,10 +5,11 @@ import pytest
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 
+UNSUPPORTED_TUPLE = (3,10)
 
 # bigquery is not supported on 13 yet
 @pytest.mark.skipif(
-    sys.version_info >= (3, 13), reason="BigQuery not supported on 3.13"
+    sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"
 )
 def test_date_diff_rendering():
     environment = Environment()
@@ -29,7 +30,7 @@ def test_date_diff_rendering():
 
 
 @pytest.mark.skipif(
-    sys.version_info >= (3, 13), reason="BigQuery not supported on 3.13"
+    sys.version_info >= UNSUPPORTED_TUPLE, reason="BigQuery not supported on 3.13"
 )
 def test_readme():
     environment = Environment()

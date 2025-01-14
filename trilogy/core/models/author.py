@@ -173,7 +173,8 @@ class Parenthetical(
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
-        return Parenthetical(
+        from trilogy.core.models.build import BuildParenthetical
+        return BuildParenthetical(
             content=(
                 self.content.with_select_context(local_concepts, grain, environment)
                 if isinstance(self.content, SelectContext)

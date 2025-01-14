@@ -28,7 +28,7 @@ from trilogy.core.models.author import (
     WindowItem,
 
 )
-from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildFunction
+from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildFunction, BuildParenthetical
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -76,6 +76,7 @@ WINDOW_ITEMS = (WindowItem, BuildWindowItem)
 FILTER_ITEMS = (FilterItem, BuildFilterItem)
 AGGREGATE_ITEMS = (AggregateWrapper, BuildAggregateWrapper)
 FUNCTION_ITEMS = (BuildFunction, Function)
+PARENTHETICAL_ITEMS = (BuildParenthetical, Parenthetical)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -528,7 +529,7 @@ class BaseDialect:
                         f"Missing source CTE for {e.right.address}"
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-            elif isinstance(e.right, (ListWrapper, TupleWrapper, Parenthetical, list)):
+            elif isinstance(e.right, (ListWrapper, TupleWrapper, BuildParenthetical, Parenthetical, list)):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
             elif isinstance(
@@ -558,7 +559,7 @@ class BaseDialect:
                 for x in e.over
             ]
             return f"{self.WINDOW_FUNCTION_MAP[e.type](concept = self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid), window=','.join(rendered_over_components), sort=','.join(rendered_order_components))}"  # noqa: E501
-        elif isinstance(e, Parenthetical):
+        elif isinstance(e, PARENTHETICAL_ITEMS):
             # conditions need to be nested in parentheses
             if isinstance(e.content, list):
                 return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e.content])} )"

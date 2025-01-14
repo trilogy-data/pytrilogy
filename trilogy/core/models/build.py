@@ -49,6 +49,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     Metadata,
     MultiSelectLineage,
+    Conditional,
     SelectLineage,
     OrderItem,
     OrderBy,
@@ -95,11 +96,15 @@ def address_with_namespace(address: str, namespace: str) -> str:
     return f"{namespace}.{address}"
 
 
+# class BuildParenthetical(
+#     DataTyped,
+#     ConceptArgs,
+#     ConstantInlineable,
+#     BaseModel,
+# ):
+    
 class BuildParenthetical(
-    DataTyped,
-    ConceptArgs,
-    ConstantInlineable,
-    BaseModel,
+    Parenthetical
 ):
     content: "BuildExpr"
 
@@ -1176,6 +1181,14 @@ BuildExpr = (
     | str
     | float
     | list
+    | WindowItem 
+    | FilterItem
+    | Concept
+    | ComparisonOperator
+    | Conditional
+    | Parenthetical
+    | Function
+    | AggregateWrapper
     | BuildWindowItem
     | BuildFilterItem
     | BuildConcept
