@@ -55,6 +55,9 @@ from trilogy.core.models.author import (
     WhereClause,
     HavingClause,
     RowsetItem,
+    CaseElse,
+    CaseWhen, 
+    Parenthetical,
     AlignClause,
     WindowItem,
     get_concept_arguments,
@@ -504,6 +507,7 @@ class BuildConcept(Concept, BaseModel):
     build_is_aggregate: bool
     lineage: Optional[
         Union[ 
+            BuildFunction,
             Function,
             BuildWindowItem,
             WindowItem,
@@ -829,7 +833,8 @@ class BuildCaseElse(ConceptArgs, BaseModel):
         return get_concept_arguments(self.expr)
 
 
-class BuildFunction(DataTyped, ConceptArgs, BaseModel):
+# class BuildFunction(DataTyped, ConceptArgs, BaseModel):
+class BuildFunction(Function):
     operator: FunctionType
     arg_count: int = Field(default=1)
     output_datatype: DataType | ListType | StructType | MapType | NumericType
@@ -856,6 +861,9 @@ class BuildFunction(DataTyped, ConceptArgs, BaseModel):
             MapType,
             NumericType,
             DatePart,
+            Parenthetical, 
+            CaseWhen, 
+            CaseElse,
             "BuildParenthetical",
             BuildCaseWhen,
             "BuildCaseElse",
@@ -895,7 +903,7 @@ class BuildFunction(DataTyped, ConceptArgs, BaseModel):
 
 
 class BuildAggregateWrapper(ConceptArgs, BaseModel):
-    function: Function
+    function: BuildFunction
     by: List[BuildConcept] = Field(default_factory=list)
 
     def __str__(self):

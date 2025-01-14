@@ -1178,7 +1178,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     
     @classmethod
     def calculate_derivation(self, lineage, purpose):
-        from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper
+        from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildFunction
         if lineage and isinstance(lineage, (BuildWindowItem, WindowItem)):
             return Derivation.WINDOW
         elif lineage and isinstance(lineage, (BuildFilterItem,FilterItem)):
@@ -1191,30 +1191,30 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             return Derivation.MULTISELECT
         elif (
             lineage
-            and isinstance(lineage, Function)
+            and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return Derivation.AGGREGATE
         elif (
             lineage
-            and isinstance(lineage, Function)
+            and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator == FunctionType.UNNEST
         ):
             return Derivation.UNNEST
         elif (
             lineage
-            and isinstance(lineage, Function)
+            and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator == FunctionType.UNION
         ):
             return Derivation.UNION
         elif (
             lineage
-            and isinstance(lineage, Function)
+            and isinstance(lineage, (BuildFunction, Function))
             and lineage.operator in FunctionClass.SINGLE_ROW.value
         ):
             return Derivation.CONSTANT
 
-        elif lineage and isinstance(lineage, Function):
+        elif lineage and isinstance(lineage, (BuildFunction, Function)):
             if not lineage.concept_arguments:
                 return Derivation.CONSTANT
             elif all(
@@ -1619,7 +1619,8 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Bas
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "Function":
-        base = Function(
+        from trilogy.core.models.build import BuildFunction
+        base = BuildFunction(
             operator=self.operator,
             arguments=[
                 (

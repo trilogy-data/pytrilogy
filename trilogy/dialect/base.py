@@ -26,8 +26,9 @@ from trilogy.core.models.author import (
     RowsetItem,
     SubselectComparison,
     WindowItem,
+
 )
-from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper
+from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildFunction
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -74,6 +75,7 @@ LOGGER_PREFIX = "[RENDERING]"
 WINDOW_ITEMS = (WindowItem, BuildWindowItem)
 FILTER_ITEMS = (FilterItem, BuildFilterItem)
 AGGREGATE_ITEMS = (AggregateWrapper, BuildAggregateWrapper)
+FUNCTION_ITEMS = (BuildFunction, Function)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -378,7 +380,7 @@ class BaseDialect:
                     )
                     rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args)}"
             elif (
-                isinstance(c.lineage, Function)
+                isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.UNION
             ):
                 local_matched = [
@@ -392,7 +394,7 @@ class BaseDialect:
                     )
                 rval = self.render_expr(local_matched[0], cte)
             elif (
-                isinstance(c.lineage, Function)
+                isinstance(c.lineage, FUNCTION_ITEMS)
                 and c.lineage.operator == FunctionType.CONSTANT
                 and CONFIG.rendering.parameters is True
                 and c.datatype.data_type != DataType.MAP
@@ -404,7 +406,7 @@ class BaseDialect:
                     if (
                         isinstance(arg, Concept)
                         and arg.lineage
-                        and isinstance(arg.lineage, Function)
+                        and isinstance(arg.lineage, FUNCTION_ITEMS)
                         and arg.lineage.operator
                         in (
                             FunctionType.ADD,
@@ -437,7 +439,7 @@ class BaseDialect:
             raw_content = cte.get_alias(c)
             if isinstance(raw_content, RawColumnExpr):
                 rval = raw_content.text
-            elif isinstance(raw_content, Function):
+            elif isinstance(raw_content, FUNCTION_ITEMS):
                 rval = self.render_expr(
                     raw_content, cte=cte, raise_invalid=raise_invalid
                 )
@@ -462,6 +464,7 @@ class BaseDialect:
         self,
         e: Union[
             Function,
+            BuildFunction,
             Conditional,
             Comparison,
             SubselectComparison,
@@ -564,13 +567,13 @@ class BaseDialect:
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
         elif isinstance(e, CaseElse):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
-        elif isinstance(e, Function):
+        elif isinstance(e, FUNCTION_ITEMS):
             arguments = []
             for arg in e.arguments:
                 if (
                     isinstance(arg, Concept)
                     and arg.lineage
-                    and isinstance(arg.lineage, Function)
+                    and isinstance(arg.lineage, FUNCTION_ITEMS)
                     and arg.lineage.operator
                     in (
                         FunctionType.ADD,
@@ -606,7 +609,7 @@ class BaseDialect:
             return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid)} ELSE NULL END"
         elif isinstance(e, Concept):
             if (
-                isinstance(e.lineage, Function)
+                isinstance(e.lineage, FUNCTION_ITEMS)
                 and e.lineage.operator == FunctionType.CONSTANT
                 and CONFIG.rendering.parameters is True
                 and e.datatype.data_type != DataType.MAP
