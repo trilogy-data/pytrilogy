@@ -1034,7 +1034,7 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
     # these are needed to help disambiguate between parents
     def get_merge_concept(self, check: BuildConcept) -> str | None:
         for item in self.align.items:
-            if check in item.concept_lcl:
+            if check in item.concepts_lcl:
                 return f"{item.namespace}.{item.alias}"
         return None
 
@@ -1043,7 +1043,7 @@ class BuildMultiSelectLineage(ConceptArgs, BaseModel):
     ) -> BuildConcept:
         for x in self.align.items:
             if BuildConcept.name == x.alias:
-                for c in x.BuildConcepts:
+                for c in x.concepts:
                     if c.address in cte.output_lcl:
                         return c
         raise SyntaxError(
