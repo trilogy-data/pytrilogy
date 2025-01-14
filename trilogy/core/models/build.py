@@ -48,8 +48,13 @@ from trilogy.core.models.author import (
     LooseConceptList,
     Metadata,
     MultiSelectLineage,
+    SelectLineage,
     OrderItem,
+    OrderBy,
+    WhereClause,
+    HavingClause,
     RowsetItem,
+    AlignClause,
     WindowItem,
     get_concept_arguments,
     get_concept_row_arguments,
@@ -979,13 +984,13 @@ class BuildAlignClause(BaseModel):
 class BuildSelectLineage(BaseModel):
     selection: List[BuildConcept]
     hidden_components: set[str]
-    local_BuildConcepts: dict[str, BuildConcept]
-    order_by: Optional[BuildOrderBy] = None
+    local_concepts: dict[str, BuildConcept]
+    order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
     meta: Metadata = Field(default_factory=lambda: Metadata())
     grain: Grain = Field(default_factory=Grain)
-    where_clause: Union["BuildWhereClause", None] = Field(default=None)
-    having_clause: Union["BuildHavingClause", None] = Field(default=None)
+    where_clause: Union["WhereClause", None] = Field(default=None)
+    having_clause: Union["HavingClause", None] = Field(default=None)
 
     @property
     def output_components(self) -> List[BuildConcept]:
@@ -993,13 +998,13 @@ class BuildSelectLineage(BaseModel):
 
 
 class BuildMultiSelectLineage(ConceptArgs, BaseModel):
-    selects: List[BuildSelectLineage]
-    align: BuildAlignClause
+    selects: List[SelectLineage]
+    align: AlignClause
     namespace: str
-    order_by: Optional[BuildOrderBy] = None
+    order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
-    where_clause: Union["BuildWhereClause", None] = Field(default=None)
-    having_clause: Union["BuildHavingClause", None] = Field(default=None)
+    where_clause: Union["WhereClause", None] = Field(default=None)
+    having_clause: Union["HavingClause", None] = Field(default=None)
     local_concepts: dict[str, BuildConcept]
     hidden_components: set[str]
 

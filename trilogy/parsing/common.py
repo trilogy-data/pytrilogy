@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import List, Sequence, Tuple
+from typing import List, Sequence, Tuple, Iterable
 
 from lark.tree import Meta
 
@@ -175,7 +175,7 @@ def concept_is_relevant(concept: Concept, others: list[Concept]) -> bool:
 
 
 def concepts_to_grain_concepts(
-    concepts: Sequence[Concept | str], environment: Environment | None
+    concepts: Iterable[Concept | str], environment: Environment | None
 ) -> list[Concept]:
     environment = Environment() if environment is None else environment
     pconcepts: list[Concept] = [

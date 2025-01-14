@@ -363,6 +363,7 @@ def get_query_node(
     history: History | None = None,
 ) -> StrategyNode:
     environment = environment.duplicate()
+    statement = statement.build_for_select(environment=environment)
     for k, v in statement.local_concepts.items():
         environment.concepts[k] = v
     graph = generate_graph(environment)

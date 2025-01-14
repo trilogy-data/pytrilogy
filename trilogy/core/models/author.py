@@ -15,6 +15,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    Iterable,
 )
 
 from pydantic import (
@@ -95,15 +96,15 @@ class SelectContext(ABC):
 
 class ConceptArgs(ABC):
     @property
-    def concept_arguments(self) -> List["Concept"]:
+    def concept_arguments(self) -> Sequence["Concept"]:
         raise NotImplementedError
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["Concept", ...]]:
         return []
 
     @property
-    def row_arguments(self) -> List["Concept"]:
+    def row_arguments(self) -> Sequence["Concept"]:
         return self.concept_arguments
 
 
@@ -190,7 +191,7 @@ class Parenthetical(
         )
 
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> Sequence[Concept]:
         base: List[Concept] = []
         x = self.content
         if isinstance(x, Concept):
@@ -200,13 +201,13 @@ class Parenthetical(
         return base
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> Sequence[Concept]:
         if isinstance(self.content, ConceptArgs):
             return self.content.row_arguments
         return self.concept_arguments
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
+    def existence_arguments(self) -> Sequence[tuple["Concept", ...]]:
         if isinstance(self.content, ConceptArgs):
             return self.content.existence_arguments
         return []
@@ -349,7 +350,7 @@ class Conditional(
         )
 
     @property
-    def concept_arguments(self) -> List[Concept]:
+    def concept_arguments(self) -> Sequence[Concept]:
         """Return concepts directly referenced in where clause"""
         output = []
         output += get_concept_arguments(self.left)
@@ -357,15 +358,15 @@ class Conditional(
         return output
 
     @property
-    def row_arguments(self) -> List[Concept]:
+    def row_arguments(self) -> Sequence[Concept]:
         output = []
         output += get_concept_row_arguments(self.left)
         output += get_concept_row_arguments(self.right)
         return output
 
     @property
-    def existence_arguments(self) -> list[tuple["Concept", ...]]:
-        output = []
+    def existence_arguments(self) -> Sequence[tuple["Concept", ...]]:
+        output:list[Concept] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, ConceptArgs):
@@ -452,7 +453,7 @@ class Grain(Namespaced, BaseModel):
     @classmethod
     def from_concepts(
         cls,
-        concepts: List[Concept],
+        concepts: Iterable[Concept|str],
         environment: Environment | None = None,
         where_clause: WhereClause | None = None,
     ) -> "Grain":
@@ -1025,7 +1026,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
     def get_select_grain_and_keys(
         self, grain: Grain, environment: Environment
-    ) -> Tuple[Any, Grain, set[str]]:
+    ) -> Tuple[Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | MultiSelectLineage | None, Grain, set[str] | None]:
         new_lineage = self.lineage.model_copy(deep=True) if self.lineage else None
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
@@ -1079,6 +1080,8 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     ) -> Concept:
         """Propagate the select context to the lineage of the concept"""
         from trilogy.core.models.build import BuildConcept
+        if isinstance(self, BuildConcept):
+            return self
 
         new_lineage, final_grain, keys = self.get_select_grain_and_keys(
             grain, environment
@@ -1087,7 +1090,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             new_lineage = new_lineage.with_select_context(
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
-        base = __class__(
+        base = self.__class__(
             name=self.name,
             datatype=self.datatype,
             purpose=self.purpose,
@@ -1993,7 +1996,7 @@ class AlignClause(Namespaced, BaseModel):
         return AlignClause(items=[x.with_namespace(namespace) for x in self.items])
 
 
-class SelectLineage(Mergeable, Namespaced, BaseModel):
+class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
     selection: List[Concept]
     hidden_components: set[str]
     local_concepts: dict[str, Concept]
@@ -2003,6 +2006,66 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
     grain: Grain = Field(default_factory=Grain)
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
+
+    def build_for_select(self, environment: Environment):
+        from trilogy.core.models.build import BuildSelectLineage
+        local_concepts = {
+            k: v.with_select_context({}, self.grain, environment) for k, v in self.local_concepts.items()
+        }
+        final: List[Concept] = []
+        for original in self.selection:
+            new = original.model_copy(deep=True)
+            # we don't know the grain of an aggregate at assignment time
+            # so rebuild at this point in the tree
+            # TODO: simplify
+            if new.address in local_concepts:
+                new = new.with_select_context(
+                    local_concepts,
+                    # the first pass grain will be incorrect
+                    self.grain,
+                    environment=environment,
+                )
+                local_concepts[new.address] = new
+            else:
+                # Sometimes cached values here don't have the latest info
+                # but we can't just use environment, as it might not have the right grain.
+                new= new.with_select_context(
+                    new,
+                    self.grain,
+                    environment=environment,
+                )
+                local_concepts[new.address] = new
+            final.append(new)
+
+        return BuildSelectLineage(
+            selection=final,
+            hidden_components=self.hidden_components,
+            order_by=(
+                self.order_by.with_select_context(
+                    local_concepts=local_concepts,
+                    grain=self.grain,
+                    environment=environment,
+                )
+                if self.order_by
+                else None
+            ),
+            limit=self.limit,
+            meta=self.meta,
+            local_concepts=local_concepts,
+            grain=self.grain,
+            having_clause=(
+                self.having_clause.with_select_context(
+                    local_concepts=local_concepts,
+                    grain=self.grain,
+                    environment=environment,
+                )
+                if self.having_clause
+                else None
+            ),
+            where_clause=self.where_clause,
+        )
+
+
 
     @property
     def output_components(self) -> List[Concept]:
@@ -2048,6 +2111,30 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     having_clause: Union["HavingClause", None] = Field(default=None)
     local_concepts: dict[str, Concept]
     hidden_components: set[str]
+
+    def build_for_select(self, environment:Environment):
+        from trilogy.core.models.build import BuildMultiSelectLineage
+
+        return BuildMultiSelectLineage(
+            # we don't build selects here; they'll be built automatically in query discovery
+            selects=[x for x in self.selects],
+            align=self.align,
+            namespace=self.namespace,
+            hidden_components=self.hidden_components,
+            order_by=(
+                self.order_by
+                if self.order_by
+                else None
+            ),
+            limit=self.limit,
+            where_clause=(self.where_clause if self.where_clause else None),
+            having_clause=(self.having_clause if self.having_clause else None),
+            local_concepts={
+                x: y.with_select_context({}, self.grain, environment)
+                for x, y in self.local_concepts.items()
+            },
+
+        )
 
     @property
     def grain(self):
