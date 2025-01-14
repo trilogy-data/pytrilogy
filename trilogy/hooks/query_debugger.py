@@ -1,6 +1,7 @@
 from enum import Enum
 from logging import DEBUG, StreamHandler
 from typing import Union
+from uuid import uuid4
 
 from trilogy.constants import logger
 from trilogy.core.models.datasource import Datasource
@@ -13,7 +14,6 @@ from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.statements.author import SelectStatement
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.hooks.base_hook import BaseHook
-from uuid import uuid4
 
 
 class PrintMode(Enum):
@@ -44,11 +44,11 @@ class DebuggingHook(BaseHook):
         self.process_nodes = PrintMode(process_nodes)
         self.process_datasources = PrintMode(process_datasources)
         self.process_other = PrintMode(process_other)
-        self.messages = []
+        self.messages:list[str] = []
         self.uuid = uuid4()
 
     def print(self, *args):
-        merged = ' '.join([str(x) for x in args])
+        merged = " ".join([str(x) for x in args])
         self.messages.append(merged)
         print(args)
 
@@ -62,7 +62,9 @@ class DebuggingHook(BaseHook):
 
     def process_root_datasource(self, datasource: QueryDatasource):
         if self.process_datasources != PrintMode.OFF:
-            printed = self.print_recursive_resolved(datasource, self.process_datasources)
+            printed = self.print_recursive_resolved(
+                datasource, self.process_datasources
+            )
             for row in printed:
                 self.print("".join([str(v) for v in row]))
 
@@ -105,10 +107,10 @@ class DebuggingHook(BaseHook):
         ]
         if isinstance(input, QueryDatasource):
             for child in input.datasources:
-                display += self.print_recursive_resolved(child, mode=mode, depth=depth + 1)
+                display += self.print_recursive_resolved(
+                    child, mode=mode, depth=depth + 1
+                )
         return display
-    
-
 
     def print_recursive_ctes(
         self, input: CTE | UnionCTE, depth: int = 0, max_depth: int | None = None
@@ -116,7 +118,9 @@ class DebuggingHook(BaseHook):
         if max_depth and depth > max_depth:
             return
         select_statement = [c.address for c in input.output_columns]
-        self.print("  " * depth, input.name, "->", input.group_to_grain, "->", select_statement)
+        self.print(
+            "  " * depth, input.name, "->", input.group_to_grain, "->", select_statement
+        )
         sql = renderer.render_cte(input).statement
         for line in sql.split("\n"):
             logger.debug("  " * (depth) + line)
@@ -127,8 +131,6 @@ class DebuggingHook(BaseHook):
             for child in input.parent_ctes:
                 for parent in child.parent_ctes:
                     self.print_recursive_ctes(parent, depth + 1)
-
-
 
     def print_recursive_nodes(
         self, input: StrategyNode, mode: PrintMode = PrintMode.BASIC, depth: int = 0

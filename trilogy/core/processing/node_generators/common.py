@@ -75,7 +75,7 @@ def resolve_filter_parent_concepts(
     )
     base_rows += condition_rows
     base_existence += condition_existence
-    # this is required so that 
+    # this is required so that
     if (
         isinstance(direct_parent, Concept)
         and direct_parent.purpose in (Purpose.PROPERTY, Purpose.METRIC)

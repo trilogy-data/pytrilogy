@@ -1,11 +1,18 @@
 import subprocess
 import sys
 
+
 def run_command(command, capture_output=False):
     """Runs a shell command and handles errors."""
     try:
         if capture_output:
-            result = subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = subprocess.run(
+                command,
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
             return result.stdout.strip()
         else:
             subprocess.run(command, check=True, text=True)
@@ -14,12 +21,14 @@ def run_command(command, capture_output=False):
         print(e.stderr if e.stderr else str(e))
         sys.exit(1)
 
+
 def revert_changes():
     """Revert any uncommitted changes in the working directory."""
     print("Reverting any uncommitted changes...")
     run_command(["git", "restore", "--staged", "."])  # Unstage any staged changes
     run_command(["git", "restore", "."])  # Restore modified files
     run_command(["git", "clean", "-fd"])  # Remove untracked files and directories
+
 
 def main():
     if len(sys.argv) != 2:
@@ -29,7 +38,9 @@ def main():
     test_name = sys.argv[1]
 
     # Get the current branch name
-    current_branch = run_command(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True)
+    current_branch = run_command(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True
+    )
     print(f"Current branch: {current_branch}")
 
     try:
@@ -58,6 +69,7 @@ def main():
         revert_changes()  # Ensure the original branch is clean too
 
     print("Done!")
+
 
 if __name__ == "__main__":
     main()

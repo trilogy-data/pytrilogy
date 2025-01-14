@@ -592,6 +592,7 @@ class Environment(BaseModel):
         force: bool = False,
     ) -> bool:
         from trilogy.core.models.build import BuildConcept
+
         if isinstance(source, BuildConcept):
             raise SyntaxError(source)
         elif isinstance(target, BuildConcept):

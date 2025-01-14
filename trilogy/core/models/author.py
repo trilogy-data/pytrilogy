@@ -1042,13 +1042,16 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             keys = set([x.address for x in new_lineage.by])
         elif self.derivation == Derivation.BASIC:
 
-            pkeys = set()
+            pkeys:set[str] = set()
+            assert new_lineage
             for x in new_lineage.concept_arguments:
-                _, parent_grain, parent_keys = x.get_select_grain_and_keys(grain, environment)
+                _, _, parent_keys = x.get_select_grain_and_keys(
+                    grain, environment
+                )
                 if parent_keys:
                     pkeys.update(parent_keys)
             raw_keys = pkeys
-            #deduplicate
+            # deduplicate
             final_grain = Grain.from_concepts(raw_keys, environment)
             keys = final_grain.components
         return new_lineage, final_grain, keys
@@ -1071,12 +1074,12 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             pseudonyms=self.pseudonyms,
         )
 
-
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Concept:
         """Propagate the select context to the lineage of the concept"""
         from trilogy.core.models.build import BuildConcept
+
         new_lineage, final_grain, keys = self.get_select_grain_and_keys(
             grain, environment
         )
@@ -2001,8 +2004,6 @@ class SelectLineage(Mergeable, Namespaced, BaseModel):
     where_clause: Union["WhereClause", None] = Field(default=None)
     having_clause: Union["HavingClause", None] = Field(default=None)
 
-    
-
     @property
     def output_components(self) -> List[Concept]:
         return self.selection
@@ -2149,7 +2150,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
 
 
 class LooseConceptList(BaseModel):
-    concepts: List[Concept]
+    concepts: Sequence[Concept]
 
     @cached_property
     def addresses(self) -> set[str]:
@@ -2158,11 +2159,11 @@ class LooseConceptList(BaseModel):
     @classmethod
     def validate(cls, v):
         return cls(v)
-    
+
     @cached_property
     def sorted_addresses(self) -> List[str]:
         return sorted(list(self.addresses))
-    
+
     def __str__(self) -> str:
         return f"lcl{str(self.sorted_addresses)}"
 

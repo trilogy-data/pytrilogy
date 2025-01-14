@@ -32,11 +32,11 @@ from trilogy.core.enums import (
     FunctionClass,
     FunctionType,
     Granularity,
+    Modifier,
     Ordering,
     Purpose,
     WindowOrder,
     WindowType,
-    Modifier
 )
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -51,7 +51,6 @@ from trilogy.core.models.author import (
     OrderItem,
     RowsetItem,
     WindowItem,
-    WindowOrder,
     get_concept_arguments,
     get_concept_row_arguments,
 )
@@ -509,7 +508,7 @@ class BuildConcept(Concept, BaseModel):
     ] = None
 
     @classmethod
-    def build(cls, base:Concept)->BuildConcept:
+    def build(cls, base: Concept) -> BuildConcept:
         return BuildConcept(
             name=base.name,
             datatype=base.datatype,
@@ -564,7 +563,7 @@ class BuildConcept(Concept, BaseModel):
             build_granularity=self.build_granularity,
             build_is_aggregate=self.build_is_aggregate,
         )
-    
+
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate

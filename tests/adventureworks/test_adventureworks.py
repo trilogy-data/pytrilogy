@@ -69,7 +69,7 @@ def test_query_datasources(environment: Environment):
     }
 
     environment_graph = generate_graph(environment)
-    from trilogy.hooks.query_debugger import print_recursive_nodes
+    from trilogy.hooks.query_debugger import DebuggingHook
 
     # assert a group up to the first name works
 
@@ -84,7 +84,7 @@ def test_query_datasources(environment: Environment):
         g=environment_graph,
         depth=0,
     )
-    print_recursive_nodes(customer_node)
+    DebuggingHook().print_recursive_nodes(customer_node)
     customer_datasource = customer_node.resolve()
 
     assert (
