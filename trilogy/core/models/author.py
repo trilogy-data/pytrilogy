@@ -1178,9 +1178,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     
     @classmethod
     def calculate_derivation(self, lineage, purpose):
-        if lineage and isinstance(lineage, WindowItem):
+        from trilogy.core.models.build import BuildWindowItem, BuildFilterItem
+        if lineage and isinstance(lineage, (BuildWindowItem, WindowItem)):
             return Derivation.WINDOW
-        elif lineage and isinstance(lineage, FilterItem):
+        elif lineage and isinstance(lineage, (BuildFilterItem,FilterItem)):
             return Derivation.FILTER
         elif lineage and isinstance(lineage, AggregateWrapper):
             return Derivation.AGGREGATE
@@ -1847,7 +1848,8 @@ class FilterItem(Namespaced, ConceptArgs, SelectContext, BaseModel):
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "FilterItem":
-        return FilterItem(
+        from trilogy.core.models.build import BuildFilterItem
+        return BuildFilterItem(
             content=self.content.with_select_context(
                 local_concepts, grain, environment
             ),

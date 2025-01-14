@@ -2,6 +2,7 @@ from typing import List
 
 from trilogy.constants import logger
 from trilogy.core.models.author import Concept, FilterItem, Grain, WhereClause
+from trilogy.core.models.build import BuildFilterItem
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.common import (
     resolve_filter_parent_concepts,
@@ -17,6 +18,7 @@ from trilogy.core.processing.utility import is_scalar_condition, padding, unique
 
 LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
+FILTER_TYPES = (FilterItem, BuildFilterItem)
 
 def gen_filter_node(
     concept: Concept,
@@ -31,14 +33,14 @@ def gen_filter_node(
     immediate_parent, parent_row_concepts, parent_existence_concepts = (
         resolve_filter_parent_concepts(concept, environment)
     )
-    if not isinstance(concept.lineage, FilterItem):
-        raise SyntaxError('Filter node must have a lineage of type "FilterItem"')
+    if not isinstance(concept.lineage, FILTER_TYPES):
+        raise SyntaxError('Filter node must have a filter type lineage"')
     where = concept.lineage.where
 
     optional_included: list[Concept] = []
 
     for x in local_optional:
-        if isinstance(x.lineage, FilterItem):
+        if isinstance(x.lineage,FILTER_TYPES):
             if concept.lineage.where == where:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "

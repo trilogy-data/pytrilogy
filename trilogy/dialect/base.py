@@ -27,7 +27,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models.build import BuildWindowItem
+from trilogy.core.models.build import BuildWindowItem, BuildFilterItem
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -72,6 +72,7 @@ from trilogy.hooks.base_hook import BaseHook
 LOGGER_PREFIX = "[RENDERING]"
 
 WINDOW_ITEMS = (WindowItem, BuildWindowItem)
+FILTER_ITEMS = (FilterItem, BuildFilterItem)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -352,7 +353,7 @@ class BaseDialect:
                     sort=",".join(rendered_order_components),
                     offset=c.lineage.index,
                 )
-            elif isinstance(c.lineage, FilterItem):
+            elif isinstance(c.lineage, FILTER_ITEMS):
                 # for cases when we've optimized this
                 if cte.condition == c.lineage.where.conditional:
                     rval = self.render_expr(c.lineage.content, cte=cte)
@@ -489,6 +490,7 @@ class BaseDialect:
             BuildWindowItem,
             WindowItem,
             FilterItem,
+            BuildFilterItem,
             # FilterItem
         ],
         cte: Optional[CTE | UnionCTE] = None,
@@ -598,7 +600,7 @@ class BaseDialect:
             return self.render_expr(
                 e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
             )
-        elif isinstance(e, FilterItem):
+        elif isinstance(e, FILTER_ITEMS):
             return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid)} ELSE NULL END"
         elif isinstance(e, Concept):
             if (

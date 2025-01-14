@@ -10,6 +10,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
+from trilogy.core.models.build import BuildFilterItem
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     History,
@@ -63,7 +64,7 @@ def resolve_filter_parent_concepts(
     concept: Concept,
     environment: Environment,
 ) -> Tuple[Concept, List[Concept], List[Tuple[Concept, ...]]]:
-    if not isinstance(concept.lineage, FilterItem):
+    if not isinstance(concept.lineage, (BuildFilterItem, FilterItem)):
         raise ValueError(
             f"Concept {concept} lineage is not filter item, is {type(concept.lineage)}"
         )

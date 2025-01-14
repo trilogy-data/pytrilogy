@@ -29,7 +29,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models.build import BuildWindowItem
+from trilogy.core.models.build import BuildWindowItem, BuildFilterItem
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -52,6 +52,8 @@ from trilogy.core.models.execute import (
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
+
+
 
 
 class NodeType(Enum):
@@ -426,6 +428,7 @@ def is_scalar_condition(
         | WindowItem
         | BuildWindowItem
         | FilterItem
+        | BuildFilterItem
         | Concept
         | Comparison
         | Conditional

@@ -503,11 +503,12 @@ class BuildConcept(Concept, BaseModel):
     build_granularity: Granularity
     build_is_aggregate: bool
     lineage: Optional[
-        Union[
+        Union[ 
             Function,
             BuildWindowItem,
             WindowItem,
             FilterItem,
+            BuildFilterItem,
             AggregateWrapper,
             RowsetItem,
             MultiSelectLineage,
@@ -923,7 +924,7 @@ class BuildAggregateWrapper(ConceptArgs, BaseModel):
 
 class BuildFilterItem(ConceptArgs, BaseModel):
     content: BuildConcept
-    where: "BuildWhereClause"
+    where: "WhereClause"
 
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"
