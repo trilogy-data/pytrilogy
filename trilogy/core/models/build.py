@@ -1064,8 +1064,8 @@ class BuildSelectLineage(BaseModel):
     limit: Optional[int] = None
     meta: Metadata = Field(default_factory=lambda: Metadata())
     grain: Grain = Field(default_factory=Grain)
-    where_clause: Union["WhereClause", None] = Field(default=None)
-    having_clause: Union["HavingClause", None] = Field(default=None)
+    where_clause: WhereClause | BuildWhereClause | None = Field(default=None)
+    having_clause: HavingClause | BuildHavingClause | None = Field(default=None)
 
     @property
     def output_components(self) -> List[BuildConcept]:

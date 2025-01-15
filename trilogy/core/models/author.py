@@ -435,6 +435,15 @@ class HavingClause(WhereClause):
     def hydrate_missing(self, concepts: EnvironmentConceptDict):
         self.conditional.hydrate_missing(concepts)
 
+    def with_select_context(
+        self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
+    ) -> Self:
+        from trilogy.core.models.build import BuildHavingClause
+        return BuildHavingClause(
+            conditional=self.conditional.with_select_context(
+                local_concepts, grain, environment
+            )
+        )
 
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
