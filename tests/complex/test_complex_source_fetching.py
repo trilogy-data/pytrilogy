@@ -7,6 +7,7 @@ import re
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Grain
 from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.environment import (
     Environment,
 )
@@ -72,7 +73,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
 
     assert user_post_count.purpose == Purpose.METRIC
 
-    posts = env.datasources["posts"]
+    posts = env.datasources["posts"].build_for_select(env)
     post_grain = Grain(components=[env.concepts["post_id"]])
 
     assert posts.grain == post_grain
@@ -112,7 +113,7 @@ def test_aggregate_of_aggregate(stackoverflow_environment):
     )
 
     root = parent.datasources[0].datasources[0]
-    assert isinstance(root, Datasource)
+    assert isinstance(root, BuildDatasource)
     assert posts == root
     assert post_id in root.concepts
 

@@ -13,6 +13,7 @@ from trilogy.core.models.author import (
     MultiSelectLineage,
     SelectLineage,
 )
+from trilogy.core.models.build import BuildConditional
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
@@ -59,13 +60,16 @@ def base_join_to_join(
         )
 
     def get_datasource_cte(datasource: Datasource | QueryDatasource) -> CTE:
+        eligible = set()
         for cte in ctes:
             if cte.source.identifier == datasource.identifier:
                 return cte
+            eligible.add(cte.source.identifier)
         for cte in ctes:
             if cte.source.datasources[0].identifier == datasource.identifier:
                 return cte
-        raise ValueError(f"Could not find CTE for datasource {datasource.identifier}")
+            eligible.add(cte.source.datasources[0].identifier)
+        raise ValueError(f"Could not find CTE for datasource {datasource.identifier}; have {eligible}")
 
     if base_join.left_datasource is not None:
         left_cte = get_datasource_cte(base_join.left_datasource)
@@ -390,7 +394,7 @@ def get_query_node(
     if statement.having_clause:
         final = statement.having_clause.conditional
         if ds.conditions:
-            final = Conditional(
+            final = BuildConditional(
                 left=ds.conditions,
                 right=statement.having_clause.conditional,
                 operator=BooleanOperator.AND,

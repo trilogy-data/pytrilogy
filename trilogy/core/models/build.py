@@ -296,7 +296,13 @@ class BuildWhereClause(ConceptArgs, BaseModel):
         BuildComparison,
         BuildConditional,
         "BuildParenthetical",
+        
     ]
+
+    def __eq__(self, other):
+        if not isinstance(other, (BuildWhereClause, WhereClause)):
+            return False
+        return self.conditional == other.conditional
 
     def __repr__(self):
         return str(self.conditional)
@@ -1216,9 +1222,56 @@ class BuildWindowItemOrder(BaseModel):
     contents: List["BuildOrderItem"]
 
 
-class BuildComment(BaseModel):
-    text: str
+from trilogy.core.models.datasource import ColumnAssignment, Address, DatasourceMetadata, Datasource
 
+class BuildDatasource(Datasource):
+    name: str
+    columns: List[ColumnAssignment]
+    address: Union[Address, str]
+    grain: Grain = Field(
+        default_factory=lambda: Grain(components=set()), validate_default=True
+    )
+    namespace: Optional[str] = Field(default=DEFAULT_NAMESPACE, validate_default=True)
+    metadata: DatasourceMetadata = Field(
+        default_factory=lambda: DatasourceMetadata(freshness_concept=None)
+    )
+    where: Optional[BuildWhereClause] = None
+    non_partial_for: Optional[BuildWhereClause] = None
+
+    def __hash__(self):
+        return self.identifier.__hash__()
+    @property
+    def identifier(self) -> str:
+        if not self.namespace or self.namespace == DEFAULT_NAMESPACE:
+            return self.name
+        return f"{self.namespace}.{self.name}"
+
+    @property
+    def safe_identifier(self) -> str:
+        return self.identifier.replace(".", "_")
+    @property
+    def concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns]
+
+    @property
+    def group_required(self):
+        return False
+
+    @property
+    def full_concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns if Modifier.PARTIAL not in c.modifiers]
+
+    @property
+    def nullable_concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns if Modifier.NULLABLE in c.modifiers]
+
+    @property
+    def output_concepts(self) -> List[Concept]:
+        return self.concepts
+
+    @property
+    def partial_concepts(self) -> List[Concept]:
+        return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
 
 BuildExpr = (
     bool

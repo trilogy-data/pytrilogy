@@ -13,6 +13,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
 )
+from trilogy.core.models.build import BuildWhereClause
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import (
     gen_basic_node,
@@ -58,7 +59,7 @@ class SearchConceptsType(Protocol):
         g: ReferenceGraph,
         accept_partial: bool = False,
         history: Optional[History] = None,
-        conditions: Optional[WhereClause] = None,
+        conditions: Optional[BuildWhereClause] = None,
     ) -> Union[StrategyNode, None]: ...
 
 
@@ -656,7 +657,7 @@ def append_existence_check(
     node: StrategyNode,
     environment: Environment,
     graph: ReferenceGraph,
-    where: WhereClause,
+    where: BuildWhereClause,
     history: History | None = None,
 ):
     # we if we have a where clause doing an existence check
@@ -691,7 +692,7 @@ def search_concepts(
     g: ReferenceGraph,
     accept_partial: bool = False,
     history: History | None = None,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     history = history or History()
     hist = history.get_history(
@@ -929,6 +930,9 @@ def _search_concepts(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Source stack has single node, returning that {type(output)}"
             )
         else:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} wrapping multiple parent nodes {[type(x) for x in stack]} in merge node"
+            )
             output = MergeNode(
                 input_concepts=non_virtual,
                 output_concepts=non_virtual,

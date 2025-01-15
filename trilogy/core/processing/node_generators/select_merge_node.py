@@ -11,6 +11,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
+from trilogy.core.models.build import BuildWhereClause, BuildDatasource
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -43,6 +44,7 @@ def get_graph_partial_nodes(
         if node in datasources:
             ds = datasources[node]
             if not isinstance(ds, list):
+
                 if ds.non_partial_for and conditions == ds.non_partial_for:
                     partial[node] = []
                     continue
@@ -201,6 +203,7 @@ def resolve_subgraphs(
     }
     pruned_subgraphs = {}
     for key, nodes in subgraphs.items():
+
         value = non_partial_map[key]
         all_concepts = concept_map[key]
         is_subset = False
@@ -219,16 +222,24 @@ def resolve_subgraphs(
                     logger.debug(
                         f"Dropping subgraph {key} with {value} as it is a subset of {other_key} with {other_value}"
                     )
-                    break
                 elif len(value) == len(other_value) and len(all_concepts) == len(
                     other_all_concepts
                 ):
                     matches.add(other_key)
                     matches.add(key)
-        if matches:
-            is_subset = key is not min(matches, key=lambda x: (grain_length[x], x))
+                else:
+                    logger.debug(f'keeping subgraph {key}')
+        if matches and not is_subset:
+            is_subset = key is not min(matches, key=lambda x: (grain_length[x], 1 if '-' in x else 0, x))
         if not is_subset:
             pruned_subgraphs[key] = nodes
+        logger.info(key)
+        logger.info('is_subset was')
+        logger.info(is_subset)
+        logger.info('subgraph is')
+        logger.info(pruned_subgraphs)
+    logger.info('final subgraph')
+    logger.debug(pruned_subgraphs)  
     return pruned_subgraphs
 
 
@@ -238,8 +249,10 @@ def create_datasource_node(
     accept_partial: bool,
     environment: Environment,
     depth: int,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> tuple[StrategyNode, bool]:
+    if not isinstance(datasource, BuildDatasource):
+        datasource = datasource.build_for_select(environment)
     target_grain = Grain.from_concepts(all_concepts, environment=environment)
     force_group = False
     if not datasource.grain.issubset(target_grain):
@@ -259,6 +272,7 @@ def create_datasource_node(
     ]
     nullable_lcl = LooseConceptList(concepts=nullable_concepts)
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
+    grain = Grain.from_concepts(all_concepts)
     return (
         SelectNode(
             input_concepts=[c.concept for c in datasource.columns],
@@ -273,7 +287,7 @@ def create_datasource_node(
             accept_partial=accept_partial,
             datasource=datasource,
             grain=Grain.from_concepts(all_concepts),
-            conditions=datasource.where.conditional if datasource.where else None,
+            conditions=datasource.where.conditional.with_select_context(local_concepts = {}, grain = grain , environment=environment) if datasource.where else None,
             preexisting_conditions=(
                 conditions.conditional if partial_is_full and conditions else None
             ),
@@ -325,6 +339,7 @@ def create_select_node(
         )
 
     elif isinstance(datasource, list):
+        logger.info( f"{padding(depth)}{LOGGER_PREFIX} generating union node parents")
         from trilogy.core.processing.nodes.union_node import UnionNode
 
         force_group = False
@@ -340,6 +355,7 @@ def create_select_node(
             )
             parents.append(subnode)
             force_group = force_group or fg
+        logger.info( f"{padding(depth)}{LOGGER_PREFIX} generating union node")
         bcandidate = UnionNode(
             output_concepts=all_concepts,
             input_concepts=all_concepts,
@@ -378,7 +394,7 @@ def gen_select_merge_node(
     environment: Environment,
     depth: int,
     accept_partial: bool = False,
-    conditions: WhereClause | None = None,
+    conditions: BuildWhereClause | None = None,
 ) -> Optional[StrategyNode]:
     non_constant = [c for c in all_concepts if c.derivation != Derivation.CONSTANT]
     constants = [c for c in all_concepts if c.derivation == Derivation.CONSTANT]
@@ -398,7 +414,7 @@ def gen_select_merge_node(
             non_constant,
             accept_partial=attempt,
             conditions=conditions,
-            datasources=list(environment.datasources.values()),
+            datasources=list([x.build_for_select(environment) for x in environment.datasources.values()]),
             depth=depth,
         )
         if pruned_concept_graph:
@@ -444,6 +460,7 @@ def gen_select_merge_node(
 
     if len(parents) == 1:
         return parents[0]
+    logger.info(f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge")
     preexisting_conditions = None
     if conditions and all(
         [

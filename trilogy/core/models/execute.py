@@ -28,9 +28,12 @@ from trilogy.core.models.author import (
     RowsetItem,
 )
 from trilogy.core.models.datasource import Address, Datasource
+from trilogy.core.models.build import BuildDatasource
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
+
+DATASOURCE_TYPES = (Datasource, BuildDatasource)
 
 
 class CTE(BaseModel):
@@ -157,7 +160,7 @@ class CTE(BaseModel):
     ) -> bool:
         qds_being_inlined = parent.source
         ds_being_inlined = qds_being_inlined.datasources[0]
-        if not isinstance(ds_being_inlined, Datasource):
+        if not isinstance(ds_being_inlined, DATASOURCE_TYPES):
             return False
         if any(
             [
@@ -279,7 +282,7 @@ class CTE(BaseModel):
     def is_root_datasource(self) -> bool:
         return (
             len(self.source.datasources) == 1
-            and isinstance(self.source.datasources[0], Datasource)
+            and isinstance(self.source.datasources[0], DATASOURCE_TYPES)
             and not self.source.datasources[0].name == CONSTANT_DATASET
         )
 
@@ -303,7 +306,7 @@ class CTE(BaseModel):
     def quote_address(self) -> bool:
         if self.is_root_datasource:
             candidate = self.source.datasources[0]
-            if isinstance(candidate, Datasource) and isinstance(
+            if isinstance(candidate, DATASOURCE_TYPES) and isinstance(
                 candidate.address, Address
             ):
                 return candidate.address.quoted
@@ -764,7 +767,7 @@ class QueryDatasource(BaseModel):
             # query datasources should be referenced by their alias, always
             force_alias = isinstance(x, QueryDatasource)
             #
-            use_raw_name = isinstance(x, Datasource) and not force_alias
+            use_raw_name = isinstance(x, DATASOURCE_TYPES) and not force_alias
             if source and x.safe_identifier != source:
                 continue
             try:

@@ -2067,7 +2067,7 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
                 if self.having_clause
                 else None
             ),
-            where_clause=self.where_clause,
+            where_clause=self.where_clause.with_select_context(local_concepts={}, grain = Grain(), environment=environment) if self.where_clause else None,
         )
 
 
