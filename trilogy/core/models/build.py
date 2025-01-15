@@ -61,6 +61,8 @@ from trilogy.core.models.author import (
     Parenthetical,
     AlignClause,
     WindowItem,
+    Comparison,
+    SubselectComparison,
     get_concept_arguments,
     get_concept_row_arguments,
 )
@@ -504,6 +506,7 @@ class BuildSubselectComparison(BuildComparison):
 
 
 class BuildConcept(Concept, BaseModel):
+
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -808,8 +811,8 @@ def get_basic_type(
 
 
 class BuildCaseWhen(ConceptArgs, BaseModel):
-    comparison: BuildConditional | BuildSubselectComparison | BuildComparison
-    expr: "BuildExpr"
+    comparison: BuildConditional | BuildSubselectComparison | BuildComparison | Conditional | Comparison | SubselectComparison
+    expr: "BuildExpr" 
 
     def __str__(self):
         return self.__repr__()

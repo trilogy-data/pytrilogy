@@ -1238,6 +1238,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
     @classmethod
     def calculate_granularity(cls, derivation:Derivation, grain:Grain, lineage):
+        from trilogy.core.models.build import BuildFunction
         if derivation == Derivation.CONSTANT:
             return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
@@ -1245,7 +1246,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
                 return Granularity.SINGLE_ROW
         elif (
             lineage
-            and isinstance(lineage, Function)
+            and isinstance(lineage, (Function, BuildFunction))
             and lineage.operator in (FunctionType.UNNEST, FunctionType.UNION)
         ):
             return Granularity.MULTI_ROW
@@ -1471,7 +1472,8 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> CaseWhen:
-        return CaseWhen(
+        from trilogy.core.models.build import BuildCaseWhen
+        return BuildCaseWhen(
             comparison=self.comparison.with_select_context(
                 local_concepts, grain, environment
             ),
@@ -1510,7 +1512,8 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
         grain: Grain,
         environment: Environment,
     ):
-        return CaseElse(
+        from trilogy.core.models.build import BuildCaseElse
+        return BuildCaseElse(
             discriminant=self.discriminant,
             expr=(
                 self.expr.with_select_context(local_concepts, grain, environment)

@@ -29,7 +29,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper
+from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildCaseWhen, BuildCaseElse
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -441,6 +441,8 @@ def is_scalar_condition(
         | DataType
         | CaseWhen
         | CaseElse
+        | BuildCaseWhen
+        | BuildCaseElse
         | MapWrapper[Any, Any]
         | ListType
         | MapType
@@ -477,11 +479,11 @@ def is_scalar_condition(
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
-    elif isinstance(element, CaseWhen):
+    elif isinstance(element, (BuildCaseWhen, CaseWhen)):
         return is_scalar_condition(
             element.comparison, materialized
         ) and is_scalar_condition(element.expr, materialized)
-    elif isinstance(element, CaseElse):
+    elif isinstance(element, (BuildCaseElse, CaseElse)):
         return is_scalar_condition(element.expr, materialized)
     elif isinstance(element, MagicConstants):
         return True

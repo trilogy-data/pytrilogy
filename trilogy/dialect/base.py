@@ -26,9 +26,16 @@ from trilogy.core.models.author import (
     RowsetItem,
     SubselectComparison,
     WindowItem,
-
 )
-from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildFunction, BuildParenthetical
+from trilogy.core.models.build import (
+    BuildWindowItem,
+    BuildFilterItem,
+    BuildAggregateWrapper,
+    BuildFunction,
+    BuildParenthetical,
+    BuildCaseElse,
+    BuildCaseWhen
+)
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -77,6 +84,8 @@ FILTER_ITEMS = (FilterItem, BuildFilterItem)
 AGGREGATE_ITEMS = (AggregateWrapper, BuildAggregateWrapper)
 FUNCTION_ITEMS = (BuildFunction, Function)
 PARENTHETICAL_ITEMS = (BuildParenthetical, Parenthetical)
+CASE_WHEN_ITEMS = (BuildCaseWhen, CaseWhen)
+CASE_ELSE_ITEMS = (BuildCaseElse, CaseElse)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -491,6 +500,8 @@ class BaseDialect:
             ListWrapper[Any],
             TupleWrapper[Any],
             DatePart,
+            BuildCaseWhen,
+            BuildCaseElse,
             CaseWhen,
             CaseElse,
             BuildWindowItem,
@@ -529,7 +540,10 @@ class BaseDialect:
                         f"Missing source CTE for {e.right.address}"
                     )
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} (select {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} from {target} where {target}.{self.QUOTE_CHARACTER}{e.right.safe_address}{self.QUOTE_CHARACTER} is not null)"
-            elif isinstance(e.right, (ListWrapper, TupleWrapper, BuildParenthetical, Parenthetical, list)):
+            elif isinstance(
+                e.right,
+                (ListWrapper, TupleWrapper, BuildParenthetical, Parenthetical, list),
+            ):
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
 
             elif isinstance(
@@ -564,9 +578,9 @@ class BaseDialect:
             if isinstance(e.content, list):
                 return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e.content])} )"
             return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} )"
-        elif isinstance(e, CaseWhen):
+        elif isinstance(e, CASE_WHEN_ITEMS):
             return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
-        elif isinstance(e, CaseElse):
+        elif isinstance(e, CASE_ELSE_ITEMS):
             return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) }"
         elif isinstance(e, FUNCTION_ITEMS):
             arguments = []
