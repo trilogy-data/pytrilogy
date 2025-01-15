@@ -336,7 +336,8 @@ class Conditional(
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
-        return Conditional(
+        from trilogy.core.models.build import BuildConditional
+        return BuildConditional(
             left=(
                 self.left.with_select_context(local_concepts, grain, environment)
                 if isinstance(self.left, SelectContext)

@@ -161,7 +161,8 @@ class BuildParenthetical(
         return arg_to_datatype(self.content)
 
 
-class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
+# class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
+class BuildConditional(Conditional):
     left: Union[
         int,
         str,
@@ -173,6 +174,7 @@ class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
         BuildComparison,
         "BuildConditional",
         "BuildParenthetical",
+        BuildSubselectComparison,
         BuildFunction,
         BuildFilterItem,
     ]
@@ -187,6 +189,7 @@ class BuildConditional(ConceptArgs, ConstantInlineable, BaseModel):
         BuildComparison,
         "BuildConditional",
         "BuildParenthetical",
+        BuildSubselectComparison,
         BuildFunction,
         BuildFilterItem,
     ]
@@ -486,7 +489,45 @@ class BuildComparison(Comparison):
 
 
 class BuildSubselectComparison(SubselectComparison):
-
+    left: Union[
+            int,
+            str,
+            float,
+            list,
+            bool,
+            datetime,
+            date,
+            BuildFunction,
+            BuildConcept,
+            "BuildConditional",
+            DataType,
+            "BuildComparison",
+            "BuildParenthetical",
+            MagicConstants,
+            BuildWindowItem,
+            BuildAggregateWrapper,
+        ]
+    right: Union[
+        int,
+        str,
+        float,
+        list,
+        bool,
+        date,
+        datetime,
+        BuildConcept,
+        BuildFunction,
+        "BuildConditional",
+        DataType,
+        "BuildComparison",
+        "BuildParenthetical",
+        MagicConstants,
+        BuildWindowItem,
+        BuildAggregateWrapper,
+        TupleWrapper,
+    ]
+    operator: ComparisonOperator
+    
     def __eq__(self, other):
         if not isinstance(other, SubselectComparison):
             return False
