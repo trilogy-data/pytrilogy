@@ -984,7 +984,7 @@ class BuildAggregateWrapper(ConceptArgs, BaseModel):
 
 class BuildFilterItem(ConceptArgs, BaseModel):
     content: BuildConcept
-    where: "WhereClause"
+    where: "BuildWhereClause"
 
     def __str__(self):
         return f"<Filter: {str(self.content)} where {str(self.where)}>"

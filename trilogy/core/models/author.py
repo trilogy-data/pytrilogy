@@ -422,7 +422,8 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Self:
-        return self.__class__(
+        from trilogy.core.models.build import BuildWhereClause
+        return BuildWhereClause(
             conditional=self.conditional.with_select_context(
                 local_concepts, grain, environment
             )
