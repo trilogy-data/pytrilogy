@@ -1335,8 +1335,8 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "OrderItem":
-
-        return OrderItem(
+        from trilogy.core.models.build import BuildOrderItem
+        return BuildOrderItem(
             expr=self.expr.with_select_context(
                 local_concepts, grain, environment=environment
             ),
@@ -1390,8 +1390,8 @@ class WindowItem(
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "WindowItem":
-
-        return WindowItem(
+        from trilogy.core.models.build import BuildWindowItem
+        return BuildWindowItem(
             type=self.type,
             content=self.content.with_select_context(
                 local_concepts, grain, environment
@@ -1981,7 +1981,8 @@ class OrderBy(SelectContext, Mergeable, Namespaced, BaseModel):
         )
 
     def with_select_context(self, local_concepts, grain, environment):
-        return OrderBy(
+        from trilogy.core.models.build import BuildOrderBy
+        return BuildOrderBy(
             items=[
                 x.with_select_context(local_concepts, grain, environment)
                 for x in self.items

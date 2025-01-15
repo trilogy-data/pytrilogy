@@ -73,6 +73,7 @@ FUNCTION_TYPES = (Function, BuildFunction)
 PARENTHETICAL_TYPES = (Parenthetical, BuildParenthetical)
 CONDITIONAL_TYPES = (Conditional, BuildConditional)
 CONCEPT_TYPES = (Concept, BuildConcept)
+WINDOW_TYPES = (WindowItem, BuildWindowItem)
 
 class NodeType(Enum):
     CONCEPT = 1

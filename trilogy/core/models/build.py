@@ -1060,7 +1060,7 @@ class BuildSelectLineage(BaseModel):
     selection: List[BuildConcept]
     hidden_components: set[str]
     local_concepts: dict[str, BuildConcept]
-    order_by: Optional[OrderBy] = None
+    order_by: Optional[BuildOrderBy] = None
     limit: Optional[int] = None
     meta: Metadata = Field(default_factory=lambda: Metadata())
     grain: Grain = Field(default_factory=Grain)

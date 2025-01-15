@@ -8,6 +8,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     WindowItem,
 )
+from trilogy.core.models.build import BuildWindowItem
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
@@ -53,7 +54,7 @@ class PredicatePushdown(OptimizationRule):
         concrete = [
             x for x in parent_cte.output_columns if x.address in non_materialized
         ]
-        if any(isinstance(x.lineage, WindowItem) for x in concrete):
+        if any(isinstance(x.lineage, (WindowItem, BuildWindowItem)) for x in concrete):
             self.debug(
                 f"CTE {parent_cte.name} has window clause calculation, cannot push up to this without changing results"
             )
