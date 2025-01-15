@@ -318,7 +318,8 @@ class BuildHavingClause(BuildWhereClause):
     pass
 
 
-class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
+# class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
+class BuildComparison(Comparison):
     left: Union[
         int,
         str,

@@ -36,6 +36,11 @@ from trilogy.core.models.build import (
     BuildCaseWhen,
     BuildCaseElse,
     BuildSubselectComparison,
+    BuildComparison,
+    BuildFunction,
+    BuildParenthetical,
+    BuildConditional,
+    BuildConcept,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -63,7 +68,11 @@ from trilogy.utility import unique
 
 AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
 SUBSELECT_TYPES = (SubselectComparison, BuildSubselectComparison)
-
+COMPARISON_TYPES = (Comparison, BuildComparison)
+FUNCTION_TYPES = (Function, BuildFunction)
+PARENTHETICAL_TYPES = (Parenthetical, BuildParenthetical)
+CONDITIONAL_TYPES = (Conditional, BuildConditional)
+CONCEPT_TYPES = (Concept, BuildConcept)
 
 class NodeType(Enum):
     CONCEPT = 1
@@ -440,8 +449,11 @@ def is_scalar_condition(
         | BuildFilterItem
         | Concept
         | Comparison
+        | BuildConditional
         | Conditional
+        | BuildParenthetical
         | Parenthetical
+        | BuildFunction
         | Function
         | AggregateWrapper
         | BuildAggregateWrapper
@@ -461,29 +473,29 @@ def is_scalar_condition(
     ),
     materialized: set[str] | None = None,
 ) -> bool:
-    if isinstance(element, Parenthetical):
+    if isinstance(element, PARENTHETICAL_TYPES):
         return is_scalar_condition(element.content, materialized)
     elif isinstance(element, SUBSELECT_TYPES):
         return True
-    elif isinstance(element, Comparison):
+    elif isinstance(element, COMPARISON_TYPES):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
-    elif isinstance(element, Function):
+    elif isinstance(element, FUNCTION_TYPES):
         if element.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
             return False
         return all([is_scalar_condition(x, materialized) for x in element.arguments])
-    elif isinstance(element, Concept):
+    elif isinstance(element, CONCEPT_TYPES):
         if materialized and element.address in materialized:
             return True
         if element.lineage and isinstance(element.lineage, AGGREGATE_TYPES):
             return is_scalar_condition(element.lineage, materialized)
-        if element.lineage and isinstance(element.lineage, Function):
+        if element.lineage and isinstance(element.lineage, FUNCTION_TYPES):
             return is_scalar_condition(element.lineage, materialized)
         return True
     elif isinstance(element, AGGREGATE_TYPES):
         return is_scalar_condition(element.function, materialized)
-    elif isinstance(element, Conditional):
+    elif isinstance(element, CONDITIONAL_TYPES):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
             element.right, materialized
         )
@@ -497,6 +509,7 @@ def is_scalar_condition(
         return True
     return True
 
+CONDITION_TYPES = (SubselectComparison, BuildSubselectComparison, Comparison, BuildComparison, Conditional, BuildConditional, Parenthetical, BuildParenthetical)
 
 def decompose_condition(
     conditional: Conditional | Comparison | Parenthetical,
@@ -508,17 +521,17 @@ def decompose_condition(
         if not (
             isinstance(
                 conditional.left,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
+                CONDITION_TYPES
             )
             and isinstance(
                 conditional.right,
-                (SubselectComparison, Comparison, Conditional, Parenthetical),
+                CONDITION_TYPES,
             )
         ):
             chunks.append(conditional)
         else:
             for val in [conditional.left, conditional.right]:
-                if isinstance(val, Conditional):
+                if isinstance(val, (Conditional, BuildConditional)):
                     chunks.extend(decompose_condition(val))
                 else:
                     chunks.append(val)

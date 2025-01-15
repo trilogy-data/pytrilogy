@@ -35,7 +35,9 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildCaseElse,
     BuildCaseWhen,
-    BuildSubselectComparison
+    BuildSubselectComparison,
+    BuildComparison,
+    BuildConditional
 )
 from trilogy.core.models.core import (
     DataType,
@@ -88,7 +90,8 @@ PARENTHETICAL_ITEMS = (BuildParenthetical, Parenthetical)
 CASE_WHEN_ITEMS = (BuildCaseWhen, CaseWhen)
 CASE_ELSE_ITEMS = (BuildCaseElse, CaseElse)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison, SubselectComparison)
-
+COMPARISON_ITEMS = (BuildComparison, Comparison)
+CONDITIONAL_ITEMS = (BuildConditional, Conditional)
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"
@@ -477,7 +480,9 @@ class BaseDialect:
         e: Union[
             Function,
             BuildFunction,
+            BuildConditional,
             Conditional,
+            BuildComparison,
             Comparison,
             BuildSubselectComparison,
             SubselectComparison,
@@ -561,9 +566,9 @@ class BaseDialect:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} ({self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
             else:
                 return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, Comparison):
+        elif isinstance(e, COMPARISON_ITEMS):
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-        elif isinstance(e, Conditional):
+        elif isinstance(e, CONDITIONAL_ITEMS):
             # conditions need to be nested in parentheses
             return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)} {e.operator.value} {self.render_expr(e.right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
         elif isinstance(e, WINDOW_ITEMS):
@@ -736,8 +741,8 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
-        where: Conditional | Parenthetical | Comparison | None = None
-        having: Conditional | Parenthetical | Comparison | None = None
+        where: BuildConditional | Parenthetical | BuildComparison | None = None
+        having: BuildConditional | Parenthetical | BuildComparison | None = None
         materialized = {x for x, v in cte.source_map.items() if v}
         if cte.condition:
             if not cte.group_to_grain or is_scalar_condition(

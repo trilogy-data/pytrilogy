@@ -746,7 +746,8 @@ class Comparison(
     def with_select_context(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
-        return self.__class__(
+        from trilogy.core.models.build import BuildComparison
+        return BuildComparison(
             left=(
                 self.left.with_select_context(local_concepts, grain, environment)
                 if isinstance(self.left, SelectContext)
