@@ -814,13 +814,14 @@ class SubselectComparison(Comparison):
         environment: Environment,
     ):
         # there's no need to pass the select grain through to a subselect comparison on the right
-        return self.__class__(
+        from trilogy.core.models.build import BuildSubselectComparison
+        return  BuildSubselectComparison(
             left=(
                 self.left.with_select_context(local_concepts, grain, environment)
                 if isinstance(self.left, SelectContext)
                 else self.left
             ),
-            right=self.right,
+            right=self.right.with_select_context(local_concepts, Grain(), environment) if isinstance(self.right, SelectContext) else self.right,
             operator=self.operator,
         )
 

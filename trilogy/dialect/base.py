@@ -34,7 +34,8 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildParenthetical,
     BuildCaseElse,
-    BuildCaseWhen
+    BuildCaseWhen,
+    BuildSubselectComparison
 )
 from trilogy.core.models.core import (
     DataType,
@@ -86,6 +87,7 @@ FUNCTION_ITEMS = (BuildFunction, Function)
 PARENTHETICAL_ITEMS = (BuildParenthetical, Parenthetical)
 CASE_WHEN_ITEMS = (BuildCaseWhen, CaseWhen)
 CASE_ELSE_ITEMS = (BuildCaseElse, CaseElse)
+SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison, SubselectComparison)
 
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
@@ -477,6 +479,7 @@ class BaseDialect:
             BuildFunction,
             Conditional,
             Comparison,
+            BuildSubselectComparison,
             SubselectComparison,
             Concept,
             str,
@@ -514,7 +517,7 @@ class BaseDialect:
         cte_map: Optional[Dict[str, CTE | UnionCTE]] = None,
         raise_invalid: bool = False,
     ) -> str:
-        if isinstance(e, SubselectComparison):
+        if isinstance(e, SUBSELECT_COMPARISON_ITEMS):
             if isinstance(e.right, Concept):
                 # we won't always have an existnce map
                 # so fall back to the normal map

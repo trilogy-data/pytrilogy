@@ -484,9 +484,10 @@ class BuildComparison(ConceptArgs, ConstantInlineable, BaseModel):
         return output
 
 
-class BuildSubselectComparison(BuildComparison):
+class BuildSubselectComparison(SubselectComparison):
+
     def __eq__(self, other):
-        if not isinstance(other, BuildSubselectComparison):
+        if not isinstance(other, SubselectComparison):
             return False
 
         comp = (

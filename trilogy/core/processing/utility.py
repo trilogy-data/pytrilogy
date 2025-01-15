@@ -29,7 +29,14 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WindowItem,
 )
-from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildCaseWhen, BuildCaseElse
+from trilogy.core.models.build import (
+    BuildWindowItem,
+    BuildFilterItem,
+    BuildAggregateWrapper,
+    BuildCaseWhen,
+    BuildCaseElse,
+    BuildSubselectComparison,
+)
 from trilogy.core.models.core import (
     DataType,
     ListType,
@@ -55,6 +62,7 @@ from trilogy.utility import unique
 
 
 AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
+SUBSELECT_TYPES = (SubselectComparison, BuildSubselectComparison)
 
 
 class NodeType(Enum):
@@ -455,7 +463,7 @@ def is_scalar_condition(
 ) -> bool:
     if isinstance(element, Parenthetical):
         return is_scalar_condition(element.content, materialized)
-    elif isinstance(element, SubselectComparison):
+    elif isinstance(element, SUBSELECT_TYPES):
         return True
     elif isinstance(element, Comparison):
         return is_scalar_condition(element.left, materialized) and is_scalar_condition(
