@@ -44,7 +44,7 @@ class DebuggingHook(BaseHook):
         self.process_nodes = PrintMode(process_nodes)
         self.process_datasources = PrintMode(process_datasources)
         self.process_other = PrintMode(process_other)
-        self.messages:list[str] = []
+        self.messages: list[str] = []
         self.uuid = uuid4()
 
     def print(self, *args):

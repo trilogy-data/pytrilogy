@@ -87,18 +87,16 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         return SelectLineage(
-            selection = [x.concept for x in self.selection],
-            order_by = self.order_by,
-            limit = self.limit,
-            where_clause = self.where_clause,
-            having_clause = self.having_clause,
-            local_concepts = self.local_concepts,
-            hidden_components = self.hidden_components,
-            grain = self.grain,
-            
+            selection=[x.concept for x in self.selection],
+            order_by=self.order_by,
+            limit=self.limit,
+            where_clause=self.where_clause,
+            having_clause=self.having_clause,
+            local_concepts=self.local_concepts,
+            hidden_components=self.hidden_components,
+            grain=self.grain,
         )
 
-    
     @classmethod
     def from_inputs(
         cls,

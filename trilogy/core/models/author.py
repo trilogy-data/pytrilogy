@@ -7,6 +7,7 @@ from functools import cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
+    Iterable,
     List,
     Optional,
     Self,
@@ -15,7 +16,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    Iterable,
 )
 
 from pydantic import (
@@ -174,6 +174,7 @@ class Parenthetical(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
         from trilogy.core.models.build import BuildParenthetical
+
         return BuildParenthetical(
             content=(
                 self.content.with_select_context(local_concepts, grain, environment)
@@ -337,6 +338,7 @@ class Conditional(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
         from trilogy.core.models.build import BuildConditional
+
         return BuildConditional(
             left=(
                 self.left.with_select_context(local_concepts, grain, environment)
@@ -368,7 +370,7 @@ class Conditional(
 
     @property
     def existence_arguments(self) -> Sequence[tuple["Concept", ...]]:
-        output:list[Concept] = []
+        output: list[Concept] = []
         if isinstance(self.left, ConceptArgs):
             output += self.left.existence_arguments
         if isinstance(self.right, ConceptArgs):
@@ -423,6 +425,7 @@ class WhereClause(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseModel):
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Self:
         from trilogy.core.models.build import BuildWhereClause
+
         return BuildWhereClause(
             conditional=self.conditional.with_select_context(
                 local_concepts, grain, environment
@@ -440,11 +443,13 @@ class HavingClause(WhereClause):
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> Self:
         from trilogy.core.models.build import BuildHavingClause
+
         return BuildHavingClause(
             conditional=self.conditional.with_select_context(
                 local_concepts, grain, environment
             )
         )
+
 
 class Grain(Namespaced, BaseModel):
     components: set[str] = Field(default_factory=set)
@@ -465,7 +470,7 @@ class Grain(Namespaced, BaseModel):
     @classmethod
     def from_concepts(
         cls,
-        concepts: Iterable[Concept|str],
+        concepts: Iterable[Concept | str],
         environment: Environment | None = None,
         where_clause: WhereClause | None = None,
     ) -> "Grain":
@@ -758,6 +763,7 @@ class Comparison(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
         from trilogy.core.models.build import BuildComparison
+
         return BuildComparison(
             left=(
                 self.left.with_select_context(local_concepts, grain, environment)
@@ -827,13 +833,18 @@ class SubselectComparison(Comparison):
     ):
         # there's no need to pass the select grain through to a subselect comparison on the right
         from trilogy.core.models.build import BuildSubselectComparison
-        return  BuildSubselectComparison(
+
+        return BuildSubselectComparison(
             left=(
                 self.left.with_select_context(local_concepts, grain, environment)
                 if isinstance(self.left, SelectContext)
                 else self.left
             ),
-            right=self.right.with_select_context(local_concepts, Grain(), environment) if isinstance(self.right, SelectContext) else self.right,
+            right=(
+                self.right.with_select_context(local_concepts, Grain(), environment)
+                if isinstance(self.right, SelectContext)
+                else self.right
+            ),
             operator=self.operator,
         )
 
@@ -883,7 +894,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     @property
     def output_datatype(self):
         return self.datatype
-    
+
     @classmethod
     def calculate_is_aggregate(cls, lineage):
         if lineage and isinstance(lineage, Function):
@@ -892,8 +903,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         if (
             lineage
             and isinstance(lineage, AggregateWrapper)
-            and lineage.function.operator
-            in FunctionClass.AGGREGATE_FUNCTIONS.value
+            and lineage.function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
         ):
             return True
         return False
@@ -1044,7 +1054,17 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
 
     def get_select_grain_and_keys(
         self, grain: Grain, environment: Environment
-    ) -> Tuple[Function | WindowItem | FilterItem | AggregateWrapper | RowsetItem | MultiSelectLineage | None, Grain, set[str] | None]:
+    ) -> Tuple[
+        Function
+        | WindowItem
+        | FilterItem
+        | AggregateWrapper
+        | RowsetItem
+        | MultiSelectLineage
+        | None,
+        Grain,
+        set[str] | None,
+    ]:
         new_lineage = self.lineage.model_copy(deep=True) if self.lineage else None
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
@@ -1061,12 +1081,10 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             keys = set([x.address for x in new_lineage.by])
         elif self.derivation == Derivation.BASIC:
 
-            pkeys:set[str] = set()
+            pkeys: set[str] = set()
             assert new_lineage
             for x in new_lineage.concept_arguments:
-                _, _, parent_keys = x.get_select_grain_and_keys(
-                    grain, environment
-                )
+                _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                 if parent_keys:
                     pkeys.update(parent_keys)
             raw_keys = pkeys
@@ -1098,6 +1116,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     ) -> Concept:
         """Propagate the select context to the lineage of the concept"""
         from trilogy.core.models.build import BuildConcept
+
         if isinstance(self, BuildConcept):
             return self
         return BuildConcept.build(self, grain, environment, local_concepts)
@@ -1189,13 +1208,19 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
     @property
     def concept_arguments(self) -> List[Concept]:
         return self.lineage.concept_arguments if self.lineage else []
-    
+
     @classmethod
     def calculate_derivation(self, lineage, purpose):
-        from trilogy.core.models.build import BuildWindowItem, BuildFilterItem, BuildAggregateWrapper, BuildFunction
+        from trilogy.core.models.build import (
+            BuildAggregateWrapper,
+            BuildFilterItem,
+            BuildFunction,
+            BuildWindowItem,
+        )
+
         if lineage and isinstance(lineage, (BuildWindowItem, WindowItem)):
             return Derivation.WINDOW
-        elif lineage and isinstance(lineage, (BuildFilterItem,FilterItem)):
+        elif lineage and isinstance(lineage, (BuildFilterItem, FilterItem)):
             return Derivation.FILTER
         elif lineage and isinstance(lineage, (BuildAggregateWrapper, AggregateWrapper)):
             return Derivation.AGGREGATE
@@ -1232,10 +1257,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             if not lineage.concept_arguments:
                 return Derivation.CONSTANT
             elif all(
-                [
-                    x.derivation == Derivation.CONSTANT
-                    for x in lineage.concept_arguments
-                ]
+                [x.derivation == Derivation.CONSTANT for x in lineage.concept_arguments]
             ):
                 return Derivation.CONSTANT
             return Derivation.BASIC
@@ -1243,15 +1265,14 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             return Derivation.CONSTANT
         return Derivation.ROOT
 
-
     @property
     def derivation(self) -> Derivation:
         return self.calculate_derivation(self.lineage, self.purpose)
 
-
     @classmethod
-    def calculate_granularity(cls, derivation:Derivation, grain:Grain, lineage):
+    def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):
         from trilogy.core.models.build import BuildFunction
+
         if derivation == Derivation.CONSTANT:
             return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
@@ -1336,6 +1357,7 @@ class OrderItem(Mergeable, SelectContext, Namespaced, BaseModel):
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "OrderItem":
         from trilogy.core.models.build import BuildOrderItem
+
         return BuildOrderItem(
             expr=self.expr.with_select_context(
                 local_concepts, grain, environment=environment
@@ -1391,6 +1413,7 @@ class WindowItem(
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "WindowItem":
         from trilogy.core.models.build import BuildWindowItem
+
         return BuildWindowItem(
             type=self.type,
             content=self.content.with_select_context(
@@ -1486,6 +1509,7 @@ class CaseWhen(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> CaseWhen:
         from trilogy.core.models.build import BuildCaseWhen
+
         return BuildCaseWhen(
             comparison=self.comparison.with_select_context(
                 local_concepts, grain, environment
@@ -1526,6 +1550,7 @@ class CaseElse(Namespaced, ConceptArgs, Mergeable, SelectContext, BaseModel):
         environment: Environment,
     ):
         from trilogy.core.models.build import BuildCaseElse
+
         return BuildCaseElse(
             discriminant=self.discriminant,
             expr=(
@@ -1637,6 +1662,7 @@ class Function(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Bas
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "Function":
         from trilogy.core.models.build import BuildFunction
+
         base = BuildFunction(
             operator=self.operator,
             arguments=[
@@ -1832,6 +1858,7 @@ class AggregateWrapper(Mergeable, ConceptArgs, Namespaced, SelectContext, BaseMo
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "AggregateWrapper":
         from trilogy.core.models.build import BuildAggregateWrapper
+
         if not self.by:
             by = [environment.concepts[c] for c in grain.components]
         else:
@@ -1868,6 +1895,7 @@ class FilterItem(Namespaced, ConceptArgs, SelectContext, BaseModel):
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ) -> "FilterItem":
         from trilogy.core.models.build import BuildFilterItem
+
         return BuildFilterItem(
             content=self.content.with_select_context(
                 local_concepts, grain, environment
@@ -1982,6 +2010,7 @@ class OrderBy(SelectContext, Mergeable, Namespaced, BaseModel):
 
     def with_select_context(self, local_concepts, grain, environment):
         from trilogy.core.models.build import BuildOrderBy
+
         return BuildOrderBy(
             items=[
                 x.with_select_context(local_concepts, grain, environment)
@@ -2014,8 +2043,10 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
 
     def build_for_select(self, environment: Environment):
         from trilogy.core.models.build import BuildSelectLineage
+
         local_concepts = {
-            k: v.with_select_context({}, self.grain, environment) for k, v in self.local_concepts.items()
+            k: v.with_select_context({}, self.grain, environment)
+            for k, v in self.local_concepts.items()
         }
         final: List[Concept] = []
         for original in self.selection:
@@ -2034,7 +2065,7 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
             else:
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
-                new= new.with_select_context(
+                new = new.with_select_context(
                     new,
                     self.grain,
                     environment=environment,
@@ -2067,10 +2098,14 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
                 if self.having_clause
                 else None
             ),
-            where_clause=self.where_clause.with_select_context(local_concepts={}, grain = Grain(), environment=environment) if self.where_clause else None,
+            where_clause=(
+                self.where_clause.with_select_context(
+                    local_concepts={}, grain=Grain(), environment=environment
+                )
+                if self.where_clause
+                else None
+            ),
         )
-
-
 
     @property
     def output_components(self) -> List[Concept]:
@@ -2117,7 +2152,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
     local_concepts: dict[str, Concept]
     hidden_components: set[str]
 
-    def build_for_select(self, environment:Environment):
+    def build_for_select(self, environment: Environment):
         from trilogy.core.models.build import BuildMultiSelectLineage
 
         return BuildMultiSelectLineage(
@@ -2126,11 +2161,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
             align=self.align,
             namespace=self.namespace,
             hidden_components=self.hidden_components,
-            order_by=(
-                self.order_by
-                if self.order_by
-                else None
-            ),
+            order_by=(self.order_by if self.order_by else None),
             limit=self.limit,
             where_clause=(self.where_clause if self.where_clause else None),
             having_clause=(self.having_clause if self.having_clause else None),
@@ -2138,7 +2169,6 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
                 x: y.with_select_context({}, self.grain, environment)
                 for x, y in self.local_concepts.items()
             },
-
         )
 
     @property

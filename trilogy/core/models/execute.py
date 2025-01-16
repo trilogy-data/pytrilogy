@@ -27,8 +27,8 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
 )
-from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.build import BuildDatasource
+from trilogy.core.models.datasource import Address, Datasource
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"

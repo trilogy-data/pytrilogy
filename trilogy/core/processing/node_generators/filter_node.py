@@ -20,6 +20,7 @@ LOGGER_PREFIX = "[GEN_FILTER_NODE]"
 
 FILTER_TYPES = (FilterItem, BuildFilterItem)
 
+
 def gen_filter_node(
     concept: Concept,
     local_optional: List[Concept],
@@ -40,7 +41,7 @@ def gen_filter_node(
     optional_included: list[Concept] = []
 
     for x in local_optional:
-        if isinstance(x.lineage,FILTER_TYPES):
+        if isinstance(x.lineage, FILTER_TYPES):
             if concept.lineage.where == where:
                 logger.info(
                     f"{padding(depth)}{LOGGER_PREFIX} fetching {x.lineage.content.address} as optional parent with same filter conditions "

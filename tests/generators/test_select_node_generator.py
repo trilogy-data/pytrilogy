@@ -1,6 +1,12 @@
+from trilogy.core.enums import ComparisonOperator
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.models.author import Comparison, WhereClause
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators import gen_select_node
+from trilogy.core.processing.node_generators.select_merge_node import (
+    get_graph_partial_nodes,
+    resolve_subgraphs,
+)
 from trilogy.core.processing.nodes import ConstantNode, SelectNode
 from trilogy.core.statements.author import PersistStatement
 from trilogy.hooks.query_debugger import DebuggingHook
@@ -90,6 +96,101 @@ address blended;
 
     resolved = gnode.resolve()
     assert len(resolved.datasources) == 1
+
+
+def test_resolve_subgraphs():
+    env = Environment()
+    DebuggingHook()
+    env.parse(
+        """
+key order_id int;
+key customer_id int;
+property customer_id.customer_name string;
+property order_id.revenue float;
+
+datasource customer (
+    customer_id:customer_id,
+    customer_name:customer_name)
+grain (customer_id)
+address customer;
+
+datasource order (
+    order_id:order_id,
+    customer_id:customer_id,
+    revenue:revenue)
+grain (order_id)
+address order;
+
+datasource blended (
+    order_id:order_id,
+    revenue:revenue,
+    customer_id:customer_id,
+    customer_name:customer_name)
+grain (order_id,)
+address blended;
+          """,
+        persist=True,
+    )
+
+    gnode = resolve_subgraphs(g=generate_graph(env), conditions=None)
+    # we shoud resolve only the highest level source
+    assert len(gnode) == 1
+    assert "ds~blended" in gnode
+
+
+def test_resolve_subgraphs_conditions():
+    env = Environment()
+    DebuggingHook()
+    env.parse(
+        """
+key order_id int;
+key customer_id int;
+property customer_id.customer_name string;
+property order_id.revenue float;
+
+datasource customer (
+    customer_id:customer_id,
+    customer_name:customer_name)
+grain (customer_id)
+address customer;
+
+datasource order (
+    order_id:~order_id,
+    customer_id:customer_id,
+    revenue:revenue)
+grain (order_id)
+complete where order_id = 1
+address order
+where order_id = 1;
+
+datasource blended (
+    order_id:order_id,
+    revenue:revenue,
+    customer_id:customer_id,
+    customer_name:customer_name)
+grain (order_id,)
+address blended;
+          """,
+        persist=True,
+    )
+    graph = generate_graph(env)
+    to_remove = []
+    for n in graph.nodes:
+        if n.startswith("c~local.customer_name"):
+            to_remove.append(n)
+    print(to_remove)
+    for n in to_remove:
+        graph.remove_node(n)
+    conditions = WhereClause(
+        conditional=Comparison(
+            left=env.concepts["order_id"], right=1, operator=ComparisonOperator.EQ
+        )
+    )
+    assert get_graph_partial_nodes(graph, conditions)["ds~order"] == []
+    gnode = resolve_subgraphs(g=graph, conditions=conditions)
+    # we shoud resolve only the highest level source
+    assert len(gnode) == 1
+    assert "ds~order" in gnode
 
 
 def test_materialized_select_with_filter():

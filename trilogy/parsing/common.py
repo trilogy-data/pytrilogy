@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import List, Sequence, Tuple, Iterable
+from typing import Iterable, List, Tuple
 
 from lark.tree import Meta
 

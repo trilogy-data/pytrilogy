@@ -5,7 +5,8 @@ import pytest
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 
-UNSUPPORTED_TUPLE = (3,10)
+UNSUPPORTED_TUPLE = (3, 10)
+
 
 # bigquery is not supported on 13 yet
 @pytest.mark.skipif(

@@ -54,7 +54,10 @@ def gen_group_node(
         output_concepts += grain_components
         for possible_agg in local_optional:
 
-            if not isinstance(possible_agg.lineage, (AggregateWrapper, BuildAggregateWrapper, Function)):
+            if not isinstance(
+                possible_agg.lineage,
+                (AggregateWrapper, BuildAggregateWrapper, Function),
+            ):
                 continue
             if possible_agg.grain and possible_agg.grain != concept.grain:
                 logger.info(

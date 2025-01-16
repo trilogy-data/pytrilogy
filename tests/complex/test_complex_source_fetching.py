@@ -6,7 +6,6 @@ import re
 
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import Grain
-from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.environment import (
     Environment,

@@ -39,34 +39,33 @@ from trilogy.core.enums import (
     WindowType,
 )
 from trilogy.core.models.author import (
-    SelectContext,
     AggregateWrapper,
+    AlignClause,
+    CaseElse,
+    CaseWhen,
+    Comparison,
     Concept,
     ConceptArgs,
+    Conditional,
     FilterItem,
     Function,
     Grain,
+    HavingClause,
     LooseConceptList,
     Metadata,
     MultiSelectLineage,
-    Conditional,
-    SelectLineage,
-    OrderItem,
     OrderBy,
-    WhereClause,
-    HavingClause,
-    RowsetItem,
-    CaseElse,
-    CaseWhen, 
+    OrderItem,
     Parenthetical,
-    AlignClause,
-    WindowItem,
-    Comparison,
+    RowsetItem,
+    SelectContext,
+    SelectLineage,
     SubselectComparison,
+    WhereClause,
+    WindowItem,
     get_concept_arguments,
     get_concept_row_arguments,
 )
-from trilogy.core.models.environment import Environment
 from trilogy.core.models.core import (
     DataType,
     DataTyped,
@@ -80,6 +79,13 @@ from trilogy.core.models.core import (
     arg_to_datatype,
     is_compatible_datatype,
 )
+from trilogy.core.models.datasource import (
+    Address,
+    ColumnAssignment,
+    Datasource,
+    DatasourceMetadata,
+)
+from trilogy.core.models.environment import Environment
 from trilogy.utility import unique
 
 # TODO: refactor to avoid these
@@ -104,10 +110,9 @@ def address_with_namespace(address: str, namespace: str) -> str:
 #     ConstantInlineable,
 #     BaseModel,
 # ):
-    
-class BuildParenthetical(
-    Parenthetical
-):
+
+
+class BuildParenthetical(Parenthetical):
     content: "BuildExpr"
 
     def __add__(self, other) -> Union["BuildParenthetical", "BuildConditional"]:
@@ -296,7 +301,6 @@ class BuildWhereClause(ConceptArgs, BaseModel):
         BuildComparison,
         BuildConditional,
         "BuildParenthetical",
-        
     ]
 
     def __eq__(self, other):
@@ -412,7 +416,7 @@ class BuildComparison(Comparison):
         if not isinstance(
             other, (BuildComparison, BuildConditional, BuildParenthetical)
         ):
-            raise ValueError("Cannot add Comparison to non-Comparison")
+            raise ValueError(f"Cannot add {type(other)} to {__class__}")
         if other == self:
             return self
         return BuildConditional(left=self, right=other, operator=BooleanOperator.AND)
@@ -496,23 +500,23 @@ class BuildComparison(Comparison):
 
 class BuildSubselectComparison(SubselectComparison):
     left: Union[
-            int,
-            str,
-            float,
-            list,
-            bool,
-            datetime,
-            date,
-            BuildFunction,
-            BuildConcept,
-            "BuildConditional",
-            DataType,
-            "BuildComparison",
-            "BuildParenthetical",
-            MagicConstants,
-            BuildWindowItem,
-            BuildAggregateWrapper,
-        ]
+        int,
+        str,
+        float,
+        list,
+        bool,
+        datetime,
+        date,
+        BuildFunction,
+        BuildConcept,
+        "BuildConditional",
+        DataType,
+        "BuildComparison",
+        "BuildParenthetical",
+        MagicConstants,
+        BuildWindowItem,
+        BuildAggregateWrapper,
+    ]
     right: Union[
         int,
         str,
@@ -533,7 +537,7 @@ class BuildSubselectComparison(SubselectComparison):
         TupleWrapper,
     ]
     operator: ComparisonOperator
-    
+
     def __eq__(self, other):
         if not isinstance(other, SubselectComparison):
             return False
@@ -563,7 +567,7 @@ class BuildConcept(Concept, BaseModel):
     build_granularity: Granularity
     build_is_aggregate: bool
     lineage: Optional[
-        Union[ 
+        Union[
             BuildFunction,
             Function,
             BuildWindowItem,
@@ -578,7 +582,9 @@ class BuildConcept(Concept, BaseModel):
     ] = None
 
     @classmethod
-    def build(cls, base: Concept, grain:Grain, environment:Environment, local_concepts) -> BuildConcept:
+    def build(
+        cls, base: Concept, grain: Grain, environment: Environment, local_concepts
+    ) -> BuildConcept:
 
         new_lineage, final_grain, keys = base.get_select_grain_and_keys(
             grain, environment
@@ -587,9 +593,11 @@ class BuildConcept(Concept, BaseModel):
             new_lineage = new_lineage.with_select_context(
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
-        
+
         derivation = Concept.calculate_derivation(new_lineage, base.purpose)
-        granularity = Concept.calculate_granularity(derivation, final_grain, new_lineage)
+        granularity = Concept.calculate_granularity(
+            derivation, final_grain, new_lineage
+        )
         is_aggregate = Concept.calculate_is_aggregate(new_lineage)
         return BuildConcept(
             name=base.name,
@@ -860,8 +868,15 @@ def get_basic_type(
 
 
 class BuildCaseWhen(ConceptArgs, BaseModel):
-    comparison: BuildConditional | BuildSubselectComparison | BuildComparison | Conditional | Comparison | SubselectComparison
-    expr: "BuildExpr" 
+    comparison: (
+        BuildConditional
+        | BuildSubselectComparison
+        | BuildComparison
+        | Conditional
+        | Comparison
+        | SubselectComparison
+    )
+    expr: "BuildExpr"
 
     def __str__(self):
         return self.__repr__()
@@ -918,8 +933,8 @@ class BuildFunction(Function):
             MapType,
             NumericType,
             DatePart,
-            Parenthetical, 
-            CaseWhen, 
+            Parenthetical,
+            CaseWhen,
             CaseElse,
             "BuildParenthetical",
             BuildCaseWhen,
@@ -1222,8 +1237,6 @@ class BuildWindowItemOrder(BaseModel):
     contents: List["BuildOrderItem"]
 
 
-from trilogy.core.models.datasource import ColumnAssignment, Address, DatasourceMetadata, Datasource
-
 class BuildDatasource(Datasource):
     name: str
     columns: List[ColumnAssignment]
@@ -1240,6 +1253,7 @@ class BuildDatasource(Datasource):
 
     def __hash__(self):
         return self.identifier.__hash__()
+
     @property
     def identifier(self) -> str:
         if not self.namespace or self.namespace == DEFAULT_NAMESPACE:
@@ -1249,6 +1263,7 @@ class BuildDatasource(Datasource):
     @property
     def safe_identifier(self) -> str:
         return self.identifier.replace(".", "_")
+
     @property
     def concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns]
@@ -1273,6 +1288,7 @@ class BuildDatasource(Datasource):
     def partial_concepts(self) -> List[Concept]:
         return [c.concept for c in self.columns if Modifier.PARTIAL in c.modifiers]
 
+
 BuildExpr = (
     bool
     | MagicConstants
@@ -1280,7 +1296,7 @@ BuildExpr = (
     | str
     | float
     | list
-    | WindowItem 
+    | WindowItem
     | FilterItem
     | Concept
     | ComparisonOperator

@@ -30,17 +30,17 @@ from trilogy.core.models.author import (
     WindowItem,
 )
 from trilogy.core.models.build import (
-    BuildWindowItem,
-    BuildFilterItem,
     BuildAggregateWrapper,
-    BuildCaseWhen,
     BuildCaseElse,
-    BuildSubselectComparison,
+    BuildCaseWhen,
     BuildComparison,
+    BuildConcept,
+    BuildConditional,
+    BuildFilterItem,
     BuildFunction,
     BuildParenthetical,
-    BuildConditional,
-    BuildConcept,
+    BuildSubselectComparison,
+    BuildWindowItem,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -65,7 +65,6 @@ from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.utility import unique
 
-
 AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
 SUBSELECT_TYPES = (SubselectComparison, BuildSubselectComparison)
 COMPARISON_TYPES = (Comparison, BuildComparison)
@@ -74,6 +73,7 @@ PARENTHETICAL_TYPES = (Parenthetical, BuildParenthetical)
 CONDITIONAL_TYPES = (Conditional, BuildConditional)
 CONCEPT_TYPES = (Concept, BuildConcept)
 WINDOW_TYPES = (WindowItem, BuildWindowItem)
+
 
 class NodeType(Enum):
     CONCEPT = 1
@@ -510,7 +510,18 @@ def is_scalar_condition(
         return True
     return True
 
-CONDITION_TYPES = (SubselectComparison, BuildSubselectComparison, Comparison, BuildComparison, Conditional, BuildConditional, Parenthetical, BuildParenthetical)
+
+CONDITION_TYPES = (
+    SubselectComparison,
+    BuildSubselectComparison,
+    Comparison,
+    BuildComparison,
+    Conditional,
+    BuildConditional,
+    Parenthetical,
+    BuildParenthetical,
+)
+
 
 def decompose_condition(
     conditional: Conditional | Comparison | Parenthetical,
@@ -520,10 +531,7 @@ def decompose_condition(
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
         if not (
-            isinstance(
-                conditional.left,
-                CONDITION_TYPES
-            )
+            isinstance(conditional.left, CONDITION_TYPES)
             and isinstance(
                 conditional.right,
                 CONDITION_TYPES,

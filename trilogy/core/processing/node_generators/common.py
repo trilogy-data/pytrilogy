@@ -10,7 +10,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.models.build import BuildFilterItem, BuildAggregateWrapper
+from trilogy.core.models.build import BuildAggregateWrapper, BuildFilterItem
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     History,
@@ -20,7 +20,8 @@ from trilogy.core.processing.nodes.base_node import StrategyNode
 from trilogy.core.processing.nodes.merge_node import MergeNode
 from trilogy.utility import unique
 
-AGGREGATE_TYPES = ( AggregateWrapper, BuildAggregateWrapper)
+AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
+
 
 def resolve_function_parent_concepts(
     concept: Concept, environment: Environment

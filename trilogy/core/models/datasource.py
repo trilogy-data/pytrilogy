@@ -98,19 +98,28 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     where: Optional[WhereClause] = None
     non_partial_for: Optional[WhereClause] = None
 
-
     def build_for_select(self, environment):
         from trilogy.core.models.build import BuildDatasource
 
         return BuildDatasource(
             name=self.name,
-            columns = self.columns,
-            address = self.address,
-            grain = self.grain,
-            namespace = self.namespace, 
+            columns=self.columns,
+            address=self.address,
+            grain=self.grain,
+            namespace=self.namespace,
             metadata=self.metadata,
-            where = self.where.with_select_context({}, Grain(), environment=environment) if self.where else None,
-            non_partial_for = self.non_partial_for.with_select_context({}, Grain(), environment=environment) if self.non_partial_for else None
+            where=(
+                self.where.with_select_context({}, Grain(), environment=environment)
+                if self.where
+                else None
+            ),
+            non_partial_for=(
+                self.non_partial_for.with_select_context(
+                    {}, Grain(), environment=environment
+                )
+                if self.non_partial_for
+                else None
+            ),
         )
 
     def duplicate(self) -> "Datasource":

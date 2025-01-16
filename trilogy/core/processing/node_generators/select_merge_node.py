@@ -1,3 +1,4 @@
+from functools import reduce
 from typing import List, Optional
 
 import networkx as nx
@@ -11,7 +12,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.models.build import BuildWhereClause, BuildDatasource
+from trilogy.core.models.build import BuildDatasource, BuildWhereClause
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -57,7 +58,25 @@ def get_graph_partial_nodes(
     return partial
 
 
-def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
+def get_graph_exact_match(g: nx.DiGraph, conditions: WhereClause | None) -> set[str]:
+    datasources: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
+        g, "datasource"
+    )
+    exact: set[str] = set()
+    for node in g.nodes:
+        if node in datasources:
+            ds = datasources[node]
+            if not isinstance(ds, list):
+                if ds.non_partial_for and conditions == ds.non_partial_for:
+                    exact.add(node)
+                    continue
+            else:
+                continue
+
+    return exact
+
+
+def get_graph_grains(g: nx.DiGraph) -> dict[str, list[str]]:
     datasources: dict[str, Datasource | list[Datasource]] = nx.get_node_attributes(
         g, "datasource"
     )
@@ -68,7 +87,9 @@ def get_graph_grain_length(g: nx.DiGraph) -> dict[str, int]:
             if not isinstance(lookup, list):
                 lookup = [lookup]
             assert isinstance(lookup, list)
-            grain_length[node] = sum(len(x.grain.components) for x in lookup)
+            grain_length[node] = reduce(
+                lambda x, y: x.union(y.grain.components), lookup, set()
+            )
     return grain_length
 
 
@@ -187,12 +208,23 @@ def create_pruned_concept_graph(
 def resolve_subgraphs(
     g: nx.DiGraph, conditions: WhereClause | None
 ) -> dict[str, list[str]]:
+    """When we have multiple distinct subgraphs within our matched
+    nodes that can satisfy a query, resolve which one of those we should
+    ultimately ues.
+    This should generally return one subgraph for each
+    unique set of sub concepts that can be referenced,
+    discarding duplicates.
+    Duplicate subgraphs will be resolved based on which
+    ones are most 'optimal' to use, a hueristic
+    that can evolve in the future but is currently based on
+    cardinality."""
     datasources = [n for n in g.nodes if n.startswith("ds~")]
     subgraphs: dict[str, list[str]] = {
         ds: list(set(list(nx.all_neighbors(g, ds)))) for ds in datasources
     }
     partial_map = get_graph_partial_nodes(g, conditions)
-    grain_length = get_graph_grain_length(g)
+    exact_map = get_graph_exact_match(g, conditions)
+    grain_length = get_graph_grains(g)
     concepts: dict[str, Concept] = nx.get_node_attributes(g, "concept")
     non_partial_map = {
         ds: [concepts[c].address for c in subgraphs[ds] if c not in partial_map[ds]]
@@ -202,6 +234,25 @@ def resolve_subgraphs(
         ds: [concepts[c].address for c in subgraphs[ds]] for ds in datasources
     }
     pruned_subgraphs = {}
+
+    def score_node(input: str):
+        logger.debug(f"scoring node {input}")
+        grain = grain_length[input]
+        # first - go for lowest grain
+        # but if the object we want is in the grain, treat that as "free"
+        # ex - pick source with grain(product_id) over grain(order_id)
+        # when going for product_id
+        score = (
+            len(list(grain)) - sum([1 for x in concept_map[input] if x in grain]),
+            # then check if it's an exact condition match
+            0 if input in exact_map else 0.5,
+            # last, number of concepts
+            len(subgraphs[input]),
+            input,
+        )
+        logger.debug(score)
+        return score
+
     for key, nodes in subgraphs.items():
 
         value = non_partial_map[key]
@@ -227,19 +278,12 @@ def resolve_subgraphs(
                 ):
                     matches.add(other_key)
                     matches.add(key)
-                else:
-                    logger.debug(f'keeping subgraph {key}')
         if matches and not is_subset:
-            is_subset = key is not min(matches, key=lambda x: (grain_length[x], 1 if '-' in x else 0, x))
+            min_node = min(matches, key=score_node)
+            logger.debug(f"minimum source score is {min_node}")
+            is_subset = key is not min(matches, key=score_node)
         if not is_subset:
             pruned_subgraphs[key] = nodes
-        logger.info(key)
-        logger.info('is_subset was')
-        logger.info(is_subset)
-        logger.info('subgraph is')
-        logger.info(pruned_subgraphs)
-    logger.info('final subgraph')
-    logger.debug(pruned_subgraphs)  
     return pruned_subgraphs
 
 
@@ -272,7 +316,17 @@ def create_datasource_node(
     ]
     nullable_lcl = LooseConceptList(concepts=nullable_concepts)
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
+
     grain = Grain.from_concepts(all_concepts)
+    datasource_conditions = (
+        datasource.where.conditional.with_select_context(
+            local_concepts={}, grain=grain, environment=environment
+        )
+        if datasource.where
+        else None
+    )
+    if not partial_is_full and conditions:
+        datasource_conditions = conditions.conditional + datasource_conditions
     return (
         SelectNode(
             input_concepts=[c.concept for c in datasource.columns],
@@ -287,7 +341,7 @@ def create_datasource_node(
             accept_partial=accept_partial,
             datasource=datasource,
             grain=Grain.from_concepts(all_concepts),
-            conditions=datasource.where.conditional.with_select_context(local_concepts = {}, grain = grain , environment=environment) if datasource.where else None,
+            conditions=datasource_conditions,
             preexisting_conditions=(
                 conditions.conditional if partial_is_full and conditions else None
             ),
@@ -339,7 +393,9 @@ def create_select_node(
         )
 
     elif isinstance(datasource, list):
-        logger.info( f"{padding(depth)}{LOGGER_PREFIX} generating union node parents")
+        logger.info(
+            f"{padding(depth)}{LOGGER_PREFIX} generating union node parents with condition {conditions}"
+        )
         from trilogy.core.processing.nodes.union_node import UnionNode
 
         force_group = False
@@ -355,7 +411,7 @@ def create_select_node(
             )
             parents.append(subnode)
             force_group = force_group or fg
-        logger.info( f"{padding(depth)}{LOGGER_PREFIX} generating union node")
+        logger.info(f"{padding(depth)}{LOGGER_PREFIX} generating union node")
         bcandidate = UnionNode(
             output_concepts=all_concepts,
             input_concepts=all_concepts,
@@ -414,7 +470,12 @@ def gen_select_merge_node(
             non_constant,
             accept_partial=attempt,
             conditions=conditions,
-            datasources=list([x.build_for_select(environment) for x in environment.datasources.values()]),
+            datasources=list(
+                [
+                    x.build_for_select(environment)
+                    for x in environment.datasources.values()
+                ]
+            ),
             depth=depth,
         )
         if pruned_concept_graph:
@@ -460,7 +521,9 @@ def gen_select_merge_node(
 
     if len(parents) == 1:
         return parents[0]
-    logger.info(f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge")
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge"
+    )
     preexisting_conditions = None
     if conditions and all(
         [

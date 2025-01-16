@@ -189,7 +189,7 @@ def get_union_sources(datasources: list[Datasource], concepts: list[Concept]):
         assocs[merge_key.address].append(x)
     final: list[list[Datasource]] = []
     for _, dses in assocs.items():
-        
+
         conditions = [c.non_partial_for.conditional for c in dses if c.non_partial_for]
         if simplify_conditions(conditions):
             final.append(dses)

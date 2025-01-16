@@ -28,16 +28,16 @@ from trilogy.core.models.author import (
     WindowItem,
 )
 from trilogy.core.models.build import (
-    BuildWindowItem,
-    BuildFilterItem,
     BuildAggregateWrapper,
-    BuildFunction,
-    BuildParenthetical,
     BuildCaseElse,
     BuildCaseWhen,
-    BuildSubselectComparison,
     BuildComparison,
-    BuildConditional
+    BuildConditional,
+    BuildFilterItem,
+    BuildFunction,
+    BuildParenthetical,
+    BuildSubselectComparison,
+    BuildWindowItem,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -92,6 +92,7 @@ CASE_ELSE_ITEMS = (BuildCaseElse, CaseElse)
 SUBSELECT_COMPARISON_ITEMS = (BuildSubselectComparison, SubselectComparison)
 COMPARISON_ITEMS = (BuildComparison, Comparison)
 CONDITIONAL_ITEMS = (BuildConditional, Conditional)
+
 
 def INVALID_REFERENCE_STRING(x: Any, callsite: str = ""):
     return f"INVALID_REFERENCE_BUG_{callsite}<{x}>"

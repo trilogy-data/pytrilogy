@@ -9,7 +9,6 @@ from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.models.author import (
     Concept,
-    Conditional,
     MultiSelectLineage,
     SelectLineage,
 )
@@ -69,7 +68,9 @@ def base_join_to_join(
             if cte.source.datasources[0].identifier == datasource.identifier:
                 return cte
             eligible.add(cte.source.datasources[0].identifier)
-        raise ValueError(f"Could not find CTE for datasource {datasource.identifier}; have {eligible}")
+        raise ValueError(
+            f"Could not find CTE for datasource {datasource.identifier}; have {eligible}"
+        )
 
     if base_join.left_datasource is not None:
         left_cte = get_datasource_cte(base_join.left_datasource)

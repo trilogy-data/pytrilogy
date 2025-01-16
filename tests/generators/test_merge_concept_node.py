@@ -1,6 +1,7 @@
 from trilogy import parse
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.base import BaseDialect
+from trilogy.hooks.query_debugger import DebuggingHook
 
 
 def test_merge_concepts():
@@ -41,6 +42,7 @@ def query_to_lines(query):
 
 
 def test_merge_concept_remapping():
+    DebuggingHook()
     env1 = Environment()
     env2 = Environment()
     parse(
@@ -109,4 +111,4 @@ address num1;
              	env2_num1.`one` as `env2_one`
              FROM
              	num1 as env2_num1"""
-        )
+        ), compiled
