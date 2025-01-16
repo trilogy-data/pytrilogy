@@ -367,10 +367,11 @@ def get_query_node(
     statement: SelectLineage | MultiSelectLineage,
     history: History | None = None,
 ) -> StrategyNode:
-    environment = environment.duplicate()
     statement = statement.build_for_select(environment=environment)
-    for k, v in statement.local_concepts.items():
-        environment.concepts[k] = v
+    environment = environment.materialize_for_select(statement.local_concepts)
+    # statement = statement.build_for_select(environment=environment)
+    # for k, v in statement.local_concepts.items():
+    #     environment.concepts[k] = v
     graph = generate_graph(environment)
     logger.info(
         f"{LOGGER_PREFIX} getting source datasource for outputs {statement.output_components} grain {statement.grain}"

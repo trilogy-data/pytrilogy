@@ -191,6 +191,18 @@ class Environment(BaseModel):
     def thaw(self):
         self.frozen = False
 
+    def materialize_for_select(self, local_concepts:dict[str, Concept]):
+        from trilogy.core.models.author import Grain
+        base = self.duplicate()
+        for k, v in local_concepts.items():
+            base.concepts[k] = v
+        # now materialize
+        for k, v in base.concepts.items():
+            base.concepts[k] = v.with_select_context({}, Grain(), base)
+        for k, d, in self.datasources.items():
+            base.datasources[k] = d.build_for_select(base)
+        return base
+
     def duplicate(self):
         return Environment.model_construct(
             datasources=self.datasources.duplicate(),

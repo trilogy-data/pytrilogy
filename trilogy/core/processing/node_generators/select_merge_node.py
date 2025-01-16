@@ -472,8 +472,8 @@ def gen_select_merge_node(
             conditions=conditions,
             datasources=list(
                 [
-                    x.build_for_select(environment)
-                    for x in environment.datasources.values()
+                    x.build_for_select(environment) if not isinstance(x, BuildDatasource) else x    
+                    for x in environment.datasources.values() 
                 ]
             ),
             depth=depth,

@@ -94,7 +94,8 @@ if TYPE_CHECKING:
 
 
 class ConstantInlineable(ABC):
-    def inline_concept(self, concept: BuildConcept):
+
+    def inline_constant(self, concept: BuildConcept):
         raise NotImplementedError
 
 
