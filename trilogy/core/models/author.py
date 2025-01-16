@@ -1118,8 +1118,14 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         from trilogy.core.models.build import BuildConcept
 
         if isinstance(self, BuildConcept):
+            if self.address not in local_concepts:
+                local_concepts[self.address] = self
             return self
-        return BuildConcept.build(self, grain, environment, local_concepts)
+        if self.address in local_concepts:
+            return local_concepts[self.address]
+        new = BuildConcept.build(self, grain, environment, local_concepts)
+        local_concepts[self.address] = new
+        return new
 
     def with_grain(self, grain: Optional["Grain"] = None) -> Self:
         return self.__class__(
@@ -2043,11 +2049,12 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
 
     def build_for_select(self, environment: Environment):
         from trilogy.core.models.build import BuildSelectLineage
-
+        materialized = {}
         local_concepts = {
-            k: v.with_select_context({}, self.grain, environment)
+            k: v.with_select_context(materialized, self.grain, environment)
             for k, v in self.local_concepts.items()
         }
+        local_concepts = {**local_concepts, **materialized}
         final: List[Concept] = []
         for original in self.selection:
             new = original.model_copy(deep=True)
@@ -2066,7 +2073,7 @@ class SelectLineage(Mergeable, SelectContext, Namespaced, BaseModel):
                 # Sometimes cached values here don't have the latest info
                 # but we can't just use environment, as it might not have the right grain.
                 new = new.with_select_context(
-                    new,
+                    local_concepts,
                     self.grain,
                     environment=environment,
                 )

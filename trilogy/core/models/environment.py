@@ -198,7 +198,9 @@ class Environment(BaseModel):
             base.concepts[k] = v
         # now materialize
         for k, v in base.concepts.items():
-            base.concepts[k] = v.with_select_context({}, Grain(), base)
+            if k in local_concepts:
+                continue
+            base.concepts[k] = v.with_select_context(local_concepts, Grain(), base)
         for k, d, in self.datasources.items():
             base.datasources[k] = d.build_for_select(base)
         return base
