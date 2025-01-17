@@ -29,7 +29,8 @@ def test_environment():
     order_id = Concept(name="order_id", datatype=DataType.INTEGER, purpose=Purpose.KEY)
 
     order_timestamp = Concept(
-        name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY
+        name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY,
+        keys = set(['order_id'])
     )
 
     order_count = Concept(
