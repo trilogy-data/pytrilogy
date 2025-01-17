@@ -10,7 +10,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     WhereClause,
 )
-from trilogy.core.models.build import BuildAggregateWrapper, BuildFilterItem
+from trilogy.core.models.build import BuildAggregateWrapper, BuildFilterItem, BuildFunction
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     History,
@@ -21,12 +21,12 @@ from trilogy.core.processing.nodes.merge_node import MergeNode
 from trilogy.utility import unique
 
 AGGREGATE_TYPES = (AggregateWrapper, BuildAggregateWrapper)
-
+FUNCTION_TYPES = (BuildFunction, Function)
 
 def resolve_function_parent_concepts(
     concept: Concept, environment: Environment
 ) -> List[Concept]:
-    if not isinstance(concept.lineage, (Function, *AGGREGATE_TYPES)):
+    if not isinstance(concept.lineage, (*FUNCTION_TYPES, *AGGREGATE_TYPES)):
         raise ValueError(f"Concept {concept} lineage is not function or aggregate")
     if concept.derivation == Derivation.AGGREGATE:
         base: list[Concept] = []

@@ -54,7 +54,7 @@ def generate_date_concepts(concept: Concept, environment: Environment):
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
-            grain=const_function.output_grain,
+            grain=concept.grain,
             namespace=namespace,
             keys=set(
                 concept.address,
@@ -105,7 +105,7 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
-            grain=const_function.output_grain,
+            grain=concept.grain,
             namespace=namespace,
             keys=set(
                 concept.address,
@@ -147,7 +147,7 @@ def generate_key_concepts(concept: Concept, environment: Environment):
             datatype=DataType.INTEGER,
             purpose=default_type,
             lineage=const_function,
-            grain=const_function.output_grain,
+            grain=concept.grain,
             namespace=namespace,
             keys={
                 concept.address,

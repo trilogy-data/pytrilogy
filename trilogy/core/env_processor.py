@@ -3,6 +3,7 @@ from trilogy.core.graph_models import (
     concept_to_node,
     datasource_to_node,
 )
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.author import Concept
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
@@ -45,9 +46,13 @@ def generate_adhoc_graph(
 ) -> ReferenceGraph:
     g = ReferenceGraph()
     concept_mapping = {x.address: x for x in concepts}
+    for concept in concepts:
+        if not isinstance(concept, BuildConcept):
+            raise ValueError(f'Invalid non-build concept {concept}')
 
     # add all parsed concepts
     for concept in concepts:
+
         add_concept(concept, g, concept_mapping)
 
     for dataset in datasources:

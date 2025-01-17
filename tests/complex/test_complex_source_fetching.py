@@ -22,6 +22,7 @@ from trilogy.dialect.sql_server import SqlServerDialect
 
 def test_aggregate_of_property_function(stackoverflow_environment: Environment) -> None:
     env: Environment = stackoverflow_environment
+
     avg_user_post_count = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_user_post_count, user_id])
@@ -43,6 +44,7 @@ def test_aggregate_of_property_function(stackoverflow_environment: Environment) 
 
 def test_aggregate_to_grain(stackoverflow_environment: Environment):
     env = stackoverflow_environment
+    
     avg_post_length = env.concepts["user_avg_post_length"]
     user_id = env.concepts["user_id"]
     select: SelectStatement = SelectStatement(selection=[avg_post_length, user_id])

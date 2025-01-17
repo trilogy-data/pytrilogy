@@ -311,8 +311,11 @@ class ParseToObjects(Transformer):
     @v_args(meta=True)
     def concept_lit(self, meta: Meta, args) -> ConceptRef:
         address = args[0]
-        return self.environment.concepts.__getitem__(address, meta.line)
-        # return ConceptRef(address=address, line_no=meta.line)
+        if '.' not in address and self.environment.namespace == DEFAULT_NAMESPACE:
+            address = f'{DEFAULT_NAMESPACE}.{address}'
+        datatype = self.environment.concepts[address].output_datatype
+
+        return ConceptRef(address=address, line_no=meta.line, datatype= datatype)
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
 
@@ -695,34 +698,9 @@ class ParseToObjects(Transformer):
         )
 
         metadata = Metadata(line_number=meta.line, concept_source=ConceptSource.SELECT)
-
-        if isinstance(transformation, AggregateWrapper):
-            concept = agg_wrapper_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, WindowItem):
-            concept = window_item_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, FilterItem):
-            concept = filter_item_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, CONSTANT_TYPES):
-            concept = constant_to_concept(
-                transformation, namespace=namespace, name=output, metadata=metadata
-            )
-        elif isinstance(transformation, Function):
-            concept = function_to_concept(
-                transformation,
-                namespace=namespace,
-                name=output,
-                metadata=metadata,
-                environment=self.environment,
-            )
-        else:
-            raise SyntaxError("Invalid transformation")
-
+        concept = arbitrary_to_concept(transformation, environment=self.environment,
+                                       namespace=namespace, name=output, metadata=metadata)
+  
         return ConceptTransform(function=transformation, output=concept)
 
     @v_args(meta=True)
@@ -772,10 +750,14 @@ class ParseToObjects(Transformer):
 
     def order_list(self, args):
         def handle_order_item(x, namespace: str):
-            if not isinstance(x, Concept):
+            if  isinstance(x, ConceptRef):
+                x = self.environment.concepts[x.address]
+
+            else:
                 x = arbitrary_to_concept(
                     x, namespace=namespace, environment=self.environment
                 )
+            
             return x
 
         return [
@@ -946,6 +928,7 @@ class ParseToObjects(Transformer):
             name=identifier,
             address=Address(location=address),
             grain=grain,
+            environment=self.environment
         )
         return PersistStatement(
             select=select,
@@ -1265,8 +1248,8 @@ class ParseToObjects(Transformer):
                 over = item.contents
             elif isinstance(item, str):
                 concept = self.environment.concepts[item]
-            elif isinstance(item, Concept):
-                concept = item
+            elif isinstance(item, ConceptRef):
+                concept = self.environment.concepts[item]
             elif isinstance(item, WindowType):
                 type = item
             else:
@@ -1274,7 +1257,7 @@ class ParseToObjects(Transformer):
                 self.environment.add_concept(concept, meta=meta)
         assert concept
         return WindowItem(
-            type=type, content=concept, over=over, order_by=order_by, index=index
+            type=type, content=concept.reference, over=over, order_by=order_by, index=index
         )
 
     def filter_item(self, args) -> FilterItem:
@@ -1284,7 +1267,7 @@ class ParseToObjects(Transformer):
             where = raw
         else:
             where = WhereClause(conditional=raw)
-        concept = self.environment.concepts[string_concept]
+        concept = self.environment.concepts[string_concept].reference
         return FilterItem(content=concept, where=where)
 
     # BEGIN FUNCTIONS
@@ -1301,7 +1284,7 @@ class ParseToObjects(Transformer):
         return args[0]
 
     def aggregate_all(self, args):
-        return [self.environment.concepts[f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"]]
+        return [ConceptRef(address=f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}", datatype = DataType.INTEGER)]
 
     def aggregate_functions(self, args):
         if len(args) == 2:

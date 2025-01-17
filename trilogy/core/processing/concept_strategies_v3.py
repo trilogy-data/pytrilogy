@@ -512,7 +512,7 @@ def generate_node(
             )
             return None
     else:
-        raise ValueError(f"Unknown derivation {concept.derivation}")
+        raise ValueError(f"Unknown derivation {concept.derivation} on {concept}")
     return None
 
 

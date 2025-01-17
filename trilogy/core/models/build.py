@@ -63,8 +63,9 @@ from trilogy.core.models.author import (
     SubselectComparison,
     WhereClause,
     WindowItem,
-    get_concept_arguments,
-    get_concept_row_arguments,
+    RowsetLineage,
+    # get_concept_arguments,
+    # get_concept_row_arguments,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -111,6 +112,28 @@ def address_with_namespace(address: str, namespace: str) -> str:
 #     ConstantInlineable,
 #     BaseModel,
 # ):
+
+def get_concept_row_arguments(expr) -> List["BuildConcept"]:
+    output = []
+    if isinstance(expr, BuildConcept):
+        output += [expr]
+
+    elif isinstance(expr, ConceptArgs):
+        output += expr.row_arguments
+    return output
+
+
+def get_concept_arguments(expr) -> List["BuildConcept"]:
+    output = []
+    if isinstance(expr, BuildConcept):
+        output += [expr]
+
+    elif isinstance(
+        expr,
+        ConceptArgs,
+    ):
+        output += expr.concept_arguments
+    return output
 
 
 class BuildParenthetical(Parenthetical):
@@ -564,8 +587,6 @@ class BuildConcept(Concept, BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    build_derivation: Derivation
-    build_granularity: Granularity
     build_is_aggregate: bool
     lineage: Optional[
         Union[
@@ -577,11 +598,13 @@ class BuildConcept(Concept, BaseModel):
             BuildFilterItem,
             AggregateWrapper,
             BuildAggregateWrapper,
+            BuildRowsetItem,
             RowsetItem,
             MultiSelectLineage,
         ]
     ] = None
-
+    def with_select_context(self):
+        raise NotImplementedError
     @classmethod
     def build(
         cls, base: Concept, grain: Grain, environment: Environment, local_concepts
@@ -595,6 +618,7 @@ class BuildConcept(Concept, BaseModel):
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
 
+        print(new_lineage)
         derivation = Concept.calculate_derivation(new_lineage, base.purpose)
         granularity = Concept.calculate_granularity(
             derivation, final_grain, new_lineage
@@ -612,18 +636,12 @@ class BuildConcept(Concept, BaseModel):
             modifiers=base.modifiers,
             pseudonyms=(environment.concepts.get(base.address) or base).pseudonyms,
             ## instantiated values
-            build_derivation=derivation,
-            build_granularity=granularity,
+            derivation=derivation,
+            granularity=granularity,
             build_is_aggregate=is_aggregate,
         )
 
-    @property
-    def derivation(self) -> Derivation:
-        return self.build_derivation
 
-    @property
-    def granularity(self) -> Granularity:
-        return self.build_granularity
 
     def with_merge(self, source: Self, target: Self, modifiers: List[Modifier]) -> Self:
         if self.address == source.address:
@@ -650,8 +668,8 @@ class BuildConcept(Concept, BaseModel):
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
             # build
-            build_derivation=self.build_derivation,
-            build_granularity=self.build_granularity,
+           _derivation=self.derivation,
+            granularity=self.granularity,
             build_is_aggregate=self.build_is_aggregate,
         )
 
@@ -723,8 +741,8 @@ class BuildConcept(Concept, BaseModel):
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
             ## bound
-            build_derivation=self.build_derivation,
-            build_granularity=self.build_granularity,
+            derivation=self.derivation,
+            granularity=self.granularity,
             build_is_aggregate=self.build_is_aggregate,
         )
 
@@ -765,8 +783,8 @@ class BuildConcept(Concept, BaseModel):
             modifiers=self.modifiers,
             pseudonyms=self.pseudonyms,
             ## bound
-            build_derivation=self.build_derivation,
-            build_granularity=self.build_granularity,
+            derivation=self.derivation,
+            granularity=self.granularity,
             build_is_aggregate=self.build_is_aggregate,
         )
 
@@ -1030,14 +1048,14 @@ class BuildRowsetLineage(BaseModel):
     select: BuildSelectLineage | BuildMultiSelectLineage
 
 
-class BuildRowsetItem(ConceptArgs, BaseModel):
+class BuildRowsetItem(RowsetItem):
     content: BuildConcept
-    rowset: BuildRowsetLineage
-    where: Optional["BuildWhereClause"] = None
+    rowset: RowsetLineage
+
 
     def __repr__(self):
         return (
-            f"<Rowset<{self.rowset.name}>: {str(self.content)} where {str(self.where)}>"
+            f"<Rowset<{self.rowset.name}>: {str(self.content)}>"
         )
 
     def __str__(self):
@@ -1061,8 +1079,6 @@ class BuildRowsetItem(ConceptArgs, BaseModel):
 
     @property
     def concept_arguments(self):
-        if self.where:
-            return [self.content] + self.where.concept_arguments
         return [self.content]
 
 

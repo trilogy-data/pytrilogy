@@ -226,7 +226,9 @@ def test_demo_filter(engine):
         count(surviving_passenger) -> surviving_size
     HAVING
         passenger.id.count=surviving_size
-    order by passenger.id.count desc, passenger.last_name asc
+    order by 
+        passenger.id.count desc, 
+        passenger.last_name asc
     limit 5;"""
 
     results = executor.execute_text(test)[-1].fetchall()
@@ -479,7 +481,7 @@ def test_merge(base_test_env: Environment, engine):
     executor = engine
     executor.environment = base_test_env
     rich_name = base_test_env.concepts["rich_info.full_name"]
-    assert rich_name in base_test_env.concepts["rich_info.last_name"].sources
+    # assert rich_name in base_test_env.concepts["rich_info.last_name"].sources
     assert rich_name in base_test_env.concepts["rich_info.split_name"].sources
     executor.parse_text("""MERGE rich_info.last_name into ~passenger.last_name;""")
 

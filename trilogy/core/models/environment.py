@@ -29,6 +29,7 @@ from trilogy.core.models.author import (
     Function,
     UndefinedConcept,
     address_with_namespace,
+    ConceptRef
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
@@ -93,6 +94,8 @@ class EnvironmentConceptDict(dict):
     def __getitem__(
         self, key: str, line_no: int | None = None, file: Path | None = None
     ) -> Concept | UndefinedConcept:
+        if isinstance(key, ConceptRef):
+            return self.__getitem__(key.address, line_no=line_no, file=file)
         try:
             return super(EnvironmentConceptDict, self).__getitem__(key)
         except KeyError:
@@ -109,11 +112,13 @@ class EnvironmentConceptDict(dict):
                 if key in self.undefined:
                     return self.undefined[key]
                 undefined = UndefinedConcept(
-                    name=rest,
-                    line_no=line_no,
-                    datatype=DataType.UNKNOWN,
-                    purpose=Purpose.UNKNOWN,
-                    namespace=ns,
+                    address = f'{ns}.{rest}', line_no = line_no,
+                    datatype = DataType.UNKNOWN
+                    # name=rest,
+                    # line_no=line_no,
+                    # datatype=DataType.UNKNOWN,
+                    # purpose=Purpose.UNKNOWN,
+                    # namespace=ns,
                 )
                 self.undefined[key] = undefined
                 return undefined
@@ -191,8 +196,10 @@ class Environment(BaseModel):
     def thaw(self):
         self.frozen = False
 
-    def materialize_for_select(self, local_concepts:dict[str, Concept]):
+    def materialize_for_select(self, local_concepts:dict[str, Concept] | None = None):
+        local_concepts = local_concepts or {}
         from trilogy.core.models.author import Grain
+        from trilogy.core.models.build import BuildConcept
         base = Environment(namespace=self.namespace, working_path=self.working_path, cte_name_map = self.cte_name_map)
 
   
@@ -207,7 +214,7 @@ class Environment(BaseModel):
         for k, d, in self.datasources.items():
             base.datasources[k] = d.build_for_select(base)
         for k, a in self.alias_origin_lookup.items():
-            base.alias_origin_lookup[k] = a.with_select_context(self.alias_origin_lookup, Grain(), self)
+            base.alias_origin_lookup[k] =  BuildConcept.build(a, Grain(), base, local_concepts)
         base.gen_concept_list_caches()
         # for k, v in self.concepts.items():
         #     assert k in base.concepts
@@ -313,7 +320,7 @@ class Environment(BaseModel):
     def validate_concept(self, new_concept: Concept, meta: Meta | None = None):
         lookup = new_concept.address
         existing: Concept = self.concepts.get(lookup)  # type: ignore
-        if not existing:
+        if not existing or isinstance(existing, UndefinedConcept):
             return
 
         def handle_persist():

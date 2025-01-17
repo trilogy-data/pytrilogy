@@ -28,6 +28,7 @@ from trilogy.core.models.author import (
     UndefinedConcept,
     WhereClause,
     WindowItem,
+    ConceptRef,
 )
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
@@ -42,7 +43,7 @@ from trilogy.utility import unique
 
 class ConceptTransform(BaseModel):
     function: Function | FilterItem | WindowItem | AggregateWrapper
-    output: Concept
+    output: Concept # this has to be a full concept, as it may not exist in environment
     modifiers: List[Modifier] = Field(default_factory=list)
 
     def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
@@ -61,14 +62,21 @@ class ConceptTransform(BaseModel):
 
 
 class SelectItem(BaseModel):
-    content: Union[Concept, ConceptTransform]
+    content: Union[ConceptTransform, ConceptRef]
     modifiers: List[Modifier] = Field(default_factory=list)
 
+    @field_validator("content", mode="before")
+    def parse_content(cls, v):
+        if isinstance(v, Concept):
+            return ConceptRef(address=v.address)
+        return v
+
     @property
-    def concept(self):
-        return (
-            self.content if isinstance(self.content, Concept) else self.content.output
-        )
+    def concept(self)->str:
+        if isinstance(self.content, (Concept, ConceptRef)):
+            return self.content.address
+        return self.content.output.address
+    
 
     @property
     def is_undefined(self) -> bool:
@@ -87,7 +95,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
 
     def as_lineage(self, environment: Environment) -> SelectLineage:
         return SelectLineage(
-            selection=[x.concept for x in self.selection],
+            selection=[environment.concepts[x.concept] for x in self.selection],
             order_by=self.order_by,
             limit=self.limit,
             where_clause=self.where_clause,
@@ -116,39 +124,40 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             order_by=order_by,
             meta=meta or Metadata(),
         )
-        output.grain = output.calculate_grain()
+        output.grain = output.calculate_grain(environment)
         for x in selection:
             if x.is_undefined and environment.concepts.fail_on_missing:
                 environment.concepts.raise_undefined(
-                    x.concept.address, meta.line_number if meta else None
+                    x.concept, meta.line_number if meta else None
                 )
             elif isinstance(x.content, ConceptTransform):
                 if (
                     CONFIG.select_as_definition
                     and not environment.frozen
-                    and x.concept.address not in environment.concepts
+                    and x.concept  not in environment.concepts
                 ):
-                    environment.add_concept(x.concept)
+                    environment.add_concept(x.content.output)
                 x.content.output = x.content.output.set_select_grain(
                     output.grain, environment
                 )
                 # we might not need this
-                output.local_concepts[x.concept.address] = x.concept
+                output.local_concepts[x.content.output.address] = x.content.output
 
-            elif isinstance(x.content, Concept):
-                x.content = x.content.set_select_grain(output.grain, environment)
-                output.local_concepts[x.content.address] = x.content
+            elif isinstance(x.content, ConceptRef):
+                # x.content = x.content
+                output.local_concepts[x.content.address] = environment.concepts[x.content.address].set_select_grain(output.grain, environment)
 
         output.validate_syntax(environment)
         return output
 
-    def calculate_grain(self) -> Grain:
+    def calculate_grain(self, environment:Environment|None = None) -> Grain:
         targets = []
         for x in self.selection:
             targets.append(x.concept)
         result = Grain.from_concepts(
             targets,
             where_clause=self.where_clause,
+            environment=environment
         )
         return result
 
@@ -159,9 +168,10 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
                     environment.concepts.raise_undefined(
                         x.address, x.metadata.line_number
                     )
-        all_in_output = [x.address for x in self.output_components]
+        all_in_output = [x for x in self.output_components]
         if self.where_clause:
-            for concept in self.where_clause.concept_arguments:
+            for cref in self.where_clause.concept_arguments:
+                concept = environment.concepts[cref]
                 if (
                     concept.lineage
                     and isinstance(concept.lineage, Function)
@@ -186,7 +196,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         if self.having_clause:
             self.having_clause.hydrate_missing(self.local_concepts)
             for concept in self.having_clause.concept_arguments:
-                if concept.address not in [x.address for x in self.output_components]:
+                if concept.address not in [x for x in self.output_components]:
                     raise SyntaxError(
                         f"Cannot reference a column ({concept.address}) that is not in the select projection in the HAVING clause, move to WHERE;  Line: {self.meta.line_number}"
                     )
@@ -194,7 +204,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             for concept in self.order_by.concept_arguments:
                 if concept.address not in all_in_output:
                     raise SyntaxError(
-                        f"Cannot order by a column that is not in the output projection; {self.meta.line_number}"
+                        f"Cannot order by column {concept.address} that is not in the output projection; line: {self.meta.line_number}"
                     )
 
     def __str__(self):
@@ -218,17 +228,17 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         locally_derived: set[str] = set()
         for item in self.selection:
             if isinstance(item.content, ConceptTransform):
-                locally_derived.add(item.concept.address)
+                locally_derived.add(item.concept)
         return locally_derived
 
     @property
-    def output_components(self) -> List[Concept]:
+    def output_components(self) -> List[str]:
         return [x.concept for x in self.selection]
 
     @property
     def hidden_components(self) -> set[str]:
         return set(
-            x.concept.address for x in self.selection if Modifier.HIDDEN in x.modifiers
+            x.concept for x in self.selection if Modifier.HIDDEN in x.modifiers
         )
 
     def to_datasource(
@@ -236,6 +246,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         namespace: str,
         name: str,
         address: Address,
+        environment:Environment,
         grain: Grain | None = None,
     ) -> Datasource:
         if self.where_clause or self.having_clause:
@@ -247,13 +258,9 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             # if the concept is a locally derived concept, it cannot ever be partial
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
-                alias=(
-                    c.name.replace(".", "_")
-                    if c.namespace == DEFAULT_NAMESPACE
-                    else c.address.replace(".", "_")
-                ),
-                concept=c,
-                modifiers=modifiers if c.address not in self.locally_derived else [],
+                alias=c.replace(".", "_"),
+                concept=environment.concepts[c],
+                modifiers=modifiers if c not in self.locally_derived else [],
             )
             for c in self.output_components
         ]
