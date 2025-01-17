@@ -42,5 +42,8 @@ if __name__ == "__main__":
     print("loaded dataset:", datetime.now() - start)
 
     import cProfile
-
-    cProfile.run("run_query(engine, start, 10)", "prof_stats.prof")
+    pr = cProfile.Profile()
+    pr.enable()
+    run_query(engine, start, 2)
+    pr.disable()
+    pr.dump_stats("prof_stats.prof")
