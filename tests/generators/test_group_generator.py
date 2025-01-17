@@ -29,6 +29,7 @@ def test_gen_group_node_basic(test_environment, test_environment_graph):
     prod = test_environment.concepts["product_id"]
     test_environment.concepts["revenue"]
     prod_r = test_environment.concepts["total_revenue"]
+    
     gnode = gen_group_node(
         concept=prod_r,
         local_optional=[prod],

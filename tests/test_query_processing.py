@@ -14,6 +14,7 @@ def test_direct_select(test_environment, test_environment_graph):
     DebuggingHook()
     product = test_environment.concepts["product_id"]
     #        concept, grain: Grain, environment: Environment, g: ReferenceGraph, query_graph: ReferenceGraph
+    # test_environment = test_environment.materialize_for_select({})
     datasource = search_concepts(
         [product] + [test_environment.concepts[c] for c in product.grain.components],
         environment=test_environment,

@@ -259,6 +259,7 @@ def test_environment():
     ]:
         env.add_concept(item)
         # env.concepts[item.name] = item
+    env.gen_concept_list_caches()
     yield env
 
 

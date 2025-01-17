@@ -81,6 +81,7 @@ def test_derivations():
 
         test_concept = env.concepts["test_upper_case_2"]
         assert test_concept.purpose == Purpose.PROPERTY
+        env.gen_concept_list_caches()
         assert test_concept.address in env.materialized_concepts
         assert test_concept.derivation == Derivation.ROOT
 

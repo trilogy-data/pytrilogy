@@ -30,7 +30,7 @@ def test_environment():
 
     order_timestamp = Concept(
         name="order_timestamp", datatype=DataType.TIMESTAMP, purpose=Purpose.PROPERTY,
-        keys = set(['order_id'])
+        keys = set(['local.order_id'])
     )
 
     order_count = Concept(
@@ -220,6 +220,8 @@ def test_environment():
     ]:
         env.add_concept(item)
         # env.concepts[item.name] = item
+
+    env.gen_concept_list_caches()
     yield env
 
 

@@ -66,6 +66,7 @@ from trilogy.core.models.author import (
     WindowItem,
     WindowItemOrder,
     WindowItemOver,
+    ConceptRef
 )
 from trilogy.core.models.core import (
     DataType,
@@ -302,11 +303,16 @@ class ParseToObjects(Transformer):
     def QUOTED_IDENTIFIER(self, args) -> str:
         return args.value[1:-1]
 
+    # @v_args(meta=True)
+    # def concept_lit(self, meta: Meta, args) -> ConceptRef:
+    #     address = args[0]
+    #     return self.environment.concepts.__getitem__(address, meta.line)
+    #     return ConceptRef(address=address, line_no=meta.line)
     @v_args(meta=True)
-    def concept_lit(self, meta: Meta, args) -> Concept:
+    def concept_lit(self, meta: Meta, args) -> ConceptRef:
         address = args[0]
         return self.environment.concepts.__getitem__(address, meta.line)
-
+        # return ConceptRef(address=address, line_no=meta.line)
     def ADDRESS(self, args) -> Address:
         return Address(location=args.value, quoted=False)
 
@@ -1616,6 +1622,7 @@ def parse_text(text: str, environment: Optional[Environment] = None) -> Tuple[
         pass_two = parser.hydrate_missing()
         output = [v for v in pass_two if v]
         environment.concepts.fail_on_missing = True
+        environment.gen_concept_list_caches()
     except VisitError as e:
         unpack_visit_error(e)
         # this will never be reached

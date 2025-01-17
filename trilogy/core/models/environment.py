@@ -202,8 +202,7 @@ class Environment(BaseModel):
             else:
                 base.concepts[k] = v.with_select_context(local_concepts, Grain(), self)
         for k, v in local_concepts.items():
-            if k not in base.concepts:
-                base.concepts[k] = v
+            base.concepts[k] = v
         # now materialize
         for k, d, in self.datasources.items():
             base.datasources[k] = d.build_for_select(base)

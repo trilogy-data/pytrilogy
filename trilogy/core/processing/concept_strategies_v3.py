@@ -949,6 +949,8 @@ def _search_concepts(
                 append_existence_check(
                     output, environment, g, where=conditions, history=history
                 )
+        elif conditions:
+            output.preexisting_conditions = conditions.conditional
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} Graph is connected, returning {type(output)} node partial {[c.address for c in output.partial_concepts]}"
         )
