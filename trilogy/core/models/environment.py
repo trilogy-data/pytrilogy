@@ -193,16 +193,30 @@ class Environment(BaseModel):
 
     def materialize_for_select(self, local_concepts:dict[str, Concept]):
         from trilogy.core.models.author import Grain
-        base = self.duplicate()
-        for k, v in local_concepts.items():
-            base.concepts[k] = v
-        # now materialize
-        for k, v in base.concepts.items():
+        base = Environment(namespace=self.namespace, working_path=self.working_path, cte_name_map = self.cte_name_map)
+
+  
+        for k, v in self.concepts.items():
             if k in local_concepts:
-                continue
-            base.concepts[k] = v.with_select_context(local_concepts, Grain(), base)
+                base.concepts[k] = v
+            else:
+                base.concepts[k] = v.with_select_context(local_concepts, Grain(), self)
+        for k, v in local_concepts.items():
+            if k not in base.concepts:
+                base.concepts[k] = v
+        # now materialize
         for k, d, in self.datasources.items():
             base.datasources[k] = d.build_for_select(base)
+        for k, a in self.alias_origin_lookup.items():
+            base.alias_origin_lookup[k] = a.with_select_context(self.alias_origin_lookup, Grain(), self)
+        base.gen_concept_list_caches()
+        # for k, v in self.concepts.items():
+        #     assert k in base.concepts
+        #     for p in v.pseudonyms:
+        #         assert p in self.concepts
+        #         assert p in base.concepts
+        # for k, v in self.alias_origin_lookup.items():
+        #     assert k in base.alias_origin_lookup
         return base
 
     def duplicate(self):
@@ -413,7 +427,7 @@ class Environment(BaseModel):
                     val.with_namespace(alias)
                 )
 
-        self.gen_concept_list_caches()
+        # self.gen_concept_list_caches()
         return self
 
     def add_file_import(
@@ -526,8 +540,8 @@ class Environment(BaseModel):
         from trilogy.core.environment_helpers import generate_related_concepts
 
         generate_related_concepts(concept, self, meta=meta, add_derived=add_derived)
-        if not _ignore_cache:
-            self.gen_concept_list_caches()
+        # if not _ignore_cache:
+        #     self.gen_concept_list_caches()
         return concept
 
     def add_datasource(
@@ -581,8 +595,8 @@ class Environment(BaseModel):
                     self.merge_concept(new_concept, current_concept, [])
                 else:
                     self.add_concept(current_concept, meta=meta, _ignore_cache=True)
-        if not _ignore_cache:
-            self.gen_concept_list_caches()
+        # if not _ignore_cache:
+        #     self.gen_concept_list_caches()
         return datasource
 
     def delete_datasource(
@@ -594,7 +608,7 @@ class Environment(BaseModel):
             raise ValueError("Environment is frozen, cannot delete datsources")
         if address in self.datasources:
             del self.datasources[address]
-            self.gen_concept_list_caches()
+            # self.gen_concept_list_caches()
             return True
         return False
 

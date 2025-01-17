@@ -21,6 +21,8 @@ def add_concept(
 
             g.add_edge(generic, node_name)
     for ps_address in concept.pseudonyms:
+        if ps_address not in concept_mapping:
+            raise SyntaxError(f'Concept {concept} has invalid pseudonym {ps_address}')
         pseudonym = concept_mapping[ps_address]
         pseudonym = pseudonym.with_default_grain()
         pseudonym_node = concept_to_node(pseudonym)
