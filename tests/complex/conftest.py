@@ -54,5 +54,4 @@ select
 @fixture(scope="session")
 def stackoverflow_environment():
     env, parsed = parse(DECLARATIONS)
-    env = env.materialize_for_select()
     yield env

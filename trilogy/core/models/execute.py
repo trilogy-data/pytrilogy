@@ -27,7 +27,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     RowsetItem,
 )
-from trilogy.core.models.build import BuildDatasource
+from trilogy.core.models.build import BuildDatasource, BuildConditional, BuildParenthetical, BuildComparison, BuildConcept
 from trilogy.core.models.datasource import Address, Datasource
 from trilogy.utility import unique
 
@@ -39,7 +39,7 @@ DATASOURCE_TYPES = (Datasource, BuildDatasource)
 class CTE(BaseModel):
     name: str
     source: "QueryDatasource"
-    output_columns: List[Concept]
+    output_columns: List[BuildConcept]
     source_map: Dict[str, list[str]]
     grain: Grain
     base: bool = False
@@ -47,10 +47,10 @@ class CTE(BaseModel):
     existence_source_map: Dict[str, list[str]] = Field(default_factory=dict)
     parent_ctes: List[Union["CTE", "UnionCTE"]] = Field(default_factory=list)
     joins: List[Union["Join", "InstantiatedUnnestJoin"]] = Field(default_factory=list)
-    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = None
-    partial_concepts: List[Concept] = Field(default_factory=list)
-    nullable_concepts: List[Concept] = Field(default_factory=list)
-    join_derived_concepts: List[Concept] = Field(default_factory=list)
+    condition: Optional[Union["Conditional", "Comparison", "Parenthetical", BuildComparison, BuildConditional, BuildParenthetical]] = None
+    partial_concepts: List[BuildConcept] = Field(default_factory=list)
+    nullable_concepts: List[BuildConcept] = Field(default_factory=list)
+    join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
     hidden_concepts: set[str] = Field(default_factory=set)
     order_by: Optional[OrderBy] = None
     limit: Optional[int] = None
@@ -549,23 +549,22 @@ class BaseJoin(BaseModel):
 
 
 class QueryDatasource(BaseModel):
-    input_concepts: List[Concept]
-    output_concepts: List[Concept]
+    input_concepts: List[BuildConcept]
+    output_concepts: List[BuildConcept]
     datasources: List[Union[Datasource, "QueryDatasource"]]
     source_map: Dict[str, Set[Union[Datasource, "QueryDatasource", "UnnestJoin"]]]
 
     grain: Grain
     joins: List[BaseJoin | UnnestJoin]
     limit: Optional[int] = None
-    condition: Optional[Union["Conditional", "Comparison", "Parenthetical"]] = Field(
+    condition: Optional[Union["Conditional", "Comparison", "Parenthetical", BuildConditional, BuildComparison, BuildParenthetical]] = Field(
         default=None
     )
-    filter_concepts: List[Concept] = Field(default_factory=list)
     source_type: SourceType = SourceType.SELECT
-    partial_concepts: List[Concept] = Field(default_factory=list)
+    partial_concepts: List[BuildConcept] = Field(default_factory=list)
     hidden_concepts: set[str] = Field(default_factory=set)
-    nullable_concepts: List[Concept] = Field(default_factory=list)
-    join_derived_concepts: List[Concept] = Field(default_factory=list)
+    nullable_concepts: List[BuildConcept] = Field(default_factory=list)
+    join_derived_concepts: List[BuildConcept] = Field(default_factory=list)
     force_group: bool | None = None
     existence_source_map: Dict[str, Set[Union[Datasource, "QueryDatasource"]]] = Field(
         default_factory=dict

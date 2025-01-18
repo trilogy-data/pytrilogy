@@ -618,7 +618,6 @@ class BuildConcept(Concept, BaseModel):
                 local_concepts=local_concepts, grain=grain, environment=environment
             )
 
-        print(new_lineage)
         derivation = Concept.calculate_derivation(new_lineage, base.purpose)
         granularity = Concept.calculate_granularity(
             derivation, final_grain, new_lineage

@@ -19,6 +19,7 @@ from trilogy.core.enums import (
     FunctionType,
     Modifier,
     Purpose,
+    Granularity
 )
 from trilogy.core.exceptions import (
     FrozenEnvironmentException,
@@ -254,6 +255,8 @@ class Environment(BaseModel):
                 output_purpose=Purpose.CONSTANT,
             ),
             datatype=DataType.STRING,
+            granularity = Granularity.SINGLE_ROW,
+            derivation = Derivation.CONSTANT,
             purpose=Purpose.CONSTANT,
         )
         self.add_concept(concept)

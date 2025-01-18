@@ -329,6 +329,7 @@ def setup_titanic_distributed(env: Environment):
         cabin,
         embarked,
         survived_count,
+        split_name,
         last_name,
         class_id,
     ]:

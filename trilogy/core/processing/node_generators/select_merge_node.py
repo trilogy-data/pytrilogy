@@ -319,9 +319,7 @@ def create_datasource_node(
 
     grain = Grain.from_concepts(all_concepts)
     datasource_conditions = (
-        datasource.where.conditional.with_select_context(
-            local_concepts={}, grain=grain, environment=environment
-        )
+        datasource.where.conditional
         if datasource.where
         else None
     )

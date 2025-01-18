@@ -368,6 +368,7 @@ def get_query_node(
     history: History | None = None,
 ) -> Tuple[StrategyNode, BuildOrderBy | None]:
     statement = statement.build_for_select(environment=environment)
+    history = history or History(base_environment=environment)
     environment = environment.materialize_for_select(statement.local_concepts)
     # statement = statement.build_for_select(environment=environment)
     # for k, v in statement.local_concepts.items():

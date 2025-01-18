@@ -116,7 +116,7 @@ class HasUUID(ABC):
 
 class ConceptRef(Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
     address: str
-    datatype: DataType
+    datatype: DataType | ListType | StructType | MapType | NumericType
     line_no: int | None = None
 
     def __repr__(self):
@@ -1124,7 +1124,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
         Grain,
         set[str] | None,
     ]:
-        new_lineage = self.lineage.model_copy(deep=True) if self.lineage else None
+        new_lineage = self.lineage
         final_grain = grain if not self.grain.components else self.grain
         keys = self.keys
 
@@ -1135,11 +1135,11 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             new_lineage = AggregateWrapper(function=new_lineage, by=grain_components)
             final_grain = grain
             keys = set(grain.components)
-        elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by:
+        elif isinstance(new_lineage, AggregateWrapper) and not new_lineage.by and grain:
             grain_components = [
                 environment.concepts[c].reference for c in grain.components
             ]
-            new_lineage.by = grain_components
+            new_lineage = AggregateWrapper(function=new_lineage.function, by=grain_components)
             final_grain = grain
             keys = set([x.address for x in new_lineage.by])
         elif self.derivation == Derivation.BASIC:

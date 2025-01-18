@@ -3,6 +3,7 @@ from trilogy.core.models.author import Comparison
 from trilogy.core.models.execute import (
     CTE,
 )
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import SelectNode
 from trilogy.core.processing.nodes.base_node import StrategyNode
 
@@ -39,7 +40,7 @@ def get_parents(node: StrategyNode):
     return [node.__class__ for node in _get_parents(node)]
 
 
-def test_demo_filter(normalized_engine, test_env):
+def test_demo_filter(normalized_engine:Environment, test_env):
     executor = normalized_engine
     env = test_env
     assert "passenger.id.count" not in env.materialized_concepts

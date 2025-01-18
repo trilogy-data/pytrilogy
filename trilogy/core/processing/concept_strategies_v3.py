@@ -74,7 +74,8 @@ def get_upstream_concepts(base: Concept, nested: bool = False) -> set[str]:
         if x.derivation == Derivation.ROWSET:
             assert isinstance(x.lineage, RowsetItem)
             for y in x.lineage.rowset.derived_concepts:
-                upstream = upstream.union(get_upstream_concepts(y, nested=True))
+                upstream.add(y.address)
+                # upstream = upstream.union(get_upstream_concepts(y, nested=True))
         upstream = upstream.union(get_upstream_concepts(x, nested=True))
     return upstream
 

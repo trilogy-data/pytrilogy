@@ -158,6 +158,8 @@ def constant_to_concept(
         name=name,
         datatype=const_function.output_datatype,
         purpose=Purpose.CONSTANT,
+        granularity = Granularity.SINGLE_ROW,
+        derivation = Derivation.CONSTANT,
         lineage=const_function,
         grain=Grain(),
         namespace=namespace,

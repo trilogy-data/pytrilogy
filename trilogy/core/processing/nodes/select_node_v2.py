@@ -11,6 +11,7 @@ from trilogy.core.models.author import (
     Grain,
     Parenthetical,
 )
+from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
@@ -62,6 +63,7 @@ class SelectNode(StrategyNode):
         )
         self.accept_partial = accept_partial
         self.datasource = datasource
+
 
     def validate_inputs(self):
         # we do not need to validate inputs for a select node

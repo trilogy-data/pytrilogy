@@ -12,6 +12,7 @@ from trilogy.core.models.author import (
     SelectLineage,
     WhereClause,
 )
+from trilogy.core.models.build import BuildRowsetItem
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import History, MergeNode, StrategyNode
 from trilogy.core.processing.utility import concept_to_relevant_joins, padding
@@ -31,7 +32,7 @@ def gen_rowset_node(
 ) -> StrategyNode | None:
     from trilogy.core.query_processor import get_query_node
 
-    if not isinstance(concept.lineage, RowsetItem):
+    if not isinstance(concept.lineage, BuildRowsetItem):
         raise SyntaxError(
             f"Invalid lineage passed into rowset fetch, got {type(concept.lineage)}, expected {RowsetItem}"
         )
@@ -39,7 +40,7 @@ def gen_rowset_node(
     rowset: RowsetLineage = lineage.rowset
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
 
-    node = get_query_node(environment, select)
+    node, _ = get_query_node(history.base_environment, select)
 
     if not node:
         logger.info(
@@ -49,7 +50,7 @@ def gen_rowset_node(
             f"Cannot generate parent select for concept {concept} in rowset {rowset.name}; ensure the rowset is a valid statement."
         )
     enrichment = set([x.address for x in local_optional])
-    rowset_relevant = [x for x in rowset.derived_concepts]
+    rowset_relevant = [x.with_select_context({}, lineage.rowset.select.grain, environment) for x in rowset.derived_concepts]
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} rowset relevant nodes are {rowset_relevant}"
     )

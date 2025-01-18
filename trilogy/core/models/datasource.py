@@ -33,6 +33,17 @@ class ColumnAssignment(BaseModel):
     @property
     def is_nullable(self) -> bool:
         return Modifier.NULLABLE in self.modifiers
+    
+    def with_select_context(self, context: dict, grain, environment) -> "ColumnAssignment":
+        return ColumnAssignment(
+            alias=(
+                self.alias.with_select_context(context, grain, environment)
+                if isinstance(self.alias, Function)
+                else self.alias
+            ),
+            concept=self.concept.with_select_context(context, grain, environment),
+            modifiers=self.modifiers,
+        )
 
     def with_namespace(self, namespace: str) -> "ColumnAssignment":
         return ColumnAssignment(
@@ -103,7 +114,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
 
         return BuildDatasource(
             name=self.name,
-            columns=self.columns,
+            columns=[c.with_select_context({}, self.grain, environment) for c in self.columns],
             address=self.address,
             grain=self.grain,
             namespace=self.namespace,

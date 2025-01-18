@@ -68,7 +68,7 @@ class SelectItem(BaseModel):
     @field_validator("content", mode="before")
     def parse_content(cls, v):
         if isinstance(v, Concept):
-            return ConceptRef(address=v.address)
+            return v.reference
         return v
 
     @property

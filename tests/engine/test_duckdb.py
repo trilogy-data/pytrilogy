@@ -25,7 +25,7 @@ from trilogy.parser import parse_text
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
-    graph = generate_graph(duckdb_engine.environment)
+    graph = generate_graph(duckdb_engine.environment.materialize_for_select())
 
     list(nx.neighbors(graph, "c~local.count@Grain<local.item,local.store_id>"))
     results = duckdb_engine.execute_text("""select total_count;""")[0].fetchall()
@@ -105,16 +105,16 @@ def test_constants(duckdb_engine: Executor, expected_results):
     """
     )[0].fetchall()
     # expected_results["converted_total_count"]
+
     scaled_metric = duckdb_engine.environment.concepts["converted_total_count"]
 
     assert (
         duckdb_engine.environment.concepts["usd_conversion"].granularity
         == Granularity.SINGLE_ROW
     )
-    parent_arg: Concept = [
-        x for x in scaled_metric.lineage.concept_arguments if x.name == "total_count"
-    ][0]
-    assert len(parent_arg.lineage.concept_arguments[0].grain.components) == 2
+    parent_arg: Concept = duckdb_engine.environment.concepts[[x for x in scaled_metric.lineage.concept_arguments if x.address == "local.total_count"
+    ][0]]
+    assert len(duckdb_engine.environment.concepts[parent_arg.lineage.concept_arguments[0]].grain.components) == 2
     # assert Grain(components = [duckdb_engine.environment.concepts['usd_conversion']]) == Grain()
     assert results[0].converted_total_count == expected_results["converted_total_count"]
 
@@ -495,8 +495,8 @@ select
     """
 
     results = default_duckdb_engine.execute_text(test)[0].fetchall()
-    cased = default_duckdb_engine.environment.concepts["cased"]
-    total = default_duckdb_engine.environment.concepts["total_mod_two"]
+    cased = default_duckdb_engine.environment.concepts["cased"].with_select_context({}, Grain(), default_duckdb_engine.environment)
+    total = default_duckdb_engine.environment.concepts["total_mod_two"].with_select_context({}, Grain(), default_duckdb_engine.environment)
     assert cased.purpose == Purpose.PROPERTY
     assert cased.keys == {"local.orid"}
     assert total.derivation == Derivation.AGGREGATE
