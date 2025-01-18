@@ -69,6 +69,7 @@ def test_metric_assignments(test_environment: Environment):
 
 
 def test_source_outputs(test_environment: Environment, test_executor: Executor):
+    test_environment = test_environment.materialize_for_select()
     order_ds = test_environment.datasources["orders"]
     for col in order_ds.columns:
         if col.alias == "order_id":
@@ -177,9 +178,9 @@ def test_datasource_properties(test_environment: Environment, test_executor: Exe
     cols = test_environment.datasources["orders"].columns
 
     for col in cols:
-        if col.concept.name == "store_id":
+        if col.concept.address == "local.store_id":
             assert not col.is_complete
-        if col.concept.name == "product_id":
+        if col.concept.address == "local.product_id":
             assert not col.is_complete
 
     store = test_environment.datasources["stores"]

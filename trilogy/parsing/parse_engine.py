@@ -398,7 +398,7 @@ class ParseToObjects(Transformer):
         resolved = self.environment.concepts.__getitem__(  # type: ignore
             key=concept, line_no=meta.line, file=self.token_address
         )
-        return ColumnAssignment(alias=alias, modifiers=modifiers, concept=resolved)
+        return ColumnAssignment(alias=alias, modifiers=modifiers, concept=resolved.reference)
 
     def _TERMINATOR(self, args):
         return None
@@ -670,8 +670,6 @@ class ParseToObjects(Transformer):
             where=where,
             non_partial_for=non_partial_for,
         )
-        for column in columns:
-            column.concept = column.concept.with_grain(datasource.grain)
         if datasource.where:
             for x in datasource.where.concept_arguments:
                 if x.address not in datasource.output_concepts:
@@ -1135,6 +1133,7 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
             )
             self.environment.add_concept(left)
+            left = left.reference
         else:
             left = args[0]
         if isinstance(args[2], AggregateWrapper):
@@ -1143,6 +1142,7 @@ class ParseToObjects(Transformer):
                 environment=self.environment,
             )
             self.environment.add_concept(right)
+            right = right.reference
         else:
             right = args[2]
         return Comparison(left=left, right=right, operator=args[1])
@@ -1178,8 +1178,9 @@ class ParseToObjects(Transformer):
         ):
             right = right.content
         if isinstance(right, (Function, FilterItem, WindowItem, AggregateWrapper)):
-            right = arbitrary_to_concept(right, environment=self.environment)
-            self.environment.add_concept(right, meta=meta)
+            right_concept = arbitrary_to_concept(right, environment=self.environment)
+            self.environment.add_concept(right_concept, meta=meta)
+            right=right_concept.reference
         return SubselectComparison(
             left=args[0],
             right=right,

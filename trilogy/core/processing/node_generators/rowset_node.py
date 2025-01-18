@@ -57,12 +57,11 @@ def gen_rowset_node(
     select_hidden = select.hidden_components
     rowset_hidden = [
         x
-        for x in rowset.derived_concepts
-        if isinstance(x.lineage, RowsetItem)
-        and x.lineage.content.address in select_hidden
+        for x in rowset_relevant
+        if x.lineage.content.address in select_hidden
     ]
     additional_relevant = [
-        x for x in select.output_components if x.address in enrichment
+        x.with_select_context(select.local_concepts, select.grain, environment) for x in select.output_components if x.address in enrichment
     ]
     # add in other other concepts
 

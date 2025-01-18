@@ -1,14 +1,14 @@
 from trilogy.core.enums import (
     BooleanOperator,
 )
-from trilogy.core.models.author import (
-    Comparison,
+from trilogy.core.models.build import (
+    BuildComparison,
     ConceptArgs,
-    Conditional,
-    Parenthetical,
-    WindowItem,
+    BuildConditional,
+    BuildParenthetical,
+    BuildWindowItem,
+    BuildDatasource
 )
-from trilogy.core.models.build import BuildWindowItem
 from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import OptimizationRule
@@ -20,7 +20,7 @@ def is_child_of(a, comparison):
     base = comparison == a
     if base:
         return True
-    if isinstance(comparison, Conditional):
+    if isinstance(comparison, BuildConditional):
         return (
             is_child_of(a, comparison.left) or is_child_of(a, comparison.right)
         ) and comparison.operator == BooleanOperator.AND
@@ -36,7 +36,7 @@ class PredicatePushdown(OptimizationRule):
         self,
         cte: CTE | UnionCTE,
         parent_cte: CTE | UnionCTE,
-        candidate: Conditional | Comparison | Parenthetical | None,
+        candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
         inverse_map: dict[str, list[CTE | UnionCTE]],
     ):
         if not isinstance(candidate, ConceptArgs):
@@ -54,7 +54,7 @@ class PredicatePushdown(OptimizationRule):
         concrete = [
             x for x in parent_cte.output_columns if x.address in non_materialized
         ]
-        if any(isinstance(x.lineage, (WindowItem, BuildWindowItem)) for x in concrete):
+        if any(isinstance(x.lineage, BuildWindowItem) for x in concrete):
             self.debug(
                 f"CTE {parent_cte.name} has window clause calculation, cannot push up to this without changing results"
             )
@@ -90,7 +90,7 @@ class PredicatePushdown(OptimizationRule):
                     self.log("Parent condition is not scalar, not safe to push up")
                     return False
                 if parent_cte.condition:
-                    parent_cte.condition = Conditional(
+                    parent_cte.condition = BuildConditional(
                         left=parent_cte.condition,
                         operator=BooleanOperator.AND,
                         right=candidate,
@@ -139,7 +139,7 @@ class PredicatePushdown(OptimizationRule):
         self.debug(
             f"Checking {cte.name} for predicate pushdown with {len(cte.parent_ctes)} parents"
         )
-        if isinstance(cte.condition, Conditional):
+        if isinstance(cte.condition, BuildConditional):
             candidates = cte.condition.decompose()
         else:
             candidates = [cte.condition]
@@ -218,7 +218,7 @@ class PredicatePushdownRemove(OptimizationRule):
                 for key, value in parent_filter_status.items()
                 if key not in existence_only
             ]
-        ) and not any([isinstance(x, Datasource) for x in cte.source.datasources]):
+        ) and not any([isinstance(x, BuildDatasource) for x in cte.source.datasources]):
             self.log(
                 f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
             )

@@ -136,10 +136,7 @@ class ConceptRef(Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
     def output_datatype(self):
         return self.datatype
 
-    def hydrate(self, environment: Environment) -> Concept:
-        return environment.concepts.__getitem__(self.address, self.line_no)
-
-    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier]):
+    def with_merge(self, source: Concept, target: Concept, modifiers: List[Modifier])->ConceptRef:
         if self.address == source.address:
             self.address = target.address
         return self
@@ -151,9 +148,12 @@ class ConceptRef(Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
         self, local_concepts: dict[str, Concept], grain: Grain, environment: Environment
     ):
         from trilogy.core.models.build import BuildConcept
+        if self.address in local_concepts:
+            return local_concepts[self.address]
         full = environment.concepts[self.address]
         if isinstance(full, BuildConcept):
             return full
+        print(self)
         return full.with_select_context(local_concepts, grain, environment)
 
     # def concept_arguments(self):
@@ -162,6 +162,10 @@ class ConceptRef(Namespaced, DataTyped, SelectContext, Mergeable, BaseModel):
 
 class UndefinedConcept(ConceptRef):
     pass
+
+    @property
+    def reference(self):
+        return self
 
 
 def address_with_namespace(address: str, namespace: str) -> str:
@@ -684,9 +688,9 @@ class Comparison(
                 )
         elif self.operator in (ComparisonOperator.IN, ComparisonOperator.NOT_IN):
             right = arg_to_datatype(self.right)
-            if not isinstance(self.right, Concept) and not isinstance(right, ListType):
+            if not isinstance(self.right, (ConceptRef, Concept, ListType, TupleWrapper)):
                 raise SyntaxError(
-                    f"Cannot use {self.operator.value} with non-list type {right} in {str(self)}"
+                    f"Cannot use {self.operator.value} with non-list, non-tuple, non-concept object {right} in {str(self)}"
                 )
 
             elif isinstance(right, ListType) and not is_compatible_datatype(
@@ -1192,7 +1196,7 @@ class Concept(DataTyped, ConceptArgs, Mergeable, Namespaced, SelectContext, Base
             if not isinstance(check, BuildConcept):
                 check = BuildConcept.build(check, grain, environment, local_concepts)
             return check
-        new = BuildConcept.build(self, grain, environment, local_concepts)
+        new = BuildConcept.build(self, grain=grain, environment=environment, local_concepts=local_concepts)
         local_concepts[self.address] = new
         return new
 
@@ -1977,7 +1981,7 @@ class FilterItem(Namespaced, ConceptArgs, SelectContext, BaseModel):
         self, source: Concept, target: Concept, modifiers: List[Modifier]
     ) -> "FilterItem":
         return FilterItem(
-            content=source.with_merge(source, target, modifiers),
+            content=self.content.with_merge(source, target, modifiers),
             where=self.where.with_merge(source, target, modifiers),
         )
 
@@ -2367,7 +2371,7 @@ class MultiSelectLineage(Mergeable, ConceptArgs, Namespaced, BaseModel):
 
 
 class LooseConceptList(BaseModel):
-    concepts: Sequence[Concept]
+    concepts: Sequence[Concept | ConceptRef]
 
     @cached_property
     def addresses(self) -> set[str]:
@@ -2475,7 +2479,7 @@ Expr = (
     | list
     | WindowItem
     | FilterItem
-    | Concept
+    | ConceptRef
     | Comparison
     | Conditional
     | Parenthetical

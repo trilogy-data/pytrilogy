@@ -259,7 +259,7 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             # but if it's a concept pulled in from upstream and we have a where clause, it should be partial
             ColumnAssignment(
                 alias=c.replace(".", "_"),
-                concept=environment.concepts[c],
+                concept=environment.concepts[c].reference,
                 modifiers=modifiers if c not in self.locally_derived else [],
             )
             for c in self.output_components
@@ -282,8 +282,6 @@ class SelectStatement(HasUUID, SelectTypeMixin, BaseModel):
             namespace=namespace,
             non_partial_for=WhereClause(conditional=condition) if condition else None,
         )
-        for column in columns:
-            column.concept = column.concept.with_grain(new_datasource.grain)
         return new_datasource
 
 
@@ -346,13 +344,13 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin, BaseModel):
         )
 
     @property
-    def output_components(self) -> List[Concept]:
-        output = self.derived_concepts
+    def output_components(self) -> List[str]:
+        output = [x.address for x in self.derived_concepts]
         for select in self.selects:
             output += [
                 x
                 for x in select.output_components
-                if x.address not in select.hidden_components
+                if x not in select.hidden_components
             ]
         return unique(output, "address")
 

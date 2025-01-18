@@ -1,5 +1,5 @@
 query_id = 30
-gen_length = 12111
+gen_length = 13531
 generated_sql = """
 
 WITH 
@@ -12,7 +12,7 @@ FROM
 GROUP BY 
     web_returns_web_returns.\"WR_RETURNING_ADDR_SK\",
     web_returns_web_returns.\"WR_RETURNING_CUSTOMER_SK\"),
-questionable as (
+abundant as (
 SELECT
     cast(web_returns_return_date_date.\"D_YEAR\" as int) as \"web_returns_return_date_year\",
     web_returns_web_returns.\"WR_ITEM_SK\" as \"web_returns_item_id\",
@@ -21,7 +21,7 @@ SELECT
 FROM
     memory.web_returns as web_returns_web_returns
     INNER JOIN memory.date_dim as web_returns_return_date_date on web_returns_web_returns.\"WR_RETURNED_DATE_SK\" = web_returns_return_date_date.\"D_DATE_SK\"),
-uneven as (
+juicy as (
 SELECT
     cast(web_returns_return_date_date.\"D_YEAR\" as int) as \"web_returns_return_date_year\",
     web_returns_return_address_customer_address.\"CA_STATE\" as \"web_returns_return_address_state\",
@@ -61,49 +61,38 @@ FROM
 WHERE
     web_returns_customer_customer_address.\"CA_STATE\" = 'GA' and web_returns_return_address_customer_address.\"CA_STATE\" is not null
 ),
-abundant as (
+uneven as (
 SELECT
-    CASE WHEN questionable.\"web_returns_return_date_year\" = 2002 THEN questionable.\"web_returns_return_amount\" ELSE NULL END as \"_virt_1075768703847083\",
-    questionable.\"web_returns_item_id\" as \"web_returns_item_id\",
-    questionable.\"web_returns_return_amount\" as \"web_returns_return_amount\",
-    questionable.\"web_returns_return_date_year\" as \"web_returns_return_date_year\",
-    questionable.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\"
-FROM
-    questionable),
-yummy as (
-SELECT
-    abundant.\"_virt_1075768703847083\" as \"_virt_1075768703847083\",
     abundant.\"web_returns_item_id\" as \"web_returns_item_id\",
-    abundant.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\",
-    uneven.\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    uneven.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
+    abundant.\"web_returns_return_amount\" as \"web_returns_return_amount\",
+    abundant.\"web_returns_return_date_year\" as \"web_returns_return_date_year\",
+    abundant.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\"
 FROM
-    uneven
-    INNER JOIN abundant on uneven.\"web_returns_item_id\" = abundant.\"web_returns_item_id\" AND uneven.\"web_returns_return_date_year\" = abundant.\"web_returns_return_date_year\" AND uneven.\"web_returns_web_sales_order_number\" = abundant.\"web_returns_web_sales_order_number\"
-WHERE
-    uneven.\"web_returns_return_address_state\" is not null
-),
-juicy as (
-SELECT
-    sum(yummy.\"_virt_1075768703847083\") as \"customer_state_returns_2002\",
-    yummy.\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    yummy.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
-FROM
-    yummy
+    abundant
 GROUP BY 
-    yummy.\"web_returns_customer_id\",
-    yummy.\"web_returns_return_address_state\"),
-concerned as (
+    abundant.\"web_returns_item_id\",
+    abundant.\"web_returns_return_amount\",
+    abundant.\"web_returns_return_date_year\",
+    abundant.\"web_returns_web_sales_order_number\"),
+vacuous as (
 SELECT
-    avg(juicy.\"customer_state_returns_2002\") as \"_virt_3885168128306444\",
-    juicy.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
+    juicy.\"web_returns_customer_id\" as \"web_returns_customer_id\",
+    juicy.\"web_returns_item_id\" as \"web_returns_item_id\",
+    juicy.\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    juicy.\"web_returns_return_amount\" as \"web_returns_return_amount\",
+    juicy.\"web_returns_return_date_year\" as \"web_returns_return_date_year\",
+    juicy.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\"
 FROM
     juicy
 GROUP BY 
-    juicy.\"web_returns_return_address_state\"),
-vacuous as (
+    juicy.\"web_returns_customer_id\",
+    juicy.\"web_returns_item_id\",
+    juicy.\"web_returns_return_address_state\",
+    juicy.\"web_returns_return_amount\",
+    juicy.\"web_returns_return_date_year\",
+    juicy.\"web_returns_web_sales_order_number\"),
+cooperative as (
 SELECT
-    juicy.\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
     thoughtful.\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
     thoughtful.\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
     thoughtful.\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
@@ -120,78 +109,119 @@ SELECT
     thoughtful.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
     thoughtful.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
-    juicy
-    INNER JOIN thoughtful on (juicy.\"web_returns_return_address_state\" = thoughtful.\"web_returns_return_address_state\" or (juicy.\"web_returns_return_address_state\" is null and thoughtful.\"web_returns_return_address_state\" is null)) AND juicy.\"web_returns_customer_id\" = thoughtful.\"web_returns_customer_id\"
+    thoughtful
+GROUP BY 
+    thoughtful.\"web_returns_customer_birth_country\",
+    thoughtful.\"web_returns_customer_birth_day\",
+    thoughtful.\"web_returns_customer_birth_month\",
+    thoughtful.\"web_returns_customer_birth_year\",
+    thoughtful.\"web_returns_customer_email_address\",
+    thoughtful.\"web_returns_customer_first_name\",
+    thoughtful.\"web_returns_customer_id\",
+    thoughtful.\"web_returns_customer_last_name\",
+    thoughtful.\"web_returns_customer_last_review_date\",
+    thoughtful.\"web_returns_customer_login\",
+    thoughtful.\"web_returns_customer_preferred_cust_flag\",
+    thoughtful.\"web_returns_customer_salutation\",
+    thoughtful.\"web_returns_customer_state\",
+    thoughtful.\"web_returns_customer_text_id\",
+    thoughtful.\"web_returns_return_address_state\"),
+yummy as (
+SELECT
+    CASE WHEN uneven.\"web_returns_return_date_year\" = 2002 THEN uneven.\"web_returns_return_amount\" ELSE NULL END as \"_virt_1075768703847083\",
+    uneven.\"web_returns_item_id\" as \"web_returns_item_id\",
+    uneven.\"web_returns_return_amount\" as \"web_returns_return_amount\",
+    uneven.\"web_returns_return_date_year\" as \"web_returns_return_date_year\",
+    uneven.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\"
+FROM
+    uneven),
+concerned as (
+SELECT
+    vacuous.\"web_returns_customer_id\" as \"web_returns_customer_id\",
+    vacuous.\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    yummy.\"_virt_1075768703847083\" as \"_virt_1075768703847083\",
+    yummy.\"web_returns_item_id\" as \"web_returns_item_id\",
+    yummy.\"web_returns_web_sales_order_number\" as \"web_returns_web_sales_order_number\"
+FROM
+    vacuous
+    INNER JOIN yummy on vacuous.\"web_returns_item_id\" = yummy.\"web_returns_item_id\" AND vacuous.\"web_returns_return_date_year\" = yummy.\"web_returns_return_date_year\" AND vacuous.\"web_returns_web_sales_order_number\" = yummy.\"web_returns_web_sales_order_number\"
 WHERE
-    thoughtful.\"web_returns_customer_state\" = 'GA' and thoughtful.\"web_returns_return_address_state\" is not null
+    vacuous.\"web_returns_return_address_state\" is not null
 ),
 young as (
 SELECT
-    1.2 * concerned.\"_virt_3885168128306444\" as \"scaled_state_returns_2002\",
-    vacuous.\"customer_state_returns_2002\" as \"customer_state_returns_2002\",
-    vacuous.\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
-    vacuous.\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
-    vacuous.\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
-    vacuous.\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
-    vacuous.\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
-    vacuous.\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
-    vacuous.\"web_returns_customer_id\" as \"web_returns_customer_id\",
-    vacuous.\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
-    vacuous.\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
-    vacuous.\"web_returns_customer_login\" as \"web_returns_customer_login\",
-    vacuous.\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
-    vacuous.\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
-    vacuous.\"web_returns_customer_state\" as \"web_returns_customer_state\",
-    vacuous.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
-    vacuous.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
+    concerned.\"web_returns_customer_id\" as \"web_returns_customer_id\",
+    concerned.\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    sum(concerned.\"_virt_1075768703847083\") as \"customer_state_returns_2002\"
 FROM
-    vacuous
-    INNER JOIN concerned on (vacuous.\"web_returns_return_address_state\" = concerned.\"web_returns_return_address_state\" or (vacuous.\"web_returns_return_address_state\" is null and concerned.\"web_returns_return_address_state\" is null))
-WHERE
-    vacuous.\"customer_state_returns_2002\" > 1.2 * concerned.\"_virt_3885168128306444\" and vacuous.\"web_returns_customer_state\" = 'GA' and vacuous.\"web_returns_return_address_state\" is not null
-)
+    concerned
+GROUP BY 
+    concerned.\"web_returns_customer_id\",
+    concerned.\"web_returns_return_address_state\"),
+abhorrent as (
 SELECT
-    young.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
-    young.\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
-    young.\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
-    young.\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
-    young.\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
-    young.\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
-    young.\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
-    young.\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
-    young.\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
-    young.\"web_returns_customer_login\" as \"web_returns_customer_login\",
-    young.\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
-    young.\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
-    young.\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
+    avg(young.\"customer_state_returns_2002\") as \"_virt_3885168128306444\",
+    young.\"web_returns_return_address_state\" as \"web_returns_return_address_state\"
 FROM
     young
 GROUP BY 
-    young.\"customer_state_returns_2002\",
-    young.\"web_returns_customer_birth_country\",
-    young.\"web_returns_customer_birth_day\",
-    young.\"web_returns_customer_birth_month\",
-    young.\"web_returns_customer_birth_year\",
-    young.\"web_returns_customer_email_address\",
-    young.\"web_returns_customer_first_name\",
-    young.\"web_returns_customer_last_name\",
-    young.\"web_returns_customer_last_review_date\",
-    young.\"web_returns_customer_login\",
-    young.\"web_returns_customer_preferred_cust_flag\",
-    young.\"web_returns_customer_salutation\",
-    young.\"web_returns_customer_text_id\"
+    young.\"web_returns_return_address_state\"),
+sparkling as (
+SELECT
+    cooperative.\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
+    cooperative.\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
+    cooperative.\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
+    cooperative.\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
+    cooperative.\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
+    cooperative.\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
+    cooperative.\"web_returns_customer_id\" as \"web_returns_customer_id\",
+    cooperative.\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
+    cooperative.\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
+    cooperative.\"web_returns_customer_login\" as \"web_returns_customer_login\",
+    cooperative.\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
+    cooperative.\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
+    cooperative.\"web_returns_customer_state\" as \"web_returns_customer_state\",
+    cooperative.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
+    cooperative.\"web_returns_return_address_state\" as \"web_returns_return_address_state\",
+    young.\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
+FROM
+    young
+    INNER JOIN cooperative on (young.\"web_returns_return_address_state\" = cooperative.\"web_returns_return_address_state\" or (young.\"web_returns_return_address_state\" is null and cooperative.\"web_returns_return_address_state\" is null)) AND young.\"web_returns_customer_id\" = cooperative.\"web_returns_customer_id\"
+WHERE
+    cooperative.\"web_returns_customer_state\" = 'GA' and cooperative.\"web_returns_return_address_state\" is not null
+)
+SELECT
+    sparkling.\"web_returns_customer_text_id\" as \"web_returns_customer_text_id\",
+    sparkling.\"web_returns_customer_salutation\" as \"web_returns_customer_salutation\",
+    sparkling.\"web_returns_customer_first_name\" as \"web_returns_customer_first_name\",
+    sparkling.\"web_returns_customer_last_name\" as \"web_returns_customer_last_name\",
+    sparkling.\"web_returns_customer_preferred_cust_flag\" as \"web_returns_customer_preferred_cust_flag\",
+    sparkling.\"web_returns_customer_birth_day\" as \"web_returns_customer_birth_day\",
+    sparkling.\"web_returns_customer_birth_month\" as \"web_returns_customer_birth_month\",
+    sparkling.\"web_returns_customer_birth_year\" as \"web_returns_customer_birth_year\",
+    sparkling.\"web_returns_customer_birth_country\" as \"web_returns_customer_birth_country\",
+    sparkling.\"web_returns_customer_login\" as \"web_returns_customer_login\",
+    sparkling.\"web_returns_customer_email_address\" as \"web_returns_customer_email_address\",
+    sparkling.\"web_returns_customer_last_review_date\" as \"web_returns_customer_last_review_date\",
+    sparkling.\"customer_state_returns_2002\" as \"customer_state_returns_2002\"
+FROM
+    sparkling
+    INNER JOIN abhorrent on (sparkling.\"web_returns_return_address_state\" = abhorrent.\"web_returns_return_address_state\" or (sparkling.\"web_returns_return_address_state\" is null and abhorrent.\"web_returns_return_address_state\" is null))
+WHERE
+    sparkling.\"customer_state_returns_2002\" > 1.2 * abhorrent.\"_virt_3885168128306444\" and sparkling.\"web_returns_customer_state\" = 'GA' and sparkling.\"web_returns_return_address_state\" is not null
+
 ORDER BY 
-    young.\"web_returns_customer_text_id\" asc nulls first,
-    young.\"web_returns_customer_salutation\" asc nulls first,
-    young.\"web_returns_customer_first_name\" asc nulls first,
-    young.\"web_returns_customer_last_name\" asc nulls first,
-    young.\"web_returns_customer_preferred_cust_flag\" asc nulls first,
-    young.\"web_returns_customer_birth_day\" asc nulls first,
-    young.\"web_returns_customer_birth_month\" asc nulls first,
-    young.\"web_returns_customer_birth_year\" asc nulls first,
-    young.\"web_returns_customer_birth_country\" asc nulls first,
-    young.\"web_returns_customer_login\" asc nulls first,
-    young.\"web_returns_customer_email_address\" asc nulls first,
-    young.\"web_returns_customer_last_review_date\" asc nulls first,
-    young.\"customer_state_returns_2002\" asc nulls first
+    sparkling.\"web_returns_customer_text_id\" asc nulls first,
+    sparkling.\"web_returns_customer_salutation\" asc nulls first,
+    sparkling.\"web_returns_customer_first_name\" asc nulls first,
+    sparkling.\"web_returns_customer_last_name\" asc nulls first,
+    sparkling.\"web_returns_customer_preferred_cust_flag\" asc nulls first,
+    sparkling.\"web_returns_customer_birth_day\" asc nulls first,
+    sparkling.\"web_returns_customer_birth_month\" asc nulls first,
+    sparkling.\"web_returns_customer_birth_year\" asc nulls first,
+    sparkling.\"web_returns_customer_birth_country\" asc nulls first,
+    sparkling.\"web_returns_customer_login\" asc nulls first,
+    sparkling.\"web_returns_customer_email_address\" asc nulls first,
+    sparkling.\"web_returns_customer_last_review_date\" asc nulls first,
+    sparkling.\"customer_state_returns_2002\" asc nulls first
 LIMIT (100)"""

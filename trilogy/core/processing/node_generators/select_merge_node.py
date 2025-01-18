@@ -317,7 +317,7 @@ def create_datasource_node(
     nullable_lcl = LooseConceptList(concepts=nullable_concepts)
     partial_is_full = conditions and (conditions == datasource.non_partial_for)
 
-    grain = Grain.from_concepts(all_concepts)
+
     datasource_conditions = (
         datasource.where.conditional
         if datasource.where

@@ -12,6 +12,8 @@ from trilogy.core.models.author import (
     LooseConceptList,
     Namespaced,
     WhereClause,
+    ConceptRef,
+    UndefinedConcept
 )
 
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
@@ -23,7 +25,7 @@ class RawColumnExpr(BaseModel):
 
 class ColumnAssignment(BaseModel):
     alias: str | RawColumnExpr | Function
-    concept: Concept
+    concept: ConceptRef
     modifiers: List[Modifier] = Field(default_factory=list)
 
     @property
@@ -35,7 +37,8 @@ class ColumnAssignment(BaseModel):
         return Modifier.NULLABLE in self.modifiers
     
     def with_select_context(self, context: dict, grain, environment) -> "ColumnAssignment":
-        return ColumnAssignment(
+        from trilogy.core.models.build import BuildColumnAssignment
+        return BuildColumnAssignment(
             alias=(
                 self.alias.with_select_context(context, grain, environment)
                 if isinstance(self.alias, Function)
@@ -222,7 +225,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         modifiers: List[Modifier] | None = None,
     ):
         self.columns.append(
-            ColumnAssignment(alias=alias, concept=concept, modifiers=modifiers or [])
+            ColumnAssignment(alias=alias, concept=concept.reference, modifiers=modifiers or [])
         )
 
     def __add__(self, other):

@@ -567,7 +567,11 @@ class Environment(BaseModel):
 
         eligible_to_promote_roots = datasource.non_partial_for is None
         # mark this as canonical source
-        for current_concept in datasource.output_concepts:
+        for cref in datasource.output_concepts:
+
+            current_concept = self.concepts[cref.address]
+            if isinstance(current_concept, UndefinedConcept):
+                continue
             if not eligible_to_promote_roots:
                 continue
 

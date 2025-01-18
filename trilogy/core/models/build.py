@@ -85,6 +85,7 @@ from trilogy.core.models.datasource import (
     ColumnAssignment,
     Datasource,
     DatasourceMetadata,
+    RawColumnExpr
 )
 from trilogy.core.models.environment import Environment
 from trilogy.utility import unique
@@ -1252,10 +1253,23 @@ class BuildWindowItemOver(BaseModel):
 class BuildWindowItemOrder(BaseModel):
     contents: List["BuildOrderItem"]
 
+class BuildColumnAssignment(BaseModel):
+    alias: str | RawColumnExpr | BuildFunction
+    concept: BuildConcept
+    modifiers: List[Modifier] = Field(default_factory=list)
+
+    @property
+    def is_complete(self) -> bool:
+        return Modifier.PARTIAL not in self.modifiers
+
+    @property
+    def is_nullable(self) -> bool:
+        return Modifier.NULLABLE in self.modifiers
+    
 
 class BuildDatasource(Datasource):
     name: str
-    columns: List[ColumnAssignment]
+    columns: List[BuildColumnAssignment]
     address: Union[Address, str]
     grain: Grain = Field(
         default_factory=lambda: Grain(components=set()), validate_default=True
@@ -1312,14 +1326,14 @@ BuildExpr = (
     | str
     | float
     | list
-    | WindowItem
-    | FilterItem
-    | Concept
-    | ComparisonOperator
-    | Conditional
-    | Parenthetical
-    | Function
-    | AggregateWrapper
+    # | WindowItem
+    # | FilterItem
+    # | Concept
+    # | ComparisonOperator
+    # | Conditional
+    # | Parenthetical
+    # | Function
+    # | AggregateWrapper
     | BuildWindowItem
     | BuildFilterItem
     | BuildConcept

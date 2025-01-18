@@ -41,6 +41,7 @@ from trilogy.core.models.build import (
     BuildParenthetical,
     BuildSubselectComparison,
     BuildWindowItem,
+    BuildDatasource,
 )
 from trilogy.core.models.core import (
     DataType,
@@ -527,7 +528,7 @@ def decompose_condition(
     conditional: Conditional | Comparison | Parenthetical,
 ) -> list[SubselectComparison | Comparison | Conditional | Parenthetical]:
     chunks: list[SubselectComparison | Comparison | Conditional | Parenthetical] = []
-    if not isinstance(conditional, Conditional):
+    if not isinstance(conditional, (Conditional, BuildConditional)):
         return [conditional]
     if conditional.operator == BooleanOperator.AND:
         if not (
@@ -561,7 +562,7 @@ def find_nullable_concepts(
     datasource_map = {
         x.identifier: x
         for x in datasources
-        if isinstance(x, (Datasource, QueryDatasource))
+        if isinstance(x, (BuildDatasource, QueryDatasource))
     }
     for join in joins:
         is_on_nullable_condition = False
